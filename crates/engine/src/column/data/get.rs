@@ -2,34 +2,34 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::Value;
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 
-impl EngineColumnData {
+impl ColumnData {
     pub fn get_value(&self, index: usize) -> Value {
         match self {
-            EngineColumnData::Bool(container) => container.get_value(index),
-            EngineColumnData::Float4(container) => container.get_value(index),
-            EngineColumnData::Float8(container) => container.get_value(index),
-            EngineColumnData::Int1(container) => container.get_value(index),
-            EngineColumnData::Int2(container) => container.get_value(index),
-            EngineColumnData::Int4(container) => container.get_value(index),
-            EngineColumnData::Int8(container) => container.get_value(index),
-            EngineColumnData::Int16(container) => container.get_value(index),
-            EngineColumnData::Uint1(container) => container.get_value(index),
-            EngineColumnData::Uint2(container) => container.get_value(index),
-            EngineColumnData::Uint4(container) => container.get_value(index),
-            EngineColumnData::Uint8(container) => container.get_value(index),
-            EngineColumnData::Uint16(container) => container.get_value(index),
-            EngineColumnData::Utf8(container) => container.get_value(index),
-            EngineColumnData::Date(container) => container.get_value(index),
-            EngineColumnData::DateTime(container) => container.get_value(index),
-            EngineColumnData::Time(container) => container.get_value(index),
-            EngineColumnData::Interval(container) => container.get_value(index),
-            EngineColumnData::RowId(container) => container.get_value(index),
-            EngineColumnData::Uuid4(container) => container.get_value(index),
-            EngineColumnData::Uuid7(container) => container.get_value(index),
-            EngineColumnData::Blob(container) => container.get_value(index),
-            EngineColumnData::Undefined(container) => container.get_value(index),
+            ColumnData::Bool(container) => container.get_value(index),
+            ColumnData::Float4(container) => container.get_value(index),
+            ColumnData::Float8(container) => container.get_value(index),
+            ColumnData::Int1(container) => container.get_value(index),
+            ColumnData::Int2(container) => container.get_value(index),
+            ColumnData::Int4(container) => container.get_value(index),
+            ColumnData::Int8(container) => container.get_value(index),
+            ColumnData::Int16(container) => container.get_value(index),
+            ColumnData::Uint1(container) => container.get_value(index),
+            ColumnData::Uint2(container) => container.get_value(index),
+            ColumnData::Uint4(container) => container.get_value(index),
+            ColumnData::Uint8(container) => container.get_value(index),
+            ColumnData::Uint16(container) => container.get_value(index),
+            ColumnData::Utf8(container) => container.get_value(index),
+            ColumnData::Date(container) => container.get_value(index),
+            ColumnData::DateTime(container) => container.get_value(index),
+            ColumnData::Time(container) => container.get_value(index),
+            ColumnData::Interval(container) => container.get_value(index),
+            ColumnData::RowId(container) => container.get_value(index),
+            ColumnData::Uuid4(container) => container.get_value(index),
+            ColumnData::Uuid7(container) => container.get_value(index),
+            ColumnData::Blob(container) => container.get_value(index),
+            ColumnData::Undefined(container) => container.get_value(index),
         }
     }
 }

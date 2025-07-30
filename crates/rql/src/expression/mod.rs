@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse};
+use crate::ast::{parse, Ast, AstInfix, AstLiteral, InfixOperator};
 use crate::{ast, convert_data_type};
 
-mod layout;
 mod span;
 
 use reifydb_core::{OwnedSpan, Type};

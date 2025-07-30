@@ -13,9 +13,9 @@ pub struct FrameColumnLayout {
 impl FrameColumnLayout {
     pub fn from_column(column: &FrameColumn) -> Self {
         Self {
-            schema: column.schema().map(|s| s.to_string()),
-            table: column.table().map(|s| s.to_string()),
-            name: column.name().to_string(),
+            schema: column.schema.clone(),
+            table: column.table.clone(),
+            name: column.name.clone(),
         }
     }
 }

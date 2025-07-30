@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::frame::Frame;
+use crate::column::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::{Catalog, sequence::TableRowSequence};
@@ -21,7 +21,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: InsertPlan,
-    ) -> crate::Result<Frame> {
+    ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
@@ -121,7 +121,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         }
 
         // Return summary frame
-        Ok(Frame::single_row([
+        Ok(Columns::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),
             ("inserted", Value::Uint8(inserted_count as u64)),

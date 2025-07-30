@@ -54,8 +54,7 @@ where
 
         tx.commit()?;
 
-        // Ok(result)
-        todo!()
+        Ok(result.into_iter().map(Frame::from).collect())
     }
 
     fn rx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
@@ -70,8 +69,7 @@ where
             }
         }
 
-        // Ok(result)
-        todo!()
+        Ok(result.into_iter().map(Frame::from).collect())
     }
 
     fn hooks(&self) -> &Hooks {

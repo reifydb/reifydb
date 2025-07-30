@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{ColumnQualified, EngineColumn};
+use crate::column::{ColumnQualified, Column};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error;
 use reifydb_core::error::diagnostic::function;
@@ -12,7 +12,7 @@ impl Evaluator {
         &mut self,
         call: &CallExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let virtual_columns = self.evaluate_virtual_column(&call.args, ctx).unwrap();
 
         let function = &call.func.0.fragment;
@@ -23,7 +23,7 @@ impl Evaluator {
             .ok_or(error!(function::unknown_function(function.clone())))?;
 
         let row_count = ctx.row_count;
-        Ok(EngineColumn::ColumnQualified(ColumnQualified {
+        Ok(Column::ColumnQualified(ColumnQualified {
             name: call.span().fragment.into(),
             data: functor.scalar(&virtual_columns, row_count).unwrap(),
         }))
@@ -33,8 +33,8 @@ impl Evaluator {
         &mut self,
         expressions: &Vec<Expression>,
         ctx: &EvaluationContext,
-    ) -> crate::Result<Vec<EngineColumn>> {
-        let mut result: Vec<EngineColumn> = Vec::with_capacity(expressions.len());
+    ) -> crate::Result<Vec<Column>> {
+        let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 
         for expression in expressions {
             result.push(self.evaluate(&expression, ctx)?)

@@ -1,22 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use data::EngineColumnData;
+pub use data::ColumnData;
 use reifydb_core::Type;
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod columns;
 mod data;
-pub(crate) mod frame;
 pub(crate) mod layout;
 pub mod pool;
 mod qualification;
 
+pub mod push;
 mod transform;
 mod view;
-pub mod push;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum EngineColumn {
+pub enum Column {
     FullyQualified(FullyQualified),
     TableQualified(TableQualified),
     ColumnQualified(ColumnQualified),
@@ -28,29 +28,29 @@ pub struct FullyQualified {
     pub schema: String,
     pub table: String,
     pub name: String,
-    pub data: EngineColumnData,
+    pub data: ColumnData,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TableQualified {
     pub table: String,
     pub name: String,
-    pub data: EngineColumnData,
+    pub data: ColumnData,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ColumnQualified {
     pub name: String,
-    pub data: EngineColumnData,
+    pub data: ColumnData,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Unqualified {
     pub name: String,
-    pub data: EngineColumnData,
+    pub data: ColumnData,
 }
 
-impl EngineColumn {
+impl Column {
     pub fn get_type(&self) -> Type {
         match self {
             Self::FullyQualified(col) => col.data.get_type(),
@@ -69,7 +69,7 @@ impl EngineColumn {
         }
     }
 
-    pub fn with_new_data(&self, data: EngineColumnData) -> EngineColumn {
+    pub fn with_new_data(&self, data: ColumnData) -> Column {
         match self {
             Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
                 schema: col.schema.clone(),
@@ -118,7 +118,7 @@ impl EngineColumn {
         }
     }
 
-    pub fn data(&self) -> &EngineColumnData {
+    pub fn data(&self) -> &ColumnData {
         match self {
             Self::FullyQualified(col) => &col.data,
             Self::TableQualified(col) => &col.data,
@@ -127,7 +127,7 @@ impl EngineColumn {
         }
     }
 
-    pub fn data_mut(&mut self) -> &mut EngineColumnData {
+    pub fn data_mut(&mut self) -> &mut ColumnData {
         match self {
             Self::FullyQualified(col) => &mut col.data,
             Self::TableQualified(col) => &mut col.data,
@@ -146,7 +146,7 @@ mod tests {
         let column = TableQualified::int4("test_frame", "normal_column", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "test_frame.normal_column");
         match column {
-            EngineColumn::TableQualified(col) => {
+            Column::TableQualified(col) => {
                 assert_eq!(col.table, "test_frame");
                 assert_eq!(col.name, "normal_column");
             }
@@ -159,7 +159,7 @@ mod tests {
         let column = FullyQualified::int4("public", "users", "id", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "public.users.id");
         match column {
-            EngineColumn::FullyQualified(col) => {
+            Column::FullyQualified(col) => {
                 assert_eq!(col.schema, "public");
                 assert_eq!(col.table, "users");
                 assert_eq!(col.name, "id");
@@ -173,7 +173,7 @@ mod tests {
         let column = ColumnQualified::int4("expr_result", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "expr_result");
         match column {
-            EngineColumn::ColumnQualified(col) => {
+            Column::ColumnQualified(col) => {
                 assert_eq!(col.name, "expr_result");
             }
             _ => panic!("Expected ColumnQualified variant"),
@@ -185,7 +185,7 @@ mod tests {
         let column = Unqualified::int4("sum(a+b)", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "sum(a+b)");
         match column {
-            EngineColumn::Unqualified(col) => {
+            Column::Unqualified(col) => {
                 assert_eq!(col.name, "sum(a+b)");
             }
             _ => panic!("Expected Unqualified variant"),

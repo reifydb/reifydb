@@ -1,4 +1,4 @@
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_data;
 use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
@@ -26,7 +26,7 @@ pub(crate) fn coerce_value_to_column_type(
         return Ok(value);
     }
 
-    let temp_column_data = EngineColumnData::from(value.clone());
+    let temp_column_data = ColumnData::from(value.clone());
     let value_str = value.to_string();
 
     let column_policies = column.policies.clone();

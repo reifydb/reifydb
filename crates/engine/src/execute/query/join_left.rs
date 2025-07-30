@@ -6,15 +6,15 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_rql::expression::Expression;
 use reifydb_core::interface::Rx;
 use reifydb_core::Value;
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData, TableQualified};
-use crate::column::frame::Frame;
-use crate::column::layout::FrameLayout;
+use crate::column::{ColumnQualified, Column, ColumnData, TableQualified};
+use crate::column::columns::Columns;
+use crate::column::layout::ColumnsLayout;
 
 pub(crate) struct LeftJoinNode {
     left: Box<dyn ExecutionPlan>,
     right: Box<dyn ExecutionPlan>,
     on: Vec<Expression>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
 }
 
 impl LeftJoinNode {
@@ -30,8 +30,8 @@ impl LeftJoinNode {
         node: &mut Box<dyn ExecutionPlan>,
         ctx: &ExecutionContext,
         rx: &mut dyn Rx,
-    ) -> crate::Result<Frame> {
-        let mut result: Option<Frame> = None;
+    ) -> crate::Result<Columns> {
+        let mut result: Option<Columns> = None;
 
         while let Some(Batch { frame }) = node.next(ctx, rx)? {
             if let Some(mut acc) = result.take() {
@@ -41,7 +41,7 @@ impl LeftJoinNode {
                 result = Some(frame);
             }
         }
-        let result = result.unwrap_or_else(Frame::empty);
+        let result = result.unwrap_or_else(Columns::empty);
         Ok(result)
     }
 }
@@ -87,14 +87,14 @@ impl ExecutionPlan for LeftJoinNode {
                         .cloned()
                         .zip(left_frame.columns.iter().chain(&right_frame.columns))
                         .map(|(v, col)| match col.table() {
-                            Some(table) => EngineColumn::TableQualified(TableQualified {
+                            Some(table) => Column::TableQualified(TableQualified {
                                 table: table.to_string(),
                                 name: col.name().to_string(),
-                                data: EngineColumnData::from(v),
+                                data: ColumnData::from(v),
                             }),
-                            None => EngineColumn::ColumnQualified(ColumnQualified {
+                            None => Column::ColumnQualified(ColumnQualified {
                                 name: col.name().to_string(),
-                                data: EngineColumnData::from(v),
+                                data: ColumnData::from(v),
                             }),
                         })
                         .collect(),
@@ -127,18 +127,18 @@ impl ExecutionPlan for LeftJoinNode {
         let column_metadata: Vec<_> =
             left_frame.columns.iter().chain(&right_frame.columns).collect();
         let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-        let mut frame = Frame::from_rows(&names_refs, &result_rows);
+        let mut frame = Columns::from_rows(&names_refs, &result_rows);
 
         // Update frame columns with proper metadata
         for (i, col_meta) in column_metadata.iter().enumerate() {
             let old_column = &frame.columns[i];
             frame.columns[i] = match col_meta.table() {
-                Some(table) => EngineColumn::TableQualified(TableQualified {
+                Some(table) => Column::TableQualified(TableQualified {
                     table: table.to_string(),
                     name: col_meta.name().to_string(),
                     data: old_column.data().clone(),
                 }),
-                None => EngineColumn::ColumnQualified(ColumnQualified {
+                None => Column::ColumnQualified(ColumnQualified {
                     name: col_meta.name().to_string(),
                     data: old_column.data().clone(),
                 }),
@@ -158,11 +158,11 @@ impl ExecutionPlan for LeftJoinNode {
             })
             .collect();
 
-        self.layout = Some(FrameLayout::from_frame(&frame));
+        self.layout = Some(ColumnsLayout::from_columns(&frame));
         Ok(Some(Batch { frame }))
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone()
     }
 }

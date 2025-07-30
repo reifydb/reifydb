@@ -4,7 +4,7 @@
 use reifydb_core::value::container::{
     BoolContainer, NumberContainer, StringContainer, TemporalContainer,
 };
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
+use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use Type::Bool;
 use reifydb_core::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
@@ -20,479 +20,479 @@ impl Evaluator {
         &mut self,
         eq: &EqualExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let left = self.evaluate(&eq.left, ctx)?;
         let right = self.evaluate(&eq.right, ctx)?;
 
         match (&left.data(), &right.data()) {
-            (EngineColumnData::Bool(l), EngineColumnData::Bool(r)) => {
+            (ColumnData::Bool(l), ColumnData::Bool(r)) => {
                 Ok(compare_bool(ctx, l, r, eq.span()))
             }
             // Float4
-            (EngineColumnData::Float4(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<f32, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Float4(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<f32, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<f32, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<f32, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<f32, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<f32, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<f32, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<f32, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<f32, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<f32, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<f32, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<f32, u128>(ctx, l, r, eq.span()))
             }
             // Float8
-            (EngineColumnData::Float8(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Float8(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<f64, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<f64, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<f64, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<f64, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<f64, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<f64, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<f64, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<f64, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<f64, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<f64, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<f64, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<f64, u128>(ctx, l, r, eq.span()))
             }
             // Int1
-            (EngineColumnData::Int1(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int1(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<i8, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int1(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<i8, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<i8, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<i8, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<i8, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<i8, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<i8, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<i8, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<i8, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<i8, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<i8, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<i8, u128>(ctx, l, r, eq.span()))
             }
             // Int2
-            (EngineColumnData::Int2(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int2(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<i16, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int2(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<i16, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<i16, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<i16, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<i16, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<i16, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<i16, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<i16, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<i16, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<i16, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<i16, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<i16, u128>(ctx, l, r, eq.span()))
             }
             // Int4
-            (EngineColumnData::Int4(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int4(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<i32, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int4(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<i32, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<i32, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<i32, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<i32, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<i32, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<i32, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<i32, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<i32, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<i32, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<i32, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<i32, u128>(ctx, l, r, eq.span()))
             }
             // Int8
-            (EngineColumnData::Int8(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int8(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<i64, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int8(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<i64, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int8(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<i64, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int8(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<i64, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int8(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<i64, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int8(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<i64, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int8(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<i64, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int8(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<i64, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int8(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<i64, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int8(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<i64, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int8(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<i64, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int8(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<i64, u128>(ctx, l, r, eq.span()))
             }
             // Int16
-            (EngineColumnData::Int16(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int16(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<i128, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int16(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<i128, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int16(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<i128, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int16(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<i128, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int16(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<i128, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int16(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<i128, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int16(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<i128, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int16(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<i128, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int16(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<i128, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int16(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<i128, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int16(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<i128, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int16(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<i128, u128>(ctx, l, r, eq.span()))
             }
             // Uint1
-            (EngineColumnData::Uint1(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<u8, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<u8, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<u8, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<u8, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<u8, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<u8, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<u8, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<u8, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<u8, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<u8, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<u8, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u8, u128>(ctx, l, r, eq.span()))
             }
             // Uint2
-            (EngineColumnData::Uint2(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<u16, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<u16, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<u16, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<u16, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<u16, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<u16, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<u16, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<u16, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<u16, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<u16, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<u16, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u16, u128>(ctx, l, r, eq.span()))
             }
             // Uint4
-            (EngineColumnData::Uint4(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<u32, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<u32, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<u32, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<u32, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<u32, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<u32, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<u32, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<u32, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<u32, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<u32, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<u32, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u32, u128>(ctx, l, r, eq.span()))
             }
             // Uint8
-            (EngineColumnData::Uint8(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<u64, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<u64, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<u64, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<u64, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<u64, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<u64, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<u64, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<u64, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<u64, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<u64, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<u64, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u64, u128>(ctx, l, r, eq.span()))
             }
             // Uint16
-            (EngineColumnData::Uint16(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<u128, f32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Float8(r)) => {
                 Ok(compare_number::<u128, f64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Int1(r)) => {
                 Ok(compare_number::<u128, i8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Int2(r)) => {
                 Ok(compare_number::<u128, i16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Int4(r)) => {
                 Ok(compare_number::<u128, i32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Int8(r)) => {
                 Ok(compare_number::<u128, i64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Int16(r)) => {
                 Ok(compare_number::<u128, i128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
                 Ok(compare_number::<u128, u8>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
                 Ok(compare_number::<u128, u16>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
                 Ok(compare_number::<u128, u32>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
                 Ok(compare_number::<u128, u64>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u128, u128>(ctx, l, r, eq.span()))
             }
-            (EngineColumnData::Date(l), EngineColumnData::Date(r)) => {
+            (ColumnData::Date(l), ColumnData::Date(r)) => {
                 Ok(compare_temporal(l, r, eq.span()))
             }
-            (EngineColumnData::DateTime(l), EngineColumnData::DateTime(r)) => {
+            (ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
                 Ok(compare_temporal(l, r, eq.span()))
             }
-            (EngineColumnData::Time(l), EngineColumnData::Time(r)) => {
+            (ColumnData::Time(l), ColumnData::Time(r)) => {
                 Ok(compare_temporal(l, r, eq.span()))
             }
-            (EngineColumnData::Interval(l), EngineColumnData::Interval(r)) => {
+            (ColumnData::Interval(l), ColumnData::Interval(r)) => {
                 Ok(compare_temporal(l, r, eq.span()))
             }
-            (EngineColumnData::Utf8(l), EngineColumnData::Utf8(r)) => {
+            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
                 Ok(compare_utf8(l, r, eq.span()))
             }
-            (EngineColumnData::Undefined(container), _)
-            | (_, EngineColumnData::Undefined(container)) => {
+            (ColumnData::Undefined(container), _)
+            | (_, ColumnData::Undefined(container)) => {
                 let span = eq.span();
-                Ok(EngineColumn::ColumnQualified(ColumnQualified {
+                Ok(Column::ColumnQualified(ColumnQualified {
                     name: span.fragment.into(),
-                    data: EngineColumnData::bool(vec![false; container.len()]),
+                    data: ColumnData::bool(vec![false; container.len()]),
                 }))
             }
             _ => return_error!(equal_cannot_be_applied_to_incompatible_types(
@@ -509,7 +509,7 @@ fn compare_bool(
     l: &BoolContainer,
     r: &BoolContainer,
     span: OwnedSpan,
-) -> EngineColumn {
+) -> Column {
     debug_assert_eq!(l.len(), r.len());
 
     let mut data = ctx.pooled(Bool, l.len());
@@ -522,7 +522,7 @@ fn compare_bool(
         }
     }
 
-    EngineColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), data })
+    Column::ColumnQualified(ColumnQualified { name: span.fragment.into(), data })
 }
 
 fn compare_number<L, R>(
@@ -530,7 +530,7 @@ fn compare_number<L, R>(
     l: &NumberContainer<L>,
     r: &NumberContainer<R>,
     span: OwnedSpan,
-) -> EngineColumn
+) -> Column
 where
     L: Promote<R> + IsNumber + Clone + Debug + Default,
     R: IsNumber + Copy + Clone + Debug + Default,
@@ -548,14 +548,14 @@ where
         }
     }
 
-    EngineColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), data })
+    Column::ColumnQualified(ColumnQualified { name: span.fragment.into(), data })
 }
 
 fn compare_temporal<T>(
     l: &TemporalContainer<T>,
     r: &TemporalContainer<T>,
     span: OwnedSpan,
-) -> EngineColumn
+) -> Column
 where
     T: IsTemporal + Clone + Debug + Default,
 {
@@ -577,13 +577,13 @@ where
         }
     }
 
-    EngineColumn::ColumnQualified(ColumnQualified {
+    Column::ColumnQualified(ColumnQualified {
         name: span.fragment.into(),
-        data: EngineColumnData::bool_with_bitvec(data, bitvec),
+        data: ColumnData::bool_with_bitvec(data, bitvec),
     })
 }
 
-fn compare_utf8(l: &StringContainer, r: &StringContainer, span: OwnedSpan) -> EngineColumn {
+fn compare_utf8(l: &StringContainer, r: &StringContainer, span: OwnedSpan) -> Column {
     debug_assert_eq!(l.len(), r.len());
 
     let mut data = Vec::with_capacity(l.len());
@@ -601,8 +601,8 @@ fn compare_utf8(l: &StringContainer, r: &StringContainer, span: OwnedSpan) -> En
             }
         }
     }
-    EngineColumn::ColumnQualified(ColumnQualified {
+    Column::ColumnQualified(ColumnQualified {
         name: span.fragment.into(),
-        data: EngineColumnData::bool_with_bitvec(data, bitvec),
+        data: ColumnData::bool_with_bitvec(data, bitvec),
     })
 }

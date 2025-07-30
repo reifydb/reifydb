@@ -1,0 +1,361 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use crate::column::{Column, ColumnData, ColumnQualified, TableQualified};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::interface::Table;
+use reifydb_core::{Type, Value};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Columns {
+    pub name: String,
+    pub columns: Vec<Column>,
+    pub index: HashMap<String, usize>, // Maps qualified_name -> column index
+    pub frame_index: HashMap<(String, String), usize>, // Maps (frame, name) -> index
+}
+
+impl From<ColumnData> for ColumnValues {
+    fn from(value: ColumnData) -> Self {
+        match value {
+            ColumnData::Bool(container) => ColumnValues::Bool(container),
+            ColumnData::Float4(container) => ColumnValues::Float4(container),
+            ColumnData::Float8(container) => ColumnValues::Float8(container),
+            ColumnData::Int1(container) => ColumnValues::Int1(container),
+            ColumnData::Int2(container) => ColumnValues::Int2(container),
+            ColumnData::Int4(container) => ColumnValues::Int4(container),
+            ColumnData::Int8(container) => ColumnValues::Int8(container),
+            ColumnData::Int16(container) => ColumnValues::Int16(container),
+            ColumnData::Uint1(container) => ColumnValues::Uint1(container),
+            ColumnData::Uint2(container) => ColumnValues::Uint2(container),
+            ColumnData::Uint4(container) => ColumnValues::Uint4(container),
+            ColumnData::Uint8(container) => ColumnValues::Uint8(container),
+            ColumnData::Uint16(container) => ColumnValues::Uint16(container),
+            ColumnData::Utf8(container) => ColumnValues::Utf8(container),
+            ColumnData::Date(container) => ColumnValues::Date(container),
+            ColumnData::DateTime(container) => ColumnValues::DateTime(container),
+            ColumnData::Time(container) => ColumnValues::Time(container),
+            ColumnData::Interval(container) => ColumnValues::Interval(container),
+            ColumnData::RowId(container) => ColumnValues::RowId(container),
+            ColumnData::Uuid4(container) => ColumnValues::Uuid4(container),
+            ColumnData::Uuid7(container) => ColumnValues::Uuid7(container),
+            ColumnData::Blob(container) => ColumnValues::Blob(container),
+            ColumnData::Undefined(container) => ColumnValues::Undefined(container),
+        }
+    }
+}
+
+impl From<Column> for FrameColumn {
+    fn from(value: Column) -> Self {
+        match value {
+            Column::FullyQualified(col) => FrameColumn {
+                schema: Some(col.schema),
+                table: Some(col.table),
+                name: col.name,
+                values: col.data.into(),
+            },
+            Column::TableQualified(col) => FrameColumn {
+                schema: None,
+                table: Some(col.table),
+                name: col.name,
+                values: col.data.into(),
+            },
+            Column::ColumnQualified(col) => {
+                FrameColumn { schema: None, table: None, name: col.name, values: col.data.into() }
+            }
+            Column::Unqualified(col) => {
+                FrameColumn { schema: None, table: None, name: col.name, values: col.data.into() }
+            }
+        }
+    }
+}
+
+impl From<Columns> for Frame {
+    fn from(value: Columns) -> Self {
+        Self {
+            name: value.name,
+            columns: value.columns.into_iter().map(|col| col.into()).collect(),
+            index: value.index,
+            frame_index: value.frame_index,
+        }
+    }
+}
+
+impl Columns {
+    pub fn single_row<'a>(rows: impl IntoIterator<Item = (&'a str, Value)>) -> Columns {
+        let mut columns = Vec::new();
+        let mut index = HashMap::new();
+
+        for (idx, (name, value)) in rows.into_iter().enumerate() {
+            let data = match value {
+                Value::Undefined => ColumnData::undefined(1),
+                Value::Bool(v) => ColumnData::bool([v]),
+                Value::Float4(v) => ColumnData::float4([v.into()]),
+                Value::Float8(v) => ColumnData::float8([v.into()]),
+                Value::Int1(v) => ColumnData::int1([v]),
+                Value::Int2(v) => ColumnData::int2([v]),
+                Value::Int4(v) => ColumnData::int4([v]),
+                Value::Int8(v) => ColumnData::int8([v]),
+                Value::Int16(v) => ColumnData::int16([v]),
+                Value::Utf8(v) => ColumnData::utf8([v.clone()]),
+                Value::Uint1(v) => ColumnData::uint1([v]),
+                Value::Uint2(v) => ColumnData::uint2([v]),
+                Value::Uint4(v) => ColumnData::uint4([v]),
+                Value::Uint8(v) => ColumnData::uint8([v]),
+                Value::Uint16(v) => ColumnData::uint16([v]),
+                Value::Date(v) => ColumnData::date([v.clone()]),
+                Value::DateTime(v) => ColumnData::datetime([v.clone()]),
+                Value::Time(v) => ColumnData::time([v.clone()]),
+                Value::Interval(v) => ColumnData::interval([v.clone()]),
+                Value::RowId(v) => ColumnData::row_id([v]),
+                Value::Uuid4(v) => ColumnData::uuid4([v]),
+                Value::Uuid7(v) => ColumnData::uuid7([v]),
+                Value::Blob(v) => ColumnData::blob([v.clone()]),
+            };
+
+            let column = Column::ColumnQualified(ColumnQualified { name: name.to_string(), data });
+            index.insert(column.qualified_name(), idx);
+            columns.push(column);
+        }
+
+        let (final_index, frame_index) = build_indices(&columns);
+        Columns { name: "frame".to_string(), columns, index: final_index, frame_index }
+    }
+}
+
+impl Columns {
+    pub fn new(columns: Vec<Column>) -> Self {
+        let n = columns.first().map_or(0, |c| c.data().len());
+        assert!(columns.iter().all(|c| c.data().len() == n));
+
+        let (index, frame_index) = build_indices(&columns);
+        Self { name: "frame".to_string(), columns, index, frame_index }
+    }
+
+    pub fn new_with_name(columns: Vec<Column>, name: impl Into<String>) -> Self {
+        let n = columns.first().map_or(0, |c| c.data().len());
+        assert!(columns.iter().all(|c| c.data().len() == n));
+
+        let (index, frame_index) = build_indices(&columns);
+        Self { name: name.into(), columns, index, frame_index }
+    }
+
+    pub fn shape(&self) -> (usize, usize) {
+        (self.columns.get(0).map(|c| c.data().len()).unwrap_or(0), self.columns.len())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.shape().0 == 0
+    }
+
+    pub fn row(&self, i: usize) -> Vec<Value> {
+        self.columns.iter().map(|c| c.data().get_value(i)).collect()
+    }
+
+    pub fn column(&self, name: &str) -> Option<&Column> {
+        // Try qualified name first, then try as original name
+        self.index
+            .get(name)
+            .map(|&i| &self.columns[i])
+            .or_else(|| self.columns.iter().find(|col| col.name() == name))
+    }
+
+    pub fn column_by_source(&self, frame: &str, name: &str) -> Option<&Column> {
+        self.frame_index.get(&(frame.to_string(), name.to_string())).map(|&i| &self.columns[i])
+    }
+
+    pub fn column_values(&self, name: &str) -> Option<&ColumnData> {
+        // Try qualified name first, then try as original name
+        self.index
+            .get(name)
+            .map(|&i| self.columns[i].data())
+            .or_else(|| self.columns.iter().find(|col| col.name() == name).map(|col| col.data()))
+    }
+
+    pub fn column_values_mut(&mut self, name: &str) -> Option<&mut ColumnData> {
+        // Try qualified name first, then try as original name
+        if let Some(&i) = self.index.get(name) {
+            Some(self.columns[i].data_mut())
+        } else {
+            let pos = self.columns.iter().position(|col| col.name() == name)?;
+            Some(self.columns[pos].data_mut())
+        }
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.columns.first().map_or(0, |col| col.data().len())
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
+
+    pub fn get_row(&self, index: usize) -> Vec<Value> {
+        self.columns.iter().map(|col| col.data().get_value(index)).collect()
+    }
+}
+
+impl Column {
+    pub fn extend(&mut self, other: Column) -> crate::Result<()> {
+        self.data_mut().extend(other.data().clone())
+    }
+}
+
+impl Columns {
+    pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
+        let column_count = names.len();
+
+        let mut columns: Vec<Column> = names
+            .iter()
+            .map(|name| {
+                Column::ColumnQualified(ColumnQualified {
+                    name: name.to_string(),
+                    data: ColumnData::with_capacity(Type::Undefined, 0),
+                })
+            })
+            .collect();
+
+        for row in result_rows {
+            assert_eq!(row.len(), column_count, "row length does not match column count");
+            for (i, value) in row.iter().enumerate() {
+                columns[i].data_mut().push_value(value.clone());
+            }
+        }
+
+        Columns::new(columns)
+    }
+}
+
+impl Columns {
+    pub fn empty() -> Self {
+        Self {
+            name: "frame".to_string(),
+            columns: vec![],
+            index: HashMap::new(),
+            frame_index: HashMap::new(),
+        }
+    }
+
+    pub fn empty_from_table(table: &Table) -> Self {
+        let columns: Vec<Column> = table
+            .columns
+            .iter()
+            .map(|col| {
+                let name = col.name.clone();
+                let data = match col.ty {
+                    Type::Bool => ColumnData::bool(vec![]),
+                    Type::Float4 => ColumnData::float4(vec![]),
+                    Type::Float8 => ColumnData::float8(vec![]),
+                    Type::Int1 => ColumnData::int1(vec![]),
+                    Type::Int2 => ColumnData::int2(vec![]),
+                    Type::Int4 => ColumnData::int4(vec![]),
+                    Type::Int8 => ColumnData::int8(vec![]),
+                    Type::Int16 => ColumnData::int16(vec![]),
+                    Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
+                    Type::Uint1 => ColumnData::uint1(vec![]),
+                    Type::Uint2 => ColumnData::uint2(vec![]),
+                    Type::Uint4 => ColumnData::uint4(vec![]),
+                    Type::Uint8 => ColumnData::uint8(vec![]),
+                    Type::Uint16 => ColumnData::uint16(vec![]),
+                    Type::Date => ColumnData::date(vec![]),
+                    Type::DateTime => ColumnData::datetime(vec![]),
+                    Type::Time => ColumnData::time(vec![]),
+                    Type::Interval => ColumnData::interval(vec![]),
+                    Type::RowId => ColumnData::row_id(vec![]),
+                    Type::Uuid4 => ColumnData::uuid4(vec![]),
+                    Type::Uuid7 => ColumnData::uuid7(vec![]),
+                    Type::Blob => ColumnData::blob(vec![]),
+                    Type::Undefined => ColumnData::undefined(0),
+                };
+                Column::TableQualified(TableQualified { table: table.name.clone(), name, data })
+            })
+            .collect();
+
+        Self::new_with_name(columns, table.name.clone())
+    }
+}
+
+pub(crate) fn build_indices(
+    columns: &[Column],
+) -> (HashMap<String, usize>, HashMap<(String, String), usize>) {
+    let index = columns.iter().enumerate().map(|(i, col)| (col.qualified_name(), i)).collect();
+    let frame_index = columns
+        .iter()
+        .enumerate()
+        .filter_map(|(i, col)| col.table().map(|sf| ((sf.to_string(), col.name().to_string()), i)))
+        .collect();
+    (index, frame_index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reifydb_core::{Date, DateTime, Interval, Time};
+
+    #[test]
+    fn test_single_row_temporal_types() {
+        let date = Date::from_ymd(2025, 1, 15).unwrap();
+        let datetime = DateTime::from_timestamp(1642694400).unwrap();
+        let time = Time::from_hms(14, 30, 45).unwrap();
+        let interval = Interval::from_days(30);
+
+        let frame = Columns::single_row([
+            ("date_col", Value::Date(date.clone())),
+            ("datetime_col", Value::DateTime(datetime.clone())),
+            ("time_col", Value::Time(time.clone())),
+            ("interval_col", Value::Interval(interval.clone())),
+        ]);
+
+        assert_eq!(frame.columns.len(), 4);
+        assert_eq!(frame.shape(), (1, 4));
+
+        // Check that the values are correctly stored
+        assert_eq!(frame.column("date_col").unwrap().data().get_value(0), Value::Date(date));
+        assert_eq!(
+            frame.column("datetime_col").unwrap().data().get_value(0),
+            Value::DateTime(datetime)
+        );
+        assert_eq!(frame.column("time_col").unwrap().data().get_value(0), Value::Time(time));
+        assert_eq!(
+            frame.column("interval_col").unwrap().data().get_value(0),
+            Value::Interval(interval)
+        );
+    }
+
+    #[test]
+    fn test_single_row_mixed_types() {
+        let date = Date::from_ymd(2025, 7, 15).unwrap();
+        let time = Time::from_hms(9, 15, 30).unwrap();
+
+        let frame = Columns::single_row([
+            ("bool_col", Value::Bool(true)),
+            ("int_col", Value::Int4(42)),
+            ("str_col", Value::Utf8("hello".to_string())),
+            ("date_col", Value::Date(date.clone())),
+            ("time_col", Value::Time(time.clone())),
+            ("undefined_col", Value::Undefined),
+        ]);
+
+        assert_eq!(frame.columns.len(), 6);
+        assert_eq!(frame.shape(), (1, 6));
+
+        // Check all values are correctly stored
+        assert_eq!(frame.column("bool_col").unwrap().data().get_value(0), Value::Bool(true));
+        assert_eq!(frame.column("int_col").unwrap().data().get_value(0), Value::Int4(42));
+        assert_eq!(
+            frame.column("str_col").unwrap().data().get_value(0),
+            Value::Utf8("hello".to_string())
+        );
+        assert_eq!(frame.column("date_col").unwrap().data().get_value(0), Value::Date(date));
+        assert_eq!(frame.column("time_col").unwrap().data().get_value(0), Value::Time(time));
+        assert_eq!(frame.column("undefined_col").unwrap().data().get_value(0), Value::Undefined);
+    }
+
+    #[test]
+    fn test_single_row_normal_column_names_work() {
+        let frame = Columns::single_row([("normal_column", Value::Int4(42))]);
+        assert_eq!(frame.columns.len(), 1);
+        assert_eq!(frame.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
+    }
+}

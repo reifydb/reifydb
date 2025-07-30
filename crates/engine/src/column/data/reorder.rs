@@ -1,46 +1,46 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 
-impl EngineColumnData {
+impl ColumnData {
     pub fn reorder(&mut self, indices: &[usize]) {
         match self {
-            EngineColumnData::Bool(container) => container.reorder(indices),
-            EngineColumnData::Float4(container) => container.reorder(indices),
-            EngineColumnData::Float8(container) => container.reorder(indices),
-            EngineColumnData::Int1(container) => container.reorder(indices),
-            EngineColumnData::Int2(container) => container.reorder(indices),
-            EngineColumnData::Int4(container) => container.reorder(indices),
-            EngineColumnData::Int8(container) => container.reorder(indices),
-            EngineColumnData::Int16(container) => container.reorder(indices),
-            EngineColumnData::Utf8(container) => container.reorder(indices),
-            EngineColumnData::Uint1(container) => container.reorder(indices),
-            EngineColumnData::Uint2(container) => container.reorder(indices),
-            EngineColumnData::Uint4(container) => container.reorder(indices),
-            EngineColumnData::Uint8(container) => container.reorder(indices),
-            EngineColumnData::Uint16(container) => container.reorder(indices),
-            EngineColumnData::Date(container) => container.reorder(indices),
-            EngineColumnData::DateTime(container) => container.reorder(indices),
-            EngineColumnData::Time(container) => container.reorder(indices),
-            EngineColumnData::Interval(container) => container.reorder(indices),
-            EngineColumnData::Undefined(container) => container.reorder(indices),
-            EngineColumnData::RowId(container) => container.reorder(indices),
-            EngineColumnData::Uuid4(container) => container.reorder(indices),
-            EngineColumnData::Uuid7(container) => container.reorder(indices),
-            EngineColumnData::Blob(container) => container.reorder(indices),
+            ColumnData::Bool(container) => container.reorder(indices),
+            ColumnData::Float4(container) => container.reorder(indices),
+            ColumnData::Float8(container) => container.reorder(indices),
+            ColumnData::Int1(container) => container.reorder(indices),
+            ColumnData::Int2(container) => container.reorder(indices),
+            ColumnData::Int4(container) => container.reorder(indices),
+            ColumnData::Int8(container) => container.reorder(indices),
+            ColumnData::Int16(container) => container.reorder(indices),
+            ColumnData::Utf8(container) => container.reorder(indices),
+            ColumnData::Uint1(container) => container.reorder(indices),
+            ColumnData::Uint2(container) => container.reorder(indices),
+            ColumnData::Uint4(container) => container.reorder(indices),
+            ColumnData::Uint8(container) => container.reorder(indices),
+            ColumnData::Uint16(container) => container.reorder(indices),
+            ColumnData::Date(container) => container.reorder(indices),
+            ColumnData::DateTime(container) => container.reorder(indices),
+            ColumnData::Time(container) => container.reorder(indices),
+            ColumnData::Interval(container) => container.reorder(indices),
+            ColumnData::Undefined(container) => container.reorder(indices),
+            ColumnData::RowId(container) => container.reorder(indices),
+            ColumnData::Uuid4(container) => container.reorder(indices),
+            ColumnData::Uuid7(container) => container.reorder(indices),
+            ColumnData::Blob(container) => container.reorder(indices),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::column::EngineColumnData;
+    use crate::column::ColumnData;
     use reifydb_core::Value;
 
     #[test]
     fn test_reorder_bool() {
-        let mut col = EngineColumnData::bool([true, false, true]);
+        let mut col = ColumnData::bool([true, false, true]);
         col.reorder(&[2, 0, 1]);
 
         assert_eq!(col.len(), 3);
@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn test_reorder_float4() {
-        let mut col = EngineColumnData::float4([1.0, 2.0, 3.0]);
+        let mut col = ColumnData::float4([1.0, 2.0, 3.0]);
         col.reorder(&[2, 0, 1]);
 
         assert_eq!(col.len(), 3);
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn test_reorder_int4() {
-        let mut col = EngineColumnData::int4([1, 2, 3]);
+        let mut col = ColumnData::int4([1, 2, 3]);
         col.reorder(&[2, 0, 1]);
 
         assert_eq!(col.len(), 3);
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_reorder_string() {
-        let mut col = EngineColumnData::utf8(["a".to_string(), "b".to_string(), "c".to_string()]);
+        let mut col = ColumnData::utf8(["a".to_string(), "b".to_string(), "c".to_string()]);
         col.reorder(&[2, 0, 1]);
 
         assert_eq!(col.len(), 3);
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_reorder_undefined() {
-        let mut col = EngineColumnData::undefined(3);
+        let mut col = ColumnData::undefined(3);
         col.reorder(&[2, 0, 1]);
         assert_eq!(col.len(), 3);
 

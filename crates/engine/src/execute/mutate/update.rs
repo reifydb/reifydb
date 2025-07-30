@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
-use crate::column::frame::Frame;
+use crate::column::ColumnData;
+use crate::column::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
@@ -24,7 +24,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: UpdatePlan,
-    ) -> crate::Result<Frame> {
+    ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
             return_error!(schema_not_found(None::<reifydb_core::OwnedSpan>, "default"));
         };
@@ -70,7 +70,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
             // Extract RowId data - panic if any are undefined
             let row_ids = match &row_id_column.data() {
-                EngineColumnData::RowId(container) => {
+                ColumnData::RowId(container) => {
                     // Check that all row IDs are defined
                     for i in 0..container.data().len() {
                         if !container.is_defined(i) {
@@ -149,7 +149,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         }
 
         // Return summary frame
-        Ok(Frame::single_row([
+        Ok(Columns::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),
             ("updated", Value::Uint8(updated_count as u64)),

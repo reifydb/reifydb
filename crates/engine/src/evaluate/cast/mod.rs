@@ -7,7 +7,7 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData, TableQualified};
+use crate::column::{ColumnQualified, Column, ColumnData, TableQualified};
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::{OwnedSpan, Type, err, error};
@@ -19,7 +19,7 @@ impl Evaluator {
         &mut self,
         cast: &CastExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let cast_span = cast.lazy_span();
 
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
@@ -42,12 +42,12 @@ impl Evaluator {
                 })?;
 
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
                         data: casted,
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
                         data: casted,
                     }),
@@ -58,13 +58,13 @@ impl Evaluator {
 }
 
 pub fn cast_column_data(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
-    if let EngineColumnData::Undefined(container) = data {
-        let mut result = EngineColumnData::with_capacity(target, container.len());
+) -> crate::Result<ColumnData> {
+    if let ColumnData::Undefined(container) = data {
+        let mut result = ColumnData::with_capacity(target, container.len());
         for _ in 0..container.len() {
             result.push_undefined();
         }
@@ -89,7 +89,7 @@ pub fn cast_column_data(
 
 #[cfg(test)]
 mod tests {
-    use crate::column::EngineColumnData;
+    use crate::column::ColumnData;
     use crate::evaluate::EvaluationContext;
     use crate::evaluate::Expression;
     use crate::evaluate::evaluate;
@@ -114,7 +114,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::int4([42]));
+        assert_eq!(*result.data(), ColumnData::int4([42]));
     }
 
     #[test]
@@ -134,7 +134,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::int4([-42]));
+        assert_eq!(*result.data(), ColumnData::int4([-42]));
     }
 
     #[test]
@@ -154,7 +154,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::int1([-128]));
+        assert_eq!(*result.data(), ColumnData::int1([-128]));
     }
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::float8([4.2]));
+        assert_eq!(*result.data(), ColumnData::float8([4.2]));
     }
 
     #[test]
@@ -186,7 +186,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::float4([4.2]));
+        assert_eq!(*result.data(), ColumnData::float4([4.2]));
     }
 
     #[test]
@@ -202,7 +202,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::float4([-1.1]));
+        assert_eq!(*result.data(), ColumnData::float4([-1.1]));
     }
 
     #[test]
@@ -218,7 +218,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::float8([-1.1]));
+        assert_eq!(*result.data(), ColumnData::float8([-1.1]));
     }
 
     #[test]
@@ -236,7 +236,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.data(), EngineColumnData::bool([false]));
+        assert_eq!(*result.data(), ColumnData::bool([false]));
     }
 
     #[test]

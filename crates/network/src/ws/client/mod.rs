@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::value::Blob;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
@@ -209,16 +209,11 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                match col.frame {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
-                        table,
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
+                FrameColumn {
+                    schema: None,
+                    table: col.frame,
+                    name: col.name,
+                    values: convert_column_values(col.ty, col.data),
                 }
             })
             .collect();
@@ -245,16 +240,11 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .enumerate()
             .map(|(i, col)| {
                 index.insert(col.name.clone(), i);
-                match col.frame {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
-                        table,
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
+                FrameColumn {
+                    schema: None,
+                    table: col.frame,
+                    name: col.name,
+                    values: convert_column_values(col.ty, col.data),
                 }
             })
             .collect();

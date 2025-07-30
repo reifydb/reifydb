@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{EngineColumn, EngineColumnData};
+use crate::column::{Column, ColumnData};
 use crate::function::AggregateFunction;
 use reifydb_core::Value;
 use std::collections::HashMap;
@@ -19,11 +19,11 @@ impl Max {
 impl AggregateFunction for Max {
     fn aggregate(
         &mut self,
-        column: &EngineColumn,
+        column: &Column,
         groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
         match &column.data() {
-            EngineColumnData::Float8(container) => {
+            ColumnData::Float8(container) => {
                 for (group, indices) in groups {
                     let max_val = indices
                         .iter()
@@ -43,9 +43,9 @@ impl AggregateFunction for Max {
         }
     }
 
-    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, EngineColumnData)> {
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
         let mut keys = Vec::with_capacity(self.maxs.len());
-        let mut data = EngineColumnData::float8_with_capacity(self.maxs.len());
+        let mut data = ColumnData::float8_with_capacity(self.maxs.len());
 
         for (key, max) in std::mem::take(&mut self.maxs) {
             keys.push(key);

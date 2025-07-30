@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{EngineColumnData, EngineColumn, ColumnQualified};
+use crate::column::{ColumnData, Column, ColumnQualified};
 use reifydb_core::error::diagnostic::operator::{
     or_can_not_applied_to_number, or_can_not_applied_to_text, 
     or_can_not_applied_to_temporal, or_can_not_applied_to_uuid
@@ -16,12 +16,12 @@ impl Evaluator {
         &mut self,
         expr: &OrExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let left = self.evaluate(&expr.left, ctx)?;
         let right = self.evaluate(&expr.right, ctx)?;
 
         match (&left.data(), &right.data()) {
-            (EngineColumnData::Bool(l_container), EngineColumnData::Bool(r_container)) => {
+            (ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
                 let mut data = Vec::with_capacity(l_container.data().len());
                 let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
 
@@ -35,9 +35,9 @@ impl Evaluator {
                     }
                 }
 
-                Ok(EngineColumn::ColumnQualified(ColumnQualified {
+                Ok(Column::ColumnQualified(ColumnQualified {
                     name: expr.span().fragment.into(),
-                    data: EngineColumnData::bool_with_bitvec(data, bitvec)
+                    data: ColumnData::bool_with_bitvec(data, bitvec)
                 }))
             }
             (l, r) => {

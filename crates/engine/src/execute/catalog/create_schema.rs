@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::frame::Frame;
+use crate::column::columns::Columns;
 use crate::execute::Executor;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
@@ -15,10 +15,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: CreateSchemaPlan,
-    ) -> crate::Result<Frame> {
+    ) -> crate::Result<Columns> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? {
             if plan.if_not_exists {
-                return Ok(Frame::single_row([
+                return Ok(Columns::single_row([
                     ("schema", Value::Utf8(plan.schema.to_string())),
                     ("created", Value::Bool(false)),
                 ]));
@@ -35,7 +35,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             },
         )?;
 
-        Ok(Frame::single_row([
+        Ok(Columns::single_row([
             ("schema", Value::Utf8(plan.schema.to_string())),
             ("created", Value::Bool(true)),
         ]))

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
     TemporalContainer, UndefinedContainer, UuidContainer,
@@ -9,14 +9,14 @@ use reifydb_core::value::container::{
 use reifydb_core::value::{Blob, Uuid4, Uuid7};
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time};
 
-impl EngineColumnData {
+impl ColumnData {
     pub fn bool(data: impl IntoIterator<Item = bool>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Bool(BoolContainer::from_vec(data))
+        ColumnData::Bool(BoolContainer::from_vec(data))
     }
 
     pub fn bool_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Bool(BoolContainer::with_capacity(capacity))
+        ColumnData::Bool(BoolContainer::with_capacity(capacity))
     }
 
     pub fn bool_with_bitvec(
@@ -26,16 +26,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Bool(BoolContainer::new(data, bitvec))
+        ColumnData::Bool(BoolContainer::new(data, bitvec))
     }
 
     pub fn float4(data: impl IntoIterator<Item = f32>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Float4(NumberContainer::from_vec(data))
+        ColumnData::Float4(NumberContainer::from_vec(data))
     }
 
     pub fn float4_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Float4(NumberContainer::with_capacity(capacity))
+        ColumnData::Float4(NumberContainer::with_capacity(capacity))
     }
 
     pub fn float4_with_bitvec(
@@ -45,16 +45,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Float4(NumberContainer::new(data, bitvec))
+        ColumnData::Float4(NumberContainer::new(data, bitvec))
     }
 
     pub fn float8(data: impl IntoIterator<Item = f64>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Float8(NumberContainer::from_vec(data))
+        ColumnData::Float8(NumberContainer::from_vec(data))
     }
 
     pub fn float8_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Float8(NumberContainer::with_capacity(capacity))
+        ColumnData::Float8(NumberContainer::with_capacity(capacity))
     }
 
     pub fn float8_with_bitvec(
@@ -64,16 +64,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Float8(NumberContainer::new(data, bitvec))
+        ColumnData::Float8(NumberContainer::new(data, bitvec))
     }
 
     pub fn int1(data: impl IntoIterator<Item = i8>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Int1(NumberContainer::from_vec(data))
+        ColumnData::Int1(NumberContainer::from_vec(data))
     }
 
     pub fn int1_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Int1(NumberContainer::with_capacity(capacity))
+        ColumnData::Int1(NumberContainer::with_capacity(capacity))
     }
 
     pub fn int1_with_bitvec(
@@ -83,16 +83,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Int1(NumberContainer::new(data, bitvec))
+        ColumnData::Int1(NumberContainer::new(data, bitvec))
     }
 
     pub fn int2(data: impl IntoIterator<Item = i16>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Int2(NumberContainer::from_vec(data))
+        ColumnData::Int2(NumberContainer::from_vec(data))
     }
 
     pub fn int2_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Int2(NumberContainer::with_capacity(capacity))
+        ColumnData::Int2(NumberContainer::with_capacity(capacity))
     }
 
     pub fn int2_with_bitvec(
@@ -102,16 +102,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Int2(NumberContainer::new(data, bitvec))
+        ColumnData::Int2(NumberContainer::new(data, bitvec))
     }
 
     pub fn int4(data: impl IntoIterator<Item = i32>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Int4(NumberContainer::from_vec(data))
+        ColumnData::Int4(NumberContainer::from_vec(data))
     }
 
     pub fn int4_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Int4(NumberContainer::with_capacity(capacity))
+        ColumnData::Int4(NumberContainer::with_capacity(capacity))
     }
 
     pub fn int4_with_bitvec(
@@ -121,16 +121,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Int4(NumberContainer::new(data, bitvec))
+        ColumnData::Int4(NumberContainer::new(data, bitvec))
     }
 
     pub fn int8(data: impl IntoIterator<Item = i64>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Int8(NumberContainer::from_vec(data))
+        ColumnData::Int8(NumberContainer::from_vec(data))
     }
 
     pub fn int8_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Int8(NumberContainer::with_capacity(capacity))
+        ColumnData::Int8(NumberContainer::with_capacity(capacity))
     }
 
     pub fn int8_with_bitvec(
@@ -140,16 +140,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Int8(NumberContainer::new(data, bitvec))
+        ColumnData::Int8(NumberContainer::new(data, bitvec))
     }
 
     pub fn int16(data: impl IntoIterator<Item = i128>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Int16(NumberContainer::from_vec(data))
+        ColumnData::Int16(NumberContainer::from_vec(data))
     }
 
     pub fn int16_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Int16(NumberContainer::with_capacity(capacity))
+        ColumnData::Int16(NumberContainer::with_capacity(capacity))
     }
 
     pub fn int16_with_bitvec(
@@ -159,16 +159,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Int16(NumberContainer::new(data, bitvec))
+        ColumnData::Int16(NumberContainer::new(data, bitvec))
     }
 
     pub fn utf8(data: impl IntoIterator<Item = impl Into<String>>) -> Self {
         let data = data.into_iter().map(|c| c.into()).collect::<Vec<_>>();
-        EngineColumnData::Utf8(StringContainer::from_vec(data))
+        ColumnData::Utf8(StringContainer::from_vec(data))
     }
 
     pub fn utf8_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Utf8(StringContainer::with_capacity(capacity))
+        ColumnData::Utf8(StringContainer::with_capacity(capacity))
     }
 
     pub fn utf8_with_bitvec<'a>(
@@ -178,16 +178,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Utf8(StringContainer::new(data, bitvec))
+        ColumnData::Utf8(StringContainer::new(data, bitvec))
     }
 
     pub fn uint1(data: impl IntoIterator<Item = u8>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uint1(NumberContainer::from_vec(data))
+        ColumnData::Uint1(NumberContainer::from_vec(data))
     }
 
     pub fn uint1_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uint1(NumberContainer::with_capacity(capacity))
+        ColumnData::Uint1(NumberContainer::with_capacity(capacity))
     }
 
     pub fn uint1_with_bitvec(
@@ -197,16 +197,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uint1(NumberContainer::new(data, bitvec))
+        ColumnData::Uint1(NumberContainer::new(data, bitvec))
     }
 
     pub fn uint2(data: impl IntoIterator<Item = u16>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uint2(NumberContainer::from_vec(data))
+        ColumnData::Uint2(NumberContainer::from_vec(data))
     }
 
     pub fn uint2_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uint2(NumberContainer::with_capacity(capacity))
+        ColumnData::Uint2(NumberContainer::with_capacity(capacity))
     }
 
     pub fn uint2_with_bitvec(
@@ -216,16 +216,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uint2(NumberContainer::new(data, bitvec))
+        ColumnData::Uint2(NumberContainer::new(data, bitvec))
     }
 
     pub fn uint4(data: impl IntoIterator<Item = u32>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uint4(NumberContainer::from_vec(data))
+        ColumnData::Uint4(NumberContainer::from_vec(data))
     }
 
     pub fn uint4_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uint4(NumberContainer::with_capacity(capacity))
+        ColumnData::Uint4(NumberContainer::with_capacity(capacity))
     }
 
     pub fn uint4_with_bitvec(
@@ -235,16 +235,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uint4(NumberContainer::new(data, bitvec))
+        ColumnData::Uint4(NumberContainer::new(data, bitvec))
     }
 
     pub fn uint8(data: impl IntoIterator<Item = u64>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uint8(NumberContainer::from_vec(data))
+        ColumnData::Uint8(NumberContainer::from_vec(data))
     }
 
     pub fn uint8_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uint8(NumberContainer::with_capacity(capacity))
+        ColumnData::Uint8(NumberContainer::with_capacity(capacity))
     }
 
     pub fn uint8_with_bitvec(
@@ -254,16 +254,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uint8(NumberContainer::new(data, bitvec))
+        ColumnData::Uint8(NumberContainer::new(data, bitvec))
     }
 
     pub fn uint16(data: impl IntoIterator<Item = u128>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uint16(NumberContainer::from_vec(data))
+        ColumnData::Uint16(NumberContainer::from_vec(data))
     }
 
     pub fn uint16_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uint16(NumberContainer::with_capacity(capacity))
+        ColumnData::Uint16(NumberContainer::with_capacity(capacity))
     }
 
     pub fn uint16_with_bitvec(
@@ -273,16 +273,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uint16(NumberContainer::new(data, bitvec))
+        ColumnData::Uint16(NumberContainer::new(data, bitvec))
     }
 
     pub fn date(data: impl IntoIterator<Item = Date>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Date(TemporalContainer::from_vec(data))
+        ColumnData::Date(TemporalContainer::from_vec(data))
     }
 
     pub fn date_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Date(TemporalContainer::with_capacity(capacity))
+        ColumnData::Date(TemporalContainer::with_capacity(capacity))
     }
 
     pub fn date_with_bitvec(
@@ -292,16 +292,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Date(TemporalContainer::new(data, bitvec))
+        ColumnData::Date(TemporalContainer::new(data, bitvec))
     }
 
     pub fn datetime(data: impl IntoIterator<Item = DateTime>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::DateTime(TemporalContainer::from_vec(data))
+        ColumnData::DateTime(TemporalContainer::from_vec(data))
     }
 
     pub fn datetime_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::DateTime(TemporalContainer::with_capacity(capacity))
+        ColumnData::DateTime(TemporalContainer::with_capacity(capacity))
     }
 
     pub fn datetime_with_bitvec(
@@ -311,16 +311,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::DateTime(TemporalContainer::new(data, bitvec))
+        ColumnData::DateTime(TemporalContainer::new(data, bitvec))
     }
 
     pub fn time(data: impl IntoIterator<Item = Time>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Time(TemporalContainer::from_vec(data))
+        ColumnData::Time(TemporalContainer::from_vec(data))
     }
 
     pub fn time_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Time(TemporalContainer::with_capacity(capacity))
+        ColumnData::Time(TemporalContainer::with_capacity(capacity))
     }
 
     pub fn time_with_bitvec(
@@ -330,16 +330,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Time(TemporalContainer::new(data, bitvec))
+        ColumnData::Time(TemporalContainer::new(data, bitvec))
     }
 
     pub fn interval(data: impl IntoIterator<Item = Interval>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Interval(TemporalContainer::from_vec(data))
+        ColumnData::Interval(TemporalContainer::from_vec(data))
     }
 
     pub fn interval_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Interval(TemporalContainer::with_capacity(capacity))
+        ColumnData::Interval(TemporalContainer::with_capacity(capacity))
     }
 
     pub fn interval_with_bitvec(
@@ -349,16 +349,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Interval(TemporalContainer::new(data, bitvec))
+        ColumnData::Interval(TemporalContainer::new(data, bitvec))
     }
 
     pub fn uuid4(data: impl IntoIterator<Item = Uuid4>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uuid4(UuidContainer::from_vec(data))
+        ColumnData::Uuid4(UuidContainer::from_vec(data))
     }
 
     pub fn uuid4_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uuid4(UuidContainer::with_capacity(capacity))
+        ColumnData::Uuid4(UuidContainer::with_capacity(capacity))
     }
 
     pub fn uuid4_with_bitvec(
@@ -368,16 +368,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uuid4(UuidContainer::new(data, bitvec))
+        ColumnData::Uuid4(UuidContainer::new(data, bitvec))
     }
 
     pub fn uuid7(data: impl IntoIterator<Item = Uuid7>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Uuid7(UuidContainer::from_vec(data))
+        ColumnData::Uuid7(UuidContainer::from_vec(data))
     }
 
     pub fn uuid7_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Uuid7(UuidContainer::with_capacity(capacity))
+        ColumnData::Uuid7(UuidContainer::with_capacity(capacity))
     }
 
     pub fn uuid7_with_bitvec(
@@ -387,16 +387,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Uuid7(UuidContainer::new(data, bitvec))
+        ColumnData::Uuid7(UuidContainer::new(data, bitvec))
     }
 
     pub fn blob(data: impl IntoIterator<Item = Blob>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
-        EngineColumnData::Blob(BlobContainer::from_vec(data))
+        ColumnData::Blob(BlobContainer::from_vec(data))
     }
 
     pub fn blob_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::Blob(BlobContainer::with_capacity(capacity))
+        ColumnData::Blob(BlobContainer::with_capacity(capacity))
     }
 
     pub fn blob_with_bitvec(
@@ -406,16 +406,16 @@ impl EngineColumnData {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::Blob(BlobContainer::new(data, bitvec))
+        ColumnData::Blob(BlobContainer::new(data, bitvec))
     }
 
     pub fn row_id(row_ids: impl IntoIterator<Item = RowId>) -> Self {
         let data = row_ids.into_iter().collect::<Vec<_>>();
-        EngineColumnData::RowId(RowIdContainer::from_vec(data))
+        ColumnData::RowId(RowIdContainer::from_vec(data))
     }
 
     pub fn row_id_with_capacity(capacity: usize) -> Self {
-        EngineColumnData::RowId(RowIdContainer::with_capacity(capacity))
+        ColumnData::RowId(RowIdContainer::with_capacity(capacity))
     }
 
     pub fn row_id_with_bitvec(
@@ -425,10 +425,10 @@ impl EngineColumnData {
         let data = row_ids.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());
-        EngineColumnData::RowId(RowIdContainer::new(data, bitvec))
+        ColumnData::RowId(RowIdContainer::new(data, bitvec))
     }
 
     pub fn undefined(len: usize) -> Self {
-        EngineColumnData::Undefined(UndefinedContainer::new(len))
+        ColumnData::Undefined(UndefinedContainer::new(len))
     }
 }

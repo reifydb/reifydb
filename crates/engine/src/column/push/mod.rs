@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 use reifydb_core::Date;
 use reifydb_core::DateTime;
 use reifydb_core::Interval;
@@ -26,7 +26,7 @@ pub trait Push<T> {
     fn push(&mut self, value: T);
 }
 
-impl EngineColumnData {
+impl ColumnData {
     pub fn push<T>(&mut self, value: T)
     where
         Self: Push<T>,
@@ -38,16 +38,16 @@ impl EngineColumnData {
 
 macro_rules! impl_push {
     ($t:ty, $variant:ident, $factory:ident) => {
-        impl Push<$t> for EngineColumnData {
+        impl Push<$t> for ColumnData {
             fn push(&mut self, value: $t) {
                 match self {
-                    EngineColumnData::$variant(container) => {
+                    ColumnData::$variant(container) => {
                         container.push(value);
                     }
-                    EngineColumnData::Undefined(container) => {
+                    ColumnData::Undefined(container) => {
                         let mut new_container =
-                            EngineColumnData::$factory(vec![<$t>::default(); container.len()]);
-                        if let EngineColumnData::$variant(new_container) = &mut new_container {
+                            ColumnData::$factory(vec![<$t>::default(); container.len()]);
+                        if let ColumnData::$variant(new_container) = &mut new_container {
                             new_container.push(value);
                         }
                         *self = new_container;
@@ -63,15 +63,15 @@ macro_rules! impl_push {
     };
 }
 
-impl Push<bool> for EngineColumnData {
+impl Push<bool> for ColumnData {
     fn push(&mut self, value: bool) {
         match self {
-            EngineColumnData::Bool(container) => {
+            ColumnData::Bool(container) => {
                 container.push(value);
             }
-            EngineColumnData::Undefined(container) => {
-                let mut new_container = EngineColumnData::bool(vec![false; container.len()]);
-                if let EngineColumnData::Bool(new_container) = &mut new_container {
+            ColumnData::Undefined(container) => {
+                let mut new_container = ColumnData::bool(vec![false; container.len()]);
+                if let ColumnData::Bool(new_container) = &mut new_container {
                     new_container.push(value);
                 }
                 *self = new_container;
@@ -88,16 +88,16 @@ impl_push!(DateTime, DateTime, datetime);
 impl_push!(Time, Time, time);
 impl_push!(Interval, Interval, interval);
 
-impl Push<String> for EngineColumnData {
+impl Push<String> for ColumnData {
     fn push(&mut self, value: String) {
         match self {
-            EngineColumnData::Utf8(container) => {
+            ColumnData::Utf8(container) => {
                 container.push(value);
             }
-            EngineColumnData::Undefined(container) => {
+            ColumnData::Undefined(container) => {
                 let mut new_container =
-                    EngineColumnData::utf8(vec![String::default(); container.len()]);
-                if let EngineColumnData::Utf8(new_container) = &mut new_container {
+                    ColumnData::utf8(vec![String::default(); container.len()]);
+                if let ColumnData::Utf8(new_container) = &mut new_container {
                     new_container.push(value);
                 }
                 *self = new_container;

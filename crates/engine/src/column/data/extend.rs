@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, StringContainer, TemporalContainer,
     UuidContainer,
@@ -9,200 +9,200 @@ use reifydb_core::value::container::{
 use reifydb_core::error::diagnostic::engine;
 use reifydb_core::return_error;
 
-impl EngineColumnData {
-    pub fn extend(&mut self, other: EngineColumnData) -> crate::Result<()> {
+impl ColumnData {
+    pub fn extend(&mut self, other: ColumnData) -> crate::Result<()> {
         match (&mut *self, other) {
             // Same type extensions - delegate to container extend method
-            (EngineColumnData::Bool(l), EngineColumnData::Bool(r)) => l.extend(&r)?,
-            (EngineColumnData::Float4(l), EngineColumnData::Float4(r)) => l.extend(&r)?,
-            (EngineColumnData::Float8(l), EngineColumnData::Float8(r)) => l.extend(&r)?,
-            (EngineColumnData::Int1(l), EngineColumnData::Int1(r)) => l.extend(&r)?,
-            (EngineColumnData::Int2(l), EngineColumnData::Int2(r)) => l.extend(&r)?,
-            (EngineColumnData::Int4(l), EngineColumnData::Int4(r)) => l.extend(&r)?,
-            (EngineColumnData::Int8(l), EngineColumnData::Int8(r)) => l.extend(&r)?,
-            (EngineColumnData::Int16(l), EngineColumnData::Int16(r)) => l.extend(&r)?,
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint1(r)) => l.extend(&r)?,
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint2(r)) => l.extend(&r)?,
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint4(r)) => l.extend(&r)?,
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint8(r)) => l.extend(&r)?,
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint16(r)) => l.extend(&r)?,
-            (EngineColumnData::Utf8(l), EngineColumnData::Utf8(r)) => l.extend(&r)?,
-            (EngineColumnData::Date(l), EngineColumnData::Date(r)) => l.extend(&r)?,
-            (EngineColumnData::DateTime(l), EngineColumnData::DateTime(r)) => l.extend(&r)?,
-            (EngineColumnData::Time(l), EngineColumnData::Time(r)) => l.extend(&r)?,
-            (EngineColumnData::Interval(l), EngineColumnData::Interval(r)) => l.extend(&r)?,
-            (EngineColumnData::RowId(l), EngineColumnData::RowId(r)) => l.extend(&r)?,
-            (EngineColumnData::Uuid4(l), EngineColumnData::Uuid4(r)) => l.extend(&r)?,
-            (EngineColumnData::Uuid7(l), EngineColumnData::Uuid7(r)) => l.extend(&r)?,
-            (EngineColumnData::Blob(l), EngineColumnData::Blob(r)) => l.extend(&r)?,
-            (EngineColumnData::Undefined(l), EngineColumnData::Undefined(r)) => l.extend(&r)?,
+            (ColumnData::Bool(l), ColumnData::Bool(r)) => l.extend(&r)?,
+            (ColumnData::Float4(l), ColumnData::Float4(r)) => l.extend(&r)?,
+            (ColumnData::Float8(l), ColumnData::Float8(r)) => l.extend(&r)?,
+            (ColumnData::Int1(l), ColumnData::Int1(r)) => l.extend(&r)?,
+            (ColumnData::Int2(l), ColumnData::Int2(r)) => l.extend(&r)?,
+            (ColumnData::Int4(l), ColumnData::Int4(r)) => l.extend(&r)?,
+            (ColumnData::Int8(l), ColumnData::Int8(r)) => l.extend(&r)?,
+            (ColumnData::Int16(l), ColumnData::Int16(r)) => l.extend(&r)?,
+            (ColumnData::Uint1(l), ColumnData::Uint1(r)) => l.extend(&r)?,
+            (ColumnData::Uint2(l), ColumnData::Uint2(r)) => l.extend(&r)?,
+            (ColumnData::Uint4(l), ColumnData::Uint4(r)) => l.extend(&r)?,
+            (ColumnData::Uint8(l), ColumnData::Uint8(r)) => l.extend(&r)?,
+            (ColumnData::Uint16(l), ColumnData::Uint16(r)) => l.extend(&r)?,
+            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => l.extend(&r)?,
+            (ColumnData::Date(l), ColumnData::Date(r)) => l.extend(&r)?,
+            (ColumnData::DateTime(l), ColumnData::DateTime(r)) => l.extend(&r)?,
+            (ColumnData::Time(l), ColumnData::Time(r)) => l.extend(&r)?,
+            (ColumnData::Interval(l), ColumnData::Interval(r)) => l.extend(&r)?,
+            (ColumnData::RowId(l), ColumnData::RowId(r)) => l.extend(&r)?,
+            (ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => l.extend(&r)?,
+            (ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => l.extend(&r)?,
+            (ColumnData::Blob(l), ColumnData::Blob(r)) => l.extend(&r)?,
+            (ColumnData::Undefined(l), ColumnData::Undefined(r)) => l.extend(&r)?,
 
             // Promote Undefined to typed
-            (EngineColumnData::Undefined(l_container), typed_r) => {
+            (ColumnData::Undefined(l_container), typed_r) => {
                 let l_len = l_container.len();
                 match typed_r {
-                    EngineColumnData::Bool(r) => {
+                    ColumnData::Bool(r) => {
                         let mut new_container = BoolContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Bool(new_container);
+                        *self = ColumnData::Bool(new_container);
                     }
-                    EngineColumnData::Float4(r) => {
+                    ColumnData::Float4(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Float4(new_container);
+                        *self = ColumnData::Float4(new_container);
                     }
-                    EngineColumnData::Float8(r) => {
+                    ColumnData::Float8(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Float8(new_container);
+                        *self = ColumnData::Float8(new_container);
                     }
-                    EngineColumnData::Int1(r) => {
+                    ColumnData::Int1(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Int1(new_container);
+                        *self = ColumnData::Int1(new_container);
                     }
-                    EngineColumnData::Int2(r) => {
+                    ColumnData::Int2(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Int2(new_container);
+                        *self = ColumnData::Int2(new_container);
                     }
-                    EngineColumnData::Int4(r) => {
+                    ColumnData::Int4(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Int4(new_container);
+                        *self = ColumnData::Int4(new_container);
                     }
-                    EngineColumnData::Int8(r) => {
+                    ColumnData::Int8(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Int8(new_container);
+                        *self = ColumnData::Int8(new_container);
                     }
-                    EngineColumnData::Int16(r) => {
+                    ColumnData::Int16(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Int16(new_container);
+                        *self = ColumnData::Int16(new_container);
                     }
-                    EngineColumnData::Uint1(r) => {
+                    ColumnData::Uint1(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uint1(new_container);
+                        *self = ColumnData::Uint1(new_container);
                     }
-                    EngineColumnData::Uint2(r) => {
+                    ColumnData::Uint2(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uint2(new_container);
+                        *self = ColumnData::Uint2(new_container);
                     }
-                    EngineColumnData::Uint4(r) => {
+                    ColumnData::Uint4(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uint4(new_container);
+                        *self = ColumnData::Uint4(new_container);
                     }
-                    EngineColumnData::Uint8(r) => {
+                    ColumnData::Uint8(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uint8(new_container);
+                        *self = ColumnData::Uint8(new_container);
                     }
-                    EngineColumnData::Uint16(r) => {
+                    ColumnData::Uint16(r) => {
                         let mut new_container = NumberContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uint16(new_container);
+                        *self = ColumnData::Uint16(new_container);
                     }
-                    EngineColumnData::Utf8(r) => {
+                    ColumnData::Utf8(r) => {
                         let mut new_container = StringContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Utf8(new_container);
+                        *self = ColumnData::Utf8(new_container);
                     }
-                    EngineColumnData::Date(r) => {
+                    ColumnData::Date(r) => {
                         let mut new_container = TemporalContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Date(new_container);
+                        *self = ColumnData::Date(new_container);
                     }
-                    EngineColumnData::DateTime(r) => {
+                    ColumnData::DateTime(r) => {
                         let mut new_container = TemporalContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::DateTime(new_container);
+                        *self = ColumnData::DateTime(new_container);
                     }
-                    EngineColumnData::Time(r) => {
+                    ColumnData::Time(r) => {
                         let mut new_container = TemporalContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Time(new_container);
+                        *self = ColumnData::Time(new_container);
                     }
-                    EngineColumnData::Interval(r) => {
+                    ColumnData::Interval(r) => {
                         let mut new_container = TemporalContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Interval(new_container);
+                        *self = ColumnData::Interval(new_container);
                     }
-                    EngineColumnData::Uuid4(r) => {
+                    ColumnData::Uuid4(r) => {
                         let mut new_container = UuidContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uuid4(new_container);
+                        *self = ColumnData::Uuid4(new_container);
                     }
-                    EngineColumnData::Uuid7(r) => {
+                    ColumnData::Uuid7(r) => {
                         let mut new_container = UuidContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Uuid7(new_container);
+                        *self = ColumnData::Uuid7(new_container);
                     }
-                    EngineColumnData::Blob(r) => {
+                    ColumnData::Blob(r) => {
                         let mut new_container = BlobContainer::with_capacity(l_len + r.len());
                         new_container.extend_from_undefined(l_len);
                         new_container.extend(&r)?;
-                        *self = EngineColumnData::Blob(new_container);
+                        *self = ColumnData::Blob(new_container);
                     }
-                    EngineColumnData::RowId(_) => {
+                    ColumnData::RowId(_) => {
                         return_error!(engine::frame_error(
                             "Cannot extend RowId column from Undefined".to_string()
                         ));
                     }
-                    EngineColumnData::Undefined(_) => {}
+                    ColumnData::Undefined(_) => {}
                 }
             }
 
             // Extend typed with Undefined
-            (typed_l, EngineColumnData::Undefined(r_container)) => {
+            (typed_l, ColumnData::Undefined(r_container)) => {
                 let r_len = r_container.len();
                 match typed_l {
-                    EngineColumnData::Bool(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Float4(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Float8(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Int1(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Int2(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Int4(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Int8(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Int16(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uint1(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uint2(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uint4(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uint8(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uint16(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Utf8(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Date(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::DateTime(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Time(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Interval(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::RowId(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uuid4(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Uuid7(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Blob(l) => l.extend_from_undefined(r_len),
-                    EngineColumnData::Undefined(_) => unreachable!(),
+                    ColumnData::Bool(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Float4(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Float8(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Int1(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Int2(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Int4(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Int8(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Int16(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uint1(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uint2(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uint4(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uint8(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uint16(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Utf8(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Date(l) => l.extend_from_undefined(r_len),
+                    ColumnData::DateTime(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Time(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Interval(l) => l.extend_from_undefined(r_len),
+                    ColumnData::RowId(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uuid4(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Uuid7(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Blob(l) => l.extend_from_undefined(r_len),
+                    ColumnData::Undefined(_) => unreachable!(),
                 }
             }
 

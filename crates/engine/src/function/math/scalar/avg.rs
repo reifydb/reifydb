@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{EngineColumn, EngineColumnData};
+use crate::column::{Column, ColumnData};
 use crate::function::ScalarFunction;
 
 pub struct Avg {}
@@ -15,15 +15,15 @@ impl Avg {
 impl ScalarFunction for Avg {
     fn scalar(
         &self,
-        columns: &[EngineColumn],
+        columns: &[Column],
         row_count: usize,
-    ) -> crate::Result<EngineColumnData> {
+    ) -> crate::Result<ColumnData> {
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];
 
         for col in columns {
             match &col.data() {
-                EngineColumnData::Int2(container) => {
+                ColumnData::Int2(container) => {
                     for i in 0..row_count {
                         if let Some(value) = container.get(i) {
                             sum[i] += *value as f64;
@@ -31,7 +31,7 @@ impl ScalarFunction for Avg {
                         }
                     }
                 }
-                EngineColumnData::Float8(container) => {
+                ColumnData::Float8(container) => {
                     for i in 0..row_count {
                         if let Some(value) = container.get(i) {
                             sum[i] += *value;
@@ -56,6 +56,6 @@ impl ScalarFunction for Avg {
             }
         }
 
-        Ok(EngineColumnData::float8_with_bitvec(data, valids))
+        Ok(ColumnData::float8_with_bitvec(data, valids))
     }
 }

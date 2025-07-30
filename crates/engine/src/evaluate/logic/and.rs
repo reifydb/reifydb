@@ -5,7 +5,7 @@ use reifydb_core::error::diagnostic::operator::{
     and_can_not_applied_to_number, and_can_not_applied_to_temporal, and_can_not_applied_to_text,
     and_can_not_applied_to_uuid,
 };
-use crate::column::{ColumnQualified, EngineColumnData, EngineColumn};
+use crate::column::{ColumnQualified, ColumnData, Column};
 use reifydb_core::return_error;
 use reifydb_rql::expression::AndExpression;
 
@@ -16,12 +16,12 @@ impl Evaluator {
         &mut self,
         expr: &AndExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let left = self.evaluate(&expr.left, ctx)?;
         let right = self.evaluate(&expr.right, ctx)?;
 
         match (&left.data(), &right.data()) {
-            (EngineColumnData::Bool(l_container), EngineColumnData::Bool(r_container)) => {
+            (ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
                 let mut data = Vec::with_capacity(l_container.data().len());
                 let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
 
@@ -35,9 +35,9 @@ impl Evaluator {
                     }
                 }
 
-                Ok(EngineColumn::ColumnQualified(ColumnQualified {
+                Ok(Column::ColumnQualified(ColumnQualified {
                     name: expr.span().fragment.into(),
-                    data: EngineColumnData::bool_with_bitvec(data, bitvec),
+                    data: ColumnData::bool_with_bitvec(data, bitvec),
                 }))
             }
             (l, r) => {

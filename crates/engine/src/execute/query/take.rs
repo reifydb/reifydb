@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::layout::FrameLayout;
+use crate::column::layout::ColumnsLayout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::interface::Rx;
 
@@ -35,7 +35,7 @@ impl ExecutionPlan for TakeNode {
         Ok(None)
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.input.layout()
     }
 }

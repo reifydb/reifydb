@@ -7,8 +7,8 @@ use reifydb_core::error::diagnostic::query;
 use reifydb_core::interface::Rx;
 use reifydb_core::{SortKey, error};
 use std::cmp::Ordering::Equal;
-use crate::column::frame::Frame;
-use crate::column::layout::FrameLayout;
+use crate::column::columns::Columns;
+use crate::column::layout::ColumnsLayout;
 
 pub(crate) struct SortNode {
     input: Box<dyn ExecutionPlan>,
@@ -23,7 +23,7 @@ impl SortNode {
 
 impl ExecutionPlan for SortNode {
     fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
-        let mut frame_opt: Option<Frame> = None;
+        let mut frame_opt: Option<Columns> = None;
 
         while let Some(Batch { frame }) = self.input.next(ctx, rx)? {
             if let Some(existing_frame) = &mut frame_opt {
@@ -82,7 +82,7 @@ impl ExecutionPlan for SortNode {
         Ok(Some(Batch { frame }))
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.input.layout()
     }
 }

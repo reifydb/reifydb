@@ -3,7 +3,7 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::error::diagnostic::{Diagnostic, DiagnosticColumn};
-use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
+use reifydb_core::frame::{ColumnValues, Frame, FrameColumn};
 use reifydb_core::value::Blob;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
@@ -479,16 +479,11 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
         // Use the provided metadata, fallback to name if fields are empty
         let name = if name.is_empty() { name.clone() } else { name };
 
-        columns.push(match frame.clone() {
-            Some(table) => FrameColumn::TableQualified(TableQualified {
-                table,
-                name: name.clone(),
-                values: column_values,
-            }),
-            None => FrameColumn::ColumnQualified(ColumnQualified {
-                name: name.clone(),
-                values: column_values,
-            }),
+        columns.push(FrameColumn {
+            schema: None,
+            table: frame.clone(),
+            name: name.clone(),
+            values: column_values,
         });
         let qualified_name = if name.contains('.') {
             name.clone()

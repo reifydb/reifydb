@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::frame::Frame;
-use crate::column::layout::FrameLayout;
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
+use crate::column::columns::Columns;
+use crate::column::layout::ColumnsLayout;
+use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
@@ -22,7 +22,7 @@ pub(crate) struct AggregateNode {
     input: Box<dyn ExecutionPlan>,
     by: Vec<Expression>,
     map: Vec<Expression>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
     context: Arc<ExecutionContext>,
 }
 
@@ -73,9 +73,9 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-                    let mut c = EngineColumn::ColumnQualified(ColumnQualified {
+                    let mut c = Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment.clone(),
-                        data: EngineColumnData::int2_with_capacity(group_key_order.len()),
+                        data: ColumnData::int2_with_capacity(group_key_order.len()),
                     });
                     for key in &group_key_order {
                         c.data_mut().push_value(key[col_idx].clone());
@@ -85,7 +85,7 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Aggregate { alias, mut function, .. } => {
                     let (keys_out, mut data) = function.finalize().unwrap();
                     align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
-                    result_columns.push(EngineColumn::ColumnQualified(ColumnQualified {
+                    result_columns.push(Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment.clone(),
                         data,
                     }));
@@ -93,13 +93,13 @@ impl ExecutionPlan for AggregateNode {
             }
         }
 
-        let frame = Frame::new(result_columns);
-        self.layout = Some(FrameLayout::from_frame(&frame));
+        let frame = Columns::new(result_columns);
+        self.layout = Some(ColumnsLayout::from_columns(&frame));
 
         Ok(Some(Batch { frame }))
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone().or(self.input.layout())
     }
 }
@@ -150,7 +150,7 @@ fn parse_keys_and_aggregates<'a>(
 fn align_column_data(
     group_key_order: &[Vec<Value>],
     keys: &[Vec<Value>],
-    data: &mut EngineColumnData,
+    data: &mut ColumnData,
 ) -> crate::Result<()> {
     let mut key_to_index = HashMap::new();
     for (i, key) in keys.iter().enumerate() {

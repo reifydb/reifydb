@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
-use crate::column::layout::FrameLayout;
+use crate::column::ColumnData;
+use crate::column::layout::ColumnsLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::BitVec;
@@ -46,7 +46,7 @@ impl ExecutionPlan for FilterNode {
 
                 // Create filter mask from result
                 let filter_mask = match result.data() {
-                    EngineColumnData::Bool(container) => {
+                    ColumnData::Bool(container) => {
                         let mut mask = BitVec::repeat(row_count, false);
                         for i in 0..row_count {
                             if i < container.data().len() && i < container.bitvec().len() {
@@ -71,7 +71,7 @@ impl ExecutionPlan for FilterNode {
         Ok(None)
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.input.layout()
     }
 }

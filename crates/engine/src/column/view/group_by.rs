@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumnData;
-use crate::column::frame::Frame;
+use crate::column::ColumnData;
+use crate::column::columns::Columns;
 use reifydb_core::error::diagnostic::engine;
 use reifydb_core::{Value, error};
 use std::collections::HashMap;
@@ -11,11 +11,11 @@ pub type GroupByKey = Vec<Value>;
 
 pub type GroupByView = HashMap<GroupByKey, Vec<usize>>;
 
-impl Frame {
+impl Columns {
     pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
         let row_count = self.columns.first().map_or(0, |c| c.data().len());
 
-        let mut key_columns: Vec<&EngineColumnData> = Vec::with_capacity(keys.len());
+        let mut key_columns: Vec<&ColumnData> = Vec::with_capacity(keys.len());
 
         for &key in keys {
             let column = self

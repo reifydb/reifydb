@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 use reifydb_core::value::container::StringContainer;
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::{BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error};
 
 pub fn to_temporal(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
-    if let EngineColumnData::Utf8(container) = data {
+) -> crate::Result<ColumnData> {
+    if let ColumnData::Utf8(container) = data {
         match target {
             Type::Date => to_date(container, span),
             Type::DateTime => to_datetime(container, span),
@@ -35,8 +35,8 @@ macro_rules! impl_to_temporal {
         fn $fn_name(
             container: &StringContainer,
             span: impl Fn() -> OwnedSpan,
-        ) -> crate::Result<EngineColumnData> {
-            let mut out = EngineColumnData::with_capacity($target_type, container.len());
+        ) -> crate::Result<ColumnData> {
+            let mut out = ColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = &container[idx];

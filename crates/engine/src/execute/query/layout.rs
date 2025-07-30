@@ -1,16 +1,16 @@
-use crate::column::layout::{EngineColumnLayout, FrameLayout};
+use crate::column::layout::{ColumnLayout, ColumnsLayout};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::{ConstantExpression, Expression};
 
 pub fn derive_frame_column_layout(
     expressions: &[Expression],
     preserve_row_ids: bool,
-) -> FrameLayout {
+) -> ColumnsLayout {
     let mut columns = Vec::new();
 
     // Add RowId column if preserved
     if preserve_row_ids {
-        columns.push(EngineColumnLayout {
+        columns.push(ColumnLayout {
             schema: None,
             table: None,
             name: ROW_ID_COLUMN_NAME.to_string(),
@@ -21,27 +21,27 @@ pub fn derive_frame_column_layout(
         columns.push(frame_column_layout(expr));
     }
 
-    FrameLayout { columns }
+    ColumnsLayout { columns }
 }
 
-fn frame_column_layout(expr: &Expression) -> EngineColumnLayout {
+fn frame_column_layout(expr: &Expression) -> ColumnLayout {
     match expr {
-        Expression::Alias(alias_expr) => EngineColumnLayout {
+        Expression::Alias(alias_expr) => ColumnLayout {
             schema: None,
             table: None,
             name: alias_expr.alias.name().to_string(),
         },
         Expression::Column(col_expr) => {
-            EngineColumnLayout { schema: None, table: None, name: col_expr.0.fragment.clone() }
+            ColumnLayout { schema: None, table: None, name: col_expr.0.fragment.clone() }
         }
-        Expression::AccessTable(access_expr) => EngineColumnLayout {
+        Expression::AccessTable(access_expr) => ColumnLayout {
             schema: None,
             table: Some(access_expr.table.fragment.clone()),
             name: access_expr.column.fragment.clone(),
         },
         _ => {
             // For other expressions, generate a simplified name
-            EngineColumnLayout { schema: None, table: None, name: simplified_name(expr) }
+            ColumnLayout { schema: None, table: None, name: simplified_name(expr) }
         }
     }
 }

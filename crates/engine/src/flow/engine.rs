@@ -1,16 +1,15 @@
-use super::change::{Change, Diff};
+use super::change::Diff;
 use super::flow::FlowGraph;
 use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use crate::Result;
-use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::frame::Frame;
 use reifydb_core::interface::{
-    Column, ColumnId, ColumnIndex, EncodableKey, EncodableKeyRange, Rx, SchemaId, Table, TableId,
-    TableRowKey, TableRowKeyRange, Transaction, Tx, UnversionedStorage, VersionedStorage,
+    Column, ColumnId, ColumnIndex, EncodableKeyRange, Rx, SchemaId, Table, TableId,
+    TableRowKeyRange, Transaction, Tx, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::row::Layout;
-use reifydb_core::{EncodedKeyRange, Type, Value};
+use reifydb_core::{EncodedKeyRange, Type};
 use std::collections::Bound::Included;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -163,97 +162,98 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         };
 
         for change in &diff.changes {
-            match change {
-                Change::Insert { frame } => {
-                    // Convert frame to row deltas
-                    // let frame_deltas = self.frame_to_deltas(frame, node_id)?;
-                    // deltas.extend(frame_deltas);
-
-                    let row_count = frame.row_count();
-
-                    for row_idx in 0..row_count {
-                        // if !mask.get(row_idx) {
-                        //     continue;
-                        // }
-
-                        let mut row = layout.allocate_row();
-
-                        // For each table column, find if it exists in the input frame
-                        for (table_idx, table_column) in table.columns.iter().enumerate() {
-                            let value = if let Some(input_column) =
-                                frame.columns.iter().find(|col| col.name() == table_column.name)
-                            {
-                                input_column.values().get_value(row_idx)
-                            } else {
-                                Value::Undefined
-                            };
-
-                            // let policies: Vec<ColumnPolicyKind> =
-                            //     table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
-                            //
-                            // value = coerce_value_to_column_type(
-                            //     value,
-                            //     table_column.ty,
-                            //     ColumnDescriptor::new()
-                            //         .with_schema(&schema.name)
-                            //         .with_table(&table.name)
-                            //         .with_column(&table_column.name)
-                            //         .with_column_type(table_column.ty)
-                            //         .with_policies(policies),
-                            // )?;
-
-                            match value {
-                                Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
-                                Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
-                                Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
-                                Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
-                                Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
-                                Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
-                                Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
-                                Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
-                                Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
-                                Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
-                                Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
-                                Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
-                                Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
-                                Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
-                                Value::Date(v) => layout.set_date(&mut row, table_idx, v),
-                                Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
-                                Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-                                Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
-                                Value::RowId(_v) => {}
-                                Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
-                                Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
-                                Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
-                                Value::Undefined => layout.set_undefined(&mut row, table_idx),
-                            }
-                        }
-
-                        // Insert the row into the database
-                        let row_id = TableRowSequence::next_row_id(tx, TableId(node_id.0))?;
-                        tx.set(
-                            &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
-                            row,
-                        )
-                        .unwrap();
-
-                        // inserted_count += 1;
-                    }
-                }
-                Change::Update { old: _, new: _ } => {
-                    // For updates, we could implement a more sophisticated approach
-                    // For now, just insert the new frame
-                    // let frame_deltas = self.frame_to_deltas(new, node_id)?;
-                    // deltas.extend(frame_deltas);
-                    todo!()
-                }
-                Change::Remove { frame: _ } => {
-                    // Convert frame to remove deltas
-                    // let frame_deltas = self.frame_to_remove_deltas(frame, node_id)?;
-                    // deltas.extend(frame_deltas);
-                    todo!()
-                }
-            }
+            todo!()
+            // match change {
+            //     Change::Insert { frame } => {
+            //         // Convert frame to row deltas
+            //         // let frame_deltas = self.frame_to_deltas(frame, node_id)?;
+            //         // deltas.extend(frame_deltas);
+            //
+            //         let row_count = frame.row_count();
+            //
+            //         for row_idx in 0..row_count {
+            //             // if !mask.get(row_idx) {
+            //             //     continue;
+            //             // }
+            //
+            //             let mut row = layout.allocate_row();
+            //
+            //             // For each table column, find if it exists in the input frame
+            //             for (table_idx, table_column) in table.columns.iter().enumerate() {
+            //                 let value = if let Some(input_column) =
+            //                     frame.columns.iter().find(|col| col.name() == table_column.name)
+            //                 {
+            //                     input_column.values().get_value(row_idx)
+            //                 } else {
+            //                     Value::Undefined
+            //                 };
+            //
+            //                 // let policies: Vec<ColumnPolicyKind> =
+            //                 //     table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+            //                 //
+            //                 // value = coerce_value_to_column_type(
+            //                 //     value,
+            //                 //     table_column.ty,
+            //                 //     ColumnDescriptor::new()
+            //                 //         .with_schema(&schema.name)
+            //                 //         .with_table(&table.name)
+            //                 //         .with_column(&table_column.name)
+            //                 //         .with_column_type(table_column.ty)
+            //                 //         .with_policies(policies),
+            //                 // )?;
+            //
+            //                 match value {
+            //                     Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
+            //                     Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
+            //                     Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
+            //                     Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
+            //                     Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
+            //                     Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
+            //                     Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
+            //                     Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
+            //                     Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
+            //                     Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
+            //                     Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
+            //                     Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
+            //                     Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
+            //                     Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
+            //                     Value::Date(v) => layout.set_date(&mut row, table_idx, v),
+            //                     Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
+            //                     Value::Time(v) => layout.set_time(&mut row, table_idx, v),
+            //                     Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
+            //                     Value::RowId(_v) => {}
+            //                     Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
+            //                     Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
+            //                     Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
+            //                     Value::Undefined => layout.set_undefined(&mut row, table_idx),
+            //                 }
+            //             }
+            //
+            //             // Insert the row into the database
+            //             let row_id = TableRowSequence::next_row_id(tx, TableId(node_id.0))?;
+            //             tx.set(
+            //                 &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
+            //                 row,
+            //             )
+            //             .unwrap();
+            //
+            //             // inserted_count += 1;
+            //         }
+            //     }
+            //     Change::Update { old: _, new: _ } => {
+            //         // For updates, we could implement a more sophisticated approach
+            //         // For now, just insert the new frame
+            //         // let frame_deltas = self.frame_to_deltas(new, node_id)?;
+            //         // deltas.extend(frame_deltas);
+            //         todo!()
+            //     }
+            //     Change::Remove { frame: _ } => {
+            //         // Convert frame to remove deltas
+            //         // let frame_deltas = self.frame_to_remove_deltas(frame, node_id)?;
+            //         // deltas.extend(frame_deltas);
+            //         todo!()
+            //     }
+            // }
         }
 
         Ok(())

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::column::EngineColumnData;
+use crate::column::ColumnData;
 use reifydb_core::value::container::NumberContainer;
 
 use crate::evaluate::{Convert, Demote, Promote};
@@ -14,11 +14,11 @@ use reifydb_core::{GetType, OwnedSpan, Span, Type, error, return_error};
 use std::fmt::Debug;
 
 pub fn to_number(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
+) -> crate::Result<ColumnData> {
     if !target.is_number() {
         let source_type = data.get_type();
         return_error!(cast::unsupported_cast(span(), source_type, target));
@@ -48,20 +48,20 @@ pub fn to_number(
 }
 
 fn bool_to_number(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
+) -> crate::Result<ColumnData> {
     macro_rules! bool_to_number {
         ($target_ty:ty, $true_val:expr, $false_val:expr) => {{
-            |out: &mut EngineColumnData, val: bool| {
+            |out: &mut ColumnData, val: bool| {
                 out.push::<$target_ty>(if val { $true_val } else { $false_val })
             }
         }};
     }
 
     match data {
-        EngineColumnData::Bool(container) => {
+        ColumnData::Bool(container) => {
             let converter = match target {
                 Type::Int1 => bool_to_number!(i8, 1i8, 0i8),
                 Type::Int2 => bool_to_number!(i16, 1i16, 0i16),
@@ -81,7 +81,7 @@ fn bool_to_number(
                 }
             };
 
-            let mut out = EngineColumnData::with_capacity(target, container.len());
+            let mut out = ColumnData::with_capacity(target, container.len());
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = container.data().get(idx);
@@ -100,12 +100,12 @@ fn bool_to_number(
 }
 
 fn float_to_integer(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
+) -> crate::Result<ColumnData> {
     match data {
-        EngineColumnData::Float4(container) => match target {
+        ColumnData::Float4(container) => match target {
             Type::Int1 => f32_to_i8_vec(container),
             Type::Int2 => f32_to_i16_vec(container),
             Type::Int4 => f32_to_i32_vec(container),
@@ -121,7 +121,7 @@ fn float_to_integer(
                 return_error!(cast::unsupported_cast(span(), source_type, target))
             }
         },
-        EngineColumnData::Float8(container) => match target {
+        ColumnData::Float8(container) => match target {
             Type::Int1 => f64_to_i8_vec(container),
             Type::Int2 => f64_to_i16_vec(container),
             Type::Int4 => f64_to_i32_vec(container),
@@ -160,14 +160,14 @@ macro_rules! parse_and_push {
 }
 
 fn text_to_integer(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
+) -> crate::Result<ColumnData> {
     match data {
-        EngineColumnData::Utf8(container) => {
+        ColumnData::Utf8(container) => {
             let base_span = span();
-            let mut out = EngineColumnData::with_capacity(target, container.len());
+            let mut out = ColumnData::with_capacity(target, container.len());
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = &container[idx];
@@ -234,14 +234,14 @@ fn text_to_integer(
 }
 
 fn text_to_float(
-    column_data: &EngineColumnData,
+    column_data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
-    if let EngineColumnData::Utf8(container) = column_data {
+) -> crate::Result<ColumnData> {
+    if let ColumnData::Utf8(container) = column_data {
         // Create base span once for efficiency
         let base_span = span();
-        let mut out = EngineColumnData::with_capacity(target, container.len());
+        let mut out = ColumnData::with_capacity(target, container.len());
         for idx in 0..container.len() {
             if container.is_defined(idx) {
                 let val = &container[idx];
@@ -292,11 +292,11 @@ fn text_to_float(
 
 macro_rules! float_to_int_vec {
     ($fn_name:ident, $float_ty:ty, $int_ty:ty, $target_type:expr, $min_val:expr, $max_val:expr) => {
-        fn $fn_name(container: &NumberContainer<$float_ty>) -> crate::Result<EngineColumnData>
+        fn $fn_name(container: &NumberContainer<$float_ty>) -> crate::Result<ColumnData>
         where
             $float_ty: Clone + Debug + Default + IsNumber,
         {
-            let mut out = EngineColumnData::with_capacity($target_type, container.len());
+            let mut out = ColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = container[idx];
@@ -338,11 +338,11 @@ float_to_int_vec!(f64_to_u64_vec, f64, u64, Type::Uint8, 0.0, u64::MAX as f64);
 float_to_int_vec!(f64_to_u128_vec, f64, u128, Type::Uint16, 0.0, u128::MAX as f64);
 
 fn number_to_number(
-    data: &EngineColumnData,
+    data: &ColumnData,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<EngineColumnData> {
+) -> crate::Result<ColumnData> {
     if !target.is_number() {
         return_error!(cast::unsupported_cast(span(), data.get_type(), target,));
     }
@@ -354,7 +354,7 @@ fn number_to_number(
                 demote => [ $( ($dem_variant:ident, $dem_ty:ty) ),* ],
                 convert => [ $( ($con_variant:ident, $con_ty:ty) ),* ]
             ) => {
-            if let EngineColumnData::$src_variant(container) = data {
+            if let ColumnData::$src_variant(container) = data {
                     match target {
                         $(
                         Type::$pro_variant => return promote_vec::<$src_ty, $pro_ty>(
@@ -362,7 +362,7 @@ fn number_to_number(
                                 ctx,
                                 &span,
                                 Type::$pro_variant,
-                                EngineColumnData::push::<$pro_ty>,
+                                ColumnData::push::<$pro_ty>,
                             ),
                         )*
                         $(
@@ -371,7 +371,7 @@ fn number_to_number(
                                     ctx,
                                     &span,
                                     Type::$dem_variant,
-                                    EngineColumnData::push::<$dem_ty>,
+                                    ColumnData::push::<$dem_ty>,
                                 ),
                         )*
                         $(
@@ -380,7 +380,7 @@ fn number_to_number(
                                 ctx,
                                 &span,
                                 Type::$con_variant,
-                                EngineColumnData::push::<$con_ty>,
+                                ColumnData::push::<$con_ty>,
                             ),
                         )*
                         _ => {}
@@ -470,13 +470,13 @@ pub(crate) fn demote_vec<From, To>(
     demote: impl Demote,
     span: impl Fn() -> OwnedSpan,
     target_kind: Type,
-    mut push: impl FnMut(&mut EngineColumnData, To),
-) -> crate::Result<EngineColumnData>
+    mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
 where
     From: Copy + SafeDemote<To> + Clone + Debug + Default + IsNumber,
     To: GetType,
 {
-    let mut out = EngineColumnData::with_capacity(target_kind, container.len());
+    let mut out = ColumnData::with_capacity(target_kind, container.len());
     for idx in 0..container.len() {
         if container.is_defined(idx) {
             let val = container[idx];
@@ -496,13 +496,13 @@ pub(crate) fn promote_vec<From, To>(
     ctx: impl Promote,
     span: impl Fn() -> OwnedSpan,
     target_kind: Type,
-    mut push: impl FnMut(&mut EngineColumnData, To),
-) -> crate::Result<EngineColumnData>
+    mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
 where
     From: Copy + SafePromote<To> + Clone + Debug + Default + IsNumber,
     To: GetType,
 {
-    let mut out = EngineColumnData::with_capacity(target_kind, container.len());
+    let mut out = ColumnData::with_capacity(target_kind, container.len());
     for idx in 0..container.len() {
         if container.is_defined(idx) {
             let val = container[idx];
@@ -522,13 +522,13 @@ pub(crate) fn convert_vec<From, To>(
     ctx: impl Convert,
     span: impl Fn() -> OwnedSpan,
     target_kind: Type,
-    mut push: impl FnMut(&mut EngineColumnData, To),
-) -> crate::Result<EngineColumnData>
+    mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
 where
     From: Copy + SafeConvert<To> + GetType + Clone + Debug + Default + IsNumber,
     To: GetType,
 {
-    let mut out = EngineColumnData::with_capacity(target_kind, container.len());
+    let mut out = ColumnData::with_capacity(target_kind, container.len());
     for idx in 0..container.len() {
         if container.is_defined(idx) {
             let val = container[idx];

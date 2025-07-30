@@ -4,7 +4,7 @@
 use crate::column::{ColumnQualified, TableQualified};
 use reifydb_rql::expression::Expression;
 
-use crate::column::EngineColumn;
+use crate::column::Column;
 use crate::function::{Functions, blob, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 
@@ -45,7 +45,7 @@ impl Evaluator {
         &mut self,
         expr: &Expression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         match expr {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
@@ -75,7 +75,7 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<EngineColumn> {
+pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Column> {
     let mut evaluator = Evaluator {
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)
@@ -92,12 +92,12 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Eng
         let mut column = evaluator.evaluate(expr, ctx)?;
         let data = cast::cast_column_data(&column.data(), ty, ctx, expr.lazy_span())?;
         column = match column.table() {
-            Some(table) => EngineColumn::TableQualified(TableQualified {
+            Some(table) => Column::TableQualified(TableQualified {
                 table: table.to_string(),
                 name: column.name().to_string(),
                 data,
             }),
-            None => EngineColumn::ColumnQualified(ColumnQualified {
+            None => Column::ColumnQualified(ColumnQualified {
                 name: column.name().to_string(),
                 data,
             }),

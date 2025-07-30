@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{EngineColumn, EngineColumnData};
+use crate::column::{Column, ColumnData};
 use crate::function::ScalarFunction;
 
 pub struct Abs;
@@ -15,13 +15,13 @@ impl Abs {
 impl ScalarFunction for Abs {
     fn scalar(
         &self,
-        columns: &[EngineColumn],
+        columns: &[Column],
         row_count: usize,
-    ) -> crate::Result<EngineColumnData> {
+    ) -> crate::Result<ColumnData> {
         let column = columns.get(0).unwrap();
 
         match &column.data() {
-            EngineColumnData::Int1(container) => {
+            ColumnData::Int1(container) => {
                 let mut data = Vec::with_capacity(container.len());
 
                 for i in 0..row_count {
@@ -30,9 +30,9 @@ impl ScalarFunction for Abs {
                     }
                 }
 
-                Ok(EngineColumnData::int1_with_bitvec(data, container.bitvec()))
+                Ok(ColumnData::int1_with_bitvec(data, container.bitvec()))
             }
-            EngineColumnData::Int2(container) => {
+            ColumnData::Int2(container) => {
                 let mut data = Vec::with_capacity(container.len());
 
                 for i in 0..row_count {
@@ -41,7 +41,7 @@ impl ScalarFunction for Abs {
                     }
                 }
 
-                Ok(EngineColumnData::int2_with_bitvec(data, container.bitvec()))
+                Ok(ColumnData::int2_with_bitvec(data, container.bitvec()))
             }
             _ => unimplemented!(),
         }

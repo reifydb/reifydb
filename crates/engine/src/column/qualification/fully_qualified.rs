@@ -1,4 +1,4 @@
-use super::super::{EngineColumnData, EngineColumn, FullyQualified};
+use super::super::{ColumnData, Column, FullyQualified};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7};
 
@@ -8,12 +8,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = bool>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::bool(data),
+            data: ColumnData::bool(data),
         })
     }
 
@@ -23,12 +23,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = bool>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::bool_with_bitvec(data, bitvec),
+            data: ColumnData::bool_with_bitvec(data, bitvec),
         })
     }
 
@@ -37,12 +37,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = f32>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::float4(data),
+            data: ColumnData::float4(data),
         })
     }
 
@@ -52,12 +52,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = f32>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::float4_with_bitvec(data, bitvec),
+            data: ColumnData::float4_with_bitvec(data, bitvec),
         })
     }
 
@@ -66,12 +66,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = f64>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::float8(data),
+            data: ColumnData::float8(data),
         })
     }
 
@@ -81,12 +81,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = f64>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::float8_with_bitvec(data, bitvec),
+            data: ColumnData::float8_with_bitvec(data, bitvec),
         })
     }
 
@@ -95,12 +95,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = i8>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int1(data),
+            data: ColumnData::int1(data),
         })
     }
 
@@ -110,12 +110,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = i8>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int1_with_bitvec(data, bitvec),
+            data: ColumnData::int1_with_bitvec(data, bitvec),
         })
     }
 
@@ -124,12 +124,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = i16>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int2(data),
+            data: ColumnData::int2(data),
         })
     }
 
@@ -139,12 +139,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = i16>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int2_with_bitvec(data, bitvec),
+            data: ColumnData::int2_with_bitvec(data, bitvec),
         })
     }
 
@@ -153,12 +153,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = i32>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int4(data),
+            data: ColumnData::int4(data),
         })
     }
 
@@ -168,12 +168,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = i32>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int4_with_bitvec(data, bitvec),
+            data: ColumnData::int4_with_bitvec(data, bitvec),
         })
     }
 
@@ -182,12 +182,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = i64>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int8(data),
+            data: ColumnData::int8(data),
         })
     }
 
@@ -197,12 +197,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = i64>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int8_with_bitvec(data, bitvec),
+            data: ColumnData::int8_with_bitvec(data, bitvec),
         })
     }
 
@@ -211,12 +211,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = i128>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int16(data),
+            data: ColumnData::int16(data),
         })
     }
 
@@ -226,12 +226,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = i128>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::int16_with_bitvec(data, bitvec),
+            data: ColumnData::int16_with_bitvec(data, bitvec),
         })
     }
 
@@ -240,12 +240,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = u8>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint1(data),
+            data: ColumnData::uint1(data),
         })
     }
 
@@ -255,12 +255,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = u8>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint1_with_bitvec(data, bitvec),
+            data: ColumnData::uint1_with_bitvec(data, bitvec),
         })
     }
 
@@ -269,12 +269,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = u16>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint2(data),
+            data: ColumnData::uint2(data),
         })
     }
 
@@ -284,12 +284,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = u16>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint2_with_bitvec(data, bitvec),
+            data: ColumnData::uint2_with_bitvec(data, bitvec),
         })
     }
 
@@ -298,12 +298,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = u32>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint4(data),
+            data: ColumnData::uint4(data),
         })
     }
 
@@ -313,12 +313,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = u32>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint4_with_bitvec(data, bitvec),
+            data: ColumnData::uint4_with_bitvec(data, bitvec),
         })
     }
 
@@ -327,12 +327,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = u64>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint8(data),
+            data: ColumnData::uint8(data),
         })
     }
 
@@ -342,12 +342,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = u64>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint8_with_bitvec(data, bitvec),
+            data: ColumnData::uint8_with_bitvec(data, bitvec),
         })
     }
 
@@ -356,12 +356,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = u128>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint16(data),
+            data: ColumnData::uint16(data),
         })
     }
 
@@ -371,12 +371,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = u128>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uint16_with_bitvec(data, bitvec),
+            data: ColumnData::uint16_with_bitvec(data, bitvec),
         })
     }
 
@@ -385,12 +385,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = &'a str>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::utf8(data.into_iter().map(|s| s.to_string())),
+            data: ColumnData::utf8(data.into_iter().map(|s| s.to_string())),
         })
     }
 
@@ -400,24 +400,24 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = &'a str>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::utf8_with_bitvec(
+            data: ColumnData::utf8_with_bitvec(
                 data.into_iter().map(|s| s.to_string()),
                 bitvec,
             ),
         })
     }
 
-    pub fn undefined(schema: &str, table: &str, name: &str, len: usize) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    pub fn undefined(schema: &str, table: &str, name: &str, len: usize) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::undefined(len),
+            data: ColumnData::undefined(len),
         })
     }
 
@@ -427,12 +427,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = Date>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::date(data),
+            data: ColumnData::date(data),
         })
     }
 
@@ -442,12 +442,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = Date>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::date_with_bitvec(data, bitvec),
+            data: ColumnData::date_with_bitvec(data, bitvec),
         })
     }
 
@@ -456,12 +456,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = DateTime>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::datetime(data),
+            data: ColumnData::datetime(data),
         })
     }
 
@@ -471,12 +471,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = DateTime>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::datetime_with_bitvec(data, bitvec),
+            data: ColumnData::datetime_with_bitvec(data, bitvec),
         })
     }
 
@@ -485,12 +485,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = Time>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::time(data),
+            data: ColumnData::time(data),
         })
     }
 
@@ -500,12 +500,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = Time>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::time_with_bitvec(data, bitvec),
+            data: ColumnData::time_with_bitvec(data, bitvec),
         })
     }
 
@@ -514,12 +514,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = Interval>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::interval(data),
+            data: ColumnData::interval(data),
         })
     }
 
@@ -529,12 +529,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = Interval>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::interval_with_bitvec(data, bitvec),
+            data: ColumnData::interval_with_bitvec(data, bitvec),
         })
     }
 
@@ -544,12 +544,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = Uuid4>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uuid4(data),
+            data: ColumnData::uuid4(data),
         })
     }
 
@@ -559,12 +559,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = Uuid4>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uuid4_with_bitvec(data, bitvec),
+            data: ColumnData::uuid4_with_bitvec(data, bitvec),
         })
     }
 
@@ -573,12 +573,12 @@ impl FullyQualified {
         table: &str,
         name: &str,
         data: impl IntoIterator<Item = Uuid7>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uuid7(data),
+            data: ColumnData::uuid7(data),
         })
     }
 
@@ -588,12 +588,12 @@ impl FullyQualified {
         name: &str,
         data: impl IntoIterator<Item = Uuid7>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: EngineColumnData::uuid7_with_bitvec(data, bitvec),
+            data: ColumnData::uuid7_with_bitvec(data, bitvec),
         })
     }
 
@@ -601,12 +601,12 @@ impl FullyQualified {
         schema: &str,
         table: &str,
         data: impl IntoIterator<Item = RowId>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: ROW_ID_COLUMN_NAME.to_string(),
-            data: EngineColumnData::row_id(data),
+            data: ColumnData::row_id(data),
         })
     }
 
@@ -615,12 +615,12 @@ impl FullyQualified {
         table: &str,
         data: impl IntoIterator<Item = RowId>,
         bitvec: impl Into<BitVec>,
-    ) -> EngineColumn {
-        EngineColumn::FullyQualified(Self {
+    ) -> Column {
+        Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),
             name: ROW_ID_COLUMN_NAME.to_string(),
-            data: EngineColumnData::row_id_with_bitvec(data, bitvec),
+            data: ColumnData::row_id_with_bitvec(data, bitvec),
         })
     }
 }

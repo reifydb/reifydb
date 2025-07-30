@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::column::{EngineColumn, TableQualified, ColumnQualified};
+use crate::column::{Column, TableQualified, ColumnQualified};
 use reifydb_rql::expression::AliasExpression;
 
 impl Evaluator {
@@ -10,7 +10,7 @@ impl Evaluator {
         &mut self,
         expr: &AliasExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let evaluated = self.evaluate(&expr.expression, ctx)?;
         let alias_name = &expr.alias.0.fragment;
 
@@ -21,8 +21,8 @@ impl Evaluator {
             .or(ctx.columns.first().as_ref().and_then(|c| c.table().map(|f| f.to_string())));
 
         Ok(match frame {
-            Some(table) => EngineColumn::TableQualified(TableQualified { table, name: alias_name.clone(), data: evaluated.data().clone() }),
-            None => EngineColumn::ColumnQualified(ColumnQualified { name: alias_name.clone(), data: evaluated.data().clone() }),
+            Some(table) => Column::TableQualified(TableQualified { table, name: alias_name.clone(), data: evaluated.data().clone() }),
+            None => Column::ColumnQualified(ColumnQualified { name: alias_name.clone(), data: evaluated.data().clone() }),
         })
     }
 }

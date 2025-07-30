@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::EngineColumn;
-use crate::column::frame::Frame;
-use crate::column::layout::FrameLayout;
+use crate::column::Column;
+use crate::column::columns::Columns;
+use crate::column::layout::ColumnsLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::ColumnDescriptor;
@@ -15,7 +15,7 @@ use crate::execute::query::layout::derive_frame_column_layout;
 pub(crate) struct MapNode {
     input: Box<dyn ExecutionPlan>,
     expressions: Vec<Expression>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
 }
 
 impl MapNode {
@@ -29,7 +29,7 @@ impl MapNode {
         &self,
         expr: &Expression,
         ctx: &'a ExecutionContext,
-        columns: Vec<EngineColumn>,
+        columns: Vec<Column>,
         row_count: usize,
     ) -> EvaluationContext<'a> {
         let mut result = EvaluationContext {
@@ -94,21 +94,21 @@ impl ExecutionPlan for MapNode {
 
             self.layout = Some(layout);
 
-            let new_frame = Frame::new(columns);
+            let new_frame = Columns::new(columns);
 
             return Ok(Some(Batch { frame: new_frame }));
         }
         Ok(None)
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone().or(self.input.layout())
     }
 }
 
 pub(crate) struct MapWithoutInputNode {
     expressions: Vec<Expression>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
 }
 
 impl MapWithoutInputNode {
@@ -140,12 +140,12 @@ impl ExecutionPlan for MapWithoutInputNode {
             columns.push(column);
         }
 
-        let frame = Frame::new(columns);
-        self.layout = Some(FrameLayout::from_frame(&frame));
+        let frame = Columns::new(columns);
+        self.layout = Some(ColumnsLayout::from_columns(&frame));
         Ok(Some(Batch { frame }))
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone()
     }
 }

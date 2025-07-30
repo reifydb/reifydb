@@ -9,7 +9,7 @@ mod uuid;
 use crate::evaluate::{EvaluationContext, Evaluator};
 use number::NumberParser;
 use reifydb_core::error::diagnostic::cast;
-use crate::column::{EngineColumnData, EngineColumn, ColumnQualified};
+use crate::column::{ColumnData, Column, ColumnQualified};
 use reifydb_core::value::container::undefined::UndefinedContainer;
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
@@ -23,9 +23,9 @@ impl Evaluator {
         &mut self,
         expr: &ConstantExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
-        Ok(EngineColumn::ColumnQualified(ColumnQualified {
+        Ok(Column::ColumnQualified(ColumnQualified {
             name: expr.span().fragment.into(),
             data: Self::constant_value(&expr, row_count)?
         }))
@@ -36,7 +36,7 @@ impl Evaluator {
         expr: &ConstantExpression,
         target: Type,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
         let data = Self::constant_value(&expr, row_count)?;
         let casted = {
@@ -47,45 +47,45 @@ impl Evaluator {
                 Self::constant_value_of(&expr, target, row_count)?
             }
         };
-        Ok(EngineColumn::ColumnQualified(ColumnQualified {
+        Ok(Column::ColumnQualified(ColumnQualified {
             name: expr.span().fragment.into(),
             data: casted
         }))
     }
 
-    fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<EngineColumnData> {
+    fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnData> {
         Ok(match expr {
             ConstantExpression::Bool { span } => match parse_bool(span.clone()) {
-                Ok(v) => return Ok(EngineColumnData::bool(vec![v; row_count])),
+                Ok(v) => return Ok(ColumnData::bool(vec![v; row_count])),
                 Err(err) => return_error!(err.diagnostic()),
             },
             ConstantExpression::Number { span } => {
                 if span.fragment.contains(".") || span.fragment.contains("e") {
                     return match parse_float(span.clone()) {
-                        Ok(v) => Ok(EngineColumnData::float8(vec![v; row_count])),
+                        Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
                         Err(err) => return_error!(err.diagnostic()),
                     };
                 }
 
                 if let Ok(v) = parse_int::<i8>(span.clone()) {
-                    return Ok(EngineColumnData::int1(vec![v; row_count]));
+                    return Ok(ColumnData::int1(vec![v; row_count]));
                 }
 
                 if let Ok(v) = parse_int::<i16>(span.clone()) {
-                    return Ok(EngineColumnData::int2(vec![v; row_count]));
+                    return Ok(ColumnData::int2(vec![v; row_count]));
                 }
 
                 if let Ok(v) = parse_int::<i32>(span.clone()) {
-                    return Ok(EngineColumnData::int4(vec![v; row_count]));
+                    return Ok(ColumnData::int4(vec![v; row_count]));
                 }
 
                 if let Ok(v) = parse_int::<i64>(span.clone()) {
-                    return Ok(EngineColumnData::int8(vec![v; row_count]));
+                    return Ok(ColumnData::int8(vec![v; row_count]));
                 }
 
                 // if parsing as i128 fails and its a negative number, we are maxed out and can stop
                 match parse_int::<i128>(span.clone()) {
-                    Ok(v) => return Ok(EngineColumnData::int16(vec![v; row_count])),
+                    Ok(v) => return Ok(ColumnData::int16(vec![v; row_count])),
                     Err(err) => {
                         if span.fragment.starts_with("-") {
                             return Err(err);
@@ -94,19 +94,19 @@ impl Evaluator {
                 }
 
                 return match parse_uint::<u128>(span.clone()) {
-                    Ok(v) => Ok(EngineColumnData::uint16(vec![v; row_count])),
+                    Ok(v) => Ok(ColumnData::uint16(vec![v; row_count])),
                     Err(err) => {
                         return_error!(err.diagnostic());
                     }
                 };
             }
             ConstantExpression::Text { span } => {
-                EngineColumnData::utf8(std::iter::repeat(span.fragment.clone()).take(row_count))
+                ColumnData::utf8(std::iter::repeat(span.fragment.clone()).take(row_count))
             }
             ConstantExpression::Temporal { span } => {
                 TemporalParser::parse_temporal(span.clone(), row_count)?
             }
-            ConstantExpression::Undefined { .. } => EngineColumnData::Undefined(UndefinedContainer::new(row_count)),
+            ConstantExpression::Undefined { .. } => ColumnData::Undefined(UndefinedContainer::new(row_count)),
         })
     }
 
@@ -114,7 +114,7 @@ impl Evaluator {
         expr: &ConstantExpression,
         target: Type,
         row_count: usize,
-    ) -> crate::Result<EngineColumnData> {
+    ) -> crate::Result<ColumnData> {
         Ok(match (expr, target) {
             (ConstantExpression::Number { span }, target) => {
                 NumberParser::from_number(span.clone(), target, row_count)?

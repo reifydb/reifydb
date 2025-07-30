@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
 use reifydb_core::err;
 use reifydb_core::error::diagnostic::operator;
-use crate::column::{ColumnQualified, EngineColumnData, EngineColumn, TableQualified};
+use crate::column::{ColumnQualified, ColumnData, Column, TableQualified};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {
@@ -12,12 +12,12 @@ impl Evaluator {
         &mut self,
         prefix: &PrefixExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let column = evaluate(&prefix.expression, ctx)?;
 
         match column.data() {
             // EngineColumnData::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
-            EngineColumnData::Bool(container) => match prefix.operator {
+            ColumnData::Bool(container) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     let mut result = Vec::with_capacity(container.data().len());
                     for (idx, val) in container.data().iter().enumerate() {
@@ -28,14 +28,14 @@ impl Evaluator {
                         }
                     }
                     Ok(match column.table() {
-                        Some(table) => EngineColumn::TableQualified(TableQualified {
+                        Some(table) => Column::TableQualified(TableQualified {
                             table: table.to_string(),
                             name: column.name().to_string(),
-                            data: EngineColumnData::bool_with_bitvec(result, container.bitvec()),
+                            data: ColumnData::bool_with_bitvec(result, container.bitvec()),
                         }),
-                        None => EngineColumn::ColumnQualified(ColumnQualified {
+                        None => Column::ColumnQualified(ColumnQualified {
                             name: column.name().to_string(),
-                            data: EngineColumnData::bool_with_bitvec(result, container.bitvec()),
+                            data: ColumnData::bool_with_bitvec(result, container.bitvec()),
                         }),
                     })
                 }
@@ -44,7 +44,7 @@ impl Evaluator {
                 )),
             },
 
-            EngineColumnData::Float4(container) => {
+            ColumnData::Float4(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -62,19 +62,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::float4_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::float4_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::float4_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::float4_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Float8(container) => {
+            ColumnData::Float8(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -92,19 +92,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::float8_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::float8_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::float8_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::float8_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Int1(container) => {
+            ColumnData::Int1(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -122,19 +122,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Int2(container) => {
+            ColumnData::Int2(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -152,19 +152,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Int4(container) => {
+            ColumnData::Int4(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -182,19 +182,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Int8(container) => {
+            ColumnData::Int8(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -212,19 +212,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Int16(container) => {
+            ColumnData::Int16(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -242,19 +242,19 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Utf8(_) => match prefix.operator {
+            ColumnData::Utf8(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_text(prefix.span()))
                 }
@@ -263,7 +263,7 @@ impl Evaluator {
                 )),
             },
 
-            EngineColumnData::Uint1(container) => {
+            ColumnData::Uint1(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for val in container.data().iter() {
                     let signed = *val as i8;
@@ -276,19 +276,19 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int1_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Uint2(container) => {
+            ColumnData::Uint2(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for val in container.data().iter() {
                     let signed = *val as i16;
@@ -301,19 +301,19 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int2_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Uint4(container) => {
+            ColumnData::Uint4(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for val in container.data().iter() {
                     let signed = *val as i32;
@@ -326,19 +326,19 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int4_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
 
-            EngineColumnData::Uint8(container) => {
+            ColumnData::Uint8(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for val in container.data().iter() {
                     let signed = *val as i64;
@@ -351,18 +351,18 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int8_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
-            EngineColumnData::Uint16(container) => {
+            ColumnData::Uint16(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for val in container.data().iter() {
                     let signed = *val as i128;
@@ -375,67 +375,67 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => EngineColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
-                    None => EngineColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: EngineColumnData::int16_with_bitvec(result, container.bitvec()),
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
                 })
             }
             // EngineColumnData::Undefined(_) => {
             //     Err("Cannot apply prefix operator to undefined data".into())
             // }
-            EngineColumnData::Undefined(_) => {
+            ColumnData::Undefined(_) => {
                 unimplemented!()
             }
 
-            EngineColumnData::Date(_) => match prefix.operator {
+            ColumnData::Date(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::DateTime(_) => match prefix.operator {
+            ColumnData::DateTime(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::Time(_) => match prefix.operator {
+            ColumnData::Time(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::Interval(_) => match prefix.operator {
+            ColumnData::Interval(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::RowId(_) => match prefix.operator {
+            ColumnData::RowId(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_number(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::Uuid4(_) => match prefix.operator {
+            ColumnData::Uuid4(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::Uuid7(_) => match prefix.operator {
+            ColumnData::Uuid7(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.span()))
                 }
                 _ => unimplemented!(),
             },
-            EngineColumnData::Blob(_) => match prefix.operator {
+            ColumnData::Blob(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(reifydb_core::error::diagnostic::engine::frame_error(
                         "Cannot apply NOT operator to BLOB".to_string()

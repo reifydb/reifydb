@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::frame::Frame;
-use crate::column::layout::{EngineColumnLayout, FrameLayout};
-use crate::column::{EngineColumn, EngineColumnData, TableQualified};
+use crate::column::columns::Columns;
+use crate::column::layout::{ColumnLayout, ColumnsLayout};
+use crate::column::{Column, ColumnData, TableQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::EncodedKey;
 use reifydb_core::EncodedKeyRange;
@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub(crate) struct ScanFrameNode {
     table: Table,
     context: Arc<ExecutionContext>,
-    layout: FrameLayout,
+    layout: ColumnsLayout,
     row_layout: Layout,
     last_key: Option<EncodedKey>,
     exhausted: bool,
@@ -28,11 +28,11 @@ impl ScanFrameNode {
         let data = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
         let row_layout = Layout::new(&data);
 
-        let layout = FrameLayout {
+        let layout = ColumnsLayout {
             columns: table
                 .columns
                 .iter()
-                .map(|col| EngineColumnLayout { schema: None, table: None, name: col.name.clone() })
+                .map(|col| ColumnLayout { schema: None, table: None, name: col.name.clone() })
                 .collect(),
         };
 
@@ -85,15 +85,15 @@ impl ExecutionPlan for ScanFrameNode {
 
         self.last_key = new_last_key;
 
-        let mut frame = Frame::empty_from_table(&self.table);
+        let mut frame = Columns::empty_from_table(&self.table);
         frame.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
         // Add the RowId column to the frame if requested
         if ctx.preserve_row_ids {
-            let row_id_column = EngineColumn::TableQualified(TableQualified {
+            let row_id_column = Column::TableQualified(TableQualified {
                 table: self.table.name.clone(),
                 name: ROW_ID_COLUMN_NAME.to_string(),
-                data: EngineColumnData::row_id(row_ids),
+                data: ColumnData::row_id(row_ids),
             });
             frame.columns.push(row_id_column);
             frame.index.insert(ROW_ID_COLUMN_NAME.to_string(), frame.columns.len() - 1);
@@ -102,7 +102,7 @@ impl ExecutionPlan for ScanFrameNode {
         Ok(Some(Batch { frame }))
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         Some(self.layout.clone())
     }
 }

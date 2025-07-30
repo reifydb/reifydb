@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::column::push::Push;
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
+use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
 use reifydb_core::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types;
@@ -18,473 +18,473 @@ impl Evaluator {
         &mut self,
         mul: &MulExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let left = self.evaluate(&mul.left, ctx)?;
         let right = self.evaluate(&mul.right, ctx)?;
         let target = Type::promote(left.get_type(), right.get_type());
 
         match (&left.data(), &right.data()) {
             // Float4
-            (EngineColumnData::Float4(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Float4(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Float4(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float4(l), EngineColumnData::Uint16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Int1(l), EngineColumnData::Float4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Float4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int4(l), EngineColumnData::Float4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Float4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int16(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Float4(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Uint1(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int1(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int2(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int4(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int8(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Int16(l), ColumnData::Float4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Uint1(l), ColumnData::Float4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint2(l), ColumnData::Float4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint4(l), ColumnData::Float4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Float4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
             // Float8
-            (EngineColumnData::Float8(l), EngineColumnData::Float4(r)) => {
+            (ColumnData::Float8(l), ColumnData::Float4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Float8(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Float8(l), EngineColumnData::Uint16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Int1(l), EngineColumnData::Float8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Float8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int4(l), EngineColumnData::Float8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Float8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int16(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Float8(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Uint1(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int1(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint2(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int2(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int4(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint8(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int8(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Float8(r)) => {
+            (ColumnData::Int16(l), ColumnData::Float8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Uint1(l), ColumnData::Float8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint2(l), ColumnData::Float8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint4(l), ColumnData::Float8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Float8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Float8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
             // Signed × Signed
-            (EngineColumnData::Int1(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Int16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Int2(l), EngineColumnData::Int1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Int2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Int4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Int8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int1(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Int4(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Int16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Int8(l), EngineColumnData::Int1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Int2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Int4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Int8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int2(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Int16(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Int4(l), ColumnData::Int16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Int8(l), ColumnData::Int1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Int2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Int4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Int8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Int16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Int16(l), ColumnData::Int1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Int2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Int4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Int8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
             // Signed × Unsigned
-            (EngineColumnData::Int1(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int1(l), EngineColumnData::Uint16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Int2(l), EngineColumnData::Uint1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int2(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int1(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Int4(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int4(l), EngineColumnData::Uint16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Int8(l), EngineColumnData::Uint1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Int8(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int2(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Int16(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Int16(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Int4(l), ColumnData::Uint16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Int8(l), ColumnData::Uint1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Uint2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Uint4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Uint8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int8(l), ColumnData::Uint16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Int16(l), ColumnData::Uint1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Uint2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Uint4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Uint8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Int16(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
             // Unsigned × Signed
-            (EngineColumnData::Uint1(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Int16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Uint2(l), EngineColumnData::Int1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Uint4(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Int16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Uint8(l), EngineColumnData::Int1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Uint16(l), EngineColumnData::Int1(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int2(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int4(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int8(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Int16(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Int16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Uint8(l), ColumnData::Int1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Int2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Int4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Int8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Int16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Uint16(l), ColumnData::Int1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Int2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Int4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Int8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Int16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
             // Unsigned × Unsigned
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint1(l), EngineColumnData::Uint16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint2(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint4(l), EngineColumnData::Uint16(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint1(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint2(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint4(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint8(r)) => {
-                mul_numeric(ctx, l, r, target, mul.span())
-            }
-            (EngineColumnData::Uint8(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint1(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint2(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint4(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint8(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
-            (EngineColumnData::Uint16(l), EngineColumnData::Uint16(r)) => {
+            (ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+
+            (ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
+                mul_numeric(ctx, l, r, target, mul.span())
+            }
+            (ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
                 mul_numeric(ctx, l, r, target, mul.span())
             }
 
@@ -503,13 +503,13 @@ fn mul_numeric<L, R>(
     r: &NumberContainer<R>,
     target: Type,
     span: OwnedSpan,
-) -> crate::Result<EngineColumn>
+) -> crate::Result<Column>
 where
     L: GetType + Promote<R> + Copy + IsNumber + Clone + Debug + Default,
     R: GetType + IsNumber + Copy + Clone + Debug + Default,
     <L as Promote<R>>::Output: IsNumber,
     <L as Promote<R>>::Output: SafeMul,
-    EngineColumnData: Push<<L as Promote<R>>::Output>,
+    ColumnData: Push<<L as Promote<R>>::Output>,
 {
     debug_assert_eq!(l.len(), r.len());
 
@@ -526,5 +526,5 @@ where
             _ => data.push_undefined(),
         }
     }
-    Ok(EngineColumn::ColumnQualified(ColumnQualified { name: span.fragment.into(), data }))
+    Ok(Column::ColumnQualified(ColumnQualified { name: span.fragment.into(), data }))
 }

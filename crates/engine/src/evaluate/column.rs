@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error::diagnostic::query::column_not_found;
 use reifydb_rql::expression::ColumnExpression;
-use crate::column::{EngineColumnData, EngineColumn};
+use crate::column::{ColumnData, Column};
 use reifydb_core::value::{Blob, Uuid4, Uuid7};
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
 
@@ -13,7 +13,7 @@ impl Evaluator {
         &mut self,
         column: &ColumnExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let name = column.0.fragment.to_string();
 
         // First try exact qualified name match
@@ -50,9 +50,9 @@ impl Evaluator {
 
     fn extract_column_data(
         &mut self,
-        col: &EngineColumn,
+        col: &Column,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         let take = ctx.take.unwrap_or(usize::MAX);
 
         match col.data().get_value(0) {
@@ -76,7 +76,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::bool_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::bool_with_bitvec(data, bitvec)))
             }
 
             Value::Float4(_) => {
@@ -99,7 +99,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::float4_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::float4_with_bitvec(data, bitvec)))
             }
 
             Value::Float8(_) => {
@@ -122,7 +122,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::float8_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::float8_with_bitvec(data, bitvec)))
             }
 
             Value::Int1(_) => {
@@ -145,7 +145,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::int1_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::int1_with_bitvec(data, bitvec)))
             }
 
             Value::Int2(_) => {
@@ -168,7 +168,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::int2_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::int2_with_bitvec(data, bitvec)))
             }
 
             Value::Int4(_) => {
@@ -191,7 +191,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::int4_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::int4_with_bitvec(data, bitvec)))
             }
 
             Value::Int8(_) => {
@@ -214,7 +214,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::int8_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::int8_with_bitvec(data, bitvec)))
             }
 
             Value::Int16(_) => {
@@ -237,7 +237,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::int16_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::int16_with_bitvec(data, bitvec)))
             }
 
             Value::Utf8(_) => {
@@ -260,7 +260,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::utf8_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::utf8_with_bitvec(data, bitvec)))
             }
 
             Value::Uint1(_) => {
@@ -283,7 +283,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uint1_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uint1_with_bitvec(data, bitvec)))
             }
 
             Value::Uint2(_) => {
@@ -306,7 +306,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uint2_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uint2_with_bitvec(data, bitvec)))
             }
 
             Value::Uint4(_) => {
@@ -329,7 +329,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uint4_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uint4_with_bitvec(data, bitvec)))
             }
 
             Value::Uint8(_) => {
@@ -352,7 +352,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uint8_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uint8_with_bitvec(data, bitvec)))
             }
 
             Value::Uint16(_) => {
@@ -375,7 +375,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uint16_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uint16_with_bitvec(data, bitvec)))
             }
 
             Value::Date(_) => {
@@ -398,7 +398,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::date_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::date_with_bitvec(data, bitvec)))
             }
 
             Value::DateTime(_) => {
@@ -421,7 +421,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::datetime_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::datetime_with_bitvec(data, bitvec)))
             }
 
             Value::Time(_) => {
@@ -444,7 +444,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::time_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::time_with_bitvec(data, bitvec)))
             }
 
             Value::Interval(_) => {
@@ -467,7 +467,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::interval_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::interval_with_bitvec(data, bitvec)))
             }
             Value::RowId(_) => {
                 let mut data = Vec::new();
@@ -489,7 +489,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::row_id_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::row_id_with_bitvec(data, bitvec)))
             }
             Value::Uuid4(_) => {
                 let mut data = Vec::new();
@@ -511,7 +511,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uuid4_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uuid4_with_bitvec(data, bitvec)))
             }
             Value::Uuid7(_) => {
                 let mut data = Vec::new();
@@ -533,7 +533,7 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::uuid7_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::uuid7_with_bitvec(data, bitvec)))
             }
             Value::Blob(_) => {
                 let mut data = Vec::new();
@@ -555,11 +555,11 @@ impl Evaluator {
                     }
                     count += 1;
                 }
-                Ok(col.with_new_data(EngineColumnData::blob_with_bitvec(data, bitvec)))
+                Ok(col.with_new_data(ColumnData::blob_with_bitvec(data, bitvec)))
             }
             Value::Undefined => {
                 let count = std::cmp::min(ctx.row_count, take);
-                Ok(col.with_new_data(EngineColumnData::undefined(count)))
+                Ok(col.with_new_data(ColumnData::undefined(count)))
             }
         }
     }

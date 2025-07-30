@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{EngineColumn, EngineColumnData};
+use crate::column::{Column, ColumnData};
 use crate::function::ScalarFunction;
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::Blob;
@@ -17,13 +17,13 @@ impl BlobB64 {
 impl ScalarFunction for BlobB64 {
     fn scalar(
         &self,
-        columns: &[EngineColumn],
+        columns: &[Column],
         row_count: usize,
-    ) -> crate::Result<EngineColumnData> {
+    ) -> crate::Result<ColumnData> {
         let column = columns.get(0).unwrap();
 
         match &column.data() {
-            EngineColumnData::Utf8(container) => {
+            ColumnData::Utf8(container) => {
                 let mut result_data = Vec::with_capacity(container.data().len());
 
                 for i in 0..row_count {
@@ -36,7 +36,7 @@ impl ScalarFunction for BlobB64 {
                     }
                 }
 
-                Ok(EngineColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
+                Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
             }
             _ => unimplemented!("BlobB64 only supports text input"),
         }
@@ -56,14 +56,14 @@ mod tests {
         // "Hello!" in base64 is "SGVsbG8h"
         let b64_data = vec!["SGVsbG8h".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), "Hello!".as_bytes());
@@ -78,14 +78,14 @@ mod tests {
 
         let b64_data = vec!["".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), &[] as &[u8]);
@@ -101,14 +101,14 @@ mod tests {
         // "Hello" in base64 is "SGVsbG8="
         let b64_data = vec!["SGVsbG8=".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), "Hello".as_bytes());
@@ -124,14 +124,14 @@ mod tests {
         // "A" = "QQ==", "BC" = "QkM=", "DEF" = "REVG"
         let b64_data = vec!["QQ==".to_string(), "QkM=".to_string(), "REVG".to_string()];
         let bitvec = vec![true, true, true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 3);
             assert!(container.is_defined(0));
             assert!(container.is_defined(1));
@@ -151,14 +151,14 @@ mod tests {
 
         let b64_data = vec!["QQ==".to_string(), "".to_string(), "REVG".to_string()];
         let bitvec = vec![true, false, true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 3);
             assert!(container.is_defined(0));
             assert!(!container.is_defined(1));
@@ -179,14 +179,14 @@ mod tests {
         // Binary data: [0xde, 0xad, 0xbe, 0xef] in base64 is "3q2+7w=="
         let b64_data = vec!["3q2+7w==".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
@@ -201,9 +201,9 @@ mod tests {
 
         let b64_data = vec!["invalid@base64!".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);
@@ -216,9 +216,9 @@ mod tests {
 
         let b64_data = vec!["SGVsbG8===".to_string()]; // Too many padding characters
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(b64_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);

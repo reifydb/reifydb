@@ -1,31 +1,31 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::frame::{Frame, build_indices};
+use crate::column::columns::{Columns, build_indices};
 use crate::column::{
-    ColumnQualified, EngineColumn, EngineColumnData, FullyQualified, TableQualified, Unqualified,
+    ColumnQualified, Column, ColumnData, FullyQualified, TableQualified, Unqualified,
 };
 
 #[derive(Debug, Clone)]
-pub struct FrameLayout {
-    pub columns: Vec<EngineColumnLayout>,
+pub struct ColumnsLayout {
+    pub columns: Vec<ColumnLayout>,
 }
 
-impl FrameLayout {
-    pub fn from_frame(frame: &Frame) -> Self {
-        Self { columns: frame.columns.iter().map(|c| EngineColumnLayout::from_column(c)).collect() }
+impl ColumnsLayout {
+    pub fn from_columns(frame: &Columns) -> Self {
+        Self { columns: frame.columns.iter().map(|c| ColumnLayout::from_column(c)).collect() }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct EngineColumnLayout {
+pub struct ColumnLayout {
     pub schema: Option<String>,
     pub table: Option<String>,
     pub name: String,
 }
 
-impl EngineColumnLayout {
-    pub fn from_column(column: &EngineColumn) -> Self {
+impl ColumnLayout {
+    pub fn from_column(column: &Column) -> Self {
         Self {
             schema: column.schema().map(|s| s.to_string()),
             table: column.table().map(|s| s.to_string()),
@@ -34,39 +34,39 @@ impl EngineColumnLayout {
     }
 }
 
-impl Frame {
-    pub fn apply_layout(&mut self, layout: &FrameLayout) {
+impl Columns {
+    pub fn apply_layout(&mut self, layout: &ColumnsLayout) {
         // Check for duplicate column names and qualify them only when needed
         let layout_with_qualification = self.qualify_duplicates_only(layout);
 
         for (i, column_layout) in layout_with_qualification.columns.iter().enumerate() {
             if i < self.columns.len() {
                 let column = &mut self.columns[i];
-                let data = std::mem::replace(column.data_mut(), EngineColumnData::undefined(0));
+                let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
 
                 *column = match (&column_layout.schema, &column_layout.table) {
-                    (Some(schema), Some(table)) => EngineColumn::FullyQualified(FullyQualified {
+                    (Some(schema), Some(table)) => Column::FullyQualified(FullyQualified {
                         schema: schema.clone(),
                         table: table.clone(),
                         name: column_layout.name.clone(),
                         data,
                     }),
-                    (None, Some(table)) => EngineColumn::TableQualified(TableQualified {
+                    (None, Some(table)) => Column::TableQualified(TableQualified {
                         table: table.clone(),
                         name: column_layout.name.clone(),
                         data,
                     }),
                     (None, None) => match column {
-                        EngineColumn::Unqualified(_) => EngineColumn::Unqualified(Unqualified {
+                        Column::Unqualified(_) => Column::Unqualified(Unqualified {
                             name: column_layout.name.clone(),
                             data,
                         }),
-                        _ => EngineColumn::ColumnQualified(ColumnQualified {
+                        _ => Column::ColumnQualified(ColumnQualified {
                             name: column_layout.name.clone(),
                             data,
                         }),
                     },
-                    (Some(_), None) => EngineColumn::ColumnQualified(ColumnQualified {
+                    (Some(_), None) => Column::ColumnQualified(ColumnQualified {
                         name: column_layout.name.clone(),
                         data,
                     }),
@@ -79,7 +79,7 @@ impl Frame {
         self.frame_index = frame_index;
     }
 
-    fn qualify_duplicates_only(&self, layout: &FrameLayout) -> FrameLayout {
+    fn qualify_duplicates_only(&self, layout: &ColumnsLayout) -> ColumnsLayout {
         use std::collections::HashMap;
 
         // Group columns by name and check for ambiguity across different table/schema contexts
@@ -113,12 +113,12 @@ impl Frame {
                 if has_duplicates || has_explicit_qualification {
                     // This column has naming conflicts - add qualification using available table info
                     match (&column_layout.schema, &column_layout.table) {
-                        (Some(schema), Some(table)) => EngineColumnLayout {
+                        (Some(schema), Some(table)) => ColumnLayout {
                             schema: Some(schema.clone()),
                             table: Some(table.clone()),
                             name: column_layout.name.clone(),
                         },
-                        (None, Some(table)) => EngineColumnLayout {
+                        (None, Some(table)) => ColumnLayout {
                             schema: None,
                             table: Some(table.clone()),
                             name: column_layout.name.clone(),
@@ -129,19 +129,19 @@ impl Frame {
                                 self.columns.iter().find(|c| c.name() == column_layout.name)
                             {
                                 match (existing_column.schema(), existing_column.table()) {
-                                    (Some(schema), Some(table)) => EngineColumnLayout {
+                                    (Some(schema), Some(table)) => ColumnLayout {
                                         schema: Some(schema.to_string()),
                                         table: Some(table.to_string()),
                                         name: column_layout.name.clone(),
                                     },
-                                    (None, Some(table)) => EngineColumnLayout {
+                                    (None, Some(table)) => ColumnLayout {
                                         schema: None,
                                         table: Some(table.to_string()),
                                         name: column_layout.name.clone(),
                                     },
                                     _ => {
                                         // Use frame name as fallback table qualification
-                                        EngineColumnLayout {
+                                        ColumnLayout {
                                             schema: None,
                                             table: Some(self.name.clone()),
                                             name: column_layout.name.clone(),
@@ -150,7 +150,7 @@ impl Frame {
                                 }
                             } else {
                                 // Use frame name as fallback table qualification
-                                EngineColumnLayout {
+                                ColumnLayout {
                                     schema: None,
                                     table: Some(self.name.clone()),
                                     name: column_layout.name.clone(),
@@ -160,15 +160,11 @@ impl Frame {
                     }
                 } else {
                     // No duplicates - remove unnecessary qualification
-                    EngineColumnLayout {
-                        schema: None,
-                        table: None,
-                        name: column_layout.name.clone(),
-                    }
+                    ColumnLayout { schema: None, table: None, name: column_layout.name.clone() }
                 }
             })
             .collect();
 
-        FrameLayout { columns: qualified_columns }
+        ColumnsLayout { columns: qualified_columns }
     }
 }

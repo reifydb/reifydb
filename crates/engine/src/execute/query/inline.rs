@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::frame::Frame;
-use crate::column::layout::{EngineColumnLayout, FrameLayout};
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
+use crate::column::columns::Columns;
+use crate::column::layout::{ColumnLayout, ColumnsLayout};
+use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::interface::{Rx, Table};
@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 pub(crate) struct InlineDataNode {
     rows: Vec<Vec<KeyedExpression>>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
     context: Arc<ExecutionContext>,
     executed: bool,
 }
@@ -27,14 +27,14 @@ impl InlineDataNode {
         Self { rows, layout, context, executed: false }
     }
 
-    fn create_frame_layout_from_table(table: &Table) -> FrameLayout {
+    fn create_frame_layout_from_table(table: &Table) -> ColumnsLayout {
         let columns = table
             .columns
             .iter()
-            .map(|col| EngineColumnLayout { schema: None, table: None, name: col.name.clone() })
+            .map(|col| ColumnLayout { schema: None, table: None, name: col.name.clone() })
             .collect();
 
-        FrameLayout { columns }
+        ColumnsLayout { columns }
     }
 }
 
@@ -47,9 +47,9 @@ impl ExecutionPlan for InlineDataNode {
         self.executed = true;
 
         if self.rows.is_empty() {
-            let frame = Frame::new_with_name(vec![], "inline");
+            let frame = Columns::new_with_name(vec![], "inline");
             if self.layout.is_none() {
-                self.layout = Some(FrameLayout::from_frame(&frame));
+                self.layout = Some(ColumnsLayout::from_columns(&frame));
             }
             return Ok(Some(Batch { frame }));
         }
@@ -58,7 +58,7 @@ impl ExecutionPlan for InlineDataNode {
         if self.layout.is_some() { self.next_with_table_schema() } else { self.next_infer_schema() }
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone()
     }
 }
@@ -91,7 +91,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_name in all_columns {
-            let mut column_data = EngineColumnData::undefined(0);
+            let mut column_data = ColumnData::undefined(0);
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
@@ -118,14 +118,14 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(EngineColumn::ColumnQualified(ColumnQualified {
+            frame_columns.push(Column::ColumnQualified(ColumnQualified {
                 name: column_name,
                 data: column_data,
             }));
         }
 
-        let frame = Frame::new_with_name(frame_columns, "inline");
-        self.layout = Some(FrameLayout::from_frame(&frame));
+        let frame = Columns::new_with_name(frame_columns, "inline");
+        self.layout = Some(ColumnsLayout::from_columns(&frame));
 
         Ok(Some(Batch { frame }))
     }
@@ -150,7 +150,7 @@ impl InlineDataNode {
         let mut frame_columns = Vec::new();
 
         for column_layout in &layout.columns {
-            let mut column_data = EngineColumnData::undefined(0);
+            let mut column_data = ColumnData::undefined(0);
 
             // Find the corresponding table column for policies
             let table_column =
@@ -185,13 +185,13 @@ impl InlineDataNode {
                 }
             }
 
-            frame_columns.push(EngineColumn::ColumnQualified(ColumnQualified {
+            frame_columns.push(Column::ColumnQualified(ColumnQualified {
                 name: column_layout.name.clone(),
                 data: column_data,
             }));
         }
 
-        let frame = Frame::new_with_name(frame_columns, "inline");
+        let frame = Columns::new_with_name(frame_columns, "inline");
 
         Ok(Some(Batch { frame }))
     }

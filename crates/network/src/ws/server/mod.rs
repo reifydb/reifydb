@@ -263,9 +263,9 @@ where
                                                                                     columns: frame.columns.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
-                                                                                            name: c.name().to_string(),
-                                                                                            frame: c.table().map(|s| s.to_string()),
-                                                                                            data: c.values().iter().map(|v| {
+                                                                                            name: c.name.to_string(),
+                                                                                            frame: c.table.map(|s| s.to_string()),
+                                                                                            data: c.values.iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
                                                                                                 } else {
@@ -320,9 +320,9 @@ where
                                                                                     columns: frame.columns.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
-                                                                                            name: c.name().to_string(),
-                                                                                            frame: c.table().map(|s| s.to_string()),
-                                                                                            data: c.values().iter().map(|v| {
+                                                                                            name: c.name.to_string(),
+                                                                                            frame: c.table.map(|s| s.to_string()),
+                                                                                            data: c.values.iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
                                                                                                 } else {

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{EngineColumn, EngineColumnData};
+use crate::column::{Column, ColumnData};
 use crate::function::ScalarFunction;
 use reifydb_core::OwnedSpan;
 use reifydb_core::value::Blob;
@@ -17,13 +17,13 @@ impl BlobHex {
 impl ScalarFunction for BlobHex {
     fn scalar(
         &self,
-        columns: &[EngineColumn],
+        columns: &[Column],
         row_count: usize,
-    ) -> crate::Result<EngineColumnData> {
+    ) -> crate::Result<ColumnData> {
         let column = columns.get(0).unwrap();
 
         match &column.data() {
-            EngineColumnData::Utf8(container) => {
+            ColumnData::Utf8(container) => {
                 let mut result_data = Vec::with_capacity(container.data().len());
 
                 for i in 0..row_count {
@@ -36,7 +36,7 @@ impl ScalarFunction for BlobHex {
                     }
                 }
 
-                Ok(EngineColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
+                Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
             }
             _ => unimplemented!("BlobHex only supports text input"),
         }
@@ -55,14 +55,14 @@ mod tests {
 
         let hex_data = vec!["deadbeef".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
@@ -77,14 +77,14 @@ mod tests {
 
         let hex_data = vec!["".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), &[] as &[u8]);
@@ -99,14 +99,14 @@ mod tests {
 
         let hex_data = vec!["DEADBEEF".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
@@ -121,14 +121,14 @@ mod tests {
 
         let hex_data = vec!["DeAdBeEf".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 1);
             assert!(container.is_defined(0));
             assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
@@ -143,14 +143,14 @@ mod tests {
 
         let hex_data = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
         let bitvec = vec![true, true, true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 3);
             assert!(container.is_defined(0));
             assert!(container.is_defined(1));
@@ -170,14 +170,14 @@ mod tests {
 
         let hex_data = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
         let bitvec = vec![true, false, true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let EngineColumnData::Blob(container) = result {
+        if let ColumnData::Blob(container) = result {
             assert_eq!(container.len(), 3);
             assert!(container.is_defined(0));
             assert!(!container.is_defined(1));
@@ -197,9 +197,9 @@ mod tests {
 
         let hex_data = vec!["invalid_hex".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);
@@ -212,9 +212,9 @@ mod tests {
 
         let hex_data = vec!["abc".to_string()];
         let bitvec = vec![true];
-        let input_column = EngineColumn::ColumnQualified(ColumnQualified {
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            data: EngineColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);

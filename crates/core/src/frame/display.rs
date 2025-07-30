@@ -24,8 +24,7 @@ fn get_column_display_order(frame: &Frame) -> Vec<usize> {
     let mut indices: Vec<usize> = (0..frame.columns.len()).collect();
 
     // Find the RowId column and move it to the front
-    if let Some(row_id_pos) = frame.columns.iter().position(|col| col.name() == ROW_ID_COLUMN_NAME)
-    {
+    if let Some(row_id_pos) = frame.columns.iter().position(|col| col.name == ROW_ID_COLUMN_NAME) {
         indices.remove(row_id_pos);
         indices.insert(0, row_id_pos);
     }
@@ -35,13 +34,13 @@ fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 
 /// Extract string value from column at given row index, with proper escaping
 fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
-    let s = col.values().as_string(row_idx);
+    let s = col.values.as_string(row_idx);
     escape_control_chars(&s)
 }
 
 impl Display for Frame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let row_count = self.columns.first().map_or(0, |c| c.values().len());
+        let row_count = self.columns.first().map_or(0, |c| c.values.len());
         let col_count = self.columns.len();
 
         // Get the display order with RowId column first

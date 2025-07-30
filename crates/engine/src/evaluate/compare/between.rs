@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{ColumnQualified, EngineColumn, EngineColumnData};
+use crate::column::{ColumnQualified, Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 use reifydb_core::return_error;
@@ -14,7 +14,7 @@ impl Evaluator {
         &mut self,
         expr: &BetweenExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<EngineColumn> {
+    ) -> crate::Result<Column> {
         // Create temporary expressions for the comparisons
         let greater_equal_expr = GreaterThanEqualExpression {
             left: expr.value.clone(),
@@ -33,8 +33,8 @@ impl Evaluator {
         let le_result = self.less_than_equal(&less_equal_expr, ctx)?;
 
         // Check that both results are boolean (they should be if the comparison succeeded)
-        if !matches!(ge_result.data(), EngineColumnData::Bool(_))
-            || !matches!(le_result.data(), EngineColumnData::Bool(_))
+        if !matches!(ge_result.data(), ColumnData::Bool(_))
+            || !matches!(le_result.data(), ColumnData::Bool(_))
         {
             // This should not happen if the comparison operators work correctly,
             // but we handle it as a safety measure
@@ -52,7 +52,7 @@ impl Evaluator {
         let le_data = le_result.data();
 
         match (ge_data, le_data) {
-            (EngineColumnData::Bool(ge_container), EngineColumnData::Bool(le_container)) => {
+            (ColumnData::Bool(ge_container), ColumnData::Bool(le_container)) => {
                 let mut data = Vec::with_capacity(ge_container.len());
                 let mut bitvec = Vec::with_capacity(ge_container.len());
 
@@ -66,9 +66,9 @@ impl Evaluator {
                     }
                 }
 
-                Ok(EngineColumn::ColumnQualified(ColumnQualified {
+                Ok(Column::ColumnQualified(ColumnQualified {
                     name: expr.span.fragment.clone(),
-                    data: EngineColumnData::bool_with_bitvec(data, bitvec),
+                    data: ColumnData::bool_with_bitvec(data, bitvec),
                 }))
             }
             _ => {

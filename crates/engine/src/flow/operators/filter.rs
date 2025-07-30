@@ -1,8 +1,5 @@
-use crate::column::EngineColumnData;
-use crate::evaluate::{EvaluationContext, evaluate};
-use crate::flow::change::{Change, Diff};
+use crate::flow::change::Diff;
 use crate::flow::operators::{Operator, OperatorContext};
-use reifydb_core::BitVec;
 use reifydb_core::frame::Frame;
 use reifydb_rql::expression::Expression;
 
@@ -21,27 +18,28 @@ impl Operator for FilterOperator {
         let mut output_changes = Vec::new();
 
         for change in diff.changes {
-            match change {
-                Change::Insert { frame } => {
-                    let filtered_frame = self.filter(&frame)?;
-                    if !filtered_frame.is_empty() {
-                        output_changes.push(Change::Insert { frame: filtered_frame });
-                    }
-                }
-                Change::Update { old, new } => {
-                    let filtered_new = self.filter(&new)?;
-                    if !filtered_new.is_empty() {
-                        output_changes.push(Change::Update { old, new: filtered_new });
-                    } else {
-                        // If new doesn't pass filter, emit remove of old
-                        output_changes.push(Change::Remove { frame: old });
-                    }
-                }
-                Change::Remove { frame } => {
-                    // Always pass through removes
-                    output_changes.push(Change::Remove { frame });
-                }
-            }
+            todo!()
+            // match change {
+            // Change::Insert { frame } => {
+            //     let filtered_frame = self.filter(&frame)?;
+            //     if !filtered_frame.is_empty() {
+            //         output_changes.push(Change::Insert { frame: filtered_frame });
+            //     }
+            // }
+            // Change::Update { old, new } => {
+            //     let filtered_new = self.filter(&new)?;
+            //     if !filtered_new.is_empty() {
+            //         output_changes.push(Change::Update { old, new: filtered_new });
+            //     } else {
+            //         // If new doesn't pass filter, emit remove of old
+            //         output_changes.push(Change::Remove { frame: old });
+            //     }
+            // }
+            // Change::Remove { frame } => {
+            //     // Always pass through removes
+            //     output_changes.push(Change::Remove { frame });
+            // }
+            // }
         }
 
         Ok(Diff::new(output_changes))
@@ -51,7 +49,7 @@ impl Operator for FilterOperator {
 impl FilterOperator {
     fn filter(&self, frame: &Frame) -> crate::Result<Frame> {
         // let row_count = frame.row_count();
-        // 
+        //
         // let eval_ctx = EvaluationContext {
         //     target_column: None,
         //     column_policies: Vec::new(),
@@ -59,13 +57,13 @@ impl FilterOperator {
         //     row_count,
         //     take: None,
         // };
-        // 
+        //
         // // Evaluate predicate to get boolean column
         // let result_column = evaluate(&self.predicate, &eval_ctx)?;
         // let mut frame = frame.clone();
-        // 
+        //
         // let mut bv = BitVec::repeat(row_count, true);
-        // 
+        //
         // match result_column.data() {
         //     EngineColumnData::Bool(container) => {
         //         for (idx, val) in container.data().iter().enumerate() {
@@ -75,9 +73,9 @@ impl FilterOperator {
         //     }
         //     _ => unreachable!(),
         // }
-        // 
+        //
         // frame.filter(&bv)?;
-        // 
+        //
         // Ok(frame)
         todo!()
     }
