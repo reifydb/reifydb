@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+pub mod blob;
 pub mod boolean;
 pub mod number;
 pub mod temporal;
@@ -78,7 +79,9 @@ pub fn cast_column_values(
         (_, target) if target.is_utf8() => text::to_text(values, span),
         (_, target) if target.is_temporal() => temporal::to_temporal(values, target, span),
         (_, target) if target.is_uuid() => uuid::to_uuid(values, target, span),
+        (_, target) if target.is_blob() => blob::to_blob(values, span),
         (source, target) if source.is_uuid() || target.is_uuid() => uuid::to_uuid(values, target, span),
+        (source, _) if source.is_blob() => blob::from_blob(values, target, span),
         _ => {
             err!(cast::unsupported_cast(span(), source_type, target))
         }

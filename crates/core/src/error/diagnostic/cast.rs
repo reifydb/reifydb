@@ -86,3 +86,19 @@ pub fn invalid_uuid(span: impl IntoOwnedSpan, target: Type, cause: Diagnostic) -
         cause: Some(Box::from(cause)),
     }
 }
+
+pub fn invalid_blob_to_utf8(span: impl IntoOwnedSpan, cause: Diagnostic) -> Diagnostic {
+    let owned_span = span.into_span();
+    let label = Some("failed to cast BLOB to UTF8".to_string());
+    Diagnostic {
+        code: "CAST_006".to_string(),
+        statement: None,
+        message: "failed to cast BLOB to UTF8".to_string(),
+        span: Some(owned_span),
+        label,
+        help: Some("BLOB contains invalid UTF-8 bytes. Consider using to_utf8_lossy() function instead".to_string()),
+        notes: vec![],
+        column: None,
+        cause: Some(Box::from(cause)),
+    }
+}
