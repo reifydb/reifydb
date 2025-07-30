@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
 use reifydb_core::error::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types;
-use reifydb_core::expression::RemExpression;
+use reifydb_rql::expression::RemExpression;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn, Push};
 use reifydb_core::frame::column::container::number::NumberContainer;
 use reifydb_core::value::IsNumber;

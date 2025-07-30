@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::frame::{FrameColumn, TableQualified, ColumnQualified};
-use reifydb_core::expression::AliasExpression;
+use reifydb_rql::expression::AliasExpression;
 
 impl Evaluator {
     pub(crate) fn alias(

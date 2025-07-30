@@ -2,7 +2,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
 use reifydb_core::BitVec;
-use reifydb_core::expression::Expression;
+use reifydb_rql::expression::Expression;
 use reifydb_core::frame::{BufferedPools, ColumnValues, Frame};
 
 pub struct FilterOperator {

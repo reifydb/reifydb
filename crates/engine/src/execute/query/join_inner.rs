@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::expression::Expression;
+use reifydb_rql::expression::Expression;
 use reifydb_core::frame::{
     ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout, TableQualified,
 };

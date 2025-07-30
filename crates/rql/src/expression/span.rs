@@ -1,11 +1,10 @@
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later, see license.md file.
-
 use crate::expression::{
     AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
     RemExpression, SubExpression,
 };
-use crate::OwnedSpan;
+// Copyright (c) reifydb.com 2025.
+// This file is licensed under the AGPL-3.0-or-later, see license.md file.
+use reifydb_core::OwnedSpan;
 
 impl Expression {
     pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {

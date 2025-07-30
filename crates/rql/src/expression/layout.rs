@@ -1,6 +1,6 @@
 use crate::expression::Expression;
-use crate::frame::{FrameColumnLayout, FrameLayout};
-use crate::value::row_id::ROW_ID_COLUMN_NAME;
+use reifydb_core::frame::{FrameColumnLayout, FrameLayout};
+use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 
 impl Expression {
     pub fn derive_frame_column_layout(

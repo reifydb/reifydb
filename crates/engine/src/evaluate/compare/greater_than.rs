@@ -9,7 +9,7 @@ use reifydb_core::frame::column::container::temporal::TemporalContainer;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::value::number::Promote;
 use reifydb_core::{OwnedSpan, value, return_error};
-use reifydb_core::expression::GreaterThanExpression;
+use reifydb_rql::expression::GreaterThanExpression;
 use reifydb_core::error::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
 use reifydb_core::Type::Bool;
 use std::fmt::Debug;

@@ -4,7 +4,7 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::Type::Bool;
 use reifydb_core::error::diagnostic::operator::greater_than_equal_cannot_be_applied_to_incompatible_types;
-use reifydb_core::expression::GreaterThanEqualExpression;
+use reifydb_rql::expression::GreaterThanEqualExpression;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn};
 use reifydb_core::frame::column::container::number::NumberContainer;
 use reifydb_core::frame::column::container::string::StringContainer;

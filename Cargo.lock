@@ -1629,6 +1629,7 @@ dependencies = [
  "reifydb-storage",
  "reifydb-testing",
  "reifydb-transaction",
+ "serde",
  "test_each_file",
 ]
 

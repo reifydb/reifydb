@@ -8,18 +8,17 @@ pub use interface::{
     BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
 };
 pub use row::key::{EncodedKey, EncodedKeyRange};
+use serde::{Deserialize, Serialize};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{
     Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Value,
 };
-use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod delta;
 pub mod error;
-pub mod expression;
 pub mod frame;
 pub mod hook;
 pub mod interface;

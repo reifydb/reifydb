@@ -11,7 +11,7 @@ use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::error::diagnostic::cast;
 use reifydb_core::frame::{ColumnValues, FrameColumn, TableQualified, ColumnQualified};
 use reifydb_core::{OwnedSpan, Type, err, error};
-use reifydb_core::expression::{CastExpression, Expression};
+use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
 impl Evaluator {
@@ -94,8 +94,8 @@ mod tests {
     use Expression::{Cast, Constant};
     use reifydb_core::frame::ColumnValues;
     use reifydb_core::{OwnedSpan, Type};
-    use reifydb_core::expression::Expression::Prefix;
-    use reifydb_core::expression::{
+    use reifydb_rql::expression::Expression::Prefix;
+    use reifydb_rql::expression::{
         CastExpression, ConstantExpression, DataTypeExpression, PrefixExpression, PrefixOperator,
     };
 

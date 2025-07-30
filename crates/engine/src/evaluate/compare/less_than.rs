@@ -3,7 +3,7 @@
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::error::diagnostic::operator::less_than_cannot_be_applied_to_incompatible_types;
-use reifydb_core::expression::LessThanExpression;
+use reifydb_rql::expression::LessThanExpression;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn};
 use reifydb_core::frame::column::container::number::NumberContainer;
 use reifydb_core::frame::column::container::string::StringContainer;

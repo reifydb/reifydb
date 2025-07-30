@@ -7,7 +7,7 @@ use reifydb_core::error::diagnostic::operator::{
 };
 use reifydb_core::frame::{ColumnQualified, ColumnValues, FrameColumn};
 use reifydb_core::return_error;
-use reifydb_core::expression::AndExpression;
+use reifydb_rql::expression::AndExpression;
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 

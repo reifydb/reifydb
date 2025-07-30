@@ -1,4 +1,4 @@
-use reifydb_core::expression::Expression;
+use reifydb_rql::expression::Expression;
 use reifydb_core::interface::Table;
 use reifydb_core::{JoinType, SortKey};
 use serde::{Deserialize, Serialize};

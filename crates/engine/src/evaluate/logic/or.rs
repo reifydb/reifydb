@@ -7,7 +7,7 @@ use reifydb_core::error::diagnostic::operator::{
     or_can_not_applied_to_temporal, or_can_not_applied_to_uuid
 };
 use reifydb_core::return_error;
-use reifydb_core::expression::OrExpression;
+use reifydb_rql::expression::OrExpression;
 
 use crate::evaluate::{EvaluationContext, Evaluator};
 

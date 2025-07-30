@@ -5,7 +5,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
 use reifydb_core::Value;
-use reifydb_core::expression::Expression;
+use reifydb_rql::expression::Expression;
 use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout};
 use reifydb_core::interface::Rx;
 use std::collections::{HashMap, HashSet};

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::AstStatement;
-use reifydb_core::expression::Expression;
+use crate::expression::Expression;
 
 use crate::plan::logical::compile_logical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};

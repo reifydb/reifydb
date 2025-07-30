@@ -1,6 +1,6 @@
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::frame::FrameColumn;
-use reifydb_core::expression::TupleExpression;
+use reifydb_rql::expression::TupleExpression;
 
 impl Evaluator {
     pub(crate) fn tuple(

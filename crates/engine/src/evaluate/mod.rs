@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::expression::Expression;
 use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
+use reifydb_rql::expression::Expression;
 
-use crate::function::{Functions, math, blob};
+use crate::function::{Functions, blob, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 
 mod access;
@@ -26,7 +26,7 @@ pub(crate) struct Evaluator {
 
 impl Default for Evaluator {
     fn default() -> Self {
-        Self { 
+        Self {
             functions: Functions::builder()
                 .register_scalar("abs", math::scalar::Abs::new)
                 .register_scalar("avg", math::scalar::Avg::new)
@@ -34,7 +34,7 @@ impl Default for Evaluator {
                 .register_scalar("blob::b64", blob::BlobB64::new)
                 .register_scalar("blob::b64url", blob::BlobB64url::new)
                 .register_scalar("blob::utf8", blob::BlobUtf8::new)
-                .build() 
+                .build(),
         }
     }
 }
