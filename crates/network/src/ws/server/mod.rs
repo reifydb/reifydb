@@ -263,12 +263,12 @@ where
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
                                                                                     name: "GONE".to_string(), //FIXME
-                                                                                    columns: frame.columns.into_iter().map(|c| {
+                                                                                    columns: frame.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
                                                                                             name: c.name.to_string(),
-                                                                                            frame: c.table.map(|s| s.to_string()),
-                                                                                            data: c.values.iter().map(|v| {
+                                                                                            frame: c.table.as_ref().map(|s| s.to_string()),
+                                                                                            data: c.iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
                                                                                                 } else {
@@ -320,12 +320,12 @@ where
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
                                                                                     name: "GONE".to_string(), // FIXME
-                                                                                    columns: frame.columns.into_iter().map(|c| {
+                                                                                    columns: frame.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
                                                                                             name: c.name.to_string(),
-                                                                                            frame: c.table.map(|s| s.to_string()),
-                                                                                            data: c.values.iter().map(|v| {
+                                                                                            frame: c.table.as_ref().map(|s| s.to_string()),
+                                                                                            data: c.iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
                                                                                                 } else {

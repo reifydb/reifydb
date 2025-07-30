@@ -3,7 +3,7 @@
 
 use crate::column::{Column, ColumnData, ColumnQualified, TableQualified};
 use reifydb_core::interface::Table;
-use reifydb_core::result::{ColumnValues, Frame, FrameColumn};
+use reifydb_core::result::{Frame, FrameColumn, FrameColumnData};
 use reifydb_core::{Type, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,32 +13,32 @@ pub struct Columns {
     pub columns: Vec<Column>,
 }
 
-impl From<ColumnData> for ColumnValues {
+impl From<ColumnData> for FrameColumnData {
     fn from(value: ColumnData) -> Self {
         match value {
-            ColumnData::Bool(container) => ColumnValues::Bool(container),
-            ColumnData::Float4(container) => ColumnValues::Float4(container),
-            ColumnData::Float8(container) => ColumnValues::Float8(container),
-            ColumnData::Int1(container) => ColumnValues::Int1(container),
-            ColumnData::Int2(container) => ColumnValues::Int2(container),
-            ColumnData::Int4(container) => ColumnValues::Int4(container),
-            ColumnData::Int8(container) => ColumnValues::Int8(container),
-            ColumnData::Int16(container) => ColumnValues::Int16(container),
-            ColumnData::Uint1(container) => ColumnValues::Uint1(container),
-            ColumnData::Uint2(container) => ColumnValues::Uint2(container),
-            ColumnData::Uint4(container) => ColumnValues::Uint4(container),
-            ColumnData::Uint8(container) => ColumnValues::Uint8(container),
-            ColumnData::Uint16(container) => ColumnValues::Uint16(container),
-            ColumnData::Utf8(container) => ColumnValues::Utf8(container),
-            ColumnData::Date(container) => ColumnValues::Date(container),
-            ColumnData::DateTime(container) => ColumnValues::DateTime(container),
-            ColumnData::Time(container) => ColumnValues::Time(container),
-            ColumnData::Interval(container) => ColumnValues::Interval(container),
-            ColumnData::RowId(container) => ColumnValues::RowId(container),
-            ColumnData::Uuid4(container) => ColumnValues::Uuid4(container),
-            ColumnData::Uuid7(container) => ColumnValues::Uuid7(container),
-            ColumnData::Blob(container) => ColumnValues::Blob(container),
-            ColumnData::Undefined(container) => ColumnValues::Undefined(container),
+            ColumnData::Bool(container) => FrameColumnData::Bool(container),
+            ColumnData::Float4(container) => FrameColumnData::Float4(container),
+            ColumnData::Float8(container) => FrameColumnData::Float8(container),
+            ColumnData::Int1(container) => FrameColumnData::Int1(container),
+            ColumnData::Int2(container) => FrameColumnData::Int2(container),
+            ColumnData::Int4(container) => FrameColumnData::Int4(container),
+            ColumnData::Int8(container) => FrameColumnData::Int8(container),
+            ColumnData::Int16(container) => FrameColumnData::Int16(container),
+            ColumnData::Uint1(container) => FrameColumnData::Uint1(container),
+            ColumnData::Uint2(container) => FrameColumnData::Uint2(container),
+            ColumnData::Uint4(container) => FrameColumnData::Uint4(container),
+            ColumnData::Uint8(container) => FrameColumnData::Uint8(container),
+            ColumnData::Uint16(container) => FrameColumnData::Uint16(container),
+            ColumnData::Utf8(container) => FrameColumnData::Utf8(container),
+            ColumnData::Date(container) => FrameColumnData::Date(container),
+            ColumnData::DateTime(container) => FrameColumnData::DateTime(container),
+            ColumnData::Time(container) => FrameColumnData::Time(container),
+            ColumnData::Interval(container) => FrameColumnData::Interval(container),
+            ColumnData::RowId(container) => FrameColumnData::RowId(container),
+            ColumnData::Uuid4(container) => FrameColumnData::Uuid4(container),
+            ColumnData::Uuid7(container) => FrameColumnData::Uuid7(container),
+            ColumnData::Blob(container) => FrameColumnData::Blob(container),
+            ColumnData::Undefined(container) => FrameColumnData::Undefined(container),
         }
     }
 }
@@ -50,19 +50,19 @@ impl From<Column> for FrameColumn {
                 schema: Some(col.schema),
                 table: Some(col.table),
                 name: col.name,
-                values: col.data.into(),
+                data: col.data.into(),
             },
             Column::TableQualified(col) => FrameColumn {
                 schema: None,
                 table: Some(col.table),
                 name: col.name,
-                values: col.data.into(),
+                data: col.data.into(),
             },
             Column::ColumnQualified(col) => {
-                FrameColumn { schema: None, table: None, name: col.name, values: col.data.into() }
+                FrameColumn { schema: None, table: None, name: col.name, data: col.data.into() }
             }
             Column::Unqualified(col) => {
-                FrameColumn { schema: None, table: None, name: col.name, values: col.data.into() }
+                FrameColumn { schema: None, table: None, name: col.name, data: col.data.into() }
             }
         }
     }
@@ -70,7 +70,7 @@ impl From<Column> for FrameColumn {
 
 impl From<Columns> for Frame {
     fn from(value: Columns) -> Self {
-        Self { columns: value.columns.into_iter().map(|col| col.into()).collect() }
+        Self::new(value.columns.into_iter().map(|col| col.into()).collect())
     }
 }
 
@@ -117,13 +117,6 @@ impl Columns {
 
 impl Columns {
     pub fn new(columns: Vec<Column>) -> Self {
-        let n = columns.first().map_or(0, |c| c.data().len());
-        assert!(columns.iter().all(|c| c.data().len() == n));
-
-        Self { columns }
-    }
-
-    pub fn new_with_name(columns: Vec<Column>, name: impl Into<String>) -> Self {
         let n = columns.first().map_or(0, |c| c.data().len());
         assert!(columns.iter().all(|c| c.data().len() == n));
 
@@ -230,7 +223,7 @@ impl Columns {
             })
             .collect();
 
-        Self::new_with_name(columns, table.name.clone())
+        Self::new(columns)
     }
 }
 

@@ -157,10 +157,7 @@ create computed view test.adults(name: utf8, age: int1) with {
             // Query the computed view results
             println!("\n--- Computed View Results ---");
             let results = engine.get_view_data("adults").unwrap();
-            println!(
-                "Adults view contains {} rows:",
-                results.columns.first().unwrap().values.len()
-            );
+            println!("Adults view contains {} rows:", results.first().unwrap().data.len());
             println!("{}", results);
 
             println!("\nExpected: Only users with age > 18 (Bob: 22, Diana: 25, Eve: 19)");

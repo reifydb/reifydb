@@ -3,7 +3,7 @@
 
 use crate::column::columns::Columns;
 use crate::column::layout::{ColumnLayout, ColumnsLayout};
-use crate::column::{ColumnQualified, Column, ColumnData};
+use crate::column::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::interface::{Rx, Table};
@@ -47,7 +47,7 @@ impl ExecutionPlan for InlineDataNode {
         self.executed = true;
 
         if self.rows.is_empty() {
-            let frame = Columns::new_with_name(vec![], "inline");
+            let frame = Columns::empty();
             if self.layout.is_none() {
                 self.layout = Some(ColumnsLayout::from_columns(&frame));
             }
@@ -124,7 +124,7 @@ impl InlineDataNode {
             }));
         }
 
-        let frame = Columns::new_with_name(frame_columns, "inline");
+        let frame = Columns::new(frame_columns);
         self.layout = Some(ColumnsLayout::from_columns(&frame));
 
         Ok(Some(Batch { frame }))
@@ -191,7 +191,7 @@ impl InlineDataNode {
             }));
         }
 
-        let frame = Columns::new_with_name(frame_columns, "inline");
+        let frame = Columns::new(frame_columns);
 
         Ok(Some(Batch { frame }))
     }
