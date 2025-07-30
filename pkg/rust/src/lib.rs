@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-
 #![cfg_attr(not(debug_assertions), deny(warnings))]
-
 
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
@@ -21,9 +19,9 @@ use std::path::Path;
 use crate::embedded::Embedded;
 #[cfg(feature = "server")]
 use crate::server::Server;
-use reifydb_core::frame::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::result::Frame;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.

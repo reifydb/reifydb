@@ -5,7 +5,7 @@ pub mod add;
 pub mod convert;
 pub mod demote;
 pub mod div;
-pub mod remainder;
 pub mod mul;
 pub mod promote;
+pub mod remainder;
 pub mod sub;

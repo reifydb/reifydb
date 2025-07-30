@@ -7,10 +7,10 @@ mod create;
 mod delete;
 mod describe;
 // mod diagnostic; // Removed - cannot implement methods on external types
+mod call;
 mod error;
 mod filter;
 mod from;
-mod call;
 mod identifier;
 mod infix;
 mod inline;
@@ -31,7 +31,7 @@ use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
 use crate::ast::parse::error::{expected_identifier_error, unexpected_token_error};
 use crate::ast::{Ast, AstStatement};
-use reifydb_core::error::diagnostic::ast;
+use reifydb_core::result::error::diagnostic::ast;
 use reifydb_core::return_error;
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
@@ -252,7 +252,7 @@ mod tests {
     use crate::ast::parse::Precedence::Term;
     use crate::ast::parse::{Parser, Precedence};
     use diagnostic::ast;
-    use reifydb_core::error::diagnostic;
+    use reifydb_core::result::error::diagnostic;
     use reifydb_core::{Error, err};
 
     #[test]

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::{FrameColumn, ColumnValues};
+use crate::columnar::{Column, ColumnData};
 use crate::function::AggregateFunction;
-use reifydb_core::{BitVec, Value};
+use reifydb_core::Value;
 use std::collections::HashMap;
 
 pub struct Avg {
@@ -19,20 +19,19 @@ impl Avg {
 
 impl AggregateFunction for Avg {
     fn aggregate(
-		&mut self,
-		column: &FrameColumn,
-		mask: &BitVec,
-		groups: &HashMap<Vec<Value>, Vec<usize>>,
+        &mut self,
+        column: &Column,
+        groups: &HashMap<Vec<Value>, Vec<usize>>,
     ) -> crate::Result<()> {
-        match &column.values() {
-            ColumnValues::Float8(values, bitvec) => {
+        match &column.data() {
+            ColumnData::Float8(container) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
 
                     for &i in indices {
-                        if mask.get(i) && bitvec.get(i) {
-                            sum += values[i];
+                        if let Some(value) = container.get(i) {
+                            sum += *value;
                             count += 1;
                         }
                     }
@@ -48,14 +47,14 @@ impl AggregateFunction for Avg {
                 }
                 Ok(())
             }
-            ColumnValues::Int2(values, bitvec) => {
+            ColumnData::Int2(container) => {
                 for (group, indices) in groups {
                     let mut sum = 0.0;
                     let mut count = 0;
 
                     for &i in indices {
-                        if mask.get(i) && bitvec.get(i) {
-                            sum += values[i] as f64;
+                        if let Some(value) = container.get(i) {
+                            sum += *value as f64;
                             count += 1;
                         }
                     }
@@ -75,9 +74,9 @@ impl AggregateFunction for Avg {
         }
     }
 
-    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnValues)> {
+    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
         let mut keys = Vec::with_capacity(self.sums.len());
-        let mut values = ColumnValues::float8_with_capacity(self.sums.len());
+        let mut data = ColumnData::float8_with_capacity(self.sums.len());
 
         for (key, sum) in std::mem::take(&mut self.sums) {
             let count = self.counts.remove(&key).unwrap_or(0);
@@ -88,9 +87,9 @@ impl AggregateFunction for Avg {
             };
 
             keys.push(key);
-            values.push_value(Value::float8(avg));
+            data.push_value(Value::float8(avg));
         }
 
-        Ok((keys, values))
+        Ok((keys, data))
     }
 }

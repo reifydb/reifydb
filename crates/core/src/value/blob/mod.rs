@@ -12,7 +12,7 @@ use std::ops::Deref;
 
 /// A binary large object (BLOB) wrapper type
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Blob(CowVec<u8>);
 
 impl Blob {

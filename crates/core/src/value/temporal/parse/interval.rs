@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{return_error, Error, Interval, Span};
-use crate::error::diagnostic::temporal;
+use crate::result::error::diagnostic::temporal;
+use crate::{Error, Interval, Span, return_error};
 
 pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
     let fragment = span.fragment();
     // Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
-    if fragment.len() == 1 || !fragment.starts_with('P')  || fragment == "PT"{
+    if fragment.len() == 1 || !fragment.starts_with('P') || fragment == "PT" {
         return_error!(temporal::invalid_interval_format(span.to_owned()));
     }
 
@@ -241,7 +241,7 @@ mod tests {
         let expected_days = 3;
         let expected_nanos = 4 * 60 * 60 * 1_000_000_000 +    // 4 hours
                             5 * 60 * 1_000_000_000 +          // 5 minutes
-                            6 * 1_000_000_000;                // 6 seconds
+                            6 * 1_000_000_000; // 6 seconds
         assert_eq!(interval.get_months(), expected_months);
         assert_eq!(interval.get_days(), expected_days);
         assert_eq!(interval.get_nanos(), expected_nanos);

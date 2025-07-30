@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::sqlite::Sqlite;
 use super::{execute_iter_query, get_table_names};
-use reifydb_core::interface::{Versioned, VersionedScan};
-use reifydb_core::{EncodedKey, Version, Result};
-use r2d2::{PooledConnection};
+use crate::sqlite::Sqlite;
+use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
+use reifydb_core::interface::{Versioned, VersionedScan};
+use reifydb_core::{EncodedKey, Result, Version};
 use std::collections::VecDeque;
 
 impl VersionedScan for Sqlite {
@@ -34,7 +34,7 @@ impl Iter {
         batch_size: usize,
     ) -> Self {
         let table_names = get_table_names(&conn);
-        
+
         Self {
             conn,
             version,

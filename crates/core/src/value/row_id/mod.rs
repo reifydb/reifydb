@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use serde::de::Visitor;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::ops::Deref;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::Visitor;
 
 /// Standard column name for RowId columns
 pub static ROW_ID_COLUMN_NAME: &str = "__ROW__ID__";

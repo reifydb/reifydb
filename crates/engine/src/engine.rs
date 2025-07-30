@@ -3,7 +3,7 @@
 
 use crate::execute::{execute_rx, execute_tx};
 use crate::system::SystemStartCallback;
-use reifydb_core::frame::Frame;
+use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnStartHook;
 use reifydb_core::interface::{
@@ -54,7 +54,7 @@ where
 
         tx.commit()?;
 
-        Ok(result)
+        Ok(result.into_iter().map(Frame::from).collect())
     }
 
     fn rx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
@@ -69,7 +69,7 @@ where
             }
         }
 
-        Ok(result)
+        Ok(result.into_iter().map(Frame::from).collect())
     }
 
     fn hooks(&self) -> &Hooks {

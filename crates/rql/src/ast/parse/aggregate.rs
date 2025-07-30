@@ -6,7 +6,7 @@ use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
-use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::result::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
 impl Parser {
@@ -108,7 +108,7 @@ mod tests {
         let projection = &aggregate.map[0].as_call_function();
         assert_eq!(projection.function.value(), "min");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -133,7 +133,7 @@ mod tests {
         let min_call = projection.left.as_call_function();
         assert_eq!(min_call.function.value(), "min");
         assert!(min_call.namespaces.is_empty());
-        
+
         assert_eq!(min_call.arguments.len(), 1);
         let identifier = min_call.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -193,7 +193,7 @@ mod tests {
         let projection = &aggregate.map[0].as_call_function();
         assert_eq!(projection.function.value(), "min");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -201,7 +201,7 @@ mod tests {
         let projection = &aggregate.map[1].as_call_function();
         assert_eq!(projection.function.value(), "max");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -227,7 +227,7 @@ mod tests {
         let projection = &aggregate.map[0].as_call_function();
         assert_eq!(projection.function.value(), "min");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");

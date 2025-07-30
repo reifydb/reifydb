@@ -3,48 +3,25 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use error::Error;
-pub use interface::{
-    BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
-};
-pub use row::key::{EncodedKey, EncodedKeyRange};
-pub use sort::{SortDirection, SortKey};
-pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
-pub use value::{
-    Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Value,
-};
-use serde::{Deserialize, Serialize};
-
-pub type Result<T> = std::result::Result<T, Error>;
-
+mod common;
 pub mod delta;
-pub mod error;
-pub mod expression;
-pub mod frame;
 pub mod hook;
 pub mod interface;
+pub mod result;
 pub mod row;
 mod sort;
 pub mod util;
 pub mod value;
 
-pub type Version = u64;
-
-#[derive(Copy, Clone, Debug)]
-pub enum StoreKind {
-    ComputedView,
-    Series,
-    Table,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum JoinType {
-    Inner,
-    Left,
-}
-
-impl Default for JoinType {
-    fn default() -> Self {
-        JoinType::Left
-    }
-}
+pub use common::*;
+pub use interface::{
+    BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
+};
+pub use result::*;
+pub use row::key::{EncodedKey, EncodedKeyRange};
+pub use sort::{SortDirection, SortKey};
+pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
+pub use value::{
+    Blob, Date, DateTime, GetType, Interval, OrderedF32, OrderedF64, RowId, Time, Type, Uuid4,
+    Uuid7, Value,
+};

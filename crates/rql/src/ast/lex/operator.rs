@@ -71,7 +71,10 @@ fn is_ident_continue(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn parse_word_operator(word: &'static str, op: Operator) -> impl Fn(LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> + 'static {
+fn parse_word_operator(
+    word: &'static str,
+    op: Operator,
+) -> impl Fn(LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Operator> + 'static {
     move |input: LocatedSpan<&str>| {
         let original = input;
 
@@ -190,12 +193,7 @@ mod tests {
         let result = parse_operator(input).unwrap();
         let (remaining, token) = result;
 
-        assert_eq!(
-            TokenKind::Operator(op),
-            token.kind,
-            "type mismatch for symbol: {}",
-            symbol
-        );
+        assert_eq!(TokenKind::Operator(op), token.kind, "type mismatch for symbol: {}", symbol);
         assert_eq!(token.span.fragment, symbol);
         assert_eq!(token.span.column, 1);
         assert_eq!(token.span.line, 1);
@@ -220,7 +218,7 @@ mod tests {
         test_operator_close_bracket => (CloseBracket, "]"),
         test_operator_open_curly => (OpenCurly, "{"),
         test_operator_close_curly => (CloseCurly, "}"),
-        
+
         test_operator_left_angle => (LeftAngle, "<"),
         test_operator_double_left_angle => (DoubleLeftAngle, "<<"),
         test_operator_left_angle_equal => (LeftAngleEqual, "<="),

@@ -41,7 +41,7 @@ impl StateStore {
     pub fn delete(&mut self, _row_id: usize) -> crate::Result<Option<Row>> {
         // if let Some(row) = self.rows.shift_remove(&row_id) {
         //     // Update indices
-        //     for index in self.indices.values_mut() {
+        //     for index in self.indices.data_mut() {
         //         index.remove(&row, row_id)?;
         //     }
         //     Ok(Some(row))

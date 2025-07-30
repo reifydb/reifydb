@@ -1,3 +1,6 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
 use crate::ws::RequestPayload::Auth;
 use crate::ws::{
     AuthRequest, AuthResponse, ErrResponse, Request, RequestPayload, ResponsePayload, RxRequest,
@@ -12,8 +15,8 @@ use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, OnceCell};
@@ -259,13 +262,13 @@ where
                                                                         payload: ResponsePayload::Tx(TxResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
-                                                                                    name: frame.name,
-                                                                                    columns: frame.columns.into_iter().map(|c| {
+                                                                                    name: "GONE".to_string(), //FIXME
+                                                                                    columns: frame.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
-                                                                                            name: c.name().to_string(),
-                                                                                            frame: c.table().map(|s| s.to_string()),
-                                                                                            data: c.values().iter().map(|v| {
+                                                                                            name: c.name.to_string(),
+                                                                                            frame: c.table.as_ref().map(|s| s.to_string()),
+                                                                                            data: c.iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
                                                                                                 } else {
@@ -316,13 +319,13 @@ where
                                                                         payload: ResponsePayload::Rx(RxResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
-                                                                                    name: frame.name,
-                                                                                    columns: frame.columns.into_iter().map(|c| {
+                                                                                    name: "GONE".to_string(), // FIXME
+                                                                                    columns: frame.into_iter().map(|c| {
                                                                                         WebsocketColumn {
                                                                                             ty: c.get_type(),
-                                                                                            name: c.name().to_string(),
-                                                                                            frame: c.table().map(|s| s.to_string()),
-                                                                                            data: c.values().iter().map(|v| {
+                                                                                            name: c.name.to_string(),
+                                                                                            frame: c.table.as_ref().map(|s| s.to_string()),
+                                                                                            data: c.iter().map(|v| {
                                                                                                 if v == Value::Undefined {
                                                                                                     "⟪undefined⟫".to_string()
                                                                                                 } else {

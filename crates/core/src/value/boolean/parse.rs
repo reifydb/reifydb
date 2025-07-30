@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::error::diagnostic::boolean::{
+use crate::result::error::diagnostic::boolean::{
     empty_boolean_value, invalid_boolean_format, invalid_number_boolean,
 };
 
-use crate::{err, Error, Span, return_error};
+use crate::{Error, Span, err, return_error};
 
 pub fn parse_bool(span: impl Span) -> Result<bool, Error> {
     let value = span.fragment().trim();

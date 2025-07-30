@@ -27,10 +27,14 @@ async fn main() {
 
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 
-    let result = client.tx(r#"
+    let result = client
+        .tx(r#"
     from test.arith
         map 1 + 2, 3 + 4, cast(129, int1) as X
-    "#.into()).await.unwrap();
+    "#
+        .into())
+        .await
+        .unwrap();
 
     println!("✅ Frames: {:?}", result);
 }

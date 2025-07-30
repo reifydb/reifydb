@@ -26,12 +26,7 @@ fn parse_temporal_content(
     // Accept any sequence of characters that could be part of a temporal literal
     // This includes letters, digits, colons, hyphens, dots, +, -, etc.
     take_while1(|c: char| {
-        c.is_ascii_alphanumeric()
-            || c == '-'
-            || c == ':'
-            || c == '.'
-            || c == '+'
-            || c == '/'
+        c.is_ascii_alphanumeric() || c == '-' || c == ':' || c == '.' || c == '+' || c == '/'
     })(input)
 }
 
@@ -126,23 +121,23 @@ mod tests {
             ("@2024-03-15T10:00:00..14:30:00", true), // datetime to time
             ("@14:30:00..2024-03-15T18:00:00", true), // time to datetime
             // Invalid patterns that should now be lexed (but will fail in engine)
-            ("@invalid", true),             // invalid format - now lexed
-            ("@2024", true),                // incomplete date - now lexed
-            ("@2024-", true),               // incomplete date - now lexed
-            ("@2024-03", true),             // incomplete date - now lexed
-            ("@14:30", true),               // incomplete time - now lexed
-            ("@14:", true),                 // incomplete time - now lexed
-            ("@2024-03-15T", true),         // incomplete datetime - now lexed
-            ("@2024-03-15T14", true),       // incomplete datetime - now lexed
-            ("@2024-03-15T14:30", true),    // incomplete datetime - now lexed
-            ("@P", true),                   // incomplete duration - now lexed
-            ("@PT", true),                  // incomplete duration - now lexed
-            ("@2024/03/15", true),          // wrong format - now lexed
-            ("@25:99:99", true),            // invalid values - now lexed
-            ("@2024-13-45", true),          // invalid values - now lexed
-            ("@1Y2M3D", true),              // missing P - now lexed
-            ("@PT2X", true),                // invalid character - now lexed
-            ("@abcd-03-15", true),          // invalid year - now lexed
+            ("@invalid", true),          // invalid format - now lexed
+            ("@2024", true),             // incomplete date - now lexed
+            ("@2024-", true),            // incomplete date - now lexed
+            ("@2024-03", true),          // incomplete date - now lexed
+            ("@14:30", true),            // incomplete time - now lexed
+            ("@14:", true),              // incomplete time - now lexed
+            ("@2024-03-15T", true),      // incomplete datetime - now lexed
+            ("@2024-03-15T14", true),    // incomplete datetime - now lexed
+            ("@2024-03-15T14:30", true), // incomplete datetime - now lexed
+            ("@P", true),                // incomplete duration - now lexed
+            ("@PT", true),               // incomplete duration - now lexed
+            ("@2024/03/15", true),       // wrong format - now lexed
+            ("@25:99:99", true),         // invalid values - now lexed
+            ("@2024-13-45", true),       // invalid values - now lexed
+            ("@1Y2M3D", true),           // missing P - now lexed
+            ("@PT2X", true),             // invalid character - now lexed
+            ("@abcd-03-15", true),       // invalid year - now lexed
         ];
 
         for (input, should_parse) in cases {

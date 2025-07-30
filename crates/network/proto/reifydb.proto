@@ -33,14 +33,13 @@ message RxResult {
 }
 
 message Frame {
-  string name = 1;
-  repeated Column columns = 2;
+  repeated FrameColumn columns = 1;
 }
 
-message Column {
+message FrameColumn {
   string name = 1;
   Type ty = 2;
-  repeated Value values = 3;
+  repeated Value data = 3;
   optional string frame = 4;
 }
 

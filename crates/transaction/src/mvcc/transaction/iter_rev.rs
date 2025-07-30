@@ -15,8 +15,8 @@ use crate::mvcc::types::TransactionValue;
 use core::{cmp, iter::Rev};
 
 use crate::mvcc::types::Pending;
-use reifydb_core::EncodedKey;
 use reifydb_core::Either;
+use reifydb_core::EncodedKey;
 use reifydb_core::interface::VersionedStorage;
 use std::collections::btree_map::Iter as BTreeMapIter;
 

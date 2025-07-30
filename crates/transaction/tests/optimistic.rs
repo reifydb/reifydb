@@ -1,6 +1,6 @@
 // // Copyright (c) reifydb.com 2025
 // // This file is licensed under the AGPL-3.0-or-later, see license.md file
-// 
+//
 // // This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
 // // originally licensed under the Apache License, Version 2.0.
 // // Original copyright:
@@ -8,7 +8,7 @@
 // //
 // // The original Apache License can be found at:
 // //   http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // use reifydb_core::util::encoding::binary::decode_binary;
 // use reifydb_core::util::encoding::format;
 // use reifydb_core::util::encoding::format::Formatter;
@@ -28,25 +28,25 @@
 // use std::ops::Deref;
 // use std::path::Path;
 // use test_each_file::test_each_path;
-// 
+//
 // test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_optimistic }
 // test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_optimistic }
-// 
+//
 // fn test_optimistic(path: &Path) {
 //     testscript::run_path(&mut MvccRunner::new(Optimistic::new(Memory::new())), path)
 //         .expect("test failed")
 // }
-// 
+//
 // pub struct MvccRunner {
 //     engine: Optimistic<Memory>,
 //     transactions: HashMap<String, Transaction<Memory>>,
 // }
-// 
+//
 // impl MvccRunner {
 //     fn new(optimistic: Optimistic<Memory>) -> Self {
 //         Self { engine: optimistic, transactions: HashMap::new() }
 //     }
-// 
+//
 //     /// Fetches the named transaction from a command prefix.
 //     fn get_transaction(
 //         &mut self,
@@ -55,12 +55,12 @@
 //         let name = Self::tx_name(prefix)?;
 //         self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
 //     }
-// 
+//
 //     /// Fetches the tx name from a command prefix, or errors.
 //     fn tx_name(prefix: &Option<String>) -> Result<&str, Box<dyn StdError>> {
 //         prefix.as_deref().ok_or("no tx name".into())
 //     }
-// 
+//
 //     /// Errors if a tx prefix is given.
 //     fn no_tx(command: &testscript::Command) -> Result<(), Box<dyn StdError>> {
 //         if let Some(name) = &command.prefix {
@@ -69,12 +69,12 @@
 //         Ok(())
 //     }
 // }
-// 
+//
 // impl<'a> testscript::Runner for MvccRunner {
 //     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 //         let mut output = String::new();
 //         let tags = command.tags.clone();
-// 
+//
 //         match command.name.as_str() {
 //             // tx: begin [readonly] [version=VERSION]
 //             "begin" => {
@@ -90,20 +90,20 @@
 //                 };
 //                 let version = args.lookup_parse("version")?;
 //                 args.reject_rest()?;
-// 
+//
 //                 let t = match readonly {
 //                     true => Transaction::Rx(TransactionRx::new(self.engine.clone(), version)),
 //                     false => Transaction::Tx(TransactionTx::new(self.engine.clone())),
 //                 };
 //                 self.transactions.insert(name.to_string(), t);
 //             }
-// 
+//
 //             // tx: commit
 //             "commit" => {
 //                 let name = Self::tx_name(&command.prefix)?;
 //                 let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
 //                 command.consume_args().reject_rest()?;
-// 
+//
 //                 match t {
 //                     Transaction::Rx(_) => {
 //                         unreachable!("can not call commit on rx")
@@ -113,14 +113,14 @@
 //                     }
 //                 }
 //             }
-// 
+//
 //             // tx: remove KEY...
 //             "remove" => {
 //                 let t = self.get_transaction(&command.prefix)?;
 //                 let mut args = command.consume_args();
 //                 for arg in args.rest_pos() {
 //                     let key = EncodedKey(decode_binary(&arg.value));
-// 
+//
 //                     match t {
 //                         Transaction::Rx(_) => {
 //                             unreachable!("can not call remove on rx")
@@ -132,7 +132,7 @@
 //                 }
 //                 args.reject_rest()?;
 //             }
-// 
+//
 //             "version" => {
 //                 command.consume_args().reject_rest()?;
 //                 let t = self.get_transaction(&command.prefix)?;
@@ -142,7 +142,7 @@
 //                 };
 //                 writeln!(output, "{}", version)?;
 //             }
-// 
+//
 //             // tx: get KEY...
 //             "get" => {
 //                 let t = self.get_transaction(&command.prefix)?;
@@ -159,14 +159,14 @@
 //                 }
 //                 args.reject_rest()?;
 //             }
-// 
+//
 //             // import KEY=VALUE...
 //             "import" => {
 //                 Self::no_tx(command)?;
 //                 let mut args = command.consume_args();
-// 
+//
 //                 let mut tx = TransactionTx::new(self.engine.clone());
-// 
+//
 //                 for kv in args.rest_key() {
 //                     let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
 //                     let row = EncodedRow(decode_binary(&kv.value));
@@ -179,13 +179,13 @@
 //                 args.reject_rest()?;
 //                 tx.commit()?;
 //             }
-// 
+//
 //             // tx: rollback
 //             "rollback" => {
 //                 let name = Self::tx_name(&command.prefix)?;
 //                 let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
 //                 command.consume_args().reject_rest()?;
-// 
+//
 //                 match t {
 //                     Transaction::Rx(_) => {
 //                         unreachable!("can not call rollback on rx")
@@ -195,15 +195,15 @@
 //                     }
 //                 }
 //             }
-// 
+//
 //             // tx: scan
 //             "scan" => {
 //                 let t = self.get_transaction(&command.prefix)?;
 //                 let args = command.consume_args();
 //                 args.reject_rest()?;
-// 
+//
 //                 let mut kvs = Vec::new();
-// 
+//
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         for sv in rx.scan().into_iter() {
@@ -216,23 +216,23 @@
 //                         }
 //                     }
 //                 };
-// 
+//
 //                 for (key, value) in kvs {
 //                     writeln!(output, "{}", format::Raw::key_row(&key, &value))?;
 //                 }
 //             }
-// 
+//
 //             // scan_range RANGE [reverse=BOOL]
 //             "scan_range" => {
 //                 let t = self.get_transaction(&command.prefix)?;
-// 
+//
 //                 let mut args = command.consume_args();
 //                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 //                 let range = EncodedKeyRange::parse(
 //                     args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
 //                 );
 //                 args.reject_rest()?;
-// 
+//
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         if !reverse {
@@ -250,17 +250,17 @@
 //                     }
 //                 };
 //             }
-// 
+//
 //             // scan_prefix PREFIX [reverse=BOOL] [version=VERSION]
 //             "scan_prefix" => {
 //                 let t = self.get_transaction(&command.prefix)?;
-// 
+//
 //                 let mut args = command.consume_args();
 //                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 //                 let prefix =
 //                     EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
 //                 args.reject_rest()?;
-// 
+//
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         if !reverse {
@@ -278,7 +278,7 @@
 //                     }
 //                 };
 //             }
-// 
+//
 //             // tx: set KEY=VALUE...
 //             "set" => {
 //                 let t = self.get_transaction(&command.prefix)?;
@@ -297,25 +297,25 @@
 //                 }
 //                 args.reject_rest()?;
 //             }
-// 
+//
 //             name => return Err(format!("invalid command {name}").into()),
 //         }
-// 
+//
 //         if let Some(tag) = tags.iter().next() {
 //             return Err(format!("unknown tag {tag}").into());
 //         }
-// 
+//
 //         Ok(output)
 //     }
 // }
-// 
+//
 // fn print_rx<I: Iterator<Item = Stored>>(output: &mut String, mut iter: I) {
 //     while let Some(sv) = iter.next() {
 //         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
 //         writeln!(output, "{fmtkv}").unwrap();
 //     }
 // }
-// 
+//
 // fn print_tx<I: Iterator<Item = TransactionValue>>(output: &mut String, mut iter: I) {
 //     while let Some(tv) = iter.next() {
 //         let fmtkv = format::Raw::key_row(tv.key(), tv.row().as_slice());

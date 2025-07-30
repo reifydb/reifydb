@@ -1,20 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::expression::KeyedExpression;
-use reifydb_core::frame::{
-    ColumnQualified, ColumnValues, Frame, FrameColumn, FrameColumnLayout, FrameLayout,
-};
 use reifydb_core::interface::{Rx, Table};
-use reifydb_core::{BitVec, ColumnDescriptor, Value};
+use reifydb_core::{ColumnDescriptor, Value};
+use reifydb_rql::expression::KeyedExpression;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) struct InlineDataNode {
     rows: Vec<Vec<KeyedExpression>>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
     context: Arc<ExecutionContext>,
     executed: bool,
 }
@@ -22,19 +22,19 @@ pub(crate) struct InlineDataNode {
 impl InlineDataNode {
     pub fn new(rows: Vec<Vec<KeyedExpression>>, context: Arc<ExecutionContext>) -> Self {
         let layout =
-            context.table.as_ref().map(|table| Self::create_frame_layout_from_table(table));
+            context.table.as_ref().map(|table| Self::create_columns_layout_from_table(table));
 
         Self { rows, layout, context, executed: false }
     }
 
-    fn create_frame_layout_from_table(table: &Table) -> FrameLayout {
+    fn create_columns_layout_from_table(table: &Table) -> ColumnsLayout {
         let columns = table
             .columns
             .iter()
-            .map(|col| FrameColumnLayout { schema: None, table: None, name: col.name.clone() })
+            .map(|col| ColumnLayout { schema: None, table: None, name: col.name.clone() })
             .collect();
 
-        FrameLayout { columns }
+        ColumnsLayout { columns }
     }
 }
 
@@ -47,18 +47,18 @@ impl ExecutionPlan for InlineDataNode {
         self.executed = true;
 
         if self.rows.is_empty() {
-            let frame = Frame::new_with_name(vec![], "inline");
+            let columns = Columns::empty();
             if self.layout.is_none() {
-                self.layout = Some(FrameLayout::from_frame(&frame));
+                self.layout = Some(ColumnsLayout::from_columns(&columns));
             }
-            return Ok(Some(Batch { frame, mask: BitVec::new(0, true) }));
+            return Ok(Some(Batch { columns }));
         }
 
         // Choose execution path based on whether we have table schema
         if self.layout.is_some() { self.next_with_table_schema() } else { self.next_infer_schema() }
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone()
     }
 }
@@ -87,19 +87,18 @@ impl InlineDataNode {
             rows_data.push(row_map);
         }
 
-        // Create frame columns with equal length
-        let mut frame_columns = Vec::new();
+        // Create columns columns with equal length
+        let mut columns_columns = Vec::new();
 
         for column_name in all_columns {
-            let mut column_values = ColumnValues::undefined(0);
+            let mut column_data = ColumnData::undefined(0);
 
             for row_data in &rows_data {
                 if let Some(keyed_expr) = row_data.get(&column_name) {
                     let ctx = EvaluationContext {
                         target_column: None,
                         column_policies: Vec::new(),
-                        mask: BitVec::new(1, true),
-                        columns: Vec::new(),
+                        columns: Columns::empty(),
                         row_count: 1,
                         take: None,
                     };
@@ -107,29 +106,28 @@ impl InlineDataNode {
                     let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
 
                     // Take the first value from the evaluated result
-                    let mut iter = evaluated.values().iter();
+                    let mut iter = evaluated.data().iter();
                     if let Some(value) = iter.next() {
-                        column_values.push_value(value);
+                        column_data.push_value(value);
                     } else {
-                        column_values.push_value(Value::Undefined);
+                        column_data.push_value(Value::Undefined);
                     }
                 } else {
                     // Missing column for this row, use Undefined
-                    column_values.push_value(Value::Undefined);
+                    column_data.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+            columns_columns.push(Column::ColumnQualified(ColumnQualified {
                 name: column_name,
-                values: column_values,
+                data: column_data,
             }));
         }
 
-        let frame = Frame::new_with_name(frame_columns, "inline");
-        self.layout = Some(FrameLayout::from_frame(&frame));
-        let mask = BitVec::new(frame.row_count(), true);
+        let columns = Columns::new(columns_columns);
+        self.layout = Some(ColumnsLayout::from_columns(&columns));
 
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { columns }))
     }
 
     fn next_with_table_schema(&mut self) -> crate::Result<Option<Batch>> {
@@ -148,11 +146,11 @@ impl InlineDataNode {
             rows_data.push(row_map);
         }
 
-        // Create frame columns based on table schema
-        let mut frame_columns = Vec::new();
+        // Create columns columns based on table schema
+        let mut columns_columns = Vec::new();
 
         for column_layout in &layout.columns {
-            let mut column_values = ColumnValues::undefined(0);
+            let mut column_data = ColumnData::undefined(0);
 
             // Find the corresponding table column for policies
             let table_column =
@@ -176,28 +174,25 @@ impl InlineDataNode {
                             .iter()
                             .map(|cp| cp.policy.clone())
                             .collect(),
-                        mask: BitVec::new(1, true),
-                        columns: Vec::new(),
+                        columns: Columns::empty(),
                         row_count: 1,
                         take: None,
                     };
 
-                    column_values
-                        .extend(evaluate(&keyed_expr.expression, &ctx)?.values().clone())?;
+                    column_data.extend(evaluate(&keyed_expr.expression, &ctx)?.data().clone())?;
                 } else {
-                    column_values.push_value(Value::Undefined);
+                    column_data.push_value(Value::Undefined);
                 }
             }
 
-            frame_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+            columns_columns.push(Column::ColumnQualified(ColumnQualified {
                 name: column_layout.name.clone(),
-                values: column_values,
+                data: column_data,
             }));
         }
 
-        let frame = Frame::new_with_name(frame_columns, "inline");
-        let mask = BitVec::new(frame.row_count(), true);
+        let columns = Columns::new(columns_columns);
 
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { columns }))
     }
 }

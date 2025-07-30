@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstSort;
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::Parser;
-use crate::ast::AstSort;
-use reifydb_core::error::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_core::result::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
 impl Parser {

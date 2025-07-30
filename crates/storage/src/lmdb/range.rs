@@ -14,7 +14,11 @@ use std::sync::Arc;
 impl VersionedScanRange for Lmdb {
     type ScanRangeIter<'a> = Range;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::ScanRangeIter<'_>> {
+    fn scan_range(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> Result<Self::ScanRangeIter<'_>> {
         Ok(Range::new(self.env.clone(), self.db, version, range, 100))
     }
 }

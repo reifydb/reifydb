@@ -53,7 +53,9 @@ pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
     fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
-        let tm = TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap()).unwrap();
+        let tm =
+            TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap())
+                .unwrap();
         Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
     }
 

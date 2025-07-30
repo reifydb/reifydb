@@ -3,46 +3,49 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::core::Value;
-use reifydb::core::frame::Frame;
-use reifydb::engine::flow::change::{Change, Diff};
 use reifydb::engine::flow::compile::compile_to_flow;
 use reifydb::engine::flow::engine::FlowEngine;
 use reifydb::engine::flow::node::NodeType;
 use reifydb::rql::ast;
 use reifydb::rql::plan::logical::compile_logical;
 use reifydb::transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{ReifyDB, memory, serializable};
+use reifydb::{memory, serializable};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(serializable(memory()));
-
-    db.tx_as_root(r#"create schema test"#).unwrap();
-    db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
-    db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
-    db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
-    db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
-    db.tx_as_root(
-        r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
-    )
-    .unwrap();
-    db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
-
-    for frame in db
-        .tx_as_root(
-            r#"
-    map {
-        blob::utf8('hello!')
-    }
-            "#,
-        )
-        .unwrap()
-    {
-        println!("{}", frame);
-    }
+    //     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
+    //
+    //     db.tx_as_root(r#"create schema test"#).unwrap();
+    //     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
+    //     db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
+    //     db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
+    //     db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
+    //     db.tx_as_root(
+    //         r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
+    //     )
+    //     .unwrap();
+    //     db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
+    //
+    //     for frame in db
+    //         .tx_as_root(
+    //             r#"
+    // map {
+    //   cast(1.0, float8) + cast(1.0, float8),
+    //   cast(1.0, float8) + cast(-1.0, float8),
+    //   cast(-1.0, float8) + cast(-1.0, float8),
+    //   cast(1.1, float8) + cast(1.1, float8),
+    // }
+    //         "#,
+    //         )
+    //         .unwrap()
+    //     {
+    //         println!("{}", frame);
+    //     }
 
     // Test RQL to FlowGraph compilation
     rql_to_flow_example();
+
+    // Dataflow example
+    // dataflow_example();
 }
 
 fn rql_to_flow_example() {
@@ -107,7 +110,7 @@ create computed view test.adults(name: utf8, age: int1) with {
             engine.initialize().unwrap();
 
             // Find the source node (users table)
-            let source_node_id = flow_graph
+            let _source_node_id = flow_graph
                 .get_all_nodes()
                 .find(|node_id| {
                     if let Some(node) = flow_graph.get_node(node_id) {
@@ -132,27 +135,29 @@ create computed view test.adults(name: utf8, age: int1) with {
                 println!("Inserting user: {} (age {})", name, age);
 
                 // Create frame with user data
-                let frame = Frame::from_rows(
-                    &["name", "age"],
-                    &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
-                );
+                // let frame = Frame::from_rows(
+                //     &["name", "age"],
+                //     &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
+                // );
+                //
+                // // Process the change through the dataflow
+                // engine
+                //     .process_change(
+                //         &source_node_id,
+                //         Diff {
+                //             changes: vec![Change::Insert { frame }],
+                //             metadata: Default::default(),
+                //         },
+                //     )
+                //     .unwrap();
 
-                // Process the change through the dataflow
-                engine
-                    .process_change(
-                        &source_node_id,
-                        Diff {
-                            changes: vec![Change::Insert { frame }],
-                            metadata: Default::default(),
-                        },
-                    )
-                    .unwrap();
+                todo!()
             }
 
             // Query the computed view results
             println!("\n--- Computed View Results ---");
             let results = engine.get_view_data("adults").unwrap();
-            println!("Adults view contains {} rows:", results.row_count());
+            println!("Adults view contains {} rows:", results.first().unwrap().data.len());
             println!("{}", results);
 
             println!("\nExpected: Only users with age > 18 (Bob: 22, Diana: 25, Eve: 19)");

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstCast;
 use crate::ast::lex::Keyword::Cast;
 use crate::ast::parse::Parser;
-use crate::ast::AstCast;
 
 impl Parser {
     pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast> {

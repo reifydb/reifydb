@@ -1,62 +1,67 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
+
+use crate::columnar::ColumnData;
+use reifydb_core::value::container::NumberContainer;
+
 use crate::evaluate::{Convert, Demote, Promote};
-use reifydb_core::error::diagnostic::cast;
-use reifydb_core::frame::ColumnValues;
+use reifydb_core::result::error::diagnostic::cast;
+use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{
     SafeConvert, SafeDemote, SafePromote, parse_float, parse_int, parse_uint,
 };
-use reifydb_core::{BitVec, GetType, OwnedSpan, Span, Type, error, return_error};
+use reifydb_core::{GetType, OwnedSpan, Span, Type, error, return_error};
+use std::fmt::Debug;
 
 pub fn to_number(
-    values: &ColumnValues,
+    data: &ColumnData,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
+) -> crate::Result<ColumnData> {
     if !target.is_number() {
-        let source_type = values.get_type();
+        let source_type = data.get_type();
         return_error!(cast::unsupported_cast(span(), source_type, target));
     }
 
-    if values.get_type().is_number() {
-        return number_to_number(values, target, ctx, span);
+    if data.get_type().is_number() {
+        return number_to_number(data, target, ctx, span);
     }
 
-    if values.is_bool() {
-        return bool_to_number(values, target, span);
+    if data.is_bool() {
+        return bool_to_number(data, target, span);
     }
 
-    if values.is_utf8() {
+    if data.is_utf8() {
         return match target {
-            Type::Float4 | Type::Float8 => text_to_float(values, target, span),
-            _ => text_to_integer(values, target, span),
+            Type::Float4 | Type::Float8 => text_to_float(data, target, span),
+            _ => text_to_integer(data, target, span),
         };
     }
 
-    if values.is_float() {
-        return float_to_integer(values, target, span);
+    if data.is_float() {
+        return float_to_integer(data, target, span);
     }
 
-    let source_type = values.get_type();
+    let source_type = data.get_type();
     return_error!(cast::unsupported_cast(span(), source_type, target))
 }
 
 fn bool_to_number(
-    values: &ColumnValues,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
+) -> crate::Result<ColumnData> {
     macro_rules! bool_to_number {
         ($target_ty:ty, $true_val:expr, $false_val:expr) => {{
-            |out: &mut ColumnValues, val: bool| {
+            |out: &mut ColumnData, val: bool| {
                 out.push::<$target_ty>(if val { $true_val } else { $false_val })
             }
         }};
     }
 
-    match values {
-        ColumnValues::Bool(inner_values, bitvec) => {
+    match data {
+        ColumnData::Bool(container) => {
             let converter = match target {
                 Type::Int1 => bool_to_number!(i8, 1i8, 0i8),
                 Type::Int2 => bool_to_number!(i16, 1i16, 0i16),
@@ -71,14 +76,15 @@ fn bool_to_number(
                 Type::Float4 => bool_to_number!(f32, 1.0f32, 0.0f32),
                 Type::Float8 => bool_to_number!(f64, 1.0f64, 0.0f64),
                 _ => {
-                    let source_type = values.get_type();
+                    let source_type = data.get_type();
                     return_error!(cast::unsupported_cast(span(), source_type, target));
                 }
             };
 
-            let mut out = ColumnValues::with_capacity(target, inner_values.len());
-            for (idx, val) in inner_values.iter().enumerate() {
-                if bitvec.get(idx) {
+            let mut out = ColumnData::with_capacity(target, container.len());
+            for idx in 0..container.len() {
+                if container.is_defined(idx) {
+                    let val = container.data().get(idx);
                     converter(&mut out, val);
                 } else {
                     out.push_undefined();
@@ -87,52 +93,52 @@ fn bool_to_number(
             Ok(out)
         }
         _ => {
-            let source_type = values.get_type();
+            let source_type = data.get_type();
             return_error!(cast::unsupported_cast(span(), source_type, target))
         }
     }
 }
 
 fn float_to_integer(
-    values: &ColumnValues,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
-    match values {
-        ColumnValues::Float4(inner_values, bitvec) => match target {
-            Type::Int1 => f32_to_i8_vec(inner_values, bitvec),
-            Type::Int2 => f32_to_i16_vec(inner_values, bitvec),
-            Type::Int4 => f32_to_i32_vec(inner_values, bitvec),
-            Type::Int8 => f32_to_i64_vec(inner_values, bitvec),
-            Type::Int16 => f32_to_i128_vec(inner_values, bitvec),
-            Type::Uint1 => f32_to_u8_vec(inner_values, bitvec),
-            Type::Uint2 => f32_to_u16_vec(inner_values, bitvec),
-            Type::Uint4 => f32_to_u32_vec(inner_values, bitvec),
-            Type::Uint8 => f32_to_u64_vec(inner_values, bitvec),
-            Type::Uint16 => f32_to_u128_vec(inner_values, bitvec),
+) -> crate::Result<ColumnData> {
+    match data {
+        ColumnData::Float4(container) => match target {
+            Type::Int1 => f32_to_i8_vec(container),
+            Type::Int2 => f32_to_i16_vec(container),
+            Type::Int4 => f32_to_i32_vec(container),
+            Type::Int8 => f32_to_i64_vec(container),
+            Type::Int16 => f32_to_i128_vec(container),
+            Type::Uint1 => f32_to_u8_vec(container),
+            Type::Uint2 => f32_to_u16_vec(container),
+            Type::Uint4 => f32_to_u32_vec(container),
+            Type::Uint8 => f32_to_u64_vec(container),
+            Type::Uint16 => f32_to_u128_vec(container),
             _ => {
-                let source_type = values.get_type();
+                let source_type = data.get_type();
                 return_error!(cast::unsupported_cast(span(), source_type, target))
             }
         },
-        ColumnValues::Float8(inner_values, bitvec) => match target {
-            Type::Int1 => f64_to_i8_vec(inner_values, bitvec),
-            Type::Int2 => f64_to_i16_vec(inner_values, bitvec),
-            Type::Int4 => f64_to_i32_vec(inner_values, bitvec),
-            Type::Int8 => f64_to_i64_vec(inner_values, bitvec),
-            Type::Int16 => f64_to_i128_vec(inner_values, bitvec),
-            Type::Uint1 => f64_to_u8_vec(inner_values, bitvec),
-            Type::Uint2 => f64_to_u16_vec(inner_values, bitvec),
-            Type::Uint4 => f64_to_u32_vec(inner_values, bitvec),
-            Type::Uint8 => f64_to_u64_vec(inner_values, bitvec),
-            Type::Uint16 => f64_to_u128_vec(inner_values, bitvec),
+        ColumnData::Float8(container) => match target {
+            Type::Int1 => f64_to_i8_vec(container),
+            Type::Int2 => f64_to_i16_vec(container),
+            Type::Int4 => f64_to_i32_vec(container),
+            Type::Int8 => f64_to_i64_vec(container),
+            Type::Int16 => f64_to_i128_vec(container),
+            Type::Uint1 => f64_to_u8_vec(container),
+            Type::Uint2 => f64_to_u16_vec(container),
+            Type::Uint4 => f64_to_u32_vec(container),
+            Type::Uint8 => f64_to_u64_vec(container),
+            Type::Uint16 => f64_to_u128_vec(container),
             _ => {
-                let source_type = values.get_type();
+                let source_type = data.get_type();
                 return_error!(cast::unsupported_cast(span(), source_type, target))
             }
         },
         _ => {
-            let source_type = values.get_type();
+            let source_type = data.get_type();
             return_error!(cast::unsupported_cast(span(), source_type, target))
         }
     }
@@ -154,16 +160,17 @@ macro_rules! parse_and_push {
 }
 
 fn text_to_integer(
-    values: &ColumnValues,
+    data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
-    match values {
-        ColumnValues::Utf8(inner_values, bitvec) => {
+) -> crate::Result<ColumnData> {
+    match data {
+        ColumnData::Utf8(container) => {
             let base_span = span();
-            let mut out = ColumnValues::with_capacity(target, inner_values.len());
-            for (idx, val) in inner_values.iter().enumerate() {
-                if bitvec.get(idx) {
+            let mut out = ColumnData::with_capacity(target, container.len());
+            for idx in 0..container.len() {
+                if container.is_defined(idx) {
+                    let val = &container[idx];
                     use reifydb_core::BorrowedSpan;
                     let temp_span =
                         BorrowedSpan::with_position(val, base_span.line(), base_span.column());
@@ -205,7 +212,7 @@ fn text_to_integer(
                             base_span
                         ),
                         _ => {
-                            let source_type = values.get_type();
+                            let source_type = data.get_type();
                             return_error!(cast::unsupported_cast(
                                 base_span.clone(),
                                 source_type,
@@ -220,23 +227,24 @@ fn text_to_integer(
             Ok(out)
         }
         _ => {
-            let source_type = values.get_type();
+            let source_type = data.get_type();
             return_error!(cast::unsupported_cast(span(), source_type, target))
         }
     }
 }
 
 fn text_to_float(
-    column_values: &ColumnValues,
+    column_data: &ColumnData,
     target: Type,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
-    if let ColumnValues::Utf8(inner_values, bitvec) = column_values {
+) -> crate::Result<ColumnData> {
+    if let ColumnData::Utf8(container) = column_data {
         // Create base span once for efficiency
         let base_span = span();
-        let mut out = ColumnValues::with_capacity(target, inner_values.len());
-        for (idx, val) in inner_values.iter().enumerate() {
-            if bitvec.get(idx) {
+        let mut out = ColumnData::with_capacity(target, container.len());
+        for idx in 0..container.len() {
+            if container.is_defined(idx) {
+                let val = &container[idx];
                 // Create efficient borrowed span for parsing
                 use reifydb_core::BorrowedSpan;
                 let temp_span =
@@ -263,7 +271,7 @@ fn text_to_float(
                         })?)
                     }
                     _ => {
-                        let source_type = column_values.get_type();
+                        let source_type = column_data.get_type();
                         return_error!(cast::unsupported_cast(
                             base_span.clone(),
                             source_type,
@@ -277,17 +285,21 @@ fn text_to_float(
         }
         Ok(out)
     } else {
-        let source_type = column_values.get_type();
+        let source_type = column_data.get_type();
         return_error!(cast::unsupported_cast(span(), source_type, target))
     }
 }
 
 macro_rules! float_to_int_vec {
     ($fn_name:ident, $float_ty:ty, $int_ty:ty, $target_type:expr, $min_val:expr, $max_val:expr) => {
-        fn $fn_name(values: &[$float_ty], bitvec: &BitVec) -> crate::Result<ColumnValues> {
-            let mut out = ColumnValues::with_capacity($target_type, values.len());
-            for (idx, &val) in values.iter().enumerate() {
-                if bitvec.get(idx) {
+        fn $fn_name(container: &NumberContainer<$float_ty>) -> crate::Result<ColumnData>
+        where
+            $float_ty: Clone + Debug + Default + IsNumber,
+        {
+            let mut out = ColumnData::with_capacity($target_type, container.len());
+            for idx in 0..container.len() {
+                if container.is_defined(idx) {
+                    let val = container[idx];
                     let truncated = val.trunc();
                     if truncated >= $min_val && truncated <= $max_val {
                         out.push::<$int_ty>(truncated as $int_ty);
@@ -326,13 +338,13 @@ float_to_int_vec!(f64_to_u64_vec, f64, u64, Type::Uint8, 0.0, u64::MAX as f64);
 float_to_int_vec!(f64_to_u128_vec, f64, u128, Type::Uint16, 0.0, u128::MAX as f64);
 
 fn number_to_number(
-    values: &ColumnValues,
+    data: &ColumnData,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
+) -> crate::Result<ColumnData> {
     if !target.is_number() {
-        return_error!(cast::unsupported_cast(span(), values.get_type(), target,));
+        return_error!(cast::unsupported_cast(span(), data.get_type(), target,));
     }
 
     macro_rules! cast {
@@ -342,36 +354,33 @@ fn number_to_number(
                 demote => [ $( ($dem_variant:ident, $dem_ty:ty) ),* ],
                 convert => [ $( ($con_variant:ident, $con_ty:ty) ),* ]
             ) => {
-            if let ColumnValues::$src_variant(src_values, bitvec) = values {
+            if let ColumnData::$src_variant(container) = data {
                     match target {
                         $(
                         Type::$pro_variant => return promote_vec::<$src_ty, $pro_ty>(
-                            src_values,
-                                bitvec,
+                            container,
                                 ctx,
                                 &span,
                                 Type::$pro_variant,
-                                ColumnValues::push::<$pro_ty>,
+                                ColumnData::push::<$pro_ty>,
                             ),
                         )*
                         $(
                         Type::$dem_variant => return demote_vec::<$src_ty, $dem_ty>(
-                            src_values,
-                                    bitvec,
+                            container,
                                     ctx,
                                     &span,
                                     Type::$dem_variant,
-                                    ColumnValues::push::<$dem_ty>,
+                                    ColumnData::push::<$dem_ty>,
                                 ),
                         )*
                         $(
                         Type::$con_variant => return convert_vec::<$src_ty, $con_ty>(
-                            src_values,
-                                bitvec,
+                            container,
                                 ctx,
                                 &span,
                                 Type::$con_variant,
-                                ColumnValues::push::<$con_ty>,
+                                ColumnData::push::<$con_ty>,
                             ),
                         )*
                         _ => {}
@@ -452,25 +461,25 @@ fn number_to_number(
         convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
     );
 
-    let source_type = values.get_type();
+    let source_type = data.get_type();
     return_error!(cast::unsupported_cast(span(), source_type, target))
 }
 
 pub(crate) fn demote_vec<From, To>(
-    values: &[From],
-    bitvec: &BitVec,
+    container: &NumberContainer<From>,
     demote: impl Demote,
     span: impl Fn() -> OwnedSpan,
     target_kind: Type,
-    mut push: impl FnMut(&mut ColumnValues, To),
-) -> crate::Result<ColumnValues>
+    mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
 where
-    From: Copy + SafeDemote<To>,
+    From: Copy + SafeDemote<To> + Clone + Debug + Default + IsNumber,
     To: GetType,
 {
-    let mut out = ColumnValues::with_capacity(target_kind, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
+    let mut out = ColumnData::with_capacity(target_kind, container.len());
+    for idx in 0..container.len() {
+        if container.is_defined(idx) {
+            let val = container[idx];
             match demote.demote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -483,20 +492,20 @@ where
 }
 
 pub(crate) fn promote_vec<From, To>(
-    values: &[From],
-    bitvec: &BitVec,
+    container: &NumberContainer<From>,
     ctx: impl Promote,
     span: impl Fn() -> OwnedSpan,
     target_kind: Type,
-    mut push: impl FnMut(&mut ColumnValues, To),
-) -> crate::Result<ColumnValues>
+    mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
 where
-    From: Copy + SafePromote<To>,
+    From: Copy + SafePromote<To> + Clone + Debug + Default + IsNumber,
     To: GetType,
 {
-    let mut out = ColumnValues::with_capacity(target_kind, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
+    let mut out = ColumnData::with_capacity(target_kind, container.len());
+    for idx in 0..container.len() {
+        if container.is_defined(idx) {
+            let val = container[idx];
             match ctx.promote::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -509,20 +518,20 @@ where
 }
 
 pub(crate) fn convert_vec<From, To>(
-    values: &[From],
-    bitvec: &BitVec,
+    container: &NumberContainer<From>,
     ctx: impl Convert,
     span: impl Fn() -> OwnedSpan,
     target_kind: Type,
-    mut push: impl FnMut(&mut ColumnValues, To),
-) -> crate::Result<ColumnValues>
+    mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
 where
-    From: Copy + SafeConvert<To> + GetType,
+    From: Copy + SafeConvert<To> + GetType + Clone + Debug + Default + IsNumber,
     To: GetType,
 {
-    let mut out = ColumnValues::with_capacity(target_kind, values.len());
-    for (idx, &val) in values.iter().enumerate() {
-        if bitvec.get(idx) {
+    let mut out = ColumnData::with_capacity(target_kind, container.len());
+    for idx in 0..container.len() {
+        if container.is_defined(idx) {
+            let val = container[idx];
             match ctx.convert::<From, To>(val, &span)? {
                 Some(v) => push(&mut out, v),
                 None => out.push_undefined(),
@@ -539,19 +548,20 @@ mod tests {
     mod promote {
         use crate::evaluate::Promote;
         use crate::evaluate::cast::number::promote_vec;
+        use reifydb_core::value::container::NumberContainer;
         use reifydb_core::value::number::SafePromote;
         use reifydb_core::{BitVec, Type};
         use reifydb_core::{IntoOwnedSpan, OwnedSpan};
 
         #[test]
         fn test_ok() {
-            let values = [1i8, 2i8];
+            let data = [1i8, 2i8];
             let bitvec = BitVec::from_slice(&[true, true]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = promote_vec::<i8, i16>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int2,
@@ -566,13 +576,13 @@ mod tests {
         #[test]
         fn test_none_maps_to_undefined() {
             // 42 mapped to None
-            let values = [42i8];
+            let data = [42i8];
             let bitvec = BitVec::from_slice(&[true]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = promote_vec::<i8, i16>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int2,
@@ -580,18 +590,18 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!result.bitvec().get(0));
+            assert!(!result.is_defined(0));
         }
 
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
-            let values = [1i8];
+            let data = [1i8];
             let bitvec = BitVec::from_slice(&[false]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = promote_vec::<i8, i16>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int2,
@@ -599,18 +609,18 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!result.bitvec().get(0));
+            assert!(!result.is_defined(0));
         }
 
         #[test]
         fn test_mixed_bitvec_and_promote_failure() {
-            let values = [1i8, 42i8, 3i8, 4i8];
+            let data = [1i8, 42i8, 3i8, 4i8];
             let bitvec = BitVec::from_slice(&[true, true, false, true]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = promote_vec::<i8, i16>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int2,
@@ -620,10 +630,10 @@ mod tests {
 
             let slice = result.as_slice::<i16>();
             assert_eq!(slice, &[1i16, 0, 0, 4i16]);
-            assert!(result.bitvec().get(0));
-            assert!(!result.bitvec().get(1));
-            assert!(!result.bitvec().get(2));
-            assert!(result.bitvec().get(3));
+            assert!(result.is_defined(0));
+            assert!(!result.is_defined(1));
+            assert!(!result.is_defined(2));
+            assert!(result.is_defined(3));
         }
 
         struct TestCtx;
@@ -657,19 +667,20 @@ mod tests {
     mod demote {
         use crate::evaluate::Demote;
         use crate::evaluate::cast::number::demote_vec;
+        use reifydb_core::value::container::NumberContainer;
         use reifydb_core::value::number::SafeDemote;
         use reifydb_core::{BitVec, Type};
         use reifydb_core::{IntoOwnedSpan, OwnedSpan};
 
         #[test]
         fn test_ok() {
-            let values = [1i16, 2i16];
+            let data = [1i16, 2i16];
             let bitvec = BitVec::from_slice(&[true, true]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = demote_vec::<i16, i8>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int1,
@@ -679,19 +690,19 @@ mod tests {
 
             let slice: &[i8] = result.as_slice();
             assert_eq!(slice, &[1i8, 2i8]);
-            assert!(result.bitvec().get(0));
-            assert!(result.bitvec().get(1));
+            assert!(result.is_defined(0));
+            assert!(result.is_defined(1));
         }
 
         #[test]
         fn test_none_maps_to_undefined() {
-            let values = [42i16];
+            let data = [42i16];
             let bitvec = BitVec::from_slice(&[true]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = demote_vec::<i16, i8>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int1,
@@ -699,18 +710,18 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!result.bitvec().get(0));
+            assert!(!result.is_defined(0));
         }
 
         #[test]
         fn test_invalid_bitmaps_are_undefined() {
-            let values = [1i16];
-            let bitvec = BitVec::new(1, false);
+            let data = [1i16];
+            let bitvec = BitVec::repeat(1, false);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = demote_vec::<i16, i8>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int1,
@@ -718,18 +729,18 @@ mod tests {
             )
             .unwrap();
 
-            assert!(!result.bitvec().get(0));
+            assert!(!result.is_defined(0));
         }
 
         #[test]
         fn test_mixed_bitvec_and_demote_failure() {
-            let values = [1i16, 42i16, 3i16, 4i16];
+            let data = [1i16, 42i16, 3i16, 4i16];
             let bitvec = BitVec::from_slice(&[true, true, false, true]);
             let ctx = TestCtx::new();
 
+            let container = NumberContainer::new(data.to_vec(), bitvec);
             let result = demote_vec::<i16, i8>(
-                &values,
-                &bitvec,
+                &container,
                 &ctx,
                 || OwnedSpan::testing_empty(),
                 Type::Int1,
@@ -739,10 +750,10 @@ mod tests {
 
             let slice: &[i8] = result.as_slice();
             assert_eq!(slice, &[1i8, 0, 0, 4i8]);
-            assert!(result.bitvec().get(0));
-            assert!(!result.bitvec().get(1));
-            assert!(!result.bitvec().get(2));
-            assert!(result.bitvec().get(3));
+            assert!(result.is_defined(0));
+            assert!(!result.is_defined(1));
+            assert!(!result.is_defined(2));
+            assert!(result.is_defined(3));
         }
 
         struct TestCtx;

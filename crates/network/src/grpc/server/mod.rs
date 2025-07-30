@@ -73,7 +73,12 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(config: GrpcConfig, engine: Engine<VS, US, T>) -> Self {
-        Self(Arc::new(Inner { config, engine, socket_addr: OnceCell::new(), _phantom: std::marker::PhantomData }))
+        Self(Arc::new(Inner {
+            config,
+            engine,
+            socket_addr: OnceCell::new(),
+            _phantom: std::marker::PhantomData,
+        }))
     }
 
     pub async fn serve(self) -> Result<(), Error> {

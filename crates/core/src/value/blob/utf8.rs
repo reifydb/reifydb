@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::Blob;
-use crate::error::diagnostic::blob;
+use crate::result::error::diagnostic::blob;
 use crate::{Error, Span};
 
 impl Blob {

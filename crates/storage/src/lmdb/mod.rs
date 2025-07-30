@@ -4,7 +4,7 @@
 use heed::types::Bytes;
 use heed::{Database, Env, EnvOpenOptions};
 use reifydb_core::interface::{
-	UnversionedRemove, UnversionedUpsert, UnversionedStorage, VersionedStorage,
+    UnversionedRemove, UnversionedStorage, UnversionedUpsert, VersionedStorage,
 };
 use std::ops::Deref;
 use std::path::Path;

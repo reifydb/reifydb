@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::catalog::{ColumnId, TableId};
 use super::{EncodableKey, KeyKind};
+use crate::interface::catalog::{ColumnId, TableId};
 use crate::util::encoding::keycode;
 use crate::{EncodedKey, EncodedKeyRange};
 
-#[derive(Debug,Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableColumnKey {
     pub table: TableId,
     pub column: ColumnId,
@@ -77,8 +77,8 @@ impl TableColumnKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::interface::catalog::ColumnId;
     use super::{EncodableKey, TableColumnKey};
+    use crate::interface::catalog::ColumnId;
     use crate::interface::catalog::TableId;
 
     #[test]

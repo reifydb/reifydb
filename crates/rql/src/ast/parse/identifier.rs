@@ -14,10 +14,10 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::Ast::Identifier;
     use crate::ast::ast::AstIdentifier;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use crate::ast::Ast::Identifier;
 
     #[test]
     fn identifier() {
@@ -25,7 +25,9 @@ mod tests {
         let mut result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Identifier(AstIdentifier(token)) = result.pop().unwrap().0.pop().unwrap() else { panic!() };
+        let Identifier(AstIdentifier(token)) = result.pop().unwrap().0.pop().unwrap() else {
+            panic!()
+        };
         assert_eq!(token.value(), "x");
     }
 
@@ -35,7 +37,9 @@ mod tests {
         let mut result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 
-        let Identifier(AstIdentifier(token)) = result.pop().unwrap().0.pop().unwrap() else { panic!() };
+        let Identifier(AstIdentifier(token)) = result.pop().unwrap().0.pop().unwrap() else {
+            panic!()
+        };
         assert_eq!(token.value(), "some_identifier");
     }
 }

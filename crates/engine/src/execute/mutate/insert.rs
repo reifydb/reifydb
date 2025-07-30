@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::{Catalog, sequence::TableRowSequence};
-use reifydb_core::error::diagnostic::catalog::table_not_found;
-use reifydb_core::frame::Frame;
 use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
     interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
@@ -21,7 +21,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: InsertPlan,
-    ) -> crate::Result<Frame> {
+    ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
         let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
@@ -47,7 +47,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { frame, mask }) = input_node.next(
+        while let Some(Batch { columns }) = input_node.next(
             &Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
@@ -56,21 +56,17 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }),
             tx,
         )? {
-            let row_count = frame.row_count();
+            let row_count = columns.row_count();
 
             for row_idx in 0..row_count {
-                if !mask.get(row_idx) {
-                    continue;
-                }
-
                 let mut row = layout.allocate_row();
 
-                // For each table column, find if it exists in the input frame
+                // For each table column, find if it exists in the input columns
                 for (table_idx, table_column) in table.columns.iter().enumerate() {
                     let mut value = if let Some(input_column) =
-                        frame.columns.iter().find(|col| col.name() == table_column.name)
+                        columns.iter().find(|col| col.name() == table_column.name)
                     {
-                        input_column.values().get(row_idx)
+                        input_column.data().get_value(row_idx)
                     } else {
                         Value::Undefined
                     };
@@ -108,7 +104,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                         Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
                         Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                         Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
-                        Value::RowId(_v) => {},
+                        Value::RowId(_v) => {}
                         Value::Uuid4(v) => layout.set_uuid(&mut row, table_idx, *v),
                         Value::Uuid7(v) => layout.set_uuid(&mut row, table_idx, *v),
                         Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
@@ -124,8 +120,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             }
         }
 
-        // Return summary frame
-        Ok(Frame::single_row([
+        // Return summary columns
+        Ok(Columns::single_row([
             ("schema", Value::Utf8(schema.name)),
             ("table", Value::Utf8(table.name)),
             ("inserted", Value::Uint8(inserted_count as u64)),

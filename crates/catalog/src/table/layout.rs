@@ -12,9 +12,9 @@ pub(crate) mod table {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            Type::Uint8,  // id
-            Type::Uint8,  // schema id
-            Type::Utf8, // name
+            Type::Uint8, // id
+            Type::Uint8, // schema id
+            Type::Utf8,  // name
         ])
     });
 }
@@ -29,8 +29,8 @@ pub(crate) mod table_schema {
 
     pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
         Layout::new(&[
-            Type::Uint8,  // id
-            Type::Utf8, // name
+            Type::Uint8, // id
+            Type::Utf8,  // name
         ])
     });
 }

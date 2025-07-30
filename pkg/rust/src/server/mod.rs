@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::Frame;
 use reifydb_core::hook::lifecycle::{OnCreateHook, OnStartHook};
 use reifydb_core::hook::{BoxedHookIter, Callback};
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
+use reifydb_core::result::Frame;
 use reifydb_core::return_hooks;
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};

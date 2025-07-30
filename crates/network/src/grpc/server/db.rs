@@ -10,11 +10,11 @@ use tonic::{Request, Response, Status};
 use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
-use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::frame::Frame;
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
+use reifydb_core::result::Frame;
+use reifydb_core::result::error::diagnostic::Diagnostic;
 use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 
@@ -154,20 +154,17 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
 
 fn map_frame(frame: Frame) -> grpc::Frame {
     use grpc::{
-        Column, Date, DateTime, Frame, Int128, Interval, Time, UInt128, Value as GrpcValue,
+        Date, DateTime, Frame, FrameColumn, Int128, Interval, Time, UInt128, Value as GrpcValue,
         value::Type as GrpcType,
     };
 
     Frame {
-        name: frame.name,
         columns: frame
-            .columns
             .into_iter()
             .map(|col| {
-                let data_type = col.values().get_type();
+                let data_type = col.get_type();
 
-                let values = col
-                    .values()
+                let data = col
                     .iter()
                     .map(|v| {
                         let data_type = match v {
@@ -216,11 +213,11 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                     })
                     .collect();
 
-                Column {
-                    name: col.name().to_string(),
+                FrameColumn {
+                    name: col.name.to_string(),
                     ty: Type::to_u8(&data_type) as i32,
-                    values,
-                    frame: col.table().map(|s| s.to_string()),
+                    frame: col.table.as_ref().map(|s| s.to_string()),
+                    data,
                 }
             })
             .collect(),

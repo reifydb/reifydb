@@ -137,11 +137,7 @@ impl Span for OwnedSpan {
             String::new()
         };
 
-        OwnedSpan {
-            column: SpanColumn(self.column.0 + offset as u32),
-            line: self.line,
-            fragment,
-        }
+        OwnedSpan { column: SpanColumn(self.column.0 + offset as u32), line: self.line, fragment }
     }
 }
 
@@ -191,11 +187,7 @@ impl Span for &OwnedSpan {
             String::new()
         };
 
-        OwnedSpan {
-            column: SpanColumn(self.column.0 + offset as u32),
-            line: self.line,
-            fragment,
-        }
+        OwnedSpan { column: SpanColumn(self.column.0 + offset as u32), line: self.line, fragment }
     }
 }
 

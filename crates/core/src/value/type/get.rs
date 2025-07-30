@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Date, DateTime, Interval, Time, Type};
 use crate::value::uuid::{Uuid4, Uuid7};
+use crate::{Date, DateTime, Interval, Time, Type};
 
 pub trait GetType {
     fn get_type() -> Type;

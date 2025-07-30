@@ -6,9 +6,9 @@ use crate::column::ColumnId;
 use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 use crate::sequence::SystemSequence;
-use reifydb_core::error::diagnostic::catalog::column_policy_already_exists;
 use reifydb_core::interface::{ColumnPolicyKey, EncodableKey};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::result::error::diagnostic::catalog::column_policy_already_exists;
 use reifydb_core::return_error;
 
 impl Catalog {

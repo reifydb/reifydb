@@ -4,9 +4,9 @@
 pub use request::*;
 pub use response::*;
 
+#[cfg(feature = "client")]
+pub mod client;
 mod request;
 mod response;
 #[cfg(feature = "server")]
 pub mod server;
-#[cfg(feature = "client")]
-pub mod client;

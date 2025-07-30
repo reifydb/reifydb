@@ -30,21 +30,13 @@ impl_safe_add!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 impl SafeAdd for f32 {
     fn checked_add(self, r: Self) -> Option<Self> {
         let result = self + r;
-        if result.is_finite() {
-            Some(result)
-        } else {
-            None
-        }
+        if result.is_finite() { Some(result) } else { None }
     }
 
     fn saturating_add(self, r: Self) -> Self {
         let result = self + r;
         if result.is_infinite() {
-            if result.is_sign_positive() {
-                f32::MAX
-            } else {
-                f32::MIN
-            }
+            if result.is_sign_positive() { f32::MAX } else { f32::MIN }
         } else {
             result
         }
@@ -58,21 +50,13 @@ impl SafeAdd for f32 {
 impl SafeAdd for f64 {
     fn checked_add(self, r: Self) -> Option<Self> {
         let result = self + r;
-        if result.is_finite() {
-            Some(result)
-        } else {
-            None
-        }
+        if result.is_finite() { Some(result) } else { None }
     }
 
     fn saturating_add(self, r: Self) -> Self {
         let result = self + r;
         if result.is_infinite() {
-            if result.is_sign_positive() {
-                f64::MAX
-            } else {
-                f64::MIN
-            }
+            if result.is_sign_positive() { f64::MAX } else { f64::MIN }
         } else {
             result
         }
@@ -82,7 +66,6 @@ impl SafeAdd for f64 {
         self + r
     }
 }
-
 
 #[cfg(test)]
 mod tests {

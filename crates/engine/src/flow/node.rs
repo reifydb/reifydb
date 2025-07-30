@@ -1,6 +1,6 @@
-use reifydb_core::expression::Expression;
 use reifydb_core::interface::Table;
 use reifydb_core::{JoinType, SortKey};
+use reifydb_rql::expression::Expression;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -45,7 +45,7 @@ impl OperatorType {
             OperatorType::Join { .. } => true, // Hash tables for both sides
             OperatorType::Aggregate { .. } => true, // Running aggregation state
             OperatorType::TopK { .. } => true, // Sorted buffer of top K elements
-            OperatorType::Distinct { .. } => true, // Set of seen values
+            OperatorType::Distinct { .. } => true, // Set of seen data
         }
     }
 }

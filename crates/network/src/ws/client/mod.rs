@@ -8,13 +8,15 @@ use crate::ws::{
     TxRequest, TxResponse,
 };
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, TableQualified};
+use reifydb_core::result::error::diagnostic::Diagnostic;
+use reifydb_core::result::{Frame, FrameColumn, FrameColumnData};
 use reifydb_core::value::Blob;
-use reifydb_core::value::temporal::parse_interval;
-use reifydb_core::{
-    BitVec, CowVec, Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
+use reifydb_core::value::container::{
+    BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
+    TemporalContainer, UndefinedContainer, UuidContainer,
 };
+use reifydb_core::value::temporal::parse_interval;
+use reifydb_core::{Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
@@ -200,33 +202,19 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {
-        let mut index = HashMap::new();
         let columns = frame
             .columns
             .into_iter()
             .enumerate()
-            .map(|(i, col)| {
-                index.insert(col.name.clone(), i);
-                match col.frame {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
-                        table,
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
-                }
+            .map(|(_i, col)| FrameColumn {
+                schema: None,
+                table: col.frame,
+                name: col.name,
+                data: convert_column_values(col.ty, col.data),
             })
             .collect();
 
-        result.push(Frame {
-            name: frame.name,
-            columns,
-            index,
-            frame_index: std::collections::HashMap::new(),
-        })
+        result.push(Frame::new(columns))
     }
 
     result
@@ -236,33 +224,19 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {
-        let mut index = HashMap::new();
         let columns = frame
             .columns
             .into_iter()
             .enumerate()
-            .map(|(i, col)| {
-                index.insert(col.name.clone(), i);
-                match col.frame {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
-                        table,
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
-                        name: col.name,
-                        values: convert_column_values(col.ty, col.data),
-                    }),
-                }
+            .map(|(_i, col)| FrameColumn {
+                schema: None,
+                table: col.frame,
+                name: col.name,
+                data: convert_column_values(col.ty, col.data),
             })
             .collect();
 
-        result.push(Frame {
-            name: frame.name,
-            columns,
-            index,
-            frame_index: std::collections::HashMap::new(),
-        })
+        result.push(Frame::new(columns))
     }
 
     result
@@ -274,7 +248,7 @@ fn parse_interval_string(s: &str) -> Result<Interval, ()> {
     parse_interval(span).map_err(|_| ())
 }
 
-fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
+fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
     let bitvec: Vec<bool> = data.iter().map(|s| s != "⟪undefined⟫").collect();
 
     macro_rules! parse {
@@ -289,7 +263,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::$variant(CowVec::new(values), bitvec.into())
+            FrameColumnData::$variant(NumberContainer::new(values, bitvec.into()))
         }};
     }
 
@@ -303,7 +277,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     _ => false, // treat ⟪undefined⟫ or anything else as false
                 })
                 .collect();
-            ColumnValues::Bool(BitVec::from_slice(&values), bitvec.into())
+            FrameColumnData::Bool(BoolContainer::new(values, bitvec.into()))
         }
         Type::Float4 => parse!(f32, Float4),
         Type::Float8 => parse!(f64, Float8),
@@ -322,7 +296,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                 .iter()
                 .map(|s| if s == "⟪undefined⟫" { "".to_string() } else { s.clone() })
                 .collect();
-            ColumnValues::Utf8(CowVec::new(values), bitvec.into())
+            FrameColumnData::Utf8(StringContainer::new(values, bitvec.into()))
         }
         Type::Date => {
             let values: Vec<Date> = data
@@ -344,7 +318,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Date(CowVec::new(values), bitvec.into())
+            FrameColumnData::Date(TemporalContainer::new(values, bitvec.into()))
         }
         Type::DateTime => {
             let values: Vec<DateTime> = data
@@ -395,7 +369,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::DateTime(CowVec::new(values), bitvec.into())
+            FrameColumnData::DateTime(TemporalContainer::new(values, bitvec.into()))
         }
         Type::Time => {
             let values: Vec<Time> = data
@@ -433,7 +407,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Time(CowVec::new(values), bitvec.into())
+            FrameColumnData::Time(TemporalContainer::new(values, bitvec.into()))
         }
         Type::Interval => {
             let values: Vec<Interval> = data
@@ -447,9 +421,9 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Interval(CowVec::new(values), bitvec.into())
+            FrameColumnData::Interval(TemporalContainer::new(values, bitvec.into()))
         }
-        Type::Undefined => ColumnValues::Undefined(data.len()),
+        Type::Undefined => FrameColumnData::Undefined(UndefinedContainer::new(data.len())),
         Type::RowId => {
             let values: Vec<_> = data
                 .into_iter()
@@ -465,7 +439,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::RowId(CowVec::new(values), bitvec.into())
+            FrameColumnData::RowId(RowIdContainer::new(values, bitvec.into()))
         }
         Type::Uuid4 => {
             let values: Vec<reifydb_core::value::uuid::Uuid4> = data
@@ -480,7 +454,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Uuid4(CowVec::new(values), bitvec.into())
+            FrameColumnData::Uuid4(UuidContainer::new(values, bitvec.into()))
         }
         Type::Uuid7 => {
             let values: Vec<reifydb_core::value::uuid::Uuid7> = data
@@ -495,7 +469,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Uuid7(CowVec::new(values), bitvec.into())
+            FrameColumnData::Uuid7(UuidContainer::new(values, bitvec.into()))
         }
         Type::Blob => {
             let values: Vec<Blob> = data
@@ -517,7 +491,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> ColumnValues {
                     }
                 })
                 .collect();
-            ColumnValues::Blob(CowVec::new(values), bitvec.into())
+            FrameColumnData::Blob(BlobContainer::new(values, bitvec.into()))
         }
     }
 }

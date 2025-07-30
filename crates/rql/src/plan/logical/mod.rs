@@ -6,8 +6,8 @@ mod mutate;
 mod query;
 
 use crate::ast::{Ast, AstPolicy, AstPolicyKind, AstStatement};
+use crate::expression::{Expression, KeyedExpression};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::expression::{Expression, KeyedExpression};
 use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_core::{JoinType, OwnedSpan, SortKey};
 

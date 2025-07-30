@@ -1,5 +1,5 @@
-pub mod store;
 pub mod index;
+pub mod store;
 
-pub use store::StateStore;
 pub use index::{Index, IndexKey};
+pub use store::StateStore;

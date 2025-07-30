@@ -3,7 +3,7 @@
 
 use crate::evaluate::EvaluationContext;
 use reifydb_core::interface::ColumnSaturationPolicy;
-use reifydb_core::error::diagnostic::number::number_out_of_range;
+use reifydb_core::result::error::diagnostic::number::number_out_of_range;
 use reifydb_core::value::number::SafeDemote;
 use reifydb_core::{GetType, IntoOwnedSpan, error};
 
@@ -15,11 +15,7 @@ pub trait Demote {
 }
 
 impl Demote for EvaluationContext<'_> {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -29,11 +25,7 @@ impl Demote for EvaluationContext<'_> {
 }
 
 impl Demote for &EvaluationContext<'_> {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,

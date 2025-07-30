@@ -1,12 +1,12 @@
-use reifydb_core::frame::Frame;
-use std::collections::HashMap;
+use reifydb_core::Frame;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Change {
-    Insert { frame: Frame },
+    Insert { columns: Frame },
     Update { old: Frame, new: Frame },
-    Remove { frame: Frame },
+    Remove { columns: Frame },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

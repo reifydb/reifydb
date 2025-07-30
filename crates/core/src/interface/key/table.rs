@@ -6,7 +6,7 @@ use crate::interface::catalog::TableId;
 use crate::util::encoding::keycode;
 use crate::{EncodedKey, EncodedKeyRange};
 
-#[derive(Debug,Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableKey {
     pub table: TableId,
 }

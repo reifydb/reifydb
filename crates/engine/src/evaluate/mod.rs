@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::frame::{ColumnQualified, FrameColumn, TableQualified};
-use reifydb_core::expression::Expression;
+use crate::columnar::{ColumnQualified, TableQualified};
+use reifydb_rql::expression::Expression;
 
-use crate::function::{Functions, math, blob};
+use crate::columnar::Column;
+use crate::function::{Functions, blob, math};
 pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 
 mod access;
@@ -26,7 +27,7 @@ pub(crate) struct Evaluator {
 
 impl Default for Evaluator {
     fn default() -> Self {
-        Self { 
+        Self {
             functions: Functions::builder()
                 .register_scalar("abs", math::scalar::Abs::new)
                 .register_scalar("avg", math::scalar::Avg::new)
@@ -34,7 +35,7 @@ impl Default for Evaluator {
                 .register_scalar("blob::b64", blob::BlobB64::new)
                 .register_scalar("blob::b64url", blob::BlobB64url::new)
                 .register_scalar("blob::utf8", blob::BlobUtf8::new)
-                .build() 
+                .build(),
         }
     }
 }
@@ -44,7 +45,7 @@ impl Evaluator {
         &mut self,
         expr: &Expression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<FrameColumn> {
+    ) -> crate::Result<Column> {
         match expr {
             Expression::AccessTable(expr) => self.access(expr, ctx),
             Expression::Alias(expr) => self.alias(expr, ctx),
@@ -74,7 +75,7 @@ impl Evaluator {
     }
 }
 
-pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<FrameColumn> {
+pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Column> {
     let mut evaluator = Evaluator {
         functions: Functions::builder()
             .register_scalar("abs", math::scalar::Abs::new)
@@ -89,17 +90,16 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Fra
     // Ensures that result column data type matches the expected target column type
     if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
         let mut column = evaluator.evaluate(expr, ctx)?;
-        let new_values = cast::cast_column_values(&column.values(), ty, ctx, expr.lazy_span())?;
+        let data = cast::cast_column_data(&column.data(), ty, ctx, expr.lazy_span())?;
         column = match column.table() {
-            Some(table) => FrameColumn::TableQualified(TableQualified {
+            Some(table) => Column::TableQualified(TableQualified {
                 table: table.to_string(),
                 name: column.name().to_string(),
-                values: new_values,
+                data,
             }),
-            None => FrameColumn::ColumnQualified(ColumnQualified {
-                name: column.name().to_string(),
-                values: new_values,
-            }),
+            None => {
+                Column::ColumnQualified(ColumnQualified { name: column.name().to_string(), data })
+            }
         };
         Ok(column)
     } else {

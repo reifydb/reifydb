@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{return_error, BorrowedSpan, DateTime, Error, Span};
-use crate::error::diagnostic::temporal;
 use super::date::parse_date;
 use super::time::parse_time;
+use crate::result::error::diagnostic::temporal;
+use crate::{BorrowedSpan, DateTime, Error, Span, return_error};
 
 pub fn parse_datetime(span: impl Span) -> Result<DateTime, Error> {
     let parts = span.split('T');

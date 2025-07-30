@@ -1,13 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::columns::Columns;
+use crate::columnar::layout::ColumnsLayout;
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;
-use reifydb_core::frame::{ColumnQualified, ColumnValues, Frame, FrameColumn, FrameLayout};
+use reifydb_core::Value;
 use reifydb_core::interface::Rx;
-use reifydb_core::{BitVec, Value};
-use reifydb_core::expression::Expression;
+use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -20,7 +22,7 @@ pub(crate) struct AggregateNode {
     input: Box<dyn ExecutionPlan>,
     by: Vec<Expression>,
     map: Vec<Expression>,
-    layout: Option<FrameLayout>,
+    layout: Option<ColumnsLayout>,
     context: Arc<ExecutionContext>,
 }
 
@@ -47,8 +49,8 @@ impl ExecutionPlan for AggregateNode {
         let mut seen_groups = HashSet::<Vec<Value>>::new();
         let mut group_key_order: Vec<Vec<Value>> = Vec::new();
 
-        while let Some(Batch { frame, mask }) = self.input.next(ctx, rx)? {
-            let groups = frame.group_by_view(&keys)?;
+        while let Some(Batch { columns }) = self.input.next(ctx, rx)? {
+            let groups = columns.group_by_view(&keys)?;
 
             for (group_key, _) in &groups {
                 if seen_groups.insert(group_key.clone()) {
@@ -58,8 +60,8 @@ impl ExecutionPlan for AggregateNode {
 
             for projection in &mut projections {
                 if let Projection::Aggregate { function, column, .. } = projection {
-                    let column = frame.column(column).unwrap();
-                    function.aggregate(column, &mask, &groups).unwrap();
+                    let column = columns.column(column).unwrap();
+                    function.aggregate(column, &groups).unwrap();
                 }
             }
         }
@@ -71,36 +73,33 @@ impl ExecutionPlan for AggregateNode {
                 Projection::Group { alias, column, .. } => {
                     let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-                    let mut c = FrameColumn::ColumnQualified(ColumnQualified {
+                    let mut c = Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment.clone(),
-                        values: ColumnValues::int2_with_capacity(group_key_order.len()),
+                        data: ColumnData::int2_with_capacity(group_key_order.len()),
                     });
                     for key in &group_key_order {
-                        c.values_mut().push_value(key[col_idx].clone());
+                        c.data_mut().push_value(key[col_idx].clone());
                     }
                     result_columns.push(c);
                 }
                 Projection::Aggregate { alias, mut function, .. } => {
-                    let (keys_out, mut values) = function.finalize().unwrap();
-                    align_column_values(&group_key_order, &keys_out, &mut values).unwrap();
-                    result_columns.push(FrameColumn::ColumnQualified(ColumnQualified {
+                    let (keys_out, mut data) = function.finalize().unwrap();
+                    align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
+                    result_columns.push(Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment.clone(),
-                        values,
+                        data,
                     }));
                 }
             }
         }
 
-        let row_count = group_key_order.len();
-        let mask = BitVec::new(row_count, true);
+        let columns = Columns::new(result_columns);
+        self.layout = Some(ColumnsLayout::from_columns(&columns));
 
-        let frame = Frame::new(result_columns);
-        self.layout = Some(FrameLayout::from_frame(&frame));
-
-        Ok(Some(Batch { frame, mask }))
+        Ok(Some(Batch { columns }))
     }
 
-    fn layout(&self) -> Option<FrameLayout> {
+    fn layout(&self) -> Option<ColumnsLayout> {
         self.layout.clone().or(self.input.layout())
     }
 }
@@ -148,10 +147,10 @@ fn parse_keys_and_aggregates<'a>(
     Ok((keys, projections))
 }
 
-fn align_column_values(
+fn align_column_data(
     group_key_order: &[Vec<Value>],
     keys: &[Vec<Value>],
-    values: &mut ColumnValues,
+    data: &mut ColumnData,
 ) -> crate::Result<()> {
     let mut key_to_index = HashMap::new();
     for (i, key) in keys.iter().enumerate() {
@@ -170,6 +169,6 @@ fn align_column_values(
         })
         .collect::<crate::Result<Vec<_>>>()?;
 
-    values.reorder(&reorder_indices);
+    data.reorder(&reorder_indices);
     Ok(())
 }

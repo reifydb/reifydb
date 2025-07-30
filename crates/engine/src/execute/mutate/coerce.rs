@@ -1,7 +1,8 @@
+use crate::columnar::ColumnData;
+use crate::columnar::columns::Columns;
 use crate::evaluate::EvaluationContext;
-use crate::evaluate::cast::cast_column_values;
-use reifydb_core::frame::ColumnValues;
-use reifydb_core::{BitVec, BorrowedSpan, ColumnDescriptor, Span, Type, Value};
+use crate::evaluate::cast::cast_column_data;
+use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure
 ///
@@ -26,24 +27,23 @@ pub(crate) fn coerce_value_to_column_type(
         return Ok(value);
     }
 
-    let temp_column_values = ColumnValues::from(value.clone());
+    let temp_column_data = ColumnData::from(value.clone());
     let value_str = value.to_string();
 
     let column_policies = column.policies.clone();
 
-    let coerced_column = cast_column_values(
-        &temp_column_values,
+    let coerced_column = cast_column_data(
+        &temp_column_data,
         target,
         &EvaluationContext {
             target_column: Some(column),
             column_policies,
-            mask: BitVec::new(1, true),
-            columns: Vec::new(),
+            columns: Columns::empty(),
             row_count: 1,
             take: None,
         },
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;
 
-    Ok(coerced_column.get(0))
+    Ok(coerced_column.get_value(0))
 }

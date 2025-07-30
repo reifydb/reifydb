@@ -5,7 +5,7 @@ use super::{ensure_table_exists, table_name};
 use crate::sqlite::Sqlite;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::VersionedApply;
-use reifydb_core::{CowVec, Version, Result};
+use reifydb_core::{CowVec, Result, Version};
 use rusqlite::params;
 use std::collections::HashSet;
 use std::sync::{LazyLock, RwLock};

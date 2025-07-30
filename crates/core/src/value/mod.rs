@@ -7,6 +7,7 @@ use std::fmt::{Display, Formatter};
 
 pub mod blob;
 pub mod boolean;
+pub mod container;
 mod date;
 mod datetime;
 mod interval;

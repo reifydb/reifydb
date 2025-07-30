@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstDescribe;
 use crate::ast::lex::Keyword::Describe;
 use crate::ast::lex::Operator;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::AstDescribe;
 
 impl Parser {
     pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe> {

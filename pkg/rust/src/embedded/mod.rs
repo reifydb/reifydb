@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::DB;
-use reifydb_core::frame::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
+use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
 use tokio::task::spawn_blocking;
 

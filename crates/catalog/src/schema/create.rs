@@ -5,9 +5,9 @@ use crate::Catalog;
 use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
-use reifydb_core::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::interface::{EncodableKey, SchemaKey};
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::result::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::{OwnedSpan, return_error};
 
 #[derive(Debug, Clone)]

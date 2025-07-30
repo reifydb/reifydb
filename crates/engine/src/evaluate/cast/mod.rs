@@ -8,11 +8,11 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
+use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
-use reifydb_core::error::diagnostic::cast;
-use reifydb_core::frame::{ColumnValues, FrameColumn, TableQualified, ColumnQualified};
+use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::{OwnedSpan, Type, err, error};
-use reifydb_core::expression::{CastExpression, Expression};
+use reifydb_rql::expression::{CastExpression, Expression};
 use std::ops::Deref;
 
 impl Evaluator {
@@ -20,37 +20,32 @@ impl Evaluator {
         &mut self,
         cast: &CastExpression,
         ctx: &EvaluationContext,
-    ) -> crate::Result<FrameColumn> {
+    ) -> crate::Result<Column> {
         let cast_span = cast.lazy_span();
 
         // FIXME optimization does not apply for prefix expressions, like cast(-2 as int1) at the moment
         match cast.expression.deref() {
-            // Optimization: it is a constant value and we now the target ty, therefore it is possible to create the values directly
+            // Optimization: it is a constant value and we now the target ty, therefore it is possible to create the data directly
             // which means there is no reason to further adjust the column
             Expression::Constant(expr) => self.constant_of(expr, cast.to.ty, ctx),
             expr => {
                 let column = self.evaluate(expr, ctx)?;
 
-                // Re-enable cast functionality using the moved cast module
-                let casted_values = cast_column_values(
-                    &column.values(),
-                    cast.to.ty,
-                    ctx,
-                    cast.expression.lazy_span(),
-                )
-                .map_err(|e| {
-                    error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
-                })?;
-                
+                let casted =
+                    cast_column_data(&column.data(), cast.to.ty, ctx, cast.expression.lazy_span())
+                        .map_err(|e| {
+                            error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
+                        })?;
+
                 Ok(match column.table() {
-                    Some(table) => FrameColumn::TableQualified(TableQualified {
+                    Some(table) => Column::TableQualified(TableQualified {
                         table: table.to_string(),
                         name: column.name().to_string(),
-                        values: casted_values,
+                        data: casted,
                     }),
-                    None => FrameColumn::ColumnQualified(ColumnQualified {
+                    None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        values: casted_values,
+                        data: casted,
                     }),
                 })
             }
@@ -58,30 +53,31 @@ impl Evaluator {
     }
 }
 
-pub fn cast_column_values(
-    values: &ColumnValues,
+pub fn cast_column_data(
+    data: &ColumnData,
     target: Type,
     ctx: impl Promote + Demote + Convert,
     span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnValues> {
-    if let ColumnValues::Undefined(size) = values {
-        let mut result = ColumnValues::with_capacity(target, *size);
-        for _ in 0..*size {
+) -> crate::Result<ColumnData> {
+    if let ColumnData::Undefined(container) = data {
+        let mut result = ColumnData::with_capacity(target, container.len());
+        for _ in 0..container.len() {
             result.push_undefined();
         }
         return Ok(result);
     }
-    let source_type = values.get_type();
+    let source_type = data.get_type();
     match (source_type, target) {
-        _ if target == source_type => Ok(values.clone()),
-        (_, target) if target.is_number() => number::to_number(values, target, ctx, span),
-        (_, target) if target.is_bool() => boolean::to_boolean(values, span),
-        (_, target) if target.is_utf8() => text::to_text(values, span),
-        (_, target) if target.is_temporal() => temporal::to_temporal(values, target, span),
-        (_, target) if target.is_uuid() => uuid::to_uuid(values, target, span),
-        (_, target) if target.is_blob() => blob::to_blob(values, span),
-        (source, target) if source.is_uuid() || target.is_uuid() => uuid::to_uuid(values, target, span),
-        (source, _) if source.is_blob() => blob::from_blob(values, target, span),
+        _ if target == source_type => Ok(data.clone()),
+        (_, target) if target.is_number() => number::to_number(data, target, ctx, span),
+        (_, target) if target.is_blob() => blob::to_blob(data, span),
+        (_, target) if target.is_bool() => boolean::to_boolean(data, span),
+        (_, target) if target.is_utf8() => text::to_text(data, span),
+        (_, target) if target.is_temporal() => temporal::to_temporal(data, target, span),
+        (_, target) if target.is_uuid() => uuid::to_uuid(data, target, span),
+        (source, target) if source.is_uuid() || target.is_uuid() => {
+            uuid::to_uuid(data, target, span)
+        }
         _ => {
             err!(cast::unsupported_cast(span(), source_type, target))
         }
@@ -90,15 +86,15 @@ pub fn cast_column_values(
 
 #[cfg(test)]
 mod tests {
+    use crate::columnar::ColumnData;
     use crate::evaluate::EvaluationContext;
     use crate::evaluate::Expression;
     use crate::evaluate::evaluate;
     use ConstantExpression::Number;
     use Expression::{Cast, Constant};
-    use reifydb_core::frame::ColumnValues;
     use reifydb_core::{OwnedSpan, Type};
-    use reifydb_core::expression::Expression::Prefix;
-    use reifydb_core::expression::{
+    use reifydb_rql::expression::Expression::Prefix;
+    use reifydb_rql::expression::{
         CastExpression, ConstantExpression, DataTypeExpression, PrefixExpression, PrefixOperator,
     };
 
@@ -115,7 +111,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::int4([42]));
+        assert_eq!(*result.data(), ColumnData::int4([42]));
     }
 
     #[test]
@@ -135,7 +131,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::int4([-42]));
+        assert_eq!(*result.data(), ColumnData::int4([-42]));
     }
 
     #[test]
@@ -155,7 +151,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::int1([-128]));
+        assert_eq!(*result.data(), ColumnData::int1([-128]));
     }
 
     #[test]
@@ -171,7 +167,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::float8([4.2]));
+        assert_eq!(*result.data(), ColumnData::float8([4.2]));
     }
 
     #[test]
@@ -187,7 +183,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::float4([4.2]));
+        assert_eq!(*result.data(), ColumnData::float4([4.2]));
     }
 
     #[test]
@@ -203,7 +199,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::float4([-1.1]));
+        assert_eq!(*result.data(), ColumnData::float4([-1.1]));
     }
 
     #[test]
@@ -219,7 +215,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::float8([-1.1]));
+        assert_eq!(*result.data(), ColumnData::float8([-1.1]));
     }
 
     #[test]
@@ -237,7 +233,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(*result.values(), ColumnValues::bool([false]));
+        assert_eq!(*result.data(), ColumnData::bool([false]));
     }
 
     #[test]

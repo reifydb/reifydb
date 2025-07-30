@@ -5,7 +5,7 @@
 
 use crate::ast::AstIdentifier;
 use reifydb_core::Result;
-use reifydb_core::error::diagnostic::ast::unrecognized_type;
+use reifydb_core::result::error::diagnostic::ast::unrecognized_type;
 use reifydb_core::{Type, return_error};
 
 pub mod ast;

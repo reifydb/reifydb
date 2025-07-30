@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::{Column, ColumnData};
 use crate::function::ScalarFunction;
 use reifydb_core::OwnedSpan;
-use reifydb_core::frame::{ColumnValues, FrameColumn};
 use reifydb_core::value::Blob;
 
 pub struct BlobHex;
@@ -15,24 +15,24 @@ impl BlobHex {
 }
 
 impl ScalarFunction for BlobHex {
-    fn scalar(&self, columns: &[FrameColumn], row_count: usize) -> crate::Result<ColumnValues> {
+    fn scalar(&self, columns: &[Column], row_count: usize) -> crate::Result<ColumnData> {
         let column = columns.get(0).unwrap();
 
-        match &column.values() {
-            ColumnValues::Utf8(values, bitvec) => {
-                let mut result_values = Vec::with_capacity(values.len());
+        match &column.data() {
+            ColumnData::Utf8(container) => {
+                let mut result_data = Vec::with_capacity(container.data().len());
 
                 for i in 0..row_count {
-                    if bitvec.get(i) {
-                        let hex_str = &values[i];
+                    if container.is_defined(i) {
+                        let hex_str = &container[i];
                         let blob = Blob::from_hex(OwnedSpan::testing(hex_str))?;
-                        result_values.push(blob);
+                        result_data.push(blob);
                     } else {
-                        result_values.push(Blob::empty())
+                        result_data.push(Blob::empty())
                     }
                 }
 
-                Ok(ColumnValues::blob_with_bitvec(result_values, bitvec.clone()))
+                Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
             }
             _ => unimplemented!("BlobHex only supports text input"),
         }
@@ -42,28 +42,28 @@ impl ScalarFunction for BlobHex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::frame::{ColumnQualified, FrameColumn};
-    use reifydb_core::{BitVec, CowVec};
+    use crate::columnar::ColumnQualified;
+    use reifydb_core::value::container::StringContainer;
 
     #[test]
     fn test_blob_hex_valid_input() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["deadbeef".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["deadbeef".to_string()];
+        let bitvec = vec![true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+        if let ColumnData::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
         } else {
-            panic!("Expected BLOB column values");
+            panic!("Expected BLOB column data");
         }
     }
 
@@ -71,21 +71,21 @@ mod tests {
     fn test_blob_hex_empty_string() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["".to_string()];
+        let bitvec = vec![true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[] as &[u8]);
+        if let ColumnData::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[] as &[u8]);
         } else {
-            panic!("Expected BLOB column values");
+            panic!("Expected BLOB column data");
         }
     }
 
@@ -93,21 +93,21 @@ mod tests {
     fn test_blob_hex_uppercase() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["DEADBEEF".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["DEADBEEF".to_string()];
+        let bitvec = vec![true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+        if let ColumnData::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
         } else {
-            panic!("Expected BLOB column values");
+            panic!("Expected BLOB column data");
         }
     }
 
@@ -115,21 +115,21 @@ mod tests {
     fn test_blob_hex_mixed_case() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["DeAdBeEf".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["DeAdBeEf".to_string()];
+        let bitvec = vec![true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 1);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(blobs[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+        if let ColumnData::Blob(container) = result {
+            assert_eq!(container.len(), 1);
+            assert!(container.is_defined(0));
+            assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
         } else {
-            panic!("Expected BLOB column values");
+            panic!("Expected BLOB column data");
         }
     }
 
@@ -137,53 +137,53 @@ mod tests {
     fn test_blob_hex_multiple_rows() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
-        let bitvec = BitVec::from_slice(&[true, true, true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
+        let bitvec = vec![true, true, true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 3);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(bitvec.get(1), true);
-            assert_eq!(bitvec.get(2), true);
+        if let ColumnData::Blob(container) = result {
+            assert_eq!(container.len(), 3);
+            assert!(container.is_defined(0));
+            assert!(container.is_defined(1));
+            assert!(container.is_defined(2));
 
-            assert_eq!(blobs[0].as_bytes(), &[0xff]);
-            assert_eq!(blobs[1].as_bytes(), &[0x00]);
-            assert_eq!(blobs[2].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+            assert_eq!(container[0].as_bytes(), &[0xff]);
+            assert_eq!(container[1].as_bytes(), &[0x00]);
+            assert_eq!(container[2].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
         } else {
-            panic!("Expected BLOB column values");
+            panic!("Expected BLOB column data");
         }
     }
 
     #[test]
-    fn test_blob_hex_with_null_values() {
+    fn test_blob_hex_with_null_data() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
-        let bitvec = BitVec::from_slice(&[true, false, true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
+        let bitvec = vec![true, false, true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 3).unwrap();
 
-        if let ColumnValues::Blob(blobs, bitvec) = result {
-            assert_eq!(blobs.len(), 3);
-            assert_eq!(bitvec.get(0), true);
-            assert_eq!(bitvec.get(1), false);
-            assert_eq!(bitvec.get(2), true);
+        if let ColumnData::Blob(container) = result {
+            assert_eq!(container.len(), 3);
+            assert!(container.is_defined(0));
+            assert!(!container.is_defined(1));
+            assert!(container.is_defined(2));
 
-            assert_eq!(blobs[0].as_bytes(), &[0xff]);
-            assert_eq!(blobs[1].as_bytes(), [].as_slice() as &[u8]);
-            assert_eq!(blobs[2].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
+            assert_eq!(container[0].as_bytes(), &[0xff]);
+            assert_eq!(container[1].as_bytes(), [].as_slice() as &[u8]);
+            assert_eq!(container[2].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
         } else {
-            panic!("Expected BLOB column values");
+            panic!("Expected BLOB column data");
         }
     }
 
@@ -191,11 +191,11 @@ mod tests {
     fn test_blob_hex_invalid_input_should_error() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["invalid_hex".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["invalid_hex".to_string()];
+        let bitvec = vec![true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);
@@ -206,11 +206,11 @@ mod tests {
     fn test_blob_hex_odd_length_should_error() {
         let function = BlobHex::new();
 
-        let hex_values = vec!["abc".to_string()];
-        let bitvec = BitVec::from_slice(&[true]);
-        let input_column = FrameColumn::ColumnQualified(ColumnQualified {
+        let hex_data = vec!["abc".to_string()];
+        let bitvec = vec![true];
+        let input_column = Column::ColumnQualified(ColumnQualified {
             name: "input".to_string(),
-            values: ColumnValues::Utf8(CowVec::new(hex_values), bitvec.clone()),
+            data: ColumnData::Utf8(StringContainer::new(hex_data, bitvec.into())),
         });
 
         let result = function.scalar(&[input_column], 1);

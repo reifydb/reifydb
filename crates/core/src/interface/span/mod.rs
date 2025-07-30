@@ -3,14 +3,14 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use owned::OwnedSpan;
 pub use borrowed::BorrowedSpan;
+pub use owned::OwnedSpan;
 
-mod owned;
 mod borrowed;
+mod owned;
 
 // Trait for types that can provide span information for parsing
-pub trait Span : Clone{
+pub trait Span: Clone {
     type SubSpan: Span + IntoOwnedSpan;
 
     fn fragment(&self) -> &str;

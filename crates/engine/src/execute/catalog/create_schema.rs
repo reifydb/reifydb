@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::columns::Columns;
 use crate::execute::Executor;
-use reifydb_core::frame::Frame;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
-use reifydb_core::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::result::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::{Value, return_error};
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
@@ -15,10 +15,10 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         &mut self,
         tx: &mut impl Tx<VS, US>,
         plan: CreateSchemaPlan,
-    ) -> crate::Result<Frame> {
+    ) -> crate::Result<Columns> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? {
             if plan.if_not_exists {
-                return Ok(Frame::single_row([
+                return Ok(Columns::single_row([
                     ("schema", Value::Utf8(plan.schema.to_string())),
                     ("created", Value::Bool(false)),
                 ]));
@@ -35,7 +35,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             },
         )?;
 
-        Ok(Frame::single_row([
+        Ok(Columns::single_row([
             ("schema", Value::Utf8(plan.schema.to_string())),
             ("created", Value::Bool(true)),
         ]))

@@ -7,4 +7,3 @@ pub mod binary;
 pub mod bincode;
 pub mod format;
 pub mod keycode;
-

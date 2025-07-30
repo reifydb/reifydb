@@ -3,10 +3,10 @@
 
 use crate::ast::{Ast, AstFrom};
 use crate::expression::ExpressionCompiler;
+use crate::expression::{IdentExpression, KeyedExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::err;
-use reifydb_core::error::diagnostic::Diagnostic;
-use reifydb_core::expression::{IdentExpression, KeyedExpression};
+use reifydb_core::result::error::diagnostic::Diagnostic;
 
 impl Compiler {
     pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {
@@ -60,7 +60,7 @@ mod tests {
     use super::*;
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
-    use reifydb_core::expression::{ConstantExpression, Expression};
+    use crate::expression::{ConstantExpression, Expression};
 
     #[test]
     fn test_compile_static_single_row() {

@@ -49,10 +49,7 @@ impl_safe_demote!(u128 => u64, u32, u16, u8);
 impl SafeDemote<f32> for f64 {
     fn checked_demote(self) -> Option<f32> {
         let demoted = self as f32;
-        if self.is_finite()
-            && self >= f32::MIN as f64
-            && self <= f32::MAX as f64
-        {
+        if self.is_finite() && self >= f32::MIN as f64 && self <= f32::MAX as f64 {
             Some(demoted)
         } else {
             None

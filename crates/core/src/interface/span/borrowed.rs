@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{Span, SpanColumn, SpanLine, OwnedSpan};
+use super::{OwnedSpan, Span, SpanColumn, SpanLine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BorrowedSpan<'a> {
@@ -72,11 +72,7 @@ impl<'a> Span for BorrowedSpan<'a> {
 
     fn sub_span(&self, offset: usize, length: usize) -> Self::SubSpan {
         let end = std::cmp::min(offset + length, self.fragment.len());
-        let fragment = if offset < self.fragment.len() {
-            &self.fragment[offset..end]
-        } else {
-            ""
-        };
+        let fragment = if offset < self.fragment.len() { &self.fragment[offset..end] } else { "" };
 
         BorrowedSpan {
             column: SpanColumn(self.column.0 + offset as u32),
@@ -133,11 +129,7 @@ impl<'a> Span for &BorrowedSpan<'a> {
 
     fn sub_span(&self, offset: usize, length: usize) -> Self::SubSpan {
         let end = std::cmp::min(offset + length, self.fragment.len());
-        let fragment = if offset < self.fragment.len() {
-            &self.fragment[offset..end]
-        } else {
-            ""
-        };
+        let fragment = if offset < self.fragment.len() { &self.fragment[offset..end] } else { "" };
 
         BorrowedSpan {
             column: SpanColumn(self.column.0 + offset as u32),

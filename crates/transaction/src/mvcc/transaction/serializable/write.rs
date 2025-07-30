@@ -12,11 +12,11 @@
 use super::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerTx;
-use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
 use crate::mvcc::transaction::range_rev::TransactionRangeRev;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::delta::Delta;
 use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};

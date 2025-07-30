@@ -8,6 +8,7 @@ mod inline;
 mod join_inner;
 mod join_left;
 mod join_natural;
+mod layout;
 mod map;
 mod scan;
 mod sort;

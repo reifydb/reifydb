@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::lmdb::Lmdb;
-use reifydb_core::{Result, Version};
 use reifydb_core::interface::{Unversioned, UnversionedScanRev, Versioned, VersionedScanRev};
+use reifydb_core::{Result, Version};
 
 impl VersionedScanRev for Lmdb {
     type ScanIterRev<'a> = IterRev;

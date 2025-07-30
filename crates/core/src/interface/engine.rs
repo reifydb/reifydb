@@ -1,6 +1,6 @@
-use crate::frame::Frame;
 use crate::hook::Hooks;
 use crate::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use crate::result::frame::Frame;
 use std::sync::RwLockWriteGuard;
 
 pub trait Engine<VS, US, T>: Send + Sync + Clone + 'static

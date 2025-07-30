@@ -10,9 +10,10 @@ mod convert;
 mod demote;
 mod promote;
 
-use reifydb_core::frame::FrameColumn;
+use crate::columnar::ColumnData;
+use crate::columnar::columns::Columns;
 use reifydb_core::{
-    BitVec, ColumnDescriptor,
+    ColumnDescriptor, Type,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 };
 
@@ -20,8 +21,7 @@ use reifydb_core::{
 pub(crate) struct EvaluationContext<'a> {
     pub(crate) target_column: Option<ColumnDescriptor<'a>>,
     pub(crate) column_policies: Vec<ColumnPolicyKind>,
-    pub(crate) mask: BitVec,
-    pub(crate) columns: Vec<FrameColumn>,
+    pub(crate) columns: Columns,
     pub(crate) row_count: usize,
     pub(crate) take: Option<usize>,
 }
@@ -32,8 +32,7 @@ impl<'a> EvaluationContext<'a> {
         Self {
             target_column: None,
             column_policies: Vec::new(),
-            mask: BitVec::new(0, false),
-            columns: vec![],
+            columns: Columns::empty(),
             row_count: 1,
             take: None,
         }
@@ -46,5 +45,10 @@ impl<'a> EvaluationContext<'a> {
                 ColumnPolicyKind::Saturation(policy) => Some(policy),
             })
             .unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+    }
+
+    #[inline]
+    pub fn pooled(&self, target: Type, capacity: usize) -> ColumnData {
+        ColumnData::with_capacity(target, capacity)
     }
 }

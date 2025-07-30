@@ -9,9 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::mvcc::transaction::version::VersionProvider;
 use crate::mvcc::transaction::*;
 use reifydb_core::Version;
-use crate::mvcc::transaction::version::VersionProvider;
 
 pub enum TransactionKind {
     Current(Version),
