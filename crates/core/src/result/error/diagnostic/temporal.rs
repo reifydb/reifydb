@@ -22,7 +22,8 @@ pub fn invalid_date_format(span: impl IntoOwnedSpan) -> Diagnostic {
 
 pub fn invalid_datetime_format(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
-    let label = Some(format!("expected YYYY-MM-DDTHH:MM:SS format, found '{}'", owned_span.fragment));
+    let label =
+        Some(format!("expected YYYY-MM-DDTHH:MM:SS format, found '{}'", owned_span.fragment));
     Diagnostic {
         code: "TEMPORAL_002".to_string(),
         statement: None,
@@ -99,8 +100,10 @@ pub fn invalid_year(span: impl IntoOwnedSpan) -> Diagnostic {
 
 pub fn invalid_month(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
-    let label =
-        Some(format!("month '{}' cannot be parsed as a number (expected 1-12)", owned_span.fragment));
+    let label = Some(format!(
+        "month '{}' cannot be parsed as a number (expected 1-12)",
+        owned_span.fragment
+    ));
     Diagnostic {
         code: "TEMPORAL_006".to_string(),
         statement: None,
@@ -133,8 +136,10 @@ pub fn invalid_day(span: impl IntoOwnedSpan) -> Diagnostic {
 
 pub fn invalid_hour(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
-    let label =
-        Some(format!("hour '{}' cannot be parsed as a number (expected 0-23)", owned_span.fragment));
+    let label = Some(format!(
+        "hour '{}' cannot be parsed as a number (expected 0-23)",
+        owned_span.fragment
+    ));
     Diagnostic {
         code: "TEMPORAL_008".to_string(),
         statement: None,
@@ -155,8 +160,10 @@ pub fn invalid_hour(span: impl IntoOwnedSpan) -> Diagnostic {
 
 pub fn invalid_minute(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
-    let label =
-        Some(format!("minute '{}' cannot be parsed as a number (expected 0-59)", owned_span.fragment));
+    let label = Some(format!(
+        "minute '{}' cannot be parsed as a number (expected 0-59)",
+        owned_span.fragment
+    ));
     Diagnostic {
         code: "TEMPORAL_009".to_string(),
         statement: None,
@@ -172,8 +179,10 @@ pub fn invalid_minute(span: impl IntoOwnedSpan) -> Diagnostic {
 
 pub fn invalid_second(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
-    let label =
-        Some(format!("second '{}' cannot be parsed as a number (expected 0-59)", owned_span.fragment));
+    let label = Some(format!(
+        "second '{}' cannot be parsed as a number (expected 0-59)",
+        owned_span.fragment
+    ));
     Diagnostic {
         code: "TEMPORAL_010".to_string(),
         statement: None,
@@ -241,7 +250,8 @@ pub fn invalid_time_values(span: impl IntoOwnedSpan) -> Diagnostic {
 
 pub fn invalid_interval_character(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();
-    let label = Some(format!("character '{}' is not valid in ISO 8601 duration", owned_span.fragment));
+    let label =
+        Some(format!("character '{}' is not valid in ISO 8601 duration", owned_span.fragment));
     Diagnostic {
         code: "TEMPORAL_014".to_string(),
         statement: None,
@@ -274,7 +284,11 @@ pub fn incomplete_interval_specification(span: impl IntoOwnedSpan) -> Diagnostic
     }
 }
 
-pub fn invalid_unit_in_context(span: impl IntoOwnedSpan, unit: char, in_time_part: bool) -> Diagnostic {
+pub fn invalid_unit_in_context(
+    span: impl IntoOwnedSpan,
+    unit: char,
+    in_time_part: bool,
+) -> Diagnostic {
     let owned_span = span.into_span();
     let context = if in_time_part { "time part (after T)" } else { "date part (before T)" };
     let allowed = if in_time_part { "H, M, S" } else { "Y, M, W, D" };
@@ -297,8 +311,11 @@ pub fn invalid_unit_in_context(span: impl IntoOwnedSpan, unit: char, in_time_par
 
 pub fn invalid_interval_component_value(span: impl IntoOwnedSpan, unit: char) -> Diagnostic {
     let owned_span = span.into_span();
-    let label =
-        Some(format!("{} value '{}' cannot be parsed as a number", unit_name(unit), owned_span.fragment));
+    let label = Some(format!(
+        "{} value '{}' cannot be parsed as a number",
+        unit_name(unit),
+        owned_span.fragment
+    ));
     Diagnostic {
         code: "TEMPORAL_017".to_string(),
         statement: None,

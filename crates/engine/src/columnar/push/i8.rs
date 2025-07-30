@@ -23,36 +23,28 @@ impl Push<i8> for ColumnData {
             ColumnData::Int1(container) => {
                 container.push(value);
             }
-            ColumnData::Int2(container) => {
-                match <i8 as SafePromote<i16>>::checked_promote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int4(container) => {
-                match <i8 as SafePromote<i32>>::checked_promote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int8(container) => {
-                match <i8 as SafePromote<i64>>::checked_promote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int2(container) => match <i8 as SafePromote<i16>>::checked_promote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int4(container) => match <i8 as SafePromote<i32>>::checked_promote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int8(container) => match <i8 as SafePromote<i64>>::checked_promote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int16(container) => {
                 match <i8 as SafePromote<i128>>::checked_promote(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Uint1(container) => {
-                match <i8 as SafeConvert<u8>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Uint1(container) => match <i8 as SafeConvert<u8>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Uint2(container) => {
                 match <i8 as SafeConvert<u16>>::checked_convert(value) {
                     Some(v) => container.push(v),

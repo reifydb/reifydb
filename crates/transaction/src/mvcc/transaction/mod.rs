@@ -15,20 +15,20 @@ use std::sync::Arc;
 pub use crate::mvcc::types::*;
 pub use write::*;
 
-use version::VersionProvider;
 use oracle::*;
 use reifydb_core::Version;
+use version::VersionProvider;
 
 pub mod iter;
 pub mod iter_rev;
 
-mod version;
 pub mod optimistic;
 mod oracle;
 pub mod range;
 pub mod range_rev;
 pub mod read;
 pub mod serializable;
+mod version;
 mod write;
 
 use crate::mvcc::conflict::Conflict;

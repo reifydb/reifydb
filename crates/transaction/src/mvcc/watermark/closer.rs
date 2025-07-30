@@ -108,7 +108,7 @@ impl Closer {
     pub fn new(initial: usize) -> Self {
         Self(Arc::new(CloserInner::with(initial)))
     }
-    
+
     /// Calls [`WaitGroup::done`] on the [`WaitGroup`].
     pub fn done(&self) {
         self.wg.done();

@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::sqlite::Sqlite;
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
-use reifydb_core::interface::{Versioned, VersionedScanRangeRev};
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version, Result};
-use r2d2::{PooledConnection};
+use crate::sqlite::Sqlite;
+use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
+use reifydb_core::interface::{Versioned, VersionedScanRangeRev};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::collections::VecDeque;
 use std::ops::Bound;
 
@@ -41,7 +41,7 @@ impl RangeRev {
         batch_size: usize,
     ) -> Self {
         let table = table_name_for_range(&range).to_string();
-        
+
         Self {
             conn,
             range,
@@ -67,7 +67,7 @@ impl RangeRev {
             Some(k) => Bound::Excluded(k),
             None => self.range.end.as_ref(),
         };
-        
+
         let start_bound = self.range.start.as_ref();
 
         // Build query and parameters based on bounds - note DESC order for reverse
@@ -75,15 +75,15 @@ impl RangeRev {
 
         let query = query_template.replace("{}", &self.table);
         let mut stmt = self.conn.prepare(&query).unwrap();
-        
+
         let count = execute_batched_range_query(
-            &mut stmt, 
-            start_bound, 
-            end_bound, 
-            self.version, 
-            self.batch_size, 
-            param_count, 
-            &mut self.buffer
+            &mut stmt,
+            start_bound,
+            end_bound,
+            self.version,
+            self.batch_size,
+            param_count,
+            &mut self.buffer,
         );
 
         // Update last_key to the last item we retrieved (which is the smallest key due to DESC order)

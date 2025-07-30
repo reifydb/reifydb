@@ -20,12 +20,10 @@ impl Push<u16> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Uint1(container) => {
-                match <u16 as SafeDemote<u8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Uint1(container) => match <u16 as SafeDemote<u8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Uint2(container) => container.push(value),
             ColumnData::Uint4(container) => {
                 match <u16 as SafePromote<u32>>::checked_promote(value) {
@@ -45,12 +43,10 @@ impl Push<u16> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <u16 as SafeConvert<i8>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <u16 as SafeConvert<i8>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int2(container) => {
                 match <u16 as SafeConvert<i16>>::checked_convert(value) {
                     Some(v) => container.push(v),
@@ -83,7 +79,10 @@ impl Push<u16> for ColumnData {
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<u16>()` on incompatible EngineColumnData::{:?}", other.get_type());
+                panic!(
+                    "called `push::<u16>()` on incompatible EngineColumnData::{:?}",
+                    other.get_type()
+                );
             }
         }
     }

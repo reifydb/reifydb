@@ -24,7 +24,11 @@ impl VersionedScanRange for Memory {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::ScanRangeIter<'_>> {
+    fn scan_range(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> Result<Self::ScanRangeIter<'_>> {
         Ok(Range { range: self.versioned.range(range), version })
     }
 }

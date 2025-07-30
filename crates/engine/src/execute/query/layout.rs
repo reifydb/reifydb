@@ -26,11 +26,9 @@ pub fn derive_columns_column_layout(
 
 fn columns_column_layout(expr: &Expression) -> ColumnLayout {
     match expr {
-        Expression::Alias(alias_expr) => ColumnLayout {
-            schema: None,
-            table: None,
-            name: alias_expr.alias.name().to_string(),
-        },
+        Expression::Alias(alias_expr) => {
+            ColumnLayout { schema: None, table: None, name: alias_expr.alias.name().to_string() }
+        }
         Expression::Column(col_expr) => {
             ColumnLayout { schema: None, table: None, name: col_expr.0.fragment.clone() }
         }

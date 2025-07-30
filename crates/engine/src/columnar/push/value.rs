@@ -343,8 +343,8 @@ impl ColumnData {
 #[cfg(test)]
 mod tests {
     use crate::columnar::data::ColumnData;
-    use reifydb_core::{Date, DateTime, Interval, OrderedF32, OrderedF64, RowId, Time, Value};
     use reifydb_core::value::uuid::{Uuid4, Uuid7};
+    use reifydb_core::{Date, DateTime, Interval, OrderedF32, OrderedF64, RowId, Time, Value};
     use uuid::Uuid;
 
     #[test]

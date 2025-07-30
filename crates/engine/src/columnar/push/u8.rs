@@ -45,30 +45,22 @@ impl Push<u8> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <u8 as SafeConvert<i8>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int2(container) => {
-                match <u8 as SafeConvert<i16>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int4(container) => {
-                match <u8 as SafeConvert<i32>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int8(container) => {
-                match <u8 as SafeConvert<i64>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <u8 as SafeConvert<i8>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int2(container) => match <u8 as SafeConvert<i16>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int4(container) => match <u8 as SafeConvert<i32>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int8(container) => match <u8 as SafeConvert<i64>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int16(container) => {
                 match <u8 as SafeConvert<i128>>::checked_convert(value) {
                     Some(v) => container.push(v),
@@ -83,7 +75,10 @@ impl Push<u8> for ColumnData {
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<u8>()` on incompatible EngineColumnData::{:?}", other.get_type());
+                panic!(
+                    "called `push::<u8>()` on incompatible EngineColumnData::{:?}",
+                    other.get_type()
+                );
             }
         }
     }

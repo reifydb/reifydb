@@ -32,7 +32,11 @@ pub fn schema_not_found(span: Option<impl IntoOwnedSpan>, schema: &str) -> Diagn
     }
 }
 
-pub fn table_already_exists(span: Option<impl IntoOwnedSpan>, schema: &str, table: &str) -> Diagnostic {
+pub fn table_already_exists(
+    span: Option<impl IntoOwnedSpan>,
+    schema: &str,
+    table: &str,
+) -> Diagnostic {
     Diagnostic {
         code: "CA_003".to_string(),
         statement: None,

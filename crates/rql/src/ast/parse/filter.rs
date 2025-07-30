@@ -8,32 +8,33 @@ use crate::ast::{Ast, AstFilter};
 impl Parser {
     pub(crate) fn parse_filter(&mut self) -> crate::Result<AstFilter> {
         let token = self.consume_keyword(Keyword::Filter)?;
-        
+
         // Check if we have an opening brace
         let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
-        
+
         if has_braces {
             self.advance()?;
         }
-        
+
         // Handle case where there's no expression (like "filter {}" alone)
-        let node = if self.is_eof() || (has_braces && self.current()?.is_operator(Operator::CloseCurly)) {
-            Ast::Nop
-        } else {
-            self.parse_node(Precedence::None)?
-        };
-        
+        let node =
+            if self.is_eof() || (has_braces && self.current()?.is_operator(Operator::CloseCurly)) {
+                Ast::Nop
+            } else {
+                self.parse_node(Precedence::None)?
+            };
+
         if has_braces {
             self.consume_operator(Operator::CloseCurly)?; // consume closing brace
         }
-        
+
         Ok(AstFilter { token, node: Box::new(node) })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::{lex, Keyword};
+    use crate::ast::lex::{Keyword, lex};
     use crate::ast::parse::Parser;
     use crate::ast::{Ast, InfixOperator, TokenKind};
 

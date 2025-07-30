@@ -115,12 +115,12 @@ impl Display for Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::value::Blob;
     use crate::value::container::{
-        BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer, TemporalContainer,
-        UndefinedContainer, UuidContainer,
+        BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
+        TemporalContainer, UndefinedContainer, UuidContainer,
     };
     use crate::value::uuid::{Uuid4, Uuid7};
-    use crate::value::Blob;
     use crate::{BitVec, Date, DateTime, FrameColumnData, Interval, RowId, Time};
 
     fn bool_column_with_bitvec(
@@ -689,8 +689,11 @@ mod tests {
 
     #[test]
     fn test_string() {
-        let frame =
-            Frame::new(vec![utf8_column_with_bitvec("string", vec!["foo".to_string(), "bar".to_string()], [true, false])]);
+        let frame = Frame::new(vec![utf8_column_with_bitvec(
+            "string",
+            vec!["foo".to_string(), "bar".to_string()],
+            [true, false],
+        )]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -823,7 +826,11 @@ mod tests {
     #[test]
     fn test_row_id_column_ordering() {
         // Create a frame with regular columns and a RowId column
-        let regular_column = utf8_column_with_bitvec("name", vec!["Alice".to_string(), "Bob".to_string()], [true, true]);
+        let regular_column = utf8_column_with_bitvec(
+            "name",
+            vec!["Alice".to_string(), "Bob".to_string()],
+            [true, true],
+        );
 
         let age_column = int4_column_with_bitvec("age", [25, 30], [true, true]);
 
@@ -867,12 +874,8 @@ mod tests {
 
     #[test]
     fn test_blob() {
-        let blobs = vec![
-            Blob::new(vec![0x01, 0x02, 0x03]),
-            Blob::new(vec![0xFF, 0xEE, 0xDD]),
-        ];
-        let frame =
-            Frame::new(vec![blob_column_with_bitvec("blob", blobs, [true, false])]);
+        let blobs = vec![Blob::new(vec![0x01, 0x02, 0x03]), Blob::new(vec![0xFF, 0xEE, 0xDD])];
+        let frame = Frame::new(vec![blob_column_with_bitvec("blob", blobs, [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +-------------+
@@ -891,8 +894,7 @@ mod tests {
             Uuid4::from(::uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()),
             Uuid4::from(::uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440001").unwrap()),
         ];
-        let frame =
-            Frame::new(vec![uuid4_column_with_bitvec("uuid4", uuids, [true, false])]);
+        let frame = Frame::new(vec![uuid4_column_with_bitvec("uuid4", uuids, [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +----------------------------------------+
@@ -911,8 +913,7 @@ mod tests {
             Uuid7::from(::uuid::Uuid::parse_str("01890a5d-ac96-774b-b9aa-789c0686aaa4").unwrap()),
             Uuid7::from(::uuid::Uuid::parse_str("01890a5d-ac96-774b-b9aa-789c0686aaa5").unwrap()),
         ];
-        let frame =
-            Frame::new(vec![uuid7_column_with_bitvec("uuid7", uuids, [true, false])]);
+        let frame = Frame::new(vec![uuid7_column_with_bitvec("uuid7", uuids, [true, false])]);
         let output = format!("{}", frame);
         let expected = "\
 +----------------------------------------+

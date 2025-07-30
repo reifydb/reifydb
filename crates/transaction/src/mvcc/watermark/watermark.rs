@@ -10,14 +10,14 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::watermark::Closer;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use reifydb_core::Version;
 use std::ops::Deref;
 use std::{
     borrow::Cow,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 

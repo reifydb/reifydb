@@ -36,10 +36,12 @@ pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> crate::Result<T> 
     let mut deserializer = Deserializer::from_bytes(input);
     let t = T::deserialize(&mut deserializer)?;
     if !deserializer.input.is_empty() {
-        return Err(crate::error!(crate::error::diagnostic::serialization::keycode_serialization_error(format!(
-            "unexpected trailing bytes {:x?} at end of key {input:x?}",
-            deserializer.input,
-        ))));
+        return Err(crate::error!(
+            crate::error::diagnostic::serialization::keycode_serialization_error(format!(
+                "unexpected trailing bytes {:x?} at end of key {input:x?}",
+                deserializer.input,
+            ))
+        ));
     }
     Ok(t)
 }
@@ -51,8 +53,8 @@ mod tests {
     use std::f64::consts::PI as PIf64;
 
     use super::*;
-    use crate::value::{OrderedF32, OrderedF64};
     use crate::Value;
+    use crate::value::{OrderedF32, OrderedF64};
     use serde::{Deserialize, Serialize};
     use serde_bytes::ByteBuf;
 

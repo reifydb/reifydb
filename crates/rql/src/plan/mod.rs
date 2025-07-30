@@ -13,10 +13,7 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression>;
 
-pub fn plan(
-    rx: &mut impl Rx,
-    statement: AstStatement,
-) -> crate::Result<Option<PhysicalPlan>> {
+pub fn plan(rx: &mut impl Rx, statement: AstStatement) -> crate::Result<Option<PhysicalPlan>> {
     let logical = compile_logical(statement)?;
     let physical = compile_physical(rx, logical)?;
     Ok(physical)

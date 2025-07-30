@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use reifydb_core::result::error::diagnostic::operator::{
     and_can_not_applied_to_number, and_can_not_applied_to_temporal, and_can_not_applied_to_text,
     and_can_not_applied_to_uuid,
 };
-use crate::columnar::{ColumnQualified, ColumnData, Column};
 use reifydb_core::return_error;
 use reifydb_rql::expression::AndExpression;
 

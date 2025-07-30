@@ -1,6 +1,6 @@
+use reifydb_core::Frame;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use reifydb_core::Frame;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Change {

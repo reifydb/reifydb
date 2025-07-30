@@ -555,7 +555,8 @@ pub fn greater_than_equal_cannot_be_applied_to_incompatible_types(
         notes: vec![
             format!("Left operand is of type: {}", left),
             format!("Right operand is of type: {}", right),
-            "Greater than or equal comparison is only supported between compatible types".to_string(),
+            "Greater than or equal comparison is only supported between compatible types"
+                .to_string(),
         ],
         cause: None,
     }
@@ -570,7 +571,10 @@ pub fn between_cannot_be_applied_to_incompatible_types(
     Diagnostic {
         code: "OPERATOR_028".to_string(),
         statement: None,
-        message: format!("Cannot apply 'BETWEEN' operator to {} with range of {}", value_type, range_type),
+        message: format!(
+            "Cannot apply 'BETWEEN' operator to {} with range of {}",
+            value_type, range_type
+        ),
         column: None,
         span: Some(owned_span),
         label: Some("'BETWEEN' operator on incompatible types".to_string()),

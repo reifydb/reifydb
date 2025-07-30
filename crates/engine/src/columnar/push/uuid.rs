@@ -10,8 +10,7 @@ impl Push<Uuid4> for ColumnData {
         match self {
             ColumnData::Uuid4(container) => container.push(value),
             ColumnData::Undefined(container) => {
-                let mut new_container =
-                    ColumnData::uuid4(vec![Uuid4::default(); container.len()]);
+                let mut new_container = ColumnData::uuid4(vec![Uuid4::default(); container.len()]);
                 if let ColumnData::Uuid4(new_container) = &mut new_container {
                     new_container.push(value);
                 }
@@ -32,8 +31,7 @@ impl Push<Uuid7> for ColumnData {
         match self {
             ColumnData::Uuid7(container) => container.push(value),
             ColumnData::Undefined(container) => {
-                let mut new_container =
-                    ColumnData::uuid7(vec![Uuid7::default(); container.len()]);
+                let mut new_container = ColumnData::uuid7(vec![Uuid7::default(); container.len()]);
                 if let ColumnData::Uuid7(new_container) = &mut new_container {
                     new_container.push(value);
                 }

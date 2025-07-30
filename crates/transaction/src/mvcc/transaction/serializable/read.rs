@@ -11,9 +11,9 @@
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
+use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};

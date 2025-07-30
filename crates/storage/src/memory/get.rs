@@ -12,16 +12,17 @@ impl VersionedGet for Memory {
             Some(item) => item,
             None => return Ok(None),
         };
-        let (version, value) = match item.value().upper_bound(Bound::Included(&version)).and_then(|v| {
-            if v.value().is_some() {
-                Some((*v.key(), v.value().clone().unwrap()))
-            } else {
-                None
-            }
-        }) {
-            Some(result) => result,
-            None => return Ok(None),
-        };
+        let (version, value) =
+            match item.value().upper_bound(Bound::Included(&version)).and_then(|v| {
+                if v.value().is_some() {
+                    Some((*v.key(), v.value().clone().unwrap()))
+                } else {
+                    None
+                }
+            }) {
+                Some(result) => result,
+                None => return Ok(None),
+            };
 
         Ok(Some(Versioned { key: key.clone(), row: value, version }))
     }

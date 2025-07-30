@@ -108,7 +108,7 @@ mod tests {
         let projection = &aggregate.map[0].as_call_function();
         assert_eq!(projection.function.value(), "min");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -133,7 +133,7 @@ mod tests {
         let min_call = projection.left.as_call_function();
         assert_eq!(min_call.function.value(), "min");
         assert!(min_call.namespaces.is_empty());
-        
+
         assert_eq!(min_call.arguments.len(), 1);
         let identifier = min_call.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -193,7 +193,7 @@ mod tests {
         let projection = &aggregate.map[0].as_call_function();
         assert_eq!(projection.function.value(), "min");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -201,7 +201,7 @@ mod tests {
         let projection = &aggregate.map[1].as_call_function();
         assert_eq!(projection.function.value(), "max");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");
@@ -227,7 +227,7 @@ mod tests {
         let projection = &aggregate.map[0].as_call_function();
         assert_eq!(projection.function.value(), "min");
         assert!(projection.namespaces.is_empty());
-        
+
         assert_eq!(projection.arguments.len(), 1);
         let identifier = projection.arguments.nodes[0].as_identifier();
         assert_eq!(identifier.value(), "age");

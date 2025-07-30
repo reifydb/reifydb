@@ -13,11 +13,7 @@ impl Avg {
 }
 
 impl ScalarFunction for Avg {
-    fn scalar(
-        &self,
-        columns: &[Column],
-        row_count: usize,
-    ) -> crate::Result<ColumnData> {
+    fn scalar(&self, columns: &[Column], row_count: usize) -> crate::Result<ColumnData> {
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];
 

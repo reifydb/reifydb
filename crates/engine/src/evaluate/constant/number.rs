@@ -5,7 +5,7 @@ use crate::columnar::ColumnData;
 use reifydb_core::result::error::diagnostic::{cast, number};
 use reifydb_core::value::boolean::parse_bool;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
-use reifydb_core::{return_error, Span, Type};
+use reifydb_core::{Span, Type, return_error};
 
 pub(crate) struct NumberParser;
 
@@ -80,7 +80,9 @@ impl NumberParser {
         } else {
             match parse_int::<i8>(span.clone()) {
                 Ok(_) => unreachable!(),
-                Err(err) => return_error!(cast::invalid_number(span.to_owned(), ty, err.diagnostic())),
+                Err(err) => {
+                    return_error!(cast::invalid_number(span.to_owned(), ty, err.diagnostic()))
+                }
             }
         }
     }

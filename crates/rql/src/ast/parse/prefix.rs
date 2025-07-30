@@ -14,14 +14,14 @@ use reifydb_core::return_error;
 impl Parser {
     pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast> {
         let operator = self.parse_prefix_operator()?;
-        
+
         // NOT operator should have lower precedence than comparison operators
         // to allow expressions like "not price == 150" to parse as "not (price == 150)"
         let precedence = match operator {
             AstPrefixOperator::Not(_) => Precedence::Assignment, // Much lower than comparisons
             _ => Precedence::Prefix, // Keep existing high precedence for +/- operators
         };
-        
+
         let expr = self.parse_node(precedence)?;
 
         if matches!(operator, AstPrefixOperator::Negate(_)) {
@@ -170,22 +170,22 @@ mod tests {
         assert!(matches!(*operator, AstPrefixOperator::Not(_)));
 
         // The inner expression should be a comparison (x == 5)
-        let Ast::Infix(inner) = node.deref() else { 
-            panic!("Expected infix comparison inside NOT, got {:?}", node.deref()) 
+        let Ast::Infix(inner) = node.deref() else {
+            panic!("Expected infix comparison inside NOT, got {:?}", node.deref())
         };
-        
+
         // Verify it's an equality comparison
         assert!(matches!(inner.operator, crate::ast::InfixOperator::Equal(_)));
-        
+
         // Left side should be identifier 'x'
-        let Ast::Identifier(left_id) = inner.left.deref() else { 
-            panic!("Expected identifier on left side") 
+        let Ast::Identifier(left_id) = inner.left.deref() else {
+            panic!("Expected identifier on left side")
         };
         assert_eq!(left_id.value(), "x");
-        
+
         // Right side should be number '5'
-        let Literal(AstLiteral::Number(right_num)) = inner.right.deref() else { 
-            panic!("Expected number on right side") 
+        let Literal(AstLiteral::Number(right_num)) = inner.right.deref() else {
+            panic!("Expected number on right side")
         };
         assert_eq!(right_num.value(), "5");
     }

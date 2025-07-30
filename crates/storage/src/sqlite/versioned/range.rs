@@ -1,19 +1,23 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use crate::sqlite::Sqlite;
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
-use reifydb_core::interface::{Versioned, VersionedScanRange};
-use reifydb_core::{EncodedKey, EncodedKeyRange, Version, Result};
-use r2d2::{PooledConnection};
+use crate::sqlite::Sqlite;
+use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
+use reifydb_core::interface::{Versioned, VersionedScanRange};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::collections::VecDeque;
 use std::ops::Bound;
 
 impl VersionedScanRange for Sqlite {
     type ScanRangeIter<'a> = Range;
 
-    fn scan_range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::ScanRangeIter<'_>> {
+    fn scan_range(
+        &self,
+        range: EncodedKeyRange,
+        version: Version,
+    ) -> Result<Self::ScanRangeIter<'_>> {
         Ok(Range::new(self.get_conn(), range, version, 1024))
     }
 }
@@ -37,7 +41,7 @@ impl Range {
         batch_size: usize,
     ) -> Self {
         let table = table_name_for_range(&range).to_string();
-        
+
         Self {
             conn,
             range,
@@ -62,7 +66,7 @@ impl Range {
             Some(k) => Bound::Excluded(k),
             None => self.range.start.as_ref(),
         };
-        
+
         let end_bound = self.range.end.as_ref();
 
         // Build query and parameters based on bounds - note ASC order for forward iteration
@@ -70,15 +74,15 @@ impl Range {
 
         let query = query_template.replace("{}", &self.table);
         let mut stmt = self.conn.prepare(&query).unwrap();
-        
+
         let count = execute_batched_range_query(
-            &mut stmt, 
-            start_bound, 
-            end_bound, 
-            self.version, 
-            self.batch_size, 
-            param_count, 
-            &mut self.buffer
+            &mut stmt,
+            start_bound,
+            end_bound,
+            self.version,
+            self.batch_size,
+            param_count,
+            &mut self.buffer,
         );
 
         // Update last_key to the last item we retrieved

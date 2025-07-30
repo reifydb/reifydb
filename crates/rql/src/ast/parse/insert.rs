@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstInsert;
 use crate::ast::lex::{Keyword, Operator};
 use crate::ast::parse::Parser;
-use crate::ast::AstInsert;
 
 impl Parser {
     pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert> {

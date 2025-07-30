@@ -3,11 +3,11 @@
 
 use crate::evaluate::EvaluationContext;
 use reifydb_core::interface::ColumnSaturationPolicy;
-use reifydb_core::{GetType, IntoOwnedSpan};
 use reifydb_core::result::error::diagnostic::number::number_out_of_range;
+use reifydb_core::return_error;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::number::{Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub};
-use reifydb_core::{ return_error};
+use reifydb_core::{GetType, IntoOwnedSpan};
 
 impl EvaluationContext<'_> {
     pub(crate) fn add<L, R>(

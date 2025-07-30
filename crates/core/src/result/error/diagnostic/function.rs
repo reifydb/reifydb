@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::result::error::diagnostic::Diagnostic;
 use crate::Type;
+use crate::result::error::diagnostic::Diagnostic;
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {
@@ -39,7 +39,10 @@ pub fn too_many_arguments(function: String, max_args: usize, actual: usize) -> D
     Diagnostic {
         code: "FN_003".to_string(),
         statement: None,
-        message: format!("Function {} accepts at most {} arguments, got {}", function, max_args, actual),
+        message: format!(
+            "Function {} accepts at most {} arguments, got {}",
+            function, max_args, actual
+        ),
         column: None,
         span: None,
         label: None,
@@ -50,18 +53,24 @@ pub fn too_many_arguments(function: String, max_args: usize, actual: usize) -> D
 }
 
 /// Argument has invalid type for function
-pub fn invalid_argument_type(function: String, index: usize, expected_one_of: Vec<Type>, actual: Type) -> Diagnostic {
-    let expected_types = expected_one_of.iter()
-        .map(|t| format!("{:?}", t))
-        .collect::<Vec<_>>()
-        .join(", ");
-    
+pub fn invalid_argument_type(
+    function: String,
+    index: usize,
+    expected_one_of: Vec<Type>,
+    actual: Type,
+) -> Diagnostic {
+    let expected_types =
+        expected_one_of.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
+
     Diagnostic {
         code: "FN_004".to_string(),
         statement: None,
         message: format!(
             "Function {} argument {} has invalid type: expected one of [{}], got {:?}",
-            function, index + 1, expected_types, actual
+            function,
+            index + 1,
+            expected_types,
+            actual
         ),
         column: None,
         span: None,

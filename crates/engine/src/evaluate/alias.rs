@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::{Column, ColumnQualified, TableQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
-use crate::columnar::{Column, TableQualified, ColumnQualified};
 use reifydb_rql::expression::AliasExpression;
 
 impl Evaluator {
@@ -21,8 +21,15 @@ impl Evaluator {
             .or(ctx.columns.first().as_ref().and_then(|c| c.table().map(|f| f.to_string())));
 
         Ok(match columns {
-            Some(table) => Column::TableQualified(TableQualified { table, name: alias_name.clone(), data: evaluated.data().clone() }),
-            None => Column::ColumnQualified(ColumnQualified { name: alias_name.clone(), data: evaluated.data().clone() }),
+            Some(table) => Column::TableQualified(TableQualified {
+                table,
+                name: alias_name.clone(),
+                data: evaluated.data().clone(),
+            }),
+            None => Column::ColumnQualified(ColumnQualified {
+                name: alias_name.clone(),
+                data: evaluated.data().clone(),
+            }),
         })
     }
 }

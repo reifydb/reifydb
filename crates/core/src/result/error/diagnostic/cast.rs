@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::result::error::diagnostic::Diagnostic;
-use crate::{Type, IntoOwnedSpan};
+use crate::{IntoOwnedSpan, Type};
 
 pub fn unsupported_cast(span: impl IntoOwnedSpan, from_type: Type, to_type: Type) -> Diagnostic {
     let owned_span = span.into_span();
-    let label = Some(format!("cannot cast {} of type {} to {}", owned_span.fragment, from_type, to_type));
+    let label =
+        Some(format!("cannot cast {} of type {} to {}", owned_span.fragment, from_type, to_type));
     Diagnostic {
         code: "CAST_001".to_string(),
         statement: None,

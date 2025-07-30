@@ -10,6 +10,6 @@ pub use compare::*;
 pub use parse::{parse_float, parse_int, parse_uint};
 pub use promote::Promote;
 pub use safe::{
-	add::SafeAdd, convert::SafeConvert, demote::SafeDemote, div::SafeDiv, mul::SafeMul,
-	promote::SafePromote, remainder::SafeRemainder, sub::SafeSub,
+    add::SafeAdd, convert::SafeConvert, demote::SafeDemote, div::SafeDiv, mul::SafeMul,
+    promote::SafePromote, remainder::SafeRemainder, sub::SafeSub,
 };

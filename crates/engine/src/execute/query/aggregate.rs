@@ -3,7 +3,7 @@
 
 use crate::columnar::columns::Columns;
 use crate::columnar::layout::ColumnsLayout;
-use crate::columnar::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, Functions};
 use reifydb_core::OwnedSpan;

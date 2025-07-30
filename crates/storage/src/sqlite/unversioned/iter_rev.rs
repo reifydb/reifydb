@@ -68,4 +68,3 @@ impl Iterator for IterRev {
         self.buffer.pop_front()
     }
 }
-

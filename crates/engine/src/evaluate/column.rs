@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::{Column, ColumnData};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::result::error::diagnostic::query::column_not_found;
-use reifydb_rql::expression::ColumnExpression;
-use crate::columnar::{ColumnData, Column};
 use reifydb_core::value::{Blob, Uuid4, Uuid7};
 use reifydb_core::{Date, DateTime, Interval, RowId, Time, Value, error};
+use reifydb_rql::expression::ColumnExpression;
 
 impl Evaluator {
     pub(crate) fn column(

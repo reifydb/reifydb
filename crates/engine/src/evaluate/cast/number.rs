@@ -546,9 +546,9 @@ where
 #[cfg(test)]
 mod tests {
     mod promote {
-        use reifydb_core::value::container::NumberContainer;
         use crate::evaluate::Promote;
         use crate::evaluate::cast::number::promote_vec;
+        use reifydb_core::value::container::NumberContainer;
         use reifydb_core::value::number::SafePromote;
         use reifydb_core::{BitVec, Type};
         use reifydb_core::{IntoOwnedSpan, OwnedSpan};

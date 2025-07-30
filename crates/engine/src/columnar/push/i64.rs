@@ -20,24 +20,18 @@ impl Push<i64> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <i64 as SafeDemote<i8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int2(container) => {
-                match <i64 as SafeDemote<i16>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int4(container) => {
-                match <i64 as SafeDemote<i32>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <i64 as SafeDemote<i8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int2(container) => match <i64 as SafeDemote<i16>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int4(container) => match <i64 as SafeDemote<i32>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int8(container) => container.push(value),
             ColumnData::Int16(container) => {
                 match <i64 as SafePromote<i128>>::checked_promote(value) {
@@ -83,7 +77,10 @@ impl Push<i64> for ColumnData {
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<i64>()` on incompatible EngineColumnData::{:?}", other.get_type());
+                panic!(
+                    "called `push::<i64>()` on incompatible EngineColumnData::{:?}",
+                    other.get_type()
+                );
             }
         }
     }

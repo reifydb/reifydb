@@ -19,8 +19,8 @@ use nom::combinator::complete;
 use nom::sequence::preceded;
 use nom::{IResult, Parser};
 use nom_locate::LocatedSpan;
-use reifydb_core::{SpanLine, SpanColumn, OwnedSpan};
 use reifydb_core::result::error::diagnostic::ast;
+use reifydb_core::{OwnedSpan, SpanColumn, SpanLine};
 
 mod display;
 mod identifier;
@@ -28,7 +28,6 @@ mod keyword;
 mod literal;
 mod operator;
 mod separator;
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {

@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::Catalog;
 use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnIndex};
 use crate::column_policy::ColumnPolicyKind;
 use crate::sequence::SystemSequence;
-use crate::Catalog;
 use reifydb_core::diagnostic::catalog::column_already_exists;
 use reifydb_core::interface::{ColumnKey, EncodableKey, Key, TableColumnKey};
 use reifydb_core::interface::{TableId, Tx, UnversionedStorage, VersionedStorage};
-use reifydb_core::{return_error, OwnedSpan, Type};
+use reifydb_core::{OwnedSpan, Type, return_error};
 
 pub struct ColumnToCreate<'a> {
     pub span: Option<OwnedSpan>,
@@ -72,14 +72,14 @@ impl Catalog {
 
 #[cfg(test)]
 mod test {
-	use crate::column::{ColumnIndex, ColumnToCreate};
-	use crate::test_utils::ensure_test_table;
-	use crate::Catalog;
-	use reifydb_core::interface::{ColumnId, TableId};
-	use reifydb_core::Type;
-	use reifydb_transaction::test_utils::TestTransaction;
+    use crate::Catalog;
+    use crate::column::{ColumnIndex, ColumnToCreate};
+    use crate::test_utils::ensure_test_table;
+    use reifydb_core::Type;
+    use reifydb_core::interface::{ColumnId, TableId};
+    use reifydb_transaction::test_utils::TestTransaction;
 
-	#[test]
+    #[test]
     fn test_create_column() {
         let mut tx = TestTransaction::new();
         ensure_test_table(&mut tx);

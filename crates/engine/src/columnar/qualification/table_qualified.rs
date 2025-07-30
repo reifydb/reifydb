@@ -1,4 +1,4 @@
-use super::super::{ColumnData, Column, TableQualified};
+use super::super::{Column, ColumnData, TableQualified};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7};
 
@@ -276,11 +276,7 @@ impl TableQualified {
         })
     }
 
-    pub fn utf8<'a>(
-        table: &str,
-        name: &str,
-        data: impl IntoIterator<Item = &'a str>,
-    ) -> Column {
+    pub fn utf8<'a>(table: &str, name: &str, data: impl IntoIterator<Item = &'a str>) -> Column {
         Column::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
@@ -297,10 +293,7 @@ impl TableQualified {
         Column::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            data: ColumnData::utf8_with_bitvec(
-                data.into_iter().map(|s| s.to_string()),
-                bitvec,
-            ),
+            data: ColumnData::utf8_with_bitvec(data.into_iter().map(|s| s.to_string()), bitvec),
         })
     }
 
@@ -334,11 +327,7 @@ impl TableQualified {
         })
     }
 
-    pub fn datetime(
-        table: &str,
-        name: &str,
-        data: impl IntoIterator<Item = DateTime>,
-    ) -> Column {
+    pub fn datetime(table: &str, name: &str, data: impl IntoIterator<Item = DateTime>) -> Column {
         Column::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
@@ -380,11 +369,7 @@ impl TableQualified {
         })
     }
 
-    pub fn interval(
-        table: &str,
-        name: &str,
-        data: impl IntoIterator<Item = Interval>,
-    ) -> Column {
+    pub fn interval(table: &str, name: &str, data: impl IntoIterator<Item = Interval>) -> Column {
         Column::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),

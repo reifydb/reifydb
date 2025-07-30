@@ -1,7 +1,7 @@
 use crate::flow::row::Row;
+use reifydb_core::Value;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use reifydb_core::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IndexKey(pub Vec<Value>);

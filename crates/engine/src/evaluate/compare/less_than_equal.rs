@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::container::number::NumberContainer;
-use reifydb_core::value::container::string::StringContainer;
-use reifydb_core::value::container::temporal::TemporalContainer;
-use crate::columnar::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::Type::Bool;
 use reifydb_core::result::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types;
+use reifydb_core::value::container::number::NumberContainer;
+use reifydb_core::value::container::string::StringContainer;
+use reifydb_core::value::container::temporal::TemporalContainer;
 use reifydb_core::value::number::Promote;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::{OwnedSpan, return_error, value};
@@ -468,23 +468,16 @@ impl Evaluator {
             (ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u128, u128>(ctx, l, r, lte.span()))
             }
-            (ColumnData::Date(l), ColumnData::Date(r)) => {
-                Ok(compare_temporal(l, r, lte.span()))
-            }
+            (ColumnData::Date(l), ColumnData::Date(r)) => Ok(compare_temporal(l, r, lte.span())),
             (ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
                 Ok(compare_temporal(l, r, lte.span()))
             }
-            (ColumnData::Time(l), ColumnData::Time(r)) => {
-                Ok(compare_temporal(l, r, lte.span()))
-            }
+            (ColumnData::Time(l), ColumnData::Time(r)) => Ok(compare_temporal(l, r, lte.span())),
             (ColumnData::Interval(l), ColumnData::Interval(r)) => {
                 Ok(compare_temporal(l, r, lte.span()))
             }
-            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
-                Ok(compare_utf8(l, r, lte.span()))
-            }
-            (ColumnData::Undefined(container), _)
-            | (_, ColumnData::Undefined(container)) => {
+            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => Ok(compare_utf8(l, r, lte.span())),
+            (ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
                 let span = lte.span();
                 Ok(Column::ColumnQualified(ColumnQualified {
                     name: span.fragment.into(),

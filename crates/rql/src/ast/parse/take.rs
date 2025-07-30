@@ -3,7 +3,7 @@
 
 use crate::ast::lex::Keyword;
 use crate::ast::parse::{Parser, Precedence};
-use crate::ast::{Ast, AstTake, AstLiteral};
+use crate::ast::{Ast, AstLiteral, AstTake};
 
 impl Parser {
     pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake> {

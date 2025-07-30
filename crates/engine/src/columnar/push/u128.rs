@@ -20,12 +20,10 @@ impl Push<u128> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Uint1(container) => {
-                match <u128 as SafeDemote<u8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Uint1(container) => match <u128 as SafeDemote<u8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Uint2(container) => {
                 match <u128 as SafeDemote<u16>>::checked_demote(value) {
                     Some(v) => container.push(v),
@@ -83,7 +81,10 @@ impl Push<u128> for ColumnData {
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<u128>()` on incompatible EngineColumnData::{:?}", other.get_type());
+                panic!(
+                    "called `push::<u128>()` on incompatible EngineColumnData::{:?}",
+                    other.get_type()
+                );
             }
         }
     }

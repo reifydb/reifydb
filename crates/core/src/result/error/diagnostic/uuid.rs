@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::result::error::diagnostic::Diagnostic;
 use crate::IntoOwnedSpan;
+use crate::result::error::diagnostic::Diagnostic;
 
 pub fn invalid_uuid4_format(span: impl IntoOwnedSpan) -> Diagnostic {
     let owned_span = span.into_span();

@@ -20,18 +20,14 @@ impl Push<i32> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <i32 as SafeDemote<i8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int2(container) => {
-                match <i32 as SafeDemote<i16>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <i32 as SafeDemote<i8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int2(container) => match <i32 as SafeDemote<i16>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int4(container) => container.push(value),
             ColumnData::Int8(container) => {
                 match <i32 as SafePromote<i64>>::checked_promote(value) {

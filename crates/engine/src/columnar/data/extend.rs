@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::columnar::ColumnData;
+use reifydb_core::result::error::diagnostic::engine;
+use reifydb_core::return_error;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, StringContainer, TemporalContainer,
     UuidContainer,
 };
-use reifydb_core::result::error::diagnostic::engine;
-use reifydb_core::return_error;
 
 impl ColumnData {
     pub fn extend(&mut self, other: ColumnData) -> crate::Result<()> {

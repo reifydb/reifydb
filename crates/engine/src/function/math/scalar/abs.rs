@@ -13,11 +13,7 @@ impl Abs {
 }
 
 impl ScalarFunction for Abs {
-    fn scalar(
-        &self,
-        columns: &[Column],
-        row_count: usize,
-    ) -> crate::Result<ColumnData> {
+    fn scalar(&self, columns: &[Column], row_count: usize) -> crate::Result<ColumnData> {
         let column = columns.get(0).unwrap();
 
         match &column.data() {

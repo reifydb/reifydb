@@ -4,7 +4,7 @@
 use crate::columnar::ColumnData;
 use reifydb_core::result::error::diagnostic::temporal;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::{return_error, Span, Type};
+use reifydb_core::{Span, Type, return_error};
 
 pub struct TemporalParser;
 
@@ -69,28 +69,44 @@ impl TemporalParser {
             Type::Date => {
                 let date = match parse_date(span.clone()) {
                     Ok(date) => date,
-                    Err(e) => return_error!(cast::invalid_temporal(span.clone().to_owned(), Type::Date, e.0)),
+                    Err(e) => return_error!(cast::invalid_temporal(
+                        span.clone().to_owned(),
+                        Type::Date,
+                        e.0
+                    )),
                 };
                 Ok(ColumnData::date(vec![date; row_count]))
             }
             Type::DateTime => {
                 let datetime = match parse_datetime(span.clone()) {
                     Ok(datetime) => datetime,
-                    Err(e) => return_error!(cast::invalid_temporal(span.clone().to_owned(), Type::DateTime, e.0)),
+                    Err(e) => return_error!(cast::invalid_temporal(
+                        span.clone().to_owned(),
+                        Type::DateTime,
+                        e.0
+                    )),
                 };
                 Ok(ColumnData::datetime(vec![datetime; row_count]))
             }
             Type::Time => {
                 let time = match parse_time(span.clone()) {
                     Ok(time) => time,
-                    Err(e) => return_error!(cast::invalid_temporal(span.clone().to_owned(), Type::Time, e.0)),
+                    Err(e) => return_error!(cast::invalid_temporal(
+                        span.clone().to_owned(),
+                        Type::Time,
+                        e.0
+                    )),
                 };
                 Ok(ColumnData::time(vec![time; row_count]))
             }
             Type::Interval => {
                 let interval = match parse_interval(span.clone()) {
                     Ok(interval) => interval,
-                    Err(e) => return_error!(cast::invalid_temporal(span.clone().to_owned(), Type::Interval, e.0)),
+                    Err(e) => return_error!(cast::invalid_temporal(
+                        span.clone().to_owned(),
+                        Type::Interval,
+                        e.0
+                    )),
                 };
                 Ok(ColumnData::interval(vec![interval; row_count]))
             }

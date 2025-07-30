@@ -619,7 +619,6 @@ pub struct AstUpdate {
     pub table: AstIdentifier,
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstJoin {
     InnerJoin { token: Token, with: Box<Ast>, on: Vec<Ast> },

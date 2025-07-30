@@ -1,5 +1,5 @@
-use crate::evaluate::{EvaluationContext, Evaluator};
 use crate::columnar::Column;
+use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_rql::expression::TupleExpression;
 
 impl Evaluator {
@@ -14,7 +14,7 @@ impl Evaluator {
             // Evaluate the single expression inside the parentheses
             return self.evaluate(&tuple.expressions[0], ctx);
         }
-        
+
         // For multi-element tuples, we currently don't have a use case in filter expressions
         // This would be needed for things like function calls with multiple arguments
         // or tuple literals, but not for logical expressions with parentheses

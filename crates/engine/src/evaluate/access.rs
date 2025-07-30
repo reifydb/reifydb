@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::{Column, TableQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
-use crate::columnar::{Column, TableQualified};
 use reifydb_rql::expression::{AccessTableExpression, ColumnExpression, Expression};
 
 impl Evaluator {
@@ -24,7 +24,8 @@ impl Evaluator {
                 })),
                 &ctx,
             )?
-            .data().clone();
+            .data()
+            .clone();
 
         Ok(Column::TableQualified(TableQualified { table, name: column, data }))
     }

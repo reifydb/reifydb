@@ -15,11 +15,7 @@ pub trait Demote {
 }
 
 impl Demote for EvaluationContext<'_> {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,
@@ -29,11 +25,7 @@ impl Demote for EvaluationContext<'_> {
 }
 
 impl Demote for &EvaluationContext<'_> {
-    fn demote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn demote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafeDemote<To>,
         To: GetType,

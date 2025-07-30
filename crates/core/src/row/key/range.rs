@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::util::encoding::binary::decode_binary;
 use super::EncodedKey;
+use crate::util::encoding::binary::decode_binary;
 use regex::Regex;
 use std::collections::Bound;
 use std::ops::RangeBounds;
@@ -14,7 +14,6 @@ pub struct EncodedKeyRange {
 }
 
 impl EncodedKeyRange {
-
     pub fn new(start: Bound<EncodedKey>, end: Bound<EncodedKey>) -> Self {
         Self { start, end }
     }
@@ -185,10 +184,10 @@ mod tests {
     }
 
     mod start_end {
-        use crate::util::encoding::keycode;
         use super::EncodedKey;
         use crate::row::key::EncodedKeyRange;
         use crate::row::key::range::tests::included;
+        use crate::util::encoding::keycode;
         use std::ops::Bound;
 
         #[test]

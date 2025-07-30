@@ -76,10 +76,7 @@ impl ColumnData {
         ColumnData::Int1(NumberContainer::with_capacity(capacity))
     }
 
-    pub fn int1_with_bitvec(
-        data: impl IntoIterator<Item = i8>,
-        bitvec: impl Into<BitVec>,
-    ) -> Self {
+    pub fn int1_with_bitvec(data: impl IntoIterator<Item = i8>, bitvec: impl Into<BitVec>) -> Self {
         let data = data.into_iter().collect::<Vec<_>>();
         let bitvec = bitvec.into();
         assert_eq!(bitvec.len(), data.len());

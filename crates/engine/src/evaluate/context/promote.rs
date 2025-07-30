@@ -15,11 +15,7 @@ pub trait Promote {
 }
 
 impl Promote for EvaluationContext<'_> {
-    fn promote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn promote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType,
@@ -29,11 +25,7 @@ impl Promote for EvaluationContext<'_> {
 }
 
 impl Promote for &EvaluationContext<'_> {
-    fn promote<From, To>(
-        &self,
-        from: From,
-        span: impl IntoOwnedSpan,
-    ) -> crate::Result<Option<To>>
+    fn promote<From, To>(&self, from: From, span: impl IntoOwnedSpan) -> crate::Result<Option<To>>
     where
         From: SafePromote<To>,
         To: GetType,

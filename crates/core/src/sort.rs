@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::OwnedSpan;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SortDirection {

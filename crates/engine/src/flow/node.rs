@@ -1,6 +1,6 @@
-use reifydb_rql::expression::Expression;
 use reifydb_core::interface::Table;
 use reifydb_core::{JoinType, SortKey};
+use reifydb_rql::expression::Expression;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

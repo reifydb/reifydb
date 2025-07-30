@@ -95,8 +95,7 @@ impl Push<String> for ColumnData {
                 container.push(value);
             }
             ColumnData::Undefined(container) => {
-                let mut new_container =
-                    ColumnData::utf8(vec![String::default(); container.len()]);
+                let mut new_container = ColumnData::utf8(vec![String::default(); container.len()]);
                 if let ColumnData::Utf8(new_container) = &mut new_container {
                     new_container.push(value);
                 }

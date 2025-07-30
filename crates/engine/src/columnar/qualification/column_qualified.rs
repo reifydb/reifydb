@@ -1,13 +1,10 @@
-use super::super::{ColumnQualified, ColumnData, Column};
+use super::super::{Column, ColumnData, ColumnQualified};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7};
 
 impl ColumnQualified {
     pub fn bool(name: &str, data: impl IntoIterator<Item = bool>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::bool(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::bool(data) })
     }
 
     pub fn bool_with_bitvec(
@@ -22,10 +19,7 @@ impl ColumnQualified {
     }
 
     pub fn float4(name: &str, data: impl IntoIterator<Item = f32>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::float4(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::float4(data) })
     }
 
     pub fn float4_with_bitvec(
@@ -40,10 +34,7 @@ impl ColumnQualified {
     }
 
     pub fn float8(name: &str, data: impl IntoIterator<Item = f64>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::float8(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::float8(data) })
     }
 
     pub fn float8_with_bitvec(
@@ -58,10 +49,7 @@ impl ColumnQualified {
     }
 
     pub fn int1(name: &str, data: impl IntoIterator<Item = i8>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::int1(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::int1(data) })
     }
 
     pub fn int1_with_bitvec(
@@ -76,10 +64,7 @@ impl ColumnQualified {
     }
 
     pub fn int2(name: &str, data: impl IntoIterator<Item = i16>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::int2(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::int2(data) })
     }
 
     pub fn int2_with_bitvec(
@@ -94,10 +79,7 @@ impl ColumnQualified {
     }
 
     pub fn int4(name: &str, data: impl IntoIterator<Item = i32>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::int4(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::int4(data) })
     }
 
     pub fn int4_with_bitvec(
@@ -112,10 +94,7 @@ impl ColumnQualified {
     }
 
     pub fn int8(name: &str, data: impl IntoIterator<Item = i64>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::int8(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::int8(data) })
     }
 
     pub fn int8_with_bitvec(
@@ -130,10 +109,7 @@ impl ColumnQualified {
     }
 
     pub fn int16(name: &str, data: impl IntoIterator<Item = i128>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::int16(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::int16(data) })
     }
 
     pub fn int16_with_bitvec(
@@ -148,10 +124,7 @@ impl ColumnQualified {
     }
 
     pub fn uint1(name: &str, data: impl IntoIterator<Item = u8>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uint1(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uint1(data) })
     }
 
     pub fn uint1_with_bitvec(
@@ -166,10 +139,7 @@ impl ColumnQualified {
     }
 
     pub fn uint2(name: &str, data: impl IntoIterator<Item = u16>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uint2(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uint2(data) })
     }
 
     pub fn uint2_with_bitvec(
@@ -184,10 +154,7 @@ impl ColumnQualified {
     }
 
     pub fn uint4(name: &str, data: impl IntoIterator<Item = u32>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uint4(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uint4(data) })
     }
 
     pub fn uint4_with_bitvec(
@@ -202,10 +169,7 @@ impl ColumnQualified {
     }
 
     pub fn uint8(name: &str, data: impl IntoIterator<Item = u64>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uint8(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uint8(data) })
     }
 
     pub fn uint8_with_bitvec(
@@ -220,10 +184,7 @@ impl ColumnQualified {
     }
 
     pub fn uint16(name: &str, data: impl IntoIterator<Item = u128>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uint16(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uint16(data) })
     }
 
     pub fn uint16_with_bitvec(
@@ -251,26 +212,17 @@ impl ColumnQualified {
     ) -> Column {
         Column::ColumnQualified(Self {
             name: name.to_string(),
-            data: ColumnData::utf8_with_bitvec(
-                data.into_iter().map(|s| s.to_string()),
-                bitvec,
-            ),
+            data: ColumnData::utf8_with_bitvec(data.into_iter().map(|s| s.to_string()), bitvec),
         })
     }
 
     pub fn undefined(name: &str, len: usize) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::undefined(len),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::undefined(len) })
     }
 
     // Temporal types
     pub fn date(name: &str, data: impl IntoIterator<Item = Date>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::date(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::date(data) })
     }
 
     pub fn date_with_bitvec(
@@ -285,10 +237,7 @@ impl ColumnQualified {
     }
 
     pub fn datetime(name: &str, data: impl IntoIterator<Item = DateTime>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::datetime(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::datetime(data) })
     }
 
     pub fn datetime_with_bitvec(
@@ -303,10 +252,7 @@ impl ColumnQualified {
     }
 
     pub fn time(name: &str, data: impl IntoIterator<Item = Time>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::time(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::time(data) })
     }
 
     pub fn time_with_bitvec(
@@ -321,10 +267,7 @@ impl ColumnQualified {
     }
 
     pub fn interval(name: &str, data: impl IntoIterator<Item = Interval>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::interval(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::interval(data) })
     }
 
     pub fn interval_with_bitvec(
@@ -340,10 +283,7 @@ impl ColumnQualified {
 
     // UUID types
     pub fn uuid4(name: &str, data: impl IntoIterator<Item = Uuid4>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uuid4(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uuid4(data) })
     }
 
     pub fn uuid4_with_bitvec(
@@ -358,10 +298,7 @@ impl ColumnQualified {
     }
 
     pub fn uuid7(name: &str, data: impl IntoIterator<Item = Uuid7>) -> Column {
-        Column::ColumnQualified(Self {
-            name: name.to_string(),
-            data: ColumnData::uuid7(data),
-        })
+        Column::ColumnQualified(Self { name: name.to_string(), data: ColumnData::uuid7(data) })
     }
 
     pub fn uuid7_with_bitvec(

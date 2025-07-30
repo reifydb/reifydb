@@ -33,8 +33,10 @@ fn test_memory(path: &Path) {
 }
 
 fn test_sqlite(path: &Path) {
-    temp_dir(|db_path| testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path))
-        .expect("test failed")
+    temp_dir(|db_path| {
+        testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path)
+    })
+    .expect("test failed")
 }
 
 /// Runs engine tests.

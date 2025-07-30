@@ -2,16 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::columnar::ColumnData;
-use reifydb_core::value::container::{BoolContainer, NumberContainer, TemporalContainer, UuidContainer};
 use reifydb_core::result::error::diagnostic::cast;
+use reifydb_core::value::container::{
+    BoolContainer, NumberContainer, TemporalContainer, UuidContainer,
+};
 use reifydb_core::value::{IsNumber, IsTemporal, IsUuid};
 use reifydb_core::{OwnedSpan, Type};
 use std::fmt::{Debug, Display};
 
-pub fn to_text(
-    data: &ColumnData,
-    span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnData> {
+pub fn to_text(data: &ColumnData, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnData> {
     match data {
         ColumnData::Bool(container) => from_bool(container),
         ColumnData::Int1(container) => from_number(container),

@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
 use reifydb_core::err;
 use reifydb_core::result::error::diagnostic::operator;
-use crate::columnar::{ColumnQualified, ColumnData, Column, TableQualified};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 impl Evaluator {

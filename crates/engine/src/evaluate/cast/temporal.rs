@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::columnar::ColumnData;
-use reifydb_core::value::container::StringContainer;
 use reifydb_core::result::error::diagnostic::cast;
+use reifydb_core::value::container::StringContainer;
 use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
 use reifydb_core::{BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error};
 

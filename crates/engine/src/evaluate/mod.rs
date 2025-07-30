@@ -97,10 +97,9 @@ pub fn evaluate(expr: &Expression, ctx: &EvaluationContext) -> crate::Result<Col
                 name: column.name().to_string(),
                 data,
             }),
-            None => Column::ColumnQualified(ColumnQualified {
-                name: column.name().to_string(),
-                data,
-            }),
+            None => {
+                Column::ColumnQualified(ColumnQualified { name: column.name().to_string(), data })
+            }
         };
         Ok(column)
     } else {

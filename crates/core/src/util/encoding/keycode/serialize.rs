@@ -242,11 +242,7 @@ impl serde::ser::Serializer for &mut Serializer {
         unimplemented!()
     }
 
-    fn serialize_struct(
-        self,
-        _: &'static str,
-        _: usize,
-    ) -> crate::Result<Self::SerializeStruct> {
+    fn serialize_struct(self, _: &'static str, _: usize) -> crate::Result<Self::SerializeStruct> {
         unimplemented!()
     }
 

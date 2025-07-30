@@ -20,12 +20,10 @@ impl Push<i16> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <i16 as SafeDemote<i8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <i16 as SafeDemote<i8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int2(container) => container.push(value),
             ColumnData::Int4(container) => {
                 match <i16 as SafePromote<i32>>::checked_promote(value) {

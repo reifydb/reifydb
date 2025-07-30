@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::container::{
-    BoolContainer, NumberContainer, StringContainer, TemporalContainer,
-};
-use crate::columnar::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use Type::Bool;
 use reifydb_core::result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
+use reifydb_core::value::container::{
+    BoolContainer, NumberContainer, StringContainer, TemporalContainer,
+};
 use reifydb_core::value::number::Promote;
 use reifydb_core::value::{IsNumber, IsTemporal, temporal};
 use reifydb_core::{OwnedSpan, Type, return_error, value};
@@ -25,9 +25,7 @@ impl Evaluator {
         let right = self.evaluate(&eq.right, ctx)?;
 
         match (&left.data(), &right.data()) {
-            (ColumnData::Bool(l), ColumnData::Bool(r)) => {
-                Ok(compare_bool(ctx, l, r, eq.span()))
-            }
+            (ColumnData::Bool(l), ColumnData::Bool(r)) => Ok(compare_bool(ctx, l, r, eq.span())),
             // Float4
             (ColumnData::Float4(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<f32, f32>(ctx, l, r, eq.span()))
@@ -472,23 +470,16 @@ impl Evaluator {
             (ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
                 Ok(compare_number::<u128, u128>(ctx, l, r, eq.span()))
             }
-            (ColumnData::Date(l), ColumnData::Date(r)) => {
-                Ok(compare_temporal(l, r, eq.span()))
-            }
+            (ColumnData::Date(l), ColumnData::Date(r)) => Ok(compare_temporal(l, r, eq.span())),
             (ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
                 Ok(compare_temporal(l, r, eq.span()))
             }
-            (ColumnData::Time(l), ColumnData::Time(r)) => {
-                Ok(compare_temporal(l, r, eq.span()))
-            }
+            (ColumnData::Time(l), ColumnData::Time(r)) => Ok(compare_temporal(l, r, eq.span())),
             (ColumnData::Interval(l), ColumnData::Interval(r)) => {
                 Ok(compare_temporal(l, r, eq.span()))
             }
-            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
-                Ok(compare_utf8(l, r, eq.span()))
-            }
-            (ColumnData::Undefined(container), _)
-            | (_, ColumnData::Undefined(container)) => {
+            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => Ok(compare_utf8(l, r, eq.span())),
+            (ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
                 let span = eq.span();
                 Ok(Column::ColumnQualified(ColumnQualified {
                     name: span.fragment.into(),

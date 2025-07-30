@@ -31,7 +31,6 @@ separator! {
     NewLine => "\n"
 }
 
-
 pub(crate) fn parse_separator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     let start = input;
 

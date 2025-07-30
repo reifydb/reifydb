@@ -6,12 +6,12 @@ mod temporal;
 mod text;
 mod uuid;
 
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use number::NumberParser;
 use reifydb_core::result::error::diagnostic::cast;
-use crate::columnar::{ColumnData, Column, ColumnQualified};
-use reifydb_core::value::container::undefined::UndefinedContainer;
 use reifydb_core::value::boolean::parse_bool;
+use reifydb_core::value::container::undefined::UndefinedContainer;
 use reifydb_core::value::number::{parse_float, parse_int, parse_uint};
 use reifydb_core::{Type, return_error};
 use reifydb_rql::expression::ConstantExpression;
@@ -27,7 +27,7 @@ impl Evaluator {
         let row_count = ctx.take.unwrap_or(ctx.row_count);
         Ok(Column::ColumnQualified(ColumnQualified {
             name: expr.span().fragment.into(),
-            data: Self::constant_value(&expr, row_count)?
+            data: Self::constant_value(&expr, row_count)?,
         }))
     }
 
@@ -41,15 +41,11 @@ impl Evaluator {
         let data = Self::constant_value(&expr, row_count)?;
         let casted = {
             let source = data.get_type();
-            if source == target {
-                data
-            } else {
-                Self::constant_value_of(&expr, target, row_count)?
-            }
+            if source == target { data } else { Self::constant_value_of(&expr, target, row_count)? }
         };
         Ok(Column::ColumnQualified(ColumnQualified {
             name: expr.span().fragment.into(),
-            data: casted
+            data: casted,
         }))
     }
 
@@ -106,7 +102,9 @@ impl Evaluator {
             ConstantExpression::Temporal { span } => {
                 TemporalParser::parse_temporal(span.clone(), row_count)?
             }
-            ConstantExpression::Undefined { .. } => ColumnData::Undefined(UndefinedContainer::new(row_count)),
+            ConstantExpression::Undefined { .. } => {
+                ColumnData::Undefined(UndefinedContainer::new(row_count))
+            }
         })
     }
 

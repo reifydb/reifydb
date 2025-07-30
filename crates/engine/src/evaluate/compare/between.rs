@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::result::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 use reifydb_core::return_error;

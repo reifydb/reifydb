@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet, VecDeque};
 use crate::flow::node::NodeId;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Edge {

@@ -2,18 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use crate::columnar::ColumnData;
-use reifydb_core::value::container::{NumberContainer, StringContainer};
 use reifydb_core::result::error::diagnostic::boolean::invalid_number_boolean;
 use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::value::IsNumber;
 use reifydb_core::value::boolean::parse_bool;
+use reifydb_core::value::container::{NumberContainer, StringContainer};
 use reifydb_core::{OwnedSpan, Type, return_error};
 use std::fmt::{Debug, Display};
 
-pub fn to_boolean(
-    data: &ColumnData,
-    span: impl Fn() -> OwnedSpan,
-) -> crate::Result<ColumnData> {
+pub fn to_boolean(data: &ColumnData, span: impl Fn() -> OwnedSpan) -> crate::Result<ColumnData> {
     match data {
         ColumnData::Int1(container) => from_int1(container, &span),
         ColumnData::Int2(container) => from_int2(container, &span),

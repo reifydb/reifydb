@@ -7,7 +7,7 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
-use crate::columnar::{ColumnQualified, Column, ColumnData, TableQualified};
+use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote};
 use reifydb_core::result::error::diagnostic::cast;
 use reifydb_core::{OwnedSpan, Type, err, error};
@@ -31,15 +31,11 @@ impl Evaluator {
                 let column = self.evaluate(expr, ctx)?;
 
                 // Re-enable cast functionality using the moved cast module
-                let casted = cast_column_data(
-                    &column.data(),
-                    cast.to.ty,
-                    ctx,
-                    cast.expression.lazy_span(),
-                )
-                .map_err(|e| {
-                    error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
-                })?;
+                let casted =
+                    cast_column_data(&column.data(), cast.to.ty, ctx, cast.expression.lazy_span())
+                        .map_err(|e| {
+                            error!(cast::invalid_number(cast_span(), cast.to.ty, e.diagnostic()))
+                        })?;
 
                 Ok(match column.table() {
                     Some(table) => Column::TableQualified(TableQualified {

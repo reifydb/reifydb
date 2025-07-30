@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::ast::AstDelete;
 use crate::ast::lex::{Keyword, Operator};
 use crate::ast::parse::Parser;
-use crate::ast::AstDelete;
 
 impl Parser {
     pub(crate) fn parse_delete(&mut self) -> crate::Result<AstDelete> {

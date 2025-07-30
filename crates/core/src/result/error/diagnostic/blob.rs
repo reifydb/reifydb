@@ -32,7 +32,9 @@ pub fn invalid_base64_string(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("Invalid base64 encoding found".to_string()),
-        help: Some("Base64 strings should only contain A-Z, a-z, 0-9, +, / and = padding".to_string()),
+        help: Some(
+            "Base64 strings should only contain A-Z, a-z, 0-9, +, / and = padding".to_string(),
+        ),
         notes: vec![],
         cause: None,
     }
@@ -48,7 +50,9 @@ pub fn invalid_base64url_string(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("Invalid base64url encoding found".to_string()),
-        help: Some("Base64url strings should only contain A-Z, a-z, 0-9, -, _ characters".to_string()),
+        help: Some(
+            "Base64url strings should only contain A-Z, a-z, 0-9, -, _ characters".to_string(),
+        ),
         notes: vec![],
         cause: None,
     }

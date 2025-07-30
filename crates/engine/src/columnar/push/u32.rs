@@ -20,18 +20,14 @@ impl Push<u32> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Uint1(container) => {
-                match <u32 as SafeDemote<u8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Uint2(container) => {
-                match <u32 as SafeDemote<u16>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Uint1(container) => match <u32 as SafeDemote<u8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Uint2(container) => match <u32 as SafeDemote<u16>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Uint4(container) => container.push(value),
             ColumnData::Uint8(container) => {
                 match <u32 as SafePromote<u64>>::checked_promote(value) {
@@ -45,12 +41,10 @@ impl Push<u32> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <u32 as SafeConvert<i8>>::checked_convert(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <u32 as SafeConvert<i8>>::checked_convert(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int2(container) => {
                 match <u32 as SafeConvert<i16>>::checked_convert(value) {
                     Some(v) => container.push(v),
@@ -83,7 +77,10 @@ impl Push<u32> for ColumnData {
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<u32>()` on incompatible EngineColumnData::{:?}", other.get_type());
+                panic!(
+                    "called `push::<u32>()` on incompatible EngineColumnData::{:?}",
+                    other.get_type()
+                );
             }
         }
     }

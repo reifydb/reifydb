@@ -3,10 +3,10 @@
 
 #![warn(clippy::all)]
 
+use reifydb_testing::testscript;
 use std::error::Error;
 use std::io::Write as _;
 use test_each_file::test_each_path;
-use reifydb_testing::testscript;
 
 // Run testscripts in tests/scripts that debug-print the commands.
 test_each_path! { in "crates/testing/tests/testscript/scripts" as scripts => test_testscript }

@@ -137,8 +137,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::value::container::{BoolContainer, NumberContainer, StringContainer};
     use crate::columnar::pool::allocator::{PoolAllocator, StdPoolAllocator};
+    use reifydb_core::value::container::{BoolContainer, NumberContainer, StringContainer};
 
     #[test]
     fn test_allocate_bool() {

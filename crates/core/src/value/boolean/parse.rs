@@ -5,7 +5,7 @@ use crate::result::error::diagnostic::boolean::{
     empty_boolean_value, invalid_boolean_format, invalid_number_boolean,
 };
 
-use crate::{err, Error, Span, return_error};
+use crate::{Error, Span, err, return_error};
 
 pub fn parse_bool(span: impl Span) -> Result<bool, Error> {
     let value = span.fragment().trim();

@@ -1,4 +1,4 @@
-use super::super::{ColumnData, Column, FullyQualified};
+use super::super::{Column, ColumnData, FullyQualified};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7};
 
@@ -405,10 +405,7 @@ impl FullyQualified {
             schema: schema.to_string(),
             table: table.to_string(),
             name: name.to_string(),
-            data: ColumnData::utf8_with_bitvec(
-                data.into_iter().map(|s| s.to_string()),
-                bitvec,
-            ),
+            data: ColumnData::utf8_with_bitvec(data.into_iter().map(|s| s.to_string()), bitvec),
         })
     }
 
@@ -597,11 +594,7 @@ impl FullyQualified {
         })
     }
 
-    pub fn row_id(
-        schema: &str,
-        table: &str,
-        data: impl IntoIterator<Item = RowId>,
-    ) -> Column {
+    pub fn row_id(schema: &str, table: &str, data: impl IntoIterator<Item = RowId>) -> Column {
         Column::FullyQualified(Self {
             schema: schema.to_string(),
             table: table.to_string(),

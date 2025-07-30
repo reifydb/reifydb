@@ -2,18 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 //! Compilation module for converting RQL logical plans into FlowGraphs
-//! 
+//!
 //! This module bridges the gap between ReifyDB's SQL query processing and the streaming
 //! dataflow engine, enabling automatic incremental computation for SQL queries.
 
 mod operators;
 mod sources;
 
+use crate::Result;
 use crate::flow::flow::FlowGraph;
 use crate::flow::node::{NodeId, NodeType};
-use crate::Result;
-use reifydb_core::result::error::diagnostic::flow::flow_error;
 use reifydb_core::interface::{SchemaId, Table, TableId};
+use reifydb_core::result::error::diagnostic::flow::flow_error;
 use reifydb_rql::plan::logical::{CreateComputedViewNode, LogicalPlan};
 use std::collections::HashMap;
 
@@ -30,36 +30,37 @@ pub struct FlowCompiler {
 impl FlowCompiler {
     /// Creates a new FlowCompiler instance
     pub fn new() -> Self {
-        Self {
-            next_table_id: 1,
-            schema_context: None,
-            node_mapping: HashMap::new(),
-        }
+        Self { next_table_id: 1, schema_context: None, node_mapping: HashMap::new() }
     }
 
     /// Compiles a vector of logical plans into a single FlowGraph
     pub fn compile(&mut self, plans: Vec<LogicalPlan>) -> Result<FlowGraph> {
         let mut flow_graph = FlowGraph::new();
-        
+
         // Process logical plans in order, building the dataflow graph
         let mut last_node_id: Option<NodeId> = None;
-        
+
         for (index, plan) in plans.into_iter().enumerate() {
             let node_id = self.compile_plan(&mut flow_graph, plan, index)?;
-            
+
             // Connect nodes in sequence (for simple linear plans)
             if let Some(prev_id) = last_node_id {
                 flow_graph.add_edge(&prev_id, &node_id)?;
             }
-            
+
             last_node_id = Some(node_id);
         }
-        
+
         Ok(flow_graph)
     }
 
     /// Compiles a single logical plan node into the FlowGraph
-    fn compile_plan(&mut self, flow_graph: &mut FlowGraph, plan: LogicalPlan, index: usize) -> Result<NodeId> {
+    fn compile_plan(
+        &mut self,
+        flow_graph: &mut FlowGraph,
+        plan: LogicalPlan,
+        index: usize,
+    ) -> Result<NodeId> {
         let node_id = match plan {
             // Data Sources -> Source Nodes
             LogicalPlan::TableScan(table_scan) => {
@@ -68,64 +69,48 @@ impl FlowCompiler {
             LogicalPlan::InlineData(inline_data) => {
                 self.compile_inline_data(flow_graph, inline_data)?
             }
-            
+
             // Query Operations -> Operators
-            LogicalPlan::Filter(filter) => {
-                self.compile_filter(flow_graph, filter)?
-            }
-            LogicalPlan::Map(map) => {
-                self.compile_map(flow_graph, map)?
-            }
-            LogicalPlan::Aggregate(aggregate) => {
-                self.compile_aggregate(flow_graph, aggregate)?
-            }
-            LogicalPlan::JoinInner(join) => {
-                self.compile_join_inner(flow_graph, join)?
-            }
-            LogicalPlan::JoinLeft(join) => {
-                self.compile_join_left(flow_graph, join)?
-            }
-            LogicalPlan::Take(take) => {
-                self.compile_take(flow_graph, take)?
-            }
-            LogicalPlan::Order(order) => {
-                self.compile_order(flow_graph, order)?
-            }
-            
+            LogicalPlan::Filter(filter) => self.compile_filter(flow_graph, filter)?,
+            LogicalPlan::Map(map) => self.compile_map(flow_graph, map)?,
+            LogicalPlan::Aggregate(aggregate) => self.compile_aggregate(flow_graph, aggregate)?,
+            LogicalPlan::JoinInner(join) => self.compile_join_inner(flow_graph, join)?,
+            LogicalPlan::JoinLeft(join) => self.compile_join_left(flow_graph, join)?,
+            LogicalPlan::Take(take) => self.compile_take(flow_graph, take)?,
+            LogicalPlan::Order(order) => self.compile_order(flow_graph, order)?,
+
             // DDL operations that cannot be compiled to dataflow
-            LogicalPlan::CreateSchema(_) |
-            LogicalPlan::CreateTable(_) |
-            LogicalPlan::CreateSequence(_) => {
+            LogicalPlan::CreateSchema(_)
+            | LogicalPlan::CreateTable(_)
+            | LogicalPlan::CreateSequence(_) => {
                 return Err(reifydb_core::Error(flow_error(
-                    "DDL operations cannot be compiled to dataflow".to_string()
+                    "DDL operations cannot be compiled to dataflow".to_string(),
                 )));
             }
-            
+
             // CREATE COMPUTED VIEW can be compiled to dataflow
             LogicalPlan::CreateComputedView(computed_view) => {
                 self.compile_create_computed_view(flow_graph, computed_view)?
             }
-            
+
             // Mutate operations are handled by transaction layer
-            LogicalPlan::Insert(_) |
-            LogicalPlan::Update(_) |
-            LogicalPlan::Delete(_) => {
+            LogicalPlan::Insert(_) | LogicalPlan::Update(_) | LogicalPlan::Delete(_) => {
                 return Err(reifydb_core::Error(flow_error(
-                    "DML operations cannot be compiled to dataflow".to_string()
+                    "DML operations cannot be compiled to dataflow".to_string(),
                 )));
             }
-            
+
             // Not yet implemented
             LogicalPlan::JoinNatural(_) => {
                 return Err(reifydb_core::Error(flow_error(
-                    "Natural joins not yet implemented in dataflow".to_string()
+                    "Natural joins not yet implemented in dataflow".to_string(),
                 )));
             }
         };
-        
+
         // Store the mapping for this plan node
         self.node_mapping.insert(index, node_id.clone());
-        
+
         Ok(node_id)
     }
 
@@ -137,28 +122,33 @@ impl FlowCompiler {
     }
 
     /// Compiles a CREATE COMPUTED VIEW logical plan into a FlowGraph with a Sink node
-    fn compile_create_computed_view(&mut self, flow_graph: &mut FlowGraph, computed_view: CreateComputedViewNode) -> Result<NodeId> {
+    fn compile_create_computed_view(
+        &mut self,
+        flow_graph: &mut FlowGraph,
+        computed_view: CreateComputedViewNode,
+    ) -> Result<NodeId> {
         // If there's no WITH clause, this is just a view definition without a query
         let query_plans = match computed_view.with {
             Some(plans) => plans,
             None => {
                 return Err(reifydb_core::Error(flow_error(
-                    "CREATE COMPUTED VIEW requires a WITH clause containing the query definition".to_string()
+                    "CREATE COMPUTED VIEW requires a WITH clause containing the query definition"
+                        .to_string(),
                 )));
             }
         };
 
         // Compile the query plans to build the dataflow graph
         let mut last_node_id: Option<NodeId> = None;
-        
+
         for (index, plan) in query_plans.into_iter().enumerate() {
             let node_id = self.compile_plan(flow_graph, plan, index)?;
-            
+
             // Connect nodes in sequence (for simple linear plans)
             if let Some(prev_id) = last_node_id {
                 flow_graph.add_edge(&prev_id, &node_id)?;
             }
-            
+
             last_node_id = Some(node_id);
         }
 
@@ -171,10 +161,8 @@ impl FlowCompiler {
             columns: vec![], // TODO: Create columns from computed_view.columns
         };
 
-        let sink_node_id = flow_graph.add_node(NodeType::Sink {
-            name: view_name,
-            table: view_table,
-        });
+        let sink_node_id =
+            flow_graph.add_node(NodeType::Sink { name: view_name, table: view_table });
 
         // Connect the last query node to the sink
         if let Some(last_id) = last_node_id {

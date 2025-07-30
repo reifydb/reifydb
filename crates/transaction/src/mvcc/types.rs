@@ -10,9 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::delta::Delta;
+use reifydb_core::interface::Versioned;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version};
-use reifydb_core::interface::Versioned;
 use std::cmp;
 use std::cmp::Reverse;
 
@@ -103,7 +103,6 @@ impl From<Committed> for TransactionValue {
         Self::Committed(item)
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct Committed {

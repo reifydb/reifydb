@@ -54,7 +54,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Clone for Serializable<VS, US
 impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
     fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
         let tm =
-            TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap()).unwrap();
+            TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap())
+                .unwrap();
         Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
     }
 

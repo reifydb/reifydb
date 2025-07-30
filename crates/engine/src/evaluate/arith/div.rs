@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::columnar::push::Push;
-use reifydb_core::value::container::number::NumberContainer;
-use crate::columnar::{ColumnQualified, Column, ColumnData};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{EvaluationContext, Evaluator};
 use reifydb_core::OwnedSpan;
 use reifydb_core::result::error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types;
 use reifydb_core::value::IsNumber;
+use reifydb_core::value::container::number::NumberContainer;
 use reifydb_core::value::number::{Promote, SafeDiv};
 use reifydb_core::{GetType, Type, return_error};
 use reifydb_rql::expression::DivExpression;

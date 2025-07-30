@@ -20,30 +20,22 @@ impl Push<i128> for ColumnData {
                     None => container.push_undefined(),
                 }
             }
-            ColumnData::Int1(container) => {
-                match <i128 as SafeDemote<i8>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int2(container) => {
-                match <i128 as SafeDemote<i16>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int4(container) => {
-                match <i128 as SafeDemote<i32>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
-            ColumnData::Int8(container) => {
-                match <i128 as SafeDemote<i64>>::checked_demote(value) {
-                    Some(v) => container.push(v),
-                    None => container.push_undefined(),
-                }
-            }
+            ColumnData::Int1(container) => match <i128 as SafeDemote<i8>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int2(container) => match <i128 as SafeDemote<i16>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int4(container) => match <i128 as SafeDemote<i32>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
+            ColumnData::Int8(container) => match <i128 as SafeDemote<i64>>::checked_demote(value) {
+                Some(v) => container.push(v),
+                None => container.push_undefined(),
+            },
             ColumnData::Int16(container) => container.push(value),
             ColumnData::Uint1(container) => {
                 match <i128 as SafeConvert<u8>>::checked_convert(value) {
@@ -83,7 +75,10 @@ impl Push<i128> for ColumnData {
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<i128>()` on incompatible EngineColumnData::{:?}", other.get_type());
+                panic!(
+                    "called `push::<i128>()` on incompatible EngineColumnData::{:?}",
+                    other.get_type()
+                );
             }
         }
     }

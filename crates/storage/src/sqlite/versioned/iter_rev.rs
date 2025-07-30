@@ -6,7 +6,7 @@ use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{Versioned, VersionedScanRev};
-use reifydb_core::{EncodedKey, Version, Result};
+use reifydb_core::{EncodedKey, Result, Version};
 use std::collections::VecDeque;
 
 impl VersionedScanRev for Sqlite {

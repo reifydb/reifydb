@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::{ColumnData, Column, ColumnQualified};
+use crate::columnar::{Column, ColumnData, ColumnQualified};
 use reifydb_core::result::error::diagnostic::operator::{
-    or_can_not_applied_to_number, or_can_not_applied_to_text, 
-    or_can_not_applied_to_temporal, or_can_not_applied_to_uuid
+    or_can_not_applied_to_number, or_can_not_applied_to_temporal, or_can_not_applied_to_text,
+    or_can_not_applied_to_uuid,
 };
 use reifydb_core::return_error;
 use reifydb_rql::expression::OrExpression;
@@ -37,7 +37,7 @@ impl Evaluator {
 
                 Ok(Column::ColumnQualified(ColumnQualified {
                     name: expr.span().fragment.into(),
-                    data: ColumnData::bool_with_bitvec(data, bitvec)
+                    data: ColumnData::bool_with_bitvec(data, bitvec),
                 }))
             }
             (l, r) => {
@@ -54,4 +54,3 @@ impl Evaluator {
         }
     }
 }
-
