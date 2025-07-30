@@ -15,7 +15,7 @@ use reifydb_core::interface::{
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
-use reifydb_core::{FrameColumn, Type, Value};
+use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 
 pub struct DbService<VS, US, T>

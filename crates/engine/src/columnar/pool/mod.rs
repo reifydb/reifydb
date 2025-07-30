@@ -12,11 +12,9 @@ mod capacity;
 mod guard;
 mod stats;
 
-pub use guard::PooledGuard;
-
-use reifydb_core::value::container::*;
 use crate::columnar::pool::allocator::{PoolAllocator, StdPoolAllocator};
 use crate::columnar::pool::stats::PoolStats;
+use reifydb_core::value::container::*;
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
 use reifydb_core::value::{Date, DateTime, Interval, Time};
 use std::collections::HashMap;

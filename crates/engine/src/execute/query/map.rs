@@ -115,7 +115,7 @@ impl MapWithoutInputNode {
 }
 
 impl ExecutionPlan for MapWithoutInputNode {
-    fn next(&mut self, ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }

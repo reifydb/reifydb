@@ -110,7 +110,7 @@ create computed view test.adults(name: utf8, age: int1) with {
             engine.initialize().unwrap();
 
             // Find the source node (users table)
-            let source_node_id = flow_graph
+            let _source_node_id = flow_graph
                 .get_all_nodes()
                 .find(|node_id| {
                     if let Some(node) = flow_graph.get_node(node_id) {

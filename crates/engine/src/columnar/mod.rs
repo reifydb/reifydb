@@ -9,6 +9,7 @@ pub(crate) mod columns;
 mod data;
 pub mod frame;
 pub(crate) mod layout;
+#[allow(dead_code)]
 pub mod pool;
 pub mod push;
 mod qualification;

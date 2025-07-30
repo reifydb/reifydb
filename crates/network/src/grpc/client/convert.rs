@@ -41,7 +41,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 
     let mut columns = Vec::with_capacity(frame.columns.len());
 
-    for (i, grpc_col) in frame.columns.into_iter().enumerate() {
+    for (_i, grpc_col) in frame.columns.into_iter().enumerate() {
         let data_type = Type::from_u8(grpc_col.ty as u8);
         let frame = grpc_col.frame;
         let name = grpc_col.name;
@@ -478,7 +478,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
         let name = if name.is_empty() { name.clone() } else { name };
 
         columns.push(FrameColumn { schema: None, table: frame.clone(), name: name.clone(), data });
-        let qualified_name = if name.contains('.') {
+        let _qualified_name = if name.contains('.') {
             name.clone()
         } else {
             match &frame {

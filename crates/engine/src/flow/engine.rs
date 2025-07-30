@@ -133,13 +133,13 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
 
     fn apply_diff_to_storage_with_tx(
         &mut self,
-        tx: &mut <T as Transaction<VS, US>>::Tx,
+        _tx: &mut <T as Transaction<VS, US>>::Tx,
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
-        let layout = Layout::new(&[Type::Utf8, Type::Int1]);
+        let _layout = Layout::new(&[Type::Utf8, Type::Int1]);
 
-        let table = Table {
+        let _table = Table {
             id: TableId(node_id.0),
             schema: SchemaId(0),
             name: "view".to_string(),
@@ -161,7 +161,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
             ],
         };
 
-        for change in &diff.changes {
+        for _change in &diff.changes {
             todo!()
             // match change {
             //     Change::Insert { columns } => {
@@ -278,16 +278,16 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
         let mut rx = self.transaction.begin_rx()?;
 
         let range = TableRowKeyRange { table: TableId(node_id.0) };
-        let versioned_data = rx
+        let _versioned_data = rx
             .scan_range(EncodedKeyRange::new(
                 Included(range.start().unwrap()),
                 Included(range.end().unwrap()),
             ))
             .unwrap();
 
-        let layout = Layout::new(&[Type::Utf8, Type::Int1]);
+        let _layout = Layout::new(&[Type::Utf8, Type::Int1]);
 
-        let table = Table {
+        let _table = Table {
             id: TableId(node_id.0),
             schema: SchemaId(0),
             name: "view".to_string(),

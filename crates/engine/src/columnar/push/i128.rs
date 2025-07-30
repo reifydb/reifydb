@@ -3,7 +3,7 @@
 
 use crate::columnar::data::ColumnData;
 use crate::columnar::push::Push;
-use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote};
+use reifydb_core::value::number::{SafeConvert, SafeDemote};
 
 impl Push<i128> for ColumnData {
     fn push(&mut self, value: i128) {

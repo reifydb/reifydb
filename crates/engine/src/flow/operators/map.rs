@@ -4,12 +4,12 @@ use reifydb_core::result::Frame;
 use reifydb_rql::expression::Expression;
 
 pub struct MapOperator {
-    expressions: Vec<Expression>,
+    _expressions: Vec<Expression>,
 }
 
 impl MapOperator {
     pub fn new(expressions: Vec<Expression>) -> Self {
-        Self { expressions }
+        Self { _expressions: expressions }
     }
 }
 
@@ -40,7 +40,7 @@ impl Operator for MapOperator {
 }
 
 impl MapOperator {
-    fn project_columns(&self, frames: &Frame) -> crate::Result<Frame> {
+    fn project_columns(&self, _frames: &Frame) -> crate::Result<Frame> {
         // if columns.is_empty() {
         //     return Ok(columns.clone());
         // }

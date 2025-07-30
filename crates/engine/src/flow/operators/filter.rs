@@ -1,23 +1,22 @@
 use crate::flow::change::Diff;
 use crate::flow::operators::{Operator, OperatorContext};
-use reifydb_core::result::Frame;
 use reifydb_rql::expression::Expression;
 
 pub struct FilterOperator {
-    predicate: Expression,
+    _predicate: Expression,
 }
 
 impl FilterOperator {
     pub fn new(predicate: Expression) -> Self {
-        Self { predicate }
+        Self { _predicate: predicate }
     }
 }
 
 impl Operator for FilterOperator {
     fn apply(&mut self, _ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
-        let mut output_changes = Vec::new();
+        let output_changes = Vec::new();
 
-        for change in diff.changes {
+        for _change in diff.changes {
             todo!()
             // match change {
             // Change::Insert { columns } => {
@@ -46,37 +45,37 @@ impl Operator for FilterOperator {
     }
 }
 
-impl FilterOperator {
-    fn filter(&self, frames: &Frame) -> crate::Result<Frame> {
-        // let row_count = columns.row_count();
-        //
-        // let eval_ctx = EvaluationContext {
-        //     target_column: None,
-        //     column_policies: Vec::new(),
-        //     columns: columns.columns.clone(),
-        //     row_count,
-        //     take: None,
-        // };
-        //
-        // // Evaluate predicate to get boolean column
-        // let result_column = evaluate(&self.predicate, &eval_ctx)?;
-        // let mut columns = columns.clone();
-        //
-        // let mut bv = BitVec::repeat(row_count, true);
-        //
-        // match result_column.data() {
-        //     EngineColumnData::Bool(container) => {
-        //         for (idx, val) in container.data().iter().enumerate() {
-        //             debug_assert!(container.is_defined(idx));
-        //             bv.set(idx, val);
-        //         }
-        //     }
-        //     _ => unreachable!(),
-        // }
-        //
-        // columns.filter(&bv)?;
-        //
-        // Ok(columns)
-        todo!()
-    }
-}
+// impl FilterOperator {
+//     fn filter(&self, _frames: &Frame) -> crate::Result<Frame> {
+//         // let row_count = columns.row_count();
+//         //
+//         // let eval_ctx = EvaluationContext {
+//         //     target_column: None,
+//         //     column_policies: Vec::new(),
+//         //     columns: columns.columns.clone(),
+//         //     row_count,
+//         //     take: None,
+//         // };
+//         //
+//         // // Evaluate predicate to get boolean column
+//         // let result_column = evaluate(&self.predicate, &eval_ctx)?;
+//         // let mut columns = columns.clone();
+//         //
+//         // let mut bv = BitVec::repeat(row_count, true);
+//         //
+//         // match result_column.data() {
+//         //     EngineColumnData::Bool(container) => {
+//         //         for (idx, val) in container.data().iter().enumerate() {
+//         //             debug_assert!(container.is_defined(idx));
+//         //             bv.set(idx, val);
+//         //         }
+//         //     }
+//         //     _ => unreachable!(),
+//         // }
+//         //
+//         // columns.filter(&bv)?;
+//         //
+//         // Ok(columns)
+//         todo!()
+//     }
+// }

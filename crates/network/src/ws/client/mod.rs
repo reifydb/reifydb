@@ -206,7 +206,7 @@ fn convert_execute_response(payload: TxResponse) -> Vec<Frame> {
             .columns
             .into_iter()
             .enumerate()
-            .map(|(i, col)| FrameColumn {
+            .map(|(_i, col)| FrameColumn {
                 schema: None,
                 table: col.frame,
                 name: col.name,
@@ -228,7 +228,7 @@ fn convert_query_response(payload: RxResponse) -> Vec<Frame> {
             .columns
             .into_iter()
             .enumerate()
-            .map(|(i, col)| FrameColumn {
+            .map(|(_i, col)| FrameColumn {
                 schema: None,
                 table: col.frame,
                 name: col.name,
