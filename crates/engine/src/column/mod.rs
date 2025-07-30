@@ -1,60 +1,57 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use layout::FrameColumnLayout;
+pub use data::EngineColumnData;
 use reifydb_core::Type;
 use serde::{Deserialize, Serialize};
-pub use values::ColumnValues;
 
 pub mod container;
-mod layout;
+mod data;
 pub mod pool;
-pub(crate) mod pooled;
 mod qualification;
-mod values;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct FullyQualified {
-    pub schema: String,
-    pub table: String,
-    pub name: String,
-    pub values: ColumnValues,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TableQualified {
-    pub table: String,
-    pub name: String,
-    pub values: ColumnValues,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ColumnQualified {
-    pub name: String,
-    pub values: ColumnValues,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Unqualified {
-    pub name: String,
-    pub values: ColumnValues,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum FrameColumn {
+pub enum EngineColumn {
     FullyQualified(FullyQualified),
     TableQualified(TableQualified),
     ColumnQualified(ColumnQualified),
     Unqualified(Unqualified),
 }
 
-impl FrameColumn {
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FullyQualified {
+    pub schema: String,
+    pub table: String,
+    pub name: String,
+    pub data: EngineColumnData,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TableQualified {
+    pub table: String,
+    pub name: String,
+    pub data: EngineColumnData,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ColumnQualified {
+    pub name: String,
+    pub data: EngineColumnData,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Unqualified {
+    pub name: String,
+    pub data: EngineColumnData,
+}
+
+impl EngineColumn {
     pub fn get_type(&self) -> Type {
         match self {
-            Self::FullyQualified(col) => col.values.get_type(),
-            Self::TableQualified(col) => col.values.get_type(),
-            Self::ColumnQualified(col) => col.values.get_type(),
-            Self::Unqualified(col) => col.values.get_type(),
+            Self::FullyQualified(col) => col.data.get_type(),
+            Self::TableQualified(col) => col.data.get_type(),
+            Self::ColumnQualified(col) => col.data.get_type(),
+            Self::Unqualified(col) => col.data.get_type(),
         }
     }
 
@@ -67,24 +64,24 @@ impl FrameColumn {
         }
     }
 
-    pub fn with_new_values(&self, values: ColumnValues) -> FrameColumn {
+    pub fn with_new_values(&self, values: EngineColumnData) -> EngineColumn {
         match self {
             Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
                 schema: col.schema.clone(),
                 table: col.table.clone(),
                 name: col.name.clone(),
-                values,
+                data: values,
             }),
             Self::TableQualified(col) => Self::TableQualified(TableQualified {
                 table: col.table.clone(),
                 name: col.name.clone(),
-                values,
+                data: values,
             }),
             Self::ColumnQualified(col) => {
-                Self::ColumnQualified(ColumnQualified { name: col.name.clone(), values })
+                Self::ColumnQualified(ColumnQualified { name: col.name.clone(), data: values })
             }
             Self::Unqualified(col) => {
-                Self::Unqualified(Unqualified { name: col.name.clone(), values })
+                Self::Unqualified(Unqualified { name: col.name.clone(), data: values })
             }
         }
     }
@@ -116,21 +113,21 @@ impl FrameColumn {
         }
     }
 
-    pub fn values(&self) -> &ColumnValues {
+    pub fn values(&self) -> &EngineColumnData {
         match self {
-            Self::FullyQualified(col) => &col.values,
-            Self::TableQualified(col) => &col.values,
-            Self::ColumnQualified(col) => &col.values,
-            Self::Unqualified(col) => &col.values,
+            Self::FullyQualified(col) => &col.data,
+            Self::TableQualified(col) => &col.data,
+            Self::ColumnQualified(col) => &col.data,
+            Self::Unqualified(col) => &col.data,
         }
     }
 
-    pub fn values_mut(&mut self) -> &mut ColumnValues {
+    pub fn values_mut(&mut self) -> &mut EngineColumnData {
         match self {
-            Self::FullyQualified(col) => &mut col.values,
-            Self::TableQualified(col) => &mut col.values,
-            Self::ColumnQualified(col) => &mut col.values,
-            Self::Unqualified(col) => &mut col.values,
+            Self::FullyQualified(col) => &mut col.data,
+            Self::TableQualified(col) => &mut col.data,
+            Self::ColumnQualified(col) => &mut col.data,
+            Self::Unqualified(col) => &mut col.data,
         }
     }
 }
@@ -144,7 +141,7 @@ mod tests {
         let column = TableQualified::int4("test_frame", "normal_column", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "test_frame.normal_column");
         match column {
-            FrameColumn::TableQualified(col) => {
+            EngineColumn::TableQualified(col) => {
                 assert_eq!(col.table, "test_frame");
                 assert_eq!(col.name, "normal_column");
             }
@@ -157,7 +154,7 @@ mod tests {
         let column = FullyQualified::int4("public", "users", "id", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "public.users.id");
         match column {
-            FrameColumn::FullyQualified(col) => {
+            EngineColumn::FullyQualified(col) => {
                 assert_eq!(col.schema, "public");
                 assert_eq!(col.table, "users");
                 assert_eq!(col.name, "id");
@@ -171,7 +168,7 @@ mod tests {
         let column = ColumnQualified::int4("expr_result", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "expr_result");
         match column {
-            FrameColumn::ColumnQualified(col) => {
+            EngineColumn::ColumnQualified(col) => {
                 assert_eq!(col.name, "expr_result");
             }
             _ => panic!("Expected ColumnQualified variant"),
@@ -183,7 +180,7 @@ mod tests {
         let column = Unqualified::int4("sum(a+b)", [1, 2, 3]);
         assert_eq!(column.qualified_name(), "sum(a+b)");
         match column {
-            FrameColumn::Unqualified(col) => {
+            EngineColumn::Unqualified(col) => {
                 assert_eq!(col.name, "sum(a+b)");
             }
             _ => panic!("Expected Unqualified variant"),

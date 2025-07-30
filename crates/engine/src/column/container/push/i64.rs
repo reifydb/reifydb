@@ -1,89 +1,89 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::ColumnValues;
+use crate::column::EngineColumnData;
 use crate::column::container::Push;
 use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote};
 
-impl Push<i64> for ColumnValues {
+impl Push<i64> for EngineColumnData {
     fn push(&mut self, value: i64) {
         match self {
-            ColumnValues::Float4(container) => {
+            EngineColumnData::Float4(container) => {
                 match <i64 as SafeConvert<f32>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Float8(container) => {
+            EngineColumnData::Float8(container) => {
                 match <i64 as SafeConvert<f64>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Int1(container) => {
+            EngineColumnData::Int1(container) => {
                 match <i64 as SafeDemote<i8>>::checked_demote(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Int2(container) => {
+            EngineColumnData::Int2(container) => {
                 match <i64 as SafeDemote<i16>>::checked_demote(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Int4(container) => {
+            EngineColumnData::Int4(container) => {
                 match <i64 as SafeDemote<i32>>::checked_demote(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Int8(container) => container.push(value),
-            ColumnValues::Int16(container) => {
+            EngineColumnData::Int8(container) => container.push(value),
+            EngineColumnData::Int16(container) => {
                 match <i64 as SafePromote<i128>>::checked_promote(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Uint1(container) => {
+            EngineColumnData::Uint1(container) => {
                 match <i64 as SafeConvert<u8>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Uint2(container) => {
+            EngineColumnData::Uint2(container) => {
                 match <i64 as SafeConvert<u16>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Uint4(container) => {
+            EngineColumnData::Uint4(container) => {
                 match <i64 as SafeConvert<u32>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Uint8(container) => {
+            EngineColumnData::Uint8(container) => {
                 match <i64 as SafeConvert<u64>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Uint16(container) => {
+            EngineColumnData::Uint16(container) => {
                 match <i64 as SafeConvert<u128>>::checked_convert(value) {
                     Some(v) => container.push(v),
                     None => container.push_undefined(),
                 }
             }
-            ColumnValues::Undefined(container) => {
-                let mut new_container = ColumnValues::int8(vec![0i64; container.len()]);
-                if let ColumnValues::Int8(new_container) = &mut new_container {
+            EngineColumnData::Undefined(container) => {
+                let mut new_container = EngineColumnData::int8(vec![0i64; container.len()]);
+                if let EngineColumnData::Int8(new_container) = &mut new_container {
                     new_container.push(value);
                 }
                 *self = new_container;
             }
             other => {
-                panic!("called `push::<i64>()` on incompatible ColumnValues::{:?}", other.get_type());
+                panic!("called `push::<i64>()` on incompatible EngineColumnData::{:?}", other.get_type());
             }
         }
     }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::ColumnValues;
+use crate::column::EngineColumnData;
 use reifydb_core::{Date, DateTime, Interval, Time};
 use std::fmt::Debug;
 
@@ -23,7 +23,7 @@ pub trait Push<T> {
     fn push(&mut self, value: T);
 }
 
-impl ColumnValues {
+impl EngineColumnData {
     pub fn push<T>(&mut self, value: T)
     where
         Self: Push<T>,
@@ -35,21 +35,21 @@ impl ColumnValues {
 
 macro_rules! impl_push {
     ($t:ty, $variant:ident, $factory:ident) => {
-        impl Push<$t> for ColumnValues {
+        impl Push<$t> for EngineColumnData {
             fn push(&mut self, value: $t) {
                 match self {
-                    ColumnValues::$variant(container) => {
+                    EngineColumnData::$variant(container) => {
                         container.push(value);
                     }
-                    ColumnValues::Undefined(container) => {
-                        let mut new_container = ColumnValues::$factory(vec![<$t>::default(); container.len()]);
-                        if let ColumnValues::$variant(new_container) = &mut new_container {
+                    EngineColumnData::Undefined(container) => {
+                        let mut new_container = EngineColumnData::$factory(vec![<$t>::default(); container.len()]);
+                        if let EngineColumnData::$variant(new_container) = &mut new_container {
                             new_container.push(value);
                         }
                         *self = new_container;
                     }
                     other => panic!(
-                        "called `push::<{}>()` on ColumnValues::{:?}",
+                        "called `push::<{}>()` on EngineColumnData::{:?}",
                         stringify!($t),
                         other.get_type()
                     ),
@@ -59,21 +59,21 @@ macro_rules! impl_push {
     };
 }
 
-impl Push<bool> for ColumnValues {
+impl Push<bool> for EngineColumnData {
     fn push(&mut self, value: bool) {
         match self {
-            ColumnValues::Bool(container) => {
+            EngineColumnData::Bool(container) => {
                 container.push(value);
             }
-            ColumnValues::Undefined(container) => {
-                let mut new_container = ColumnValues::bool(vec![false; container.len()]);
-                if let ColumnValues::Bool(new_container) = &mut new_container {
+            EngineColumnData::Undefined(container) => {
+                let mut new_container = EngineColumnData::bool(vec![false; container.len()]);
+                if let EngineColumnData::Bool(new_container) = &mut new_container {
                     new_container.push(value);
                 }
                 *self = new_container;
             }
             other => panic!(
-                "called `push::<bool>()` on ColumnValues::{:?}",
+                "called `push::<bool>()` on EngineColumnData::{:?}",
                 other.get_type()
             ),
         }
@@ -88,20 +88,20 @@ impl_push!(Time, Time, time);
 impl_push!(Interval, Interval, interval);
 
 
-impl Push<String> for ColumnValues {
+impl Push<String> for EngineColumnData {
     fn push(&mut self, value: String) {
         match self {
-            ColumnValues::Utf8(container) => {
+            EngineColumnData::Utf8(container) => {
                 container.push(value);
             }
-            ColumnValues::Undefined(container) => {
-                let mut new_container = ColumnValues::utf8(vec![String::default(); container.len()]);
-                if let ColumnValues::Utf8(new_container) = &mut new_container {
+            EngineColumnData::Undefined(container) => {
+                let mut new_container = EngineColumnData::utf8(vec![String::default(); container.len()]);
+                if let EngineColumnData::Utf8(new_container) = &mut new_container {
                     new_container.push(value);
                 }
                 *self = new_container;
             }
-            other => panic!("called `push::<String>()` on ColumnValues::{:?}", other.get_type()),
+            other => panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type()),
         }
     }
 }

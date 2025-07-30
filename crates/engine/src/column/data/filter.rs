@@ -1,41 +1,41 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::{ColumnValues, FrameColumn};
+use crate::column::{EngineColumnData, EngineColumn};
 use reifydb_core::BitVec;
 
-impl FrameColumn {
+impl EngineColumn {
     pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
         self.values_mut().filter(mask)
     }
 }
 
-impl ColumnValues {
+impl EngineColumnData {
     pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
         match self {
-            ColumnValues::Bool(container) => container.filter(mask),
-            ColumnValues::Float4(container) => container.filter(mask),
-            ColumnValues::Float8(container) => container.filter(mask),
-            ColumnValues::Int1(container) => container.filter(mask),
-            ColumnValues::Int2(container) => container.filter(mask),
-            ColumnValues::Int4(container) => container.filter(mask),
-            ColumnValues::Int8(container) => container.filter(mask),
-            ColumnValues::Int16(container) => container.filter(mask),
-            ColumnValues::Uint1(container) => container.filter(mask),
-            ColumnValues::Uint2(container) => container.filter(mask),
-            ColumnValues::Uint4(container) => container.filter(mask),
-            ColumnValues::Uint8(container) => container.filter(mask),
-            ColumnValues::Uint16(container) => container.filter(mask),
-            ColumnValues::Utf8(container) => container.filter(mask),
-            ColumnValues::Date(container) => container.filter(mask),
-            ColumnValues::DateTime(container) => container.filter(mask),
-            ColumnValues::Time(container) => container.filter(mask),
-            ColumnValues::Interval(container) => container.filter(mask),
-            ColumnValues::Undefined(container) => container.filter(mask),
-            ColumnValues::RowId(container) => container.filter(mask),
-            ColumnValues::Uuid4(container) => container.filter(mask),
-            ColumnValues::Uuid7(container) => container.filter(mask),
-            ColumnValues::Blob(container) => container.filter(mask),
+            EngineColumnData::Bool(container) => container.filter(mask),
+            EngineColumnData::Float4(container) => container.filter(mask),
+            EngineColumnData::Float8(container) => container.filter(mask),
+            EngineColumnData::Int1(container) => container.filter(mask),
+            EngineColumnData::Int2(container) => container.filter(mask),
+            EngineColumnData::Int4(container) => container.filter(mask),
+            EngineColumnData::Int8(container) => container.filter(mask),
+            EngineColumnData::Int16(container) => container.filter(mask),
+            EngineColumnData::Uint1(container) => container.filter(mask),
+            EngineColumnData::Uint2(container) => container.filter(mask),
+            EngineColumnData::Uint4(container) => container.filter(mask),
+            EngineColumnData::Uint8(container) => container.filter(mask),
+            EngineColumnData::Uint16(container) => container.filter(mask),
+            EngineColumnData::Utf8(container) => container.filter(mask),
+            EngineColumnData::Date(container) => container.filter(mask),
+            EngineColumnData::DateTime(container) => container.filter(mask),
+            EngineColumnData::Time(container) => container.filter(mask),
+            EngineColumnData::Interval(container) => container.filter(mask),
+            EngineColumnData::Undefined(container) => container.filter(mask),
+            EngineColumnData::RowId(container) => container.filter(mask),
+            EngineColumnData::Uuid4(container) => container.filter(mask),
+            EngineColumnData::Uuid7(container) => container.filter(mask),
+            EngineColumnData::Blob(container) => container.filter(mask),
         }
         Ok(())
     }
@@ -43,12 +43,12 @@ impl ColumnValues {
 
 #[cfg(test)]
 mod tests {
-    use crate::column::ColumnValues;
+    use crate::column::EngineColumnData;
     use reifydb_core::{BitVec, Value};
 
     #[test]
     fn test_filter_bool() {
-        let mut col = ColumnValues::bool([true, false, true, false]);
+        let mut col = EngineColumnData::bool([true, false, true, false]);
         let mask = BitVec::from_slice(&[true, false, true, false]);
 
         col.filter(&mask).unwrap();
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_filter_int4() {
-        let mut col = ColumnValues::int4([1, 2, 3, 4, 5]);
+        let mut col = EngineColumnData::int4([1, 2, 3, 4, 5]);
         let mask = BitVec::from_slice(&[true, false, true, false, true]);
 
         col.filter(&mask).unwrap();
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn test_filter_float4() {
-        let mut col = ColumnValues::float4([1.0, 2.0, 3.0, 4.0]);
+        let mut col = EngineColumnData::float4([1.0, 2.0, 3.0, 4.0]);
         let mask = BitVec::from_slice(&[false, true, false, true]);
 
         col.filter(&mask).unwrap();
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_filter_string() {
-        let mut col = ColumnValues::utf8(["a", "b", "c", "d"]);
+        let mut col = EngineColumnData::utf8(["a", "b", "c", "d"]);
         let mask = BitVec::from_slice(&[true, false, false, true]);
 
         col.filter(&mask).unwrap();
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_filter_undefined() {
-        let mut col = ColumnValues::undefined(5);
+        let mut col = EngineColumnData::undefined(5);
         let mask = BitVec::from_slice(&[true, false, true, false, false]);
 
         col.filter(&mask).unwrap();
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_filter_empty_mask() {
-        let mut col = ColumnValues::int4([1, 2, 3]);
+        let mut col = EngineColumnData::int4([1, 2, 3]);
         let mask = BitVec::from_slice(&[false, false, false]);
 
         col.filter(&mask).unwrap();
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_filter_all_true_mask() {
-        let mut col = ColumnValues::int4([1, 2, 3]);
+        let mut col = EngineColumnData::int4([1, 2, 3]);
         let mask = BitVec::from_slice(&[true, true, true]);
 
         col.filter(&mask).unwrap();

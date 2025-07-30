@@ -1,13 +1,13 @@
-use super::super::{ColumnValues, FrameColumn, TableQualified};
+use super::super::{EngineColumnData, EngineColumn, TableQualified};
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_core::{BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7};
 
 impl TableQualified {
-    pub fn bool(table: &str, name: &str, values: impl IntoIterator<Item = bool>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn bool(table: &str, name: &str, values: impl IntoIterator<Item = bool>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::bool(values),
+            data: EngineColumnData::bool(values),
         })
     }
 
@@ -16,19 +16,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = bool>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::bool_with_bitvec(values, bitvec),
+            data: EngineColumnData::bool_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn float4(table: &str, name: &str, values: impl IntoIterator<Item = f32>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn float4(table: &str, name: &str, values: impl IntoIterator<Item = f32>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::float4(values),
+            data: EngineColumnData::float4(values),
         })
     }
 
@@ -37,19 +37,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = f32>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::float4_with_bitvec(values, bitvec),
+            data: EngineColumnData::float4_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn float8(table: &str, name: &str, values: impl IntoIterator<Item = f64>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn float8(table: &str, name: &str, values: impl IntoIterator<Item = f64>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::float8(values),
+            data: EngineColumnData::float8(values),
         })
     }
 
@@ -58,19 +58,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = f64>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::float8_with_bitvec(values, bitvec),
+            data: EngineColumnData::float8_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn int1(table: &str, name: &str, values: impl IntoIterator<Item = i8>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn int1(table: &str, name: &str, values: impl IntoIterator<Item = i8>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int1(values),
+            data: EngineColumnData::int1(values),
         })
     }
 
@@ -79,19 +79,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = i8>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int1_with_bitvec(values, bitvec),
+            data: EngineColumnData::int1_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn int2(table: &str, name: &str, values: impl IntoIterator<Item = i16>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn int2(table: &str, name: &str, values: impl IntoIterator<Item = i16>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int2(values),
+            data: EngineColumnData::int2(values),
         })
     }
 
@@ -100,19 +100,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = i16>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int2_with_bitvec(values, bitvec),
+            data: EngineColumnData::int2_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn int4(table: &str, name: &str, values: impl IntoIterator<Item = i32>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn int4(table: &str, name: &str, values: impl IntoIterator<Item = i32>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int4(values),
+            data: EngineColumnData::int4(values),
         })
     }
 
@@ -121,19 +121,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = i32>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int4_with_bitvec(values, bitvec),
+            data: EngineColumnData::int4_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn int8(table: &str, name: &str, values: impl IntoIterator<Item = i64>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn int8(table: &str, name: &str, values: impl IntoIterator<Item = i64>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int8(values),
+            data: EngineColumnData::int8(values),
         })
     }
 
@@ -142,19 +142,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = i64>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int8_with_bitvec(values, bitvec),
+            data: EngineColumnData::int8_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn int16(table: &str, name: &str, values: impl IntoIterator<Item = i128>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn int16(table: &str, name: &str, values: impl IntoIterator<Item = i128>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int16(values),
+            data: EngineColumnData::int16(values),
         })
     }
 
@@ -163,19 +163,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = i128>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::int16_with_bitvec(values, bitvec),
+            data: EngineColumnData::int16_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn uint1(table: &str, name: &str, values: impl IntoIterator<Item = u8>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uint1(table: &str, name: &str, values: impl IntoIterator<Item = u8>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint1(values),
+            data: EngineColumnData::uint1(values),
         })
     }
 
@@ -184,19 +184,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = u8>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint1_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint1_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn uint2(table: &str, name: &str, values: impl IntoIterator<Item = u16>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uint2(table: &str, name: &str, values: impl IntoIterator<Item = u16>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint2(values),
+            data: EngineColumnData::uint2(values),
         })
     }
 
@@ -205,19 +205,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = u16>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint2_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint2_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn uint4(table: &str, name: &str, values: impl IntoIterator<Item = u32>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uint4(table: &str, name: &str, values: impl IntoIterator<Item = u32>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint4(values),
+            data: EngineColumnData::uint4(values),
         })
     }
 
@@ -226,19 +226,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = u32>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint4_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint4_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn uint8(table: &str, name: &str, values: impl IntoIterator<Item = u64>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uint8(table: &str, name: &str, values: impl IntoIterator<Item = u64>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint8(values),
+            data: EngineColumnData::uint8(values),
         })
     }
 
@@ -247,19 +247,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = u64>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint8_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint8_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn uint16(table: &str, name: &str, values: impl IntoIterator<Item = u128>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uint16(table: &str, name: &str, values: impl IntoIterator<Item = u128>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint16(values),
+            data: EngineColumnData::uint16(values),
         })
     }
 
@@ -268,11 +268,11 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = u128>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uint16_with_bitvec(values, bitvec),
+            data: EngineColumnData::uint16_with_bitvec(values, bitvec),
         })
     }
 
@@ -280,11 +280,11 @@ impl TableQualified {
         table: &str,
         name: &str,
         values: impl IntoIterator<Item = &'a str>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::utf8(values.into_iter().map(|s| s.to_string())),
+            data: EngineColumnData::utf8(values.into_iter().map(|s| s.to_string())),
         })
     }
 
@@ -293,31 +293,31 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = &'a str>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::utf8_with_bitvec(
+            data: EngineColumnData::utf8_with_bitvec(
                 values.into_iter().map(|s| s.to_string()),
                 bitvec,
             ),
         })
     }
 
-    pub fn undefined(table: &str, name: &str, len: usize) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn undefined(table: &str, name: &str, len: usize) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::undefined(len),
+            data: EngineColumnData::undefined(len),
         })
     }
 
     // Temporal types
-    pub fn date(table: &str, name: &str, values: impl IntoIterator<Item = Date>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn date(table: &str, name: &str, values: impl IntoIterator<Item = Date>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::date(values),
+            data: EngineColumnData::date(values),
         })
     }
 
@@ -326,11 +326,11 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = Date>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::date_with_bitvec(values, bitvec),
+            data: EngineColumnData::date_with_bitvec(values, bitvec),
         })
     }
 
@@ -338,11 +338,11 @@ impl TableQualified {
         table: &str,
         name: &str,
         values: impl IntoIterator<Item = DateTime>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::datetime(values),
+            data: EngineColumnData::datetime(values),
         })
     }
 
@@ -351,19 +351,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = DateTime>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::datetime_with_bitvec(values, bitvec),
+            data: EngineColumnData::datetime_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn time(table: &str, name: &str, values: impl IntoIterator<Item = Time>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn time(table: &str, name: &str, values: impl IntoIterator<Item = Time>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::time(values),
+            data: EngineColumnData::time(values),
         })
     }
 
@@ -372,11 +372,11 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = Time>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::time_with_bitvec(values, bitvec),
+            data: EngineColumnData::time_with_bitvec(values, bitvec),
         })
     }
 
@@ -384,11 +384,11 @@ impl TableQualified {
         table: &str,
         name: &str,
         values: impl IntoIterator<Item = Interval>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::interval(values),
+            data: EngineColumnData::interval(values),
         })
     }
 
@@ -397,20 +397,20 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = Interval>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::interval_with_bitvec(values, bitvec),
+            data: EngineColumnData::interval_with_bitvec(values, bitvec),
         })
     }
 
     // UUID types
-    pub fn uuid4(table: &str, name: &str, values: impl IntoIterator<Item = Uuid4>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uuid4(table: &str, name: &str, values: impl IntoIterator<Item = Uuid4>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uuid4(values),
+            data: EngineColumnData::uuid4(values),
         })
     }
 
@@ -419,19 +419,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = Uuid4>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uuid4_with_bitvec(values, bitvec),
+            data: EngineColumnData::uuid4_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn uuid7(table: &str, name: &str, values: impl IntoIterator<Item = Uuid7>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn uuid7(table: &str, name: &str, values: impl IntoIterator<Item = Uuid7>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uuid7(values),
+            data: EngineColumnData::uuid7(values),
         })
     }
 
@@ -440,19 +440,19 @@ impl TableQualified {
         name: &str,
         values: impl IntoIterator<Item = Uuid7>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: name.to_string(),
-            values: ColumnValues::uuid7_with_bitvec(values, bitvec),
+            data: EngineColumnData::uuid7_with_bitvec(values, bitvec),
         })
     }
 
-    pub fn row_id(table: &str, values: impl IntoIterator<Item = RowId>) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    pub fn row_id(table: &str, values: impl IntoIterator<Item = RowId>) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: ROW_ID_COLUMN_NAME.to_string(),
-            values: ColumnValues::row_id(values),
+            data: EngineColumnData::row_id(values),
         })
     }
 
@@ -460,11 +460,11 @@ impl TableQualified {
         table: &str,
         values: impl IntoIterator<Item = RowId>,
         bitvec: impl Into<BitVec>,
-    ) -> FrameColumn {
-        FrameColumn::TableQualified(Self {
+    ) -> EngineColumn {
+        EngineColumn::TableQualified(Self {
             table: table.to_string(),
             name: ROW_ID_COLUMN_NAME.to_string(),
-            values: ColumnValues::row_id_with_bitvec(values, bitvec),
+            data: EngineColumnData::row_id_with_bitvec(values, bitvec),
         })
     }
 }

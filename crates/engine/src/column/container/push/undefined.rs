@@ -1,47 +1,47 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::column::ColumnValues;
+use crate::column::EngineColumnData;
 
-impl ColumnValues {
+impl EngineColumnData {
     pub fn push_undefined(&mut self) {
         match self {
-            ColumnValues::Bool(container) => container.push_undefined(),
-            ColumnValues::Float4(container) => container.push_undefined(),
-            ColumnValues::Float8(container) => container.push_undefined(),
-            ColumnValues::Int1(container) => container.push_undefined(),
-            ColumnValues::Int2(container) => container.push_undefined(),
-            ColumnValues::Int4(container) => container.push_undefined(),
-            ColumnValues::Int8(container) => container.push_undefined(),
-            ColumnValues::Int16(container) => container.push_undefined(),
-            ColumnValues::Utf8(container) => container.push_undefined(),
-            ColumnValues::Uint1(container) => container.push_undefined(),
-            ColumnValues::Uint2(container) => container.push_undefined(),
-            ColumnValues::Uint4(container) => container.push_undefined(),
-            ColumnValues::Uint8(container) => container.push_undefined(),
-            ColumnValues::Uint16(container) => container.push_undefined(),
-            ColumnValues::Date(container) => container.push_undefined(),
-            ColumnValues::DateTime(container) => container.push_undefined(),
-            ColumnValues::Time(container) => container.push_undefined(),
-            ColumnValues::Interval(container) => container.push_undefined(),
-            ColumnValues::Undefined(container) => container.push_undefined(),
-            ColumnValues::RowId(container) => container.push_undefined(),
-            ColumnValues::Uuid4(container) => container.push_undefined(),
-            ColumnValues::Uuid7(container) => container.push_undefined(),
-            ColumnValues::Blob(container) => container.push_undefined(),
+            EngineColumnData::Bool(container) => container.push_undefined(),
+            EngineColumnData::Float4(container) => container.push_undefined(),
+            EngineColumnData::Float8(container) => container.push_undefined(),
+            EngineColumnData::Int1(container) => container.push_undefined(),
+            EngineColumnData::Int2(container) => container.push_undefined(),
+            EngineColumnData::Int4(container) => container.push_undefined(),
+            EngineColumnData::Int8(container) => container.push_undefined(),
+            EngineColumnData::Int16(container) => container.push_undefined(),
+            EngineColumnData::Utf8(container) => container.push_undefined(),
+            EngineColumnData::Uint1(container) => container.push_undefined(),
+            EngineColumnData::Uint2(container) => container.push_undefined(),
+            EngineColumnData::Uint4(container) => container.push_undefined(),
+            EngineColumnData::Uint8(container) => container.push_undefined(),
+            EngineColumnData::Uint16(container) => container.push_undefined(),
+            EngineColumnData::Date(container) => container.push_undefined(),
+            EngineColumnData::DateTime(container) => container.push_undefined(),
+            EngineColumnData::Time(container) => container.push_undefined(),
+            EngineColumnData::Interval(container) => container.push_undefined(),
+            EngineColumnData::Undefined(container) => container.push_undefined(),
+            EngineColumnData::RowId(container) => container.push_undefined(),
+            EngineColumnData::Uuid4(container) => container.push_undefined(),
+            EngineColumnData::Uuid7(container) => container.push_undefined(),
+            EngineColumnData::Blob(container) => container.push_undefined(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::column::ColumnValues;
+    use crate::column::EngineColumnData;
 
     #[test]
     fn test_bool() {
-        let mut col = ColumnValues::bool(vec![true]);
+        let mut col = EngineColumnData::bool(vec![true]);
         col.push_undefined();
-        let ColumnValues::Bool(container) = col else {
+        let EngineColumnData::Bool(container) = col else {
             panic!("Expected Bool");
         };
 
@@ -52,9 +52,9 @@ mod tests {
 
     #[test]
     fn test_float4() {
-        let mut col = ColumnValues::float4(vec![1.0]);
+        let mut col = EngineColumnData::float4(vec![1.0]);
         col.push_undefined();
-        let ColumnValues::Float4(container) = col else {
+        let EngineColumnData::Float4(container) = col else {
             panic!("Expected Float4");
         };
 
@@ -65,9 +65,9 @@ mod tests {
 
     #[test]
     fn test_float8() {
-        let mut col = ColumnValues::float8(vec![1.0]);
+        let mut col = EngineColumnData::float8(vec![1.0]);
         col.push_undefined();
-        let ColumnValues::Float8(container) = col else {
+        let EngineColumnData::Float8(container) = col else {
             panic!("Expected Float8");
         };
 
@@ -78,9 +78,9 @@ mod tests {
 
     #[test]
     fn test_int1() {
-        let mut col = ColumnValues::int1(vec![1]);
+        let mut col = EngineColumnData::int1(vec![1]);
         col.push_undefined();
-        let ColumnValues::Int1(container) = col else {
+        let EngineColumnData::Int1(container) = col else {
             panic!("Expected Int1");
         };
 
@@ -91,9 +91,9 @@ mod tests {
 
     #[test]
     fn test_int2() {
-        let mut col = ColumnValues::int2(vec![1]);
+        let mut col = EngineColumnData::int2(vec![1]);
         col.push_undefined();
-        let ColumnValues::Int2(container) = col else {
+        let EngineColumnData::Int2(container) = col else {
             panic!("Expected Int2");
         };
 
@@ -104,9 +104,9 @@ mod tests {
 
     #[test]
     fn test_int4() {
-        let mut col = ColumnValues::int4(vec![1]);
+        let mut col = EngineColumnData::int4(vec![1]);
         col.push_undefined();
-        let ColumnValues::Int4(container) = col else {
+        let EngineColumnData::Int4(container) = col else {
             panic!("Expected Int4");
         };
 
@@ -117,9 +117,9 @@ mod tests {
 
     #[test]
     fn test_int8() {
-        let mut col = ColumnValues::int8(vec![1]);
+        let mut col = EngineColumnData::int8(vec![1]);
         col.push_undefined();
-        let ColumnValues::Int8(container) = col else {
+        let EngineColumnData::Int8(container) = col else {
             panic!("Expected Int8");
         };
 
@@ -130,9 +130,9 @@ mod tests {
 
     #[test]
     fn test_int16() {
-        let mut col = ColumnValues::int16(vec![1]);
+        let mut col = EngineColumnData::int16(vec![1]);
         col.push_undefined();
-        let ColumnValues::Int16(container) = col else {
+        let EngineColumnData::Int16(container) = col else {
             panic!("Expected Int16");
         };
 
@@ -143,9 +143,9 @@ mod tests {
 
     #[test]
     fn test_string() {
-        let mut col = ColumnValues::utf8(vec!["a"]);
+        let mut col = EngineColumnData::utf8(vec!["a"]);
         col.push_undefined();
-        let ColumnValues::Utf8(container) = col else {
+        let EngineColumnData::Utf8(container) = col else {
             panic!("Expected Utf8");
         };
 
@@ -156,9 +156,9 @@ mod tests {
 
     #[test]
     fn test_uint1() {
-        let mut col = ColumnValues::uint1(vec![1]);
+        let mut col = EngineColumnData::uint1(vec![1]);
         col.push_undefined();
-        let ColumnValues::Uint1(container) = col else {
+        let EngineColumnData::Uint1(container) = col else {
             panic!("Expected Uint1");
         };
 
@@ -169,9 +169,9 @@ mod tests {
 
     #[test]
     fn test_uint2() {
-        let mut col = ColumnValues::uint2(vec![1]);
+        let mut col = EngineColumnData::uint2(vec![1]);
         col.push_undefined();
-        let ColumnValues::Uint2(container) = col else {
+        let EngineColumnData::Uint2(container) = col else {
             panic!("Expected Uint2");
         };
 
@@ -182,9 +182,9 @@ mod tests {
 
     #[test]
     fn test_uint4() {
-        let mut col = ColumnValues::uint4(vec![1]);
+        let mut col = EngineColumnData::uint4(vec![1]);
         col.push_undefined();
-        let ColumnValues::Uint4(container) = col else {
+        let EngineColumnData::Uint4(container) = col else {
             panic!("Expected Uint4");
         };
 
@@ -195,9 +195,9 @@ mod tests {
 
     #[test]
     fn test_uint8() {
-        let mut col = ColumnValues::uint8(vec![1]);
+        let mut col = EngineColumnData::uint8(vec![1]);
         col.push_undefined();
-        let ColumnValues::Uint8(container) = col else {
+        let EngineColumnData::Uint8(container) = col else {
             panic!("Expected Uint8");
         };
 
@@ -208,9 +208,9 @@ mod tests {
 
     #[test]
     fn test_uint16() {
-        let mut col = ColumnValues::uint16(vec![1]);
+        let mut col = EngineColumnData::uint16(vec![1]);
         col.push_undefined();
-        let ColumnValues::Uint16(container) = col else {
+        let EngineColumnData::Uint16(container) = col else {
             panic!("Expected Uint16");
         };
 
@@ -221,9 +221,9 @@ mod tests {
 
     #[test]
     fn test_undefined() {
-        let mut col = ColumnValues::undefined(5);
+        let mut col = EngineColumnData::undefined(5);
         col.push_undefined();
-        let ColumnValues::Undefined(container) = col else {
+        let EngineColumnData::Undefined(container) = col else {
             panic!("Expected Undefined");
         };
 
