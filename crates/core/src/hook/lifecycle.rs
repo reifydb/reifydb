@@ -3,10 +3,12 @@
 
 use crate::impl_hook;
 
-pub struct OnStartHook {}
+/// Invoked during application startup before database initialization
+pub struct OnInitHook {}
 
-impl_hook!(OnStartHook);
+impl_hook!(OnInitHook);
 
+/// Invoked once during database creation to setup the internal database system
 pub struct OnCreateHook {}
 
 impl_hook!(OnCreateHook);

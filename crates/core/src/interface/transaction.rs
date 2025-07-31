@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::{UnversionedStorage, Versioned, VersionedStorage};
+use crate::interface::{GetHooks, UnversionedStorage, Versioned, VersionedStorage};
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange, Error};
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
-    Send + Sync + Clone + 'static
+    GetHooks + Send + Sync + Clone + 'static
 {
     type Rx: Rx;
     type Tx: Tx<VS, US>;

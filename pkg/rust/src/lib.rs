@@ -15,12 +15,10 @@ pub use reifydb_transaction as transaction;
 
 use std::path::Path;
 
-#[cfg(feature = "embedded")]
-use crate::embedded::Embedded;
-#[cfg(feature = "server")]
-use crate::server::Server;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+#[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
+use reifydb_core::interface::Transaction;
+use reifydb_core::interface::{Principal, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::Frame;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
@@ -30,16 +28,16 @@ use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-
 #[cfg(feature = "embedded")]
-pub mod embedded;
-
+use variant::embedded::EmbeddedBuilder;
 #[cfg(feature = "embedded_blocking")]
-pub mod embedded_blocking;
-
+use variant::embedded_blocking::EmbeddedBlockingBuilder;
 #[cfg(feature = "server")]
-pub mod server;
+use variant::server::ServerBuilder;
+
+pub mod hook;
 mod session;
+pub mod variant;
 
 pub struct ReifyDB {}
 
@@ -63,76 +61,74 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> Embedded<Memory, Memory, Serializable<Memory, Memory>> {
+    pub fn embedded() -> EmbeddedBuilder<Memory, Memory, Serializable<Memory, Memory>> {
         let (transaction, hooks) = serializable(memory());
-        Embedded::new(transaction, hooks)
+        EmbeddedBuilder::new(transaction, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking()
-    -> embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>> {
+    -> EmbeddedBlockingBuilder<Memory, Memory, Serializable<Memory, Memory>> {
         let (transaction, hooks) = serializable(memory());
-        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
+        EmbeddedBlockingBuilder::new(transaction, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>> {
+    pub fn embedded() -> EmbeddedBlockingBuilder<Memory, Memory, Serializable<Memory, Memory>> {
         Self::embedded_blocking()
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<VS, US, T>(transaction: T, hooks: Hooks) -> Embedded<VS, US, T>
+    pub fn embedded_with<VS, US, T>(transaction: T, hooks: Hooks) -> EmbeddedBuilder<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
-        Embedded::new(transaction, hooks)
+        EmbeddedBuilder::new(transaction, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
     pub fn embedded_with<VS, US, T>(
         transaction: T,
         hooks: Hooks,
-    ) -> embedded_blocking::Embedded<VS, US, T>
+    ) -> EmbeddedBlockingBuilder<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
-        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
+        EmbeddedBlockingBuilder::new(transaction, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking_with<VS, US, T>(
         input: (T, Hooks),
-    ) -> embedded_blocking::Embedded<VS, US, T>
+    ) -> EmbeddedBlockingBuilder<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
         let (transaction, hooks) = input;
-        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
+        EmbeddedBlockingBuilder::new(transaction, hooks)
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<Memory, Memory, Serializable<Memory, Memory>> {
+    pub fn server() -> ServerBuilder<Memory, Memory, Serializable<Memory, Memory>> {
         let (transaction, hooks) = serializable(memory());
-        let engine = engine::Engine::new(transaction, hooks).unwrap();
-        Server::new(engine)
+        ServerBuilder::new(transaction, hooks)
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<VS, US, T>(input: (T, Hooks)) -> Server<VS, US, T>
+    pub fn server_with<VS, US, T>(input: (T, Hooks)) -> ServerBuilder<VS, US, T>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
         T: Transaction<VS, US>,
     {
         let (transaction, hooks) = input;
-        let engine = engine::Engine::new(transaction, hooks).unwrap();
-        Server::new(engine)
+        ServerBuilder::new(transaction, hooks)
     }
 }
 

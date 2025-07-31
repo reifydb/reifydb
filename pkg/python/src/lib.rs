@@ -9,7 +9,7 @@ extern crate pythonize;
 extern crate reifydb as rdb;
 extern crate serde_json;
 
-use rdb::embedded_blocking::Embedded;
+use reifydb::variant::Embedded;
 use rdb::store::Memory;
 use rdb::{Principal, ReifyDB};
 

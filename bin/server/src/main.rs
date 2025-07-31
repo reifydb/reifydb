@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::ReifyDB;
+use reifydb::hook::WithHooks;
 use reifydb::network::ws::server::WsConfig;
 use std::thread;
 use tokio::runtime::Runtime;
@@ -42,6 +43,7 @@ fn main() {
             ctx.tx_as_root("create schema test")?;
             Ok(())
         })
+        .build()
         .serve_blocking(&rt, rx)
         .unwrap();
 }

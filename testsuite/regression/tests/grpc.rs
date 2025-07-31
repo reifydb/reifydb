@@ -6,7 +6,7 @@ use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
 use reifydb::network::grpc::server::GrpcConfig;
-use reifydb::server::Server;
+use reifydb::variant::server::Server;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
@@ -23,7 +23,7 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    server: Option<Server<VS, US, T>>,
+    instance: Option<Server<VS, US, T>>,
     client: Option<GrpcClient>,
     runtime: Option<Runtime>,
 }
@@ -35,10 +35,11 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(input: (T, Hooks)) -> Self {
-        let engine = ReifyDB::server_with(input)
-            .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) });
+        let instance = ReifyDB::server_with(input)
+            .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) })
+            .build();
 
-        Self { server: Some(engine), client: None, runtime: None }
+        Self { instance: Some(instance), client: None, runtime: None }
     }
 }
 
@@ -90,11 +91,11 @@ where
 
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
-        let mut server = self.server.take().unwrap();
+        let mut server = self.instance.take().unwrap();
         let _ = server.serve(&runtime);
         let socket_addr = busy_wait(|| server.grpc_socket_addr());
 
-        self.server = Some(server);
+        self.instance = Some(server);
         self.client = Some(GrpcClient { socket_addr });
         self.runtime = Some(runtime);
 
@@ -102,7 +103,7 @@ where
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(server) = self.server.take() {
+        if let Some(server) = self.instance.take() {
             drop(server);
         }
 

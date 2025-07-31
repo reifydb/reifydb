@@ -3,7 +3,7 @@
 
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
-use reifydb::embedded::Embedded;
+use reifydb::variant::embedded::Embedded;
 use reifydb::{DB, ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -19,7 +19,7 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    engine: Embedded<VS, US, T>,
+    instance: Embedded<VS, US, T>,
     runtime: Runtime,
 }
 
@@ -32,7 +32,7 @@ where
     pub fn new(input: (T, Hooks)) -> Self {
         let (transaction, hooks) = input;
         Self {
-            engine: ReifyDB::embedded_with(transaction, hooks),
+            instance: ReifyDB::embedded_with(transaction, hooks).build(),
             runtime: Runtime::new().unwrap(),
         }
     }
@@ -53,7 +53,7 @@ where
 
                 println!("tx: {query}");
 
-                let engine = self.engine.clone();
+                let engine = self.instance.clone();
                 self.runtime.block_on(async {
                     for frame in engine.tx_as_root(query.as_str()).await? {
                         writeln!(output, "{}", frame).unwrap();
@@ -67,7 +67,7 @@ where
 
                 println!("rx: {query}");
 
-                let engine = self.engine.clone();
+                let engine = self.instance.clone();
                 self.runtime.block_on(async {
                     for frame in engine.rx_as_root(query.as_str()).await? {
                         writeln!(output, "{}", frame).unwrap();

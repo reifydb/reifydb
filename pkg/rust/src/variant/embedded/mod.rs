@@ -1,7 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod builder;
+
+pub use builder::EmbeddedBuilder;
+
 use crate::DB;
+use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
@@ -38,6 +43,17 @@ where
 {
     pub fn new(transaction: T, hooks: Hooks) -> Self {
         Self { engine: Engine::new(transaction, hooks).unwrap() }
+    }
+}
+
+impl<VS, US, T> WithHooks<VS, US, T> for Embedded<VS, US, T>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+{
+    fn engine(&self) -> &Engine<VS, US, T> {
+        &self.engine
     }
 }
 

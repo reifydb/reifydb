@@ -3,18 +3,19 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::engine::flow::compile::compile_to_flow;
-use reifydb::engine::flow::engine::FlowEngine;
-use reifydb::engine::flow::node::NodeType;
-use reifydb::rql::ast;
-use reifydb::rql::plan::logical::compile_logical;
-use reifydb::transaction::mvcc::transaction::serializable::Serializable;
-use reifydb::{memory, serializable};
+use reifydb::hook::WithHooks;
+use reifydb::{ReifyDB, memory, serializable};
 
 fn main() {
-    //     let db = ReifyDB::embedded_blocking_with(serializable(memory()));
-    //
-    //     db.tx_as_root(r#"create schema test"#).unwrap();
+    let db = ReifyDB::embedded_blocking_with(serializable(memory()))
+        .on_create(|_| {
+            println!("On Create");
+            Ok(())
+        })
+        .build();
+
+    db.tx_as_root(r#"create schema test"#).unwrap();
+
     //     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
     //     db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
     //     db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
@@ -42,128 +43,128 @@ fn main() {
     //     }
 
     // Test RQL to FlowGraph compilation
-    rql_to_flow_example();
+    // rql_to_flow_example();
 
     // Dataflow example
     // dataflow_example();
 }
 
-fn rql_to_flow_example() {
-    println!("\n=== RQL to FlowGraph Compilation Example ===");
-
-    // Parse a simple RQL query
-    let rql = r#"
-create computed view test.adults(name: utf8, age: int1) with {
-    from users filter { age > 18  and name == 'Bob' }   map { name, age }
-}"#;
-
-    println!("Compiling RQL: {}", rql);
-
-    // Parse RQL into AST
-    let ast_statements = match ast::parse(rql) {
-        Ok(statements) => statements,
-        Err(e) => {
-            println!("RQL parsing failed: {}", e);
-            return;
-        }
-    };
-
-    println!("AST statements: {} nodes", ast_statements.len());
-
-    // Compile AST to logical plans
-    let logical_plans = match compile_logical(ast_statements.into_iter().next().unwrap()) {
-        Ok(plans) => plans,
-        Err(e) => {
-            println!("Logical plan compilation failed: {}", e);
-            return;
-        }
-    };
-
-    println!("Logical plans: {} nodes", logical_plans.len());
-    for (i, plan) in logical_plans.iter().enumerate() {
-        println!("  Plan {}: {:?}", i, plan);
-    }
-
-    // Compile logical plans to FlowGraph
-    match compile_to_flow(logical_plans) {
-        Ok(flow_graph) => {
-            println!("✅ Successfully compiled to FlowGraph!");
-            println!("FlowGraph has {} nodes", flow_graph.get_all_nodes().count());
-
-            // Print the nodes in the graph
-            for node_id in flow_graph.get_all_nodes() {
-                if let Some(node) = flow_graph.get_node(&node_id) {
-                    println!("  Node {}: {:?}", node_id, node.node_type);
-                }
-            }
-
-            // Now let's execute the FlowGraph with real data
-            println!("\n--- Executing FlowGraph with Sample Data ---");
-
-            // Create engine and initialize
-            let (versioned, unversioned, hooks) = memory();
-            let mut engine = FlowEngine::<_, _, Serializable<_, _>>::new(
-                flow_graph.clone(),
-                serializable((versioned.clone(), unversioned.clone(), hooks)).0,
-            );
-
-            engine.initialize().unwrap();
-
-            // Find the source node (users table)
-            let _source_node_id = flow_graph
-                .get_all_nodes()
-                .find(|node_id| {
-                    if let Some(node) = flow_graph.get_node(node_id) {
-                        matches!(node.node_type, NodeType::Source { .. })
-                    } else {
-                        false
-                    }
-                })
-                .expect("Should have a source node");
-
-            // Insert sample users with different ages
-            let users_data = [
-                ("Alice", 16),
-                ("Bob", 22),
-                ("Charlie", 17),
-                ("Diana", 25),
-                ("Eve", 19),
-                ("Bob", 60),
-            ];
-
-            for (name, age) in users_data {
-                println!("Inserting user: {} (age {})", name, age);
-
-                // Create frame with user data
-                // let frame = Frame::from_rows(
-                //     &["name", "age"],
-                //     &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
-                // );
-                //
-                // // Process the change through the dataflow
-                // engine
-                //     .process_change(
-                //         &source_node_id,
-                //         Diff {
-                //             changes: vec![Change::Insert { frame }],
-                //             metadata: Default::default(),
-                //         },
-                //     )
-                //     .unwrap();
-
-                todo!()
-            }
-
-            // Query the computed view results
-            println!("\n--- Computed View Results ---");
-            let results = engine.get_view_data("adults").unwrap();
-            println!("Adults view contains {} rows:", results.first().unwrap().data.len());
-            println!("{}", results);
-
-            println!("\nExpected: Only users with age > 18 (Bob: 22, Diana: 25, Eve: 19)");
-        }
-        Err(e) => {
-            println!("❌ FlowGraph compilation failed: {}", e);
-        }
-    }
-}
+// fn rql_to_flow_example() {
+//     println!("\n=== RQL to FlowGraph Compilation Example ===");
+//
+//     // Parse a simple RQL query
+//     let rql = r#"
+// create computed view test.adults(name: utf8, age: int1) with {
+//     from users filter { age > 18  and name == 'Bob' }   map { name, age }
+// }"#;
+//
+//     println!("Compiling RQL: {}", rql);
+//
+//     // Parse RQL into AST
+//     let ast_statements = match ast::parse(rql) {
+//         Ok(statements) => statements,
+//         Err(e) => {
+//             println!("RQL parsing failed: {}", e);
+//             return;
+//         }
+//     };
+//
+//     println!("AST statements: {} nodes", ast_statements.len());
+//
+//     // Compile AST to logical plans
+//     let logical_plans = match compile_logical(ast_statements.into_iter().next().unwrap()) {
+//         Ok(plans) => plans,
+//         Err(e) => {
+//             println!("Logical plan compilation failed: {}", e);
+//             return;
+//         }
+//     };
+//
+//     println!("Logical plans: {} nodes", logical_plans.len());
+//     for (i, plan) in logical_plans.iter().enumerate() {
+//         println!("  Plan {}: {:?}", i, plan);
+//     }
+//
+//     // Compile logical plans to FlowGraph
+//     match compile_to_flow(logical_plans) {
+//         Ok(flow_graph) => {
+//             println!("✅ Successfully compiled to FlowGraph!");
+//             println!("FlowGraph has {} nodes", flow_graph.get_all_nodes().count());
+//
+//             // Print the nodes in the graph
+//             for node_id in flow_graph.get_all_nodes() {
+//                 if let Some(node) = flow_graph.get_node(&node_id) {
+//                     println!("  Node {}: {:?}", node_id, node.node_type);
+//                 }
+//             }
+//
+//             // Now let's execute the FlowGraph with real data
+//             println!("\n--- Executing FlowGraph with Sample Data ---");
+//
+//             // Create engine and initialize
+//             let (versioned, unversioned, hooks) = memory();
+//             let mut engine = FlowEngine::<_, _, Serializable<_, _>>::new(
+//                 flow_graph.clone(),
+//                 serializable((versioned.clone(), unversioned.clone(), hooks)).0,
+//             );
+//
+//             engine.initialize().unwrap();
+//
+//             // Find the source node (users table)
+//             let _source_node_id = flow_graph
+//                 .get_all_nodes()
+//                 .find(|node_id| {
+//                     if let Some(node) = flow_graph.get_node(node_id) {
+//                         matches!(node.node_type, NodeType::Source { .. })
+//                     } else {
+//                         false
+//                     }
+//                 })
+//                 .expect("Should have a source node");
+//
+//             // Insert sample users with different ages
+//             let users_data = [
+//                 ("Alice", 16),
+//                 ("Bob", 22),
+//                 ("Charlie", 17),
+//                 ("Diana", 25),
+//                 ("Eve", 19),
+//                 ("Bob", 60),
+//             ];
+//
+//             for (name, age) in users_data {
+//                 println!("Inserting user: {} (age {})", name, age);
+//
+//                 // Create frame with user data
+//                 // let frame = Frame::from_rows(
+//                 //     &["name", "age"],
+//                 //     &[vec![Value::Utf8(name.to_string()), Value::Int1(age)]],
+//                 // );
+//                 //
+//                 // // Process the change through the dataflow
+//                 // engine
+//                 //     .process_change(
+//                 //         &source_node_id,
+//                 //         Diff {
+//                 //             changes: vec![Change::Insert { frame }],
+//                 //             metadata: Default::default(),
+//                 //         },
+//                 //     )
+//                 //     .unwrap();
+//
+//                 todo!()
+//             }
+//
+//             // Query the computed view results
+//             println!("\n--- Computed View Results ---");
+//             let results = engine.get_view_data("adults").unwrap();
+//             println!("Adults view contains {} rows:", results.first().unwrap().data.len());
+//             println!("{}", results);
+//
+//             println!("\nExpected: Only users with age > 18 (Bob: 22, Diana: 25, Eve: 19)");
+//         }
+//         Err(e) => {
+//             println!("❌ FlowGraph compilation failed: {}", e);
+//         }
+//     }
+// }

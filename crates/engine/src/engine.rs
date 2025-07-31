@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::execute::{execute_rx, execute_tx};
-use crate::system::SystemStartCallback;
+use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
-use reifydb_core::hook::lifecycle::OnStartHook;
+use reifydb_core::hook::lifecycle::OnInitHook;
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, Transaction, Tx, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, GetHooks, Principal, Transaction, Tx, UnversionedStorage,
+    VersionedStorage,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
@@ -20,6 +21,17 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>;
+
+impl<VS, US, T> GetHooks for Engine<VS, US, T>
+where
+    T: Transaction<VS, US>,
+    US: UnversionedStorage,
+    VS: VersionedStorage,
+{
+    fn get_hooks(&self) -> &Hooks {
+        &self.hooks
+    }
+}
 
 impl<VS, US, T> EngineInterface<VS, US, T> for Engine<VS, US, T>
 where
@@ -70,10 +82,6 @@ where
         }
 
         Ok(result.into_iter().map(Frame::from).collect())
-    }
-
-    fn hooks(&self) -> &Hooks {
-        &self.hooks
     }
 }
 
@@ -131,7 +139,7 @@ where
 {
     pub fn new(transaction: T, hooks: Hooks) -> crate::Result<Self> {
         let result = Self(Arc::new(EngineInner { transaction, hooks, _phantom: PhantomData }));
-        result.setup_hooks();
+        result.setup_hooks()?;
         Ok(result)
     }
 }
@@ -142,10 +150,10 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    pub fn setup_hooks(&self) {
-        self.hooks.register::<OnStartHook, SystemStartCallback<VS, US, T>>(
-            SystemStartCallback::new(self.transaction.clone()),
-        );
+    pub fn setup_hooks(&self) -> crate::Result<()> {
+        register_system_hooks(&self);
+
+        self.hooks.trigger(OnInitHook {})
     }
 }
 

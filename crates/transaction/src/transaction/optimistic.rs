@@ -2,12 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionRx, TransactionTx};
+use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    BoxedVersionedIter, Rx, Transaction, Tx, UnversionedStorage, Versioned, VersionedStorage,
+    BoxedVersionedIter, GetHooks, Rx, Transaction, Tx, UnversionedStorage, Versioned,
+    VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+
+impl<VS: VersionedStorage, US: UnversionedStorage> GetHooks for Optimistic<VS, US> {
+    fn get_hooks(&self) -> &Hooks {
+        &self.hooks
+    }
+}
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Optimistic<VS, US> {
     type Rx = TransactionRx<VS, US>;

@@ -1,9 +1,8 @@
-use crate::hook::Hooks;
-use crate::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+use crate::interface::{GetHooks, Principal, Transaction, UnversionedStorage, VersionedStorage};
 use crate::result::frame::Frame;
 use std::sync::RwLockWriteGuard;
 
-pub trait Engine<VS, US, T>: Send + Sync + Clone + 'static
+pub trait Engine<VS, US, T>: GetHooks + Send + Sync + Clone + 'static
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
@@ -18,6 +17,4 @@ where
     fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
 
     fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
-
-    fn hooks(&self) -> &Hooks;
 }

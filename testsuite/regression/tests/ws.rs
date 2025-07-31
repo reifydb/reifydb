@@ -6,7 +6,7 @@ use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
-use reifydb::server::Server;
+use reifydb::variant::server::Server;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
@@ -24,7 +24,7 @@ where
     US: UnversionedStorage,
     T: Transaction<VS, US>,
 {
-    server: Option<Server<VS, US, T>>,
+    instance: Option<Server<VS, US, T>>,
     client: Option<WsClient>,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
@@ -37,8 +37,11 @@ where
     T: Transaction<VS, US>,
 {
     pub fn new(input: (T, Hooks)) -> Self {
-        let server = ReifyDB::server_with(input);
-        Self { server: Some(server), client: None, runtime: None, shutdown: None }
+        let instance = ReifyDB::server_with(input)
+            .with_websocket(WsConfig { socket: Some("[::1]:0".parse().unwrap()) })
+            .build();
+
+        Self { instance: Some(instance), client: None, runtime: None, shutdown: None }
     }
 }
 
@@ -91,14 +94,12 @@ where
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
         let (shutdown_tx, _) = oneshot::channel();
-        let server = self.server.take().unwrap();
+        let mut server = self.instance.take().unwrap();
 
-        let mut server =
-            server.with_websocket(WsConfig { socket: Some("[::1]:0".parse().unwrap()) });
         let _ = server.serve(&runtime);
         let socket_addr = busy_wait(|| server.ws_socket_addr());
 
-        self.server = Some(server);
+        self.instance = Some(server);
         self.client = Some(runtime.block_on(async {
             let client = WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await?;
             client.auth(Some("mysecrettoken".into())).await.unwrap();
@@ -111,7 +112,7 @@ where
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(server) = self.server.take() {
+        if let Some(server) = self.instance.take() {
             drop(server);
         }
 
