@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::columnar::ColumnData;
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::row::{EncodedRow, Layout};
 use reifydb_core::{
@@ -361,7 +361,7 @@ impl Columns {
 mod tests {
     mod columns {
         use crate::columnar::ColumnQualified;
-        use crate::columnar::columns::Columns;
+        use crate::columnar::Columns;
         use reifydb_core::{RowId, Uuid4, Uuid7};
         use uuid::Timestamp;
 
@@ -759,7 +759,7 @@ mod tests {
     }
 
     mod row {
-        use crate::columnar::columns::Columns;
+        use crate::columnar::Columns;
         use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
         use reifydb_core::row::Layout;
         use reifydb_core::{BitVec, OrderedF32, OrderedF64, Type, Value};

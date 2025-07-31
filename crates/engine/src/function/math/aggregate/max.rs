@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::{Column, ColumnData};
-use crate::function::AggregateFunction;
+use crate::columnar::ColumnData;
+use crate::function::{AggregateFunction, AggregateFunctionContext};
 use reifydb_core::Value;
 use std::collections::HashMap;
 
@@ -17,14 +17,13 @@ impl Max {
 }
 
 impl AggregateFunction for Max {
-    fn aggregate(
-        &mut self,
-        column: &Column,
-        groups: &HashMap<Vec<Value>, Vec<usize>>,
-    ) -> crate::Result<()> {
+    fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
+        let column = ctx.column;
+        let groups = &ctx.groups;
+
         match &column.data() {
             ColumnData::Float8(container) => {
-                for (group, indices) in groups {
+                for (group, indices) in groups.iter() {
                     let max_val = indices
                         .iter()
                         .filter_map(|&i| container.get(i))

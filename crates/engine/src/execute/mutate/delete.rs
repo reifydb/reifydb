@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::columnar::ColumnData;
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};

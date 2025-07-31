@@ -11,7 +11,8 @@ mod demote;
 mod promote;
 
 use crate::columnar::ColumnData;
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
+
 use reifydb_core::{
     ColumnDescriptor, Type,
     interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},

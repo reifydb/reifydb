@@ -1,25 +1,31 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::columnar::Columns;
 use crate::columnar::{Column, ColumnData};
+use crate::{GroupByView, GroupKey};
 pub use registry::Functions;
-use reifydb_core::Value;
-use std::collections::HashMap;
 
 pub mod blob;
 pub mod math;
 mod registry;
 
+pub struct ScalarFunctionContext<'a> {
+    pub columns: &'a Columns,
+    pub row_count: usize,
+}
+
 pub trait ScalarFunction: Send + Sync {
-    fn scalar(&self, columns: &[Column], row_count: usize) -> crate::Result<ColumnData>;
+    fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> crate::Result<ColumnData>;
+}
+
+pub struct AggregateFunctionContext<'a> {
+    pub column: &'a Column,
+    pub groups: &'a GroupByView,
 }
 
 pub trait AggregateFunction: Send + Sync {
-    fn aggregate(
-        &mut self,
-        column: &Column,
-        groups: &HashMap<Vec<Value>, Vec<usize>>,
-    ) -> crate::Result<()>;
+    fn aggregate<'a>(&'a mut self, ctx: AggregateFunctionContext<'a>) -> crate::Result<()>;
 
-    fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)>;
+    fn finalize(&mut self) -> crate::Result<(Vec<GroupKey>, ColumnData)>;
 }

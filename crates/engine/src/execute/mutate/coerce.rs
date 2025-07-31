@@ -1,5 +1,5 @@
 use crate::columnar::ColumnData;
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_data;
 use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};

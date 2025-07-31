@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use data::ColumnData;
 use reifydb_core::Type;
 use serde::{Deserialize, Serialize};
 
-pub(crate) mod columns;
+mod columns;
 mod data;
 pub mod frame;
 pub(crate) mod layout;
@@ -15,6 +14,9 @@ pub mod push;
 mod qualification;
 mod transform;
 mod view;
+
+pub use columns::Columns;
+pub use data::ColumnData;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Column {
