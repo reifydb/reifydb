@@ -11,7 +11,6 @@ impl Expression {
         move || match self {
             Expression::AccessTable(expr) => expr.span(),
             Expression::Alias(expr) => expr.expression.span(),
-            Expression::Keyed(expr) => expr.expression.span(),
             Expression::Cast(CastExpression { expression: expr, .. }) => expr.span(),
             Expression::Constant(expr) => match expr {
                 ConstantExpression::Undefined { span }

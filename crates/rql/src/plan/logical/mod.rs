@@ -6,7 +6,7 @@ mod mutate;
 mod query;
 
 use crate::ast::{Ast, AstPolicy, AstPolicyKind, AstStatement};
-use crate::expression::{Expression, KeyedExpression};
+use crate::expression::{Expression, AliasExpression};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_core::{JoinType, OwnedSpan, SortKey};
@@ -161,7 +161,7 @@ pub struct MapNode {
 
 #[derive(Debug)]
 pub struct InlineDataNode {
-    pub rows: Vec<Vec<KeyedExpression>>,
+    pub rows: Vec<Vec<AliasExpression>>,
 }
 
 #[derive(Debug)]

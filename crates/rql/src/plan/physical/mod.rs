@@ -3,7 +3,7 @@
 
 mod create;
 
-use crate::expression::{Expression, KeyedExpression};
+use crate::expression::{Expression, AliasExpression};
 use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
@@ -267,7 +267,7 @@ pub struct MapNode {
 
 #[derive(Debug, Clone)]
 pub struct InlineDataNode {
-    pub rows: Vec<Vec<KeyedExpression>>,
+    pub rows: Vec<Vec<AliasExpression>>,
 }
 
 #[derive(Debug, Clone)]

@@ -82,7 +82,6 @@ fn simplified_name(expr: &Expression) -> String {
         }
         Expression::Cast(cast_expr) => simplified_name(&cast_expr.expression),
         Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
-        Expression::Keyed(keyed_expr) => keyed_expr.key.name().to_string(),
         Expression::Tuple(tuple_expr) => format!(
             "({})",
             tuple_expr.expressions.iter().map(|e| simplified_name(e)).collect::<Vec<_>>().join(",")

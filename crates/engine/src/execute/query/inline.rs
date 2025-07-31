@@ -8,19 +8,19 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::interface::{Rx, Table};
 use reifydb_core::{ColumnDescriptor, Value};
-use reifydb_rql::expression::KeyedExpression;
+use reifydb_rql::expression::AliasExpression;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) struct InlineDataNode {
-    rows: Vec<Vec<KeyedExpression>>,
+    rows: Vec<Vec<AliasExpression>>,
     layout: Option<ColumnsLayout>,
     context: Arc<ExecutionContext>,
     executed: bool,
 }
 
 impl InlineDataNode {
-    pub fn new(rows: Vec<Vec<KeyedExpression>>, context: Arc<ExecutionContext>) -> Self {
+    pub fn new(rows: Vec<Vec<AliasExpression>>, context: Arc<ExecutionContext>) -> Self {
         let layout =
             context.table.as_ref().map(|table| Self::create_columns_layout_from_table(table));
 
@@ -70,19 +70,19 @@ impl InlineDataNode {
 
         for row in &self.rows {
             for keyed_expr in row {
-                let column_name = keyed_expr.key.0.fragment.clone();
+                let column_name = keyed_expr.alias.0.fragment.clone();
                 all_columns.insert(column_name);
             }
         }
 
         // Convert each row to a HashMap for easier lookup
-        let mut rows_data: Vec<HashMap<String, &KeyedExpression>> = Vec::new();
+        let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
 
         for row in &self.rows {
-            let mut row_map: HashMap<String, &KeyedExpression> = HashMap::new();
-            for keyed_expr in row {
-                let column_name = keyed_expr.key.0.fragment.clone();
-                row_map.insert(column_name, keyed_expr);
+            let mut row_map: HashMap<String, &AliasExpression> = HashMap::new();
+            for alias_expr in row {
+                let column_name = alias_expr.alias.0.fragment.clone();
+                row_map.insert(column_name, alias_expr);
             }
             rows_data.push(row_map);
         }
@@ -94,7 +94,7 @@ impl InlineDataNode {
             let mut column_data = ColumnData::undefined(0);
 
             for row_data in &rows_data {
-                if let Some(keyed_expr) = row_data.get(&column_name) {
+                if let Some(alias_expr) = row_data.get(&column_name) {
                     let ctx = EvaluationContext {
                         target_column: None,
                         column_policies: Vec::new(),
@@ -103,7 +103,7 @@ impl InlineDataNode {
                         take: None,
                     };
 
-                    let evaluated = evaluate(&keyed_expr.expression, &ctx)?;
+                    let evaluated = evaluate(&alias_expr.expression, &ctx)?;
 
                     // Take the first value from the evaluated result
                     let mut iter = evaluated.data().iter();
@@ -135,13 +135,13 @@ impl InlineDataNode {
         let layout = self.layout.as_ref().unwrap(); // Safe because we're in this path
 
         // Convert rows to HashMap for easier column lookup
-        let mut rows_data: Vec<HashMap<String, &KeyedExpression>> = Vec::new();
+        let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
 
         for row in &self.rows {
-            let mut row_map: HashMap<String, &KeyedExpression> = HashMap::new();
-            for keyed_expr in row {
-                let column_name = keyed_expr.key.0.fragment.clone();
-                row_map.insert(column_name, keyed_expr);
+            let mut row_map: HashMap<String, &AliasExpression> = HashMap::new();
+            for alias_expr in row {
+                let column_name = alias_expr.alias.0.fragment.clone();
+                row_map.insert(column_name, alias_expr);
             }
             rows_data.push(row_map);
         }
@@ -157,7 +157,7 @@ impl InlineDataNode {
                 table.columns.iter().find(|col| col.name == column_layout.name).unwrap(); // Safe because layout came from table
 
             for row_data in &rows_data {
-                if let Some(keyed_expr) = row_data.get(&column_layout.name) {
+                if let Some(alias_expr) = row_data.get(&column_layout.name) {
                     // Create ColumnDescriptor with table context
                     let column_descriptor = ColumnDescriptor::new()
                         .with_table(&table.name)
@@ -179,7 +179,7 @@ impl InlineDataNode {
                         take: None,
                     };
 
-                    column_data.extend(evaluate(&keyed_expr.expression, &ctx)?.data().clone())?;
+                    column_data.extend(evaluate(&alias_expr.expression, &ctx)?.data().clone())?;
                 } else {
                     column_data.push_value(Value::Undefined);
                 }

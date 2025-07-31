@@ -3,7 +3,7 @@
 
 use crate::ast::{Ast, AstFrom};
 use crate::expression::ExpressionCompiler;
-use crate::expression::{IdentExpression, KeyedExpression};
+use crate::expression::{IdentExpression, AliasExpression};
 use crate::plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode};
 use reifydb_core::err;
 use reifydb_core::result::error::diagnostic::Diagnostic;
@@ -21,17 +21,21 @@ impl Compiler {
                 for row in list.nodes {
                     match row {
                         Ast::Inline(row) => {
-                            let mut keyed_fields = Vec::new();
+                            let mut alias_fields = Vec::new();
                             for field in row.keyed_values {
-                                let key = IdentExpression(field.key.span());
+                                let key_span = field.key.span();
+                                let alias = IdentExpression(key_span.clone());
                                 let expr =
                                     ExpressionCompiler::compile(field.value.as_ref().clone())?;
 
-                                let keyed_expr =
-                                    KeyedExpression { key, expression: Box::new(expr) };
-                                keyed_fields.push(keyed_expr);
+                                let alias_expr = AliasExpression {
+                                    alias,
+                                    expression: Box::new(expr),
+                                    span: key_span,
+                                };
+                                alias_fields.push(alias_expr);
                             }
-                            rows.push(keyed_fields);
+                            rows.push(alias_fields);
                         }
                         _ => {
                             return err!(Diagnostic {
@@ -75,8 +79,8 @@ mod tests {
             LogicalPlan::InlineData(node) => {
                 assert_eq!(node.rows.len(), 1); // One row
                 assert_eq!(node.rows[0].len(), 2); // Two KeyedExpressions: id and name
-                assert_eq!(node.rows[0][0].key.0.fragment, "id");
-                assert_eq!(node.rows[0][1].key.0.fragment, "name");
+                assert_eq!(node.rows[0][0].alias.0.fragment, "id");
+                assert_eq!(node.rows[0][1].alias.0.fragment, "name");
             }
             _ => panic!("Expected InlineData node"),
         }
@@ -100,17 +104,17 @@ mod tests {
 
                 // First row: id: 1, name: 'Alice'
                 assert_eq!(node.rows[0].len(), 2);
-                assert_eq!(node.rows[0][0].key.0.fragment, "id");
-                assert_eq!(node.rows[0][1].key.0.fragment, "name");
+                assert_eq!(node.rows[0][0].alias.0.fragment, "id");
+                assert_eq!(node.rows[0][1].alias.0.fragment, "name");
 
                 // Second row: id: 2, email: 'bob@test.com'
                 assert_eq!(node.rows[1].len(), 2);
-                assert_eq!(node.rows[1][0].key.0.fragment, "id");
-                assert_eq!(node.rows[1][1].key.0.fragment, "email");
+                assert_eq!(node.rows[1][0].alias.0.fragment, "id");
+                assert_eq!(node.rows[1][1].alias.0.fragment, "email");
 
                 // Third row: name: 'Charlie'
                 assert_eq!(node.rows[2].len(), 1);
-                assert_eq!(node.rows[2][0].key.0.fragment, "name");
+                assert_eq!(node.rows[2][0].alias.0.fragment, "name");
 
                 // Check some expression values
                 match &*node.rows[0][0].expression {

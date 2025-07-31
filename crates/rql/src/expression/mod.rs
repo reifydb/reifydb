@@ -24,17 +24,6 @@ impl Display for AliasExpression {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyedExpression {
-    pub key: IdentExpression,
-    pub expression: Box<Expression>,
-}
-
-impl Display for KeyedExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.key, f)
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
@@ -42,7 +31,6 @@ pub enum Expression {
 
     Alias(AliasExpression),
 
-    Keyed(KeyedExpression),
 
     Cast(CastExpression),
 
@@ -346,9 +334,6 @@ impl Display for Expression {
             }
             Expression::Alias(AliasExpression { alias, expression, .. }) => {
                 write!(f, "{} as {}", expression, alias)
-            }
-            Expression::Keyed(KeyedExpression { key, expression, .. }) => {
-                write!(f, "{}: {}", key, expression)
             }
             Expression::Cast(CastExpression { expression: expr, .. }) => write!(f, "{}", expr),
             Expression::Constant(span) => write!(f, "Constant({})", span),
