@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
 use crate::execute::Executor;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::{Catalog, sequence::TableRowSequence};

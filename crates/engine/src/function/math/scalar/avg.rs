@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::{Column, ColumnData};
-use crate::function::ScalarFunction;
+use crate::columnar::ColumnData;
+use crate::function::{ScalarFunction, ScalarFunctionContext};
 
 pub struct Avg {}
 
@@ -13,11 +13,14 @@ impl Avg {
 }
 
 impl ScalarFunction for Avg {
-    fn scalar(&self, columns: &[Column], row_count: usize) -> crate::Result<ColumnData> {
+    fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+        let columns = ctx.columns;
+        let row_count = ctx.row_count;
+
         let mut sum = vec![0.0f64; row_count];
         let mut count = vec![0u32; row_count];
 
-        for col in columns {
+        for col in columns.iter() {
             match &col.data() {
                 ColumnData::Int2(container) => {
                     for i in 0..row_count {

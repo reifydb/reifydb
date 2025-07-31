@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::columns::Columns;
+use crate::columnar::Columns;
 use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use crate::function::{AggregateFunction, Functions};
+use crate::function::{AggregateFunction, AggregateFunctionContext, Functions};
 use reifydb_core::OwnedSpan;
 use reifydb_core::Value;
 use reifydb_core::interface::Rx;
@@ -61,7 +61,9 @@ impl ExecutionPlan for AggregateNode {
             for projection in &mut projections {
                 if let Projection::Aggregate { function, column, .. } = projection {
                     let column = columns.column(column).unwrap();
-                    function.aggregate(column, &groups).unwrap();
+                    function
+                        .aggregate(AggregateFunctionContext { column, groups: &groups })
+                        .unwrap();
                 }
             }
         }
