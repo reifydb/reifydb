@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Catalog;
 use crate::schema::layout::schema;
 use crate::schema::{Schema, SchemaId};
+use crate::Catalog;
 use reifydb_core::interface::{EncodableKey, SchemaKey};
 use reifydb_core::interface::{Rx, Versioned};
 use reifydb_core::row::EncodedRow;
@@ -17,7 +17,11 @@ impl Catalog {
         Ok(rx.scan_range(SchemaKey::full_scan())?.find_map(|versioned| {
             let row: &EncodedRow = &versioned.row;
             let schema_name = schema::LAYOUT.get_utf8(row, schema::NAME);
-            if name == schema_name { Some(Self::convert_schema(versioned)) } else { None }
+            if name == schema_name {
+                Some(Self::convert_schema(versioned))
+            } else {
+                None
+            }
         }))
     }
 
@@ -38,8 +42,8 @@ impl Catalog {
 mod tests {
 
     mod get_schema_by_name {
-        use crate::Catalog;
         use crate::test_utils::create_schema;
+        use crate::Catalog;
         use reifydb_transaction::test_utils::TestTransaction;
 
         #[test]
@@ -72,9 +76,9 @@ mod tests {
     }
 
     mod get_schema {
-        use crate::Catalog;
         use crate::schema::SchemaId;
         use crate::test_utils::create_schema;
+        use crate::Catalog;
         use reifydb_transaction::test_utils::TestTransaction;
 
         #[test]
