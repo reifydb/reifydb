@@ -15,12 +15,12 @@ pub use reifydb_transaction as transaction;
 
 use std::path::Path;
 
-#[cfg(feature = "embedded")]
-use crate::embedded::Embedded;
-#[cfg(feature = "server")]
-use crate::server::Server;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{Principal, Transaction, UnversionedStorage, VersionedStorage};
+#[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
+use reifydb_core::interface::VersionedTransaction;
+use reifydb_core::interface::{
+    Principal, UnversionedTransaction, VersionedStorage,
+};
 use reifydb_core::result::Frame;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
@@ -30,138 +30,142 @@ use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-
+use reifydb_transaction::svl::SingleVersionLock;
 #[cfg(feature = "embedded")]
-pub mod embedded;
-
+use variant::embedded::EmbeddedBuilder;
 #[cfg(feature = "embedded_blocking")]
-pub mod embedded_blocking;
-
+use variant::embedded_blocking::EmbeddedBlockingBuilder;
 #[cfg(feature = "server")]
-pub mod server;
+use variant::server::ServerBuilder;
+
+pub mod hook;
 mod session;
+pub mod variant;
 
 pub struct ReifyDB {}
 
 pub trait DB<'a>: Sized {
-    fn tx_as(
+    fn write_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn tx_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+    fn write_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn rx_as(
+    fn read_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn rx_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+    fn read_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 }
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> Embedded<Memory, Memory, Serializable<Memory, Memory>> {
-        let (transaction, hooks) = serializable(memory());
-        Embedded::new(transaction, hooks)
+    pub fn embedded()
+    -> EmbeddedBuilder<Serializable<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>
+    {
+        let (versioned, unversioned, hooks) = serializable(memory());
+        EmbeddedBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking()
-    -> embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>> {
-        let (transaction, hooks) = serializable(memory());
-        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
+    pub fn embedded_blocking() -> EmbeddedBlockingBuilder<
+        Serializable<Memory, SingleVersionLock<Memory>>,
+        SingleVersionLock<Memory>,
+    > {
+        let (versioned, unversioned, hooks) = serializable(memory());
+        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> embedded_blocking::Embedded<Memory, Memory, Serializable<Memory, Memory>> {
+    pub fn embedded() -> EmbeddedBlockingBuilder<
+        Serializable<Memory, SingleVersionLock<Memory>>,
+        SingleVersionLock<Memory>,
+    > {
         Self::embedded_blocking()
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<VS, US, T>(transaction: T, hooks: Hooks) -> Embedded<VS, US, T>
+    pub fn embedded_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        Embedded::new(transaction, hooks)
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<VS, US, T>(
-        transaction: T,
-        hooks: Hooks,
-    ) -> embedded_blocking::Embedded<VS, US, T>
+    pub fn embedded_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBlockingBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<VS, US, T>(
-        input: (T, Hooks),
-    ) -> embedded_blocking::Embedded<VS, US, T>
+    pub fn embedded_blocking_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBlockingBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        let (transaction, hooks) = input;
-        embedded_blocking::Embedded::new(transaction, hooks).unwrap()
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> Server<Memory, Memory, Serializable<Memory, Memory>> {
-        let (transaction, hooks) = serializable(memory());
-        let engine = engine::Engine::new(transaction, hooks).unwrap();
-        Server::new(engine)
+    pub fn server()
+    -> ServerBuilder<Serializable<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>
+    {
+        let (versioned, unversioned, hooks) = serializable(memory());
+        ServerBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<VS, US, T>(input: (T, Hooks)) -> Server<VS, US, T>
+    pub fn server_with<VT, UT>(input: (VT, UT, Hooks)) -> ServerBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        let (transaction, hooks) = input;
-        let engine = engine::Engine::new(transaction, hooks).unwrap();
-        Server::new(engine)
+        let (versioned, unversioned, hooks) = input;
+        ServerBuilder::new(versioned, unversioned, hooks)
     }
 }
 
-pub fn serializable<VS, US>(input: (VS, US, Hooks)) -> (Serializable<VS, US>, Hooks)
+pub fn serializable<VS, UT>(input: (VS, UT, Hooks)) -> (Serializable<VS, UT>, UT, Hooks)
 where
     VS: VersionedStorage,
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
-    (Serializable::new(input.0, input.1, input.2.clone()), input.2)
+    (Serializable::new(input.0, input.1.clone(), input.2.clone()), input.1, input.2)
 }
 
-pub fn optimistic<VS, US>(input: (VS, US, Hooks)) -> (Optimistic<VS, US>, Hooks)
+pub fn optimistic<VS, UT>(input: (VS, UT, Hooks)) -> (Optimistic<VS, UT>, UT, Hooks)
 where
     VS: VersionedStorage,
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
-    (Optimistic::new(input.0, input.1, input.2.clone()), input.2)
+    (Optimistic::new(input.0, input.1.clone(), input.2.clone()), input.1, input.2)
 }
 
-pub fn memory() -> (Memory, Memory, Hooks) {
-    (Memory::default(), Memory::default(), Hooks::default())
+pub fn memory() -> (Memory, SingleVersionLock<Memory>, Hooks) {
+    let hooks = Hooks::new();
+    (Memory::default(), SingleVersionLock::new(Memory::new(), hooks.clone()), hooks)
 }
 
-pub fn lmdb(path: &Path) -> (Lmdb, Lmdb, Hooks) {
+pub fn lmdb(path: &Path) -> (Lmdb, SingleVersionLock<Lmdb>, Hooks) {
+    let hooks = Hooks::new();
     let result = Lmdb::new(path);
-    (result.clone(), result, Hooks::default())
+    (result.clone(), SingleVersionLock::new(result, hooks.clone()), hooks)
 }
 
-pub fn sqlite(config: SqliteConfig) -> (Sqlite, Sqlite, Hooks) {
+pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, Hooks) {
+    let hooks = Hooks::new();
     let result = Sqlite::new(config);
-    (result.clone(), result, Hooks::default())
+    (result.clone(), SingleVersionLock::new(result, hooks.clone()), hooks)
 }

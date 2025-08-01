@@ -28,7 +28,7 @@ async fn main() {
     client.auth(Some("mysecrettoken".into())).await.unwrap();
 
     let result = client
-        .tx(r#"
+        .write(r#"
     from test.arith
         map 1 + 2, 3 + 4, cast(129, int1) as X
     "#

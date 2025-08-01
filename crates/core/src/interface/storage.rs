@@ -145,8 +145,8 @@ pub trait UnversionedRemove: UnversionedApply {
     }
 }
 
-pub trait UnversionedIter: Iterator<Item = Unversioned> {}
-impl<T> UnversionedIter for T where T: Iterator<Item = Unversioned> {}
+pub trait UnversionedIter: Iterator<Item = Unversioned> + Send {}
+impl<T> UnversionedIter for T where T: Iterator<Item = Unversioned> + Send {}
 
 pub trait UnversionedScan {
     type ScanIter<'a>: UnversionedIter

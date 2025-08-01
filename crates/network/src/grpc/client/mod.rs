@@ -2,8 +2,8 @@
 // This file is licensed under the MIT
 
 mod convert;
-mod rx;
-mod tx;
+mod read;
+mod write;
 
 use std::net::SocketAddr;
 

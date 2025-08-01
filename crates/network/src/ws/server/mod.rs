@@ -3,20 +3,21 @@
 
 use crate::ws::RequestPayload::Auth;
 use crate::ws::{
-    AuthRequest, AuthResponse, ErrResponse, Request, RequestPayload, ResponsePayload, RxRequest,
-    RxResponse, TxRequest, TxResponse, WebsocketColumn, WebsocketFrame,
+    AuthRequest, AuthResponse, ErrResponse, ReadRequest, ReadResponse, Request, RequestPayload,
+    ResponsePayload, WebsocketColumn, WebsocketFrame, WriteRequest, WriteResponse,
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, Principal, UnversionedTransaction
+    , VersionedTransaction,
 };
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, OnceCell};
@@ -39,46 +40,42 @@ impl Default for WsConfig {
 }
 
 #[derive(Clone)]
-pub struct WsServer<VS, US, T>(Arc<Inner<VS, US, T>>)
+pub struct WsServer<VT, UT>(Arc<Inner<VT, UT>>)
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>;
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction;
 
-pub struct Inner<VS, US, T>
+pub struct Inner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
 {
     config: WsConfig,
-    engine: Engine<VS, US, T>,
+    engine: Engine<VT, UT>,
     shutdown: Arc<Notify>,
     shutdown_complete: AtomicBool,
     socket_addr: OnceCell<SocketAddr>,
-    _phantom: std::marker::PhantomData<(VS, US, T)>,
+    _phantom: std::marker::PhantomData<(VT, UT)>,
 }
 
-impl<VS, US, T> Deref for WsServer<VS, US, T>
+impl<VT, UT> Deref for WsServer<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
 {
-    type Target = Inner<VS, US, T>;
+    type Target = Inner<VT, UT>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VS, US, T> WsServer<VS, US, T>
+impl<VT, UT> WsServer<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
 {
-    pub fn new(config: WsConfig, engine: Engine<VS, US, T>) -> Self {
+    pub fn new(config: WsConfig, engine: Engine<VT, UT>) -> Self {
         Self(Arc::new(Inner {
             config,
             engine,
@@ -190,7 +187,7 @@ where
         }
     }
 
-    async fn handle(engine: Engine<VS, US, T>, stream: TcpStream, shutdown: Arc<Notify>) {
+    async fn handle(engine: Engine<VT, UT>, stream: TcpStream, shutdown: Arc<Notify>) {
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
 
         let ws_stream = match accept_async(stream).await {
@@ -248,18 +245,18 @@ where
                                         Some(Ok(Message::Text(text))) => {
                                             match serde_json::from_str::<Request>(&text) {
                                                 Ok(request) => match request.payload {
-                                                      RequestPayload::Tx(TxRequest { statements }) => {
-                                                        println!("Tx: {}", statements.join(","));
+                                                      RequestPayload::Write(WriteRequest { statements }) => {
+                                                        println!("Write: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
-                                                            match engine.tx_as(
+                                                            match engine.write_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
                                                             ) {
                                                                 Ok(result) => {
                                                                     let response = crate::ws::response::Response {
                                                                         id: request.id,
-                                                                        payload: ResponsePayload::Tx(TxResponse {
+                                                                        payload: ResponsePayload::Write(WriteResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
                                                                                     name: "GONE".to_string(), //FIXME
@@ -305,18 +302,18 @@ where
                                                         }
                                                     }
 
-                                                    RequestPayload::Rx(RxRequest { statements }) => {
-                                                        println!("Rx: {}", statements.join(","));
+                                                    RequestPayload::Read(ReadRequest { statements }) => {
+                                                        println!("Read: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
-                                                            match engine.rx_as(
+                                                            match engine.read_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
                                                             ) {
                                                                 Ok(result) => {
                                                                     let response = crate::ws::response::Response {
                                                                         id: request.id,
-                                                                        payload: ResponsePayload::Rx(RxResponse {
+                                                                        payload: ResponsePayload::Read(ReadResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
                                                                                     name: "GONE".to_string(), // FIXME

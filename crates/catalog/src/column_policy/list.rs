@@ -6,15 +6,15 @@ use crate::column::ColumnId;
 use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKind};
 use reifydb_core::interface::ColumnPolicyKey;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 
 impl Catalog {
     pub fn list_column_policies(
-        rx: &mut impl Rx,
+        rx: &mut impl VersionedReadTransaction,
         column: ColumnId,
     ) -> crate::Result<Vec<ColumnPolicy>> {
         Ok(rx
-            .scan_range(ColumnPolicyKey::full_scan(column))?
+            .range(ColumnPolicyKey::full_scan(column))?
             .map(|versioned| {
                 let row = versioned.row;
                 let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
@@ -39,15 +39,15 @@ mod tests {
     use crate::test_utils::ensure_test_table;
     use reifydb_core::Type;
     use reifydb_core::interface::TableId;
-    use reifydb_transaction::test_utils::TestTransaction;
+    use reifydb_transaction::test_utils::create_test_write_transaction;
 
     #[test]
     fn test_ok() {
-        let mut tx = TestTransaction::new();
-        ensure_test_table(&mut tx);
+        let mut atx = create_test_write_transaction();
+        ensure_test_table(&mut atx);
 
         Catalog::create_column(
-            &mut tx,
+            &mut atx,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -63,9 +63,9 @@ mod tests {
         )
         .unwrap();
 
-        let column = Catalog::get_column(&mut tx, ColumnId(1)).unwrap().unwrap();
+        let column = Catalog::get_column(&mut atx, ColumnId(1)).unwrap().unwrap();
 
-        let policies = Catalog::list_column_policies(&mut tx, column.id).unwrap();
+        let policies = Catalog::list_column_policies(&mut atx, column.id).unwrap();
         assert_eq!(policies.len(), 1);
         assert_eq!(policies[0].column, column.id);
         assert!(matches!(

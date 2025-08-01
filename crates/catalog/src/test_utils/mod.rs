@@ -8,37 +8,54 @@ use crate::schema::{Schema, SchemaId};
 use crate::table::TableToCreate;
 use crate::{Catalog, table};
 use reifydb_core::Type;
-use reifydb_core::interface::{Table, TableId, Tx};
-use reifydb_storage::memory::Memory;
+use reifydb_core::interface::{
+    ActiveWriteTransaction, Table, TableId, UnversionedTransaction, VersionedTransaction,
+};
 
-pub fn create_schema(tx: &mut impl Tx<Memory, Memory>, schema: &str) -> Schema {
-    Catalog::create_schema(tx, SchemaToCreate { schema_span: None, name: schema.to_string() })
+pub fn create_schema<VT, UT>(atx: &mut ActiveWriteTransaction<VT, UT>, schema: &str) -> Schema
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    Catalog::create_schema(atx, SchemaToCreate { schema_span: None, name: schema.to_string() })
         .unwrap()
 }
 
-pub fn ensure_test_schema(tx: &mut impl Tx<Memory, Memory>) -> Schema {
-    if let Some(result) = Catalog::get_schema_by_name(tx, "test_schema").unwrap() {
+pub fn ensure_test_schema<VT, UT>(atx: &mut ActiveWriteTransaction<VT, UT>) -> Schema
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    if let Some(result) = Catalog::get_schema_by_name(atx, "test_schema").unwrap() {
         return result;
     }
-    create_schema(tx, "test_schema")
+    create_schema(atx, "test_schema")
 }
 
-pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
-    ensure_test_schema(tx);
-    if let Some(result) = Catalog::get_table_by_name(tx, SchemaId(1), "test_table").unwrap() {
+pub fn ensure_test_table<VT, UT>(atx: &mut ActiveWriteTransaction<VT, UT>) -> Table
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    ensure_test_schema(atx);
+    if let Some(result) = Catalog::get_table_by_name(atx, SchemaId(1), "test_table").unwrap() {
         return result;
     }
-    create_table(tx, "test_schema", "test_table", &[])
+    create_table(atx, "test_schema", "test_table", &[])
 }
 
-pub fn create_table(
-    tx: &mut impl Tx<Memory, Memory>,
+pub fn create_table<VT, UT>(
+    atx: &mut ActiveWriteTransaction<VT, UT>,
     schema: &str,
     table: &str,
     columns: &[table::ColumnToCreate],
-) -> Table {
+) -> Table
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
     Catalog::create_table(
-        tx,
+        atx,
         TableToCreate {
             span: None,
             schema: schema.to_string(),
@@ -49,18 +66,21 @@ pub fn create_table(
     .unwrap()
 }
 
-pub fn create_test_table_column(
-    tx: &mut impl Tx<Memory, Memory>,
+pub fn create_test_table_column<VT, UT>(
+    atx: &mut ActiveWriteTransaction<VT, UT>,
     name: &str,
     value: Type,
     policies: Vec<ColumnPolicyKind>,
-) {
-    ensure_test_table(tx);
+) where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    ensure_test_table(atx);
 
-    let columns = Catalog::list_columns(tx, TableId(1)).unwrap();
+    let columns = Catalog::list_columns(atx, TableId(1)).unwrap();
 
     Catalog::create_column(
-        tx,
+        atx,
         TableId(1),
         ColumnToCreate {
             span: None,

@@ -9,20 +9,18 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::hook::Hooks;
-use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
-fn test_begin_rx() {
-    let engine = Optimistic::new(Memory::new(), Memory::new(), Hooks::default());
-    let tx = engine.begin_rx().unwrap();
+fn test_begin_read() {
+    let engine = Optimistic::testing();
+    let tx = engine.begin_read().unwrap();
     assert_eq!(tx.version(), 1);
 }
 
 #[test]
-fn test_begin_tx() {
-    let engine = Optimistic::new(Memory::new(), Memory::new(), Hooks::default());
-    let tx = engine.begin_tx().unwrap();
+fn test_begin_write() {
+    let engine = Optimistic::testing();
+    let tx = engine.begin_write().unwrap();
     assert_eq!(tx.version(), 1);
 }

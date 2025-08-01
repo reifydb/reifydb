@@ -24,21 +24,20 @@ use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
-use std::sync::RwLockWriteGuard;
 
-pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
-    engine: Optimistic<VS, US>,
-    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
+pub struct WriteTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
+    engine: Optimistic<VS, UT>,
+    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
-    pub fn new(engine: Optimistic<VS, US>) -> crate::Result<Self> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> {
+    pub fn new(engine: Optimistic<VS, UT>) -> crate::Result<Self> {
         let tm = engine.tm.write()?;
         Ok(Self { engine, tm })
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -68,13 +67,9 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
             Ok(())
         })
     }
-
-    pub fn unversioned(&mut self) -> RwLockWriteGuard<'_, US> {
-        self.engine.unversioned.write().unwrap()
-    }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }

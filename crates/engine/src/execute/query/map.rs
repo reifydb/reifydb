@@ -7,7 +7,7 @@ use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::query::layout::derive_columns_column_layout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::ColumnDescriptor;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use reifydb_rql::expression::Expression;
 
@@ -65,7 +65,7 @@ impl MapNode {
 }
 
 impl ExecutionPlan for MapNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
         while let Some(Batch { columns }) = self.input.next(ctx, rx)? {
             let mut new_columns = Vec::with_capacity(self.expressions.len());
 
@@ -115,7 +115,7 @@ impl MapWithoutInputNode {
 }
 
 impl ExecutionPlan for MapWithoutInputNode {
-    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }

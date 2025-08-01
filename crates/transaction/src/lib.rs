@@ -6,6 +6,6 @@
 pub use reifydb_core::Result;
 
 pub mod mvcc;
+pub mod svl;
 
 pub mod test_utils;
-mod transaction;

@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
-use reifydb::server::Server;
+use reifydb::variant::server::Server;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
@@ -18,40 +18,40 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct WsRunner<VS, US, T>
+pub struct WsRunner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
 {
-    server: Option<Server<VS, US, T>>,
+    instance: Option<Server<VT, UT>>,
     client: Option<WsClient>,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<VS, US, T> WsRunner<VS, US, T>
+impl<VT, UT> WsRunner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
 {
-    pub fn new(input: (T, Hooks)) -> Self {
-        let server = ReifyDB::server_with(input);
-        Self { server: Some(server), client: None, runtime: None, shutdown: None }
+    pub fn new(input: (VT, UT, Hooks)) -> Self {
+        let instance = ReifyDB::server_with(input)
+            .with_websocket(WsConfig { socket: Some("[::1]:0".parse().unwrap()) })
+            .build();
+
+        Self { instance: Some(instance), client: None, runtime: None, shutdown: None }
     }
 }
 
-impl<VS, US, T> testscript::Runner for WsRunner<VS, US, T>
+impl<VT, UT> testscript::Runner for WsRunner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
-            "tx" => {
+            "write" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
@@ -60,14 +60,14 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for frame in self.client.as_ref().unwrap().tx(&query).await? {
+                    for frame in self.client.as_ref().unwrap().write(&query).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
             }
 
-            "rx" => {
+            "read" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
@@ -76,7 +76,7 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for frame in self.client.as_ref().unwrap().rx(&query).await? {
+                    for frame in self.client.as_ref().unwrap().read(&query).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -91,14 +91,12 @@ where
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
         let (shutdown_tx, _) = oneshot::channel();
-        let server = self.server.take().unwrap();
+        let mut server = self.instance.take().unwrap();
 
-        let mut server =
-            server.with_websocket(WsConfig { socket: Some("[::1]:0".parse().unwrap()) });
         let _ = server.serve(&runtime);
         let socket_addr = busy_wait(|| server.ws_socket_addr());
 
-        self.server = Some(server);
+        self.instance = Some(server);
         self.client = Some(runtime.block_on(async {
             let client = WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await?;
             client.auth(Some("mysecrettoken".into())).await.unwrap();
@@ -111,7 +109,7 @@ where
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(server) = self.server.take() {
+        if let Some(server) = self.instance.take() {
             drop(server);
         }
 

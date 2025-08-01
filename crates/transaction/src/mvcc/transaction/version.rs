@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{EncodableKey, TransactionVersionKey, UnversionedStorage};
+use reifydb_core::interface::{
+    EncodableKey, TransactionVersionKey, UnversionedReadTransaction,
+    UnversionedTransaction, UnversionedWriteTransaction,
+};
 use reifydb_core::row::Layout;
 use reifydb_core::{Type, Version};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -36,55 +39,55 @@ impl VersionBlock {
 }
 
 #[derive(Debug)]
-pub struct StdVersionProvider<US>
+pub struct StdVersionProvider<UT>
 where
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
-    unversioned: Arc<Mutex<US>>,
+    unversioned: UT,
     current_block: Arc<Mutex<VersionBlock>>,
 }
 
-impl<US> StdVersionProvider<US>
+impl<UT> StdVersionProvider<UT>
 where
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
-    pub fn new(unversioned: US) -> crate::Result<Self> {
-        let storage = Arc::new(Mutex::new(unversioned));
-
+    pub fn new(unversioned: UT) -> crate::Result<Self> {
         // Load current version and allocate first block
-        let current_version = Self::load_current_version(&storage)?;
+        let current_version = Self::load_current_version(&unversioned)?;
         let first_block = VersionBlock::new(current_version);
 
         // Persist the end of first block to storage
-        Self::persist_version(&storage, first_block.last)?;
+        Self::persist_version(&unversioned, first_block.last)?;
 
-        Ok(Self { unversioned: storage, current_block: Arc::new(Mutex::new(first_block)) })
+        Ok(Self { unversioned, current_block: Arc::new(Mutex::new(first_block)) })
     }
 
-    fn load_current_version(storage: &Arc<Mutex<US>>) -> crate::Result<u64> {
+    fn load_current_version(unversioned: &UT) -> crate::Result<u64> {
         let layout = Layout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
 
-        match storage.lock().unwrap().get(&key)? {
+        unversioned.with_read(|tx| match tx.get(&key)? {
             None => Ok(0),
             Some(unversioned) => Ok(layout.get_u64(&unversioned.row, 0)),
-        }
+        })
     }
 
-    fn persist_version(storage: &Arc<Mutex<US>>, version: u64) -> crate::Result<()> {
+    fn persist_version(unversioned: &UT, version: u64) -> crate::Result<()> {
         let layout = Layout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
         let mut row = layout.allocate_row();
         layout.set_u64(&mut row, 0, version);
 
-        storage.lock().unwrap().upsert(&key, row)?;
-        Ok(())
+        unversioned.with_write(|tx| {
+            tx.set(&key, row)?;
+            Ok(())
+        })
     }
 }
 
-impl<US> VersionProvider for StdVersionProvider<US>
+impl<UT> VersionProvider for StdVersionProvider<UT>
 where
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
     fn next(&self) -> crate::Result<Version> {
         // Fast path: try to get version from current block
@@ -118,13 +121,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reifydb_core::interface::UnversionedUpsert;
+    use crate::svl::SingleVersionLock;
+    use reifydb_core::hook::Hooks;
     use reifydb_storage::memory::Memory;
 
     #[test]
     fn test_new_version_provider() {
         let memory = Memory::new();
-        let provider = StdVersionProvider::new(memory).unwrap();
+        let unversioned = SingleVersionLock::new(memory, Hooks::default());
+        let provider = StdVersionProvider::new(unversioned).unwrap();
 
         // Should start at version 0
         assert_eq!(provider.current().unwrap(), 0);
@@ -133,7 +138,8 @@ mod tests {
     #[test]
     fn test_next_version_sequential() {
         let memory = Memory::new();
-        let provider = StdVersionProvider::new(memory).unwrap();
+        let unversioned = SingleVersionLock::new(memory, Hooks::default());
+        let provider = StdVersionProvider::new(unversioned).unwrap();
 
         assert_eq!(provider.next().unwrap(), 1);
         assert_eq!(provider.current().unwrap(), 1);
@@ -148,17 +154,18 @@ mod tests {
     #[test]
     fn test_version_persistence() {
         let memory = Memory::new();
+        let unversioned = SingleVersionLock::new(memory, Hooks::default());
 
         // Create first provider and get some versions
         {
-            let provider = StdVersionProvider::new(memory.clone()).unwrap();
+            let provider = StdVersionProvider::new(unversioned.clone()).unwrap();
             assert_eq!(provider.next().unwrap(), 1);
             assert_eq!(provider.next().unwrap(), 2);
             assert_eq!(provider.next().unwrap(), 3);
         }
 
         // Create new provider with same storage - should continue from persisted version
-        let provider2 = StdVersionProvider::new(memory).unwrap();
+        let provider2 = StdVersionProvider::new(unversioned.clone()).unwrap();
         assert_eq!(provider2.next().unwrap(), BLOCK_SIZE + 1);
         assert_eq!(provider2.current().unwrap(), BLOCK_SIZE + 1);
     }
@@ -166,7 +173,8 @@ mod tests {
     #[test]
     fn test_block_exhaustion_and_allocation() {
         let memory = Memory::new();
-        let provider = StdVersionProvider::new(memory).unwrap();
+        let unversioned = SingleVersionLock::new(memory, Hooks::default());
+        let provider = StdVersionProvider::new(unversioned).unwrap();
 
         // Exhaust the first block
         for _ in 0..BLOCK_SIZE {
@@ -189,7 +197,8 @@ mod tests {
         use std::thread;
 
         let memory = Memory::new();
-        let provider = Arc::new(StdVersionProvider::new(memory).unwrap());
+        let unversioned = SingleVersionLock::new(memory, Hooks::default());
+        let provider = Arc::new(StdVersionProvider::new(unversioned).unwrap());
 
         let mut handles = vec![];
 
@@ -266,17 +275,23 @@ mod tests {
 
     #[test]
     fn test_load_existing_version() {
-        let mut memory = Memory::new();
+        let memory = Memory::new();
+        let unversioned = SingleVersionLock::new(memory, Hooks::default());
 
         // Manually set a version in storage
         let layout = Layout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
         let mut row = layout.allocate_row();
         layout.set_u64(&mut row, 0, 500u64);
-        memory.upsert(&key, row).unwrap();
+        unversioned
+            .with_write(|tx| {
+                tx.set(&key, row)?;
+                Ok(())
+            })
+            .unwrap();
 
         // Create provider - should start from the existing version
-        let provider = StdVersionProvider::new(memory).unwrap();
+        let provider = StdVersionProvider::new(unversioned.clone()).unwrap();
         assert_eq!(provider.current().unwrap(), 500);
         assert_eq!(provider.next().unwrap(), 501);
     }

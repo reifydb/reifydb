@@ -5,23 +5,24 @@ use crate::columnar::ColumnData;
 use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::{EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange};
+use reifydb_core::interface::{
+    ActiveWriteTransaction, EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange,
+    UnversionedTransaction, VersionedReadTransaction, VersionedTransaction,
+};
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{
-    EncodedKeyRange, IntoOwnedSpan, Value,
-    interface::{Tx, UnversionedStorage, VersionedStorage},
-    return_error,
+    EncodedKeyRange, IntoOwnedSpan, Value, interface::VersionedWriteTransaction, return_error,
     value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::DeletePlan;
 use std::collections::Bound::Included;
 use std::sync::Arc;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn delete(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        atx: &mut ActiveWriteTransaction<VT, UT>,
         plan: DeletePlan,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
@@ -29,8 +30,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         };
         let schema_name = schema_ref.fragment.as_str();
 
-        let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
-        let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
+        let schema = Catalog::get_schema_by_name(atx, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
             return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
@@ -41,7 +42,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             // Delete specific rows based on input plan
             let mut input_node = compile(
                 *input_plan,
-                tx,
+                atx,
                 Arc::new(ExecutionContext {
                     functions: self.functions.clone(),
                     table: Some(table.clone()),
@@ -57,7 +58,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 preserve_row_ids: true,
             };
 
-            while let Some(Batch { columns }) = input_node.next(&context, tx)? {
+            while let Some(Batch { columns }) = input_node.next(&context, atx)? {
                 // Find the RowId column - return error if not found
                 let Some(row_id_column) =
                     columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
@@ -81,7 +82,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                 for row_idx in 0..columns.row_count() {
                     let row_id = row_ids[row_idx];
-                    tx.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
+                    atx.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
                     deleted_count += 1;
                 }
             }
@@ -89,15 +90,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             // Delete entire table - scan all rows and delete them
             let range = TableRowKeyRange { table: table.id };
 
-            let keys = tx
-                .scan_range(EncodedKeyRange::new(
+            let keys = atx
+                .range(EncodedKeyRange::new(
                     Included(range.start().unwrap()),
                     Included(range.end().unwrap()),
                 ))?
                 .map(|versioned| versioned.key)
                 .collect::<Vec<_>>();
             for key in keys {
-                tx.remove(&key)?;
+                atx.remove(&key)?;
                 deleted_count += 1;
             }
         }

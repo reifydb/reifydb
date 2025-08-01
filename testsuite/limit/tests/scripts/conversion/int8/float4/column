@@ -1,11 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(tx 'create schema test')
+(write 'create schema test')
 
-(tx 'create table test.conversion(col: int8)')
-(tx 'from [{ col: 0 }] insert test.conversion')
-tx 'from test.conversion map cast(col, float4)'
+(write 'create table test.conversion(col: int8)')
+(write 'from [{ col: 0 }] insert test.conversion')
+write 'from test.conversion map cast(col, float4)'
 ---
 > +-------+
 > |  col  |
@@ -15,8 +15,8 @@ tx 'from test.conversion map cast(col, float4)'
 > 
 
 
-(tx 'from [{ col: 16777216 }] insert test.conversion')
-tx 'from test.conversion map cast(col, float4)'
+(write 'from [{ col: 16777216 }] insert test.conversion')
+write 'from test.conversion map cast(col, float4)'
 ---
 > +------------+
 > |    col     |
@@ -26,8 +26,8 @@ tx 'from test.conversion map cast(col, float4)'
 > +------------+
 > 
 
-(tx 'from [{ col: -16777216 }] insert test.conversion')
-tx 'from test.conversion map cast(col, float4)'
+(write 'from [{ col: -16777216 }] insert test.conversion')
+write 'from test.conversion map cast(col, float4)'
 ---
 > +-------------+
 > |     col     |
@@ -38,9 +38,9 @@ tx 'from test.conversion map cast(col, float4)'
 > +-------------+
 > 
 
-(tx 'create table test.conversion_fail(col: int8)')
-(tx 'from [{ col: 16777217 }] insert test.conversion_fail')
-!tx 'from test.conversion_fail map cast(col, float4)'
+(write 'create table test.conversion_fail(col: int8)')
+(write 'from [{ col: 16777217 }] insert test.conversion_fail')
+!write 'from test.conversion_fail map cast(col, float4)'
 ---
 >  Error CAST_002: failed to cast to FLOAT4
 >   at "(colfloat4" (line 1, column 35)
@@ -60,8 +60,8 @@ tx 'from test.conversion map cast(col, float4)'
 >     note: consider using a different numeric type if exact precision is required
 > 
 
-(tx 'from [{ col: -16777217 }] insert test.conversion_fail')
-!tx 'from test.conversion_fail map cast(col, float4)'
+(write 'from [{ col: -16777217 }] insert test.conversion_fail')
+!write 'from test.conversion_fail map cast(col, float4)'
 ---
 >  Error CAST_002: failed to cast to FLOAT4
 >   at "(colfloat4" (line 1, column 35)

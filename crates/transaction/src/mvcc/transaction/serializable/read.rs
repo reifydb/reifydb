@@ -15,22 +15,22 @@ use crate::mvcc::transaction::read::TransactionManagerRx;
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::types::TransactionValue;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 
-pub struct TransactionRx<VS: VersionedStorage, US: UnversionedStorage> {
-    pub(crate) engine: Serializable<VS, US>,
-    pub(crate) tm: TransactionManagerRx<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
+pub struct ReadTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
+    pub(crate) engine: Serializable<VS, UT>,
+    pub(crate) tm: TransactionManagerRx<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
-    pub fn new(engine: Serializable<VS, US>, version: Option<Version>) -> crate::Result<Self> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> ReadTransaction<VS, UT> {
+    pub fn new(engine: Serializable<VS, UT>, version: Option<Version>) -> crate::Result<Self> {
         let tm = engine.tm.read(version)?;
         Ok(Self { engine, tm })
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> TransactionRx<VS, US> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> ReadTransaction<VS, UT> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }

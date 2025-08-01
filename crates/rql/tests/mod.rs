@@ -4,7 +4,7 @@
 use reifydb_rql::explain::{explain_ast, explain_lex, explain_logical_plan, explain_physical_plan};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
-use reifydb_transaction::test_utils::TestTransaction;
+use reifydb_transaction::test_utils::create_test_write_transaction;
 use std::error::Error;
 use std::fmt::Write;
 use std::path::Path;
@@ -55,7 +55,7 @@ impl testscript::Runner for Runner {
                 let query = args.next_pos().ok_or("args not given")?.value.as_str();
                 args.reject_rest()?;
 
-                let mut dummy_tx = TestTransaction::new();
+                let mut dummy_tx = create_test_write_transaction();
                 let result = explain_physical_plan(&mut dummy_tx, query).unwrap();
                 writeln!(output, "{}", result).unwrap();
             }

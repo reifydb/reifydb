@@ -3,7 +3,7 @@
 
 use crate::grpc::client::convert::{convert_diagnostic, convert_frame};
 use crate::grpc::client::{GrpcClient, grpc};
-use grpc::rx_result::Result as RxResultEnum;
+use grpc::read_result::Result as ReadResultEnum;
 use reifydb_core::Error;
 use reifydb_core::error;
 use reifydb_core::result::Frame;
@@ -12,13 +12,13 @@ use std::str::FromStr;
 use tonic::metadata::MetadataValue;
 
 impl GrpcClient {
-    pub async fn rx(&self, query: &str) -> Result<Vec<Frame>, Error> {
+    pub async fn read(&self, query: &str) -> Result<Vec<Frame>, Error> {
         let uri = format!("http://{}", self.socket_addr);
         let mut client = grpc::db_client::DbClient::connect(uri)
             .await
             .map_err(|e| error!(network::transport_error(e)))?;
 
-        let mut request = tonic::Request::new(grpc::RxRequest { query: query.into() });
+        let mut request = tonic::Request::new(grpc::ReadRequest { query: query.into() });
 
         request
             .metadata_mut()
@@ -27,7 +27,7 @@ impl GrpcClient {
         let mut results = Vec::new();
 
         let mut stream =
-            client.rx(request).await.map_err(|e| error!(network::status_error(e)))?.into_inner();
+            client.read(request).await.map_err(|e| error!(network::status_error(e)))?.into_inner();
         while let Some(msg) = stream.message().await.unwrap() {
             if let Some(result) = msg.result {
                 results.push(convert_result(result, query)?);
@@ -37,13 +37,13 @@ impl GrpcClient {
     }
 }
 
-pub fn convert_result(result: RxResultEnum, query: &str) -> Result<Frame, Error> {
+pub fn convert_result(result: ReadResultEnum, query: &str) -> Result<Frame, Error> {
     match result {
-        RxResultEnum::Error(diagnostic) => {
+        ReadResultEnum::Error(diagnostic) => {
             let mut diag = convert_diagnostic(diagnostic);
             diag.set_statement(query.to_string());
             Err(error!(diag))
         }
-        RxResultEnum::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
+        ReadResultEnum::Frame(grpc_frame) => Ok(convert_frame(grpc_frame)),
     }
 }
