@@ -10,16 +10,16 @@ pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a
 pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
 pub trait NewTransaction: Send + Sync + Clone + 'static {
-    type Read: ReadTransaction;
-    type Write: WriteTransaction;
+    type Read<'a>: ReadTransaction;
+    type Write<'a>: WriteTransaction;
 
-    fn begin_read(&self) -> crate::Result<Self::Read>;
+    fn begin_read(&self) -> crate::Result<Self::Read<'_>>;
 
-    fn begin_write(&self) -> Result<Self::Write, Error>;
+    fn begin_write(&self) -> crate::Result<Self::Write<'_>>;
 
     fn with_read<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut Self::Read) -> crate::Result<R>,
+        F: FnOnce(&mut Self::Read<'_>) -> crate::Result<R>,
     {
         let mut tx = self.begin_read()?;
         f(&mut tx)
@@ -27,7 +27,7 @@ pub trait NewTransaction: Send + Sync + Clone + 'static {
 
     fn with_write<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut Self::Write) -> crate::Result<R>,
+        F: FnOnce(&mut Self::Write<'_>) -> crate::Result<R>,
     {
         let mut tx = self.begin_write()?;
         let result = f(&mut tx)?;

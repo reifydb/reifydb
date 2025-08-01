@@ -10,20 +10,23 @@ use reifydb_core::interface::{BoxedUnversionedIter, ReadTransaction, WriteTransa
 use std::collections::HashMap;
 use std::mem::take;
 use std::ops::RangeBounds;
-use std::sync::atomic::Ordering;
+use std::sync::RwLockWriteGuard;
 
-pub struct SvlWriteTransaction<US> {
-    svl: Arc<SvlInner<US>>,
+pub struct SvlWriteTransaction<'a, US> {
     pending: HashMap<EncodedKey, Delta>,
     completed: bool,
+    storage: RwLockWriteGuard<'a, US>,
 }
 
-impl<US> ReadTransaction for SvlWriteTransaction<US>
+impl<US> ReadTransaction for SvlWriteTransaction<'_, US>
 where
     US: UnversionedStorage,
 {
     type Item = Unversioned;
-    type Iter<'a> = BoxedUnversionedIter<'a>;
+    type Iter<'a>
+        = BoxedUnversionedIter<'a>
+    where
+        Self: 'a;
 
     fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Self::Item>> {
         if let Some(delta) = self.pending.get(key) {
@@ -37,8 +40,7 @@ where
             };
         }
 
-        let storage = self.svl.storage.read().unwrap();
-        storage.get(key)
+        self.storage.get(key)
     }
 
     fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
@@ -50,8 +52,7 @@ where
         }
 
         // Then check storage
-        let storage = self.svl.storage.read().unwrap();
-        storage.contains(key)
+        self.storage.contains(key)
     }
 
     fn scan(&mut self) -> crate::Result<Self::Iter<'_>> {
@@ -80,12 +81,12 @@ where
     }
 }
 
-impl<US> SvlWriteTransaction<US>
+impl<'a, US> SvlWriteTransaction<'a, US>
 where
     US: UnversionedStorage,
 {
-    pub(super) fn new(svl: Arc<SvlInner<US>>) -> Self {
-        Self { svl, pending: HashMap::new(), completed: false }
+    pub(super) fn new(storage: RwLockWriteGuard<'a, US>) -> Self {
+        Self { pending: HashMap::new(), completed: false, storage }
     }
 
     /// Helper method to prepare scan data by cloning and sorting pending items
@@ -113,14 +114,13 @@ where
             pending_items.sort_by(|(l, _), (r, _)| l.cmp(r));
         }
 
-        // Get committed items from storage, collecting them to release the lock
+        // Get committed items from storage
         let committed_items: Vec<Unversioned> = {
-            let storage = self.svl.storage.read().unwrap();
             match (range, reverse) {
-                (Some(r), true) => storage.scan_range_rev(r)?.collect(),
-                (Some(r), false) => storage.scan_range(r)?.collect(),
-                (None, true) => storage.scan_rev()?.collect(),
-                (None, false) => storage.scan()?.collect(),
+                (Some(r), true) => self.storage.scan_range_rev(r)?.collect(),
+                (Some(r), false) => self.storage.scan_range(r)?.collect(),
+                (None, true) => self.storage.scan_rev()?.collect(),
+                (None, false) => self.storage.scan()?.collect(),
             }
         };
 
@@ -128,7 +128,7 @@ where
     }
 }
 
-impl<US> WriteTransaction for SvlWriteTransaction<US>
+impl<'a, US> WriteTransaction for SvlWriteTransaction<'a, US>
 where
     US: UnversionedStorage,
 {
@@ -152,8 +152,7 @@ where
             take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
         if !deltas.is_empty() {
-            let mut storage = self.svl.storage.write().unwrap();
-            storage.apply(CowVec::new(deltas))?;
+            self.storage.apply(CowVec::new(deltas))?;
         }
 
         self.completed = true;
@@ -164,17 +163,5 @@ where
         self.pending.clear();
         self.completed = true;
         Ok(())
-    }
-}
-
-impl<S> Drop for SvlWriteTransaction<S> {
-    fn drop(&mut self) {
-        if !self.completed {
-            // Auto-rollback: just clear the buffer
-            self.pending.clear();
-        }
-
-        // Release write lock atomically
-        self.svl.write_active.store(false, Ordering::Release);
     }
 }
