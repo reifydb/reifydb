@@ -13,7 +13,7 @@ where
     fn begin_rx(&self) -> crate::Result<T::Rx>;
 
     fn begin_unversioned(&self) -> MutexGuard<US>;
-    
+
     fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
 
     fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
