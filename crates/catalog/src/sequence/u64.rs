@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
 use reifydb_core::row::Layout;
 use reifydb_core::{EncodedKey, Type, return_error};
@@ -12,7 +12,7 @@ static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Type::Uint8]));
 pub(crate) struct SequenceGeneratorU64 {}
 
 impl SequenceGeneratorU64 {
-    pub(crate) fn next<VS, US>(tx: &mut impl Tx<VS, US>, key: &EncodedKey) -> crate::Result<u64>
+    pub(crate) fn next<VS, US>(tx: &mut impl VersionedWriteTransaction<VS, US>, key: &EncodedKey) -> crate::Result<u64>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,

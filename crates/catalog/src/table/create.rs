@@ -8,7 +8,7 @@ use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use reifydb_core::interface::{EncodableKey, Key, SchemaTableKey, Table, TableId, TableKey};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::{OwnedSpan, Type, return_error};
 
@@ -29,7 +29,7 @@ pub struct TableToCreate {
 
 impl Catalog {
     pub fn create_table<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         to_create: TableToCreate,
     ) -> crate::Result<Table> {
         let Some(schema) = Catalog::get_schema_by_name(tx, &to_create.schema)? else {
@@ -50,7 +50,7 @@ impl Catalog {
     }
 
     fn store_table<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         table: TableId,
         schema: SchemaId,
         to_create: &TableToCreate,
@@ -66,7 +66,7 @@ impl Catalog {
     }
 
     fn link_table_to_schema<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         schema: SchemaId,
         table: TableId,
         name: &str,
@@ -79,7 +79,7 @@ impl Catalog {
     }
 
     fn insert_columns<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         table: TableId,
         to_create: TableToCreate,
     ) -> crate::Result<()> {
@@ -111,7 +111,7 @@ mod tests {
     use crate::table::TableToCreate;
     use crate::table::layout::table_schema;
     use crate::test_utils::ensure_test_schema;
-    use reifydb_core::interface::Rx;
+    use reifydb_core::interface::VersionedReadTransaction;
     use reifydb_core::interface::SchemaTableKey;
     use reifydb_transaction::test_utils::TestTransaction;
 
@@ -163,7 +163,7 @@ mod tests {
         Catalog::create_table(&mut tx, to_create).unwrap();
 
         let links =
-            tx.scan_range(SchemaTableKey::full_scan(SchemaId(1))).unwrap().collect::<Vec<_>>();
+            tx.range(SchemaTableKey::full_scan(SchemaId(1))).unwrap().collect::<Vec<_>>();
         assert_eq!(links.len(), 2);
 
         let link = &links[1];

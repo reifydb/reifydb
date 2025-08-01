@@ -11,7 +11,7 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
-    Engine as EngineInterface, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, UnversionedTransaction, Principal, VersionedTransaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
@@ -22,7 +22,7 @@ pub struct DbService<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub(crate) engine: Arc<Engine<VS, US, T, UT>>,
@@ -33,7 +33,7 @@ impl<VS, US, T, UT> DbService<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
@@ -49,7 +49,7 @@ impl<VS, US, T, UT> grpc::db_server::Db for DbService<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     type TxStream = TxResultStream;
@@ -68,7 +68,7 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
+            match engine.write_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(frames) => {
                     let mut responses: Vec<Result<TxResult, Status>> = vec![];
 
@@ -110,7 +110,7 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.tx_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
+            match engine.write_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(frames) => {
                     let mut responses: Vec<Result<RxResult, Status>> = vec![];
 

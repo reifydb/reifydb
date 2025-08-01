@@ -9,7 +9,7 @@ use crate::DB;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, UnversionedTransaction, Principal, VersionedTransaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
@@ -19,7 +19,7 @@ pub struct Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     engine: Engine<VS, US, T, UT>,
@@ -29,7 +29,7 @@ impl<VS, US, T, UT> Clone for Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     fn clone(&self) -> Self {
@@ -41,7 +41,7 @@ impl<VS, US, T, UT> Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
@@ -53,7 +53,7 @@ impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     fn engine(&self) -> &Engine<VS, US, T, UT> {
@@ -65,16 +65,16 @@ impl<VS, US, T, UT> DB<'_> for Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
-    async fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn write_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.tx_as(&principal, &rql).map_err(|mut err| {
+            engine.write_as(&principal, &rql).map_err(|mut err| {
                 err.0.set_statement(rql.to_string());
                 err
             })
@@ -83,18 +83,18 @@ where
         .unwrap()
     }
 
-    async fn tx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn write_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.tx_as(&principal, rql).await
+        self.write_as(&principal, rql).await
     }
 
-    async fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn read_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.rx_as(&principal, &rql).map_err(|mut err| {
+            engine.read_as(&principal, &rql).map_err(|mut err| {
                 err.0.set_statement(rql.to_string());
                 err
             })
@@ -103,8 +103,8 @@ where
         .unwrap()
     }
 
-    async fn rx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn read_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.rx_as(&principal, rql).await
+        self.read_as(&principal, rql).await
     }
 }

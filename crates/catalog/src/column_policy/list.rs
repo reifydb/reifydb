@@ -6,15 +6,15 @@ use crate::column::ColumnId;
 use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKind};
 use reifydb_core::interface::ColumnPolicyKey;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 
 impl Catalog {
     pub fn list_column_policies(
-        rx: &mut impl Rx,
-        column: ColumnId,
+		rx: &mut impl VersionedReadTransaction,
+		column: ColumnId,
     ) -> crate::Result<Vec<ColumnPolicy>> {
         Ok(rx
-            .scan_range(ColumnPolicyKey::full_scan(column))?
+            .range(ColumnPolicyKey::full_scan(column))?
             .map(|versioned| {
                 let row = versioned.row;
                 let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));

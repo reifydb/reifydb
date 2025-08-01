@@ -6,7 +6,7 @@ use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
-use reifydb_core::interface::{Rx, Table, Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedReadTransaction, Table, VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ pub(crate) struct Batch {
 }
 
 pub(crate) trait ExecutionPlan {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>>;
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<ColumnsLayout>;
 }
 
@@ -38,7 +38,7 @@ pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
 }
 
 pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
-    rx: &mut impl Rx,
+    rx: &mut impl VersionedReadTransaction,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
     let executor: Executor<VS, US> = Executor {
@@ -58,7 +58,7 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
 }
 
 pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
-    tx: &mut impl Tx<VS, US>,
+    tx: &mut impl VersionedWriteTransaction<VS, US>,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
     // FIXME receive functions from TX
@@ -78,7 +78,7 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
 }
 
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn execute_rx(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Columns> {
+    pub(crate) fn execute_rx(self, rx: &mut impl VersionedReadTransaction, plan: PhysicalPlan) -> crate::Result<Columns> {
         match plan {
             // Query
             PhysicalPlan::Aggregate(_)
@@ -103,7 +103,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
     pub(crate) fn execute_tx(
         mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         plan: PhysicalPlan,
     ) -> crate::Result<Columns> {
         match plan {
@@ -127,7 +127,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         }
     }
 
-    fn execute_query_plan(self, rx: &mut impl Rx, plan: PhysicalPlan) -> crate::Result<Columns> {
+    fn execute_query_plan(self, rx: &mut impl VersionedReadTransaction, plan: PhysicalPlan) -> crate::Result<Columns> {
         match plan {
             // PhysicalPlan::Describe { plan } => {
             //     // FIXME evaluating the entire columns is quite wasteful but good enough to write some tests

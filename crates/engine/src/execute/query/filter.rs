@@ -6,7 +6,7 @@ use crate::columnar::layout::ColumnsLayout;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::BitVec;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct FilterNode {
@@ -21,7 +21,7 @@ impl FilterNode {
 }
 
 impl ExecutionPlan for FilterNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
         while let Some(Batch { mut columns }) = self.input.next(ctx, rx)? {
             let mut row_count = columns.row_count();
 

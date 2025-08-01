@@ -3,7 +3,7 @@
 
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{BoxedVersionedIter, Rx, Tx, Versioned};
+use reifydb_core::interface::{BoxedVersionedIter, VersionedReadTransaction, VersionedWriteTransaction, Versioned};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
 use reifydb_storage::memory::Memory;
@@ -33,7 +33,7 @@ impl TestTransaction {
     }
 }
 
-impl Rx for TestTransaction {
+impl VersionedReadTransaction for TestTransaction {
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
         Ok(self.tx.get(key)?.map(|tv| Versioned {
             key: tv.key().clone(),
@@ -66,7 +66,7 @@ impl Rx for TestTransaction {
         Ok(Box::new(iter))
     }
 
-    fn scan_range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
+    fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
         let iter = self.tx.scan_range(range)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -76,7 +76,7 @@ impl Rx for TestTransaction {
         Ok(Box::new(iter))
     }
 
-    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
+    fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
         let iter = self.tx.scan_range_rev(range)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -86,7 +86,7 @@ impl Rx for TestTransaction {
         Ok(Box::new(iter))
     }
 
-    fn scan_prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
+    fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
         let iter = self.tx.scan_prefix(prefix)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -96,7 +96,7 @@ impl Rx for TestTransaction {
         Ok(Box::new(iter))
     }
 
-    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
+    fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
         let iter = self.tx.scan_prefix_rev(prefix)?.map(|tv| Versioned {
             key: tv.key().clone(),
             row: tv.row().clone(),
@@ -107,7 +107,7 @@ impl Rx for TestTransaction {
     }
 }
 
-impl Tx<Memory, Memory> for TestTransaction {
+impl VersionedWriteTransaction<Memory, Memory> for TestTransaction {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
         Ok(self.tx.set(key, row)?)
     }

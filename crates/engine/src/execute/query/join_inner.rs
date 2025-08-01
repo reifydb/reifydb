@@ -7,7 +7,7 @@ use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::Value;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_rql::expression::Expression;
 
 pub(crate) struct InnerJoinNode {
@@ -29,7 +29,7 @@ impl InnerJoinNode {
     fn load_and_merge_all(
         node: &mut Box<dyn ExecutionPlan>,
         ctx: &ExecutionContext,
-        rx: &mut dyn Rx,
+        rx: &mut dyn VersionedReadTransaction,
     ) -> crate::Result<Columns> {
         let mut result: Option<Columns> = None;
 
@@ -47,7 +47,7 @@ impl InnerJoinNode {
 }
 
 impl ExecutionPlan for InnerJoinNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }

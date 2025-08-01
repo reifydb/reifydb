@@ -17,7 +17,7 @@ use std::path::Path;
 
 use reifydb_core::hook::Hooks;
 #[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
-use reifydb_core::interface::Transaction;
+use reifydb_core::interface::VersionedTransaction;
 use reifydb_core::interface::{Principal, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::Frame;
 #[cfg(feature = "client")]
@@ -43,21 +43,21 @@ pub mod variant;
 pub struct ReifyDB {}
 
 pub trait DB<'a>: Sized {
-    fn tx_as(
+    fn write_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn tx_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+    fn write_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn rx_as(
+    fn read_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn rx_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+    fn read_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 }
 
 impl ReifyDB {
@@ -101,7 +101,7 @@ impl ReifyDB {
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        T: VersionedTransaction<VS, US>,
     {
         EmbeddedBuilder::new(transaction, unversioned, hooks)
     }
@@ -115,7 +115,7 @@ impl ReifyDB {
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        T: VersionedTransaction<VS, US>,
     {
         EmbeddedBlockingBuilder::new(transaction, unversioned, hooks)
     }
@@ -127,7 +127,7 @@ impl ReifyDB {
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        T: VersionedTransaction<VS, US>,
     {
         let (transaction, unversioned, hooks) = input;
         EmbeddedBlockingBuilder::new(transaction, unversioned, hooks)
@@ -148,7 +148,7 @@ impl ReifyDB {
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
-        T: Transaction<VS, US>,
+        T: VersionedTransaction<VS, US>,
     {
         let (transaction, unversioned, hooks) = input;
         ServerBuilder::new(transaction, unversioned, hooks)

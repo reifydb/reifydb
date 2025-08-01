@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{VersionedTransaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
@@ -22,7 +22,7 @@ pub struct WsRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     instance: Option<Server<VS, US, T>>,
     client: Option<WsClient>,
@@ -34,7 +34,7 @@ impl<VS, US, T> WsRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     pub fn new(input: (T, Hooks)) -> Self {
         let instance = ReifyDB::server_with(input)
@@ -49,7 +49,7 @@ impl<VS, US, T> testscript::Runner for WsRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

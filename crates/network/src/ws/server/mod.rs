@@ -8,7 +8,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-	Engine as EngineInterface, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, UnversionedTransaction, Principal, VersionedTransaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
@@ -43,14 +43,14 @@ pub struct WsServer<VS, US, T, UT>(Arc<Inner<VS, US, T, UT>>)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction;
 
 pub struct Inner<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     config: WsConfig,
@@ -65,7 +65,7 @@ impl<VS, US, T, UT> Deref for WsServer<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     type Target = Inner<VS, US, T, UT>;
@@ -79,7 +79,7 @@ impl<VS, US, T, UT> WsServer<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(config: WsConfig, engine: Engine<VS, US, T, UT>) -> Self {
@@ -256,7 +256,7 @@ where
                                                         println!("Tx: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
-                                                            match engine.tx_as(
+                                                            match engine.write_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
                                                             ) {
@@ -313,7 +313,7 @@ where
                                                         println!("Rx: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
-                                                            match engine.rx_as(
+                                                            match engine.read_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
                                                             ) {

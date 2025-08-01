@@ -7,7 +7,7 @@ pub use lifecycle::*;
 
 use reifydb_core::hook::lifecycle::OnCreateHook;
 use reifydb_core::hook::{BoxedHookIter, Callback};
-use reifydb_core::interface::{GetHooks, UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::return_hooks;
 use reifydb_engine::Engine;
 
@@ -16,7 +16,7 @@ pub struct OnCreateCallback<VS, US, T, UT, F>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
     F: Fn(&OnCreateContext<VS, US, T, UT>) -> crate::Result<()> + Send + Sync + 'static,
 {
@@ -28,7 +28,7 @@ impl<VS, US, T, UT, F> Callback<OnCreateHook> for OnCreateCallback<VS, US, T, UT
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
     F: Fn(&OnCreateContext<VS, US, T, UT>) -> crate::Result<()> + Send + Sync + 'static,
 {
@@ -44,7 +44,7 @@ pub trait WithHooks<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     /// Get access to the underlying engine

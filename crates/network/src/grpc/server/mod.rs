@@ -4,7 +4,7 @@
 use crate::grpc::server::db::DbService;
 use crate::grpc::server::grpc::db_server::DbServer;
 use reifydb_core::Error;
-use reifydb_core::interface::{UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -39,14 +39,14 @@ pub struct GrpcServer<VS, US, T, UT>(Arc<Inner<VS, US, T, UT>>)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction;
 
 pub struct Inner<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     config: GrpcConfig,
@@ -59,7 +59,7 @@ impl<VS, US, T, UT> Deref for GrpcServer<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     type Target = Inner<VS, US, T, UT>;
@@ -73,7 +73,7 @@ impl<VS, US, T, UT> GrpcServer<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(config: GrpcConfig, engine: Engine<VS, US, T, UT>) -> Self {
@@ -112,7 +112,7 @@ pub fn db_service<VS, US, T, UT>(engine: Engine<VS, US, T, UT>) -> DbServer<DbSe
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     DbServer::new(DbService::new(engine))

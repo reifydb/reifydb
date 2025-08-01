@@ -8,7 +8,7 @@ use crate::sequence::u64::SequenceGeneratorU64;
 use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
 use reifydb_core::interface::{EncodableKey, SystemSequenceKey, TableId};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 
 pub use reifydb_core::interface::SystemSequenceId;
 
@@ -33,7 +33,7 @@ pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
     pub(crate) fn next_schema_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+		tx: &mut impl VersionedWriteTransaction<VS, US>,
     ) -> crate::Result<SchemaId> {
         SequenceGeneratorU64::next(tx, &SCHEMA_KEY).map(SchemaId)
     }
@@ -41,7 +41,7 @@ impl SystemSequence {
 
 impl SystemSequence {
     pub(crate) fn next_table_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+		tx: &mut impl VersionedWriteTransaction<VS, US>,
     ) -> crate::Result<TableId> {
         SequenceGeneratorU64::next(tx, &TABLE_KEY).map(TableId)
     }
@@ -49,7 +49,7 @@ impl SystemSequence {
 
 impl SystemSequence {
     pub(crate) fn next_column_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+		tx: &mut impl VersionedWriteTransaction<VS, US>,
     ) -> crate::Result<ColumnId> {
         SequenceGeneratorU64::next(tx, &COLUMN_KEY).map(ColumnId)
     }
@@ -57,7 +57,7 @@ impl SystemSequence {
 
 impl SystemSequence {
     pub(crate) fn next_column_policy_id<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+		tx: &mut impl VersionedWriteTransaction<VS, US>,
     ) -> crate::Result<ColumnPolicyId> {
         SequenceGeneratorU64::next(tx, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
     }

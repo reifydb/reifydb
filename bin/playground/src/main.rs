@@ -14,26 +14,26 @@ fn main() {
     let db = ReifyDB::embedded_blocking_with((transaction, unversioned_svl, hooks))
         .on_create(|ctx| {
             println!("create reifydb");
-            ctx.tx_as_root("create schema reifydb")?;
+            ctx.write_as_root("create schema reifydb")?;
             println!("Created reifyDB");
             Ok(())
         })
         .build();
 
-    db.tx_as_root(r#"create schema reifydb"#).unwrap();
+    db.write_as_root(r#"create schema reifydb"#).unwrap();
 
-    //     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
-    //     db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
-    //     db.tx_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
-    //     db.tx_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
-    //     db.tx_as_root(
+    //     db.write_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
+    //     db.write_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
+    //     db.write_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
+    //     db.write_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
+    //     db.write_as_root(
     //         r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
     //     )
     //     .unwrap();
-    //     db.tx_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
+    //     db.write_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
     //
     //     for frame in db
-    //         .tx_as_root(
+    //         .write_as_root(
     //             r#"
     // map {
     //   cast(1.0, float8) + cast(1.0, float8),

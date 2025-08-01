@@ -6,10 +6,10 @@ use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnId, ColumnIndex};
 use reifydb_core::Type;
 use reifydb_core::interface::{ColumnKey, EncodableKey, TableColumnKey};
-use reifydb_core::interface::{Rx, TableId};
+use reifydb_core::interface::{VersionedReadTransaction, TableId};
 
 impl Catalog {
-    pub fn get_column(rx: &mut impl Rx, column: ColumnId) -> crate::Result<Option<Column>> {
+    pub fn get_column(rx: &mut impl VersionedReadTransaction, column: ColumnId) -> crate::Result<Option<Column>> {
         match rx.get(&ColumnKey { column }.encode())? {
             None => Ok(None),
             Some(versioned) => {
@@ -28,11 +28,11 @@ impl Catalog {
     }
 
     pub fn get_column_by_name(
-        rx: &mut impl Rx,
-        table: TableId,
-        column_name: &str,
+		rx: &mut impl VersionedReadTransaction,
+		table: TableId,
+		column_name: &str,
     ) -> crate::Result<Option<Column>> {
-        let maybe_id = rx.scan_range(TableColumnKey::full_scan(table))?.find_map(|versioned| {
+        let maybe_id = rx.range(TableColumnKey::full_scan(table))?.find_map(|versioned| {
             let row = versioned.row;
             let column = ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID));
             let name = table_column::LAYOUT.get_utf8(&row, table_column::NAME);

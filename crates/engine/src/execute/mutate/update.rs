@@ -11,7 +11,7 @@ use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_n
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
+    interface::{ColumnPolicyKind, VersionedWriteTransaction, UnversionedStorage, VersionedStorage},
     return_error,
     row::Layout,
     value::row_id::ROW_ID_COLUMN_NAME,
@@ -22,7 +22,7 @@ use std::sync::Arc;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn update(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         plan: UpdatePlan,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {

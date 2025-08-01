@@ -13,15 +13,15 @@ use crate::execute::query::sort::SortNode;
 use crate::execute::query::take::TakeNode;
 use crate::execute::{ExecutionContext, ExecutionPlan};
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_rql::plan::physical;
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::sync::Arc;
 
 pub(crate) fn compile(
-    plan: PhysicalPlan,
-    rx: &mut impl Rx,
-    context: Arc<ExecutionContext>,
+	plan: PhysicalPlan,
+	rx: &mut impl VersionedReadTransaction,
+	context: Arc<ExecutionContext>,
 ) -> Box<dyn ExecutionPlan> {
     match plan {
         PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {

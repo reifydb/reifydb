@@ -8,7 +8,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::EncodedKey;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
-use reifydb_core::interface::{EncodableKeyRange, Rx, TableRowKeyRange};
+use reifydb_core::interface::{EncodableKeyRange, VersionedReadTransaction, TableRowKeyRange};
 use reifydb_core::row::Layout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::ops::Bound::{Excluded, Included};
@@ -41,7 +41,7 @@ impl ScanColumnsNode {
 }
 
 impl ExecutionPlan for ScanColumnsNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
         if self.exhausted {
             return Ok(None);
         }
@@ -63,7 +63,7 @@ impl ExecutionPlan for ScanColumnsNode {
         let mut rows_collected = 0;
         let mut new_last_key = None;
 
-        let versioned_rows: Vec<_> = rx.scan_range(range)?.into_iter().collect();
+        let versioned_rows: Vec<_> = rx.range(range)?.into_iter().collect();
 
         for versioned in versioned_rows.into_iter() {
             if let Some(key) = TableRowKey::decode(&versioned.key) {

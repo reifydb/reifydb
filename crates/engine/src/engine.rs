@@ -6,25 +6,25 @@ use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, GetHooks, UnversionedTransaction, Principal, Transaction, Tx,
-    UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, GetHooks, Principal, UnversionedStorage, UnversionedTransaction,
+    VersionedStorage, VersionedTransaction, VersionedWriteTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::sync::{Arc, MutexGuard};
+use std::sync::Arc;
 
 pub struct Engine<VS, US, T, UT>(Arc<EngineInner<VS, US, T, UT>>)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction;
 
 impl<VS, US, T, UT> GetHooks for Engine<VS, US, T, UT>
 where
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     US: UnversionedStorage,
     VS: VersionedStorage,
     UT: UnversionedTransaction,
@@ -38,26 +38,22 @@ impl<VS, US, T, UT> EngineInterface<VS, US, T, UT> for Engine<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
-    fn begin_tx(&self) -> crate::Result<T::Tx> {
-        Ok(self.transaction.begin_tx()?)
+    fn begin_write(&self) -> crate::Result<T::Write> {
+        Ok(self.transaction.begin_write()?)
     }
 
-    fn begin_unversioned(&self) -> MutexGuard<US> {
-        self.transaction.begin_unversioned()
+    fn begin_read(&self) -> crate::Result<T::Read> {
+        Ok(self.transaction.begin_read()?)
     }
 
-    fn begin_rx(&self) -> crate::Result<T::Rx> {
-        Ok(self.transaction.begin_rx()?)
-    }
-
-    fn tx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    fn write_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut tx = self.begin_tx()?;
+        let mut tx = self.begin_write()?;
 
         for statement in statements {
             if let Some(plan) = plan(&mut tx, statement)? {
@@ -71,11 +67,11 @@ where
         Ok(result.into_iter().map(Frame::from).collect())
     }
 
-    fn rx_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    fn read_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut rx = self.begin_rx()?;
+        let mut rx = self.begin_read()?;
         for statement in statements {
             if let Some(plan) = plan(&mut rx, statement)? {
                 let er = execute_rx::<VS, US>(&mut rx, plan)?;
@@ -91,7 +87,7 @@ impl<VS, US, T, UT> Engine<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn transaction(&self) -> &T {
@@ -107,7 +103,7 @@ impl<VS, US, T, UT> Clone for Engine<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     fn clone(&self) -> Self {
@@ -119,7 +115,7 @@ impl<VS, US, T, UT> Deref for Engine<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     type Target = EngineInner<VS, US, T, UT>;
@@ -133,7 +129,7 @@ pub struct EngineInner<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     transaction: T,
@@ -146,7 +142,7 @@ impl<VS, US, T, UT> Engine<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
@@ -161,7 +157,7 @@ impl<VS, US, T, UT> Engine<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn setup_hooks(&self) -> crate::Result<()> {

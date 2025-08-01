@@ -8,22 +8,22 @@ use crate::schema::{Schema, SchemaId};
 use crate::table::TableToCreate;
 use crate::{Catalog, table};
 use reifydb_core::Type;
-use reifydb_core::interface::{Table, TableId, Tx};
+use reifydb_core::interface::{Table, TableId, VersionedWriteTransaction};
 use reifydb_storage::memory::Memory;
 
-pub fn create_schema(tx: &mut impl Tx<Memory, Memory>, schema: &str) -> Schema {
+pub fn create_schema(tx: &mut impl VersionedWriteTransaction<Memory, Memory>, schema: &str) -> Schema {
     Catalog::create_schema(tx, SchemaToCreate { schema_span: None, name: schema.to_string() })
         .unwrap()
 }
 
-pub fn ensure_test_schema(tx: &mut impl Tx<Memory, Memory>) -> Schema {
+pub fn ensure_test_schema(tx: &mut impl VersionedWriteTransaction<Memory, Memory>) -> Schema {
     if let Some(result) = Catalog::get_schema_by_name(tx, "test_schema").unwrap() {
         return result;
     }
     create_schema(tx, "test_schema")
 }
 
-pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
+pub fn ensure_test_table(tx: &mut impl VersionedWriteTransaction<Memory, Memory>) -> Table {
     ensure_test_schema(tx);
     if let Some(result) = Catalog::get_table_by_name(tx, SchemaId(1), "test_table").unwrap() {
         return result;
@@ -32,10 +32,10 @@ pub fn ensure_test_table(tx: &mut impl Tx<Memory, Memory>) -> Table {
 }
 
 pub fn create_table(
-    tx: &mut impl Tx<Memory, Memory>,
-    schema: &str,
-    table: &str,
-    columns: &[table::ColumnToCreate],
+	tx: &mut impl VersionedWriteTransaction<Memory, Memory>,
+	schema: &str,
+	table: &str,
+	columns: &[table::ColumnToCreate],
 ) -> Table {
     Catalog::create_table(
         tx,
@@ -50,10 +50,10 @@ pub fn create_table(
 }
 
 pub fn create_test_table_column(
-    tx: &mut impl Tx<Memory, Memory>,
-    name: &str,
-    value: Type,
-    policies: Vec<ColumnPolicyKind>,
+	tx: &mut impl VersionedWriteTransaction<Memory, Memory>,
+	name: &str,
+	value: Type,
+	policies: Vec<ColumnPolicyKind>,
 ) {
     ensure_test_table(tx);
 

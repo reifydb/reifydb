@@ -4,15 +4,15 @@
 use crate::Catalog;
 use crate::column::layout::table_column;
 use crate::column::{Column, ColumnId};
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_core::interface::{TableColumnKey, TableId};
 
 impl Catalog {
-    pub fn list_columns(rx: &mut impl Rx, table: TableId) -> crate::Result<Vec<Column>> {
+    pub fn list_columns(rx: &mut impl VersionedReadTransaction, table: TableId) -> crate::Result<Vec<Column>> {
         let mut result = vec![];
 
         let ids = rx
-            .scan_range(TableColumnKey::full_scan(table))?
+            .range(TableColumnKey::full_scan(table))?
             .map(|versioned| {
                 let row = versioned.row;
                 ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID))

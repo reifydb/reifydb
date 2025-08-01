@@ -9,7 +9,7 @@ use reifydb_core::interface::{EncodableKey, TableRowKey};
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, Tx, UnversionedStorage, VersionedStorage},
+    interface::{ColumnPolicyKind, VersionedWriteTransaction, UnversionedStorage, VersionedStorage},
     return_error,
     row::Layout,
 };
@@ -19,7 +19,7 @@ use std::sync::Arc;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn insert(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         plan: InsertPlan,
     ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME

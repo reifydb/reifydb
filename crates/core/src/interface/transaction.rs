@@ -3,7 +3,7 @@
 
 use crate::interface::{GetHooks, Unversioned, UnversionedStorage, Versioned, VersionedStorage};
 use crate::row::EncodedRow;
-use crate::{EncodedKey, EncodedKeyRange, Error};
+use crate::{EncodedKey, EncodedKeyRange};
 use std::sync::MutexGuard;
 
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
@@ -68,46 +68,63 @@ pub trait UnversionedWriteTransaction: UnversionedReadTransaction {
     fn rollback(self) -> crate::Result<()>;
 }
 
-// FIXME to be deleted
-pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
+pub trait VersionedTransaction<VS: VersionedStorage, US: UnversionedStorage>:
     GetHooks + Send + Sync + Clone + 'static
 {
-    type Rx: Rx;
-    type Tx: Tx<VS, US>;
+    type Read: VersionedReadTransaction;
+    type Write: VersionedWriteTransaction<VS, US>;
 
-    fn begin_rx(&self) -> Result<Self::Rx, Error>;
+    fn begin_read(&self) -> crate::Result<Self::Read>;
 
-    fn begin_tx(&self) -> Result<Self::Tx, Error>;
+    fn begin_write(&self) -> crate::Result<Self::Write>;
 
-    fn begin_unversioned(&self) -> MutexGuard<US>;
+    fn with_read<F, R>(&self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut Self::Read) -> crate::Result<R>,
+    {
+        let mut tx = self.begin_read()?;
+        f(&mut tx)
+    }
+
+    fn with_write<F, R>(&self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut Self::Write) -> crate::Result<R>,
+    {
+        let mut tx = self.begin_write()?;
+        let result = f(&mut tx)?;
+        tx.commit()?;
+        Ok(result)
+    }
 }
 
-pub trait Rx {
-    fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error>;
+pub trait VersionedReadTransaction {
+    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
 
-    fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error>;
+    fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-    fn scan(&mut self) -> Result<BoxedVersionedIter, Error>;
+    fn scan(&mut self) -> crate::Result<BoxedVersionedIter>;
 
-    fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error>;
+    fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter>;
 
-    fn scan_range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error>;
+    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter>;
 
-    fn scan_range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error>;
+    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter>;
 
-    fn scan_prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error>;
+    fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
 
-    fn scan_prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error>;
+    fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
 }
 
-pub trait Tx<VS: VersionedStorage, US: UnversionedStorage>: Rx {
-    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error>;
+pub trait VersionedWriteTransaction<VS: VersionedStorage, US: UnversionedStorage>:
+    VersionedReadTransaction
+{
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
-    fn remove(&mut self, key: &EncodedKey) -> Result<(), Error>;
+    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 
-    fn commit(self) -> Result<(), Error>;
+    fn commit(self) -> crate::Result<()>;
 
-    fn rollback(self) -> Result<(), Error>;
+    fn rollback(self) -> crate::Result<()>;
 
     fn unversioned(&mut self) -> MutexGuard<US>;
 }

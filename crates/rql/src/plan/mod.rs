@@ -6,14 +6,14 @@ use crate::expression::Expression;
 
 use crate::plan::logical::compile_logical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 
 pub mod logical;
 pub mod physical;
 
 pub type RowToInsert = Vec<Expression>;
 
-pub fn plan(rx: &mut impl Rx, statement: AstStatement) -> crate::Result<Option<PhysicalPlan>> {
+pub fn plan(rx: &mut impl VersionedReadTransaction, statement: AstStatement) -> crate::Result<Option<PhysicalPlan>> {
     let logical = compile_logical(statement)?;
     let physical = compile_physical(rx, logical)?;
     Ok(physical)

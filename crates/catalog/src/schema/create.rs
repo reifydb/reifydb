@@ -6,7 +6,7 @@ use crate::schema::Schema;
 use crate::schema::layout::schema;
 use crate::sequence::SystemSequence;
 use reifydb_core::interface::{EncodableKey, SchemaKey};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::{OwnedSpan, return_error};
 
@@ -18,7 +18,7 @@ pub struct SchemaToCreate {
 
 impl Catalog {
     pub fn create_schema<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         to_create: SchemaToCreate,
     ) -> crate::Result<Schema> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &to_create.name)? {

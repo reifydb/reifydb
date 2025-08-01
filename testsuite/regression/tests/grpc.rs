@@ -3,7 +3,7 @@
 
 use reifydb::client::GrpcClient;
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{VersionedTransaction, UnversionedStorage, VersionedStorage};
 use reifydb::core::retry;
 use reifydb::network::grpc::server::GrpcConfig;
 use reifydb::variant::server::Server;
@@ -21,7 +21,7 @@ pub struct GrpcRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     instance: Option<Server<VS, US, T>>,
     client: Option<GrpcClient>,
@@ -32,7 +32,7 @@ impl<VS, US, T> GrpcRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     pub fn new(input: (T, Hooks)) -> Self {
         let instance = ReifyDB::server_with(input)
@@ -47,7 +47,7 @@ impl<VS, US, T> testscript::Runner for GrpcRunner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{VersionedTransaction, UnversionedStorage, VersionedStorage};
 use reifydb::variant::embedded_blocking::EmbeddedBlocking;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -16,7 +16,7 @@ pub struct Runner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     instance: EmbeddedBlocking<VS, US, T>,
 }
@@ -25,7 +25,7 @@ impl<VS, US, T> Runner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     pub fn new(input: (T, Hooks)) -> Self {
         Self { instance: ReifyDB::embedded_blocking_with(input).build() }
@@ -36,7 +36,7 @@ impl<VS, US, T> testscript::Runner for Runner<VS, US, T>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
@@ -47,7 +47,7 @@ where
 
                 println!("tx: {query}");
 
-                for line in self.instance.tx_as_root(query.as_str())? {
+                for line in self.instance.write_as_root(query.as_str())? {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -57,7 +57,7 @@ where
 
                 println!("rx: {query}");
 
-                for line in self.instance.rx_as_root(query.as_str())? {
+                for line in self.instance.read_as_root(query.as_str())? {
                     writeln!(output, "{}", line)?;
                 }
             }

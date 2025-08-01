@@ -5,7 +5,7 @@ use crate::columnar::columns::Columns;
 use crate::execute::Executor;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::schema::SchemaToCreate;
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::error::diagnostic::catalog::schema_already_exists;
 use reifydb_core::{Value, return_error};
 use reifydb_rql::plan::physical::CreateSchemaPlan;
@@ -13,7 +13,7 @@ use reifydb_rql::plan::physical::CreateSchemaPlan;
 impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
     pub(crate) fn create_schema(
         &mut self,
-        tx: &mut impl Tx<VS, US>,
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<Columns> {
         if let Some(schema) = Catalog::get_schema_by_name(tx, &plan.schema)? {

@@ -8,7 +8,8 @@ pub use builder::EmbeddedBlockingBuilder;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, Principal, UnversionedStorage, UnversionedTransaction,
+    VersionedStorage, VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
@@ -17,7 +18,7 @@ pub struct EmbeddedBlocking<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     engine: Engine<VS, US, T, UT>,
@@ -27,7 +28,7 @@ impl<VS, US, T, UT> Clone for EmbeddedBlocking<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     fn clone(&self) -> Self {
@@ -39,7 +40,7 @@ impl<VS, US, T, UT> EmbeddedBlocking<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
@@ -51,7 +52,7 @@ impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for EmbeddedBlocking<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     fn engine(&self) -> &Engine<VS, US, T, UT> {
@@ -63,40 +64,27 @@ impl<'a, VS, US, T, UT> EmbeddedBlocking<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
-    pub fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.tx_as(principal, rql).map_err(|mut err| {
+    pub fn write_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+        self.engine.write_as(principal, rql).map_err(|mut err| {
             err.0.set_statement(rql.to_string());
             err
         })
     }
 
-    pub fn tx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub fn write_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.tx_as(&principal, rql)
+        self.write_as(&principal, rql)
     }
 
-    pub fn rx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.rx_as(principal, rql)
+    pub fn read_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+        self.engine.read_as(principal, rql)
     }
 
-    pub fn rx_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub fn read_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.rx_as(&principal, rql)
+        self.read_as(&principal, rql)
     }
-
-    // fn session_read_only(
-    //     &self,
-    //     into: impl IntoSessionRx<'a, Self>,
-    // ) -> reifydb-core::Result<SessionRx<'a, Self>> {
-    //     // into.into_session_rx(&self)
-    //     todo!()
-    // }
-    //
-    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> reifydb-core::Result<SessionTx<'a, Self>> {
-    //     // into.into_session_tx(&self)
-    //     todo!()
-    // }
 }

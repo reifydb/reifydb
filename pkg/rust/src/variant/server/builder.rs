@@ -5,7 +5,7 @@ use super::Server;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{GetHooks, UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
@@ -14,7 +14,7 @@ pub struct ServerBuilder<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     engine: Engine<VS, US, T, UT>,
@@ -26,7 +26,7 @@ impl<VS, US, T, UT> ServerBuilder<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
@@ -61,7 +61,7 @@ impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for ServerBuilder<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    T: VersionedTransaction<VS, US>,
     UT: UnversionedTransaction,
 {
     fn engine(&self) -> &Engine<VS, US, T, UT> {

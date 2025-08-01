@@ -4,8 +4,8 @@ use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use crate::Result;
 use reifydb_core::interface::{
-    Column, ColumnId, ColumnIndex, EncodableKeyRange, Rx, SchemaId, Table, TableId,
-    TableRowKeyRange, Transaction, Tx, UnversionedStorage, VersionedStorage,
+    Column, ColumnId, ColumnIndex, EncodableKeyRange, VersionedReadTransaction, SchemaId, Table, TableId,
+    TableRowKeyRange, VersionedTransaction, VersionedWriteTransaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::row::Layout;
@@ -14,7 +14,7 @@ use std::collections::Bound::Included;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-pub struct FlowEngine<VS: VersionedStorage, US: UnversionedStorage, T: Transaction<VS, US>> {
+pub struct FlowEngine<VS: VersionedStorage, US: UnversionedStorage, T: VersionedTransaction<VS, US>> {
     graph: FlowGraph,
     operators: HashMap<NodeId, Box<dyn Operator>>,
     contexts: HashMap<NodeId, OperatorContext>,
@@ -22,7 +22,7 @@ pub struct FlowEngine<VS: VersionedStorage, US: UnversionedStorage, T: Transacti
     _phantom: PhantomData<(VS, US)>,
 }
 
-impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowEngine<VS, US, T> {
+impl<T: VersionedTransaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowEngine<VS, US, T> {
     pub fn new(graph: FlowGraph, transaction: T) -> Self {
         Self {
             graph,
@@ -60,7 +60,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
     }
 
     pub fn process_change(&mut self, node_id: &NodeId, diff: Diff) -> Result<()> {
-        let mut tx = self.transaction.begin_tx()?;
+        let mut tx = self.transaction.begin_write()?;
 
         self.process_change_with_tx(&mut tx, node_id, diff)?;
         tx.commit()?;
@@ -70,7 +70,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
 
     fn process_change_with_tx(
         &mut self,
-        tx: &mut <T as Transaction<VS, US>>::Tx,
+        tx: &mut <T as VersionedTransaction<VS, US>>::Write,
         node_id: &NodeId,
         diff: Diff,
     ) -> Result<()> {
@@ -133,7 +133,7 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
 
     fn apply_diff_to_storage_with_tx(
         &mut self,
-        _tx: &mut <T as Transaction<VS, US>>::Tx,
+        _tx: &mut <T as VersionedTransaction<VS, US>>::Write,
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
@@ -275,11 +275,11 @@ impl<T: Transaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowE
 
     fn read_columns_from_storage(&self, node_id: &NodeId) -> Result<Frame> {
         // Start a read transaction
-        let mut rx = self.transaction.begin_rx()?;
+        let mut rx = self.transaction.begin_read()?;
 
         let range = TableRowKeyRange { table: TableId(node_id.0) };
         let _versioned_data = rx
-            .scan_range(EncodedKeyRange::new(
+            .range(EncodedKeyRange::new(
                 Included(range.start().unwrap()),
                 Included(range.end().unwrap()),
             ))

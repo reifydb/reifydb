@@ -5,7 +5,7 @@ use crate::columnar::columns::Columns;
 use crate::columnar::layout::ColumnsLayout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::SortDirection::{Asc, Desc};
-use reifydb_core::interface::Rx;
+use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_core::result::error::diagnostic::query;
 use reifydb_core::{SortKey, error};
 use std::cmp::Ordering::Equal;
@@ -22,7 +22,7 @@ impl SortNode {
 }
 
 impl ExecutionPlan for SortNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn Rx) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
         let mut columns_opt: Option<Columns> = None;
 
         while let Some(Batch { columns }) = self.input.next(ctx, rx)? {

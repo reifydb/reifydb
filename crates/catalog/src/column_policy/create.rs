@@ -7,15 +7,15 @@ use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 use crate::sequence::SystemSequence;
 use reifydb_core::interface::{ColumnPolicyKey, EncodableKey};
-use reifydb_core::interface::{Tx, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::result::error::diagnostic::catalog::column_policy_already_exists;
 use reifydb_core::return_error;
 
 impl Catalog {
     pub(crate) fn create_column_policy<VS: VersionedStorage, US: UnversionedStorage>(
-        tx: &mut impl Tx<VS, US>,
-        column: ColumnId,
-        policy: ColumnPolicyKind,
+		tx: &mut impl VersionedWriteTransaction<VS, US>,
+		column: ColumnId,
+		policy: ColumnPolicyKind,
     ) -> crate::Result<ColumnPolicy> {
         let (policy_kind, _value_kind) = policy.to_u8();
         for existing in Catalog::list_column_policies(tx, column)? {
