@@ -4,10 +4,18 @@
  * See license.md file for full license text
  */
 
-import {ErrorResponse, ReifyError, RxRequest, RxResponse, TxRequest, TxResponse, WebsocketColumn} from "./types";
+import {
+    ErrorResponse,
+    ReadRequest,
+    ReadResponse,
+    ReifyError,
+    WebsocketColumn,
+    WriteRequest,
+    WriteResponse
+} from "./types";
 import {decodeValue} from "./decoder";
 
-type ResponsePayload = ErrorResponse | TxResponse | RxResponse;
+type ResponsePayload = ErrorResponse | WriteResponse | ReadResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -82,26 +90,26 @@ export class WsClient {
         return new WsClient(socket, options);
     }
 
-    async tx<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
+    async write<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = `req-${this.nextId++}`;
         return await this.send({
             id,
-            type: "Tx",
+            type: "Write",
             payload: {
                 statements: [statement]
             },
         })
     }
 
-    async rx<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
+    async read<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = `req-${this.nextId++}`;
         return await this.send({
             id,
-            type: "Rx",
+            type: "Read",
             payload: {
                 statements: [statement]
             },
@@ -109,7 +117,7 @@ export class WsClient {
     }
 
 
-    async send<T extends readonly Record<string, unknown>[]>(req: TxRequest | RxRequest): Promise<{
+    async send<T extends readonly Record<string, unknown>[]>(req: WriteRequest | ReadRequest): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = req.id;
@@ -130,6 +138,7 @@ export class WsClient {
 
         if (response.type === "Err") {
             throw new ReifyError(response);
+
         }
 
         if (response.type !== req.type) {

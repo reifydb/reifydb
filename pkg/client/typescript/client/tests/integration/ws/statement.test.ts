@@ -40,17 +40,17 @@ describe('Statement', () => {
         }
     });
 
-    describe('tx', () => {
+    describe('write', () => {
 
         it('no statements', async () => {
-            const frames = await wsClient.tx<[{}]>(
+            const frames = await wsClient.write<[{}]>(
                 ''
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await wsClient.tx<[{}]>(
+            const frames = await wsClient.write<[{}]>(
                 ';'
             );
             expect(frames).toHaveLength(0);
@@ -58,14 +58,14 @@ describe('Statement', () => {
 
 
         it('many empty statement', async () => {
-            const frames = await wsClient.tx<[{}]>(
+            const frames = await wsClient.write<[{}]>(
                 ';;;;;'
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await wsClient.tx<[
+            const frames = await wsClient.write<[
                 { one: number },
                 { two: number }
             ]>(
@@ -82,7 +82,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await wsClient.tx<[{ result: boolean }]>(
+            const frames = await wsClient.write<[{ result: boolean }]>(
                 'MAP 1 as result;'
             );
 
@@ -92,7 +92,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await wsClient.tx<[
+            const frames = await wsClient.write<[
                 { result: number },
                 { result: number },
                 { result: number },
@@ -114,7 +114,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await wsClient.tx<[
+            const frames = await wsClient.write<[
                 { result: number },
                 { a: number, b: number },
                 { result: string },
@@ -140,17 +140,17 @@ describe('Statement', () => {
     });
 
 
-    describe('rx', () => {
+    describe('read', () => {
 
         it('no statements', async () => {
-            const frames = await wsClient.rx<[{}]>(
+            const frames = await wsClient.read<[{}]>(
                 ''
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await wsClient.rx<[{}]>(
+            const frames = await wsClient.read<[{}]>(
                 ';'
             );
             expect(frames).toHaveLength(0);
@@ -158,14 +158,14 @@ describe('Statement', () => {
 
 
         it('many empty statement', async () => {
-            const frames = await wsClient.rx<[{}]>(
+            const frames = await wsClient.read<[{}]>(
                 ';;;;;'
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await wsClient.rx<[
+            const frames = await wsClient.read<[
                 { one: number },
                 { two: number }
             ]>(
@@ -182,7 +182,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await wsClient.rx<[{ result: boolean }]>(
+            const frames = await wsClient.read<[{ result: boolean }]>(
                 'MAP 1 as result;'
             );
 
@@ -192,7 +192,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await wsClient.rx<[
+            const frames = await wsClient.read<[
                 { result: number },
                 { result: number },
                 { result: number },
@@ -214,7 +214,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await wsClient.rx<[
+            const frames = await wsClient.read<[
                 { result: number },
                 { a: number, b: number },
                 { result: string },

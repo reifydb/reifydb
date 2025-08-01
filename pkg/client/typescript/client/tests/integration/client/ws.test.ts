@@ -42,8 +42,8 @@ describe('ReifyDB Client Integration Tests', () => {
             }
         });
 
-        it('should execute simple tx', async () => {
-            const frames = await wsClient.tx<[{ result: number }]>(
+        it('should execute simple write', async () => {
+            const frames = await wsClient.write<[{ result: number }]>(
                 'MAP 42 as result;'
             );
 
@@ -52,8 +52,8 @@ describe('ReifyDB Client Integration Tests', () => {
             expect(frames[0][0].result).toBe(42);
         }, 10000);
 
-        it('should execute simple rx', async () => {
-            const frames = await wsClient.rx<[{ result: number }]>(
+        it('should execute simple read', async () => {
+            const frames = await wsClient.read<[{ result: number }]>(
                 'MAP 42 as result;'
             );
 

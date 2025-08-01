@@ -39,10 +39,10 @@ describe('Error', () => {
         }
     });
 
-    describe('tx', () => {
+    describe('write', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.tx<[{ result: number }]>(
+                wsClient.write<[{ result: number }]>(
                     "MAP cast(129, int1) as result;"
                 )
             ).rejects.toMatchObject({
@@ -59,10 +59,10 @@ describe('Error', () => {
     });
 
 
-    describe('rx', () => {
+    describe('read', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.rx<[{ result: number }]>(
+                wsClient.read<[{ result: number }]>(
                     "MAP cast(129, int1) as result;"
                 )
             ).rejects.toMatchObject({

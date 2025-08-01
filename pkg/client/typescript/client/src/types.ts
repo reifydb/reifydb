@@ -55,33 +55,33 @@ export interface ErrorResponse {
     };
 }
 
-export interface TxRequest {
+export interface WriteRequest {
     id: string;
-    type: "Tx";
+    type: "Write";
     payload: {
         statements: string[];
     }
 }
 
-export interface TxResponse {
+export interface WriteResponse {
     id: string;
-    type: "Tx";
+    type: "Write";
     payload: {
         frames: WebsocketFrame[];
     };
 }
 
-export interface RxRequest {
+export interface ReadRequest {
     id: string;
-    type: "Rx";
+    type: "Read";
     payload: {
         statements: string[];
     }
 }
 
-export interface RxResponse {
+export interface ReadResponse {
     id: string;
-    type: "Rx";
+    type: "Read";
     payload: {
         frames: WebsocketFrame[];
     };
