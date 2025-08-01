@@ -9,13 +9,31 @@ use std::sync::MutexGuard;
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
-pub trait NewTransaction<US: UnversionedStorage> {
+pub trait NewTransaction: Send + Sync + Clone + 'static {
     type Read: ReadTransaction;
     type Write: WriteTransaction;
 
     fn begin_read(&self) -> crate::Result<Self::Read>;
 
     fn begin_write(&self) -> Result<Self::Write, Error>;
+
+    fn with_read<F, R>(&self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut Self::Read) -> crate::Result<R>,
+    {
+        let mut tx = self.begin_read()?;
+        f(&mut tx)
+    }
+
+    fn with_write<F, R>(&self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut Self::Write) -> crate::Result<R>,
+    {
+        let mut tx = self.begin_write()?;
+        let result = f(&mut tx)?;
+        tx.commit()?;
+        Ok(result)
+    }
 }
 
 pub trait ReadTransaction {

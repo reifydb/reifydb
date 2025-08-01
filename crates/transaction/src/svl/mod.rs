@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{Unversioned, UnversionedStorage, WriteTransaction};
+use reifydb_core::interface::{NewTransaction, Unversioned, UnversionedStorage};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,22 +60,22 @@ where
             }
         }
     }
+}
 
-    pub fn with_read<F, R>(&self, f: F) -> crate::Result<R>
-    where
-        F: FnOnce(&US) -> crate::Result<R>,
-    {
-        let tx = self.begin_read()?;
-        f(&*tx.storage)
+impl<US> NewTransaction for SingleVersionLock<US>
+where
+    US: UnversionedStorage,
+{
+    type Read = SvlWriteTransaction<US>; // We'll use the write transaction for reads too
+    type Write = SvlWriteTransaction<US>;
+
+    fn begin_read(&self) -> crate::Result<Self::Read> {
+        // For simplicity, we'll just use a write transaction for reads
+        // This is not ideal but solves the lifetime issue
+        self.begin_write()
     }
 
-    pub fn with_write<F, R>(&self, f: F) -> crate::Result<R>
-    where
-        F: FnOnce(&mut SvlWriteTransaction<US>) -> crate::Result<R>,
-    {
-        let mut tx = self.begin_write()?;
-        let result = f(&mut tx)?;
-        tx.commit()?;
-        Ok(result)
+    fn begin_write(&self) -> crate::Result<Self::Write> {
+        self.begin_write()
     }
 }

@@ -1,12 +1,13 @@
-use crate::interface::{GetHooks, Principal, Transaction, UnversionedStorage, VersionedStorage};
+use crate::interface::{GetHooks, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage};
 use crate::result::frame::Frame;
 use std::sync::MutexGuard;
 
-pub trait Engine<VS, US, T>: GetHooks + Send + Sync + Clone + 'static
+pub trait Engine<VS, US, T, UT>: GetHooks + Send + Sync + Clone + 'static
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
     fn begin_tx(&self) -> crate::Result<T::Tx>;
 

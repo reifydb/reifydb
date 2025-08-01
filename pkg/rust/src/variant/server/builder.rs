@@ -5,31 +5,33 @@ use super::Server;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{GetHooks, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
 
-pub struct ServerBuilder<VS, US, T>
+pub struct ServerBuilder<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    engine: Engine<VS, US, T>,
+    engine: Engine<VS, US, T, UT>,
     grpc_config: Option<GrpcConfig>,
     ws_config: Option<WsConfig>,
 }
 
-impl<VS, US, T> ServerBuilder<VS, US, T>
+impl<VS, US, T, UT> ServerBuilder<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn new(transaction: T, hooks: Hooks) -> Self {
+    pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
         Self {
-            engine: Engine::new(transaction, hooks).unwrap(),
+            engine: Engine::new(transaction, unversioned, hooks).unwrap(),
             grpc_config: None,
             ws_config: None,
         }
@@ -45,7 +47,7 @@ where
         self
     }
 
-    pub fn build(self) -> Server<VS, US, T> {
+    pub fn build(self) -> Server<VS, US, T, UT> {
         self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
 
         let mut server = Server::new(self.engine);
@@ -55,13 +57,14 @@ where
     }
 }
 
-impl<VS, US, T> WithHooks<VS, US, T> for ServerBuilder<VS, US, T>
+impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for ServerBuilder<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T> {
+    fn engine(&self) -> &Engine<VS, US, T, UT> {
         &self.engine
     }
 }

@@ -4,7 +4,7 @@
 use crate::grpc::server::db::DbService;
 use crate::grpc::server::grpc::db_server::DbServer;
 use reifydb_core::Error;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -35,44 +35,48 @@ impl Default for GrpcConfig {
 }
 
 #[derive(Clone)]
-pub struct GrpcServer<VS, US, T>(Arc<Inner<VS, US, T>>)
-where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: Transaction<VS, US>;
-
-pub struct Inner<VS, US, T>
+pub struct GrpcServer<VS, US, T, UT>(Arc<Inner<VS, US, T, UT>>)
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction;
+
+pub struct Inner<VS, US, T, UT>
+where
+    VS: VersionedStorage,
+    US: UnversionedStorage,
+    T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
     config: GrpcConfig,
-    engine: Engine<VS, US, T>,
+    engine: Engine<VS, US, T, UT>,
     socket_addr: OnceCell<SocketAddr>,
-    _phantom: std::marker::PhantomData<(VS, US, T)>,
+    _phantom: std::marker::PhantomData<(VS, US, T, UT)>,
 }
 
-impl<VS, US, T> Deref for GrpcServer<VS, US, T>
+impl<VS, US, T, UT> Deref for GrpcServer<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    type Target = Inner<VS, US, T>;
+    type Target = Inner<VS, US, T, UT>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VS, US, T> GrpcServer<VS, US, T>
+impl<VS, US, T, UT> GrpcServer<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn new(config: GrpcConfig, engine: Engine<VS, US, T>) -> Self {
+    pub fn new(config: GrpcConfig, engine: Engine<VS, US, T, UT>) -> Self {
         Self(Arc::new(Inner {
             config,
             engine,
@@ -104,11 +108,12 @@ where
 }
 
 // FIXME return result
-pub fn db_service<VS, US, T>(engine: Engine<VS, US, T>) -> DbServer<DbService<VS, US, T>>
+pub fn db_service<VS, US, T, UT>(engine: Engine<VS, US, T, UT>) -> DbServer<DbService<VS, US, T, UT>>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
     DbServer::new(DbService::new(engine))
 }

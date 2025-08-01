@@ -5,9 +5,13 @@
 
 use reifydb::hook::WithHooks;
 use reifydb::{ReifyDB, memory, serializable};
+use reifydb::transaction::svl::SingleVersionLock;
 
 fn main() {
-    let _db = ReifyDB::embedded_blocking_with(serializable(memory()))
+    let (versioned, unversioned, hooks) = memory();
+    let (transaction, hooks) = serializable((versioned, unversioned.clone(), hooks));
+    let unversioned_svl = SingleVersionLock::new(unversioned);
+    let _db = ReifyDB::embedded_blocking_with((transaction, unversioned_svl, hooks))
         .on_create(|ctx| {
             println!("create reifydb");
             ctx.tx_as_root("create schema reifydb")?;

@@ -6,7 +6,7 @@ mod builder;
 pub use builder::ServerBuilder;
 
 use crate::hook::WithHooks;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
@@ -16,38 +16,41 @@ use tokio::select;
 use tokio::sync::oneshot::Receiver;
 use tokio::task::JoinSet;
 
-pub struct Server<VS, US, T>
+pub struct Server<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub(crate) engine: Engine<VS, US, T>,
+    pub(crate) engine: Engine<VS, US, T, UT>,
     pub(crate) grpc_config: Option<GrpcConfig>,
-    pub(crate) grpc: Option<GrpcServer<VS, US, T>>,
+    pub(crate) grpc: Option<GrpcServer<VS, US, T, UT>>,
     pub(crate) ws_config: Option<WsConfig>,
-    pub(crate) ws: Option<WsServer<VS, US, T>>,
+    pub(crate) ws: Option<WsServer<VS, US, T, UT>>,
 }
 
-impl<VS, US, T> Server<VS, US, T>
+impl<VS, US, T, UT> Server<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn with_engine(mut self, engine: Engine<VS, US, T>) -> Self {
+    pub fn with_engine(mut self, engine: Engine<VS, US, T, UT>) -> Self {
         self.engine = engine;
         self
     }
 }
 
-impl<VS, US, T> Server<VS, US, T>
+impl<VS, US, T, UT> Server<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn new(engine: Engine<VS, US, T>) -> Self {
+    pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
         Self { engine, grpc_config: None, grpc: None, ws_config: None, ws: None }
     }
 
@@ -154,13 +157,14 @@ where
     }
 }
 
-impl<VS, US, T> WithHooks<VS, US, T> for Server<VS, US, T>
+impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for Server<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T> {
+    fn engine(&self) -> &Engine<VS, US, T, UT> {
         &self.engine
     }
 }

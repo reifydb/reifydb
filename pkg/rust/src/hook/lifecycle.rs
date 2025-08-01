@@ -3,28 +3,30 @@
 
 use reifydb_core::Frame;
 use reifydb_core::interface::{
-    Engine as _, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as _, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_engine::Engine;
 use std::marker::PhantomData;
 
-pub struct OnCreateContext<VS, US, T>
+pub struct OnCreateContext<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub engine: Engine<VS, US, T>,
-    _phantom: PhantomData<(VS, US, T)>,
+    pub engine: Engine<VS, US, T, UT>,
+    _phantom: PhantomData<(VS, US, T, UT)>,
 }
 
-impl<'a, VS, US, T> OnCreateContext<VS, US, T>
+impl<'a, VS, US, T, UT> OnCreateContext<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn new(engine: Engine<VS, US, T>) -> Self {
+    pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
         Self { engine, _phantom: PhantomData }
     }
 

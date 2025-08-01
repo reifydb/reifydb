@@ -9,59 +9,64 @@ use crate::DB;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
 use tokio::task::spawn_blocking;
 
-pub struct Embedded<VS, US, T>
+pub struct Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    engine: Engine<VS, US, T>,
+    engine: Engine<VS, US, T, UT>,
 }
 
-impl<VS, US, T> Clone for Embedded<VS, US, T>
+impl<VS, US, T, UT> Clone for Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
     fn clone(&self) -> Self {
         Self { engine: self.engine.clone() }
     }
 }
 
-impl<VS, US, T> Embedded<VS, US, T>
+impl<VS, US, T, UT> Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn new(transaction: T, hooks: Hooks) -> Self {
-        Self { engine: Engine::new(transaction, hooks).unwrap() }
+    pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
+        Self { engine: Engine::new(transaction, unversioned, hooks).unwrap() }
     }
 }
 
-impl<VS, US, T> WithHooks<VS, US, T> for Embedded<VS, US, T>
+impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T> {
+    fn engine(&self) -> &Engine<VS, US, T, UT> {
         &self.engine
     }
 }
 
-impl<VS, US, T> DB<'_> for Embedded<VS, US, T>
+impl<VS, US, T, UT> DB<'_> for Embedded<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
     async fn tx_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();

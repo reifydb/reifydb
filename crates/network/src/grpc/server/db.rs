@@ -11,30 +11,32 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
 use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 
-pub struct DbService<VS, US, T>
+pub struct DbService<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub(crate) engine: Arc<Engine<VS, US, T>>,
-    _phantom: std::marker::PhantomData<(VS, US, T)>,
+    pub(crate) engine: Arc<Engine<VS, US, T, UT>>,
+    _phantom: std::marker::PhantomData<(VS, US, T, UT)>,
 }
 
-impl<VS, US, T> DbService<VS, US, T>
+impl<VS, US, T, UT> DbService<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
-    pub fn new(engine: Engine<VS, US, T>) -> Self {
+    pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
         Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
     }
 }
@@ -43,11 +45,12 @@ pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::TxResult, Statu
 pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::RxResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<VS, US, T> grpc::db_server::Db for DbService<VS, US, T>
+impl<VS, US, T, UT> grpc::db_server::Db for DbService<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
+    UT: NewTransaction,
 {
     type TxStream = TxResultStream;
 
