@@ -40,16 +40,16 @@ describe('Concurrent requests', () => {
         }
     });
 
-    describe('tx', () => {
+    describe('write', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.tx<[{ result: number }]>(
+                wsClient.write<[{ result: number }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.tx<[{ a: number, b: number }]>(
+                wsClient.write<[{ a: number, b: number }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.tx<[{ result: string }]>(
+                wsClient.write<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
@@ -62,16 +62,16 @@ describe('Concurrent requests', () => {
     });
 
 
-    describe('rx', () => {
+    describe('read', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.rx<[{ result: number }]>(
+                wsClient.read<[{ result: number }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.rx<[{ a: number, b: number }]>(
+                wsClient.read<[{ a: number, b: number }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.rx<[{ result: string }]>(
+                wsClient.read<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
@@ -83,16 +83,16 @@ describe('Concurrent requests', () => {
         });
     });
 
-    describe('tx & rx mixed', () => {
+    describe('write & read mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.tx<[{ result: number }]>(
+                wsClient.write<[{ result: number }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.rx<[{ a: number, b: number }]>(
+                wsClient.read<[{ a: number, b: number }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.tx<[{ result: string }]>(
+                wsClient.write<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);

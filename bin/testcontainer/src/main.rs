@@ -39,20 +39,19 @@ fn main() {
     let rt = Runtime::new().unwrap();
     ReifyDB::server()
         .with_websocket(WsConfig::default())
-        .on_create(|_| {
-            println!("On create");
-            // ctx.write_as_root("create schema test")?;
-            // ctx.write_as_root("create table test.arith(id: int1, value: int2, num: int2)")?;
-            // ctx.write_as_root(
-            //     "from [
-            //     { id: 1, value: 1, num: 5  },
-            //     { id: 1, value: 1, num: 10 },
-            //     { id: 1, value: 2, num: 15 },
-            //     { id: 2, value: 1, num: 10 },
-            //     { id: 2, value: 1, num: 30 }
-            //   ] insert test.arith
-            // ",
-            // )?;
+        .on_create(|ctx| {
+            ctx.write_as_root("create schema test")?;
+            ctx.write_as_root("create table test.arith(id: int1, value: int2, num: int2)")?;
+            ctx.write_as_root(
+                "from [
+                { id: 1, value: 1, num: 5  },
+                { id: 1, value: 1, num: 10 },
+                { id: 1, value: 2, num: 15 },
+                { id: 2, value: 1, num: 10 },
+                { id: 2, value: 1, num: 30 }
+              ] insert test.arith
+            ",
+            )?;
             Ok(())
         })
         .build()
