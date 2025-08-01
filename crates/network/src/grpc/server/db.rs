@@ -11,7 +11,7 @@ use crate::grpc::server::grpc::RxResult;
 use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
-    Engine as EngineInterface, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
@@ -23,7 +23,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub(crate) engine: Arc<Engine<VS, US, T, UT>>,
     _phantom: std::marker::PhantomData<(VS, US, T, UT)>,
@@ -34,7 +34,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
         Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
@@ -50,7 +50,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     type TxStream = TxResultStream;
 

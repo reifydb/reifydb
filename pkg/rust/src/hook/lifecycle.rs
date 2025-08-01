@@ -3,7 +3,7 @@
 
 use reifydb_core::Frame;
 use reifydb_core::interface::{
-    Engine as _, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+    Engine as _, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_engine::Engine;
 use std::marker::PhantomData;
@@ -13,7 +13,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub engine: Engine<VS, US, T, UT>,
     _phantom: PhantomData<(VS, US, T, UT)>,
@@ -24,7 +24,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
         Self { engine, _phantom: PhantomData }

@@ -6,7 +6,7 @@ mod builder;
 pub use builder::ServerBuilder;
 
 use crate::hook::WithHooks;
-use reifydb_core::interface::{NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
@@ -21,7 +21,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub(crate) engine: Engine<VS, US, T, UT>,
     pub(crate) grpc_config: Option<GrpcConfig>,
@@ -35,7 +35,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn with_engine(mut self, engine: Engine<VS, US, T, UT>) -> Self {
         self.engine = engine;
@@ -48,7 +48,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
         Self { engine, grpc_config: None, grpc: None, ws_config: None, ws: None }
@@ -162,7 +162,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     fn engine(&self) -> &Engine<VS, US, T, UT> {
         &self.engine

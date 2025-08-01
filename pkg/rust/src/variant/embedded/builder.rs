@@ -5,7 +5,7 @@ use super::Embedded;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{GetHooks, NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 
 pub struct EmbeddedBuilder<VS, US, T, UT>
@@ -13,7 +13,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     engine: Engine<VS, US, T, UT>,
 }
@@ -23,7 +23,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
         Self { engine: Engine::new(transaction, unversioned, hooks).unwrap() }
@@ -40,7 +40,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     fn engine(&self) -> &Engine<VS, US, T, UT> {
         &self.engine

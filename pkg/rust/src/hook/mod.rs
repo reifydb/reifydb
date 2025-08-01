@@ -7,7 +7,7 @@ pub use lifecycle::*;
 
 use reifydb_core::hook::lifecycle::OnCreateHook;
 use reifydb_core::hook::{BoxedHookIter, Callback};
-use reifydb_core::interface::{GetHooks, NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_core::return_hooks;
 use reifydb_engine::Engine;
 
@@ -17,7 +17,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
     F: Fn(&OnCreateContext<VS, US, T, UT>) -> crate::Result<()> + Send + Sync + 'static,
 {
     pub callback: F,
@@ -29,7 +29,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
     F: Fn(&OnCreateContext<VS, US, T, UT>) -> crate::Result<()> + Send + Sync + 'static,
 {
     fn on(&self, _hook: &OnCreateHook) -> Result<BoxedHookIter, reifydb_core::Error> {
@@ -45,7 +45,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     /// Get access to the underlying engine
     fn engine(&self) -> &Engine<VS, US, T, UT>;

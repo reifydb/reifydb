@@ -6,7 +6,7 @@ use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, GetHooks, NewTransaction, Principal, Transaction, Tx,
+    Engine as EngineInterface, GetHooks, UnversionedTransaction, Principal, Transaction, Tx,
     UnversionedStorage, VersionedStorage,
 };
 use reifydb_rql::ast;
@@ -20,14 +20,14 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction;
+    UT: UnversionedTransaction;
 
 impl<VS, US, T, UT> GetHooks for Engine<VS, US, T, UT>
 where
     T: Transaction<VS, US>,
     US: UnversionedStorage,
     VS: VersionedStorage,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     fn get_hooks(&self) -> &Hooks {
         &self.hooks
@@ -39,7 +39,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     fn begin_tx(&self) -> crate::Result<T::Tx> {
         Ok(self.transaction.begin_tx()?)
@@ -92,10 +92,14 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn transaction(&self) -> &T {
         &self.transaction
+    }
+
+    pub fn unversioned(&self) -> &UT {
+        &self.unversioned
     }
 }
 
@@ -104,7 +108,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -116,7 +120,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     type Target = EngineInner<VS, US, T, UT>;
 
@@ -130,7 +134,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     transaction: T,
     unversioned: UT,
@@ -143,7 +147,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
         let result =
@@ -158,11 +162,10 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn setup_hooks(&self) -> crate::Result<()> {
         register_system_hooks(&self);
         Ok(())
     }
 }
-

@@ -1,4 +1,4 @@
-use crate::interface::{GetHooks, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage};
+use crate::interface::{GetHooks, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage};
 use crate::result::frame::Frame;
 use std::sync::MutexGuard;
 
@@ -7,7 +7,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     fn begin_tx(&self) -> crate::Result<T::Tx>;
 

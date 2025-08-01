@@ -4,7 +4,9 @@
 use crate::Engine;
 use crate::system::start::SystemStartCallback;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{GetHooks, NewTransaction, Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    GetHooks, UnversionedTransaction, Transaction, UnversionedStorage, VersionedStorage,
+};
 
 pub(crate) mod start;
 
@@ -13,9 +15,9 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
-    engine.get_hooks().register::<OnInitHook, SystemStartCallback<VS, US, T>>(
-        SystemStartCallback::new(engine.transaction().clone()),
+    engine.get_hooks().register::<OnInitHook, SystemStartCallback<VS, US, UT>>(
+        SystemStartCallback::new(engine.unversioned().clone()),
     );
 }

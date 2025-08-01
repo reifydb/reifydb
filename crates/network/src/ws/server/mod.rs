@@ -8,7 +8,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-    Engine as EngineInterface, NewTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
+	Engine as EngineInterface, UnversionedTransaction, Principal, Transaction, UnversionedStorage, VersionedStorage,
 };
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
@@ -44,14 +44,14 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction;
+    UT: UnversionedTransaction;
 
 pub struct Inner<VS, US, T, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     config: WsConfig,
     engine: Engine<VS, US, T, UT>,
@@ -66,7 +66,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     type Target = Inner<VS, US, T, UT>;
 
@@ -80,7 +80,7 @@ where
     VS: VersionedStorage,
     US: UnversionedStorage,
     T: Transaction<VS, US>,
-    UT: NewTransaction,
+    UT: UnversionedTransaction,
 {
     pub fn new(config: WsConfig, engine: Engine<VS, US, T, UT>) -> Self {
         Self(Arc::new(Inner {

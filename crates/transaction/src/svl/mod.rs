@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{NewTransaction, Unversioned, UnversionedStorage};
+use reifydb_core::interface::{GetHooks, Unversioned, UnversionedStorage, UnversionedTransaction};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange};
 use std::sync::{Arc, RwLock};
@@ -15,6 +15,7 @@ pub(crate) mod scan_rev;
 mod write;
 
 pub use read::SvlReadTransaction;
+use reifydb_core::hook::Hooks;
 pub use write::SvlWriteTransaction;
 
 #[derive(Clone)]
@@ -24,18 +25,28 @@ pub struct SingleVersionLock<US> {
 
 struct SvlInner<US> {
     storage: RwLock<US>,
+    hooks: Hooks,
 }
 
 impl<US> SingleVersionLock<US>
 where
     US: UnversionedStorage,
 {
-    pub fn new(storage: US) -> Self {
-        Self { inner: Arc::new(SvlInner { storage: RwLock::new(storage) }) }
+    pub fn new(storage: US, hooks: Hooks) -> Self {
+        Self { inner: Arc::new(SvlInner { storage: RwLock::new(storage), hooks }) }
     }
 }
 
-impl<US> NewTransaction for SingleVersionLock<US>
+impl<US> GetHooks for SingleVersionLock<US>
+where
+    US: UnversionedStorage,
+{
+    fn get_hooks(&self) -> &Hooks {
+        &self.inner.hooks
+    }
+}
+
+impl<US> UnversionedTransaction for SingleVersionLock<US>
 where
     US: UnversionedStorage,
 {

@@ -9,9 +9,9 @@ use std::sync::MutexGuard;
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
-pub trait NewTransaction: Send + Sync + Clone + 'static {
-    type Read<'a>: ReadTransaction;
-    type Write<'a>: WriteTransaction;
+pub trait UnversionedTransaction: GetHooks + Send + Sync + Clone + 'static {
+    type Read<'a>: UnversionedReadTransaction;
+    type Write<'a>: UnversionedWriteTransaction;
 
     fn begin_read(&self) -> crate::Result<Self::Read<'_>>;
 
@@ -36,34 +36,29 @@ pub trait NewTransaction: Send + Sync + Clone + 'static {
     }
 }
 
-pub trait ReadTransaction {
-    type Item;
-    type Iter<'a>
-    where
-        Self: 'a;
-
-    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Self::Item>>;
+pub trait UnversionedReadTransaction {
+    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>>;
 
     fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-    fn scan(&mut self) -> crate::Result<Self::Iter<'_>>;
+    fn scan(&mut self) -> crate::Result<BoxedUnversionedIter>;
 
-    fn scan_rev(&mut self) -> crate::Result<Self::Iter<'_>>;
+    fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter>;
 
-    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>>;
+    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter>;
 
-    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>>;
+    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter>;
 
-    fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<Self::Iter<'_>> {
+    fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
         self.range(EncodedKeyRange::prefix(prefix))
     }
 
-    fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<Self::Iter<'_>> {
+    fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
         self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }
 
-pub trait WriteTransaction: ReadTransaction {
+pub trait UnversionedWriteTransaction: UnversionedReadTransaction {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
     fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;

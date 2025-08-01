@@ -6,7 +6,7 @@ use crate::svl::range::SvlRange;
 use crate::svl::range_rev::SvlRangeRev;
 use crate::svl::scan::SvlScan;
 use crate::svl::scan_rev::SvlScanRev;
-use reifydb_core::interface::{BoxedUnversionedIter, ReadTransaction, WriteTransaction};
+use reifydb_core::interface::{BoxedUnversionedIter, UnversionedReadTransaction, UnversionedWriteTransaction};
 use std::collections::HashMap;
 use std::mem::take;
 use std::ops::RangeBounds;
@@ -18,17 +18,11 @@ pub struct SvlWriteTransaction<'a, US> {
     storage: RwLockWriteGuard<'a, US>,
 }
 
-impl<US> ReadTransaction for SvlWriteTransaction<'_, US>
+impl<US> UnversionedReadTransaction for SvlWriteTransaction<'_, US>
 where
     US: UnversionedStorage,
 {
-    type Item = Unversioned;
-    type Iter<'a>
-        = BoxedUnversionedIter<'a>
-    where
-        Self: 'a;
-
-    fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Self::Item>> {
+    fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Unversioned>> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
                 Delta::Insert { row, .. }
@@ -55,26 +49,26 @@ where
         self.storage.contains(key)
     }
 
-    fn scan(&mut self) -> crate::Result<Self::Iter<'_>> {
+    fn scan(&mut self) -> crate::Result<BoxedUnversionedIter> {
         let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
         let iter = SvlScan::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
     }
 
-    fn scan_rev(&mut self) -> crate::Result<Self::Iter<'_>> {
+    fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter> {
         let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
         let iter = SvlScanRev::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
     }
 
-    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>> {
+    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
         let (pending_items, committed_items) =
             self.prepare_scan_data(Some(range.clone()), false)?;
         let iter = SvlRange::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
     }
 
-    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>> {
+    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
         let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
         let iter = SvlRangeRev::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
@@ -128,7 +122,7 @@ where
     }
 }
 
-impl<'a, US> WriteTransaction for SvlWriteTransaction<'a, US>
+impl<'a, US> UnversionedWriteTransaction for SvlWriteTransaction<'a, US>
 where
     US: UnversionedStorage,
 {

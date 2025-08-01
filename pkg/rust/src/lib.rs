@@ -62,27 +62,42 @@ pub trait DB<'a>: Sized {
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]
-    pub fn embedded() -> EmbeddedBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>> {
+    pub fn embedded()
+    -> EmbeddedBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>>
+    {
         let (transaction, hooks) = serializable(memory());
-        let unversioned = SingleVersionLock::new(Memory::default());
+        let unversioned = SingleVersionLock::new(Memory::default(), hooks.clone());
         EmbeddedBuilder::new(transaction, unversioned, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking()
-    -> EmbeddedBlockingBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>> {
+    pub fn embedded_blocking() -> EmbeddedBlockingBuilder<
+        Memory,
+        Memory,
+        Serializable<Memory, Memory>,
+        SingleVersionLock<Memory>,
+    > {
         let (transaction, hooks) = serializable(memory());
-        let unversioned = SingleVersionLock::new(Memory::default());
+        let unversioned = SingleVersionLock::new(Memory::default(), hooks.clone());
         EmbeddedBlockingBuilder::new(transaction, unversioned, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> EmbeddedBlockingBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>> {
+    pub fn embedded() -> EmbeddedBlockingBuilder<
+        Memory,
+        Memory,
+        Serializable<Memory, Memory>,
+        SingleVersionLock<Memory>,
+    > {
         Self::embedded_blocking()
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<VS, US, T>(transaction: T, unversioned: SingleVersionLock<US>, hooks: Hooks) -> EmbeddedBuilder<VS, US, T, SingleVersionLock<US>>
+    pub fn embedded_with<VS, US, T>(
+        transaction: T,
+        unversioned: SingleVersionLock<US>,
+        hooks: Hooks,
+    ) -> EmbeddedBuilder<VS, US, T, SingleVersionLock<US>>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
@@ -119,14 +134,17 @@ impl ReifyDB {
     }
 
     #[cfg(feature = "server")]
-    pub fn server() -> ServerBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>> {
+    pub fn server()
+    -> ServerBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>> {
         let (transaction, hooks) = serializable(memory());
-        let unversioned = SingleVersionLock::new(Memory::default());
+        let unversioned = SingleVersionLock::new(Memory::default(), hooks.clone());
         ServerBuilder::new(transaction, unversioned, hooks)
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<VS, US, T>(input: (T, SingleVersionLock<US>, Hooks)) -> ServerBuilder<VS, US, T, SingleVersionLock<US>>
+    pub fn server_with<VS, US, T>(
+        input: (T, SingleVersionLock<US>, Hooks),
+    ) -> ServerBuilder<VS, US, T, SingleVersionLock<US>>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,

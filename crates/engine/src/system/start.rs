@@ -3,72 +3,78 @@
 
 use reifydb_core::hook::lifecycle::{OnCreateHook, OnInitHook};
 use reifydb_core::hook::{BoxedHookIter, Callback};
-use reifydb_core::interface::{EncodableKey, SystemVersion, SystemVersionKey};
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    EncodableKey, UnversionedReadTransaction, SystemVersion, SystemVersionKey, UnversionedTransaction,
+    UnversionedWriteTransaction,
+};
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{Type, return_hooks};
 use std::marker::PhantomData;
 
-pub(crate) struct SystemStartCallback<VS, US, T>
+pub(crate) struct SystemStartCallback<VS, US, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    UT: UnversionedTransaction,
 {
-    transaction: T,
+    unversioned: UT,
     _phantom: PhantomData<(VS, US)>,
 }
 
-impl<VS, US, T> SystemStartCallback<VS, US, T>
+impl<VS, US, UT> SystemStartCallback<VS, US, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    UT: UnversionedTransaction,
 {
-    pub(crate) fn new(transaction: T) -> Self {
-        Self { transaction, _phantom: PhantomData }
+    pub(crate) fn new(unversioned: UT) -> Self {
+        Self { unversioned, _phantom: PhantomData }
     }
 }
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-impl<VS, US, T> Callback<OnInitHook> for SystemStartCallback<VS, US, T>
+impl<VS, US, UT> Callback<OnInitHook> for SystemStartCallback<VS, US, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    UT: UnversionedTransaction,
 {
-    fn on(&self, _hook: &OnInitHook) -> Result<BoxedHookIter, reifydb_core::Error> {
+    fn on(&self, _hook: &OnInitHook) -> crate::Result<BoxedHookIter> {
         let layout = Layout::new(&[Type::Uint1]);
         let key = SystemVersionKey { version: SystemVersion::Storage }.encode();
 
-        let mut unversioned = self.transaction.begin_unversioned();
-        match unversioned.get(&key)? {
+        let created = self.unversioned.with_write(|tx| match tx.get(&key)? {
             None => {
                 let mut row = layout.allocate_row();
                 layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
-                unversioned.upsert(&key, row)?;
-
-                // the database was never started before
-                self.trigger_database_creation()?
+                tx.set(&key, row)?;
+                Ok(true)
             }
             Some(unversioned) => {
                 let version = layout.get_u8(&unversioned.row, 0);
                 assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
+                Ok(false)
             }
+        })?;
+
+        // the database was never started before
+        if created {
+            self.trigger_database_creation()?
         }
 
         return_hooks!()
     }
 }
 
-impl<VS, US, T> SystemStartCallback<VS, US, T>
+impl<VS, US, UT> SystemStartCallback<VS, US, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    T: Transaction<VS, US>,
+    UT: UnversionedTransaction,
 {
     fn trigger_database_creation(&self) -> crate::Result<()> {
-        self.transaction.get_hooks().trigger(OnCreateHook {})
+        self.unversioned.get_hooks().trigger(OnCreateHook {})
     }
 }
