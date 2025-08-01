@@ -2,43 +2,46 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
-use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
+use reifydb_core::interface::{UnversionedStorage, VersionedStorage, VersionedWriteTransaction};
 use reifydb_core::row::Layout;
-use reifydb_core::{EncodedKey, Type, return_error};
+use reifydb_core::{EncodedKey, Type};
 
 static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Type::Uint8]));
 
 pub(crate) struct SequenceGeneratorU64 {}
 
 impl SequenceGeneratorU64 {
-    pub(crate) fn next<VS, US>(tx: &mut impl VersionedWriteTransaction<VS, US>, key: &EncodedKey) -> crate::Result<u64>
+    pub(crate) fn next<VS, US>(
+        tx: &mut impl VersionedWriteTransaction<VS, US>,
+        key: &EncodedKey,
+    ) -> crate::Result<u64>
     where
         VS: VersionedStorage,
         US: UnversionedStorage,
     {
-        let mut unversioned = tx.unversioned();
-        match unversioned.get(key)? {
-            Some(unversioned_row) => {
-                let mut row = unversioned_row.row;
-                let value = LAYOUT.get_u64(&row, 0);
-                let next_value = value.saturating_add(1);
-
-                if value == next_value {
-                    return_error!(sequence_exhausted(Type::Uint8));
-                }
-
-                LAYOUT.set_u64(&mut row, 0, next_value);
-                unversioned.upsert(key, row)?;
-                Ok(value)
-            }
-            None => {
-                let mut new_row = LAYOUT.allocate_row();
-                LAYOUT.set_u64(&mut new_row, 0, 2u64);
-                unversioned.upsert(key, new_row)?;
-                Ok(1)
-            }
-        }
+        // let mut unversioned = tx.unversioned();
+        // match unversioned.get(key)? {
+        //     Some(unversioned_row) => {
+        //         let mut row = unversioned_row.row;
+        //         let value = LAYOUT.get_u64(&row, 0);
+        //         let next_value = value.saturating_add(1);
+        //
+        //         if value == next_value {
+        //             return_error!(sequence_exhausted(Type::Uint8));
+        //         }
+        //
+        //         LAYOUT.set_u64(&mut row, 0, next_value);
+        //         unversioned.upsert(key, row)?;
+        //         Ok(value)
+        //     }
+        //     None => {
+        //         let mut new_row = LAYOUT.allocate_row();
+        //         LAYOUT.set_u64(&mut new_row, 0, 2u64);
+        //         unversioned.upsert(key, new_row)?;
+        //         Ok(1)
+        //     }
+        // }
+        todo!()
     }
 }
 

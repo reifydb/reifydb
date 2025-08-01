@@ -9,7 +9,6 @@ use reifydb_core::interface::{
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
-use std::sync::MutexGuard;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> GetHooks for Serializable<VS, US> {
     fn get_hooks(&self) -> &Hooks {
@@ -175,9 +174,5 @@ impl<VS: VersionedStorage, US: UnversionedStorage> VersionedWriteTransaction<VS,
     fn rollback(mut self) -> Result<(), Error> {
         TransactionTx::rollback(&mut self)?;
         Ok(())
-    }
-
-    fn unversioned(&mut self) -> MutexGuard<US> {
-        TransactionTx::unversioned(self)
     }
 }

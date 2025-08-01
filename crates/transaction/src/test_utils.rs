@@ -3,11 +3,12 @@
 
 use crate::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{BoxedVersionedIter, VersionedReadTransaction, VersionedWriteTransaction, Versioned};
+use reifydb_core::interface::{
+    BoxedVersionedIter, Versioned, VersionedReadTransaction, VersionedWriteTransaction,
+};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
 use reifydb_storage::memory::Memory;
-use std::sync::MutexGuard;
 
 pub struct TestTransaction {
     tx: TransactionTx<Memory, Memory>,
@@ -122,9 +123,5 @@ impl VersionedWriteTransaction<Memory, Memory> for TestTransaction {
 
     fn rollback(self) -> Result<(), Error> {
         self.tx.rollback()
-    }
-
-    fn unversioned(&mut self) -> MutexGuard<'_, Memory> {
-        self.tx.unversioned()
     }
 }

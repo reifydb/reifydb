@@ -7,7 +7,8 @@ use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     Engine as EngineInterface, GetHooks, Principal, UnversionedStorage, UnversionedTransaction,
-    VersionedStorage, VersionedTransaction, VersionedWriteTransaction,
+    VersionedStorage, VersionedTransaction, VersionedWriteTransaction, ActiveReadTransaction,
+    ActiveWriteTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
@@ -96,6 +97,18 @@ where
 
     pub fn unversioned(&self) -> &UT {
         &self.unversioned
+    }
+
+    /// Begin a read active transaction
+    pub fn begin_active_read(&self) -> crate::Result<ActiveReadTransaction<VS, US, T, UT>> {
+        let read_tx = self.begin_read()?;
+        Ok(ActiveReadTransaction::new(read_tx, self.unversioned.clone()))
+    }
+
+    /// Begin a write active transaction
+    pub fn begin_active_write(&self) -> crate::Result<ActiveWriteTransaction<VS, US, T, UT>> {
+        let write_tx = self.begin_write()?;
+        Ok(ActiveWriteTransaction::new(write_tx, self.unversioned.clone()))
     }
 }
 

@@ -63,3 +63,78 @@ pub fn commit_failed(reason: String) -> Diagnostic {
         cause: None,
     }
 }
+
+/// Cannot perform write operation on a read transaction
+pub fn write_on_read_transaction() -> Diagnostic {
+    Diagnostic {
+        code: "TXN_005".to_string(),
+        statement: None,
+        message: "Cannot perform write operation on a read transaction".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Use a write transaction for this operation".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Cannot commit a read transaction
+pub fn cannot_commit_read_transaction() -> Diagnostic {
+    Diagnostic {
+        code: "TXN_006".to_string(),
+        statement: None,
+        message: "Cannot commit a read transaction".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Read transactions do not need to be committed".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Cannot rollback a read transaction
+pub fn cannot_rollback_read_transaction() -> Diagnostic {
+    Diagnostic {
+        code: "TXN_007".to_string(),
+        statement: None,
+        message: "Cannot rollback a read transaction".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Read transactions do not need to be rolled back".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Transaction was already committed
+pub fn transaction_already_committed() -> Diagnostic {
+    Diagnostic {
+        code: "TXN_008".to_string(),
+        statement: None,
+        message: "Transaction was already committed".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Cannot use a transaction after it has been committed".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Transaction was already rolled back
+pub fn transaction_already_rolled_back() -> Diagnostic {
+    Diagnostic {
+        code: "TXN_009".to_string(),
+        statement: None,
+        message: "Transaction was already rolled back".to_string(),
+        column: None,
+        span: None,
+        label: None,
+        help: Some("Cannot use a transaction after it has been rolled back".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
