@@ -5,7 +5,6 @@ use crate::execute::{execute_rx, execute_tx};
 use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
-use reifydb_core::hook::lifecycle::OnInitHook;
 use reifydb_core::interface::{
     Engine as EngineInterface, GetHooks, Principal, Transaction, Tx, UnversionedStorage,
     VersionedStorage,
@@ -14,7 +13,7 @@ use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::sync::{Arc, RwLockWriteGuard};
+use std::sync::{Arc, MutexGuard};
 
 pub struct Engine<VS, US, T>(Arc<EngineInner<VS, US, T>>)
 where
@@ -43,8 +42,8 @@ where
         Ok(self.transaction.begin_tx()?)
     }
 
-    fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US> {
-        self.transaction.begin_unversioned_tx()
+    fn begin_unversioned(&self) -> MutexGuard<US> {
+        self.transaction.begin_unversioned()
     }
 
     fn begin_rx(&self) -> crate::Result<T::Rx> {
@@ -152,8 +151,7 @@ where
 {
     pub fn setup_hooks(&self) -> crate::Result<()> {
         register_system_hooks(&self);
-
-        self.hooks.trigger(OnInitHook {})
+        Ok(())
     }
 }
 

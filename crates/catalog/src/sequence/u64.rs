@@ -17,10 +17,10 @@ impl SequenceGeneratorU64 {
         VS: VersionedStorage,
         US: UnversionedStorage,
     {
-        let mut uversioned = tx.unversioned();
-        match uversioned.get(key)? {
-            Some(unversioned) => {
-                let mut row = unversioned.row;
+        let mut unversioned = tx.unversioned();
+        match unversioned.get(key)? {
+            Some(unversioned_row) => {
+                let mut row = unversioned_row.row;
                 let value = LAYOUT.get_u64(&row, 0);
                 let next_value = value.saturating_add(1);
 
@@ -29,13 +29,13 @@ impl SequenceGeneratorU64 {
                 }
 
                 LAYOUT.set_u64(&mut row, 0, next_value);
-                uversioned.upsert(key, row)?;
+                unversioned.upsert(key, row)?;
                 Ok(value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
                 LAYOUT.set_u64(&mut new_row, 0, 2u64);
-                uversioned.upsert(key, new_row)?;
+                unversioned.upsert(key, new_row)?;
                 Ok(1)
             }
         }

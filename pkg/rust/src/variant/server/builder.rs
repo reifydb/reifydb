@@ -4,7 +4,8 @@
 use super::Server;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::hook::lifecycle::OnInitHook;
+use reifydb_core::interface::{GetHooks, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
@@ -45,6 +46,8 @@ where
     }
 
     pub fn build(self) -> Server<VS, US, T> {
+        self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
+
         let mut server = Server::new(self.engine);
         server.grpc_config = self.grpc_config;
         server.ws_config = self.ws_config;

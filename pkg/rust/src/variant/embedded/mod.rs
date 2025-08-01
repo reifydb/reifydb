@@ -102,17 +102,4 @@ where
         let principal = Principal::root();
         self.rx_as(&principal, rql).await
     }
-
-    // fn session_read_only(
-    //     &self,
-    //     into: impl IntoSessionRx<'a, Self>,
-    // ) -> reifydb-core::Result<SessionRx<'a, Self>> {
-    //     // into.into_session_rx(&self)
-    //     todo!()
-    // }
-    //
-    // fn session(&self, into: impl IntoSessionTx<'a, Self>) -> reifydb-core::Result<SessionTx<'a, Self>> {
-    //     // into.into_session_tx(&self)
-    //     todo!()
-    // }
 }

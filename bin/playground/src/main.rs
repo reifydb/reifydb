@@ -7,14 +7,16 @@ use reifydb::hook::WithHooks;
 use reifydb::{ReifyDB, memory, serializable};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(serializable(memory()))
-        .on_create(|_| {
-            println!("On Create");
+    let _db = ReifyDB::embedded_blocking_with(serializable(memory()))
+        .on_create(|ctx| {
+            println!("create reifydb");
+            ctx.tx_as_root("create schema reifydb")?;
+            println!("Created reifyDB");
             Ok(())
         })
         .build();
 
-    db.tx_as_root(r#"create schema test"#).unwrap();
+    // db.tx_as_root(r#"create schema reifydb"#).unwrap();
 
     //     db.tx_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
     //     db.tx_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();

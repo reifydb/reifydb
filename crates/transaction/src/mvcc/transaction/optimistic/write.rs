@@ -24,7 +24,7 @@ use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::row::EncodedRow;
 use std::collections::HashMap;
 use std::ops::RangeBounds;
-use std::sync::RwLockWriteGuard;
+use std::sync::MutexGuard;
 
 pub struct TransactionTx<VS: VersionedStorage, US: UnversionedStorage> {
     engine: Optimistic<VS, US>,
@@ -69,8 +69,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> TransactionTx<VS, US> {
         })
     }
 
-    pub fn unversioned(&mut self) -> RwLockWriteGuard<'_, US> {
-        self.engine.unversioned.write().unwrap()
+    pub fn unversioned(&mut self) -> MutexGuard<'_, US> {
+        self.engine.unversioned.lock().unwrap()
     }
 }
 

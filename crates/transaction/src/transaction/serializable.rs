@@ -9,7 +9,7 @@ use reifydb_core::interface::{
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use std::sync::MutexGuard;
 
 impl<VS: VersionedStorage, US: UnversionedStorage> GetHooks for Serializable<VS, US> {
     fn get_hooks(&self) -> &Hooks {
@@ -29,16 +29,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Transaction<VS, US> for Seria
         self.begin_tx()
     }
 
-    fn begin_unversioned_rx(&self) -> RwLockReadGuard<US> {
-        self.unversioned.read().unwrap()
-    }
-
-    fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US> {
-        self.unversioned.write().unwrap()
-    }
-
-    fn versioned(&self) -> VS {
-        self.versioned.clone()
+    fn begin_unversioned(&self) -> MutexGuard<US> {
+        self.unversioned.lock().unwrap()
     }
 }
 
@@ -181,7 +173,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Tx<VS, US> for TransactionTx<
         Ok(())
     }
 
-    fn unversioned(&mut self) -> RwLockWriteGuard<US> {
+    fn unversioned(&mut self) -> MutexGuard<US> {
         TransactionTx::unversioned(self)
     }
 }

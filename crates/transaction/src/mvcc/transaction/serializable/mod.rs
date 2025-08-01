@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::ops::Deref;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 
 use crate::mvcc::transaction::version::StdVersionProvider;
 pub use read::*;
@@ -33,7 +33,7 @@ pub struct Serializable<VS: VersionedStorage, US: UnversionedStorage>(Arc<Inner<
 pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
     pub(crate) tm: TransactionManager<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
     pub(crate) versioned: VS,
-    pub(crate) unversioned: RwLock<US>,
+    pub(crate) unversioned: Mutex<US>,
     pub(crate) hooks: Hooks,
 }
 
@@ -56,7 +56,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
         let tm =
             TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap())
                 .unwrap();
-        Self { tm, versioned, unversioned: RwLock::new(unversioned), hooks }
+        Self { tm, versioned, unversioned: Mutex::new(unversioned), hooks }
     }
 
     fn version(&self) -> crate::Result<Version> {

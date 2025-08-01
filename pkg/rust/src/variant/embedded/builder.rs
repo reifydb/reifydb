@@ -4,7 +4,8 @@
 use super::Embedded;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{Transaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::hook::lifecycle::OnInitHook;
+use reifydb_core::interface::{GetHooks, Transaction, UnversionedStorage, VersionedStorage};
 use reifydb_engine::Engine;
 
 pub struct EmbeddedBuilder<VS, US, T>
@@ -27,6 +28,7 @@ where
     }
 
     pub fn build(self) -> Embedded<VS, US, T> {
+        self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
         Embedded { engine: self.engine }
     }
 }

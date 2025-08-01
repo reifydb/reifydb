@@ -112,7 +112,6 @@ where
             loop {
                 select! {
                     _ = signal => {
-                        println!("shutting down");
                         self.close().await;
                         break;
                     }

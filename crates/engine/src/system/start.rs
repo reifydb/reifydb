@@ -42,20 +42,25 @@ where
         let layout = Layout::new(&[Type::Uint1]);
         let key = SystemVersionKey { version: SystemVersion::Storage }.encode();
 
-        let mut unversioned = self.transaction.begin_unversioned_tx();
-        match unversioned.get(&key)? {
+        let mut guard = self.transaction.begin_unversioned();
+        let created = match guard.get(&key)? {
             None => {
                 let mut row = layout.allocate_row();
                 layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
-                unversioned.upsert(&key, row)?;
-
-                // the database was never started before
-                self.trigger_database_creation()?
+                guard.upsert(&key, row)?;
+                true
             }
             Some(unversioned) => {
                 let version = layout.get_u8(&unversioned.row, 0);
                 assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
+                false
             }
+        };
+        drop(guard);
+
+        if created {
+            // the database was never started before
+            self.trigger_database_creation()?
         }
 
         return_hooks!()

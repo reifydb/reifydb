@@ -4,7 +4,7 @@
 use crate::interface::{GetHooks, UnversionedStorage, Versioned, VersionedStorage};
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange, Error};
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use std::sync::MutexGuard;
 
 pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
     GetHooks + Send + Sync + Clone + 'static
@@ -16,11 +16,7 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
 
     fn begin_tx(&self) -> Result<Self::Tx, Error>;
 
-    fn begin_unversioned_rx(&self) -> RwLockReadGuard<US>;
-
-    fn begin_unversioned_tx(&self) -> RwLockWriteGuard<US>;
-
-    fn versioned(&self) -> VS;
+    fn begin_unversioned(&self) -> MutexGuard<US>;
 }
 
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
@@ -52,5 +48,5 @@ pub trait Tx<VS: VersionedStorage, US: UnversionedStorage>: Rx {
 
     fn rollback(self) -> Result<(), Error>;
 
-    fn unversioned(&mut self) -> RwLockWriteGuard<US>;
+    fn unversioned(&mut self) -> MutexGuard<US>;
 }
