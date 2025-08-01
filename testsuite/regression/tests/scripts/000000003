@@ -1,9 +1,9 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(tx 'create schema test')
-(tx 'create table test.arith(id: int2, value: int2, num: int2)')
-(tx '
+(write 'create schema test')
+(write 'create table test.arith(id: int2, value: int2, num: int2)')
+(write '
   from [
     { id: 1, value: 1, num: 5  },
     { id: 1, value: 1, num: 10 },
@@ -12,7 +12,7 @@
     { id: 2, value: 1, num: 30 }
   ] insert test.arith
 ')
-tx 'from test.arith
+write 'from test.arith
     map { 1 + 2, 3 + 4, 4 + 5 as X }
 '
 ---

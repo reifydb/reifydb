@@ -9,27 +9,24 @@ use crate::DB;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, UnversionedTransaction, Principal, VersionedTransaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, Principal, UnversionedTransaction,
+    VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
 use tokio::task::spawn_blocking;
 
-pub struct Embedded<VS, US, T, UT>
+pub struct Embedded<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    engine: Engine<VS, US, T, UT>,
+    engine: Engine<VT, UT>,
 }
 
-impl<VS, US, T, UT> Clone for Embedded<VS, US, T, UT>
+impl<VT, UT> Clone for Embedded<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     fn clone(&self) -> Self {
@@ -37,35 +34,29 @@ where
     }
 }
 
-impl<VS, US, T, UT> Embedded<VS, US, T, UT>
+impl<VT, UT> Embedded<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
-        Self { engine: Engine::new(transaction, unversioned, hooks).unwrap() }
+    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+        Self { engine: Engine::new(versioned, unversioned, hooks).unwrap() }
     }
 }
 
-impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for Embedded<VS, US, T, UT>
+impl<VT, UT> WithHooks<VT, UT> for Embedded<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T, UT> {
+    fn engine(&self) -> &Engine<VT, UT> {
         &self.engine
     }
 }
 
-impl<VS, US, T, UT> DB<'_> for Embedded<VS, US, T, UT>
+impl<VT, UT> DB<'_> for Embedded<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     async fn write_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {

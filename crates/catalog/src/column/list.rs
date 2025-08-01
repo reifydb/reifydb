@@ -8,7 +8,10 @@ use reifydb_core::interface::VersionedReadTransaction;
 use reifydb_core::interface::{TableColumnKey, TableId};
 
 impl Catalog {
-    pub fn list_columns(rx: &mut impl VersionedReadTransaction, table: TableId) -> crate::Result<Vec<Column>> {
+    pub fn list_columns(
+        rx: &mut impl VersionedReadTransaction,
+        table: TableId,
+    ) -> crate::Result<Vec<Column>> {
         let mut result = vec![];
 
         let ids = rx
@@ -36,16 +39,16 @@ mod tests {
     use crate::test_utils::ensure_test_table;
     use reifydb_core::Type;
     use reifydb_core::interface::TableId;
-    use reifydb_transaction::test_utils::TestTransaction;
+    use reifydb_transaction::test_utils::create_test_write_transaction;
 
     #[test]
     fn test_ok() {
-        let mut tx = TestTransaction::new();
-        ensure_test_table(&mut tx);
+        let mut atx = create_test_write_transaction();
+        ensure_test_table(&mut atx);
 
         // Create columns out of order
         Catalog::create_column(
-            &mut tx,
+            &mut atx,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -62,7 +65,7 @@ mod tests {
         .unwrap();
 
         Catalog::create_column(
-            &mut tx,
+            &mut atx,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -78,7 +81,7 @@ mod tests {
         )
         .unwrap();
 
-        let columns = Catalog::list_columns(&mut tx, TableId(1)).unwrap();
+        let columns = Catalog::list_columns(&mut atx, TableId(1)).unwrap();
         assert_eq!(columns.len(), 2);
 
         assert_eq!(columns[0].name, "a_col"); // index 0
@@ -90,16 +93,16 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let mut tx = TestTransaction::new();
-        ensure_test_table(&mut tx);
-        let columns = Catalog::list_columns(&mut tx, TableId(1)).unwrap();
+        let mut atx = create_test_write_transaction();
+        ensure_test_table(&mut atx);
+        let columns = Catalog::list_columns(&mut atx, TableId(1)).unwrap();
         assert!(columns.is_empty());
     }
 
     #[test]
     fn test_table_does_not_exist() {
-        let mut tx = TestTransaction::new();
-        let columns = Catalog::list_columns(&mut tx, TableId(1)).unwrap();
+        let mut atx = create_test_write_transaction();
+        let columns = Catalog::list_columns(&mut atx, TableId(1)).unwrap();
         assert!(columns.is_empty());
     }
 }

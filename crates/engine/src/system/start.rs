@@ -4,41 +4,32 @@
 use reifydb_core::hook::lifecycle::{OnCreateHook, OnInitHook};
 use reifydb_core::hook::{BoxedHookIter, Callback};
 use reifydb_core::interface::{
-    EncodableKey, UnversionedReadTransaction, SystemVersion, SystemVersionKey, UnversionedTransaction,
-    UnversionedWriteTransaction,
+    EncodableKey, SystemVersion, SystemVersionKey, UnversionedReadTransaction,
+    UnversionedTransaction, UnversionedWriteTransaction,
 };
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
 use reifydb_core::row::Layout;
 use reifydb_core::{Type, return_hooks};
-use std::marker::PhantomData;
 
-pub(crate) struct SystemStartCallback<VS, US, UT>
+pub(crate) struct SystemStartCallback<UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
     UT: UnversionedTransaction,
 {
     unversioned: UT,
-    _phantom: PhantomData<(VS, US)>,
 }
 
-impl<VS, US, UT> SystemStartCallback<VS, US, UT>
+impl<UT> SystemStartCallback<UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
     UT: UnversionedTransaction,
 {
     pub(crate) fn new(unversioned: UT) -> Self {
-        Self { unversioned, _phantom: PhantomData }
+        Self { unversioned }
     }
 }
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-impl<VS, US, UT> Callback<OnInitHook> for SystemStartCallback<VS, US, UT>
+impl<UT> Callback<OnInitHook> for SystemStartCallback<UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
     UT: UnversionedTransaction,
 {
     fn on(&self, _hook: &OnInitHook) -> crate::Result<BoxedHookIter> {
@@ -68,10 +59,8 @@ where
     }
 }
 
-impl<VS, US, UT> SystemStartCallback<VS, US, UT>
+impl<UT> SystemStartCallback<UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
     UT: UnversionedTransaction,
 {
     fn trigger_database_creation(&self) -> crate::Result<()> {

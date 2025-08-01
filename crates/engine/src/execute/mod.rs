@@ -6,7 +6,10 @@ use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
-use reifydb_core::interface::{VersionedReadTransaction, Table, VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    ActiveWriteTransaction, Table, UnversionedTransaction,
+    VersionedReadTransaction, VersionedTransaction,
+};
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,20 +31,24 @@ pub(crate) struct Batch {
 }
 
 pub(crate) trait ExecutionPlan {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>>;
+    fn next(
+        &mut self,
+        ctx: &ExecutionContext,
+        rx: &mut dyn VersionedReadTransaction,
+    ) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<ColumnsLayout>;
 }
 
-pub(crate) struct Executor<VS: VersionedStorage, US: UnversionedStorage> {
+pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction> {
     functions: Functions,
-    _phantom: PhantomData<(VS, US)>,
+    _phantom: PhantomData<(VT, UT)>,
 }
 
-pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
+pub fn execute_rx<VT: VersionedTransaction, UT: UnversionedTransaction>(
     rx: &mut impl VersionedReadTransaction,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
-    let executor: Executor<VS, US> = Executor {
+    let executor: Executor<VT, UT> = Executor {
         // FIXME receive functions from RX
         functions: Functions::builder()
             .register_aggregate("sum", math::aggregate::Sum::new)
@@ -57,12 +64,12 @@ pub fn execute_rx<VS: VersionedStorage, US: UnversionedStorage>(
     executor.execute_rx(rx, plan)
 }
 
-pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
-    tx: &mut impl VersionedWriteTransaction<VS, US>,
+pub fn execute_tx<VT: VersionedTransaction, UT: UnversionedTransaction>(
+    atx: &mut ActiveWriteTransaction<VT, UT>,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
-    // FIXME receive functions from TX
-    let executor: Executor<VS, US> = Executor {
+    // FIXME receive functions from atx
+    let executor: Executor<VT, UT> = Executor {
         functions: Functions::builder()
             .register_aggregate("sum", math::aggregate::Sum::new)
             .register_aggregate("min", math::aggregate::Min::new)
@@ -74,11 +81,15 @@ pub fn execute_tx<VS: VersionedStorage, US: UnversionedStorage>(
         _phantom: PhantomData,
     };
 
-    executor.execute_tx(tx, plan)
+    executor.execute_tx(atx, plan)
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
-    pub(crate) fn execute_rx(self, rx: &mut impl VersionedReadTransaction, plan: PhysicalPlan) -> crate::Result<Columns> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+    pub(crate) fn execute_rx(
+        self,
+        rx: &mut impl VersionedReadTransaction,
+        plan: PhysicalPlan,
+    ) -> crate::Result<Columns> {
         match plan {
             // Query
             PhysicalPlan::Aggregate(_)
@@ -103,16 +114,16 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
     pub(crate) fn execute_tx(
         mut self,
-        tx: &mut impl VersionedWriteTransaction<VS, US>,
+        atx: &mut ActiveWriteTransaction<VT, UT>,
         plan: PhysicalPlan,
     ) -> crate::Result<Columns> {
         match plan {
-            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(tx, plan),
-            PhysicalPlan::CreateSchema(plan) => self.create_schema(tx, plan),
-            PhysicalPlan::CreateTable(plan) => self.create_table(tx, plan),
-            PhysicalPlan::Delete(plan) => self.delete(tx, plan),
-            PhysicalPlan::Insert(plan) => self.insert(tx, plan),
-            PhysicalPlan::Update(plan) => self.update(tx, plan),
+            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(atx, plan),
+            PhysicalPlan::CreateSchema(plan) => self.create_schema(atx, plan),
+            PhysicalPlan::CreateTable(plan) => self.create_table(atx, plan),
+            PhysicalPlan::Delete(plan) => self.delete(atx, plan),
+            PhysicalPlan::Insert(plan) => self.insert(atx, plan),
+            PhysicalPlan::Update(plan) => self.update(atx, plan),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
@@ -123,11 +134,15 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(tx, plan),
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(atx, plan),
         }
     }
 
-    fn execute_query_plan(self, rx: &mut impl VersionedReadTransaction, plan: PhysicalPlan) -> crate::Result<Columns> {
+    fn execute_query_plan(
+        self,
+        rx: &mut impl VersionedReadTransaction,
+        plan: PhysicalPlan,
+    ) -> crate::Result<Columns> {
         match plan {
             // PhysicalPlan::Describe { plan } => {
             //     // FIXME evaluating the entire columns is quite wasteful but good enough to write some tests

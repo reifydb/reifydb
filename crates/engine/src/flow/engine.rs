@@ -4,8 +4,9 @@ use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use crate::Result;
 use reifydb_core::interface::{
-    Column, ColumnId, ColumnIndex, EncodableKeyRange, VersionedReadTransaction, SchemaId, Table, TableId,
-    TableRowKeyRange, VersionedTransaction, VersionedWriteTransaction, UnversionedStorage, VersionedStorage,
+    Column, ColumnId, ColumnIndex, EncodableKeyRange, SchemaId, Table, TableId, TableRowKeyRange,
+    UnversionedTransaction, VersionedReadTransaction, VersionedTransaction,
+    VersionedWriteTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::row::Layout;
@@ -14,21 +15,21 @@ use std::collections::Bound::Included;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-pub struct FlowEngine<VS: VersionedStorage, US: UnversionedStorage, T: VersionedTransaction<VS, US>> {
+pub struct FlowEngine<VT: VersionedTransaction, UT: UnversionedTransaction> {
     graph: FlowGraph,
     operators: HashMap<NodeId, Box<dyn Operator>>,
     contexts: HashMap<NodeId, OperatorContext>,
-    transaction: T,
-    _phantom: PhantomData<(VS, US)>,
+    versioned: VT,
+    _phantom: PhantomData<(VT, UT)>,
 }
 
-impl<T: VersionedTransaction<VS, US>, VS: VersionedStorage, US: UnversionedStorage> FlowEngine<VS, US, T> {
-    pub fn new(graph: FlowGraph, transaction: T) -> Self {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
+    pub fn new(graph: FlowGraph, versioned: VT) -> Self {
         Self {
             graph,
             operators: HashMap::new(),
             contexts: HashMap::new(),
-            transaction,
+            versioned,
             _phantom: PhantomData,
         }
     }
@@ -60,7 +61,7 @@ impl<T: VersionedTransaction<VS, US>, VS: VersionedStorage, US: UnversionedStora
     }
 
     pub fn process_change(&mut self, node_id: &NodeId, diff: Diff) -> Result<()> {
-        let mut tx = self.transaction.begin_write()?;
+        let mut tx = self.versioned.begin_write()?;
 
         self.process_change_with_tx(&mut tx, node_id, diff)?;
         tx.commit()?;
@@ -70,7 +71,7 @@ impl<T: VersionedTransaction<VS, US>, VS: VersionedStorage, US: UnversionedStora
 
     fn process_change_with_tx(
         &mut self,
-        tx: &mut <T as VersionedTransaction<VS, US>>::Write,
+        tx: &mut <VT as VersionedTransaction>::Write,
         node_id: &NodeId,
         diff: Diff,
     ) -> Result<()> {
@@ -133,7 +134,7 @@ impl<T: VersionedTransaction<VS, US>, VS: VersionedStorage, US: UnversionedStora
 
     fn apply_diff_to_storage_with_tx(
         &mut self,
-        _tx: &mut <T as VersionedTransaction<VS, US>>::Write,
+        _tx: &mut <VT as VersionedTransaction>::Write,
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
@@ -275,7 +276,7 @@ impl<T: VersionedTransaction<VS, US>, VS: VersionedStorage, US: UnversionedStora
 
     fn read_columns_from_storage(&self, node_id: &NodeId) -> Result<Frame> {
         // Start a read transaction
-        let mut rx = self.transaction.begin_read()?;
+        let mut rx = self.versioned.begin_read()?;
 
         let range = TableRowKeyRange { table: TableId(node_id.0) };
         let _versioned_data = rx

@@ -7,54 +7,51 @@ use tokio::task::spawn_blocking;
 use tokio_stream::{Stream, once};
 use tonic::{Request, Response, Status};
 
-use crate::grpc::server::grpc::RxResult;
-use crate::grpc::server::grpc::{RxRequest, TxRequest, TxResult};
+use crate::grpc::server::grpc::ReadResult;
+use crate::grpc::server::grpc::{ReadRequest, WriteRequest, WriteResult};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
-    Engine as EngineInterface, UnversionedTransaction, Principal, VersionedTransaction, UnversionedStorage, VersionedStorage,
+    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
 use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 
-pub struct DbService<VS, US, T, UT>
+pub struct DbService<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) engine: Arc<Engine<VS, US, T, UT>>,
-    _phantom: std::marker::PhantomData<(VS, US, T, UT)>,
+    pub(crate) engine: Arc<Engine<VT, UT>>,
+    _phantom: std::marker::PhantomData<(VT, UT)>,
 }
 
-impl<VS, US, T, UT> DbService<VS, US, T, UT>
+impl<VT, UT> DbService<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
+    pub fn new(engine: Engine<VT, UT>) -> Self {
         Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
     }
 }
 
-pub type TxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::TxResult, Status>> + Send>>;
-pub type RxResultStream = Pin<Box<dyn Stream<Item = Result<grpc::RxResult, Status>> + Send>>;
+pub type WriteResultStream = Pin<Box<dyn Stream<Item = Result<grpc::WriteResult, Status>> + Send>>;
+pub type ReadResultStream = Pin<Box<dyn Stream<Item = Result<grpc::ReadResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<VS, US, T, UT> grpc::db_server::Db for DbService<VS, US, T, UT>
+impl<VT, UT> grpc::db_server::Db for DbService<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    type TxStream = TxResultStream;
+    type WriteStream = WriteResultStream;
 
-    async fn tx(&self, request: Request<TxRequest>) -> Result<Response<TxResultStream>, Status> {
+    async fn write(
+        &self,
+        request: Request<WriteRequest>,
+    ) -> Result<Response<WriteResultStream>, Status> {
         let user = request
             .extensions()
             .get::<AuthenticatedUser>()
@@ -70,23 +67,23 @@ where
         spawn_blocking(move || {
             match engine.write_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(frames) => {
-                    let mut responses: Vec<Result<TxResult, Status>> = vec![];
+                    let mut responses: Vec<Result<WriteResult, Status>> = vec![];
 
                     for frame in frames {
-                        responses.push(Ok(TxResult {
-                            result: Some(grpc::tx_result::Result::Frame(map_frame(frame))),
+                        responses.push(Ok(WriteResult {
+                            result: Some(grpc::write_result::Result::Frame(map_frame(frame))),
                         }))
                     }
 
-                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as TxResultStream))
+                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as WriteResultStream))
                 }
                 Err(err) => {
                     let diagnostic = err.diagnostic();
-                    let result = TxResult {
-                        result: Some(grpc::tx_result::Result::Error(map_diagnostic(diagnostic))),
+                    let result = WriteResult {
+                        result: Some(grpc::write_result::Result::Error(map_diagnostic(diagnostic))),
                     };
 
-                    Ok(Response::new(Box::pin(once(Ok(result))) as TxResultStream))
+                    Ok(Response::new(Box::pin(once(Ok(result))) as WriteResultStream))
                 }
             }
         })
@@ -94,9 +91,12 @@ where
         .unwrap()
     }
 
-    type RxStream = RxResultStream;
+    type ReadStream = ReadResultStream;
 
-    async fn rx(&self, request: Request<RxRequest>) -> Result<Response<Self::RxStream>, Status> {
+    async fn read(
+        &self,
+        request: Request<ReadRequest>,
+    ) -> Result<Response<Self::ReadStream>, Status> {
         let user = request
             .extensions()
             .get::<AuthenticatedUser>()
@@ -112,23 +112,23 @@ where
         spawn_blocking(move || {
             match engine.write_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
                 Ok(frames) => {
-                    let mut responses: Vec<Result<RxResult, Status>> = vec![];
+                    let mut responses: Vec<Result<ReadResult, Status>> = vec![];
 
                     for frame in frames {
-                        responses.push(Ok(RxResult {
-                            result: Some(grpc::rx_result::Result::Frame(map_frame(frame))),
+                        responses.push(Ok(ReadResult {
+                            result: Some(grpc::read_result::Result::Frame(map_frame(frame))),
                         }))
                     }
 
-                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as RxResultStream))
+                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as ReadResultStream))
                 }
                 Err(err) => {
                     let diagnostic = err.diagnostic();
-                    let result = RxResult {
-                        result: Some(grpc::rx_result::Result::Error(map_diagnostic(diagnostic))),
+                    let result = ReadResult {
+                        result: Some(grpc::read_result::Result::Error(map_diagnostic(diagnostic))),
                     };
 
-                    Ok(Response::new(Box::pin(once(Ok(result))) as RxResultStream))
+                    Ok(Response::new(Box::pin(once(Ok(result))) as ReadResultStream))
                 }
             }
         })

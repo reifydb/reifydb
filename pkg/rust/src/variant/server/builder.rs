@@ -5,33 +5,29 @@ use super::Server;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
 
-pub struct ServerBuilder<VS, US, T, UT>
+pub struct ServerBuilder<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    engine: Engine<VS, US, T, UT>,
+    engine: Engine<VT, UT>,
     grpc_config: Option<GrpcConfig>,
     ws_config: Option<WsConfig>,
 }
 
-impl<VS, US, T, UT> ServerBuilder<VS, US, T, UT>
+impl<VT, UT> ServerBuilder<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
+    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
         Self {
-            engine: Engine::new(transaction, unversioned, hooks).unwrap(),
+            engine: Engine::new(versioned, unversioned, hooks).unwrap(),
             grpc_config: None,
             ws_config: None,
         }
@@ -47,7 +43,7 @@ where
         self
     }
 
-    pub fn build(self) -> Server<VS, US, T, UT> {
+    pub fn build(self) -> Server<VT, UT> {
         self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
 
         let mut server = Server::new(self.engine);
@@ -57,14 +53,12 @@ where
     }
 }
 
-impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for ServerBuilder<VS, US, T, UT>
+impl<VT, UT> WithHooks<VT, UT> for ServerBuilder<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T, UT> {
+    fn engine(&self) -> &Engine<VT, UT> {
         &self.engine
     }
 }

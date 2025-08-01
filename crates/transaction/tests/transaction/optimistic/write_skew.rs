@@ -15,7 +15,8 @@ use crate::transaction::keycode;
 use crate::{as_key, as_row, from_row};
 use reifydb_core::EncodedKey;
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, TransactionTx};
+use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, WriteTransaction};
+use reifydb_transaction::svl::SingleVersionLock;
 
 #[test]
 fn test_write_skew() {
@@ -26,20 +27,21 @@ fn test_write_skew() {
     let engine = Optimistic::testing();
 
     // Set balance to $100 in each account.
-    let mut txn = engine.begin_tx().unwrap();
+    let mut txn = engine.begin_write().unwrap();
     txn.set(&a999, as_row!(100u64)).unwrap();
     txn.set(&a888, as_row!(100u64)).unwrap();
     txn.commit().unwrap();
     assert_eq!(2, engine.version().unwrap());
 
-    let get_bal = |txn: &mut TransactionTx<Memory, Memory>, k: &EncodedKey| -> u64 {
-        let sv = txn.get(k).unwrap().unwrap();
-        let val = sv.row();
-        from_row!(u64, val)
-    };
+    let get_bal =
+        |txn: &mut WriteTransaction<Memory, SingleVersionLock<Memory>>, k: &EncodedKey| -> u64 {
+            let sv = txn.get(k).unwrap().unwrap();
+            let val = sv.row();
+            from_row!(u64, val)
+        };
 
     // Start two transactions, each would read both accounts and deduct from one account.
-    let mut txn1 = engine.begin_tx().unwrap();
+    let mut txn1 = engine.begin_write().unwrap();
 
     let mut sum = get_bal(&mut txn1, &a999);
     sum += get_bal(&mut txn1, &a888);
@@ -53,7 +55,7 @@ fn test_write_skew() {
     assert_eq!(100, sum);
     // Don't commit yet.
 
-    let mut txn2 = engine.begin_tx().unwrap();
+    let mut txn2 = engine.begin_write().unwrap();
 
     let mut sum = get_bal(&mut txn2, &a999);
     sum += get_bal(&mut txn2, &a888);
@@ -80,7 +82,7 @@ fn test_black_white() {
     let engine = Optimistic::testing();
 
     // Setup
-    let mut txn = engine.begin_tx().unwrap();
+    let mut txn = engine.begin_write().unwrap();
     for i in 1..=10 {
         if i % 2 == 1 {
             txn.set(&as_key!(i), as_row!("black".to_string())).unwrap();
@@ -90,7 +92,7 @@ fn test_black_white() {
     }
     txn.commit().unwrap();
 
-    let mut white = engine.begin_tx().unwrap();
+    let mut white = engine.begin_write().unwrap();
     let indices = white
         .scan()
         .unwrap()
@@ -103,7 +105,7 @@ fn test_black_white() {
         white.set(&i, as_row!("white".to_string())).unwrap();
     }
 
-    let mut black = engine.begin_tx().unwrap();
+    let mut black = engine.begin_write().unwrap();
     let indices = black
         .scan()
         .unwrap()
@@ -120,7 +122,7 @@ fn test_black_white() {
     let err = white.commit().unwrap_err();
     assert!(err.to_string().contains("conflict"));
 
-    let rx = engine.begin_rx().unwrap();
+    let rx = engine.begin_read().unwrap();
     let result: Vec<_> = rx.scan().unwrap().collect();
     assert_eq!(result.len(), 10);
 
@@ -137,17 +139,17 @@ fn test_overdraft_protection() {
     let key = as_key!("karen");
 
     // Setup
-    let mut txn = engine.begin_tx().unwrap();
+    let mut txn = engine.begin_write().unwrap();
     txn.set(&key, as_row!(1000)).unwrap();
     txn.commit().unwrap();
 
     // txn1
-    let mut txn1 = engine.begin_tx().unwrap();
+    let mut txn1 = engine.begin_write().unwrap();
     let money = from_row!(i32, *txn1.get(&key).unwrap().unwrap().row());
     txn1.set(&key, as_row!(money - 500)).unwrap();
 
     // txn2
-    let mut txn2 = engine.begin_tx().unwrap();
+    let mut txn2 = engine.begin_write().unwrap();
     let money = from_row!(i32, *txn2.get(&key).unwrap().unwrap().row());
     txn2.set(&key, as_row!(money - 500)).unwrap();
 
@@ -155,7 +157,7 @@ fn test_overdraft_protection() {
     let err = txn2.commit().unwrap_err();
     assert!(err.to_string().contains("conflict"));
 
-    let rx = engine.begin_rx().unwrap();
+    let rx = engine.begin_read().unwrap();
     let money = from_row!(i32, *rx.get(&key).unwrap().unwrap().row());
     assert_eq!(money, 500);
 }
@@ -166,7 +168,7 @@ fn test_primary_colors() {
     let engine = Optimistic::testing();
 
     // Setup
-    let mut txn = engine.begin_tx().unwrap();
+    let mut txn = engine.begin_write().unwrap();
     for i in 1..=9000 {
         if i % 3 == 1 {
             txn.set(&as_key!(i), as_row!("red".to_string())).unwrap();
@@ -178,7 +180,7 @@ fn test_primary_colors() {
     }
     txn.commit().unwrap();
 
-    let mut red = engine.begin_tx().unwrap();
+    let mut red = engine.begin_write().unwrap();
     let indices = red
         .scan()
         .unwrap()
@@ -190,7 +192,7 @@ fn test_primary_colors() {
         red.set(&i, as_row!("red".to_string())).unwrap();
     }
 
-    let mut yellow = engine.begin_tx().unwrap();
+    let mut yellow = engine.begin_write().unwrap();
     let indices = yellow
         .scan()
         .unwrap()
@@ -202,7 +204,7 @@ fn test_primary_colors() {
         yellow.set(&i, as_row!("yellow".to_string())).unwrap();
     }
 
-    let mut red_two = engine.begin_tx().unwrap();
+    let mut red_two = engine.begin_write().unwrap();
     let indices = red_two
         .scan()
         .unwrap()
@@ -221,7 +223,7 @@ fn test_primary_colors() {
     let err = yellow.commit().unwrap_err();
     assert!(err.to_string().contains("conflict"));
 
-    let rx = engine.begin_rx().unwrap();
+    let rx = engine.begin_read().unwrap();
     let result: Vec<_> = rx.scan().unwrap().collect();
     assert_eq!(result.len(), 9000);
 

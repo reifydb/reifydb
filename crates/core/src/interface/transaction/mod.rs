@@ -8,7 +8,7 @@ mod active;
 mod unversioned;
 mod versioned;
 
-pub use active::{ActiveReadTransaction, ActiveWriteTransaction};
+pub use active::*;
 pub use unversioned::*;
 pub use versioned::*;
 
@@ -16,7 +16,7 @@ pub struct Transaction<VS, US, VT, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     pub versioned: VT,
@@ -28,7 +28,7 @@ impl<VS, US, VT, UT> Transaction<VS, US, VT, UT>
 where
     VS: VersionedStorage,
     US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     #[inline]

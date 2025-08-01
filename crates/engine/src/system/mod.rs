@@ -4,20 +4,16 @@
 use crate::Engine;
 use crate::system::start::SystemStartCallback;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{
-    GetHooks, UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage,
-};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
 
 pub(crate) mod start;
 
-pub(crate) fn register_system_hooks<VS, US, T, UT>(engine: &Engine<VS, US, T, UT>)
+pub(crate) fn register_system_hooks<VT, UT>(engine: &Engine<VT, UT>)
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    engine.get_hooks().register::<OnInitHook, SystemStartCallback<VS, US, UT>>(
-        SystemStartCallback::new(engine.unversioned().clone()),
-    );
+    engine.get_hooks().register::<OnInitHook, SystemStartCallback<UT>>(SystemStartCallback::new(
+        engine.unversioned().clone(),
+    ));
 }

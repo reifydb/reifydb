@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {ErrorResponse, ReifyError, RxRequest, RxResponse, TxRequest, TxResponse, WebsocketColumn} from "./types";
+import {ErrorResponse, ReifyError, ReadRequest, RxResponse, WriteRequest, TxResponse, WebsocketColumn} from "./types";
 import {decodeValue} from "./decoder";
 
 type ResponsePayload = ErrorResponse | TxResponse | RxResponse;
@@ -109,7 +109,7 @@ export class WsClient {
     }
 
 
-    async send<T extends readonly Record<string, unknown>[]>(req: TxRequest | RxRequest): Promise<{
+    async send<T extends readonly Record<string, unknown>[]>(req: WriteRequest | ReadRequest): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = req.id;

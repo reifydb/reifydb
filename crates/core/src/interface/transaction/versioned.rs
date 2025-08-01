@@ -1,17 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::{GetHooks, UnversionedStorage, Versioned, VersionedStorage};
+use crate::interface::{GetHooks, Versioned};
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange};
 
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
-pub trait VersionedTransaction<VS: VersionedStorage, US: UnversionedStorage>:
-    GetHooks + Send + Sync + Clone + 'static
-{
+pub trait VersionedTransaction: GetHooks + Send + Sync + Clone + 'static {
     type Read: VersionedReadTransaction;
-    type Write: VersionedWriteTransaction<VS, US>;
+    type Write: VersionedWriteTransaction;
 
     fn begin_read(&self) -> crate::Result<Self::Read>;
 
@@ -54,9 +52,7 @@ pub trait VersionedReadTransaction {
     fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
 }
 
-pub trait VersionedWriteTransaction<VS: VersionedStorage, US: UnversionedStorage>:
-    VersionedReadTransaction
-{
+pub trait VersionedWriteTransaction: VersionedReadTransaction {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
     fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;

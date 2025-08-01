@@ -6,12 +6,14 @@ use crate::columnar::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::interface::{
+    ActiveWriteTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
+};
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, VersionedWriteTransaction, UnversionedStorage, VersionedStorage},
+    interface::{ColumnPolicyKind, VersionedWriteTransaction},
     return_error,
     row::Layout,
     value::row_id::ROW_ID_COLUMN_NAME,
@@ -19,10 +21,10 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::UpdatePlan;
 use std::sync::Arc;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn update(
         &mut self,
-        tx: &mut impl VersionedWriteTransaction<VS, US>,
+        atx: &mut ActiveWriteTransaction<VT, UT>,
         plan: UpdatePlan,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
@@ -30,8 +32,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         };
         let schema_name = schema_ref.fragment.as_str();
 
-        let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
-        let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
+        let schema = Catalog::get_schema_by_name(atx, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
             return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
@@ -42,7 +44,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
         // Compile the input plan into an execution node with table context
         let mut input_node = compile(
             *plan.input,
-            tx,
+            atx,
             Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
@@ -60,7 +62,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
             batch_size: 1024,
             preserve_row_ids: true,
         };
-        while let Some(Batch { columns }) = input_node.next(&context, tx)? {
+        while let Some(Batch { columns }) = input_node.next(&context, atx)? {
             // Find the RowId column - return error if not found
             let Some(row_id_column) = columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
             else {
@@ -141,7 +143,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
                 // Update the row using the existing RowId from the columns
                 let row_id = row_ids[row_idx];
-                tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row)?;
+                atx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row)?;
 
                 updated_count += 1;
             }

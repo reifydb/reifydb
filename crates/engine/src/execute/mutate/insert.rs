@@ -5,27 +5,29 @@ use crate::columnar::columns::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::{Catalog, sequence::TableRowSequence};
-use reifydb_core::interface::{EncodableKey, TableRowKey};
+use reifydb_core::interface::{
+    ActiveWriteTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
+};
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, VersionedWriteTransaction, UnversionedStorage, VersionedStorage},
+    interface::{ColumnPolicyKind, VersionedWriteTransaction},
     return_error,
     row::Layout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn insert(
         &mut self,
-        tx: &mut impl VersionedWriteTransaction<VS, US>,
+        atx: &mut ActiveWriteTransaction<VT, UT>,
         plan: InsertPlan,
     ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
-        let schema = Catalog::get_schema_by_name(tx, schema_name)?.unwrap();
-        let Some(table) = Catalog::get_table_by_name(tx, schema.id, &plan.table.fragment)? else {
+        let schema = Catalog::get_schema_by_name(atx, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
             return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
@@ -35,7 +37,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
 
         let mut input_node = compile(
             *plan.input,
-            tx,
+            atx,
             Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
@@ -54,7 +56,7 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 batch_size: 1024,
                 preserve_row_ids: false,
             }),
-            tx,
+            atx,
         )? {
             let row_count = columns.row_count();
 
@@ -113,8 +115,8 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
                 }
 
                 // Insert the row into the database
-                let row_id = TableRowSequence::next_row_id(tx, table.id)?;
-                tx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
+                let row_id = TableRowSequence::next_row_id(atx, table.id)?;
+                atx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
 
                 inserted_count += 1;
             }

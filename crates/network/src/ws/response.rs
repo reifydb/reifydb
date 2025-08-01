@@ -17,8 +17,8 @@ pub struct Response {
 pub enum ResponsePayload {
     Auth(AuthResponse),
     Err(ErrResponse),
-    Tx(TxResponse),
-    Rx(RxResponse),
+    Write(WriteResponse),
+    Read(ReadResponse),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,12 +30,12 @@ pub struct ErrResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TxResponse {
+pub struct WriteResponse {
     pub frames: Vec<WebsocketFrame>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RxResponse {
+pub struct ReadResponse {
     pub frames: Vec<WebsocketFrame>,
 }
 

@@ -4,14 +4,10 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb::hook::WithHooks;
-use reifydb::transaction::svl::SingleVersionLock;
-use reifydb::{ReifyDB, memory, serializable};
+use reifydb::{ReifyDB, memory, optimistic};
 
 fn main() {
-    let (versioned, unversioned, hooks) = memory();
-    let (transaction, hooks) = serializable((versioned, unversioned.clone(), hooks));
-    let unversioned_svl = SingleVersionLock::new(unversioned, hooks.clone());
-    let db = ReifyDB::embedded_blocking_with((transaction, unversioned_svl, hooks))
+    let db = ReifyDB::embedded_blocking_with(optimistic(memory()))
         .on_create(|ctx| {
             println!("create reifydb");
             ctx.write_as_root("create schema reifydb")?;

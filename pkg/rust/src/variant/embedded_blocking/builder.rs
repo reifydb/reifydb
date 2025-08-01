@@ -5,44 +5,38 @@ use super::EmbeddedBlocking;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
-use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
-pub struct EmbeddedBlockingBuilder<VS, US, T, UT>
+pub struct EmbeddedBlockingBuilder<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    engine: Engine<VS, US, T, UT>,
+    engine: Engine<VT, UT>,
 }
 
-impl<VS, US, T, UT> EmbeddedBlockingBuilder<VS, US, T, UT>
+impl<VT, UT> EmbeddedBlockingBuilder<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> Self {
-        Self { engine: Engine::new(transaction, unversioned, hooks).unwrap() }
+    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+        Self { engine: Engine::new(versioned, unversioned, hooks).unwrap() }
     }
 
-    pub fn build(self) -> EmbeddedBlocking<VS, US, T, UT> {
+    pub fn build(self) -> EmbeddedBlocking<VT, UT> {
         self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
         EmbeddedBlocking { engine: self.engine }
     }
 }
 
-impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for EmbeddedBlockingBuilder<VS, US, T, UT>
+impl<VT, UT> WithHooks<VT, UT> for EmbeddedBlockingBuilder<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T, UT> {
+    fn engine(&self) -> &Engine<VT, UT> {
         &self.engine
     }
 }

@@ -18,7 +18,9 @@ use std::path::Path;
 use reifydb_core::hook::Hooks;
 #[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
 use reifydb_core::interface::VersionedTransaction;
-use reifydb_core::interface::{Principal, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    Principal, UnversionedTransaction, VersionedStorage,
+};
 use reifydb_core::result::Frame;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
@@ -63,124 +65,107 @@ pub trait DB<'a>: Sized {
 impl ReifyDB {
     #[cfg(feature = "embedded")]
     pub fn embedded()
-    -> EmbeddedBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>>
+    -> EmbeddedBuilder<Serializable<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>
     {
-        let (transaction, hooks) = serializable(memory());
-        let unversioned = SingleVersionLock::new(Memory::default(), hooks.clone());
-        EmbeddedBuilder::new(transaction, unversioned, hooks)
+        let (versioned, unversioned, hooks) = serializable(memory());
+        EmbeddedBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
     pub fn embedded_blocking() -> EmbeddedBlockingBuilder<
-        Memory,
-        Memory,
-        Serializable<Memory, Memory>,
+        Serializable<Memory, SingleVersionLock<Memory>>,
         SingleVersionLock<Memory>,
     > {
-        let (transaction, hooks) = serializable(memory());
-        let unversioned = SingleVersionLock::new(Memory::default(), hooks.clone());
-        EmbeddedBlockingBuilder::new(transaction, unversioned, hooks)
+        let (versioned, unversioned, hooks) = serializable(memory());
+        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
     pub fn embedded() -> EmbeddedBlockingBuilder<
-        Memory,
-        Memory,
-        Serializable<Memory, Memory>,
+        Serializable<Memory, SingleVersionLock<Memory>>,
         SingleVersionLock<Memory>,
     > {
         Self::embedded_blocking()
     }
 
     #[cfg(feature = "embedded")]
-    pub fn embedded_with<VS, US, T>(
-        transaction: T,
-        unversioned: SingleVersionLock<US>,
-        hooks: Hooks,
-    ) -> EmbeddedBuilder<VS, US, T, SingleVersionLock<US>>
+    pub fn embedded_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: VersionedTransaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        EmbeddedBuilder::new(transaction, unversioned, hooks)
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<VS, US, T>(
-        transaction: T,
-        unversioned: SingleVersionLock<US>,
-        hooks: Hooks,
-    ) -> EmbeddedBlockingBuilder<VS, US, T, SingleVersionLock<US>>
+    pub fn embedded_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBlockingBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: VersionedTransaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        EmbeddedBlockingBuilder::new(transaction, unversioned, hooks)
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<VS, US, T>(
-        input: (T, SingleVersionLock<US>, Hooks),
-    ) -> EmbeddedBlockingBuilder<VS, US, T, SingleVersionLock<US>>
+    pub fn embedded_blocking_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBlockingBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: VersionedTransaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        let (transaction, unversioned, hooks) = input;
-        EmbeddedBlockingBuilder::new(transaction, unversioned, hooks)
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "server")]
     pub fn server()
-    -> ServerBuilder<Memory, Memory, Serializable<Memory, Memory>, SingleVersionLock<Memory>> {
-        let (transaction, hooks) = serializable(memory());
-        let unversioned = SingleVersionLock::new(Memory::default(), hooks.clone());
-        ServerBuilder::new(transaction, unversioned, hooks)
+    -> ServerBuilder<Serializable<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>
+    {
+        let (versioned, unversioned, hooks) = serializable(memory());
+        ServerBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "server")]
-    pub fn server_with<VS, US, T>(
-        input: (T, SingleVersionLock<US>, Hooks),
-    ) -> ServerBuilder<VS, US, T, SingleVersionLock<US>>
+    pub fn server_with<VT, UT>(input: (VT, UT, Hooks)) -> ServerBuilder<VT, UT>
     where
-        VS: VersionedStorage,
-        US: UnversionedStorage,
-        T: VersionedTransaction<VS, US>,
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
     {
-        let (transaction, unversioned, hooks) = input;
-        ServerBuilder::new(transaction, unversioned, hooks)
+        let (versioned, unversioned, hooks) = input;
+        ServerBuilder::new(versioned, unversioned, hooks)
     }
 }
 
-pub fn serializable<VS, US>(input: (VS, US, Hooks)) -> (Serializable<VS, US>, Hooks)
+pub fn serializable<VS, UT>(input: (VS, UT, Hooks)) -> (Serializable<VS, UT>, UT, Hooks)
 where
     VS: VersionedStorage,
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
-    (Serializable::new(input.0, input.1, input.2.clone()), input.2)
+    (Serializable::new(input.0, input.1.clone(), input.2.clone()), input.1, input.2)
 }
 
-pub fn optimistic<VS, US>(input: (VS, US, Hooks)) -> (Optimistic<VS, US>, Hooks)
+pub fn optimistic<VS, UT>(input: (VS, UT, Hooks)) -> (Optimistic<VS, UT>, UT, Hooks)
 where
     VS: VersionedStorage,
-    US: UnversionedStorage,
+    UT: UnversionedTransaction,
 {
-    (Optimistic::new(input.0, input.1, input.2.clone()), input.2)
+    (Optimistic::new(input.0, input.1.clone(), input.2.clone()), input.1, input.2)
 }
 
-pub fn memory() -> (Memory, Memory, Hooks) {
-    (Memory::default(), Memory::default(), Hooks::default())
+pub fn memory() -> (Memory, SingleVersionLock<Memory>, Hooks) {
+    let hooks = Hooks::new();
+    (Memory::default(), SingleVersionLock::new(Memory::new(), hooks.clone()), hooks)
 }
 
-pub fn lmdb(path: &Path) -> (Lmdb, Lmdb, Hooks) {
+pub fn lmdb(path: &Path) -> (Lmdb, SingleVersionLock<Lmdb>, Hooks) {
+    let hooks = Hooks::new();
     let result = Lmdb::new(path);
-    (result.clone(), result, Hooks::default())
+    (result.clone(), SingleVersionLock::new(result, hooks.clone()), hooks)
 }
 
-pub fn sqlite(config: SqliteConfig) -> (Sqlite, Sqlite, Hooks) {
+pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, Hooks) {
+    let hooks = Hooks::new();
     let result = Sqlite::new(config);
-    (result.clone(), result, Hooks::default())
+    (result.clone(), SingleVersionLock::new(result, hooks.clone()), hooks)
 }

@@ -3,8 +3,8 @@
 
 use crate::diagnostic::transaction;
 use crate::interface::{
-    BoxedVersionedIter, UnversionedStorage, UnversionedTransaction, Versioned,
-    VersionedReadTransaction, VersionedStorage, VersionedTransaction, VersionedWriteTransaction,
+    BoxedVersionedIter, UnversionedTransaction, Versioned, VersionedReadTransaction,
+    VersionedTransaction, VersionedWriteTransaction,
 };
 use crate::return_error;
 use crate::row::EncodedRow;
@@ -12,11 +12,9 @@ use crate::{EncodedKey, EncodedKeyRange};
 
 /// An active read transaction that holds a versioned read transaction
 /// and provides read-only access to unversioned storage.
-pub struct ActiveReadTransaction<VS, US, VT, UT>
+pub struct ActiveReadTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     versioned: VT::Read,
@@ -27,11 +25,9 @@ where
 /// and provides read/write access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct ActiveWriteTransaction<VS, US, VT, UT>
+pub struct ActiveWriteTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     versioned: Option<VT::Write>,
@@ -46,11 +42,9 @@ enum TransactionState {
     RolledBack,
 }
 
-impl<VS, US, VT, UT> ActiveReadTransaction<VS, US, VT, UT>
+impl<VT, UT> ActiveReadTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     /// Creates a new active read transaction
@@ -67,11 +61,9 @@ where
     }
 }
 
-impl<VS, US, VT, UT> VersionedReadTransaction for ActiveReadTransaction<VS, US, VT, UT>
+impl<VT, UT> VersionedReadTransaction for ActiveReadTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     #[inline]
@@ -115,11 +107,9 @@ where
     }
 }
 
-impl<VS, US, VT, UT> ActiveWriteTransaction<VS, US, VT, UT>
+impl<VT, UT> ActiveWriteTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     /// Creates a new active write transaction
@@ -188,11 +178,9 @@ where
     }
 }
 
-impl<VS, US, VT, UT> VersionedReadTransaction for ActiveWriteTransaction<VS, US, VT, UT>
+impl<VT, UT> VersionedReadTransaction for ActiveWriteTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     #[inline]
@@ -244,11 +232,9 @@ where
     }
 }
 
-impl<VS, US, VT, UT> VersionedWriteTransaction<VS, US> for ActiveWriteTransaction<VS, US, VT, UT>
+impl<VT, UT> VersionedWriteTransaction for ActiveWriteTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     #[inline]
@@ -278,11 +264,9 @@ where
     }
 }
 
-impl<VS, US, VT, UT> Drop for ActiveWriteTransaction<VS, US, VT, UT>
+impl<VT, UT> Drop for ActiveWriteTransaction<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    VT: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     fn drop(&mut self) {

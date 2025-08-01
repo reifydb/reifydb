@@ -6,10 +6,13 @@ use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnId, ColumnIndex};
 use reifydb_core::Type;
 use reifydb_core::interface::{ColumnKey, EncodableKey, TableColumnKey};
-use reifydb_core::interface::{VersionedReadTransaction, TableId};
+use reifydb_core::interface::{TableId, VersionedReadTransaction};
 
 impl Catalog {
-    pub fn get_column(rx: &mut impl VersionedReadTransaction, column: ColumnId) -> crate::Result<Option<Column>> {
+    pub fn get_column(
+        rx: &mut impl VersionedReadTransaction,
+        column: ColumnId,
+    ) -> crate::Result<Option<Column>> {
         match rx.get(&ColumnKey { column }.encode())? {
             None => Ok(None),
             Some(versioned) => {
@@ -28,9 +31,9 @@ impl Catalog {
     }
 
     pub fn get_column_by_name(
-		rx: &mut impl VersionedReadTransaction,
-		table: TableId,
-		column_name: &str,
+        rx: &mut impl VersionedReadTransaction,
+        table: TableId,
+        column_name: &str,
     ) -> crate::Result<Option<Column>> {
         let maybe_id = rx.range(TableColumnKey::full_scan(table))?.find_map(|versioned| {
             let row = versioned.row;
@@ -51,16 +54,16 @@ mod tests {
         use crate::column::ColumnId;
         use crate::test_utils::create_test_table_column;
         use reifydb_core::Type;
-        use reifydb_transaction::test_utils::TestTransaction;
+        use reifydb_transaction::test_utils::create_test_write_transaction;
 
         #[test]
         fn test_ok() {
-            let mut tx = TestTransaction::new();
-            create_test_table_column(&mut tx, "col_1", Type::Int1, vec![]);
-            create_test_table_column(&mut tx, "col_2", Type::Int2, vec![]);
-            create_test_table_column(&mut tx, "col_3", Type::Int4, vec![]);
+            let mut atx = create_test_write_transaction();
+            create_test_table_column(&mut atx, "col_1", Type::Int1, vec![]);
+            create_test_table_column(&mut atx, "col_2", Type::Int2, vec![]);
+            create_test_table_column(&mut atx, "col_3", Type::Int4, vec![]);
 
-            let result = Catalog::get_column(&mut tx, ColumnId(2)).unwrap().unwrap();
+            let result = Catalog::get_column(&mut atx, ColumnId(2)).unwrap().unwrap();
 
             assert_eq!(result.id, 2);
             assert_eq!(result.name, "col_2");
@@ -69,12 +72,12 @@ mod tests {
 
         #[test]
         fn test_not_found() {
-            let mut tx = TestTransaction::new();
-            create_test_table_column(&mut tx, "col_1", Type::Int1, vec![]);
-            create_test_table_column(&mut tx, "col_2", Type::Int2, vec![]);
-            create_test_table_column(&mut tx, "col_3", Type::Int4, vec![]);
+            let mut atx = create_test_write_transaction();
+            create_test_table_column(&mut atx, "col_1", Type::Int1, vec![]);
+            create_test_table_column(&mut atx, "col_2", Type::Int2, vec![]);
+            create_test_table_column(&mut atx, "col_3", Type::Int4, vec![]);
 
-            let result = Catalog::get_column(&mut tx, ColumnId(4)).unwrap();
+            let result = Catalog::get_column(&mut atx, ColumnId(4)).unwrap();
             assert!(result.is_none());
         }
     }
@@ -84,17 +87,17 @@ mod tests {
         use crate::test_utils::create_test_table_column;
         use reifydb_core::Type;
         use reifydb_core::interface::TableId;
-        use reifydb_transaction::test_utils::TestTransaction;
+        use reifydb_transaction::test_utils::create_test_write_transaction;
 
         #[test]
         fn test_ok() {
-            let mut tx = TestTransaction::new();
-            create_test_table_column(&mut tx, "col_1", Type::Int1, vec![]);
-            create_test_table_column(&mut tx, "col_2", Type::Int2, vec![]);
-            create_test_table_column(&mut tx, "col_3", Type::Int4, vec![]);
+            let mut atx = create_test_write_transaction();
+            create_test_table_column(&mut atx, "col_1", Type::Int1, vec![]);
+            create_test_table_column(&mut atx, "col_2", Type::Int2, vec![]);
+            create_test_table_column(&mut atx, "col_3", Type::Int4, vec![]);
 
             let result =
-                Catalog::get_column_by_name(&mut tx, TableId(1), "col_3").unwrap().unwrap();
+                Catalog::get_column_by_name(&mut atx, TableId(1), "col_3").unwrap().unwrap();
 
             assert_eq!(result.id, 3);
             assert_eq!(result.name, "col_3");
@@ -103,10 +106,10 @@ mod tests {
 
         #[test]
         fn test_not_found() {
-            let mut tx = TestTransaction::new();
-            create_test_table_column(&mut tx, "col_1", Type::Int1, vec![]);
+            let mut atx = create_test_write_transaction();
+            create_test_table_column(&mut atx, "col_1", Type::Int1, vec![]);
 
-            let result = Catalog::get_column_by_name(&mut tx, TableId(1), "not_found").unwrap();
+            let result = Catalog::get_column_by_name(&mut atx, TableId(1), "not_found").unwrap();
 
             assert!(result.is_none());
         }

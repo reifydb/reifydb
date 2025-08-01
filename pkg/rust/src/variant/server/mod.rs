@@ -6,7 +6,9 @@ mod builder;
 pub use builder::ServerBuilder;
 
 use crate::hook::WithHooks;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    UnversionedTransaction, VersionedTransaction,
+};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
@@ -16,41 +18,35 @@ use tokio::select;
 use tokio::sync::oneshot::Receiver;
 use tokio::task::JoinSet;
 
-pub struct Server<VS, US, T, UT>
+pub struct Server<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) engine: Engine<VS, US, T, UT>,
+    pub(crate) engine: Engine<VT, UT>,
     pub(crate) grpc_config: Option<GrpcConfig>,
-    pub(crate) grpc: Option<GrpcServer<VS, US, T, UT>>,
+    pub(crate) grpc: Option<GrpcServer<VT, UT>>,
     pub(crate) ws_config: Option<WsConfig>,
-    pub(crate) ws: Option<WsServer<VS, US, T, UT>>,
+    pub(crate) ws: Option<WsServer<VT, UT>>,
 }
 
-impl<VS, US, T, UT> Server<VS, US, T, UT>
+impl<VT, UT> Server<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn with_engine(mut self, engine: Engine<VS, US, T, UT>) -> Self {
+    pub fn with_engine(mut self, engine: Engine<VT, UT>) -> Self {
         self.engine = engine;
         self
     }
 }
 
-impl<VS, US, T, UT> Server<VS, US, T, UT>
+impl<VT, UT> Server<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn new(engine: Engine<VS, US, T, UT>) -> Self {
+    pub fn new(engine: Engine<VT, UT>) -> Self {
         Self { engine, grpc_config: None, grpc: None, ws_config: None, ws: None }
     }
 
@@ -157,14 +153,12 @@ where
     }
 }
 
-impl<VS, US, T, UT> WithHooks<VS, US, T, UT> for Server<VS, US, T, UT>
+impl<VT, UT> WithHooks<VT, UT> for Server<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn engine(&self) -> &Engine<VS, US, T, UT> {
+    fn engine(&self) -> &Engine<VT, UT> {
         &self.engine
     }
 }

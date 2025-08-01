@@ -6,9 +6,8 @@ use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, GetHooks, Principal, UnversionedStorage, UnversionedTransaction,
-    VersionedStorage, VersionedTransaction, VersionedWriteTransaction, ActiveReadTransaction,
-    ActiveWriteTransaction,
+    ActiveReadTransaction, ActiveWriteTransaction, Engine as EngineInterface, GetHooks, Principal,
+    UnversionedTransaction, VersionedTransaction, VersionedWriteTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
@@ -16,18 +15,14 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub struct Engine<VS, US, T, UT>(Arc<EngineInner<VS, US, T, UT>>)
+pub struct Engine<VT, UT>(Arc<EngineInner<VT, UT>>)
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction;
 
-impl<VS, US, T, UT> GetHooks for Engine<VS, US, T, UT>
+impl<VT, UT> GetHooks for Engine<VT, UT>
 where
-    T: VersionedTransaction<VS, US>,
-    US: UnversionedStorage,
-    VS: VersionedStorage,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     fn get_hooks(&self) -> &Hooks {
@@ -35,35 +30,33 @@ where
     }
 }
 
-impl<VS, US, T, UT> EngineInterface<VS, US, T, UT> for Engine<VS, US, T, UT>
+impl<VT, UT> EngineInterface<VT, UT> for Engine<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn begin_write(&self) -> crate::Result<T::Write> {
-        Ok(self.transaction.begin_write()?)
+    fn begin_write(&self) -> crate::Result<ActiveWriteTransaction<VT, UT>> {
+        Ok(ActiveWriteTransaction::new(self.versioned.begin_write()?, self.unversioned.clone()))
     }
 
-    fn begin_read(&self) -> crate::Result<T::Read> {
-        Ok(self.transaction.begin_read()?)
+    fn begin_read(&self) -> crate::Result<ActiveReadTransaction<VT, UT>> {
+        Ok(ActiveReadTransaction::new(self.versioned.begin_read()?, self.unversioned.clone()))
     }
 
     fn write_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut tx = self.begin_write()?;
+        let mut atx = self.begin_write()?;
 
         for statement in statements {
-            if let Some(plan) = plan(&mut tx, statement)? {
-                let er = execute_tx(&mut tx, plan)?;
+            if let Some(plan) = plan(&mut atx, statement)? {
+                let er = execute_tx(&mut atx, plan)?;
                 result.push(er);
             }
         }
 
-        tx.commit()?;
+        atx.commit()?;
 
         Ok(result.into_iter().map(Frame::from).collect())
     }
@@ -75,7 +68,7 @@ where
         let mut rx = self.begin_read()?;
         for statement in statements {
             if let Some(plan) = plan(&mut rx, statement)? {
-                let er = execute_rx::<VS, US>(&mut rx, plan)?;
+                let er = execute_rx::<VT, UT>(&mut rx, plan)?;
                 result.push(er);
             }
         }
@@ -84,39 +77,9 @@ where
     }
 }
 
-impl<VS, US, T, UT> Engine<VS, US, T, UT>
+impl<VT, UT> Clone for Engine<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
-    UT: UnversionedTransaction,
-{
-    pub fn transaction(&self) -> &T {
-        &self.transaction
-    }
-
-    pub fn unversioned(&self) -> &UT {
-        &self.unversioned
-    }
-
-    /// Begin a read active transaction
-    pub fn begin_active_read(&self) -> crate::Result<ActiveReadTransaction<VS, US, T, UT>> {
-        let read_tx = self.begin_read()?;
-        Ok(ActiveReadTransaction::new(read_tx, self.unversioned.clone()))
-    }
-
-    /// Begin a write active transaction
-    pub fn begin_active_write(&self) -> crate::Result<ActiveWriteTransaction<VS, US, T, UT>> {
-        let write_tx = self.begin_write()?;
-        Ok(ActiveWriteTransaction::new(write_tx, self.unversioned.clone()))
-    }
-}
-
-impl<VS, US, T, UT> Clone for Engine<VS, US, T, UT>
-where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     fn clone(&self) -> Self {
@@ -124,53 +87,49 @@ where
     }
 }
 
-impl<VS, US, T, UT> Deref for Engine<VS, US, T, UT>
+impl<VT, UT> Deref for Engine<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    type Target = EngineInner<VS, US, T, UT>;
+    type Target = EngineInner<VT, UT>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<VS, US, T, UT>
+pub struct EngineInner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    transaction: T,
+    versioned: VT,
     unversioned: UT,
     hooks: Hooks,
-    _phantom: PhantomData<(VS, US)>,
+    _phantom: PhantomData<(VT, UT)>,
 }
 
-impl<VS, US, T, UT> Engine<VS, US, T, UT>
+impl<VT, UT> Engine<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn new(transaction: T, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
+    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
         let result =
-            Self(Arc::new(EngineInner { transaction, unversioned, hooks, _phantom: PhantomData }));
+            Self(Arc::new(EngineInner { versioned, unversioned, hooks, _phantom: PhantomData }));
         result.setup_hooks()?;
         Ok(result)
     }
+
+    pub fn unversioned(&self) -> &UT {
+        &self.unversioned
+    }
 }
 
-impl<VS, US, T, UT> Engine<VS, US, T, UT>
+impl<VT, UT> Engine<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     pub fn setup_hooks(&self) -> crate::Result<()> {

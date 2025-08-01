@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{VersionedTransaction, UnversionedStorage, VersionedStorage};
+use reifydb::core::interface::{VersionedTransaction, UnversionedTransaction};
 use reifydb::variant::embedded_blocking::EmbeddedBlocking;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -12,46 +12,46 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 
-pub struct Runner<VS, US, T>
+pub struct Runner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+
 {
-    instance: EmbeddedBlocking<VS, US, T>,
+    instance: EmbeddedBlocking<VT, UT>,
 }
 
-impl<VS, US, T> Runner<VS, US, T>
+impl<VT, UT> Runner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+
 {
-    pub fn new(input: (T, Hooks)) -> Self {
+    pub fn new(input: (VT, UT, Hooks)) -> Self {
         Self { instance: ReifyDB::embedded_blocking_with(input).build() }
     }
 }
 
-impl<VS, US, T> testscript::Runner for Runner<VS, US, T>
+impl<VT, UT> testscript::Runner for Runner<VT, UT>
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
-            "tx" => {
+            "write" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("tx: {query}");
+                println!("write: {query}");
 
                 for line in self.instance.write_as_root(query.as_str())? {
                     writeln!(output, "{}", line)?;
                 }
             }
-            "rx" => {
+            "read" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 

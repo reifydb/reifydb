@@ -55,7 +55,7 @@ export interface ErrorResponse {
     };
 }
 
-export interface TxRequest {
+export interface WriteRequest {
     id: string;
     type: "Tx";
     payload: {
@@ -71,7 +71,7 @@ export interface TxResponse {
     };
 }
 
-export interface RxRequest {
+export interface ReadRequest {
     id: string;
     type: "Rx";
     payload: {

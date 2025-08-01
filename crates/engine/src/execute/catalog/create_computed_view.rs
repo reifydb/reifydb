@@ -3,14 +3,16 @@
 
 use crate::columnar::columns::Columns;
 use crate::execute::Executor;
-use reifydb_core::interface::{VersionedWriteTransaction, UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{
+    ActiveWriteTransaction, UnversionedTransaction, VersionedTransaction,
+};
 use reifydb_rql::plan::physical::CreateComputedViewPlan;
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Executor<VS, US> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_computed_view(
-		&mut self,
-		_tx: &mut impl VersionedWriteTransaction<VS, US>,
-		_plan: CreateComputedViewPlan,
+        &mut self,
+        _atx: &mut ActiveWriteTransaction<VT, UT>,
+        _plan: CreateComputedViewPlan,
     ) -> crate::Result<Columns> {
         // if plan.if_not_exists {
         //     unimplemented!()

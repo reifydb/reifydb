@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-tx 'map cast(cast(0, uint4), float4)'
+write 'map cast(cast(0, uint4), float4)'
 ---
 > +-----+
 > |  0  |
@@ -10,7 +10,7 @@ tx 'map cast(cast(0, uint4), float4)'
 > +-----+
 > 
 
-tx 'map cast(cast(16777216, uint4), float4)'
+write 'map cast(cast(16777216, uint4), float4)'
 ---
 > +------------+
 > |  16777216  |
@@ -19,7 +19,7 @@ tx 'map cast(cast(16777216, uint4), float4)'
 > +------------+
 > 
 
-!tx 'map cast(cast(16777217, uint4), float4)'
+!write 'map cast(cast(16777217, uint4), float4)'
 ---
 >  Error CAST_002: failed to cast to FLOAT4
 >   at "(16777217float4" (line 1, column 9)

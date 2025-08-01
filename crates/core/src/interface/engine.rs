@@ -1,19 +1,17 @@
 use crate::interface::{
-    GetHooks, Principal, UnversionedStorage, UnversionedTransaction, VersionedStorage,
+    ActiveReadTransaction, ActiveWriteTransaction, GetHooks, Principal, UnversionedTransaction,
     VersionedTransaction,
 };
 use crate::result::frame::Frame;
 
-pub trait Engine<VS, US, T, UT>: GetHooks + Send + Sync + Clone + 'static
+pub trait Engine<VT, UT>: GetHooks + Send + Sync + Clone + 'static
 where
-    VS: VersionedStorage,
-    US: UnversionedStorage,
-    T: VersionedTransaction<VS, US>,
+    VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn begin_write(&self) -> crate::Result<T::Write>;
+    fn begin_write(&self) -> crate::Result<ActiveWriteTransaction<VT, UT>>;
 
-    fn begin_read(&self) -> crate::Result<T::Read>;
+    fn begin_read(&self) -> crate::Result<ActiveReadTransaction<VT, UT>>;
 
     fn write_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
 

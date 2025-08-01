@@ -15,8 +15,7 @@ pub mod value;
 
 pub use common::*;
 pub use interface::{
-    ActiveReadTransaction, ActiveWriteTransaction, BorrowedSpan, ColumnDescriptor, IntoOwnedSpan,
-    OwnedSpan, Span, SpanColumn, SpanLine,
+    BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
 };
 pub use result::*;
 pub use row::key::{EncodedKey, EncodedKeyRange};

@@ -10,12 +10,12 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::mvcc::transaction::version::StdVersionProvider;
 pub use read::*;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{UnversionedStorage, VersionedStorage};
+use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_storage::memory::Memory;
 pub use write::*;
@@ -27,36 +27,36 @@ mod write;
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::{Committed, TransactionManager};
+use crate::svl::SingleVersionLock;
 
-pub struct Serializable<VS: VersionedStorage, US: UnversionedStorage>(Arc<Inner<VS, US>>);
+pub struct Serializable<VS: VersionedStorage, UT: UnversionedTransaction>(Arc<Inner<VS, UT>>);
 
-pub struct Inner<VS: VersionedStorage, US: UnversionedStorage> {
-    pub(crate) tm: TransactionManager<BTreeConflict, StdVersionProvider<US>, BTreePendingWrites>,
+pub struct Inner<VS: VersionedStorage, UT: UnversionedTransaction> {
+    pub(crate) tm: TransactionManager<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
     pub(crate) versioned: VS,
-    pub(crate) unversioned: Mutex<US>,
     pub(crate) hooks: Hooks,
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Deref for Serializable<VS, US> {
-    type Target = Inner<VS, US>;
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Deref for Serializable<VS, UT> {
+    type Target = Inner<VS, UT>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Clone for Serializable<VS, US> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone for Serializable<VS, UT> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
-    fn new(name: &str, versioned: VS, unversioned: US, hooks: Hooks) -> Self {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
+    fn new(name: &str, versioned: VS, unversioned: UT, hooks: Hooks) -> Self {
         let tm =
-            TransactionManager::new(name, StdVersionProvider::new(unversioned.clone()).unwrap())
-                .unwrap();
-        Self { tm, versioned, unversioned: Mutex::new(unversioned), hooks }
+            TransactionManager::new(name, StdVersionProvider::new(unversioned).unwrap()).unwrap();
+
+        Self { tm, versioned, hooks }
     }
 
     fn version(&self) -> crate::Result<Version> {
@@ -64,39 +64,41 @@ impl<VS: VersionedStorage, US: UnversionedStorage> Inner<VS, US> {
     }
 }
 
-impl Serializable<Memory, Memory> {
+impl Serializable<Memory, SingleVersionLock<Memory>> {
     pub fn testing() -> Self {
-        Self::new(Memory::default(), Memory::default(), Hooks::default())
+        let memory = Memory::new();
+        let hooks = Hooks::new();
+        Self::new(Memory::default(), SingleVersionLock::new(memory, hooks.clone()), hooks)
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn new(versioned: VS, unversioned: US, hooks: Hooks) -> Self {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
+    pub fn new(versioned: VS, unversioned: UT, hooks: Hooks) -> Self {
         Self(Arc::new(Inner::new(core::any::type_name::<Self>(), versioned, unversioned, hooks)))
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
     pub fn version(&self) -> crate::Result<Version> {
         self.0.version()
     }
-    pub fn begin_rx(&self) -> crate::Result<TransactionRx<VS, US>> {
-        TransactionRx::new(self.clone(), None)
+    pub fn begin_read(&self) -> crate::Result<ReadTransaction<VS, UT>> {
+        ReadTransaction::new(self.clone(), None)
     }
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
-    pub fn begin_tx(&self) -> crate::Result<TransactionTx<VS, US>> {
-        TransactionTx::new(self.clone())
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
+    pub fn begin_write(&self) -> crate::Result<WriteTransaction<VS, UT>> {
+        WriteTransaction::new(self.clone())
     }
 }
 
-pub enum Transaction<VS: VersionedStorage, US: UnversionedStorage> {
-    Rx(TransactionRx<VS, US>),
-    Tx(TransactionTx<VS, US>),
+pub enum Transaction<VS: VersionedStorage, UT: UnversionedTransaction> {
+    Rx(ReadTransaction<VS, UT>),
+    Tx(WriteTransaction<VS, UT>),
 }
 
-impl<VS: VersionedStorage, US: UnversionedStorage> Serializable<VS, US> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
     pub fn get(
         &self,
         key: &EncodedKey,
