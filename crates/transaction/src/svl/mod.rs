@@ -2,13 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{Unversioned, UnversionedStorage};
+use reifydb_core::interface::{Unversioned, UnversionedStorage, WriteTransaction};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-
-pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
 pub(crate) mod range;
 pub(crate) mod range_rev;
@@ -17,8 +15,8 @@ pub(crate) mod scan;
 pub(crate) mod scan_rev;
 mod write;
 
-pub use read::ReadTransaction;
-pub use write::WriteTransaction;
+pub use read::SvlReadTransaction;
+pub use write::SvlWriteTransaction;
 
 #[derive(Clone)]
 pub struct SingleVersionLock<US> {
@@ -43,12 +41,12 @@ where
         }
     }
 
-    pub fn begin_read(&self) -> crate::Result<ReadTransaction<'_, US>> {
+    pub fn begin_read(&self) -> crate::Result<SvlReadTransaction<'_, US>> {
         let storage = self.inner.storage.read().unwrap();
-        Ok(ReadTransaction { storage })
+        Ok(SvlReadTransaction { storage })
     }
 
-    pub fn begin_write(&self) -> crate::Result<WriteTransaction<US>> {
+    pub fn begin_write(&self) -> crate::Result<SvlWriteTransaction<US>> {
         // Try to acquire write lock atomically
         match self.inner.write_active.compare_exchange(
             false,
@@ -56,7 +54,7 @@ where
             Ordering::Acquire,
             Ordering::Relaxed,
         ) {
-            Ok(_) => Ok(WriteTransaction::new(self.inner.clone())),
+            Ok(_) => Ok(SvlWriteTransaction::new(self.inner.clone())),
             Err(_) => {
                 panic!("Write transaction already active")
             }
@@ -73,7 +71,7 @@ where
 
     pub fn with_write<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut WriteTransaction<US>) -> crate::Result<R>,
+        F: FnOnce(&mut SvlWriteTransaction<US>) -> crate::Result<R>,
     {
         let mut tx = self.begin_write()?;
         let result = f(&mut tx)?;

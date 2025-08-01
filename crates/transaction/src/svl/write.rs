@@ -6,26 +6,26 @@ use crate::svl::range::SvlRange;
 use crate::svl::range_rev::SvlRangeRev;
 use crate::svl::scan::SvlScan;
 use crate::svl::scan_rev::SvlScanRev;
+use reifydb_core::interface::{BoxedUnversionedIter, ReadTransaction, WriteTransaction};
 use std::collections::HashMap;
+use std::mem::take;
 use std::ops::RangeBounds;
 use std::sync::atomic::Ordering;
 
-pub struct WriteTransaction<US> {
+pub struct SvlWriteTransaction<US> {
     svl: Arc<SvlInner<US>>,
     pending: HashMap<EncodedKey, Delta>,
     completed: bool,
 }
 
-impl<US> WriteTransaction<US>
+impl<US> ReadTransaction for SvlWriteTransaction<US>
 where
     US: UnversionedStorage,
 {
-    pub(super) fn new(svl: Arc<SvlInner<US>>) -> Self {
-        Self { svl, pending: HashMap::new(), completed: false }
-    }
+    type Item = Unversioned;
+    type Iter<'a> = BoxedUnversionedIter<'a>;
 
-    pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
-        // Check buffer first
+    fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Self::Item>> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
                 Delta::Insert { row, .. }
@@ -37,13 +37,11 @@ where
             };
         }
 
-        // Then check storage
         let storage = self.svl.storage.read().unwrap();
         storage.get(key)
     }
 
-    pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-        // Check buffer first
+    fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
                 Delta::Insert { .. } | Delta::Update { .. } | Delta::Upsert { .. } => Ok(true),
@@ -56,64 +54,38 @@ where
         storage.contains(key)
     }
 
-    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
-        let delta = if self.pending.contains_key(key) {
-            Delta::Update { key: key.clone(), row }
-        } else {
-            Delta::Insert { key: key.clone(), row }
-        };
-        self.pending.insert(key.clone(), delta);
-        Ok(())
-    }
-
-    pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
-        self.pending.insert(key.clone(), Delta::Remove { key: key.clone() });
-        Ok(())
-    }
-
-    pub fn commit(mut self) -> crate::Result<()> {
-        // Take buffer and convert to vec of deltas
-        let deltas: Vec<Delta> =
-            std::mem::take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
-
-        if !deltas.is_empty() {
-            let mut storage = self.svl.storage.write().unwrap();
-            storage.apply(CowVec::new(deltas))?;
-        }
-
-        self.completed = true;
-        Ok(())
-    }
-
-    pub fn rollback(mut self) -> crate::Result<()> {
-        self.pending.clear();
-        self.completed = true;
-        Ok(())
-    }
-
-    pub fn scan(&mut self) -> crate::Result<BoxedUnversionedIter> {
+    fn scan(&mut self) -> crate::Result<Self::Iter<'_>> {
         let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
         let iter = SvlScan::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
     }
 
-    pub fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter> {
+    fn scan_rev(&mut self) -> crate::Result<Self::Iter<'_>> {
         let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
         let iter = SvlScanRev::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
     }
 
-    pub fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>> {
         let (pending_items, committed_items) =
             self.prepare_scan_data(Some(range.clone()), false)?;
         let iter = SvlRange::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
     }
 
-    pub fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>> {
         let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
         let iter = SvlRangeRev::new(pending_items.into_iter(), committed_items.into_iter());
         Ok(Box::new(iter))
+    }
+}
+
+impl<US> SvlWriteTransaction<US>
+where
+    US: UnversionedStorage,
+{
+    pub(super) fn new(svl: Arc<SvlInner<US>>) -> Self {
+        Self { svl, pending: HashMap::new(), completed: false }
     }
 
     /// Helper method to prepare scan data by cloning and sorting pending items
@@ -156,7 +128,46 @@ where
     }
 }
 
-impl<S> Drop for WriteTransaction<S> {
+impl<US> WriteTransaction for SvlWriteTransaction<US>
+where
+    US: UnversionedStorage,
+{
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
+        let delta = if self.pending.contains_key(key) {
+            Delta::Update { key: key.clone(), row }
+        } else {
+            Delta::Insert { key: key.clone(), row }
+        };
+        self.pending.insert(key.clone(), delta);
+        Ok(())
+    }
+
+    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+        self.pending.insert(key.clone(), Delta::Remove { key: key.clone() });
+        Ok(())
+    }
+
+    fn commit(mut self) -> crate::Result<()> {
+        let deltas: Vec<Delta> =
+            take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
+
+        if !deltas.is_empty() {
+            let mut storage = self.svl.storage.write().unwrap();
+            storage.apply(CowVec::new(deltas))?;
+        }
+
+        self.completed = true;
+        Ok(())
+    }
+
+    fn rollback(mut self) -> crate::Result<()> {
+        self.pending.clear();
+        self.completed = true;
+        Ok(())
+    }
+}
+
+impl<S> Drop for SvlWriteTransaction<S> {
     fn drop(&mut self) {
         if !self.completed {
             // Auto-rollback: just clear the buffer

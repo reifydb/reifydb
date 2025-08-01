@@ -1,11 +1,61 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::{GetHooks, UnversionedStorage, Versioned, VersionedStorage};
+use crate::interface::{GetHooks, Unversioned, UnversionedStorage, Versioned, VersionedStorage};
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange, Error};
 use std::sync::MutexGuard;
 
+pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
+pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
+
+pub trait NewTransaction<US: UnversionedStorage> {
+    type Read: ReadTransaction;
+    type Write: WriteTransaction;
+
+    fn begin_read(&self) -> crate::Result<Self::Read>;
+
+    fn begin_write(&self) -> Result<Self::Write, Error>;
+}
+
+pub trait ReadTransaction {
+    type Item;
+    type Iter<'a>
+    where
+        Self: 'a;
+
+    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Self::Item>>;
+
+    fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
+
+    fn scan(&mut self) -> crate::Result<Self::Iter<'_>>;
+
+    fn scan_rev(&mut self) -> crate::Result<Self::Iter<'_>>;
+
+    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>>;
+
+    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>>;
+
+    fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<Self::Iter<'_>> {
+        self.range(EncodedKeyRange::prefix(prefix))
+    }
+
+    fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<Self::Iter<'_>> {
+        self.range_rev(EncodedKeyRange::prefix(prefix))
+    }
+}
+
+pub trait WriteTransaction: ReadTransaction {
+    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
+
+    fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
+
+    fn commit(self) -> crate::Result<()>;
+
+    fn rollback(self) -> crate::Result<()>;
+}
+
+// FIXME to be deleted
 pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
     GetHooks + Send + Sync + Clone + 'static
 {
@@ -18,8 +68,6 @@ pub trait Transaction<VS: VersionedStorage, US: UnversionedStorage>:
 
     fn begin_unversioned(&self) -> MutexGuard<US>;
 }
-
-pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
 pub trait Rx {
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error>;

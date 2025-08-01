@@ -3,60 +3,57 @@
 
 use super::*;
 
+use reifydb_core::interface::{BoxedUnversionedIter, ReadTransaction};
 use std::sync::RwLockReadGuard;
 
-pub struct ReadTransaction<'a, US> {
+pub struct SvlReadTransaction<'a, US> {
     pub(super) storage: RwLockReadGuard<'a, US>,
 }
 
-impl<US> ReadTransaction<'_, US>
+impl<US> ReadTransaction for SvlReadTransaction<'_, US>
 where
     US: UnversionedStorage,
 {
-    pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
+    type Item = Unversioned;
+    type Iter<'a>
+        = BoxedUnversionedIter<'a>
+    where
+        Self: 'a;
+
+    fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Self::Item>> {
         self.storage.get(key)
     }
 
-    pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+    fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
         self.storage.contains(key)
     }
 
-    // For scan operations, we need to collect into a Vec to ensure Send
-    pub fn scan(&mut self) -> crate::Result<BoxedUnversionedIter<'_>> {
+    fn scan(&mut self) -> crate::Result<Self::Iter<'_>> {
         let iter = self.storage.scan()?;
         Ok(Box::new(iter.into_iter()))
     }
 
-    pub fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter<'_>> {
+    fn scan_rev(&mut self) -> crate::Result<Self::Iter<'_>> {
         let iter = self.storage.scan_rev()?;
         Ok(Box::new(iter.into_iter()))
     }
 
-    pub fn scan_range(
-        &mut self,
-        range: EncodedKeyRange,
-    ) -> crate::Result<BoxedUnversionedIter<'_>> {
+    fn range(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>> {
         let iter = self.storage.scan_range(range)?;
         Ok(Box::new(iter.into_iter()))
     }
 
-    pub fn scan_prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter<'_>> {
-        let iter = self.storage.scan_prefix(prefix)?;
-        Ok(Box::new(iter.into_iter()))
-    }
-
-    pub fn scan_range_rev(
-        &mut self,
-        range: EncodedKeyRange,
-    ) -> crate::Result<BoxedUnversionedIter<'_>> {
+    fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<Self::Iter<'_>> {
         let iter = self.storage.scan_range_rev(range)?;
         Ok(Box::new(iter.into_iter()))
     }
 
-    pub fn scan_prefix_rev(
-        &mut self,
-        prefix: &EncodedKey,
-    ) -> crate::Result<BoxedUnversionedIter<'_>> {
+    fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<Self::Iter<'_>> {
+        let iter = self.storage.scan_prefix(prefix)?;
+        Ok(Box::new(iter.into_iter()))
+    }
+
+    fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<Self::Iter<'_>> {
         let iter = self.storage.scan_prefix_rev(prefix)?;
         Ok(Box::new(iter.into_iter()))
     }
