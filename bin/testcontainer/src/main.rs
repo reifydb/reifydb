@@ -41,7 +41,7 @@ fn main() {
         .with_websocket(WsConfig::default())
         .on_create(|ctx| {
             ctx.write_as_root("create schema test")?;
-            ctx.write_as_root("create table test.arith(id: int1, value: int2, num: int2)")?;
+            ctx.write_as_root("create table test.arith { id: int1, value: int2, num: int2 }")?;
             ctx.write_as_root(
                 "from [
                 { id: 1, value: 1, num: 5  },
