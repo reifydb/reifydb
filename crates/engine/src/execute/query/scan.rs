@@ -9,7 +9,7 @@ use reifydb_core::EncodedKey;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
 use reifydb_core::interface::{EncodableKeyRange, VersionedReadTransaction, TableRowKeyRange};
-use reifydb_core::row::Layout;
+use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::ops::Bound::{Excluded, Included};
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub(crate) struct ScanColumnsNode {
     table: Table,
     context: Arc<ExecutionContext>,
     layout: ColumnsLayout,
-    row_layout: Layout,
+    row_layout: EncodedRowLayout,
     last_key: Option<EncodedKey>,
     exhausted: bool,
 }
@@ -26,7 +26,7 @@ pub(crate) struct ScanColumnsNode {
 impl ScanColumnsNode {
     pub fn new(table: Table, context: Arc<ExecutionContext>) -> crate::Result<Self> {
         let data = table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
-        let row_layout = Layout::new(&data);
+        let row_layout = EncodedRowLayout::new(&data);
 
         let layout = ColumnsLayout {
             columns: table

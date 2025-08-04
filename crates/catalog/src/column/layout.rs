@@ -4,7 +4,7 @@
 pub(crate) mod column {
     use once_cell::sync::Lazy;
     use reifydb_core::Type;
-    use reifydb_core::row::Layout;
+    use reifydb_core::row::EncodedRowLayout;
 
     pub(crate) const ID: usize = 0;
     pub(crate) const TABLE: usize = 1;
@@ -12,8 +12,8 @@ pub(crate) mod column {
     pub(crate) const VALUE: usize = 3;
     pub(crate) const INDEX: usize = 4;
 
-    pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
-        Layout::new(&[
+    pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+        EncodedRowLayout::new(&[
             Type::Uint8, // id
             Type::Uint8, // table
             Type::Utf8,  // name
@@ -26,14 +26,14 @@ pub(crate) mod column {
 pub(crate) mod table_column {
     use once_cell::sync::Lazy;
     use reifydb_core::Type;
-    use reifydb_core::row::Layout;
+    use reifydb_core::row::EncodedRowLayout;
 
     pub(crate) const ID: usize = 0;
     pub(crate) const NAME: usize = 1;
     pub(crate) const INDEX: usize = 2;
 
-    pub(crate) static LAYOUT: Lazy<Layout> = Lazy::new(|| {
-        Layout::new(&[
+    pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+        EncodedRowLayout::new(&[
             Type::Uint8, // column id
             Type::Utf8,  // column name
             Type::Uint2, // column index - position in the table

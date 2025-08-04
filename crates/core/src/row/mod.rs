@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub use encoded::{EncodedRow, EncodedRowIter, EncodedRowIterator};
-pub use layout::{Field, Layout};
+pub use layout::{Field, EncodedRowLayout};
 
 mod encoded;
 mod get;

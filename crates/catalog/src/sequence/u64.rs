@@ -7,10 +7,10 @@ use reifydb_core::interface::{
     ActiveWriteTransaction, UnversionedReadTransaction, UnversionedTransaction,
     UnversionedWriteTransaction, VersionedTransaction,
 };
-use reifydb_core::row::Layout;
+use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
 
-static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Type::Uint8]));
+static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Type::Uint8]));
 
 pub(crate) struct SequenceGeneratorU64 {}
 

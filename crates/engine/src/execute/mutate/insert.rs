@@ -10,10 +10,10 @@ use reifydb_core::interface::{
 };
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
-    ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, VersionedWriteTransaction},
-    return_error,
-    row::Layout,
+	ColumnDescriptor, IntoOwnedSpan, Type, Value,
+	interface::{ColumnPolicyKind, VersionedWriteTransaction},
+	return_error,
+	row::EncodedRowLayout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         };
 
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
-        let layout = Layout::new(&table_types);
+        let layout = EncodedRowLayout::new(&table_types);
 
         let mut input_node = compile(
             *plan.input,
