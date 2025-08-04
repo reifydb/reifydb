@@ -1,0 +1,21 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+lex 'create index on test.users {email} filter active == true'
+---
+> Line 1:
+>   [ 0] Keyword(Create)
+>   [ 1] Keyword(Index)
+>   [ 2] Keyword(On)
+>   [ 3] Identifier("test")
+>   [ 4] Operator(Dot)
+>   [ 5] Identifier("users")
+>   [ 6] Operator(OpenCurly)
+>   [ 7] Identifier("email")
+>   [ 8] Operator(CloseCurly)
+>   [ 9] Keyword(Filter)
+>   [10] Identifier("active")
+>   [11] Operator(DoubleEqual)
+>   [12] Literal(True)
+> 
+> 

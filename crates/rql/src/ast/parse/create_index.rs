@@ -33,11 +33,10 @@ impl Parser {
         
         let columns = self.parse_index_columns()?;
         
-        let filter = if self.consume_if(TokenKind::Keyword(Filter))?.is_some() {
-            Some(Box::new(self.parse_node(Precedence::None)?))
-        } else {
-            None
-        };
+        let mut filters = Vec::new();
+        while self.consume_if(TokenKind::Keyword(Filter))?.is_some() {
+            filters.push(Box::new(self.parse_node(Precedence::None)?));
+        }
         
         let map = if self.consume_if(TokenKind::Keyword(Map))?.is_some() {
             Some(Box::new(self.parse_node(Precedence::None)?))
@@ -52,7 +51,7 @@ impl Parser {
             schema,
             table,
             columns,
-            filter,
+            filters,
             map,
         }))
     }
@@ -123,7 +122,7 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, .. }) => {
+            AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, filters, .. }) => {
                 assert_eq!(*index_type, reifydb_core::IndexType::Index);
                 assert!(name.is_none());
                 assert_eq!(schema.value(), "test");
@@ -131,6 +130,7 @@ mod tests {
                 assert_eq!(columns.len(), 1);
                 assert_eq!(columns[0].column.value(), "email");
                 assert!(columns[0].order.is_none());
+                assert_eq!(filters.len(), 0);
             }
             _ => unreachable!(),
         }
@@ -147,13 +147,14 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, .. }) => {
+            AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, filters, .. }) => {
                 assert_eq!(*index_type, reifydb_core::IndexType::Unique);
                 assert_eq!(name.as_ref().unwrap().value(), "idx_email");
                 assert_eq!(schema.value(), "test");
                 assert_eq!(table.value(), "users");
                 assert_eq!(columns.len(), 1);
                 assert_eq!(columns[0].column.value(), "email");
+                assert_eq!(filters.len(), 0);
             }
             _ => unreachable!(),
         }
@@ -170,13 +171,14 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, .. }) => {
+            AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, filters, .. }) => {
                 assert_eq!(*index_type, reifydb_core::IndexType::Primary);
                 assert!(name.is_none());
                 assert_eq!(schema.value(), "test");
                 assert_eq!(table.value(), "users");
                 assert_eq!(columns.len(), 1);
                 assert_eq!(columns[0].column.value(), "id");
+                assert_eq!(filters.len(), 0);
             }
             _ => unreachable!(),
         }
@@ -193,10 +195,11 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Index(AstCreateIndex { columns, .. }) => {
+            AstCreate::Index(AstCreateIndex { columns, filters, .. }) => {
                 assert_eq!(columns.len(), 2);
                 assert_eq!(columns[0].column.value(), "last_name");
                 assert_eq!(columns[1].column.value(), "first_name");
+                assert_eq!(filters.len(), 0);
             }
             _ => unreachable!(),
         }
@@ -213,12 +216,82 @@ mod tests {
         let create = result.first_unchecked().as_create();
 
         match create {
-            AstCreate::Index(AstCreateIndex { columns, .. }) => {
+            AstCreate::Index(AstCreateIndex { columns, filters, .. }) => {
                 assert_eq!(columns.len(), 2);
                 assert_eq!(columns[0].column.value(), "created_at");
                 assert_eq!(columns[0].order, Some(SortDirection::Desc));
                 assert_eq!(columns[1].column.value(), "status");
                 assert_eq!(columns[1].order, Some(SortDirection::Asc));
+                assert_eq!(filters.len(), 0);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_create_index_with_single_filter() {
+        let tokens = lex(r#"create index on test.users {email} filter active == true"#).unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.first_unchecked().as_create();
+
+        match create {
+            AstCreate::Index(AstCreateIndex { columns, filters, .. }) => {
+                assert_eq!(columns.len(), 1);
+                assert_eq!(columns[0].column.value(), "email");
+                assert_eq!(filters.len(), 1);
+                // Verify filter contains a comparison expression
+                assert!(filters[0].is_infix());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_create_index_with_multiple_filters() {
+        let tokens = lex(r#"create index on test.users {email} filter active == true filter age > 18 filter country == "US""#).unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.first_unchecked().as_create();
+
+        match create {
+            AstCreate::Index(AstCreateIndex { columns, filters, .. }) => {
+                assert_eq!(columns.len(), 1);
+                assert_eq!(columns[0].column.value(), "email");
+                assert_eq!(filters.len(), 3);
+                // Verify each filter is an infix expression
+                assert!(filters[0].is_infix());
+                assert!(filters[1].is_infix());
+                assert!(filters[2].is_infix());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_create_index_with_filters_and_map() {
+        let tokens = lex(r#"create index on test.users {email} filter active == true filter age > 18 map email"#).unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.first_unchecked().as_create();
+
+        match create {
+            AstCreate::Index(AstCreateIndex { columns, filters, map, .. }) => {
+                assert_eq!(columns.len(), 1);
+                assert_eq!(columns[0].column.value(), "email");
+                assert_eq!(filters.len(), 2);
+                assert!(filters[0].is_infix());
+                assert!(filters[1].is_infix());
+                assert!(map.is_some());
             }
             _ => unreachable!(),
         }

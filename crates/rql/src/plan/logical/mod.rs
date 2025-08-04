@@ -9,7 +9,7 @@ use crate::ast::{Ast, AstPolicy, AstPolicyKind, AstStatement};
 use crate::expression::{Expression, AliasExpression};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
-use reifydb_core::{JoinType, OwnedSpan, SortKey};
+use reifydb_core::{IndexType, JoinType, OwnedSpan, SortDirection, SortKey};
 
 struct Compiler {}
 
@@ -51,6 +51,7 @@ pub enum LogicalPlan {
     CreateSchema(CreateSchemaNode),
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
+    CreateIndex(CreateIndexNode),
     // Mutate
     Delete(DeleteNode),
     Insert(InsertNode),
@@ -95,6 +96,23 @@ pub struct CreateTableNode {
     pub table: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
+}
+
+#[derive(Debug)]
+pub struct CreateIndexNode {
+    pub index_type: IndexType,
+    pub name: Option<OwnedSpan>,
+    pub schema: OwnedSpan,
+    pub table: OwnedSpan,
+    pub columns: Vec<IndexColumn>,
+    pub filter: Vec<Expression>,
+    pub map: Option<Expression>,
+}
+
+#[derive(Debug)]
+pub struct IndexColumn {
+    pub column: OwnedSpan,
+    pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]

@@ -1,0 +1,21 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+lex 'create index on test.users {created_at desc, status asc}'
+---
+> Line 1:
+>   [ 0] Keyword(Create)
+>   [ 1] Keyword(Index)
+>   [ 2] Keyword(On)
+>   [ 3] Identifier("test")
+>   [ 4] Operator(Dot)
+>   [ 5] Identifier("users")
+>   [ 6] Operator(OpenCurly)
+>   [ 7] Identifier("created_at")
+>   [ 8] Keyword(Desc)
+>   [ 9] Separator(Comma)
+>   [10] Identifier("status")
+>   [11] Keyword(Asc)
+>   [12] Operator(CloseCurly)
+> 
+> 

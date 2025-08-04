@@ -463,7 +463,7 @@ pub struct AstCreateIndex {
     pub schema: AstIdentifier,
     pub table: AstIdentifier,
     pub columns: Vec<AstIndexColumn>,
-    pub filter: Option<Box<Ast>>,
+    pub filters: Vec<Box<Ast>>,
     pub map: Option<Box<Ast>>,
 }
 
