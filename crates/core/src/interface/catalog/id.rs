@@ -65,6 +65,62 @@ impl<'de> Deserialize<'de> for ColumnId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct IndexId(pub u64);
+
+impl Deref for IndexId {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq<u64> for IndexId {
+    fn eq(&self, other: &u64) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl From<IndexId> for u64 {
+    fn from(value: IndexId) -> Self {
+        value.0
+    }
+}
+
+impl Serialize for IndexId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for IndexId {
+    fn deserialize<D>(deserializer: D) -> Result<IndexId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct U64Visitor;
+
+        impl Visitor<'_> for U64Visitor {
+            type Value = IndexId;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an unsigned 64-bit number")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(IndexId(value))
+            }
+        }
+
+        deserializer.deserialize_u64(U64Visitor)
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct ColumnPolicyId(pub u64);
 
 impl Deref for ColumnPolicyId {

@@ -12,6 +12,7 @@ pub use system_sequence::SystemSequenceKey;
 pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
+pub use table_index::{TableIndexKey, TableIndexKeyRange};
 pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
 pub use transaction_version::TransactionVersionKey;
@@ -25,6 +26,7 @@ mod system_sequence;
 mod system_version;
 mod table;
 mod table_column;
+mod table_index;
 mod table_row;
 mod table_row_sequence;
 mod transaction_version;
@@ -38,6 +40,7 @@ pub enum Key {
     SystemSequence(SystemSequenceKey),
     Table(TableKey),
     TableColumn(TableColumnKey),
+    TableIndex(TableIndexKey),
     TableRow(TableRowKey),
     TableRowSequence(TableRowSequenceKey),
     SystemVersion(SystemVersionKey),
@@ -53,6 +56,7 @@ impl Key {
             Key::SchemaTable(key) => key.encode(),
             Key::Table(key) => key.encode(),
             Key::TableColumn(key) => key.encode(),
+            Key::TableIndex(key) => key.encode(),
             Key::TableRow(key) => key.encode(),
             Key::TableRowSequence(key) => key.encode(),
             Key::SystemSequence(key) => key.encode(),
@@ -98,6 +102,7 @@ impl Key {
             KeyKind::SchemaTable => SchemaTableKey::decode(&key).map(Self::SchemaTable),
             KeyKind::Table => TableKey::decode(&key).map(Self::Table),
             KeyKind::TableColumn => TableColumnKey::decode(&key).map(Self::TableColumn),
+            KeyKind::TableIndex => TableIndexKey::decode(&key).map(Self::TableIndex),
             KeyKind::TableRow => TableRowKey::decode(&key).map(Self::TableRow),
             KeyKind::TableRowSequence => {
                 TableRowSequenceKey::decode(&key).map(Self::TableRowSequence)
@@ -116,12 +121,12 @@ mod tests {
     use super::ColumnPolicyKey;
     use super::TableRowSequenceKey;
     use super::{
-        ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableKey,
-        TableRowKey,
+        ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableIndexKey,
+        TableKey, TableRowKey,
     };
     use crate::RowId;
     use crate::interface::catalog::{
-        ColumnId, ColumnPolicyId, SchemaId, SystemSequenceId, TableId,
+        ColumnId, ColumnPolicyId, IndexId, SchemaId, SystemSequenceId, TableId,
     };
     use crate::interface::key::transaction_version::TransactionVersionKey;
 
@@ -233,6 +238,23 @@ mod tests {
             Key::TableColumn(decoded_inner) => {
                 assert_eq!(decoded_inner.table, 42);
                 assert_eq!(decoded_inner.column, 999_999);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_table_index() {
+        let key =
+            Key::TableIndex(TableIndexKey { table: TableId(42), index: IndexId(999_999) });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::TableIndex(decoded_inner) => {
+                assert_eq!(decoded_inner.table, 42);
+                assert_eq!(decoded_inner.index, 999_999);
             }
             _ => unreachable!(),
         }
