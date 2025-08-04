@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::diagnostic::ast;
 use crate::ast::lex::{Operator, TokenKind};
-use crate::ast::parse::error::unsupported_token_error;
 use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{Ast, AstInfix, InfixOperator};
 use reifydb_core::return_error;
@@ -54,9 +54,9 @@ impl Parser {
                 Operator::And => Ok(InfixOperator::And(token)),
                 Operator::Or => Ok(InfixOperator::Or(token)),
                 Operator::Xor => Ok(InfixOperator::Xor(token)),
-                _ => return_error!(unsupported_token_error(token)),
+                _ => return_error!(ast::unsupported_token_error(token.span)),
             },
-            _ => return_error!(unsupported_token_error(token)),
+            _ => return_error!(ast::unsupported_token_error(token.span)),
         }
     }
 }

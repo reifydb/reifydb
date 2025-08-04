@@ -3,7 +3,7 @@
 
 (write 'create schema test')
 
-(write 'create table test.conversion(col: int4)')
+(write 'create table test.conversion{col: int4}')
 (write 'from [{ col: 0 }] insert test.conversion')
 write 'from test.conversion map cast(col, float4)'
 ---
@@ -38,7 +38,7 @@ write 'from test.conversion map cast(col, float4)'
 > +-------------+
 > 
 
-(write 'create table test.conversion_fail(col: int4)')
+(write 'create table test.conversion_fail{col: int4}')
 (write 'from [{ col: 16777217 }] insert test.conversion_fail')
 !write 'from test.conversion_fail map cast(col, float4)'
 ---

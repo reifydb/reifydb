@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::diagnostic::ast;
 use crate::ast::lex::Literal::Number;
 use crate::ast::lex::Operator;
-use crate::ast::parse::error::unsupported_token_error;
 use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{
     Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind,
@@ -48,9 +48,9 @@ impl Parser {
                 Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
                 Operator::Bang => Ok(AstPrefixOperator::Not(token)),
                 Operator::Not => Ok(AstPrefixOperator::Not(token)),
-                _ => return_error!(unsupported_token_error(token)),
+                _ => return_error!(ast::unsupported_token_error(token.span)),
             },
-            _ => return_error!(unsupported_token_error(token)),
+            _ => return_error!(ast::unsupported_token_error(token.span)),
         }
     }
 }

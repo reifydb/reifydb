@@ -2,7 +2,7 @@
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 (write 'create schema test')
-(write 'create table test.arith(id: int2, num: int2)')
+(write 'create table test.arith{id: int2, num: int2}')
 (write '
   from [
     { id: 1, num: 6 },
