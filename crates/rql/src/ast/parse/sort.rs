@@ -29,7 +29,15 @@ impl Parser {
                 && !self.current()?.is_separator(Comma)
                 && (!has_braces || !self.current()?.is_operator(CloseCurly))
             {
-                directions.push(Some(self.parse_identifier()?));
+                if self.current()?.is_keyword(Keyword::Asc)
+                    || self.current()?.is_keyword(Keyword::Desc)
+                {
+                    let token = self.current()?.clone();
+                    self.advance()?;
+                    directions.push(Some(crate::ast::AstIdentifier(token)));
+                } else {
+                    directions.push(None);
+                }
             } else {
                 directions.push(None);
             }

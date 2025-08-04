@@ -103,6 +103,13 @@ keyword! {
     View => "VIEW",
     Computed => "COMPUTED",
     Transactional => "TRANSACTIONAL",
+    
+    Index => "INDEX",
+    Unique => "UNIQUE",
+    Primary => "PRIMARY",
+    Key => "KEY",
+    Asc => "ASC",
+    Desc => "DESC",
 }
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -197,6 +204,12 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Computed, "COMPUTED"),
             keyword_tag(Keyword::Transactional, "TRANSACTIONAL"),
             keyword_tag(Keyword::Cast, "CAST"),
+            keyword_tag(Keyword::Index, "INDEX"),
+            keyword_tag(Keyword::Unique, "UNIQUE"),
+            keyword_tag(Keyword::Primary, "PRIMARY"),
+            keyword_tag(Keyword::Key, "KEY"),
+            keyword_tag(Keyword::Asc, "ASC"),
+            keyword_tag(Keyword::Desc, "DESC"),
         )),
     ));
 
@@ -217,7 +230,9 @@ mod tests {
     fn test_desc() {
         let input = LocatedSpan::new("desc");
         let result = parse_keyword(input);
-        assert!(result.is_err(), "expected error parsing invalid keyword, got: {:?}", result);
+        assert!(result.is_ok(), "DESC should now be a valid keyword");
+        let (_, token) = result.unwrap();
+        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Desc));
     }
 
     #[test]
@@ -313,6 +328,12 @@ mod tests {
         test_keyword_computed => (Computed, "COMPUTED"),
         test_keyword_transactional => (Transactional, "TRANSACTIONAL"),
         test_keyword_cast => (Cast, "CAST"),
+        test_keyword_index => (Index, "INDEX"),
+        test_keyword_unique => (Unique, "UNIQUE"),
+        test_keyword_primary => (Primary, "PRIMARY"),
+        test_keyword_key => (Key, "KEY"),
+        test_keyword_asc => (Asc, "ASC"),
+        test_keyword_desc => (Desc, "DESC"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -364,7 +385,6 @@ mod tests {
         test_not_keyword_join => ( "join"),
         test_not_keyword_on => ( "on"),
         test_not_keyword_as => ( "as"),
-        test_not_keyword_asc => ( "asc"),
         test_not_keyword_using => ( "using"),
         test_not_keyword_union => ( "union"),
         test_not_keyword_intersect => ( "intersect"),
@@ -396,5 +416,11 @@ mod tests {
         test_not_keyword_deferred => ( "deferred"),
         test_not_keyword_transactional => ( "transactional"),
         test_not_keyword_cast => ( "cast"),
+        test_not_keyword_index => ("index"),
+        test_not_keyword_unique => ( "unique"),
+        test_not_keyword_primary => ("primary"),
+        test_not_keyword_key => ("key"),
+        test_not_keyword_asc => ("asc"),
+        test_not_keyword_desc => ( "desc"),
     }
 }

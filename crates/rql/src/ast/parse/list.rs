@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_row() {
-        let tokens = lex("[ { key: 'value' }]").unwrap();
+        let tokens = lex("[ { field: 'value' }]").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -95,7 +95,7 @@ mod tests {
         let row = list[0].as_inline();
         assert_eq!(row.keyed_values.len(), 1);
 
-        assert_eq!(row.keyed_values[0].key.value(), "key");
+        assert_eq!(row.keyed_values[0].key.value(), "field");
         assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
     }
 }

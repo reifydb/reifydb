@@ -5,6 +5,7 @@ mod aggregate;
 mod call;
 mod cast;
 mod create;
+mod create_index;
 mod delete;
 mod describe;
 mod filter;

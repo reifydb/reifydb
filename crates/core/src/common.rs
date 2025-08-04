@@ -13,3 +13,16 @@ impl Default for JoinType {
         JoinType::Left
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum IndexType {
+    Index,
+    Unique,
+    Primary,
+}
+
+impl Default for IndexType {
+    fn default() -> Self {
+        IndexType::Index
+    }
+}

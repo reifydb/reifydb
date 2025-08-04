@@ -16,6 +16,7 @@ impl Compiler {
             AstCreate::Schema(node) => Self::compile_create_schema(node),
             AstCreate::Series(node) => Self::compile_create_series(node),
             AstCreate::Table(node) => Self::compile_create_table(node),
+            AstCreate::Index(_node) => unimplemented!("Index creation not yet implemented"),
         }
     }
 }

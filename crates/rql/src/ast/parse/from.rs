@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_from_static() {
-        let tokens = lex("FROM [ { key: 'value' }]").unwrap();
+        let tokens = lex("FROM [ { field: 'value' }]").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -129,7 +129,7 @@ mod tests {
                 let row = list[0].as_inline();
                 assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].key.value(), "field");
                 assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
             }
         }
@@ -137,8 +137,8 @@ mod tests {
 
     #[test]
     fn test_from_static_multiple() {
-        let tokens = lex("FROM [ { key: 'value' },\
-        { key: 'value2' }\
+        let tokens = lex("FROM [ { field: 'value' },\
+        { field: 'value2' }\
         ]")
         .unwrap();
         let mut parser = Parser::new(tokens);
@@ -156,13 +156,13 @@ mod tests {
                 let row = list[0].as_inline();
                 assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].key.value(), "field");
                 assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 
                 let row = list[1].as_inline();
                 assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].key.value(), "field");
                 assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value2");
             }
         }
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_from_static_trailing_comma() {
-        let tokens = lex("FROM [ { key: 'value' }, ]").unwrap();
+        let tokens = lex("FROM [ { field: 'value' }, ]").unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -186,7 +186,7 @@ mod tests {
                 let row = list[0].as_inline();
                 assert_eq!(row.keyed_values.len(), 1);
 
-                assert_eq!(row.keyed_values[0].key.value(), "key");
+                assert_eq!(row.keyed_values[0].key.value(), "field");
                 assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
             }
         }

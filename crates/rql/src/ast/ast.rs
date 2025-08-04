@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::{JoinType, OwnedSpan};
+use reifydb_core::{JoinType, OwnedSpan, SortDirection};
 use std::ops::{Deref, Index};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -409,6 +409,7 @@ pub enum AstCreate {
     Schema(AstCreateSchema),
     Series(AstCreateSeries),
     Table(AstCreateTable),
+    Index(AstCreateIndex),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -454,6 +455,24 @@ pub struct AstColumnToCreate {
     pub policies: Option<AstPolicyBlock>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateIndex {
+    pub token: Token,
+    pub index_type: reifydb_core::IndexType,
+    pub name: Option<AstIdentifier>,
+    pub schema: AstIdentifier,
+    pub table: AstIdentifier,
+    pub columns: Vec<AstIndexColumn>,
+    pub filter: Option<Box<Ast>>,
+    pub map: Option<Box<Ast>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstIndexColumn {
+    pub column: AstIdentifier,
+    pub order: Option<SortDirection>,
+}
+
 impl AstCreate {
     pub fn token(&self) -> &Token {
         match self {
@@ -461,6 +480,7 @@ impl AstCreate {
             AstCreate::Schema(AstCreateSchema { token, .. }) => token,
             AstCreate::Series(AstCreateSeries { token, .. }) => token,
             AstCreate::Table(AstCreateTable { token, .. }) => token,
+            AstCreate::Index(AstCreateIndex { token, .. }) => token,
         }
     }
 }

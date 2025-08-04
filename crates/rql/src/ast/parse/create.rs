@@ -35,6 +35,10 @@ impl Parser {
             return self.parse_series(token);
         }
 
+        if self.peek_is_index_creation()? {
+            return self.parse_create_index(token);
+        }
+
         unimplemented!();
     }
 
