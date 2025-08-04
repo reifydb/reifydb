@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::Keyword::{Computed, Series, Table, View, With};
-use crate::ast::lex::Operator::CloseParen;
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, Operator, Token, TokenKind};
 use crate::ast::parse::Parser;
@@ -107,11 +106,11 @@ impl Parser {
     fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate>> {
         let mut result = Vec::new();
 
-        self.consume_operator(Operator::OpenParen)?;
+        self.consume_operator(Operator::OpenCurly)?;
         loop {
             self.skip_new_line()?;
 
-            if self.current()?.is_operator(CloseParen) {
+            if self.current()?.is_operator(Operator::CloseCurly) {
                 break;
             }
             result.push(self.parse_column()?);
@@ -119,7 +118,7 @@ impl Parser {
                 break;
             };
         }
-        self.consume_operator(CloseParen)?;
+        self.consume_operator(Operator::CloseCurly)?;
         Ok(result)
     }
 
@@ -168,7 +167,7 @@ mod tests {
     #[test]
     fn test_create_series() {
         let tokens = lex(r#"
-            create series test.metrics(value: Int2)
+            create series test.metrics{value: Int2}
         "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
@@ -195,7 +194,7 @@ mod tests {
     #[test]
     fn test_create_table() {
         let tokens = lex(r#"
-        create table test.users(id: int2, name: text, is_premium: bool)
+        create table test.users{id: int2, name: text, is_premium: bool}
     "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
@@ -238,7 +237,7 @@ mod tests {
     #[test]
     fn test_create_table_with_saturation_policy() {
         let tokens = lex(r#"
-        create table test.items(field: int2 policy (saturation error) )
+        create table test.items{field: int2 policy {saturation error} }
     "#)
         .unwrap();
         let mut parser = Parser::new(tokens);
@@ -272,7 +271,7 @@ mod tests {
     #[test]
     fn test_create_computed_view() {
         let tokens = lex(r#"
-        create computed view test.views(field: int2 policy (saturation error))
+        create computed view test.views{field: int2 policy { saturation error} }
     "#)
         .unwrap();
         let mut parser = Parser::new(tokens);

@@ -2,13 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod aggregate;
+mod call;
 mod cast;
 mod create;
 mod delete;
 mod describe;
-// mod diagnostic; // Removed - cannot implement methods on external types
-mod call;
-mod error;
 mod filter;
 mod from;
 mod identifier;
@@ -29,7 +27,6 @@ mod update;
 
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Literal, Operator, Separator, Token, TokenKind};
-use crate::ast::parse::error::{expected_identifier_error, unexpected_token_error};
 use crate::ast::{Ast, AstStatement};
 use reifydb_core::result::error::diagnostic::ast;
 use reifydb_core::return_error;
@@ -188,9 +185,9 @@ impl Parser {
         } else {
             // Use specific error for identifier expectations to match test format
             if let TokenKind::Identifier = expected {
-                return_error!(expected_identifier_error(got.clone()))
+                return_error!(ast::expected_identifier_error(got.clone().span))
             } else {
-                return_error!(unexpected_token_error(expected, got.clone()))
+                return_error!(ast::unexpected_token_error(&format!("{:?}", expected), &got.span))
             }
         }
     }

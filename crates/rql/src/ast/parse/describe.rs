@@ -9,9 +9,9 @@ use crate::ast::parse::{Parser, Precedence};
 impl Parser {
     pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe> {
         let token = self.consume_keyword(Describe)?;
-        self.consume_operator(Operator::OpenParen)?;
+        self.consume_operator(Operator::OpenCurly)?;
         let node = Box::new(self.parse_node(Precedence::None)?);
-        self.consume_operator(Operator::CloseParen)?;
+        self.consume_operator(Operator::CloseCurly)?;
         Ok(AstDescribe::Query { token, node })
     }
 }
@@ -24,7 +24,7 @@ mod tests {
 
     #[test]
     fn describe_query() {
-        let tokens = lex("describe ( map cast(9924, int8) )").unwrap();
+        let tokens = lex("describe { map cast(9924, int8) }").unwrap();
         let result = parse(tokens).unwrap();
         assert_eq!(result.len(), 1);
 

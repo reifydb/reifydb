@@ -3,17 +3,17 @@
 
 use crate::ast::lex::Keyword::Policy;
 use crate::ast::lex::{Literal, Operator, Separator};
-use crate::ast::parse::error::invalid_policy_error;
 use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind};
 use Separator::Comma;
 use TokenKind::Identifier;
+use reifydb_core::diagnostic::ast;
 use reifydb_core::return_error;
 
 impl Parser {
     pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock> {
         let token = self.consume_keyword(Policy)?;
-        self.consume_operator(Operator::OpenParen)?;
+        self.consume_operator(Operator::OpenCurly)?;
 
         let mut policies = Vec::new();
         loop {
@@ -27,7 +27,7 @@ impl Parser {
             }
         }
 
-        self.consume_operator(Operator::CloseParen)?;
+        self.consume_operator(Operator::CloseCurly)?;
         Ok(AstPolicyBlock { token, policies })
     }
 
@@ -40,7 +40,7 @@ impl Parser {
                 self.consume_literal(Literal::Undefined)?;
                 AstPolicyKind::NotUndefined
             }
-            _ => return_error!(invalid_policy_error(identifier)),
+            _ => return_error!(ast::invalid_policy_error(identifier.span)),
         };
 
         Ok((identifier, ty))
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_saturation_error() {
-        let tokens = lex(r#"policy (saturation error)"#).unwrap();
+        let tokens = lex(r#"policy {saturation error}"#).unwrap();
 
         let mut parser = Parser::new(tokens);
         let result = parser.parse_policy_block().unwrap();
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_saturation_undefined() {
-        let tokens = lex(r#"policy (saturation undefined)"#).unwrap();
+        let tokens = lex(r#"policy {saturation undefined}"#).unwrap();
 
         let mut parser = Parser::new(tokens);
         let result = parser.parse_policy_block().unwrap();
@@ -88,13 +88,13 @@ mod tests {
     #[test]
     fn test_table_with_policy_block() {
         let tokens = lex(r#"
-        create table test.items(
+        create table test.items{
             field:  int2
-                    policy (
+                    policy {
                         saturation error,
                         default 0
-                    )
-        )
+                    }
+        }
     "#)
         .unwrap();
 

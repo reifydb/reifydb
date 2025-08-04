@@ -4,8 +4,9 @@
 use crate::ast::lex::Operator::{CloseCurly, Colon, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Keyword, TokenKind};
-use crate::ast::parse::{Parser, Precedence, error};
+use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{Ast, AstInfix, AstMap, InfixOperator};
+use reifydb_core::diagnostic::ast;
 use reifydb_core::result::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
@@ -58,18 +59,18 @@ impl Parser {
 
         // Look ahead to see if we have "identifier: expression" pattern
         if len < 2 {
-            return_error!(error::unsupported_token_error(self.current()?.clone()));
+            return_error!(ast::unsupported_token_error(self.current()?.clone().span));
         }
 
         // Check if next token is identifier
         match &self.tokens[len - 1].kind {
             TokenKind::Identifier => {}
-            _ => return_error!(error::unsupported_token_error(self.current()?.clone())),
+            _ => return_error!(ast::unsupported_token_error(self.current()?.clone().span)),
         };
 
         // Check if second token is colon
         if !self.tokens[len - 2].is_operator(Colon) {
-            return_error!(error::unsupported_token_error(self.current()?.clone()));
+            return_error!(ast::unsupported_token_error(self.current()?.clone().span));
         }
 
         let identifier = self.parse_identifier()?;
