@@ -13,6 +13,7 @@ pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
 pub use table_column::TableColumnKey;
 pub use table_index::{TableIndexKey, TableIndexKeyRange};
+pub use table_index_entry::TableIndexEntryKey;
 pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
 pub use transaction_version::TransactionVersionKey;
@@ -27,6 +28,7 @@ mod system_version;
 mod table;
 mod table_column;
 mod table_index;
+mod table_index_entry;
 mod table_row;
 mod table_row_sequence;
 mod transaction_version;
@@ -41,6 +43,7 @@ pub enum Key {
     Table(TableKey),
     TableColumn(TableColumnKey),
     TableIndex(TableIndexKey),
+    TableIndexEntry(TableIndexEntryKey),
     TableRow(TableRowKey),
     TableRowSequence(TableRowSequenceKey),
     SystemVersion(SystemVersionKey),
@@ -57,6 +60,7 @@ impl Key {
             Key::Table(key) => key.encode(),
             Key::TableColumn(key) => key.encode(),
             Key::TableIndex(key) => key.encode(),
+            Key::TableIndexEntry(key) => key.encode(),
             Key::TableRow(key) => key.encode(),
             Key::TableRowSequence(key) => key.encode(),
             Key::SystemSequence(key) => key.encode(),
@@ -103,6 +107,7 @@ impl Key {
             KeyKind::Table => TableKey::decode(&key).map(Self::Table),
             KeyKind::TableColumn => TableColumnKey::decode(&key).map(Self::TableColumn),
             KeyKind::TableIndex => TableIndexKey::decode(&key).map(Self::TableIndex),
+            KeyKind::TableIndexEntry => TableIndexEntryKey::decode(&key).map(Self::TableIndexEntry),
             KeyKind::TableRow => TableRowKey::decode(&key).map(Self::TableRow),
             KeyKind::TableRowSequence => {
                 TableRowSequenceKey::decode(&key).map(Self::TableRowSequence)

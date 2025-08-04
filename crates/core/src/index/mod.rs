@@ -3,8 +3,10 @@
 
 pub use encoded::{EncodedIndexKey, EncodedIndexKeyIter, EncodedIndexKeyIterator};
 pub use layout::{EncodedIndexLayout, IndexField};
+pub use range::EncodedIndexKeyRange;
 
 mod encoded;
 mod get;
 mod layout;
+mod range;
 mod set;

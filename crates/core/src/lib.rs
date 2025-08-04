@@ -19,7 +19,7 @@ pub use interface::{
     BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
 };
 pub use result::*;
-pub use row::key::{EncodedKey, EncodedKeyRange};
+pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{
