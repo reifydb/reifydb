@@ -282,22 +282,6 @@ impl EncodedRowLayout {
         }
     }
 
-    pub fn set_uuid(&self, row: &mut EncodedRow, index: usize, value: Uuid) {
-        let field = &self.fields[index];
-        debug_assert!(row.len() >= self.total_static_size());
-        debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
-        row.set_valid(index, true);
-        unsafe {
-            // UUIDs are 16 bytes
-            let bytes = value.as_bytes();
-            ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                row.make_mut().as_mut_ptr().add(field.offset),
-                16,
-            );
-        }
-    }
-
     pub fn set_uuid4(&self, row: &mut EncodedRow, index: usize, value: Uuid4) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());

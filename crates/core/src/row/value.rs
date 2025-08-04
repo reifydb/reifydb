@@ -73,10 +73,10 @@ impl EncodedRowLayout {
             (Type::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
             (Type::Interval, Value::Undefined) => self.set_undefined(row, index),
 
-            (Type::Uuid4, Value::Uuid4(v)) => self.set_uuid(row, index, (*v).into()),
+            (Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
             (Type::Uuid4, Value::Undefined) => self.set_undefined(row, index),
 
-            (Type::Uuid7, Value::Uuid7(v)) => self.set_uuid(row, index, (*v).into()),
+            (Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, v.clone()),
             (Type::Uuid7, Value::Undefined) => self.set_undefined(row, index),
 
             (Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
@@ -116,8 +116,8 @@ impl EncodedRowLayout {
             Type::Time => Value::Time(self.get_time(row, index)),
             Type::Interval => Value::Interval(self.get_interval(row, index)),
             Type::RowId => Value::RowId(RowId::new(self.get_u64(row, index))),
-            Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid(row, index))),
-            Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid(row, index))),
+            Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid4(row, index))),
+            Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid7(row, index))),
             Type::Blob => Value::Blob(self.get_blob(row, index)),
             Type::Undefined => Value::Undefined,
         }

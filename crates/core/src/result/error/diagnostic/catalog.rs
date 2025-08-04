@@ -97,3 +97,34 @@ pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
         cause: None,
     }
 }
+
+pub fn index_variable_length_not_supported() -> Diagnostic {
+    Diagnostic {
+        code: "CA_009".to_string(),
+        statement: None,
+        message: "variable-length types (UTF8, BLOB) are not supported in indexes".to_string(),
+        span: None,
+        label: Some("unsupported type for indexing".to_string()),
+        help: Some("only fixed-size types can be indexed currently".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}
+
+pub fn index_types_directions_mismatch(types_len: usize, directions_len: usize) -> Diagnostic {
+    Diagnostic {
+        code: "CA_010".to_string(),
+        statement: None,
+        message: format!(
+            "mismatch between number of types ({}) and directions ({})",
+            types_len, directions_len
+        ),
+        span: None,
+        label: Some("length mismatch".to_string()),
+        help: Some("each indexed field must have a corresponding sort direction".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}

@@ -188,18 +188,6 @@ impl EncodedRowLayout {
         }
     }
 
-    pub fn get_uuid(&self, row: &EncodedRow, index: usize) -> Uuid {
-        let field = &self.fields[index];
-        debug_assert!(row.len() >= self.total_static_size());
-        debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
-        unsafe {
-            // UUIDs are 16 bytes
-            let bytes: [u8; 16] =
-                std::ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
-            Uuid::from_bytes(bytes)
-        }
-    }
-
     pub fn get_uuid4(&self, row: &EncodedRow, index: usize) -> Uuid4 {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
@@ -545,10 +533,6 @@ mod tests {
         let uuid = Uuid4::generate();
         layout.set_uuid4(&mut row, 0, uuid.clone());
         assert_eq!(layout.get_uuid4(&row, 0), uuid);
-
-        // Test that generic get_uuid also works
-        let generic_uuid: uuid::Uuid = uuid.into();
-        assert_eq!(layout.get_uuid(&row, 0), generic_uuid);
     }
 
     #[test]
@@ -559,10 +543,6 @@ mod tests {
         let uuid = Uuid7::generate();
         layout.set_uuid7(&mut row, 0, uuid.clone());
         assert_eq!(layout.get_uuid7(&row, 0), uuid);
-
-        // Test that generic get_uuid also works
-        let generic_uuid: uuid::Uuid = uuid.into();
-        assert_eq!(layout.get_uuid(&row, 0), generic_uuid);
     }
 
     #[test]
