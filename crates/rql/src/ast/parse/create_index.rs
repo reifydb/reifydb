@@ -6,7 +6,7 @@ use crate::ast::lex::Separator::Comma;
 use crate::ast::lex::{Operator, Token, TokenKind};
 use crate::ast::parse::{Parser, Precedence};
 use crate::ast::{AstCreate, AstCreateIndex, AstIndexColumn};
-use reifydb_core::SortDirection;
+use reifydb_core::{IndexType, SortDirection};
 
 impl Parser {
     pub(crate) fn peek_is_index_creation(&mut self) -> crate::Result<bool> {
@@ -19,11 +19,7 @@ impl Parser {
     pub(crate) fn parse_create_index(&mut self, create_token: Token) -> crate::Result<AstCreate> {
         let index_type = self.parse_index_type()?;
         
-        let name = if self.current()?.is_keyword(On) {
-            None
-        } else {
-            Some(self.parse_identifier()?)
-        };
+        let name = self.parse_identifier()?;
         
         self.consume_keyword(On)?;
         
@@ -56,16 +52,16 @@ impl Parser {
         }))
     }
 
-    fn parse_index_type(&mut self) -> crate::Result<reifydb_core::IndexType> {
+    fn parse_index_type(&mut self) -> crate::Result<IndexType> {
         if self.consume_if(TokenKind::Keyword(Primary))?.is_some() {
             self.consume_keyword(Key)?;
-            Ok(reifydb_core::IndexType::Primary)
+            Ok(IndexType::Primary)
         } else if self.consume_if(TokenKind::Keyword(Unique))?.is_some() {
             self.consume_keyword(Index)?;
-            Ok(reifydb_core::IndexType::Unique)
+            Ok(IndexType::Unique)
         } else {
             self.consume_keyword(Index)?;
-            Ok(reifydb_core::IndexType::Index)
+            Ok(IndexType::Index)
         }
     }
 
@@ -109,11 +105,11 @@ mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::Parser;
     use crate::ast::{AstCreate, AstCreateIndex};
-    use reifydb_core::SortDirection;
+    use reifydb_core::{IndexType, SortDirection};
 
     #[test]
     fn test_create_index() {
-        let tokens = lex(r#"create index on test.users {email}"#).unwrap();
+        let tokens = lex(r#"create index idx_email on test.users {email}"#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -123,8 +119,8 @@ mod tests {
 
         match create {
             AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, filters, .. }) => {
-                assert_eq!(*index_type, reifydb_core::IndexType::Index);
-                assert!(name.is_none());
+                assert_eq!(*index_type, IndexType::Index);
+                assert_eq!(name.value(), "idx_email");
                 assert_eq!(schema.value(), "test");
                 assert_eq!(table.value(), "users");
                 assert_eq!(columns.len(), 1);
@@ -148,8 +144,8 @@ mod tests {
 
         match create {
             AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, filters, .. }) => {
-                assert_eq!(*index_type, reifydb_core::IndexType::Unique);
-                assert_eq!(name.as_ref().unwrap().value(), "idx_email");
+                assert_eq!(*index_type, IndexType::Unique);
+                assert_eq!(name.value(), "idx_email");
                 assert_eq!(schema.value(), "test");
                 assert_eq!(table.value(), "users");
                 assert_eq!(columns.len(), 1);
@@ -162,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_create_primary_key() {
-        let tokens = lex(r#"create primary key on test.users {id}"#).unwrap();
+        let tokens = lex(r#"create primary key pk_users on test.users {id}"#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -172,8 +168,8 @@ mod tests {
 
         match create {
             AstCreate::Index(AstCreateIndex { index_type, name, schema, table, columns, filters, .. }) => {
-                assert_eq!(*index_type, reifydb_core::IndexType::Primary);
-                assert!(name.is_none());
+                assert_eq!(*index_type, IndexType::Primary);
+                assert_eq!(name.value(), "pk_users");
                 assert_eq!(schema.value(), "test");
                 assert_eq!(table.value(), "users");
                 assert_eq!(columns.len(), 1);
@@ -186,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_create_composite_index() {
-        let tokens = lex(r#"create index on test.users {last_name, first_name}"#).unwrap();
+        let tokens = lex(r#"create index idx_name on test.users {last_name, first_name}"#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -207,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_create_index_with_ordering() {
-        let tokens = lex(r#"create index on test.users {created_at desc, status asc}"#).unwrap();
+        let tokens = lex(r#"create index idx_status on test.users {created_at desc, status asc}"#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -230,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_create_index_with_single_filter() {
-        let tokens = lex(r#"create index on test.users {email} filter active == true"#).unwrap();
+        let tokens = lex(r#"create index idx_active_email on test.users {email} filter active == true"#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -252,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_create_index_with_multiple_filters() {
-        let tokens = lex(r#"create index on test.users {email} filter active == true filter age > 18 filter country == "US""#).unwrap();
+        let tokens = lex(r#"create index idx_filtered on test.users {email} filter active == true filter age > 18 filter country == "US""#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);
@@ -276,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_create_index_with_filters_and_map() {
-        let tokens = lex(r#"create index on test.users {email} filter active == true filter age > 18 map email"#).unwrap();
+        let tokens = lex(r#"create index idx_complex on test.users {email} filter active == true filter age > 18 map email"#).unwrap();
         let mut parser = Parser::new(tokens);
         let mut result = parser.parse().unwrap();
         assert_eq!(result.len(), 1);

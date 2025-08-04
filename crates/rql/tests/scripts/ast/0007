@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-ast 'create index on test.users {email} filter active == true filter age > 18'
+ast 'create index idx_filtered on test.users {email} filter active == true filter age > 18'
 ---
 > └── Create @ line 1, column 1 — "create"
 > 

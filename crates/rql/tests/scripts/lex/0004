@@ -1,18 +1,19 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-lex 'create primary key on test.users {id}'
+lex 'create primary key pk_users on test.users {id}'
 ---
 > Line 1:
 >   [ 0] Keyword(Create)
 >   [ 1] Keyword(Primary)
 >   [ 2] Keyword(Key)
->   [ 3] Keyword(On)
->   [ 4] Identifier("test")
->   [ 5] Operator(Dot)
->   [ 6] Identifier("users")
->   [ 7] Operator(OpenCurly)
->   [ 8] Identifier("id")
->   [ 9] Operator(CloseCurly)
+>   [ 3] Identifier("pk_users")
+>   [ 4] Keyword(On)
+>   [ 5] Identifier("test")
+>   [ 6] Operator(Dot)
+>   [ 7] Identifier("users")
+>   [ 8] Operator(OpenCurly)
+>   [ 9] Identifier("id")
+>   [10] Operator(CloseCurly)
 > 
 > 

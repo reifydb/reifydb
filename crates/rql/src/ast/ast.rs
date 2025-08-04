@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::lex::{Literal, Token, TokenKind};
-use reifydb_core::{JoinType, OwnedSpan, SortDirection};
+use reifydb_core::{IndexType, JoinType, OwnedSpan, SortDirection};
 use std::ops::{Deref, Index};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -458,8 +458,8 @@ pub struct AstColumnToCreate {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateIndex {
     pub token: Token,
-    pub index_type: reifydb_core::IndexType,
-    pub name: Option<AstIdentifier>,
+    pub index_type: IndexType,
+    pub name: AstIdentifier,
     pub schema: AstIdentifier,
     pub table: AstIdentifier,
     pub columns: Vec<AstIndexColumn>,

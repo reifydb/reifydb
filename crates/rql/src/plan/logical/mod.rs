@@ -101,7 +101,7 @@ pub struct CreateTableNode {
 #[derive(Debug)]
 pub struct CreateIndexNode {
     pub index_type: IndexType,
-    pub name: Option<OwnedSpan>,
+    pub name: OwnedSpan,
     pub schema: OwnedSpan,
     pub table: OwnedSpan,
     pub columns: Vec<IndexColumn>,

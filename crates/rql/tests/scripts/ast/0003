@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-ast 'create index on test.users {email}'
+ast 'create index idx_email on test.users {email}'
 ---
 > └── Create @ line 1, column 1 — "create"
 > 

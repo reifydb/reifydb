@@ -27,7 +27,7 @@ impl Compiler {
 
         Ok(LogicalPlan::CreateIndex(CreateIndexNode {
             index_type: ast.index_type,
-            name: ast.name.map(|n| n.span()),
+            name: ast.name.span(),
             schema: ast.schema.span(),
             table: ast.table.span(),
             columns,

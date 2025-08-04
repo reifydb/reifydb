@@ -48,11 +48,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
             let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
             
             output.push_str(&format!("{}├── Type: {:?}\n", child_prefix, index_type));
-            
-            if let Some(name) = name {
-                output.push_str(&format!("{}├── Name: {}\n", child_prefix, name.fragment));
-            }
-            
+            output.push_str(&format!("{}├── Name: {}\n", child_prefix, name.fragment));
             output.push_str(&format!("{}├── Schema: {}\n", child_prefix, schema.fragment));
             output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.fragment));
             
