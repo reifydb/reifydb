@@ -118,6 +118,12 @@ impl Parser {
                 break;
             }
             result.push(self.parse_column()?);
+            
+            self.skip_new_line()?;
+            if self.current()?.is_operator(Operator::CloseCurly) {
+                break;
+            }
+            
             if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
                 break;
             };
@@ -131,13 +137,21 @@ impl Parser {
         self.consume_operator(Colon)?;
         let ty = self.parse_identifier()?;
 
+        let auto_increment = if self.current()?.is_keyword(Keyword::Auto) {
+            self.consume_keyword(Keyword::Auto)?;
+            self.consume_keyword(Keyword::Increment)?;
+            true
+        } else {
+            false
+        };
+
         let policies = if self.current()?.is_keyword(Keyword::Policy) {
             Some(self.parse_policy_block()?)
         } else {
             None
         };
 
-        Ok(AstColumnToCreate { name, ty, policies })
+        Ok(AstColumnToCreate { name, ty, policies, auto_increment })
     }
 }
 
@@ -190,6 +204,7 @@ mod tests {
 
                 assert_eq!(columns[0].name.value(), "value");
                 assert_eq!(columns[0].ty.value(), "Int2");
+                assert_eq!(columns[0].auto_increment, false);
             }
             _ => unreachable!(),
         }
@@ -218,6 +233,7 @@ mod tests {
                     let col = &columns[0];
                     assert_eq!(col.name.value(), "id");
                     assert_eq!(col.ty.value(), "int2");
+                    assert_eq!(col.auto_increment, false);
                     assert!(col.policies.is_none());
                 }
 
@@ -225,12 +241,14 @@ mod tests {
                     let col = &columns[1];
                     assert_eq!(col.name.value(), "name");
                     assert_eq!(col.ty.value(), "text");
+                    assert_eq!(col.auto_increment, false);
                 }
 
                 {
                     let col = &columns[2];
                     assert_eq!(col.name.value(), "is_premium");
                     assert_eq!(col.ty.value(), "bool");
+                    assert_eq!(col.auto_increment, false);
                     assert!(col.policies.is_none());
                 }
             }
@@ -261,12 +279,52 @@ mod tests {
                 let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
                 assert_eq!(col.ty.value(), "int2");
+                assert_eq!(col.auto_increment, false);
 
                 let policies = &col.policies.as_ref().unwrap().policies;
                 assert_eq!(policies.len(), 1);
                 let policy = &policies[0];
                 assert!(matches!(policy.policy, AstPolicyKind::Saturation));
                 assert_eq!(policy.value.as_identifier().value(), "error");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_create_table_with_auto_increment() {
+        let tokens = lex(r#"
+        create table test.users { id: int4 AUTO INCREMENT, name: utf8 }
+    "#)
+        .unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+        assert_eq!(result.len(), 1);
+
+        let result = result.pop().unwrap();
+        let create = result.first_unchecked().as_create();
+
+        match create {
+            AstCreate::Table(AstCreateTable { table: name, schema, columns, .. }) => {
+                assert_eq!(schema.value(), "test");
+                assert_eq!(name.value(), "users");
+                assert_eq!(columns.len(), 2);
+
+                {
+                    let col = &columns[0];
+                    assert_eq!(col.name.value(), "id");
+                    assert_eq!(col.ty.value(), "int4");
+                    assert_eq!(col.auto_increment, true);
+                    assert!(col.policies.is_none());
+                }
+
+                {
+                    let col = &columns[1];
+                    assert_eq!(col.name.value(), "name");
+                    assert_eq!(col.ty.value(), "utf8");
+                    assert_eq!(col.auto_increment, false);
+                    assert!(col.policies.is_none());
+                }
             }
             _ => unreachable!(),
         }
@@ -296,6 +354,7 @@ mod tests {
                 let col = &columns[0];
                 assert_eq!(col.name.value(), "field");
                 assert_eq!(col.ty.value(), "int2");
+                assert_eq!(col.auto_increment, false);
 
                 let policies = &col.policies.as_ref().unwrap().policies;
                 assert_eq!(policies.len(), 1);

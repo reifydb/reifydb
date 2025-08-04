@@ -16,6 +16,7 @@ pub use table_index::{TableIndexKey, TableIndexKeyRange};
 pub use table_index_entry::TableIndexEntryKey;
 pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
+pub use table_column_sequence::TableColumnSequenceKey;
 pub use transaction_version::TransactionVersionKey;
 
 mod column;
@@ -31,6 +32,7 @@ mod table_index;
 mod table_index_entry;
 mod table_row;
 mod table_row_sequence;
+mod table_column_sequence;
 mod transaction_version;
 
 #[derive(Debug)]
@@ -46,6 +48,7 @@ pub enum Key {
     TableIndexEntry(TableIndexEntryKey),
     TableRow(TableRowKey),
     TableRowSequence(TableRowSequenceKey),
+    TableColumnSequence(TableColumnSequenceKey),
     SystemVersion(SystemVersionKey),
     TransactionVersion(TransactionVersionKey),
 }
@@ -63,6 +66,7 @@ impl Key {
             Key::TableIndexEntry(key) => key.encode(),
             Key::TableRow(key) => key.encode(),
             Key::TableRowSequence(key) => key.encode(),
+            Key::TableColumnSequence(key) => key.encode(),
             Key::SystemSequence(key) => key.encode(),
             Key::SystemVersion(key) => key.encode(),
             Key::TransactionVersion(key) => key.encode(),
@@ -112,6 +116,9 @@ impl Key {
             KeyKind::TableRowSequence => {
                 TableRowSequenceKey::decode(&key).map(Self::TableRowSequence)
             }
+            KeyKind::TableColumnSequence => {
+                TableColumnSequenceKey::decode(&key).map(Self::TableColumnSequence)
+            }
             KeyKind::SystemSequence => SystemSequenceKey::decode(&key).map(Self::SystemSequence),
             KeyKind::SystemVersion => SystemVersionKey::decode(&key).map(Self::SystemVersion),
             KeyKind::TransactionVersion => {
@@ -124,7 +131,7 @@ impl Key {
 #[cfg(test)]
 mod tests {
     use super::ColumnPolicyKey;
-    use super::TableRowSequenceKey;
+    use super::{TableRowSequenceKey, TableColumnSequenceKey};
     use super::{
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableIndexKey,
         TableKey, TableRowKey,
@@ -291,6 +298,25 @@ mod tests {
         match decoded {
             Key::TableRowSequence(decoded_inner) => {
                 assert_eq!(decoded_inner.table, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_table_column_sequence() {
+        let key = Key::TableColumnSequence(TableColumnSequenceKey { 
+            table: TableId(42),
+            column: ColumnId(123),
+        });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::TableColumnSequence(decoded_inner) => {
+                assert_eq!(decoded_inner.table, 42);
+                assert_eq!(decoded_inner.column, 123);
             }
             _ => unreachable!(),
         }

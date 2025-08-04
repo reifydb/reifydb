@@ -151,6 +151,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Utf8,
                     policies: vec![],
                     index: ColumnIndex(0),
+                    auto_increment: false,
                 },
                 Column {
                     id: ColumnId(1),
@@ -158,6 +159,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Int1,
                     policies: vec![],
                     index: ColumnIndex(1),
+                    auto_increment: false,
                 },
             ],
         };
@@ -299,6 +301,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Utf8,
                     policies: vec![],
                     index: ColumnIndex(0),
+                    auto_increment: false,
                 },
                 Column {
                     id: ColumnId(1),
@@ -306,6 +309,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Int1,
                     policies: vec![],
                     index: ColumnIndex(1),
+                    auto_increment: false,
                 },
             ],
         };

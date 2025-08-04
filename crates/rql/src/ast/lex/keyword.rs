@@ -110,6 +110,8 @@ keyword! {
     Key => "KEY",
     Asc => "ASC",
     Desc => "DESC",
+    Auto => "AUTO",
+    Increment => "INCREMENT",
 }
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -210,6 +212,8 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Key, "KEY"),
             keyword_tag(Keyword::Asc, "ASC"),
             keyword_tag(Keyword::Desc, "DESC"),
+            keyword_tag(Keyword::Auto, "AUTO"),
+            keyword_tag(Keyword::Increment, "INCREMENT"),
         )),
     ));
 
@@ -334,6 +338,8 @@ mod tests {
         test_keyword_key => (Key, "KEY"),
         test_keyword_asc => (Asc, "ASC"),
         test_keyword_desc => (Desc, "DESC"),
+        test_keyword_auto => (Auto, "AUTO"),
+        test_keyword_increment => (Increment, "INCREMENT"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -422,5 +428,7 @@ mod tests {
         test_not_keyword_key => ("key"),
         test_not_keyword_asc => ("asc"),
         test_not_keyword_desc => ( "desc"),
+        test_not_keyword_auto => ( "auto"),
+        test_not_keyword_increment => ( "increment"),
     }
 }

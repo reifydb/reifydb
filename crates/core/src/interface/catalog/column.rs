@@ -83,6 +83,7 @@ pub struct Column {
     pub ty: Type,
     pub policies: Vec<ColumnPolicy>,
     pub index: ColumnIndex,
+    pub auto_increment: bool,
 }
 
 #[repr(transparent)]

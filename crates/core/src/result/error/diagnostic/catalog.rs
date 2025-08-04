@@ -84,6 +84,24 @@ pub fn column_already_exists(
     }
 }
 
+pub fn auto_increment_invalid_type(
+    span: Option<impl IntoOwnedSpan>,
+    column: &str,
+    ty: crate::Type,
+) -> Diagnostic {
+    Diagnostic {
+        code: "CA_006".to_string(),
+        statement: None,
+        message: format!("auto increment is not supported for type `{}`", ty),
+        span: span.map(|s| s.into_span()),
+        label: Some("invalid auto increment usage".to_string()),
+        help: Some(format!("auto increment is only supported for integer types (int1-16, uint1-16), column `{}` has type `{}`", column, ty)),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}
+
 pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
     Diagnostic {
         code: "CA_008".to_string(),

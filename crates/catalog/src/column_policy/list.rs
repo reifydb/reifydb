@@ -59,6 +59,7 @@ mod tests {
                 if_not_exists: false,
                 policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Undefined)],
                 index: ColumnIndex(0),
+                auto_increment: false,
             },
         )
         .unwrap();

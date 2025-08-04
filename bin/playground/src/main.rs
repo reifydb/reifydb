@@ -6,9 +6,11 @@
 use reifydb::{ReifyDB, memory, optimistic};
 
 fn main() {
-    let _db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
-
-    // db.write_as_root(r#"create schema reifydb"#).unwrap();
+    let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
+    db.write_as_root(r#"create schema test"#).unwrap();
+    let err = db.write_as_root(r#"create table test.invalid1 { id: utf8 auto increment, name: utf8 }"#).unwrap_err();
+    dbg!(&err);
+    println!("{}", err);
 
     //     db.write_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
     //     db.write_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();

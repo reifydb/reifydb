@@ -20,6 +20,8 @@ pub struct ColumnToCreate {
     pub name: String,
     pub ty: Type,
     pub policies: Vec<ColumnPolicyKind>,
+    pub auto_increment: bool,
+    pub span: Option<OwnedSpan>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,7 +93,7 @@ impl Catalog {
                 atx,
                 table,
                 crate::column::ColumnToCreate {
-                    span: None,
+                    span: column_to_create.span.clone(),
                     schema_name: &to_create.schema,
                     table,
                     table_name: &to_create.table,
@@ -100,6 +102,7 @@ impl Catalog {
                     if_not_exists: false,
                     policies: column_to_create.policies.clone(),
                     index: ColumnIndex(idx as u16),
+                    auto_increment: column_to_create.auto_increment,
                 },
             )?;
         }

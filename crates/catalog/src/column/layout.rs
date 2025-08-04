@@ -11,6 +11,7 @@ pub(crate) mod column {
     pub(crate) const NAME: usize = 2;
     pub(crate) const VALUE: usize = 3;
     pub(crate) const INDEX: usize = 4;
+    pub(crate) const AUTO_INCREMENT: usize = 5;
 
     pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
         EncodedRowLayout::new(&[
@@ -19,6 +20,7 @@ pub(crate) mod column {
             Type::Utf8,  // name
             Type::Uint1, // value
             Type::Uint2, // index
+            Type::Bool,  // auto_increment
         ])
     });
 }

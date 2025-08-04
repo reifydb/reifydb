@@ -6,7 +6,7 @@ use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnIndex};
 use crate::column_policy::ColumnPolicyKind;
 use crate::sequence::SystemSequence;
-use reifydb_core::diagnostic::catalog::column_already_exists;
+use reifydb_core::diagnostic::catalog::{auto_increment_invalid_type, column_already_exists};
 use reifydb_core::interface::{
     ActiveWriteTransaction, ColumnKey, EncodableKey, Key, TableColumnKey, UnversionedTransaction,
     VersionedTransaction,
@@ -26,6 +26,7 @@ pub struct ColumnToCreate<'a> {
     pub if_not_exists: bool,
     pub policies: Vec<ColumnPolicyKind>,
     pub index: ColumnIndex,
+    pub auto_increment: bool,
 }
 
 impl Catalog {
@@ -44,6 +45,23 @@ impl Catalog {
             ));
         }
 
+        // Validate auto_increment is only used with integer types
+        if column_to_create.auto_increment {
+            let is_integer_type = matches!(
+                column_to_create.value,
+                Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16 |
+                Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8 | Type::Uint16
+            );
+            
+            if !is_integer_type {
+                return_error!(auto_increment_invalid_type(
+                    column_to_create.span,
+                    &column_to_create.column,
+                    column_to_create.value,
+                ));
+            }
+        }
+
         let id = SystemSequence::next_column_id(atx)?;
 
         let mut row = column::LAYOUT.allocate_row();
@@ -52,6 +70,7 @@ impl Catalog {
         column::LAYOUT.set_utf8(&mut row, column::NAME, &column_to_create.column);
         column::LAYOUT.set_u8(&mut row, column::VALUE, column_to_create.value.to_u8());
         column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
+        column::LAYOUT.set_bool(&mut row, column::AUTO_INCREMENT, column_to_create.auto_increment);
 
         atx.set(&Key::Column(ColumnKey { column: id }).encode(), row)?;
 
@@ -71,6 +90,7 @@ impl Catalog {
             ty: column_to_create.value,
             index: column_to_create.index,
             policies: Catalog::list_column_policies(atx, id)?,
+            auto_increment: column_to_create.auto_increment,
         })
     }
 }
@@ -102,6 +122,7 @@ mod test {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
+                auto_increment: false,
             },
         )
         .unwrap();
@@ -119,6 +140,7 @@ mod test {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),
+                auto_increment: false,
             },
         )
         .unwrap();
@@ -127,11 +149,114 @@ mod test {
         assert_eq!(column_1.id, 1);
         assert_eq!(column_1.name, "col_1");
         assert_eq!(column_1.ty, Type::Bool);
+        assert_eq!(column_1.auto_increment, false);
 
         let column_2 = Catalog::get_column(&mut atx, ColumnId(2)).unwrap().unwrap();
         assert_eq!(column_2.id, 2);
         assert_eq!(column_2.name, "col_2");
         assert_eq!(column_2.ty, Type::Int2);
+        assert_eq!(column_2.auto_increment, false);
+    }
+
+    #[test]
+    fn test_create_column_with_auto_increment() {
+        let mut atx = create_test_write_transaction();
+        ensure_test_table(&mut atx);
+
+        Catalog::create_column(
+            &mut atx,
+            TableId(1),
+            ColumnToCreate {
+                span: None,
+                schema_name: "test_schema",
+                table: TableId(1),
+                table_name: "test_table",
+                column: "id".to_string(),
+                value: Type::Uint8,
+                if_not_exists: false,
+                policies: vec![],
+                index: ColumnIndex(0),
+                auto_increment: true,
+            },
+        )
+        .unwrap();
+
+        let column = Catalog::get_column(&mut atx, ColumnId(1)).unwrap().unwrap();
+        assert_eq!(column.id, 1);
+        assert_eq!(column.name, "id");
+        assert_eq!(column.ty, Type::Uint8);
+        assert_eq!(column.auto_increment, true);
+    }
+
+    #[test]
+    fn test_auto_increment_invalid_type() {
+        let mut atx = create_test_write_transaction();
+        ensure_test_table(&mut atx);
+
+        // Try to create a text column with auto_increment
+        let err = Catalog::create_column(
+            &mut atx,
+            TableId(1),
+            ColumnToCreate {
+                span: None,
+                schema_name: "test_schema",
+                table: TableId(1),
+                table_name: "test_table",
+                column: "name".to_string(),
+                value: Type::Utf8,
+                if_not_exists: false,
+                policies: vec![],
+                index: ColumnIndex(0),
+                auto_increment: true,
+            },
+        )
+        .unwrap_err();
+
+        let diagnostic = err.diagnostic();
+        assert_eq!(diagnostic.code, "CA_006");
+        assert!(diagnostic.message.contains("auto increment is not supported for type"));
+
+        // Try with bool type
+        let err = Catalog::create_column(
+            &mut atx,
+            TableId(1),
+            ColumnToCreate {
+                span: None,
+                schema_name: "test_schema",
+                table: TableId(1),
+                table_name: "test_table",
+                column: "is_active".to_string(),
+                value: Type::Bool,
+                if_not_exists: false,
+                policies: vec![],
+                index: ColumnIndex(0),
+                auto_increment: true,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(err.diagnostic().code, "CA_006");
+
+        // Try with float type
+        let err = Catalog::create_column(
+            &mut atx,
+            TableId(1),
+            ColumnToCreate {
+                span: None,
+                schema_name: "test_schema",
+                table: TableId(1),
+                table_name: "test_table",
+                column: "price".to_string(),
+                value: Type::Float8,
+                if_not_exists: false,
+                policies: vec![],
+                index: ColumnIndex(0),
+                auto_increment: true,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(err.diagnostic().code, "CA_006");
     }
 
     #[test]
@@ -152,6 +277,7 @@ mod test {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
+                auto_increment: false,
             },
         )
         .unwrap();
@@ -170,6 +296,7 @@ mod test {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),
+                auto_increment: false,
             },
         )
         .unwrap_err();

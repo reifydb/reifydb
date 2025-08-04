@@ -92,6 +92,7 @@ pub fn create_test_table_column<VT, UT>(
             if_not_exists: false,
             policies,
             index: ColumnIndex(columns.len() as u16),
+            auto_increment: false,
         },
     )
     .unwrap();

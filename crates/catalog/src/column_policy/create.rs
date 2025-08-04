@@ -87,6 +87,7 @@ mod tests {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
+                auto_increment: false
             },
         )
         .unwrap();

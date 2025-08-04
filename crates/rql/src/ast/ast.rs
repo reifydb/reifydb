@@ -453,6 +453,7 @@ pub struct AstColumnToCreate {
     pub name: AstIdentifier,
     pub ty: AstIdentifier,
     pub policies: Option<AstPolicyBlock>,
+    pub auto_increment: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
