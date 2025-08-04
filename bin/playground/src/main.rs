@@ -3,20 +3,12 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::hook::WithHooks;
 use reifydb::{ReifyDB, memory, optimistic};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(optimistic(memory()))
-        .on_create(|ctx| {
-            println!("create reifydb");
-            ctx.write_as_root("create schema reifydb")?;
-            println!("Created reifyDB");
-            Ok(())
-        })
-        .build();
+    let _db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
 
-    db.write_as_root(r#"create schema reifydb"#).unwrap();
+    // db.write_as_root(r#"create schema reifydb"#).unwrap();
 
     //     db.write_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
     //     db.write_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
