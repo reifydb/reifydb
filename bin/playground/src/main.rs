@@ -8,7 +8,7 @@ use reifydb::{ReifyDB, memory, optimistic};
 fn main() {
     let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
     db.write_as_root(r#"create schema test"#).unwrap();
-    let err = db.write_as_root(r#"create table test.invalid1 { id: utf8 auto increment, name: utf8 }"#).unwrap_err();
+    let err = db.write_as_root(r#"create table test.arith { id: int2, from: int2, num: int2 }"#).unwrap_err();
     dbg!(&err);
     println!("{}", err);
 

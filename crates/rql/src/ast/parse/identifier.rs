@@ -10,6 +10,12 @@ impl Parser {
         let token = self.consume(TokenKind::Identifier)?;
         Ok(AstIdentifier(token))
     }
+
+    pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<AstIdentifier> {
+        let token = self.advance()?;
+        debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
+        Ok(AstIdentifier(token))
+    }
 }
 
 #[cfg(test)]

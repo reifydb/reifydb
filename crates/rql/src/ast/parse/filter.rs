@@ -77,6 +77,18 @@ mod tests {
     }
 
     #[test]
+    fn test_keyword() {
+        let tokens = lex("filter value > 100").unwrap();
+        let mut parser = Parser::new(tokens);
+        let filter = parser.parse_filter().unwrap();
+
+        let node = filter.node.as_infix();
+        assert_eq!(node.left.as_identifier().name(), "value");
+        assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
+        assert_eq!(node.right.as_literal_number().value(), "100");
+    }
+
+    #[test]
     fn test_logical_and() {
         let tokens = lex("filter price > 100 and qty < 50").unwrap();
         let mut parser = Parser::new(tokens);

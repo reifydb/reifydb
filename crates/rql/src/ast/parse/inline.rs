@@ -19,7 +19,7 @@ impl Parser {
                 break;
             }
 
-            let key = self.parse_identifier()?;
+            let key = self.parse_as_identifier()?;
             self.consume_operator(Colon)?;
             let value = Box::new(self.parse_node(Precedence::None)?);
 
@@ -62,6 +62,21 @@ mod tests {
 
         let keyed_value = &inline[0];
         assert_eq!(keyed_value.key.value(), "id");
+        let Literal(Number(value)) = keyed_value.value.as_ref() else { panic!() };
+        assert_eq!(value.value(), "1");
+    }
+
+    #[test]
+    fn test_keyword() {
+        let tokens = lex("{value: 1}").unwrap();
+        let result = parse(tokens).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let inline = result[0].first_unchecked().as_block();
+        assert_eq!(inline.len(), 1);
+
+        let keyed_value = &inline[0];
+        assert_eq!(keyed_value.key.value(), "value");
         let Literal(Number(value)) = keyed_value.value.as_ref() else { panic!() };
         assert_eq!(value.value(), "1");
     }
