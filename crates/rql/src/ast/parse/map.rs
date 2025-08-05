@@ -73,7 +73,7 @@ impl Parser {
             return_error!(ast::unsupported_token_error(self.current()?.clone().span));
         }
 
-        let identifier = self.parse_identifier()?;
+        let identifier = self.parse_as_identifier()?;
         let colon_token = self.advance()?; // consume colon
 
         let expression = self.parse_node(Precedence::None)?;
@@ -141,6 +141,19 @@ mod tests {
         let map = result.first_unchecked().as_map();
         assert_eq!(map.nodes.len(), 1);
         assert!(matches!(map.nodes[0], Ast::Wildcard(_)));
+    }
+
+    #[test]
+    fn test_keyword() {
+        let tokens = lex("MAP value").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let map = result.first_unchecked().as_map();
+        assert_eq!(map.nodes.len(), 1);
+        assert!(matches!(map.nodes[0], Ast::Identifier(_)));
+        assert_eq!(map.nodes[0].value(), "value");
     }
 
     #[test]

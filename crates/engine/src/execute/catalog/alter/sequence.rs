@@ -2,17 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::columnar::Columns;
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::Executor;
 use catalog::schema_not_found;
 use reifydb_catalog::Catalog;
+use reifydb_catalog::sequence::ColumnSequence;
 use reifydb_core::diagnostic::catalog;
 use reifydb_core::diagnostic::catalog::table_not_found;
 use reifydb_core::diagnostic::query::column_not_found;
+use reifydb_core::diagnostic::sequence::can_not_alter_not_auto_increment;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, EncodableKey, TableColumnSequenceKey, UnversionedTransaction,
-    UnversionedWriteTransaction, VersionedTransaction,
+    ActiveWriteTransaction, UnversionedTransaction, VersionedTransaction,
 };
-use reifydb_core::{Type, Value, return_error};
+use reifydb_core::{ColumnDescriptor, Value, return_error};
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
@@ -30,63 +32,46 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             return_error!(schema_not_found(plan.schema.clone(), schema_name,));
         };
 
-        // Get the table
         let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table)? else {
             return_error!(table_not_found(plan.table.clone(), &schema.name, &plan.table.as_ref(),));
         };
 
-        // Get the column
         let Some(column) = Catalog::get_column_by_name(atx, table.id, plan.column.as_ref())? else {
             return_error!(column_not_found(plan.column.clone()));
         };
 
-        // Check if the column has auto_increment enabled
         if !column.auto_increment {
-            return_error!(reifydb_core::diagnostic::Diagnostic {
-                code: "ALTER_001".to_string(),
-                statement: None,
-                message: format!(
-                    "cannot alter sequence for column `{}` which does not have AUTO INCREMENT",
-                    column.name
-                ),
-                span: Some(plan.column.clone()),
-                label: Some("column does not have AUTO INCREMENT".to_string()),
-                help: Some(
-                    "only columns with AUTO INCREMENT can have their sequences altered".to_string()
-                ),
-                column: None,
-                notes: vec![],
-                cause: None,
-            });
+            return_error!(can_not_alter_not_auto_increment(plan.column));
         }
 
-        // Convert the value to u64
-        let value_u64 = plan.value as u64; // FIXME
+        let value = evaluate(
+            &plan.value,
+            &EvaluationContext {
+                target_column: Some(ColumnDescriptor {
+                    schema: None,
+                    table: None,
+                    column: None,
+                    column_type: Some(column.ty.clone()),
+                    policies: vec![],
+                }),
+                column_policies: vec![],
+                columns: Columns::empty(),
+                row_count: 1,
+                take: None,
+            },
+        )?;
 
+        let data = value.data();
+        debug_assert_eq!(data.len(), 1);
 
-        // Get the sequence key
-        let key = TableColumnSequenceKey { table: table.id, column: column.id }.encode();
-
-        // Set the sequence value
-        atx.with_unversioned_write(|tx| {
-            use once_cell::sync::Lazy;
-            use reifydb_core::row::EncodedRowLayout;
-
-            static LAYOUT: Lazy<EncodedRowLayout> =
-                Lazy::new(|| EncodedRowLayout::new(&[Type::Uint8]));
-
-            let mut row = LAYOUT.allocate_row();
-            // The next call to next() will return value_u64, so we store value_u64 + 1
-            LAYOUT.set_u64(&mut row, 0, value_u64.saturating_add(1));
-            tx.set(&key, row)?;
-            Ok(())
-        })?;
+        let value = data.get_value(0);
+        ColumnSequence::set_value(atx, table.id, column.id, value.clone())?;
 
         Ok(Columns::single_row([
-            ("schema", Value::Utf8(schema.name.clone())),
-            ("table", Value::Utf8(table.name.clone())),
-            ("column", Value::Utf8(column.name.clone())),
-            ("value", Value::Uint8(value_u64)),
+            ("schema", Value::Utf8(schema.name)),
+            ("table", Value::Utf8(table.name)),
+            ("column", Value::Utf8(column.name)),
+            ("value", value),
         ]))
     }
 }
@@ -94,10 +79,13 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 #[cfg(test)]
 mod tests {
     use crate::execute_tx;
+    use ConstantExpression::Number;
+    use Expression::Constant;
     use reifydb_catalog::Catalog;
     use reifydb_catalog::table::{ColumnToCreate, TableToCreate};
     use reifydb_catalog::test_utils::ensure_test_schema;
     use reifydb_core::{OwnedSpan, Type, Value};
+    use reifydb_rql::expression::{ConstantExpression, Expression};
     use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
     use reifydb_transaction::test_utils::create_test_write_transaction;
 
@@ -138,7 +126,7 @@ mod tests {
             schema: Some(OwnedSpan::testing("test_schema")),
             table: OwnedSpan::testing("users"),
             column: OwnedSpan::testing("id"),
-            value: 1000,
+            value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
         let result = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap();
@@ -176,7 +164,7 @@ mod tests {
             schema: Some(OwnedSpan::testing("test_schema")),
             table: OwnedSpan::testing("items"),
             column: OwnedSpan::testing("id"),
-            value: 100,
+            value: Constant(Number { span: OwnedSpan::testing("100") }),
         };
 
         let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
@@ -192,7 +180,7 @@ mod tests {
             schema: Some(OwnedSpan::testing("non_existent_schema")),
             table: OwnedSpan::testing("some_table"),
             column: OwnedSpan::testing("id"),
-            value: 100,
+            value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
         let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
@@ -208,7 +196,7 @@ mod tests {
             schema: Some(OwnedSpan::testing("test_schema")),
             table: OwnedSpan::testing("non_existent_table"),
             column: OwnedSpan::testing("id"),
-            value: 100,
+            value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
         let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
@@ -243,7 +231,7 @@ mod tests {
             schema: Some(OwnedSpan::testing("test_schema")),
             table: OwnedSpan::testing("posts"),
             column: OwnedSpan::testing("non_existent_column"),
-            value: 100,
+            value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
         let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();

@@ -107,7 +107,7 @@ pub struct AlterSequenceNode {
     pub schema: Option<OwnedSpan>,
     pub table: OwnedSpan,
     pub column: OwnedSpan,
-    pub value: i128,
+    pub value: Expression,
 }
 
 #[derive(Debug)]

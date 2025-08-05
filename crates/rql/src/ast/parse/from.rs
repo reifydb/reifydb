@@ -14,11 +14,11 @@ impl Parser {
         if self.current()?.is_operator(OpenBracket) {
             Ok(AstFrom::Static { token, list: self.parse_static()? })
         } else {
-            let identifier = self.parse_identifier()?;
+            let identifier = self.parse_as_identifier()?;
 
             let (schema, table) = if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
                 self.consume_operator(Operator::Dot)?;
-                let table = self.parse_identifier()?;
+                let table = self.parse_as_identifier()?;
                 (Some(identifier), table)
             } else {
                 (None, identifier)

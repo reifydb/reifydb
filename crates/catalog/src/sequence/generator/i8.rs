@@ -26,23 +26,43 @@ impl GeneratorI8 {
         atx.with_unversioned_write(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
-                let value = LAYOUT.get_i8(&row, 0);
-                let next_value = value.saturating_add(1);
+                let current_value = LAYOUT.get_i8(&row, 0);
+                let next_value = current_value.saturating_add(1);
 
-                if value == next_value {
+                if current_value == next_value {
                     return_error!(sequence_exhausted(Type::Int1));
                 }
 
                 LAYOUT.set_i8(&mut row, 0, next_value);
                 tx.set(key, row)?;
-                Ok(value)
+                Ok(next_value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
-                LAYOUT.set_i8(&mut new_row, 0, 2i8);
+                LAYOUT.set_i8(&mut new_row, 0, 1i8);
                 tx.set(key, new_row)?;
                 Ok(1)
             }
+        })
+    }
+
+    pub(crate) fn set<VT, UT>(
+        atx: &mut ActiveWriteTransaction<VT, UT>,
+        key: &EncodedKey,
+        value: i8,
+    ) -> crate::Result<()>
+    where
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
+    {
+        atx.with_unversioned_write(|tx| {
+            let mut row = match tx.get(key)? {
+                Some(unversioned_row) => unversioned_row.row,
+                None => LAYOUT.allocate_row(),
+            };
+            LAYOUT.set_i8(&mut row, 0, value);
+            tx.set(key, row)?;
+            Ok(())
         })
     }
 }
@@ -72,7 +92,7 @@ mod tests {
             unversioned.pop().unwrap();
             let unversioned = unversioned.pop().unwrap();
             assert_eq!(unversioned.key, EncodedKey::new("sequence"));
-            assert_eq!(LAYOUT.get_i8(&unversioned.row, 0), 100);
+            assert_eq!(LAYOUT.get_i8(&unversioned.row, 0), 99);
 
             Ok(())
         })
