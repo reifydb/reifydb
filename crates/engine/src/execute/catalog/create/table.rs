@@ -6,7 +6,7 @@ use crate::execute::Executor;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, UnversionedTransaction,
+    ActiveCommandTransaction, UnversionedTransaction,
     VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_already_exists};
@@ -16,7 +16,7 @@ use reifydb_rql::plan::physical::CreateTablePlan;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_table(
         &mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: CreateTablePlan,
     ) -> crate::Result<Columns> {
         let Some(schema) = Catalog::get_schema_by_name(atx, &plan.schema)? else {

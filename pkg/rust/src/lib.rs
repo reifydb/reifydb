@@ -18,9 +18,7 @@ use std::path::Path;
 use reifydb_core::hook::Hooks;
 #[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
 use reifydb_core::interface::VersionedTransaction;
-use reifydb_core::interface::{
-    Principal, UnversionedTransaction, VersionedStorage,
-};
+use reifydb_core::interface::{Principal, UnversionedTransaction, VersionedStorage};
 use reifydb_core::result::Frame;
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
@@ -39,27 +37,30 @@ use variant::embedded_blocking::EmbeddedBlockingBuilder;
 use variant::server::ServerBuilder;
 
 pub mod hook;
-mod session;
+// pub mod session;
 pub mod variant;
+
+// Re-export the params macro
+// pub use crate::params;
 
 pub struct ReifyDB {}
 
 pub trait DB<'a>: Sized {
-    fn write_as(
+    fn command_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn write_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+    fn command_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn read_as(
+    fn query_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 
-    fn read_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+    fn query_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
 }
 
 impl ReifyDB {

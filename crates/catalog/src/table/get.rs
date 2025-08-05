@@ -5,13 +5,13 @@ use crate::Catalog;
 use crate::schema::SchemaId;
 use crate::table::layout::{table, table_schema};
 use reifydb_core::interface::{EncodableKey, SchemaTableKey, Table, TableId, TableKey};
-use reifydb_core::interface::{Versioned, VersionedReadTransaction};
+use reifydb_core::interface::{Versioned, VersionedQueryTransaction};
 
 impl Catalog {
     pub fn get_table_by_name(
-        rx: &mut impl VersionedReadTransaction,
-        schema: SchemaId,
-        name: impl AsRef<str>,
+		rx: &mut impl VersionedQueryTransaction,
+		schema: SchemaId,
+		name: impl AsRef<str>,
     ) -> crate::Result<Option<Table>> {
         let name = name.as_ref();
         let Some(table) =
@@ -32,8 +32,8 @@ impl Catalog {
     }
 
     pub fn get_table(
-        rx: &mut impl VersionedReadTransaction,
-        table: TableId,
+		rx: &mut impl VersionedQueryTransaction,
+		table: TableId,
     ) -> crate::Result<Option<Table>> {
         match rx.get(&TableKey { table }.encode())? {
             Some(versioned) => {

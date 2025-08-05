@@ -8,7 +8,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use reifydb_core::EncodedKey;
 use reifydb_core::EncodedKeyRange;
 use reifydb_core::interface::{EncodableKey, Table, TableRowKey};
-use reifydb_core::interface::{EncodableKeyRange, VersionedReadTransaction, TableRowKeyRange};
+use reifydb_core::interface::{EncodableKeyRange, VersionedQueryTransaction, TableRowKeyRange};
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
 use std::ops::Bound::{Excluded, Included};
@@ -41,7 +41,7 @@ impl ScanColumnsNode {
 }
 
 impl ExecutionPlan for ScanColumnsNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedQueryTransaction) -> crate::Result<Option<Batch>> {
         if self.exhausted {
             return Ok(None);
         }

@@ -7,15 +7,15 @@ use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyKind};
 use crate::sequence::SystemSequence;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, ColumnPolicyKey, EncodableKey, UnversionedTransaction,
-    VersionedTransaction, VersionedWriteTransaction,
+    ActiveCommandTransaction, ColumnPolicyKey, EncodableKey, UnversionedTransaction,
+    VersionedTransaction, VersionedCommandTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::column_policy_already_exists;
 use reifydb_core::return_error;
 
 impl Catalog {
     pub(crate) fn create_column_policy<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         column: ColumnId,
         policy: ColumnPolicyKind,
     ) -> crate::Result<ColumnPolicy> {

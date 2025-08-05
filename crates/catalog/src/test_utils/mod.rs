@@ -9,10 +9,10 @@ use crate::table::TableToCreate;
 use crate::{Catalog, table};
 use reifydb_core::Type;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, Table, TableId, UnversionedTransaction, VersionedTransaction,
+	ActiveCommandTransaction, Table, TableId, UnversionedTransaction, VersionedTransaction,
 };
 
-pub fn create_schema<VT, UT>(atx: &mut ActiveWriteTransaction<VT, UT>, schema: &str) -> Schema
+pub fn create_schema<VT, UT>(atx: &mut ActiveCommandTransaction<VT, UT>, schema: &str) -> Schema
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -21,7 +21,7 @@ where
         .unwrap()
 }
 
-pub fn ensure_test_schema<VT, UT>(atx: &mut ActiveWriteTransaction<VT, UT>) -> Schema
+pub fn ensure_test_schema<VT, UT>(atx: &mut ActiveCommandTransaction<VT, UT>) -> Schema
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -32,7 +32,7 @@ where
     create_schema(atx, "test_schema")
 }
 
-pub fn ensure_test_table<VT, UT>(atx: &mut ActiveWriteTransaction<VT, UT>) -> Table
+pub fn ensure_test_table<VT, UT>(atx: &mut ActiveCommandTransaction<VT, UT>) -> Table
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -45,10 +45,10 @@ where
 }
 
 pub fn create_table<VT, UT>(
-    atx: &mut ActiveWriteTransaction<VT, UT>,
-    schema: &str,
-    table: &str,
-    columns: &[table::ColumnToCreate],
+	atx: &mut ActiveCommandTransaction<VT, UT>,
+	schema: &str,
+	table: &str,
+	columns: &[table::ColumnToCreate],
 ) -> Table
 where
     VT: VersionedTransaction,
@@ -67,10 +67,10 @@ where
 }
 
 pub fn create_test_table_column<VT, UT>(
-    atx: &mut ActiveWriteTransaction<VT, UT>,
-    name: &str,
-    value: Type,
-    policies: Vec<ColumnPolicyKind>,
+	atx: &mut ActiveCommandTransaction<VT, UT>,
+	name: &str,
+	value: Type,
+	policies: Vec<ColumnPolicyKind>,
 ) where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,

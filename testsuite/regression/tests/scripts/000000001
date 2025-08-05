@@ -1,9 +1,9 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(write 'create schema test')
-(write 'create table test.arith{id: int2, num: int2}')
-(write '
+(command 'create schema test')
+(command 'create table test.arith{id: int2, num: int2}')
+(command '
   from [
     { id: 1, num: 6 },
     { id: 2, num: 8 },
@@ -12,7 +12,7 @@
     { id: 5, num: 3 }
   ] insert test.arith
 ')
-write 'from test.arith map { id + 42, id + id + id } '
+command 'from test.arith map { id + 42, id + id + id } '
 ---
 > +---------+------------+
 > |  id+42  |  id+id+id  |

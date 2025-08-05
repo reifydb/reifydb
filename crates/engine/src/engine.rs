@@ -6,8 +6,8 @@ use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    ActiveReadTransaction, ActiveWriteTransaction, Engine as EngineInterface, GetHooks, Principal,
-    UnversionedTransaction, VersionedTransaction, VersionedWriteTransaction,
+    ActiveCommandTransaction, ActiveQueryTransaction, Engine as EngineInterface, GetHooks,
+    Principal, UnversionedTransaction, VersionedCommandTransaction, VersionedTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
@@ -35,19 +35,19 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn begin_write(&self) -> crate::Result<ActiveWriteTransaction<VT, UT>> {
-        Ok(ActiveWriteTransaction::new(self.versioned.begin_write()?, self.unversioned.clone()))
+    fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<VT, UT>> {
+        Ok(ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone()))
     }
 
-    fn begin_read(&self) -> crate::Result<ActiveReadTransaction<VT, UT>> {
-        Ok(ActiveReadTransaction::new(self.versioned.begin_read()?, self.unversioned.clone()))
+    fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<VT, UT>> {
+        Ok(ActiveQueryTransaction::new(self.versioned.begin_query()?, self.unversioned.clone()))
     }
 
-    fn write_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    fn command_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut atx = self.begin_write()?;
+        let mut atx = self.begin_command()?;
 
         for statement in statements {
             if let Some(plan) = plan(&mut atx, statement)? {
@@ -61,11 +61,11 @@ where
         Ok(result.into_iter().map(Frame::from).collect())
     }
 
-    fn read_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    fn query_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
-        let mut rx = self.begin_read()?;
+        let mut rx = self.begin_query()?;
         for statement in statements {
             if let Some(plan) = plan(&mut rx, statement)? {
                 let er = execute_read::<VT, UT>(&mut rx, plan)?;

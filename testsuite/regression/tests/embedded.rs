@@ -40,29 +40,29 @@ where
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
-            "write" => {
-                let query =
+            "command" => {
+                let rql =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("tx: {query}");
+                println!("command: {rql}");
 
                 let engine = self.instance.clone();
                 self.runtime.block_on(async {
-                    for frame in engine.write_as_root(query.as_str()).await? {
+                    for frame in engine.command_as_root(rql.as_str()).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
             }
-            "read" => {
-                let query =
+            "query" => {
+                let rql =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("rx: {query}");
+                println!("query: {rql}");
 
                 let engine = self.instance.clone();
                 self.runtime.block_on(async {
-                    for frame in engine.read_as_root(query.as_str()).await? {
+                    for frame in engine.query_as_root(rql.as_str()).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())

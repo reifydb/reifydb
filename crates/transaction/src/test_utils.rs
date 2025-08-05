@@ -4,18 +4,18 @@
 use crate::mvcc::transaction::serializable::Serializable;
 use crate::svl::SingleVersionLock;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::ActiveWriteTransaction;
+use reifydb_core::interface::ActiveCommandTransaction;
 use reifydb_storage::memory::Memory;
 
-pub fn create_test_write_transaction() -> ActiveWriteTransaction<
+pub fn create_test_write_transaction() -> ActiveCommandTransaction<
     Serializable<Memory, SingleVersionLock<Memory>>,
     SingleVersionLock<Memory>,
 > {
     let memory = Memory::new();
     let hooks = Hooks::new();
     let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
-    ActiveWriteTransaction::new(
-        Serializable::new(memory, unversioned.clone(), hooks).begin_write().unwrap(),
+    ActiveCommandTransaction::new(
+        Serializable::new(memory, unversioned.clone(), hooks).begin_command().unwrap(),
         unversioned,
     )
 }

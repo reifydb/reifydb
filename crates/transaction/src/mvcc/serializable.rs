@@ -4,8 +4,8 @@
 use crate::mvcc::transaction::serializable::{ReadTransaction, Serializable, WriteTransaction};
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    BoxedVersionedIter, GetHooks, UnversionedTransaction, Versioned, VersionedReadTransaction,
-    VersionedStorage, VersionedTransaction, VersionedWriteTransaction,
+    BoxedVersionedIter, GetHooks, UnversionedTransaction, Versioned, VersionedQueryTransaction,
+    VersionedStorage, VersionedTransaction, VersionedCommandTransaction,
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
@@ -19,19 +19,19 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> GetHooks for Serializable
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
     for Serializable<VS, UT>
 {
-    type Read = ReadTransaction<VS, UT>;
-    type Write = WriteTransaction<VS, UT>;
+    type Query = ReadTransaction<VS, UT>;
+    type Command = WriteTransaction<VS, UT>;
 
-    fn begin_read(&self) -> Result<Self::Read, Error> {
-        self.begin_read()
+    fn begin_query(&self) -> Result<Self::Query, Error> {
+        self.begin_query()
     }
 
-    fn begin_write(&self) -> Result<Self::Write, Error> {
-        self.begin_write()
+    fn begin_command(&self) -> Result<Self::Command, Error> {
+        self.begin_command()
     }
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedReadTransaction
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
     for ReadTransaction<VS, UT>
 {
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
@@ -77,7 +77,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedReadTransaction
     }
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedReadTransaction
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
     for WriteTransaction<VS, UT>
 {
     fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
@@ -153,7 +153,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedReadTransaction
     }
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedWriteTransaction
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedCommandTransaction
     for WriteTransaction<VS, UT>
 {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {

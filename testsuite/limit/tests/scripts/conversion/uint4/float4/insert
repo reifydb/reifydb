@@ -1,11 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
-(write 'create schema test')
+(command 'create schema test')
 
-(write 'create table test.conversion{col: float4}')
+(command 'create table test.conversion{col: float4}')
 
-(write 'from [{ col: cast(cast(0, uint4), float4) }] insert test.conversion')
-write 'from test.conversion map col'
+(command 'from [{ col: cast(cast(0, uint4), float4) }] insert test.conversion')
+command 'from test.conversion map col'
 ---
 > +-------+
 > |  col  |
@@ -14,8 +14,8 @@ write 'from test.conversion map col'
 > +-------+
 > 
 
-(write 'from [{ col: cast(cast(16777216, uint4), float4) }] insert test.conversion')
-write 'from test.conversion map col'
+(command 'from [{ col: cast(cast(16777216, uint4), float4) }] insert test.conversion')
+command 'from test.conversion map col'
 ---
 > +------------+
 > |    col     |
@@ -25,7 +25,7 @@ write 'from test.conversion map col'
 > +------------+
 > 
 
-!write 'from [{ col: cast(cast(16777217, uint4), float4) }] insert test.conversion'
+!command 'from [{ col: cast(cast(16777217, uint4), float4) }] insert test.conversion'
 ---
 >  Error CAST_002: failed to cast to FLOAT4
 >   at "(16777217float4" (line 1, column 18)

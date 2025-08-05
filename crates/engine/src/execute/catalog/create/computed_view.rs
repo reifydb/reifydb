@@ -4,15 +4,15 @@
 use crate::columnar::Columns;
 use crate::execute::Executor;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, UnversionedTransaction, VersionedTransaction,
+	ActiveCommandTransaction, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_rql::plan::physical::CreateComputedViewPlan;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_computed_view(
-        &mut self,
-        _atx: &mut ActiveWriteTransaction<VT, UT>,
-        _plan: CreateComputedViewPlan,
+		&mut self,
+		_atx: &mut ActiveCommandTransaction<VT, UT>,
+		_plan: CreateComputedViewPlan,
     ) -> crate::Result<Columns> {
         // if plan.if_not_exists {
         //     unimplemented!()

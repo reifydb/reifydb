@@ -8,33 +8,33 @@ use crate::{EncodedKey, EncodedKeyRange};
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
 pub trait VersionedTransaction: GetHooks + Send + Sync + Clone + 'static {
-    type Read: VersionedReadTransaction;
-    type Write: VersionedWriteTransaction;
+    type Query: VersionedQueryTransaction;
+    type Command: VersionedCommandTransaction;
 
-    fn begin_read(&self) -> crate::Result<Self::Read>;
+    fn begin_query(&self) -> crate::Result<Self::Query>;
 
-    fn begin_write(&self) -> crate::Result<Self::Write>;
+    fn begin_command(&self) -> crate::Result<Self::Command>;
 
-    fn with_read<F, R>(&self, f: F) -> crate::Result<R>
+    fn with_query<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut Self::Read) -> crate::Result<R>,
+        F: FnOnce(&mut Self::Query) -> crate::Result<R>,
     {
-        let mut tx = self.begin_read()?;
+        let mut tx = self.begin_query()?;
         f(&mut tx)
     }
 
-    fn with_write<F, R>(&self, f: F) -> crate::Result<R>
+    fn with_command<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut Self::Write) -> crate::Result<R>,
+        F: FnOnce(&mut Self::Command) -> crate::Result<R>,
     {
-        let mut tx = self.begin_write()?;
+        let mut tx = self.begin_command()?;
         let result = f(&mut tx)?;
         tx.commit()?;
         Ok(result)
     }
 }
 
-pub trait VersionedReadTransaction {
+pub trait VersionedQueryTransaction {
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
 
     fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
@@ -52,7 +52,7 @@ pub trait VersionedReadTransaction {
     fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
 }
 
-pub trait VersionedWriteTransaction: VersionedReadTransaction {
+pub trait VersionedCommandTransaction: VersionedQueryTransaction {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
     fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;

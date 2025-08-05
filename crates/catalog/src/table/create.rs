@@ -8,10 +8,10 @@ use crate::schema::SchemaId;
 use crate::sequence::SystemSequence;
 use crate::table::layout::{table, table_schema};
 use reifydb_core::interface::{
-    ActiveWriteTransaction, EncodableKey, Key, SchemaTableKey, Table, TableId, TableKey,
-    UnversionedTransaction, VersionedTransaction,
+	ActiveCommandTransaction, EncodableKey, Key, SchemaTableKey, Table, TableId, TableKey,
+	UnversionedTransaction, VersionedTransaction,
 };
-use reifydb_core::interface::{VersionedWriteTransaction};
+use reifydb_core::interface::{VersionedCommandTransaction};
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::{OwnedSpan, Type, return_error};
 
@@ -34,8 +34,8 @@ pub struct TableToCreate {
 
 impl Catalog {
     pub fn create_table<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        to_create: TableToCreate,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		to_create: TableToCreate,
     ) -> crate::Result<Table> {
         let Some(schema) = Catalog::get_schema_by_name(atx, &to_create.schema)? else {
             return_error!(schema_not_found(to_create.span, &to_create.schema));
@@ -55,10 +55,10 @@ impl Catalog {
     }
 
     fn store_table<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        table: TableId,
-        schema: SchemaId,
-        to_create: &TableToCreate,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		table: TableId,
+		schema: SchemaId,
+		to_create: &TableToCreate,
     ) -> crate::Result<()> {
         let mut row = table::LAYOUT.allocate_row();
         table::LAYOUT.set_u64(&mut row, table::ID, table);
@@ -71,10 +71,10 @@ impl Catalog {
     }
 
     fn link_table_to_schema<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        schema: SchemaId,
-        table: TableId,
-        name: &str,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		schema: SchemaId,
+		table: TableId,
+		name: &str,
     ) -> crate::Result<()> {
         let mut row = table_schema::LAYOUT.allocate_row();
         table_schema::LAYOUT.set_u64(&mut row, table_schema::ID, table);
@@ -84,9 +84,9 @@ impl Catalog {
     }
 
     fn insert_columns<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        table: TableId,
-        to_create: TableToCreate,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		table: TableId,
+		to_create: TableToCreate,
     ) -> crate::Result<()> {
         for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
             Catalog::create_column(
@@ -118,7 +118,7 @@ mod tests {
     use crate::table::layout::table_schema;
     use crate::test_utils::ensure_test_schema;
     use reifydb_core::interface::SchemaTableKey;
-    use reifydb_core::interface::VersionedReadTransaction;
+    use reifydb_core::interface::VersionedQueryTransaction;
     use reifydb_transaction::test_utils::create_test_write_transaction;
 
     #[test]

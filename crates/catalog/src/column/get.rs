@@ -6,11 +6,11 @@ use crate::column::layout::{column, table_column};
 use crate::column::{Column, ColumnId, ColumnIndex};
 use reifydb_core::Type;
 use reifydb_core::interface::{ColumnKey, EncodableKey, TableColumnKey};
-use reifydb_core::interface::{TableId, VersionedReadTransaction};
+use reifydb_core::interface::{TableId, VersionedQueryTransaction};
 
 impl Catalog {
     pub fn get_column(
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         column: ColumnId,
     ) -> crate::Result<Option<Column>> {
         match rx.get(&ColumnKey { column }.encode())? {
@@ -32,7 +32,7 @@ impl Catalog {
     }
 
     pub fn get_column_by_name(
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         table: TableId,
         column_name: &str,
     ) -> crate::Result<Option<Column>> {

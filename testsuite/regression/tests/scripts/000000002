@@ -1,10 +1,10 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(write 'create schema test')
-(write 'create table test.item{field: int1}')
-(write 'from [{field: -1 -2}] insert test.item')
-write 'from test.item map field'
+(command 'create schema test')
+(command 'create table test.item{field: int1}')
+(command 'from [{field: -1 -2}] insert test.item')
+command 'from test.item map field'
 ---
 > +---------+
 > |  field  |

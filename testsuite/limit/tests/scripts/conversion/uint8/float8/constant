@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-write 'map cast(cast(0, uint8), float8)'
+command 'map cast(cast(0, uint8), float8)'
 ---
 > +-----+
 > |  0  |
@@ -10,7 +10,7 @@ write 'map cast(cast(0, uint8), float8)'
 > +-----+
 > 
 
-write 'map cast(cast(9007199254740992, uint8), float8)'
+command 'map cast(cast(9007199254740992, uint8), float8)'
 ---
 > +--------------------+
 > |  9007199254740992  |
@@ -19,7 +19,7 @@ write 'map cast(cast(9007199254740992, uint8), float8)'
 > +--------------------+
 > 
 
-!write 'map cast(cast(9007199254740993, uint8), float8)'
+!command 'map cast(cast(9007199254740993, uint8), float8)'
 ---
 >  Error CAST_002: failed to cast to FLOAT8
 >   at "(9007199254740993float8" (line 1, column 9)

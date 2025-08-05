@@ -59,13 +59,13 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    async fn write_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.write_as(&principal, &rql).map_err(|mut err| {
+            engine.command_as(&principal, &rql).map_err(|mut err| {
                 err.0.set_statement(rql.to_string());
                 err
             })
@@ -74,18 +74,18 @@ where
         .unwrap()
     }
 
-    async fn write_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn command_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.write_as(&principal, rql).await
+        self.command_as(&principal, rql).await
     }
 
-    async fn read_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.read_as(&principal, &rql).map_err(|mut err| {
+            engine.query_as(&principal, &rql).map_err(|mut err| {
                 err.0.set_statement(rql.to_string());
                 err
             })
@@ -94,8 +94,8 @@ where
         .unwrap()
     }
 
-    async fn read_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    async fn query_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.read_as(&principal, rql).await
+        self.query_as(&principal, rql).await
     }
 }

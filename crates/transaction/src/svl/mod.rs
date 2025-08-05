@@ -50,15 +50,15 @@ impl<US> UnversionedTransaction for SingleVersionLock<US>
 where
     US: UnversionedStorage,
 {
-    type Read<'a> = SvlReadTransaction<'a, US>;
-    type Write<'a> = SvlWriteTransaction<'a, US>;
+    type Query<'a> = SvlReadTransaction<'a, US>;
+    type Command<'a> = SvlWriteTransaction<'a, US>;
 
-    fn begin_read(&self) -> crate::Result<Self::Read<'_>> {
+    fn begin_query(&self) -> crate::Result<Self::Query<'_>> {
         let storage = self.inner.storage.read().unwrap();
         Ok(SvlReadTransaction { storage })
     }
 
-    fn begin_write(&self) -> crate::Result<Self::Write<'_>> {
+    fn begin_command(&self) -> crate::Result<Self::Command<'_>> {
         let storage = self.inner.storage.write().unwrap();
         Ok(SvlWriteTransaction::new(storage))
     }

@@ -4,12 +4,12 @@
 use crate::Catalog;
 use crate::column::layout::table_column;
 use crate::column::{Column, ColumnId};
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 use reifydb_core::interface::{TableColumnKey, TableId};
 
 impl Catalog {
     pub fn list_columns(
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         table: TableId,
     ) -> crate::Result<Vec<Column>> {
         let mut result = vec![];

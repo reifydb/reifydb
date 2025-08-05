@@ -27,32 +27,32 @@ where
     }
 
     /// Execute a transactional query as the specified principal
-    pub fn write_as(
+    pub fn command_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> Result<Vec<Frame>, reifydb_core::Error> {
-        self.engine.write_as(principal, rql)
+        self.engine.command_as(principal, rql)
     }
 
     /// Execute a transactional query as root user
-    pub fn write_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
+    pub fn command_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
         let principal = Principal::System { id: 0, name: "root".to_string() };
-        self.engine.write_as(&principal, rql)
+        self.engine.command_as(&principal, rql)
     }
 
     /// Execute a read-only query as the specified principal
-    pub fn read_as(
+    pub fn query_as(
         &self,
         principal: &Principal,
         rql: &str,
     ) -> Result<Vec<Frame>, reifydb_core::Error> {
-        self.engine.read_as(principal, rql)
+        self.engine.query_as(principal, rql)
     }
 
     /// Execute a read-only query as root user
-    pub fn read_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
+    pub fn query_as_root(&self, rql: &str) -> Result<Vec<Frame>, reifydb_core::Error> {
         let principal = Principal::root();
-        self.engine.read_as(&principal, rql)
+        self.engine.query_as(&principal, rql)
     }
 }

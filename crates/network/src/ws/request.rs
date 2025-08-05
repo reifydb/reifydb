@@ -14,8 +14,8 @@ pub struct Request {
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
     Auth(AuthRequest),
-    Write(WriteRequest),
-    Read(ReadRequest),
+    Command(CommandRequest),
+    Query(QueryRequest),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,11 +24,11 @@ pub struct AuthRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WriteRequest {
+pub struct CommandRequest {
     pub statements: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ReadRequest {
+pub struct QueryRequest {
     pub statements: Vec<String>,
 }

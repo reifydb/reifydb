@@ -4,16 +4,16 @@
 use crate::row::RowId;
 use crate::sequence::generator::u64::GeneratorU64;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, EncodableKey, TableId, TableRowSequenceKey, UnversionedTransaction,
-    VersionedTransaction,
+	ActiveCommandTransaction, EncodableKey, TableId, TableRowSequenceKey, UnversionedTransaction,
+	VersionedTransaction,
 };
 
 pub struct TableRowSequence {}
 
 impl TableRowSequence {
     pub fn next_row_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        table: TableId,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		table: TableId,
     ) -> crate::Result<RowId> {
         GeneratorU64::next(atx, &TableRowSequenceKey { table }.encode()).map(RowId)
     }

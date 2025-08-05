@@ -7,7 +7,7 @@ use crate::svl::range_rev::SvlRangeRev;
 use crate::svl::scan::SvlScan;
 use crate::svl::scan_rev::SvlScanRev;
 use reifydb_core::interface::{
-    BoxedUnversionedIter, UnversionedReadTransaction, UnversionedWriteTransaction,
+    BoxedUnversionedIter, UnversionedQueryTransaction, UnversionedCommandTransaction,
 };
 use std::collections::HashMap;
 use std::mem::take;
@@ -20,7 +20,7 @@ pub struct SvlWriteTransaction<'a, US> {
     storage: RwLockWriteGuard<'a, US>,
 }
 
-impl<US> UnversionedReadTransaction for SvlWriteTransaction<'_, US>
+impl<US> UnversionedQueryTransaction for SvlWriteTransaction<'_, US>
 where
     US: UnversionedStorage,
 {
@@ -122,7 +122,7 @@ where
     }
 }
 
-impl<'a, US> UnversionedWriteTransaction for SvlWriteTransaction<'a, US>
+impl<'a, US> UnversionedCommandTransaction for SvlWriteTransaction<'a, US>
 where
     US: UnversionedStorage,
 {

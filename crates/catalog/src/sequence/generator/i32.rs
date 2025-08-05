@@ -4,8 +4,8 @@
 use once_cell::sync::Lazy;
 use reifydb_core::diagnostic::sequence::sequence_exhausted;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, UnversionedReadTransaction, UnversionedTransaction,
-    UnversionedWriteTransaction, VersionedTransaction,
+    ActiveCommandTransaction, UnversionedQueryTransaction, UnversionedTransaction,
+    UnversionedCommandTransaction, VersionedTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
@@ -16,14 +16,14 @@ pub(crate) struct GeneratorI32 {}
 
 impl GeneratorI32 {
     pub(crate) fn next<VT, UT>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         key: &EncodedKey,
     ) -> crate::Result<i32>
     where
         VT: VersionedTransaction,
         UT: UnversionedTransaction,
     {
-        atx.with_unversioned_write(|tx| match tx.get(key)? {
+        atx.with_unversioned_command(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
                 let current_value = LAYOUT.get_i32(&row, 0);
@@ -47,7 +47,7 @@ impl GeneratorI32 {
     }
 
     pub(crate) fn set<VT, UT>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         key: &EncodedKey,
         value: i32,
     ) -> crate::Result<()>
@@ -55,7 +55,7 @@ impl GeneratorI32 {
         VT: VersionedTransaction,
         UT: UnversionedTransaction,
     {
-        atx.with_unversioned_write(|tx| {
+        atx.with_unversioned_command(|tx| {
             let mut row = match tx.get(key)? {
                 Some(unversioned_row) => unversioned_row.row,
                 None => LAYOUT.allocate_row(),
@@ -71,7 +71,7 @@ impl GeneratorI32 {
 mod tests {
     use crate::sequence::generator::i32::{GeneratorI32, LAYOUT};
     use reifydb_core::interface::{
-        Unversioned, UnversionedReadTransaction, UnversionedWriteTransaction,
+        Unversioned, UnversionedQueryTransaction, UnversionedCommandTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::{EncodedKey, Type};
@@ -85,7 +85,7 @@ mod tests {
             assert_eq!(got, expected);
         }
 
-        atx.with_unversioned_read(|tx| {
+        atx.with_unversioned_query(|tx| {
             let mut unversioned: Vec<Unversioned> = tx.scan()?.collect();
             assert_eq!(unversioned.len(), 2);
 
@@ -106,7 +106,7 @@ mod tests {
         let mut row = LAYOUT.allocate_row();
         LAYOUT.set_i32(&mut row, 0, i32::MAX);
 
-        atx.with_unversioned_write(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
+        atx.with_unversioned_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
 
         let err = GeneratorI32::next(&mut atx, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int4));

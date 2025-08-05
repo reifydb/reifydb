@@ -2,9 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{
-    UnversionedTransaction, VersionedTransaction,
-};
+use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb::variant::embedded_blocking::EmbeddedBlocking;
 use reifydb::{ReifyDB, memory, serializable};
 use reifydb_testing::testscript;
@@ -40,23 +38,23 @@ where
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
-            "write" => {
+            "command" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("tx: {query}");
+                println!("command: {query}");
 
-                for frame in self.engine.write_as_root(query.as_str())? {
+                for frame in self.engine.command_as_root(query.as_str())? {
                     writeln!(output, "{}", frame)?;
                 }
             }
-            "read" => {
+            "query" => {
                 let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("rx: {query}");
+                println!("query: {query}");
 
-                for frame in self.engine.read_as_root(query.as_str())? {
+                for frame in self.engine.query_as_root(query.as_str())? {
                     writeln!(output, "{}", frame)?;
                 }
             }

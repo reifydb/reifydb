@@ -33,7 +33,7 @@ where
     UT: UnversionedTransaction,
 {
     fn on(&self, _hook: &OnCreateHook) -> crate::Result<BoxedHookIter> {
-        self.engine.write_as(
+        self.engine.command_as(
             &Principal::root(),
             r#"
 

@@ -9,12 +9,12 @@ use reifydb_catalog::{
     sequence::{ColumnSequence, TableRowSequence},
 };
 use reifydb_core::interface::{
-    ActiveWriteTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
+    ActiveCommandTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, VersionedWriteTransaction},
+    interface::{ColumnPolicyKind, VersionedCommandTransaction},
     return_error,
     row::EncodedRowLayout,
 };
@@ -24,7 +24,7 @@ use std::sync::Arc;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn insert(
         &mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: InsertPlan,
     ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME

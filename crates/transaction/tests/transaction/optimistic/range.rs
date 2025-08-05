@@ -24,7 +24,7 @@ use reifydb_transaction::mvcc::transaction::range_rev::TransactionRangeRev;
 #[test]
 fn test_range() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin_write().unwrap();
+    let mut txn = engine.begin_command().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -32,7 +32,7 @@ fn test_range() {
 
     let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
-    let txn = engine.begin_read().unwrap();
+    let txn = engine.begin_query().unwrap();
     let iter = txn.scan_range(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).rev().zip(iter) {
         assert_eq!(v.key, as_key!(expected));
@@ -51,7 +51,7 @@ fn test_range() {
 #[test]
 fn test_range2() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin_write().unwrap();
+    let mut txn = engine.begin_command().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -74,7 +74,7 @@ fn test_range2() {
 
     txn.commit().unwrap();
 
-    let mut txn = engine.begin_write().unwrap();
+    let mut txn = engine.begin_command().unwrap();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
@@ -99,7 +99,7 @@ fn test_range2() {
 #[test]
 fn test_range3() {
     let engine = Optimistic::testing();
-    let mut txn = engine.begin_write().unwrap();
+    let mut txn = engine.begin_command().unwrap();
     txn.set(&as_key!(4), as_row!(4)).unwrap();
     txn.set(&as_key!(5), as_row!(5)).unwrap();
     txn.set(&as_key!(6), as_row!(6)).unwrap();
@@ -124,7 +124,7 @@ fn test_range3() {
 
     let five_to_one = EncodedKeyRange::start_end(Some(as_key!(5)), Some(as_key!(1)));
 
-    let mut txn = engine.begin_write().unwrap();
+    let mut txn = engine.begin_command().unwrap();
     txn.set(&as_key!(1), as_row!(1)).unwrap();
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
@@ -155,7 +155,7 @@ fn test_range_edge() {
 
     // c1
     {
-        let mut txn = engine.begin_write().unwrap();
+        let mut txn = engine.begin_command().unwrap();
 
         txn.set(&as_key!(0), as_row!(0u64)).unwrap();
         txn.set(&as_key!(u64::MAX), as_row!(u64::MAX)).unwrap();
@@ -167,7 +167,7 @@ fn test_range_edge() {
 
     // a2, c2
     {
-        let mut txn = engine.begin_write().unwrap();
+        let mut txn = engine.begin_command().unwrap();
         txn.set(&as_key!(1), as_row!(12u64)).unwrap();
         txn.set(&as_key!(3), as_row!(32u64)).unwrap();
         txn.commit().unwrap();
@@ -176,7 +176,7 @@ fn test_range_edge() {
 
     // b3
     {
-        let mut txn = engine.begin_write().unwrap();
+        let mut txn = engine.begin_command().unwrap();
         txn.set(&as_key!(1), as_row!(13u64)).unwrap();
         txn.set(&as_key!(2), as_row!(23u64)).unwrap();
         txn.commit().unwrap();
@@ -185,7 +185,7 @@ fn test_range_edge() {
 
     // b4 (remove)
     {
-        let mut txn = engine.begin_write().unwrap();
+        let mut txn = engine.begin_command().unwrap();
         txn.remove(&as_key!(2)).unwrap();
         txn.commit().unwrap();
         assert_eq!(5, engine.version().unwrap());
@@ -211,7 +211,7 @@ fn test_range_edge() {
 
     let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
 
-    let mut txn = engine.begin_write().unwrap();
+    let mut txn = engine.begin_command().unwrap();
     let itr = txn.scan_range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 13]);
     let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();

@@ -6,10 +6,10 @@ use crate::plan::logical::compile_logical;
 use crate::plan::physical;
 use crate::plan::physical::{PhysicalPlan, compile_physical};
 use reifydb_core::JoinType;
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 use std::fmt::Write;
 
-pub fn explain_physical_plan(rx: &mut impl VersionedReadTransaction, query: &str) -> crate::Result<String> {
+pub fn explain_physical_plan(rx: &mut impl VersionedQueryTransaction, query: &str) -> crate::Result<String> {
     let statements = parse(query)?;
 
     let mut plans = Vec::new();

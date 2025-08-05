@@ -6,7 +6,7 @@ use crate::columnar::Columns;
 use crate::columnar::{Column, ColumnData, ColumnQualified};
 use crate::evaluate::{evaluate, EvaluationContext};
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::interface::{VersionedReadTransaction, Table};
+use reifydb_core::interface::{VersionedQueryTransaction, Table};
 use reifydb_core::{ColumnDescriptor, Value};
 use reifydb_rql::expression::AliasExpression;
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ impl InlineDataNode {
 }
 
 impl ExecutionPlan for InlineDataNode {
-    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn VersionedQueryTransaction) -> crate::Result<Option<Batch>> {
         if self.executed {
             return Ok(None);
         }

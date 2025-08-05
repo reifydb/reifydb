@@ -8,13 +8,13 @@ use crate::expression::{AliasExpression, Expression};
 use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 use reifydb_core::{JoinType, OwnedSpan, SortKey};
 
 struct Compiler {}
 
 pub fn compile_physical(
-    rx: &mut impl VersionedReadTransaction,
+    rx: &mut impl VersionedQueryTransaction,
     logical: Vec<LogicalPlan>,
 ) -> crate::Result<Option<PhysicalPlan>> {
     Compiler::compile(rx, logical)
@@ -22,7 +22,7 @@ pub fn compile_physical(
 
 impl Compiler {
     fn compile(
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         logical: Vec<LogicalPlan>,
     ) -> crate::Result<Option<PhysicalPlan>> {
         if logical.is_empty() {

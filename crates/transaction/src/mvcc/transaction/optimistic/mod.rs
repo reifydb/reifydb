@@ -81,13 +81,13 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
     pub fn version(&self) -> crate::Result<Version> {
         self.0.version()
     }
-    pub fn begin_read(&self) -> crate::Result<ReadTransaction<VS, UT>> {
+    pub fn begin_query(&self) -> crate::Result<ReadTransaction<VS, UT>> {
         ReadTransaction::new(self.clone(), None)
     }
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
-    pub fn begin_write(&self) -> crate::Result<WriteTransaction<VS, UT>> {
+    pub fn begin_command(&self) -> crate::Result<WriteTransaction<VS, UT>> {
         WriteTransaction::new(self.clone())
     }
 }

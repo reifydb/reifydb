@@ -8,11 +8,11 @@ use crate::column_policy::ColumnPolicyKind;
 use crate::sequence::SystemSequence;
 use reifydb_core::diagnostic::catalog::{auto_increment_invalid_type, column_already_exists};
 use reifydb_core::interface::{
-    ActiveWriteTransaction, ColumnKey, EncodableKey, Key, TableColumnKey, UnversionedTransaction,
+    ActiveCommandTransaction, ColumnKey, EncodableKey, Key, TableColumnKey, UnversionedTransaction,
     VersionedTransaction,
 };
 use reifydb_core::interface::{
-    TableId, VersionedWriteTransaction,
+    TableId, VersionedCommandTransaction,
 };
 use reifydb_core::{OwnedSpan, Type, return_error};
 
@@ -31,7 +31,7 @@ pub struct ColumnToCreate<'a> {
 
 impl Catalog {
     pub(crate) fn create_column<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         table: TableId,
         column_to_create: ColumnToCreate,
     ) -> crate::Result<Column> {

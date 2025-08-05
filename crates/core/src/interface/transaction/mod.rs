@@ -32,54 +32,54 @@ where
     UT: UnversionedTransaction,
 {
     #[inline]
-    pub fn begin_read(&self) -> crate::Result<VT::Read> {
-        self.versioned.begin_read()
+    pub fn begin_query(&self) -> crate::Result<VT::Query> {
+        self.versioned.begin_query()
     }
 
     #[inline]
-    pub fn begin_write(&self) -> crate::Result<VT::Write> {
-        self.versioned.begin_write()
+    pub fn begin_command(&self) -> crate::Result<VT::Command> {
+        self.versioned.begin_command()
     }
 
     #[inline]
-    pub fn with_read<F, R>(&self, f: F) -> crate::Result<R>
+    pub fn with_query<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut VT::Read) -> crate::Result<R>,
+        F: FnOnce(&mut VT::Query) -> crate::Result<R>,
     {
-        self.versioned.with_read(f)
+        self.versioned.with_query(f)
     }
 
     #[inline]
-    pub fn with_write<F, R>(&self, f: F) -> crate::Result<R>
+    pub fn with_command<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut VT::Write) -> crate::Result<R>,
+        F: FnOnce(&mut VT::Command) -> crate::Result<R>,
     {
-        self.versioned.with_write(f)
+        self.versioned.with_command(f)
     }
 
     #[inline]
-    pub fn begin_read_unversioned(&self) -> crate::Result<UT::Read<'_>> {
-        self.unversioned.begin_read()
+    pub fn begin_query_unversioned(&self) -> crate::Result<UT::Query<'_>> {
+        self.unversioned.begin_query()
     }
 
     #[inline]
-    pub fn begin_write_unversioned(&self) -> crate::Result<UT::Write<'_>> {
-        self.unversioned.begin_write()
+    pub fn begin_command_unversioned(&self) -> crate::Result<UT::Command<'_>> {
+        self.unversioned.begin_command()
     }
 
     #[inline]
-    pub fn with_read_unversioned<F, R>(&self, f: F) -> crate::Result<R>
+    pub fn with_query_unversioned<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Read<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut UT::Query<'_>) -> crate::Result<R>,
     {
-        self.unversioned.with_read(f)
+        self.unversioned.with_query(f)
     }
 
     #[inline]
-    pub fn with_write_unversioned<F, R>(&self, f: F) -> crate::Result<R>
+    pub fn with_command_unversioned<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Write<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut UT::Command<'_>) -> crate::Result<R>,
     {
-        self.unversioned.with_write(f)
+        self.unversioned.with_command(f)
     }
 }

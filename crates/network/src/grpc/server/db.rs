@@ -7,8 +7,8 @@ use tokio::task::spawn_blocking;
 use tokio_stream::{Stream, once};
 use tonic::{Request, Response, Status};
 
-use crate::grpc::server::grpc::ReadResult;
-use crate::grpc::server::grpc::{ReadRequest, WriteRequest, WriteResult};
+use crate::grpc::server::grpc::QueryResult;
+use crate::grpc::server::grpc::{CommandRequest, CommandResult, QueryRequest};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
@@ -37,8 +37,9 @@ where
     }
 }
 
-pub type WriteResultStream = Pin<Box<dyn Stream<Item = Result<grpc::WriteResult, Status>> + Send>>;
-pub type ReadResultStream = Pin<Box<dyn Stream<Item = Result<grpc::ReadResult, Status>> + Send>>;
+pub type CommandResultStream =
+    Pin<Box<dyn Stream<Item = Result<grpc::CommandResult, Status>> + Send>>;
+pub type QueryResultStream = Pin<Box<dyn Stream<Item = Result<grpc::QueryResult, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<VT, UT> grpc::db_server::Db for DbService<VT, UT>
@@ -46,12 +47,12 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    type WriteStream = WriteResultStream;
+    type CommandStream = CommandResultStream;
 
-    async fn write(
+    async fn command(
         &self,
-        request: Request<WriteRequest>,
-    ) -> Result<Response<WriteResultStream>, Status> {
+        request: Request<CommandRequest>,
+    ) -> Result<Response<CommandResultStream>, Status> {
         let user = request
             .extensions()
             .get::<AuthenticatedUser>()
@@ -65,25 +66,32 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.write_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
+            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            {
                 Ok(frames) => {
-                    let mut responses: Vec<Result<WriteResult, Status>> = vec![];
+                    let mut responses: Vec<Result<CommandResult, Status>> = vec![];
 
                     for frame in frames {
-                        responses.push(Ok(WriteResult {
-                            result: Some(grpc::write_result::Result::Frame(map_frame(frame))),
+                        responses.push(Ok(CommandResult {
+                            result: Some(grpc::command_result::Result::Frame(map_frame(frame))),
                         }))
                     }
 
-                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as WriteResultStream))
+                    Ok(
+                        Response::new(
+                            Box::pin(tokio_stream::iter(responses)) as CommandResultStream
+                        ),
+                    )
                 }
                 Err(err) => {
                     let diagnostic = err.diagnostic();
-                    let result = WriteResult {
-                        result: Some(grpc::write_result::Result::Error(map_diagnostic(diagnostic))),
+                    let result = CommandResult {
+                        result: Some(grpc::command_result::Result::Error(map_diagnostic(
+                            diagnostic,
+                        ))),
                     };
 
-                    Ok(Response::new(Box::pin(once(Ok(result))) as WriteResultStream))
+                    Ok(Response::new(Box::pin(once(Ok(result))) as CommandResultStream))
                 }
             }
         })
@@ -91,12 +99,12 @@ where
         .unwrap()
     }
 
-    type ReadStream = ReadResultStream;
+    type QueryStream = QueryResultStream;
 
-    async fn read(
+    async fn query(
         &self,
-        request: Request<ReadRequest>,
-    ) -> Result<Response<Self::ReadStream>, Status> {
+        request: Request<QueryRequest>,
+    ) -> Result<Response<Self::QueryStream>, Status> {
         let user = request
             .extensions()
             .get::<AuthenticatedUser>()
@@ -110,25 +118,26 @@ where
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.write_as(&Principal::System { id: 1, name: "root".to_string() }, &query) {
+            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            {
                 Ok(frames) => {
-                    let mut responses: Vec<Result<ReadResult, Status>> = vec![];
+                    let mut responses: Vec<Result<QueryResult, Status>> = vec![];
 
                     for frame in frames {
-                        responses.push(Ok(ReadResult {
-                            result: Some(grpc::read_result::Result::Frame(map_frame(frame))),
+                        responses.push(Ok(QueryResult {
+                            result: Some(grpc::query_result::Result::Frame(map_frame(frame))),
                         }))
                     }
 
-                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as ReadResultStream))
+                    Ok(Response::new(Box::pin(tokio_stream::iter(responses)) as QueryResultStream))
                 }
                 Err(err) => {
                     let diagnostic = err.diagnostic();
-                    let result = ReadResult {
-                        result: Some(grpc::read_result::Result::Error(map_diagnostic(diagnostic))),
+                    let result = QueryResult {
+                        result: Some(grpc::query_result::Result::Error(map_diagnostic(diagnostic))),
                     };
 
-                    Ok(Response::new(Box::pin(once(Ok(result))) as ReadResultStream))
+                    Ok(Response::new(Box::pin(once(Ok(result))) as QueryResultStream))
                 }
             }
         })

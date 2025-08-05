@@ -51,32 +51,32 @@ where
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
-            "write" => {
-                let query =
+            "command" => {
+                let rql =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("tx: {query}");
+                println!("command: {rql}");
 
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for frame in self.client.as_ref().unwrap().write(&query).await? {
+                    for frame in self.client.as_ref().unwrap().command(&rql).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
                 })?;
             }
 
-            "read" => {
-                let query =
+            "query" => {
+                let rql =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("rx: {query}");
+                println!("query: {rql}");
 
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for frame in self.client.as_ref().unwrap().read(&query).await? {
+                    for frame in self.client.as_ref().unwrap().query(&rql).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())

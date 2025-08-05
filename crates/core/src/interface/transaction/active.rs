@@ -3,34 +3,34 @@
 
 use crate::diagnostic::transaction;
 use crate::interface::{
-    BoxedVersionedIter, UnversionedTransaction, Versioned, VersionedReadTransaction,
-    VersionedTransaction, VersionedWriteTransaction,
+    BoxedVersionedIter, UnversionedTransaction, Versioned, VersionedQueryTransaction,
+    VersionedTransaction, VersionedCommandTransaction,
 };
 use crate::return_error;
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange};
 
-/// An active read transaction that holds a versioned read transaction
-/// and provides read-only access to unversioned storage.
-pub struct ActiveReadTransaction<VT, UT>
+/// An active query transaction that holds a versioned query transaction
+/// and provides query-only access to unversioned storage.
+pub struct ActiveQueryTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    versioned: VT::Read,
+    versioned: VT::Query,
     unversioned: UT,
 }
 
-/// An active write transaction that holds a versioned write transaction
-/// and provides read/write access to unversioned storage.
+/// An active command transaction that holds a versioned command transaction
+/// and provides query/command access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct ActiveWriteTransaction<VT, UT>
+pub struct ActiveCommandTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    versioned: Option<VT::Write>,
+    versioned: Option<VT::Command>,
     unversioned: UT,
     state: TransactionState,
 }
@@ -42,26 +42,26 @@ enum TransactionState {
     RolledBack,
 }
 
-impl<VT, UT> ActiveReadTransaction<VT, UT>
+impl<VT, UT> ActiveQueryTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    /// Creates a new active read transaction
-    pub fn new(versioned: VT::Read, unversioned: UT) -> Self {
+    /// Creates a new active query transaction
+    pub fn new(versioned: VT::Query, unversioned: UT) -> Self {
         Self { versioned, unversioned }
     }
 
-    /// Execute a function with read access to the unversioned transaction.
-    pub fn with_unversioned_read<F, R>(&self, f: F) -> crate::Result<R>
+    /// Execute a function with query access to the unversioned transaction.
+    pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Read<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut UT::Query<'_>) -> crate::Result<R>,
     {
-        self.unversioned.with_read(f)
+        self.unversioned.with_query(f)
     }
 }
 
-impl<VT, UT> VersionedReadTransaction for ActiveReadTransaction<VT, UT>
+impl<VT, UT> VersionedQueryTransaction for ActiveQueryTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -107,13 +107,13 @@ where
     }
 }
 
-impl<VT, UT> ActiveWriteTransaction<VT, UT>
+impl<VT, UT> ActiveCommandTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    /// Creates a new active write transaction
-    pub fn new(versioned: VT::Write, unversioned: UT) -> Self {
+    /// Creates a new active command transaction
+    pub fn new(versioned: VT::Command, unversioned: UT) -> Self {
         Self { versioned: Some(versioned), unversioned, state: TransactionState::Active }
     }
 
@@ -130,25 +130,25 @@ where
         }
     }
 
-    /// Execute a function with read access to the unversioned transaction.
-    pub fn with_unversioned_read<F, R>(&self, f: F) -> crate::Result<R>
+    /// Execute a function with query access to the unversioned transaction.
+    pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Read<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut UT::Query<'_>) -> crate::Result<R>,
     {
         self.check_active()?;
-        self.unversioned.with_read(f)
+        self.unversioned.with_query(f)
     }
 
-    /// Execute a function with write access to the unversioned transaction.
+    /// Execute a function with command access to the unversioned transaction.
     ///
     /// Note: If this operation fails, the versioned transaction is NOT automatically rolled back.
     /// The caller should handle transaction rollback if needed.
-    pub fn with_unversioned_write<F, R>(&self, f: F) -> crate::Result<R>
+    pub fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Write<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut UT::Command<'_>) -> crate::Result<R>,
     {
         self.check_active()?;
-        self.unversioned.with_write(f)
+        self.unversioned.with_command(f)
     }
 
     /// Commit the transaction.
@@ -178,7 +178,7 @@ where
     }
 }
 
-impl<VT, UT> VersionedReadTransaction for ActiveWriteTransaction<VT, UT>
+impl<VT, UT> VersionedQueryTransaction for ActiveCommandTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -232,7 +232,7 @@ where
     }
 }
 
-impl<VT, UT> VersionedWriteTransaction for ActiveWriteTransaction<VT, UT>
+impl<VT, UT> VersionedCommandTransaction for ActiveCommandTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -264,7 +264,7 @@ where
     }
 }
 
-impl<VT, UT> Drop for ActiveWriteTransaction<VT, UT>
+impl<VT, UT> Drop for ActiveCommandTransaction<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,

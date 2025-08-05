@@ -7,25 +7,25 @@ use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
+	ActiveCommandTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedSpan, Type, Value,
-	interface::{ColumnPolicyKind, VersionedWriteTransaction},
-	return_error,
-	row::EncodedRowLayout,
-	value::row_id::ROW_ID_COLUMN_NAME,
+    ColumnDescriptor, IntoOwnedSpan, Type, Value,
+    interface::{ColumnPolicyKind, VersionedCommandTransaction},
+    return_error,
+    row::EncodedRowLayout,
+    value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::UpdatePlan;
 use std::sync::Arc;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn update(
-        &mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        plan: UpdatePlan,
+		&mut self,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		plan: UpdatePlan,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
             return_error!(schema_not_found(None::<reifydb_core::OwnedSpan>, "default"));

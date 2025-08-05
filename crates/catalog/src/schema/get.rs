@@ -5,13 +5,13 @@ use crate::Catalog;
 use crate::schema::layout::schema;
 use crate::schema::{Schema, SchemaId};
 use reifydb_core::interface::{EncodableKey, SchemaKey};
-use reifydb_core::interface::{Versioned, VersionedReadTransaction};
+use reifydb_core::interface::{Versioned, VersionedQueryTransaction};
 use reifydb_core::row::EncodedRow;
 
 impl Catalog {
     pub fn get_schema_by_name(
-        rx: &mut impl VersionedReadTransaction,
-        name: impl AsRef<str>,
+		rx: &mut impl VersionedQueryTransaction,
+		name: impl AsRef<str>,
     ) -> crate::Result<Option<Schema>> {
         let name = name.as_ref();
         Ok(rx.range(SchemaKey::full_scan())?.find_map(|versioned| {
@@ -22,8 +22,8 @@ impl Catalog {
     }
 
     pub fn get_schema(
-        rx: &mut impl VersionedReadTransaction,
-        schema: SchemaId,
+		rx: &mut impl VersionedQueryTransaction,
+		schema: SchemaId,
     ) -> crate::Result<Option<Schema>> {
         Ok(rx.get(&SchemaKey { schema }.encode())?.map(Self::convert_schema))
     }

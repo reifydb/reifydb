@@ -6,26 +6,26 @@ syntax = "proto3";
 package reifydb;
 
 service DB {
-  rpc Write(WriteRequest) returns (stream WriteResult);
-  rpc Read(ReadRequest) returns (stream ReadResult);
+  rpc Command(CommandRequest) returns (stream CommandResult);
+  rpc Query(QueryRequest) returns (stream QueryResult);
 }
 
-message WriteRequest {
+message CommandRequest {
   string query = 1;
 }
 
-message ReadRequest {
+message QueryRequest {
   string query = 1;
 }
 
-message WriteResult {
+message CommandResult {
   oneof result {
     Frame frame = 1;
     Diagnostic error = 2;
   }
 }
 
-message ReadResult {
+message QueryResult {
   oneof result {
     Frame frame = 1;
     Diagnostic error = 2;

@@ -1,11 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
-(write 'create schema test')
+(command 'create schema test')
 
-(write 'create table test.conversion{col: float8}')
+(command 'create table test.conversion{col: float8}')
 
-(write 'from [{ col: cast(cast(0, uint8), float8) }] insert test.conversion')
-write 'from test.conversion map col'
+(command 'from [{ col: cast(cast(0, uint8), float8) }] insert test.conversion')
+command 'from test.conversion map col'
 ---
 > +-------+
 > |  col  |
@@ -14,8 +14,8 @@ write 'from test.conversion map col'
 > +-------+
 > 
 
-(write 'from [{ col: cast(cast(9007199254740992, uint8), float8) }] insert test.conversion')
-write 'from test.conversion map col'
+(command 'from [{ col: cast(cast(9007199254740992, uint8), float8) }] insert test.conversion')
+command 'from test.conversion map col'
 ---
 > +--------------------+
 > |        col         |
@@ -25,8 +25,8 @@ write 'from test.conversion map col'
 > +--------------------+
 > 
 
-(write 'create table test.float8_test10{col: float8}')
-!write 'from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10'
+(command 'create table test.float8_test10{col: float8}')
+!command 'from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10'
 ---
 >  Error CAST_002: failed to cast to FLOAT8
 >   at "(9007199254740993float8" (line 1, column 18)

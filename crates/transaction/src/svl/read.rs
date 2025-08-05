@@ -3,14 +3,14 @@
 
 use super::*;
 
-use reifydb_core::interface::{BoxedUnversionedIter, UnversionedReadTransaction};
+use reifydb_core::interface::{BoxedUnversionedIter, UnversionedQueryTransaction};
 use std::sync::RwLockReadGuard;
 
 pub struct SvlReadTransaction<'a, US> {
     pub(super) storage: RwLockReadGuard<'a, US>,
 }
 
-impl<US> UnversionedReadTransaction for SvlReadTransaction<'_, US>
+impl<US> UnversionedQueryTransaction for SvlReadTransaction<'_, US>
 where
     US: UnversionedStorage,
 {

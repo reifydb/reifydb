@@ -7,7 +7,7 @@ use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, Table, UnversionedTransaction, VersionedReadTransaction,
+    ActiveCommandTransaction, Table, UnversionedTransaction, VersionedQueryTransaction,
     VersionedTransaction,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
@@ -34,7 +34,7 @@ pub(crate) trait ExecutionPlan {
     fn next(
         &mut self,
         ctx: &ExecutionContext,
-        rx: &mut dyn VersionedReadTransaction,
+        rx: &mut dyn VersionedQueryTransaction,
     ) -> crate::Result<Option<Batch>>;
     fn layout(&self) -> Option<ColumnsLayout>;
 }
@@ -45,7 +45,7 @@ pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction>
 }
 
 pub fn execute_read<VT: VersionedTransaction, UT: UnversionedTransaction>(
-    rx: &mut impl VersionedReadTransaction,
+    rx: &mut impl VersionedQueryTransaction,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
     let executor: Executor<VT, UT> = Executor {
@@ -65,7 +65,7 @@ pub fn execute_read<VT: VersionedTransaction, UT: UnversionedTransaction>(
 }
 
 pub fn execute_write<VT: VersionedTransaction, UT: UnversionedTransaction>(
-    atx: &mut ActiveWriteTransaction<VT, UT>,
+    atx: &mut ActiveCommandTransaction<VT, UT>,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
     // FIXME receive functions from atx
@@ -87,7 +87,7 @@ pub fn execute_write<VT: VersionedTransaction, UT: UnversionedTransaction>(
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn execute_read(
         self,
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
     ) -> crate::Result<Columns> {
         match plan {
@@ -115,7 +115,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
     pub(crate) fn execute_write(
         mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: PhysicalPlan,
     ) -> crate::Result<Columns> {
         match plan {
@@ -142,7 +142,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
     fn execute_query_plan(
         self,
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
     ) -> crate::Result<Columns> {
         match plan {

@@ -6,13 +6,13 @@ use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange,
-    UnversionedTransaction, VersionedReadTransaction, VersionedTransaction,
+    ActiveCommandTransaction, EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange,
+    UnversionedTransaction, VersionedQueryTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{
-    EncodedKeyRange, IntoOwnedSpan, Value, interface::VersionedWriteTransaction, return_error,
+    EncodedKeyRange, IntoOwnedSpan, Value, interface::VersionedCommandTransaction, return_error,
     value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::DeletePlan;
@@ -21,9 +21,9 @@ use std::sync::Arc;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn delete(
-        &mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
-        plan: DeletePlan,
+		&mut self,
+		atx: &mut ActiveCommandTransaction<VT, UT>,
+		plan: DeletePlan,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
             return_error!(schema_not_found(None::<reifydb_core::OwnedSpan>, "default"));

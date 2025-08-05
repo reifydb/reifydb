@@ -3,7 +3,7 @@
 
 use crate::columnar::layout::ColumnsLayout;
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 
 pub(crate) struct TakeNode {
     input: Box<dyn ExecutionPlan>,
@@ -17,7 +17,7 @@ impl TakeNode {
 }
 
 impl ExecutionPlan for TakeNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedQueryTransaction) -> crate::Result<Option<Batch>> {
         while let Some(Batch { mut columns }) = self.input.next(ctx, rx)? {
             let row_count = columns.row_count();
             if row_count == 0 {

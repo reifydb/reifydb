@@ -12,15 +12,15 @@
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 #[test]
-fn test_begin_read() {
+fn test_begin_query() {
     let engine = Optimistic::testing();
-    let tx = engine.begin_read().unwrap();
+    let tx = engine.begin_query().unwrap();
     assert_eq!(tx.version(), 1);
 }
 
 #[test]
-fn test_begin_write() {
+fn test_begin_command() {
     let engine = Optimistic::testing();
-    let tx = engine.begin_write().unwrap();
+    let tx = engine.begin_command().unwrap();
     assert_eq!(tx.version(), 1);
 }

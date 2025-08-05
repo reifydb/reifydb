@@ -4,8 +4,8 @@
 mod rx;
 
 use crate::ws::{
-    AuthRequest, Request, RequestPayload, Response, ResponsePayload, ReadRequest, ReadResponse,
-    WriteRequest, WriteResponse,
+    AuthRequest, CommandRequest, CommandResponse, QueryRequest, QueryResponse, Request,
+    RequestPayload, Response, ResponsePayload,
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::result::error::diagnostic::Diagnostic;
@@ -68,13 +68,13 @@ impl WsClient {
         let close_flag = is_closed.clone();
 
         tokio::spawn(async move {
-            let (mut write, mut read) = ws_stream.split();
+            let (mut command, mut query) = ws_stream.split();
 
             // Outgoing message loop
             tokio::spawn(async move {
                 while let Some(msg) = rx.recv().await {
                     if let Ok(text) = serde_json::to_string(&msg) {
-                        if let Err(e) = write.send(Message::Text(Utf8Bytes::from(text))).await {
+                        if let Err(e) = command.send(Message::Text(Utf8Bytes::from(text))).await {
                             eprintln!("❌ Send error: {e}");
                             break;
                         }
@@ -83,7 +83,7 @@ impl WsClient {
             });
 
             // Incoming message loop
-            while let Some(Ok(msg)) = read.next().await {
+            while let Some(Ok(msg)) = query.next().await {
                 if let Message::Text(text) = msg {
                     match serde_json::from_str::<Response>(&text) {
                         Ok(resp) => {
@@ -131,7 +131,7 @@ impl WsClient {
         }
     }
 
-    pub async fn execute(&self, statement: &str) -> Result<WriteResponse, Error> {
+    pub async fn command(&self, statement: &str) -> Result<Vec<Frame>, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -140,7 +140,9 @@ impl WsClient {
         self.tx
             .send(Request {
                 id,
-                payload: RequestPayload::Write(WriteRequest { statements: vec![statement.to_string()] }),
+                payload: RequestPayload::Command(CommandRequest {
+                    statements: vec![statement.to_string()],
+                }),
             })
             .unwrap();
 
@@ -149,17 +151,19 @@ impl WsClient {
             .unwrap()
             .expect("Execute response channel dropped");
 
-        match resp.payload {
-            ResponsePayload::Write(payload) => Ok(payload),
+        let response = match resp.payload {
+            ResponsePayload::Command(payload) => Ok(payload),
             ResponsePayload::Err(payload) => err!(payload.diagnostic),
             other => {
                 eprintln!("Unexpected execute response: {:?}", other);
                 panic!("Unexpected execute response type")
             }
-        }
+        }?;
+
+        Ok(convert_execute_response(response))
     }
 
-    pub async fn query(&self, statement: &str) -> Result<ReadResponse, Error> {
+    pub async fn query(&self, statement: &str) -> Result<Vec<Frame>, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -168,7 +172,9 @@ impl WsClient {
         self.tx
             .send(Request {
                 id,
-                payload: RequestPayload::Read(ReadRequest { statements: vec![statement.to_string()] }),
+                payload: RequestPayload::Query(QueryRequest {
+                    statements: vec![statement.to_string()],
+                }),
             })
             .unwrap();
 
@@ -177,28 +183,20 @@ impl WsClient {
             .unwrap()
             .expect("Query response channel dropped");
 
-        match resp.payload {
-            ResponsePayload::Read(payload) => Ok(payload),
+        let response = match resp.payload {
+            ResponsePayload::Query(payload) => Ok(payload),
             ResponsePayload::Err(payload) => err!(payload.diagnostic),
             other => {
                 eprintln!("Unexpected query response: {:?}", other);
                 panic!("Unexpected query response type")
             }
-        }
-    }
-
-    pub async fn write(&self, statement: &str) -> Result<Vec<Frame>, Error> {
-        let response = self.execute(statement).await?;
-        Ok(convert_execute_response(response))
-    }
-
-    pub async fn read(&self, statement: &str) -> Result<Vec<Frame>, Error> {
-        let response = self.query(statement).await?;
+        }?;
+        
         Ok(convert_query_response(response))
     }
 }
 
-fn convert_execute_response(payload: WriteResponse) -> Vec<Frame> {
+fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {
@@ -220,7 +218,7 @@ fn convert_execute_response(payload: WriteResponse) -> Vec<Frame> {
     result
 }
 
-fn convert_query_response(payload: ReadResponse) -> Vec<Frame> {
+fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
     let mut result = Vec::new();
 
     for frame in payload.frames {

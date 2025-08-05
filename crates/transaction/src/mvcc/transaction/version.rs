@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-    EncodableKey, TransactionVersionKey, UnversionedReadTransaction,
-    UnversionedTransaction, UnversionedWriteTransaction,
+    EncodableKey, TransactionVersionKey, UnversionedQueryTransaction,
+    UnversionedTransaction, UnversionedCommandTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{Type, Version};
@@ -66,7 +66,7 @@ where
         let layout = EncodedRowLayout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
 
-        unversioned.with_read(|tx| match tx.get(&key)? {
+        unversioned.with_query(|tx| match tx.get(&key)? {
             None => Ok(0),
             Some(unversioned) => Ok(layout.get_u64(&unversioned.row, 0)),
         })
@@ -78,7 +78,7 @@ where
         let mut row = layout.allocate_row();
         layout.set_u64(&mut row, 0, version);
 
-        unversioned.with_write(|tx| {
+        unversioned.with_command(|tx| {
             tx.set(&key, row)?;
             Ok(())
         })
@@ -284,7 +284,7 @@ mod tests {
         let mut row = layout.allocate_row();
         layout.set_u64(&mut row, 0, 500u64);
         unversioned
-            .with_write(|tx| {
+            .with_command(|tx| {
                 tx.set(&key, row)?;
                 Ok(())
             })

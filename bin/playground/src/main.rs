@@ -17,23 +17,23 @@ use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
 
 fn main() {
     // let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
-    // db.write_as_root(r#"create schema test"#).unwrap();
-    // let err = db.write_as_root(r#"create table test.arith { id: int2, from: int2, num: int2 }"#).unwrap_err();
+    // db.command_as_root(r#"create schema test"#).unwrap();
+    // let err = db.command_as_root(r#"create table test.arith { id: int2, from: int2, num: int2 }"#).unwrap_err();
     // dbg!(&err);
     // println!("{}", err);
 
-    //     db.write_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
-    //     db.write_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
-    //     db.write_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
-    //     db.write_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
-    //     db.write_as_root(
+    //     db.command_as_root(r#"create table test.one(field: int1, other: int1)"#).unwrap();
+    //     db.command_as_root(r#"create table test.two(field: int1, name: text)"#).unwrap();
+    //     db.command_as_root(r#"create table test.three(field: int1, type: text)"#).unwrap();
+    //     db.command_as_root(r#"from [{field: 1, other: 2}, {field: 2, other: 2}, {field: 3, other: 2}, {field: 4, other: 2}, {field: 5, other: 2}] insert test.one"#).unwrap();
+    //     db.command_as_root(
     //         r#"from [{field: 2, name: "Peter"}, {field: 5, name: "Parker"}] insert test.two"#,
     //     )
     //     .unwrap();
-    //     db.write_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
+    //     db.command_as_root(r#"from [{field: 5, type: "Barker"}] insert test.three"#).unwrap();
     //
     //     for frame in db
-    //         .write_as_root(
+    //         .command_as_root(
     //             r#"
     // map {
     //   cast(1.0, float8) + cast(1.0, float8),
@@ -119,7 +119,7 @@ create computed view test.adults { name: utf8, age: int1 }  with {
 
             // let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
 
-            db.write_as_root(
+            db.command_as_root(
                 r#"
                 from[{data: blob::utf8('$REPLACE')}]
                 insert reifydb.flows
@@ -136,13 +136,13 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     }
 
     for frame in
-        db.read_as_root("FROM reifydb.flows filter { id == 1 } map { id }").unwrap()
+        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }").unwrap()
     {
         println!("{}", frame);
     }
 
     let frame = db
-        .read_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }")
+        .query_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }")
         .unwrap()
         .pop()
         .unwrap();

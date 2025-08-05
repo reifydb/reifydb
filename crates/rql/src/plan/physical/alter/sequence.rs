@@ -3,11 +3,11 @@
 
 use crate::plan::logical::AlterSequenceNode;
 use crate::plan::physical::{AlterSequencePlan, Compiler, PhysicalPlan};
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 
 impl Compiler {
     pub(crate) fn compile_alter_sequence(
-        _rx: &mut impl VersionedReadTransaction,
+        _rx: &mut impl VersionedQueryTransaction,
         alter: AlterSequenceNode,
     ) -> crate::Result<PhysicalPlan> {
         // For ALTER SEQUENCE, we just pass through the logical plan info

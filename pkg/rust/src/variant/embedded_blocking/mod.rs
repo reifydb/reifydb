@@ -6,6 +6,7 @@ mod builder;
 pub use builder::EmbeddedBlockingBuilder;
 
 use crate::hook::WithHooks;
+// use crate::session::{QuerySessionBuilder, CommandSessionBuilder};
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     Engine as EngineInterface, Principal, UnversionedTransaction,
@@ -57,24 +58,32 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn write_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.write_as(principal, rql).map_err(|mut err| {
+    pub fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+        self.engine.command_as(principal, rql).map_err(|mut err| {
             err.0.set_statement(rql.to_string());
             err
         })
     }
 
-    pub fn write_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub fn command_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.write_as(&principal, rql)
+        self.command_as(&principal, rql)
     }
 
-    pub fn read_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.read_as(principal, rql)
+    pub fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+        self.engine.query_as(principal, rql)
     }
 
-    pub fn read_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub fn query_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
-        self.read_as(&principal, rql)
+        self.query_as(&principal, rql)
     }
+    
+    // pub fn query_session(&self, principal: Principal) -> QuerySessionBuilder<VT, UT> {
+    //     QuerySessionBuilder::new(&self.engine as &dyn EngineInterface<VT, UT>, principal)
+    // }
+    //
+    // pub fn command_session(&self, principal: Principal) -> CommandSessionBuilder<VT, UT> {
+    //     CommandSessionBuilder::new(&self.engine as &dyn EngineInterface<VT, UT>, principal)
+    // }
 }

@@ -3,11 +3,11 @@
 
 use crate::plan::logical::CreateSchemaNode;
 use crate::plan::physical::{Compiler, CreateSchemaPlan, PhysicalPlan};
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 
 impl Compiler {
     pub(crate) fn compile_create_schema(
-		_rx: &mut impl VersionedReadTransaction,
+		_rx: &mut impl VersionedQueryTransaction,
 		create: CreateSchemaNode,
     ) -> crate::Result<PhysicalPlan> {
         // FIXME validate catalog

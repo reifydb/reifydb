@@ -6,11 +6,11 @@ use crate::column::ColumnId;
 use crate::column_policy::layout::column_policy;
 use crate::column_policy::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKind};
 use reifydb_core::interface::ColumnPolicyKey;
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 
 impl Catalog {
     pub fn list_column_policies(
-        rx: &mut impl VersionedReadTransaction,
+        rx: &mut impl VersionedQueryTransaction,
         column: ColumnId,
     ) -> crate::Result<Vec<ColumnPolicy>> {
         Ok(rx

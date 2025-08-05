@@ -41,23 +41,23 @@ where
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
         match command.name.as_str() {
-            "write" => {
-                let query =
+            "command" => {
+                let rql =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("write: {query}");
+                println!("command: {rql}");
 
-                for line in self.instance.write_as_root(query.as_str())? {
+                for line in self.instance.command_as_root(rql.as_str())? {
                     writeln!(output, "{}", line)?;
                 }
             }
-            "read" => {
-                let query =
+            "query" => {
+                let rql =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("rx: {query}");
+                println!("query: {rql}");
 
-                for line in self.instance.read_as_root(query.as_str())? {
+                for line in self.instance.query_as_root(rql.as_str())? {
                     writeln!(output, "{}", line)?;
                 }
             }

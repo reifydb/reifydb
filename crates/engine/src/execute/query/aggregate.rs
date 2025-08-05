@@ -8,7 +8,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan};
 use crate::function::{AggregateFunction, AggregateFunctionContext, Functions};
 use reifydb_core::OwnedSpan;
 use reifydb_core::Value;
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 use reifydb_rql::expression::Expression;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -38,7 +38,7 @@ impl AggregateNode {
 }
 
 impl ExecutionPlan for AggregateNode {
-    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedReadTransaction) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, rx: &mut dyn VersionedQueryTransaction) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }

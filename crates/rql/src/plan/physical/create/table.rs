@@ -3,11 +3,11 @@
 
 use crate::plan::logical::CreateTableNode;
 use crate::plan::physical::{Compiler, CreateTablePlan, PhysicalPlan};
-use reifydb_core::interface::VersionedReadTransaction;
+use reifydb_core::interface::VersionedQueryTransaction;
 
 impl Compiler {
     pub(crate) fn compile_create_table(
-		_rx: &mut impl VersionedReadTransaction,
+		_rx: &mut impl VersionedQueryTransaction,
 		create: CreateTableNode,
     ) -> crate::Result<PhysicalPlan> {
         // FIXME validate with catalog

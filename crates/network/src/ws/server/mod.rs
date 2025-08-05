@@ -3,21 +3,20 @@
 
 use crate::ws::RequestPayload::Auth;
 use crate::ws::{
-    AuthRequest, AuthResponse, ErrResponse, ReadRequest, ReadResponse, Request, RequestPayload,
-    ResponsePayload, WebsocketColumn, WebsocketFrame, WriteRequest, WriteResponse,
+    AuthRequest, AuthResponse, CommandRequest, CommandResponse, ErrResponse, QueryRequest,
+    QueryResponse, Request, RequestPayload, ResponsePayload, WebsocketColumn, WebsocketFrame,
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction
-    , VersionedTransaction,
+    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, OnceCell};
@@ -198,15 +197,15 @@ where
             }
         };
 
-        let (mut write, mut read) = ws_stream.split();
+        let (mut command, mut query) = ws_stream.split();
 
         let auth_result = tokio::select! {
             _ = shutdown.notified() => {
                 println!("🔌 Shutdown signal received during auth for {}", peer_addr);
-                let _ = write.send(Message::Close(None)).await;
+                let _ = command.send(Message::Close(None)).await;
                 return;
             }
-            msg = read.next() => msg
+            msg = query.next() => msg
         };
 
         let Some(Ok(Message::Text(text))) = auth_result else {
@@ -230,33 +229,33 @@ where
                         };
 
                         let msg = serde_json::to_string(&response).unwrap();
-                        if write.send(Message::Text(Utf8Bytes::from(msg))).await.is_err() {
+                        if command.send(Message::Text(Utf8Bytes::from(msg))).await.is_err() {
                             return;
                         }
 
                         loop {
                             tokio::select! {
                             _ = shutdown.notified() => {
-                                let _ = write.send(Message::Close(None)).await;
+                                let _ = command.send(Message::Close(None)).await;
                                 break;
                             }
-                              msg = read.next() => {
+                              msg = query.next() => {
                                     match msg {
                                         Some(Ok(Message::Text(text))) => {
                                             match serde_json::from_str::<Request>(&text) {
                                                 Ok(request) => match request.payload {
-                                                      RequestPayload::Write(WriteRequest { statements }) => {
-                                                        println!("Write: {}", statements.join(","));
+                                                      RequestPayload::Command(CommandRequest { statements }) => {
+                                                        println!("Command: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
-                                                            match engine.write_as(
+                                                            match engine.command_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
                                                             ) {
                                                                 Ok(result) => {
                                                                     let response = crate::ws::response::Response {
                                                                         id: request.id,
-                                                                        payload: ResponsePayload::Write(WriteResponse {
+                                                                        payload: ResponsePayload::Command(CommandResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
                                                                                     name: "GONE".to_string(), //FIXME
@@ -280,7 +279,7 @@ where
                                                                     };
 
                                                                     let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = write.send(Message::Text(Utf8Bytes::from(msg))).await;
+                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
                                                                 }
                                                                 Err(e) => {
                                                                         let mut diagnostic = e.diagnostic();
@@ -294,7 +293,7 @@ where
                                                                     };
 
                                                                     let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = write.send(Message::Text(Utf8Bytes::from(msg))).await;
+                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
 
                                                                     eprintln!("❌ Query error");
                                                                 }
@@ -302,18 +301,18 @@ where
                                                         }
                                                     }
 
-                                                    RequestPayload::Read(ReadRequest { statements }) => {
-                                                        println!("Read: {}", statements.join(","));
+                                                    RequestPayload::Query(QueryRequest { statements }) => {
+                                                        println!("Query: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
-                                                            match engine.read_as(
+                                                            match engine.query_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
                                                             ) {
                                                                 Ok(result) => {
                                                                     let response = crate::ws::response::Response {
                                                                         id: request.id,
-                                                                        payload: ResponsePayload::Read(ReadResponse {
+                                                                        payload: ResponsePayload::Query(QueryResponse {
                                                                             frames: result.into_iter().map(|frame| {
                                                                                 WebsocketFrame {
                                                                                     name: "GONE".to_string(), // FIXME
@@ -337,7 +336,7 @@ where
                                                                     };
 
                                                                     let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = write.send(Message::Text(Utf8Bytes::from(msg))).await;
+                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
                                                                 }
                                                               Err(e) => {
                                                                         let mut diagnostic = e.diagnostic();
@@ -351,7 +350,7 @@ where
                                                                     };
 
                                                                     let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = write.send(Message::Text(Utf8Bytes::from(msg))).await;
+                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
 
                                                                     eprintln!("❌ Query error");
                                                                 }
@@ -384,12 +383,12 @@ where
                         }
                     } else {
                         eprintln!("❌ Invalid token from {}: {}", peer_addr, token);
-                        let _ = write.send(Message::Close(None)).await;
+                        let _ = command.send(Message::Close(None)).await;
                     }
                 }
                 _ => {
                     eprintln!("❌ First message must be auth from {}", peer_addr);
-                    let _ = write.send(Message::Close(None)).await;
+                    let _ = command.send(Message::Close(None)).await;
                 }
             },
             Err(_) => todo!(),

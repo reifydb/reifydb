@@ -6,9 +6,9 @@ use crate::Result;
 use crate::columnar::Columns;
 use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, Column, ColumnId, ColumnIndex, EncodableKey, EncodableKeyRange,
+    ActiveCommandTransaction, Column, ColumnId, ColumnIndex, EncodableKey, EncodableKeyRange,
     SchemaId, Table, TableId, TableRowKey, TableRowKeyRange, UnversionedTransaction,
-    VersionedReadTransaction, VersionedTransaction, VersionedWriteTransaction,
+    VersionedQueryTransaction, VersionedTransaction, VersionedCommandTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKeyRange, Type, Value};
@@ -67,7 +67,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         // let mut tx = ;
 
         let mut atx =
-            ActiveWriteTransaction::new(self.versioned.begin_write()?, self.unversioned.clone());
+            ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone());
 
         self.process_change_with_tx(&mut atx, node_id, diff)?;
         atx.commit()?;
@@ -77,7 +77,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
     fn process_change_with_tx(
         &mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         node_id: &NodeId,
         diff: Diff,
     ) -> Result<()> {
@@ -140,7 +140,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
     fn apply_diff_to_storage_with_tx(
         &mut self,
-        atx: &mut ActiveWriteTransaction<VT, UT>,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
@@ -283,7 +283,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
     fn read_columns_from_storage(&self, node_id: &NodeId) -> Result<Columns> {
         // Start a read transaction
-        let mut rx = self.versioned.begin_read()?;
+        let mut rx = self.versioned.begin_query()?;
 
         let range = TableRowKeyRange { table: TableId(node_id.0) };
         let versioned_data = rx
