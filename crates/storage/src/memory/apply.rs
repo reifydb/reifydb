@@ -11,9 +11,7 @@ impl VersionedApply for Memory {
     fn apply(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
         for delta in delta {
             match delta {
-                Delta::Insert { key, row }
-                | Delta::Update { key, row }
-                | Delta::Upsert { key, row } => {
+                Delta::Insert { key, row } | Delta::Update { key, row } => {
                     let item = self.versioned.get_or_insert_with(key, VersionedRow::new);
                     let val = item.value();
                     val.lock();
@@ -38,9 +36,7 @@ impl UnversionedApply for Memory {
     fn apply(&mut self, delta: CowVec<Delta>) -> Result<()> {
         for delta in delta {
             match delta {
-                Delta::Insert { key, row }
-                | Delta::Update { key, row }
-                | Delta::Upsert { key, row } => {
+                Delta::Insert { key, row } | Delta::Update { key, row } => {
                     self.unversioned.insert(key, row);
                 }
                 Delta::Remove { key } => {

@@ -20,9 +20,7 @@ impl VersionedApply for Sqlite {
 
         for delta in delta {
             match delta {
-                Delta::Insert { key, row }
-                | Delta::Update { key, row }
-                | Delta::Upsert { key, row } => {
+                Delta::Insert { key, row } | Delta::Update { key, row } => {
                     let table = table_name(&key);
 
                     if table != "versioned" {
