@@ -86,6 +86,7 @@ keyword! {
     Describe   => "DESCRIBE",
     Show       => "SHOW",
     Create     => "CREATE",
+    Alter      => "ALTER",
     Drop       => "DROP",
     Filter     => "FILTER",
 
@@ -97,12 +98,23 @@ keyword! {
     With       => "WITH",
 
     Schema => "SCHEMA",
+    Sequence => "SEQUENCE",
     Series  => "SERIES",
     Table  => "TABLE",
     Policy => "POLICY",
     View => "VIEW",
     Computed => "COMPUTED",
     Transactional => "TRANSACTIONAL",
+
+    Index => "INDEX",
+    Unique => "UNIQUE",
+    Primary => "PRIMARY",
+    Key => "KEY",
+    Asc => "ASC",
+    Desc => "DESC",
+    Auto => "AUTO",
+    Increment => "INCREMENT",
+    Value => "VALUE",
 }
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -180,6 +192,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Describe, "DESCRIBE"),
             keyword_tag(Keyword::Show, "SHOW"),
             keyword_tag(Keyword::Create, "CREATE"),
+            keyword_tag(Keyword::Alter, "ALTER"),
             keyword_tag(Keyword::Drop, "DROP"),
             keyword_tag(Keyword::In, "IN"),
             keyword_tag(Keyword::Between, "BETWEEN"),
@@ -190,6 +203,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::With, "WITH"),
             keyword_tag(Keyword::Filter, "FILTER"),
             keyword_tag(Keyword::Schema, "SCHEMA"),
+            keyword_tag(Keyword::Sequence, "SEQUENCE"),
             keyword_tag(Keyword::Series, "SERIES"),
             keyword_tag(Keyword::Table, "TABLE"),
             keyword_tag(Keyword::Policy, "POLICY"),
@@ -197,6 +211,15 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Computed, "COMPUTED"),
             keyword_tag(Keyword::Transactional, "TRANSACTIONAL"),
             keyword_tag(Keyword::Cast, "CAST"),
+            keyword_tag(Keyword::Index, "INDEX"),
+            keyword_tag(Keyword::Unique, "UNIQUE"),
+            keyword_tag(Keyword::Primary, "PRIMARY"),
+            keyword_tag(Keyword::Key, "KEY"),
+            keyword_tag(Keyword::Asc, "ASC"),
+            keyword_tag(Keyword::Desc, "DESC"),
+            keyword_tag(Keyword::Auto, "AUTO"),
+            keyword_tag(Keyword::Increment, "INCREMENT"),
+            keyword_tag(Keyword::Value, "VALUE"),
         )),
     ));
 
@@ -217,15 +240,9 @@ mod tests {
     fn test_desc() {
         let input = LocatedSpan::new("desc");
         let result = parse_keyword(input);
-        assert!(result.is_err(), "expected error parsing invalid keyword, got: {:?}", result);
-    }
-
-    #[test]
-    fn test_parse_keyword_invalid() {
-        let input = LocatedSpan::new("foobar rest");
-        let result = parse_keyword(input);
-
-        assert!(result.is_err(), "expected error parsing invalid keyword, got: {:?}", result);
+        assert!(result.is_ok(), "DESC should now be a valid keyword");
+        let (_, token) = result.unwrap();
+        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Desc));
     }
 
     fn check_keyword(keyword: Keyword, repr: &str) {
@@ -313,6 +330,17 @@ mod tests {
         test_keyword_computed => (Computed, "COMPUTED"),
         test_keyword_transactional => (Transactional, "TRANSACTIONAL"),
         test_keyword_cast => (Cast, "CAST"),
+        test_keyword_index => (Index, "INDEX"),
+        test_keyword_unique => (Unique, "UNIQUE"),
+        test_keyword_primary => (Primary, "PRIMARY"),
+        test_keyword_key => (Key, "KEY"),
+        test_keyword_asc => (Asc, "ASC"),
+        test_keyword_desc => (Desc, "DESC"),
+        test_keyword_auto => (Auto, "AUTO"),
+        test_keyword_increment => (Increment, "INCREMENT"),
+        test_keyword_sequence => (Sequence, "SEQUENCE"),
+        test_keyword_alter => (Alter, "ALTER"),
+        test_keyword_value => (Value, "VALUE"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -364,7 +392,6 @@ mod tests {
         test_not_keyword_join => ( "join"),
         test_not_keyword_on => ( "on"),
         test_not_keyword_as => ( "as"),
-        test_not_keyword_asc => ( "asc"),
         test_not_keyword_using => ( "using"),
         test_not_keyword_union => ( "union"),
         test_not_keyword_intersect => ( "intersect"),
@@ -396,5 +423,16 @@ mod tests {
         test_not_keyword_deferred => ( "deferred"),
         test_not_keyword_transactional => ( "transactional"),
         test_not_keyword_cast => ( "cast"),
+        test_not_keyword_index => ("index"),
+        test_not_keyword_unique => ( "unique"),
+        test_not_keyword_primary => ("primary"),
+        test_not_keyword_key => ("key"),
+        test_not_keyword_asc => ("asc"),
+        test_not_keyword_desc => ( "desc"),
+        test_not_keyword_auto => ( "auto"),
+        test_not_keyword_increment => ( "increment"),
+        test_not_keyword_sequence => ( "sequence"),
+        test_not_keyword_alter => ( "alter"),
+        test_not_keyword_value => ( "value"),
     }
 }

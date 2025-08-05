@@ -5,13 +5,14 @@ use crate::ast::AstCreateTable;
 use crate::convert_data_type;
 use crate::plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy};
 use reifydb_catalog::table::ColumnToCreate;
+use reifydb_core::OwnedSpan;
 use reifydb_core::interface::ColumnPolicyKind;
 
 impl Compiler {
     pub(crate) fn compile_create_table(ast: AstCreateTable) -> crate::Result<LogicalPlan> {
         let mut columns: Vec<ColumnToCreate> = vec![];
 
-        for col in ast.columns.iter() {
+        for col in ast.columns.into_iter() {
             let column_name = col.name.value().to_string();
             let ty = convert_data_type(&col.ty)?;
 
@@ -21,7 +22,15 @@ impl Compiler {
                 vec![]
             };
 
-            columns.push(ColumnToCreate { name: column_name, ty, policies });
+            let span = Some(OwnedSpan::merge_all([col.name.span(), col.ty.span()]));
+
+            columns.push(ColumnToCreate {
+                name: column_name,
+                ty,
+                policies,
+                auto_increment: col.auto_increment,
+                span,
+            });
         }
 
         Ok(LogicalPlan::CreateTable(CreateTableNode {

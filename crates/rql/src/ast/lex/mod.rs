@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn test_desc() {
         let (_rest, token) = token(span("DESC")).unwrap();
-        assert_eq!(token.kind, TokenKind::Identifier);
+        assert_eq!(token.kind, TokenKind::Keyword(Keyword::Desc));
         assert_eq!(token.span.fragment.as_str(), "DESC");
     }
 

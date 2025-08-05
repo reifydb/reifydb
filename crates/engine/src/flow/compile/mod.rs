@@ -82,7 +82,8 @@ impl FlowCompiler {
             // DDL operations that cannot be compiled to dataflow
             LogicalPlan::CreateSchema(_)
             | LogicalPlan::CreateTable(_)
-            | LogicalPlan::CreateSequence(_) => {
+            | LogicalPlan::CreateSequence(_)
+            | LogicalPlan::CreateIndex(_) => {
                 return Err(reifydb_core::Error(flow_error(
                     "DDL operations cannot be compiled to dataflow".to_string(),
                 )));
@@ -106,6 +107,8 @@ impl FlowCompiler {
                     "Natural joins not yet implemented in dataflow".to_string(),
                 )));
             }
+
+            LogicalPlan::AlterSequence(_) => unreachable!(),
         };
 
         // Store the mapping for this plan node

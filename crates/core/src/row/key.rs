@@ -1,11 +1,28 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::EncodedKey;
+use crate::util::CowVec;
 use crate::util::encoding::binary::decode_binary;
 use regex::Regex;
 use std::collections::Bound;
-use std::ops::RangeBounds;
+use std::ops::{Deref, RangeBounds};
+
+#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq)]
+pub struct EncodedKey(pub CowVec<u8>);
+
+impl Deref for EncodedKey {
+    type Target = CowVec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl EncodedKey {
+    pub fn new(key: impl Into<Vec<u8>>) -> Self {
+        Self(CowVec::new(key.into()))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct EncodedKeyRange {
@@ -137,7 +154,7 @@ mod tests {
 
     mod prefix {
         use crate::row::key::EncodedKeyRange;
-        use crate::row::key::range::tests::{excluded, included};
+        use crate::row::key::tests::{excluded, included};
         use std::ops::Bound;
 
         #[test]
@@ -186,7 +203,7 @@ mod tests {
     mod start_end {
         use super::EncodedKey;
         use crate::row::key::EncodedKeyRange;
-        use crate::row::key::range::tests::included;
+        use crate::row::key::tests::included;
         use crate::util::encoding::keycode;
         use std::ops::Bound;
 
@@ -246,7 +263,7 @@ mod tests {
     }
 
     mod parse {
-        use crate::row::key::range::tests::{excluded, included};
+        use crate::row::key::tests::{excluded, included};
         use crate::row::key::{EncodedKey, EncodedKeyRange};
         use std::ops::Bound;
 

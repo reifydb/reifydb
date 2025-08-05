@@ -3,7 +3,9 @@
 
 pub(crate) use system::SystemSequence;
 pub use table_row::TableRowSequence;
+pub use column::ColumnSequence;
 
 mod system;
 mod table_row;
-mod u64;
+mod column;
+mod generator;

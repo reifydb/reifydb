@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::row::{EncodedRow, Layout};
+use reifydb_core::row::{EncodedRow, EncodedRowLayout};
 use reifydb_core::{RowId, Value};
 
 #[derive(Debug, Clone)]
 pub struct Row {
     pub id: RowId,
-    pub layout: Layout,
+    pub layout: EncodedRowLayout,
     pub data: EncodedRow,
 }
 
 impl Row {
-    pub fn new(id: RowId, layout: Layout, data: EncodedRow) -> Self {
+    pub fn new(id: RowId, layout: EncodedRowLayout, data: EncodedRow) -> Self {
         Self { id, layout, data }
     }
 

@@ -2,9 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod aggregate;
+mod alter;
 mod call;
 mod cast;
 mod create;
+mod create_index;
 mod delete;
 mod describe;
 mod filter;

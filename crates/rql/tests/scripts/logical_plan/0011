@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+logical 'create primary key pk_users on test.users {id}'
+---
+> └── CreateIndex
+>     ├── Type: Primary
+>     ├── Name: pk_users
+>     ├── Schema: test
+>     ├── Table: users
+>     └── Columns: id
+> 

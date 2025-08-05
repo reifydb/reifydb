@@ -5,7 +5,7 @@ use reifydb_core::interface::{
     EncodableKey, TransactionVersionKey, UnversionedReadTransaction,
     UnversionedTransaction, UnversionedWriteTransaction,
 };
-use reifydb_core::row::Layout;
+use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{Type, Version};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -63,7 +63,7 @@ where
     }
 
     fn load_current_version(unversioned: &UT) -> crate::Result<u64> {
-        let layout = Layout::new(&[Type::Uint8]);
+        let layout = EncodedRowLayout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
 
         unversioned.with_read(|tx| match tx.get(&key)? {
@@ -73,7 +73,7 @@ where
     }
 
     fn persist_version(unversioned: &UT, version: u64) -> crate::Result<()> {
-        let layout = Layout::new(&[Type::Uint8]);
+        let layout = EncodedRowLayout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
         let mut row = layout.allocate_row();
         layout.set_u64(&mut row, 0, version);
@@ -279,7 +279,7 @@ mod tests {
         let unversioned = SingleVersionLock::new(memory, Hooks::default());
 
         // Manually set a version in storage
-        let layout = Layout::new(&[Type::Uint8]);
+        let layout = EncodedRowLayout::new(&[Type::Uint8]);
         let key = TransactionVersionKey {}.encode();
         let mut row = layout.allocate_row();
         layout.set_u64(&mut row, 0, 500u64);

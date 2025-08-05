@@ -12,11 +12,11 @@ use reifydb_core::interface::{
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
 use reifydb_core::{
-    ColumnDescriptor, IntoOwnedSpan, Type, Value,
-    interface::{ColumnPolicyKind, VersionedWriteTransaction},
-    return_error,
-    row::Layout,
-    value::row_id::ROW_ID_COLUMN_NAME,
+	ColumnDescriptor, IntoOwnedSpan, Type, Value,
+	interface::{ColumnPolicyKind, VersionedWriteTransaction},
+	return_error,
+	row::EncodedRowLayout,
+	value::row_id::ROW_ID_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::UpdatePlan;
 use std::sync::Arc;
@@ -39,7 +39,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         };
 
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
-        let layout = Layout::new(&table_types);
+        let layout = EncodedRowLayout::new(&table_types);
 
         // Compile the input plan into an execution node with table context
         let mut input_node = compile(
@@ -134,8 +134,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                         Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                         Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
                         Value::RowId(_v) => {}
-                        Value::Uuid4(v) => layout.set_uuid(&mut row, table_idx, *v),
-                        Value::Uuid7(v) => layout.set_uuid(&mut row, table_idx, *v),
+                        Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
+                        Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
                         Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
                         Value::Undefined => layout.set_undefined(&mut row, table_idx),
                     }

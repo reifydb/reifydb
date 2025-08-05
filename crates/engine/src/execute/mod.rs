@@ -7,8 +7,8 @@ use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::interface::{
-    ActiveWriteTransaction, Table, UnversionedTransaction,
-    VersionedReadTransaction, VersionedTransaction,
+    ActiveWriteTransaction, Table, UnversionedTransaction, VersionedReadTransaction,
+    VersionedTransaction,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
@@ -61,7 +61,7 @@ pub fn execute_rx<VT: VersionedTransaction, UT: UnversionedTransaction>(
         _phantom: PhantomData,
     };
 
-    executor.execute_rx(rx, plan)
+    executor.execute_read(rx, plan)
 }
 
 pub fn execute_tx<VT: VersionedTransaction, UT: UnversionedTransaction>(
@@ -81,11 +81,11 @@ pub fn execute_tx<VT: VersionedTransaction, UT: UnversionedTransaction>(
         _phantom: PhantomData,
     };
 
-    executor.execute_tx(atx, plan)
+    executor.execute_write(atx, plan)
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
-    pub(crate) fn execute_rx(
+    pub(crate) fn execute_read(
         self,
         rx: &mut impl VersionedReadTransaction,
         plan: PhysicalPlan,
@@ -106,18 +106,20 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Update(_)
             | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
 
-            PhysicalPlan::CreateComputedView(_)
+            PhysicalPlan::AlterSequence(_)
+            | PhysicalPlan::CreateComputedView(_)
             | PhysicalPlan::CreateSchema(_)
             | PhysicalPlan::CreateTable(_) => unreachable!(), // FIXME return explanatory diagnostic
         }
     }
 
-    pub(crate) fn execute_tx(
+    pub(crate) fn execute_write(
         mut self,
         atx: &mut ActiveWriteTransaction<VT, UT>,
         plan: PhysicalPlan,
     ) -> crate::Result<Columns> {
         match plan {
+            PhysicalPlan::AlterSequence(plan) => self.alter_sequence(atx, plan),
             PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(atx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(atx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(atx, plan),

@@ -1,0 +1,7 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+ast 'create index idx_status on test.users {created_at desc, status asc}'
+---
+> └── Create @ line 1, column 1 — "create"
+> 

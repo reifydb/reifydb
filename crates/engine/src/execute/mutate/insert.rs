@@ -4,7 +4,10 @@
 use crate::columnar::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use reifydb_catalog::{Catalog, sequence::TableRowSequence};
+use reifydb_catalog::{
+    Catalog,
+    sequence::{ColumnSequence, TableRowSequence},
+};
 use reifydb_core::interface::{
     ActiveWriteTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
 };
@@ -13,7 +16,7 @@ use reifydb_core::{
     ColumnDescriptor, IntoOwnedSpan, Type, Value,
     interface::{ColumnPolicyKind, VersionedWriteTransaction},
     return_error,
-    row::Layout,
+    row::EncodedRowLayout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
@@ -33,7 +36,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         };
 
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
-        let layout = Layout::new(&table_types);
+        let layout = EncodedRowLayout::new(&table_types);
 
         let mut input_node = compile(
             *plan.input,
@@ -73,6 +76,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                         Value::Undefined
                     };
 
+                    // Handle auto-increment columns
+                    if table_column.auto_increment && matches!(value, Value::Undefined) {
+                        value = ColumnSequence::next_value(atx, table.id, table_column.id)?;
+                    }
+
                     let policies: Vec<ColumnPolicyKind> =
                         table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
 
@@ -107,8 +115,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                         Value::Time(v) => layout.set_time(&mut row, table_idx, v),
                         Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
                         Value::RowId(_v) => {}
-                        Value::Uuid4(v) => layout.set_uuid(&mut row, table_idx, *v),
-                        Value::Uuid7(v) => layout.set_uuid(&mut row, table_idx, *v),
+                        Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
+                        Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
                         Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
                         Value::Undefined => layout.set_undefined(&mut row, table_idx),
                     }

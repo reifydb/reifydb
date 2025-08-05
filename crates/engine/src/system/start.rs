@@ -7,17 +7,17 @@ use reifydb_core::interface::{
     EncodableKey, SystemVersion, SystemVersionKey, UnversionedReadTransaction,
     UnversionedTransaction, UnversionedWriteTransaction,
 };
-use reifydb_core::row::Layout;
+use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{Type, return_hooks};
 
-pub(crate) struct SystemStartCallback<UT>
+pub(crate) struct StartCallback<UT>
 where
     UT: UnversionedTransaction,
 {
     unversioned: UT,
 }
 
-impl<UT> SystemStartCallback<UT>
+impl<UT> StartCallback<UT>
 where
     UT: UnversionedTransaction,
 {
@@ -28,12 +28,12 @@ where
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-impl<UT> Callback<OnInitHook> for SystemStartCallback<UT>
+impl<UT> Callback<OnInitHook> for StartCallback<UT>
 where
     UT: UnversionedTransaction,
 {
     fn on(&self, _hook: &OnInitHook) -> crate::Result<BoxedHookIter> {
-        let layout = Layout::new(&[Type::Uint1]);
+        let layout = EncodedRowLayout::new(&[Type::Uint1]);
         let key = SystemVersionKey { version: SystemVersion::Storage }.encode();
 
         let created = self.unversioned.with_write(|tx| match tx.get(&key)? {
@@ -59,7 +59,7 @@ where
     }
 }
 
-impl<UT> SystemStartCallback<UT>
+impl<UT> StartCallback<UT>
 where
     UT: UnversionedTransaction,
 {

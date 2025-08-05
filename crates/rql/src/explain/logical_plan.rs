@@ -3,7 +3,7 @@
 
 use crate::ast::parse;
 use crate::plan::logical::{
-    AggregateNode, FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
+    AggregateNode, AlterSequenceNode, CreateIndexNode, FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
     LogicalPlan, MapNode, OrderNode, TableScanNode, TakeNode, compile_logical,
 };
 use reifydb_core::JoinType;
@@ -35,6 +35,69 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
         LogicalPlan::CreateSchema(_) => unimplemented!(),
         LogicalPlan::CreateSequence(_) => unimplemented!(),
         LogicalPlan::CreateTable(_) => unimplemented!(),
+        LogicalPlan::AlterSequence(AlterSequenceNode {
+            schema,
+            table,
+            column,
+            value,
+        }) => {
+            output.push_str(&format!("{}{} AlterSequence\n", prefix, branch));
+            let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+            
+            if let Some(schema_span) = schema {
+                output.push_str(&format!("{}├── Schema: {}\n", child_prefix, schema_span.fragment));
+                output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.fragment));
+            } else {
+                output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.fragment));
+            }
+            output.push_str(&format!("{}├── Column: {}\n", child_prefix, column.fragment));
+            output.push_str(&format!("{}└── Value: {}\n", child_prefix, value));
+        },
+        LogicalPlan::CreateIndex(CreateIndexNode {
+            index_type,
+            name,
+            schema,
+            table,
+            columns,
+            filter,
+            map,
+        }) => {
+            output.push_str(&format!("{}{} CreateIndex\n", prefix, branch));
+            let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+            
+            output.push_str(&format!("{}├── Type: {:?}\n", child_prefix, index_type));
+            output.push_str(&format!("{}├── Name: {}\n", child_prefix, name.fragment));
+            output.push_str(&format!("{}├── Schema: {}\n", child_prefix, schema.fragment));
+            output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.fragment));
+            
+            let columns_str = columns
+                .iter()
+                .map(|col| {
+                    if let Some(order) = &col.order {
+                        format!("{} {:?}", col.column.fragment, order)
+                    } else {
+                        col.column.fragment.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            
+            if !filter.is_empty() {
+                output.push_str(&format!("{}├── Columns: {}\n", child_prefix, columns_str));
+                let filter_str = filter
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                output.push_str(&format!("{}├── Filters: {}\n", child_prefix, filter_str));
+            } else {
+                output.push_str(&format!("{}└── Columns: {}\n", child_prefix, columns_str));
+            }
+            
+            if let Some(map_expr) = map {
+                output.push_str(&format!("{}└── Map: {}\n", child_prefix, map_expr.to_string()));
+            }
+        },
         LogicalPlan::Delete(_) => unimplemented!(),
         LogicalPlan::Insert(_) => unimplemented!(),
         LogicalPlan::Update(_) => unimplemented!(),

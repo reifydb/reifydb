@@ -52,6 +52,11 @@ fn render_physical_plan_inner(
         PhysicalPlan::CreateComputedView(_) => unimplemented!(),
         PhysicalPlan::CreateSchema(_) => unimplemented!(),
         PhysicalPlan::CreateTable(_) => unimplemented!(),
+        PhysicalPlan::AlterSequence(physical::AlterSequencePlan { schema, table, column, value }) => {
+            let schema_str = schema.as_ref().map(|s| format!("{}.", s.fragment)).unwrap_or_default();
+            let label = format!("AlterSequence {}{}.{} SET VALUE {}", schema_str, table.fragment, column.fragment, value);
+            write_node_header(output, prefix, is_last, &label);
+        },
         PhysicalPlan::Delete(_) => unimplemented!(),
         PhysicalPlan::Insert(_) => unimplemented!(),
         PhysicalPlan::Update(_) => unimplemented!(),

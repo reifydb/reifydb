@@ -9,7 +9,7 @@ use reifydb_core::interface::{
     VersionedWriteTransaction,
 };
 use reifydb_core::result::Frame;
-use reifydb_core::row::Layout;
+use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKeyRange, Type};
 use std::collections::Bound::Included;
 use std::collections::HashMap;
@@ -138,7 +138,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
-        let _layout = Layout::new(&[Type::Utf8, Type::Int1]);
+        let _layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
         let _table = Table {
             id: TableId(node_id.0),
@@ -151,6 +151,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Utf8,
                     policies: vec![],
                     index: ColumnIndex(0),
+                    auto_increment: false,
                 },
                 Column {
                     id: ColumnId(1),
@@ -158,6 +159,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Int1,
                     policies: vec![],
                     index: ColumnIndex(1),
+                    auto_increment: false,
                 },
             ],
         };
@@ -286,7 +288,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             ))
             .unwrap();
 
-        let _layout = Layout::new(&[Type::Utf8, Type::Int1]);
+        let _layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
         let _table = Table {
             id: TableId(node_id.0),
@@ -299,6 +301,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Utf8,
                     policies: vec![],
                     index: ColumnIndex(0),
+                    auto_increment: false,
                 },
                 Column {
                     id: ColumnId(1),
@@ -306,6 +309,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                     ty: Type::Int1,
                     policies: vec![],
                     index: ColumnIndex(1),
+                    auto_increment: false,
                 },
             ],
         };

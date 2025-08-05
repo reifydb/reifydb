@@ -247,7 +247,7 @@ impl Display for Type {
             Type::Int4 => f.write_str("INT4"),
             Type::Int8 => f.write_str("INT8"),
             Type::Int16 => f.write_str("INT16"),
-            Type::Utf8 => f.write_str("STRING"),
+            Type::Utf8 => f.write_str("UTF8"),
             Type::Uint1 => f.write_str("UINT1"),
             Type::Uint2 => f.write_str("UINT2"),
             Type::Uint4 => f.write_str("UINT4"),

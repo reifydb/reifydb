@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::Type;
-use crate::row::{EncodedRow, Layout};
+use crate::row::{EncodedRow, EncodedRowLayout};
 use crate::value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7};
 use std::ptr;
 use uuid::Uuid;
 
-impl Layout {
+impl EncodedRowLayout {
     pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
@@ -282,22 +282,6 @@ impl Layout {
         }
     }
 
-    pub fn set_uuid(&self, row: &mut EncodedRow, index: usize, value: Uuid) {
-        let field = &self.fields[index];
-        debug_assert!(row.len() >= self.total_static_size());
-        debug_assert!(field.value == Type::Uuid4 || field.value == Type::Uuid7);
-        row.set_valid(index, true);
-        unsafe {
-            // UUIDs are 16 bytes
-            let bytes = value.as_bytes();
-            ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                row.make_mut().as_mut_ptr().add(field.offset),
-                16,
-            );
-        }
-    }
-
     pub fn set_uuid4(&self, row: &mut EncodedRow, index: usize, value: Uuid4) {
         let field = &self.fields[index];
         debug_assert!(row.len() >= self.total_static_size());
@@ -348,12 +332,12 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use crate::Type;
-    use crate::row::Layout;
+    use crate::row::EncodedRowLayout;
     use crate::value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7};
 
     #[test]
     fn test_bool_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Bool]);
+        let layout = EncodedRowLayout::new(&[Type::Bool]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -375,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_f32_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Float4]);
+        let layout = EncodedRowLayout::new(&[Type::Float4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -396,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_f64_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Float8]);
+        let layout = EncodedRowLayout::new(&[Type::Float8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -417,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_i8_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Int1]);
+        let layout = EncodedRowLayout::new(&[Type::Int1]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -438,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_i16_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Int2]);
+        let layout = EncodedRowLayout::new(&[Type::Int2]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -459,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_i32_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Int4]);
+        let layout = EncodedRowLayout::new(&[Type::Int4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -480,7 +464,7 @@ mod tests {
 
     #[test]
     fn test_i64_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Int8]);
+        let layout = EncodedRowLayout::new(&[Type::Int8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -501,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_i128_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Int16]);
+        let layout = EncodedRowLayout::new(&[Type::Int16]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -525,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_str_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -545,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_u8_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Uint1]);
+        let layout = EncodedRowLayout::new(&[Type::Uint1]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -566,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_u16_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Uint2]);
+        let layout = EncodedRowLayout::new(&[Type::Uint2]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -587,7 +571,7 @@ mod tests {
 
     #[test]
     fn test_u32_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Uint4]);
+        let layout = EncodedRowLayout::new(&[Type::Uint4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -608,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_u64_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Uint8]);
+        let layout = EncodedRowLayout::new(&[Type::Uint8]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -632,7 +616,7 @@ mod tests {
 
     #[test]
     fn test_u128_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Uint16]);
+        let layout = EncodedRowLayout::new(&[Type::Uint16]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -656,7 +640,7 @@ mod tests {
 
     #[test]
     fn test_set_undefined_and_clone_on_write() {
-        let layout = Layout::new(&[Type::Int4]);
+        let layout = EncodedRowLayout::new(&[Type::Int4]);
         let mut row1 = layout.allocate_row();
 
         layout.set_i32(&mut row1, 0, 12345);
@@ -676,7 +660,7 @@ mod tests {
     #[test]
     fn test_utf8_setting_order_variations() {
         // Test forward order
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "first");
@@ -710,7 +694,7 @@ mod tests {
 
     #[test]
     fn test_utf8_with_clone_on_write_dynamic() {
-        let layout = Layout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row1 = layout.allocate_row();
 
         layout.set_utf8(&mut row1, 0, "original_string");
@@ -735,7 +719,7 @@ mod tests {
 
     #[test]
     fn test_large_utf8_string_allocation() {
-        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Uint4]);
+        let layout = EncodedRowLayout::new(&[Type::Bool, Type::Utf8, Type::Uint4]);
         let mut row = layout.allocate_row();
 
         let initial_size = row.len();
@@ -754,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_mixed_field_types_arbitrary_order() {
-        let layout = Layout::new(&[
+        let layout = EncodedRowLayout::new(&[
             Type::Float8,
             Type::Utf8,
             Type::Bool,
@@ -782,7 +766,7 @@ mod tests {
 
     #[test]
     fn test_sparse_utf8_field_setting() {
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Only set some UTF8 fields, leave others undefined
@@ -801,7 +785,7 @@ mod tests {
 
     #[test]
     fn test_empty_utf8_strings() {
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "");
@@ -818,7 +802,7 @@ mod tests {
 
     #[test]
     fn test_utf8_memory_layout_verification() {
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let initial_size = layout.total_static_size();
@@ -838,7 +822,7 @@ mod tests {
 
     #[test]
     fn test_utf8_with_various_unicode() {
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "🎉"); // Emoji
@@ -852,7 +836,7 @@ mod tests {
 
     #[test]
     fn test_date_set_and_get() {
-        let layout = Layout::new(&[Type::Date]);
+        let layout = EncodedRowLayout::new(&[Type::Date]);
         let mut row = layout.allocate_row();
 
         let date = Date::new(2025, 7, 15).unwrap();
@@ -864,7 +848,7 @@ mod tests {
 
     #[test]
     fn test_datetime_set_and_get() {
-        let layout = Layout::new(&[Type::DateTime]);
+        let layout = EncodedRowLayout::new(&[Type::DateTime]);
         let mut row = layout.allocate_row();
 
         let datetime = DateTime::new(2025, 7, 15, 14, 30, 45, 123456789).unwrap();
@@ -876,7 +860,7 @@ mod tests {
 
     #[test]
     fn test_time_set_and_get() {
-        let layout = Layout::new(&[Type::Time]);
+        let layout = EncodedRowLayout::new(&[Type::Time]);
         let mut row = layout.allocate_row();
 
         let time = Time::new(12, 34, 56, 123456789).unwrap();
@@ -888,7 +872,7 @@ mod tests {
 
     #[test]
     fn test_interval_set_and_get() {
-        let layout = Layout::new(&[Type::Interval]);
+        let layout = EncodedRowLayout::new(&[Type::Interval]);
         let mut row = layout.allocate_row();
 
         let interval = Interval::from_seconds(-3600); // -1 hour
@@ -900,7 +884,7 @@ mod tests {
 
     #[test]
     fn test_temporal_types_mixed_with_others() {
-        let layout = Layout::new(&[
+        let layout = EncodedRowLayout::new(&[
             Type::Date,
             Type::Bool,
             Type::DateTime,
@@ -935,7 +919,7 @@ mod tests {
 
     #[test]
     fn test_uuid4_set_and_get() {
-        let layout = Layout::new(&[Type::Uuid4]);
+        let layout = EncodedRowLayout::new(&[Type::Uuid4]);
         let mut row = layout.allocate_row();
 
         let uuid = Uuid4::generate();
@@ -947,7 +931,7 @@ mod tests {
 
     #[test]
     fn test_uuid7_set_and_get() {
-        let layout = Layout::new(&[Type::Uuid7]);
+        let layout = EncodedRowLayout::new(&[Type::Uuid7]);
         let mut row = layout.allocate_row();
 
         let uuid = Uuid7::generate();
@@ -959,7 +943,7 @@ mod tests {
 
     #[test]
     fn test_uuid_clone_on_write() {
-        let layout = Layout::new(&[Type::Uuid4]);
+        let layout = EncodedRowLayout::new(&[Type::Uuid4]);
         let row1 = layout.allocate_row();
         let mut row2 = row1.clone();
 
@@ -978,7 +962,7 @@ mod tests {
 
     #[test]
     fn test_blob_basic() {
-        let layout = Layout::new(&[Type::Blob]);
+        let layout = EncodedRowLayout::new(&[Type::Blob]);
         let mut row = layout.allocate_row();
 
         let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
@@ -992,7 +976,7 @@ mod tests {
 
     #[test]
     fn test_blob_empty() {
-        let layout = Layout::new(&[Type::Blob]);
+        let layout = EncodedRowLayout::new(&[Type::Blob]);
         let mut row = layout.allocate_row();
 
         let blob = Blob::new(vec![]);
@@ -1006,7 +990,7 @@ mod tests {
 
     #[test]
     fn test_blob_multiple() {
-        let layout = Layout::new(&[Type::Blob, Type::Blob, Type::Blob]);
+        let layout = EncodedRowLayout::new(&[Type::Blob, Type::Blob, Type::Blob]);
         let mut row = layout.allocate_row();
 
         let blob1 = Blob::new(vec![0x00, 0x01]);
@@ -1024,7 +1008,7 @@ mod tests {
 
     #[test]
     fn test_blob_mixed_with_other_types() {
-        let layout = Layout::new(&[Type::Int4, Type::Blob, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Int4, Type::Blob, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_i32(&mut row, 0, 42);

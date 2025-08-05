@@ -18,11 +18,11 @@ pub trait Callback<H>: Send + Sync + 'static
 where
     H: Hook,
 {
-    fn on(&self, hook: &H) -> Result<BoxedHookIter, crate::Error>;
+    fn on(&self, hook: &H) -> crate::Result<BoxedHookIter>;
 }
 
 trait CallbackList: Any + Send + Sync {
-    fn on_any(&self, hook: &dyn Any) -> Result<Vec<Box<dyn Hook>>, crate::Error>;
+    fn on_any(&self, hook: &dyn Any) -> crate::Result<Vec<Box<dyn Hook>>>;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
@@ -47,7 +47,7 @@ impl<H> CallbackList for CallbackListImpl<H>
 where
     H: Hook,
 {
-    fn on_any(&self, hook: &dyn Any) -> Result<Vec<Box<dyn Hook>>, crate::Error> {
+    fn on_any(&self, hook: &dyn Any) -> crate::Result<Vec<Box<dyn Hook>>> {
         if let Some(hook) = hook.downcast_ref::<H>() {
             let mut result = Vec::new();
             for handler in self.handlers.read().unwrap().iter() {

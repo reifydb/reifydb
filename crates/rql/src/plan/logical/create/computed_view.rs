@@ -10,7 +10,7 @@ use reifydb_core::interface::ColumnPolicyKind;
 impl Compiler {
     pub(crate) fn compile_computed_view(ast: AstCreateComputedView) -> crate::Result<LogicalPlan> {
         let mut columns: Vec<ColumnToCreate> = vec![];
-        for col in ast.columns.iter() {
+        for col in ast.columns.into_iter() {
             let column_name = col.name.value().to_string();
             let column_type = convert_data_type(&col.ty)?;
 
@@ -20,7 +20,13 @@ impl Compiler {
                 vec![]
             };
 
-            columns.push(ColumnToCreate { name: column_name, ty: column_type, policies });
+            columns.push(ColumnToCreate {
+                name: column_name,
+                ty: column_type,
+                policies,
+                auto_increment: false, // Computed views don't support auto-increment
+                span: Some(col.name.span()),
+            });
         }
 
         // Compile the WITH clause if present

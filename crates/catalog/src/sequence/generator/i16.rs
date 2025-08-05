@@ -7,18 +7,18 @@ use reifydb_core::interface::{
     ActiveWriteTransaction, UnversionedReadTransaction, UnversionedTransaction,
     UnversionedWriteTransaction, VersionedTransaction,
 };
-use reifydb_core::row::Layout;
+use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
 
-static LAYOUT: Lazy<Layout> = Lazy::new(|| Layout::new(&[Type::Uint8]));
+static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Type::Int2]));
 
-pub(crate) struct SequenceGeneratorU64 {}
+pub(crate) struct GeneratorI16 {}
 
-impl SequenceGeneratorU64 {
+impl GeneratorI16 {
     pub(crate) fn next<VT, UT>(
         atx: &mut ActiveWriteTransaction<VT, UT>,
         key: &EncodedKey,
-    ) -> crate::Result<u64>
+    ) -> crate::Result<i16>
     where
         VT: VersionedTransaction,
         UT: UnversionedTransaction,
@@ -26,30 +26,50 @@ impl SequenceGeneratorU64 {
         atx.with_unversioned_write(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
-                let value = LAYOUT.get_u64(&row, 0);
-                let next_value = value.saturating_add(1);
+                let current_value = LAYOUT.get_i16(&row, 0);
+                let next_value = current_value.saturating_add(1);
 
-                if value == next_value {
-                    return_error!(sequence_exhausted(Type::Uint8));
+                if current_value == next_value {
+                    return_error!(sequence_exhausted(Type::Int2));
                 }
 
-                LAYOUT.set_u64(&mut row, 0, next_value);
+                LAYOUT.set_i16(&mut row, 0, next_value);
                 tx.set(key, row)?;
-                Ok(value)
+                Ok(next_value)
             }
             None => {
                 let mut new_row = LAYOUT.allocate_row();
-                LAYOUT.set_u64(&mut new_row, 0, 2u64);
+                LAYOUT.set_i16(&mut new_row, 0, 1i16);
                 tx.set(key, new_row)?;
                 Ok(1)
             }
+        })
+    }
+
+    pub(crate) fn set<VT, UT>(
+        atx: &mut ActiveWriteTransaction<VT, UT>,
+        key: &EncodedKey,
+        value: i16,
+    ) -> crate::Result<()>
+    where
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
+    {
+        atx.with_unversioned_write(|tx| {
+            let mut row = match tx.get(key)? {
+                Some(unversioned_row) => unversioned_row.row,
+                None => LAYOUT.allocate_row(),
+            };
+            LAYOUT.set_i16(&mut row, 0, value);
+            tx.set(key, row)?;
+            Ok(())
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::sequence::u64::{LAYOUT, SequenceGeneratorU64};
+    use crate::sequence::generator::i16::{GeneratorI16, LAYOUT};
     use reifydb_core::interface::{
         Unversioned, UnversionedReadTransaction, UnversionedWriteTransaction,
     };
@@ -61,7 +81,7 @@ mod tests {
     fn test_ok() {
         let mut atx = create_test_write_transaction();
         for expected in 1..1000 {
-            let got = SequenceGeneratorU64::next(&mut atx, &EncodedKey::new("sequence")).unwrap();
+            let got = GeneratorI16::next(&mut atx, &EncodedKey::new("sequence")).unwrap();
             assert_eq!(got, expected);
         }
 
@@ -72,7 +92,7 @@ mod tests {
             unversioned.pop().unwrap();
             let unversioned = unversioned.pop().unwrap();
             assert_eq!(unversioned.key, EncodedKey::new("sequence"));
-            assert_eq!(LAYOUT.get_u64(&unversioned.row, 0), 1000);
+            assert_eq!(LAYOUT.get_i16(&unversioned.row, 0), 999);
 
             Ok(())
         })
@@ -84,11 +104,11 @@ mod tests {
         let mut atx = create_test_write_transaction();
 
         let mut row = LAYOUT.allocate_row();
-        LAYOUT.set_u64(&mut row, 0, u64::MAX);
+        LAYOUT.set_i16(&mut row, 0, i16::MAX);
 
         atx.with_unversioned_write(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
 
-        let err = SequenceGeneratorU64::next(&mut atx, &EncodedKey::new("sequence")).unwrap_err();
-        assert_eq!(err.diagnostic(), sequence_exhausted(Type::Uint8));
+        let err = GeneratorI16::next(&mut atx, &EncodedKey::new("sequence")).unwrap_err();
+        assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int2));
     }
 }

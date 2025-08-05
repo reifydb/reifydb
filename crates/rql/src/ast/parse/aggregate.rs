@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::AstAggregate;
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
+use crate::ast::AstAggregate;
 use reifydb_core::result::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
@@ -116,6 +116,29 @@ mod tests {
         assert_eq!(aggregate.by.len(), 1);
         assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
         assert_eq!(aggregate.by[0].value(), "name");
+    }
+
+    #[test]
+    fn test_keyword() {
+        let tokens = lex("AGGREGATE min(value) BY value").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let aggregate = result.first_unchecked().as_aggregate();
+        assert_eq!(aggregate.map.len(), 1);
+
+        let projection = &aggregate.map[0].as_call_function();
+        assert_eq!(projection.function.value(), "min");
+        assert!(projection.namespaces.is_empty());
+
+        assert_eq!(projection.arguments.len(), 1);
+        let identifier = projection.arguments.nodes[0].as_identifier();
+        assert_eq!(identifier.value(), "value");
+
+        assert_eq!(aggregate.by.len(), 1);
+        assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
+        assert_eq!(aggregate.by[0].value(), "value");
     }
 
     #[test]

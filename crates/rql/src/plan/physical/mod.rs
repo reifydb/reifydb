@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod alter;
 mod create;
 
-use crate::expression::{Expression, AliasExpression};
+use crate::expression::{AliasExpression, Expression};
 use crate::plan::logical::LogicalPlan;
 use crate::plan::physical::PhysicalPlan::TableScan;
 use reifydb_catalog::table::ColumnToCreate;
@@ -13,14 +14,17 @@ use reifydb_core::{JoinType, OwnedSpan, SortKey};
 struct Compiler {}
 
 pub fn compile_physical(
-	rx: &mut impl VersionedReadTransaction,
-	logical: Vec<LogicalPlan>,
+    rx: &mut impl VersionedReadTransaction,
+    logical: Vec<LogicalPlan>,
 ) -> crate::Result<Option<PhysicalPlan>> {
     Compiler::compile(rx, logical)
 }
 
 impl Compiler {
-    fn compile(rx: &mut impl VersionedReadTransaction, logical: Vec<LogicalPlan>) -> crate::Result<Option<PhysicalPlan>> {
+    fn compile(
+        rx: &mut impl VersionedReadTransaction,
+        logical: Vec<LogicalPlan>,
+    ) -> crate::Result<Option<PhysicalPlan>> {
         if logical.is_empty() {
             return Ok(None);
         }
@@ -43,6 +47,10 @@ impl Compiler {
 
                 LogicalPlan::CreateTable(create) => {
                     stack.push(Self::compile_create_table(rx, create)?);
+                }
+
+                LogicalPlan::AlterSequence(alter) => {
+                    stack.push(Self::compile_alter_sequence(rx, alter)?);
                 }
 
                 LogicalPlan::Filter(filter) => {
@@ -158,6 +166,8 @@ pub enum PhysicalPlan {
     CreateComputedView(CreateComputedViewPlan),
     CreateSchema(CreateSchemaPlan),
     CreateTable(CreateTablePlan),
+    // Alter
+    AlterSequence(AlterSequencePlan),
     // Mutate
     Delete(DeletePlan),
     Insert(InsertPlan),
@@ -196,6 +206,14 @@ pub struct CreateTablePlan {
     pub table: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterSequencePlan {
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
+    pub column: OwnedSpan,
+    pub value: Expression,
 }
 
 #[derive(Debug, Clone)]

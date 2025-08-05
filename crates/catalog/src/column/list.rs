@@ -60,6 +60,7 @@ mod tests {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(1),
+                auto_increment: true,
             },
         )
         .unwrap();
@@ -77,6 +78,7 @@ mod tests {
                 if_not_exists: false,
                 policies: vec![],
                 index: ColumnIndex(0),
+                auto_increment: false,
             },
         )
         .unwrap();
@@ -89,6 +91,9 @@ mod tests {
 
         assert_eq!(columns[0].index, ColumnIndex(0));
         assert_eq!(columns[1].index, ColumnIndex(1));
+
+        assert_eq!(columns[0].auto_increment, false);
+        assert_eq!(columns[1].auto_increment, true);
     }
 
     #[test]

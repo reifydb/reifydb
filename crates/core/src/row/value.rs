@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::row::{EncodedRow, Layout};
+use crate::row::{EncodedRow, EncodedRowLayout};
 use crate::value::uuid::{Uuid4, Uuid7};
 use crate::value::{OrderedF32, OrderedF64};
 use crate::{RowId, Type, Value};
 
-impl Layout {
+impl EncodedRowLayout {
     pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
         debug_assert!(values.len() == self.fields.len());
         for (idx, value) in values.iter().enumerate() {
@@ -73,10 +73,10 @@ impl Layout {
             (Type::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
             (Type::Interval, Value::Undefined) => self.set_undefined(row, index),
 
-            (Type::Uuid4, Value::Uuid4(v)) => self.set_uuid(row, index, (*v).into()),
+            (Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
             (Type::Uuid4, Value::Undefined) => self.set_undefined(row, index),
 
-            (Type::Uuid7, Value::Uuid7(v)) => self.set_uuid(row, index, (*v).into()),
+            (Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, v.clone()),
             (Type::Uuid7, Value::Undefined) => self.set_undefined(row, index),
 
             (Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
@@ -116,8 +116,8 @@ impl Layout {
             Type::Time => Value::Time(self.get_time(row, index)),
             Type::Interval => Value::Interval(self.get_interval(row, index)),
             Type::RowId => Value::RowId(RowId::new(self.get_u64(row, index))),
-            Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid(row, index))),
-            Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid(row, index))),
+            Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid4(row, index))),
+            Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid7(row, index))),
             Type::Blob => Value::Blob(self.get_blob(row, index)),
             Type::Undefined => Value::Undefined,
         }
@@ -126,7 +126,7 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
-    use crate::row::Layout;
+    use crate::row::EncodedRowLayout;
     use crate::value::uuid::{Uuid4, Uuid7};
     use crate::value::{Blob, Date, DateTime, Interval, Time};
     use crate::value::{OrderedF32, OrderedF64};
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn test_set_value_utf8_with_dynamic_content() {
-        let layout = Layout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let value1 = Value::Utf8("hello".to_string());
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_set_values_with_mixed_dynamic_content() {
-        let layout = Layout::new(&[Type::Bool, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
+        let layout = EncodedRowLayout::new(&[Type::Bool, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_set_value_with_empty_and_large_utf8() {
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let large_string = "X".repeat(2000);
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_get_value_from_dynamic_content() {
-        let layout = Layout::new(&[Type::Utf8, Type::Int8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         layout.set_utf8(&mut row, 0, "test_string");
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_set_value_undefined_with_utf8_fields() {
-        let layout = Layout::new(&[Type::Utf8, Type::Bool, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Bool, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Set some values
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_get_value_all_types_including_utf8() {
-        let layout = Layout::new(&[
+        let layout = EncodedRowLayout::new(&[
             Type::Bool,
             Type::Int1,
             Type::Int2,
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_set_values_sparse_with_utf8() {
-        let layout = Layout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         // Only set some values
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_set_values_unicode_strings() {
-        let layout = Layout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_static_fields_only_no_dynamic_with_values() {
-        let layout = Layout::new(&[Type::Bool, Type::Int4, Type::Float8]);
+        let layout = EncodedRowLayout::new(&[Type::Bool, Type::Int4, Type::Float8]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_temporal_types_roundtrip() {
-        let layout = Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+        let layout = EncodedRowLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         let original_values = vec![
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_temporal_types_with_undefined() {
-        let layout = Layout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+        let layout = EncodedRowLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_mixed_temporal_and_regular_types() {
-        let layout = Layout::new(&[
+        let layout = EncodedRowLayout::new(&[
             Type::Bool,
             Type::Date,
             Type::Utf8,
@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn test_value_roundtrip_with_dynamic_content() {
-        let layout = Layout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
         let mut row = layout.allocate_row();
 
         let original_values = vec![
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn test_blob_roundtrip() {
-        let layout = Layout::new(&[Type::Blob, Type::Int4, Type::Blob]);
+        let layout = EncodedRowLayout::new(&[Type::Blob, Type::Int4, Type::Blob]);
         let mut row = layout.allocate_row();
 
         let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_blob_with_undefined() {
-        let layout = Layout::new(&[Type::Blob, Type::Blob, Type::Blob]);
+        let layout = EncodedRowLayout::new(&[Type::Blob, Type::Blob, Type::Blob]);
         let mut row = layout.allocate_row();
 
         let values = vec![
@@ -507,7 +507,7 @@ mod tests {
 
     #[test]
     fn test_uuid_roundtrip() {
-        let layout = Layout::new(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
+        let layout = EncodedRowLayout::new(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
         let mut row = layout.allocate_row();
 
         let uuid4 = Uuid4::generate();
@@ -523,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_uuid_with_undefined() {
-        let layout = Layout::new(&[Type::Uuid4, Type::Uuid7]);
+        let layout = EncodedRowLayout::new(&[Type::Uuid4, Type::Uuid7]);
         let mut row = layout.allocate_row();
 
         let values = vec![Value::Undefined, Value::Uuid7(Uuid7::generate())];
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     fn test_mixed_blob_row_id_uuid_types() {
-        let layout = Layout::new(&[
+        let layout = EncodedRowLayout::new(&[
             Type::Blob,
             Type::Int16,
             Type::Uuid4,
@@ -574,7 +574,7 @@ mod tests {
     fn test_all_types_comprehensive() {
         // except row id
 
-        let layout = Layout::new(&[
+        let layout = EncodedRowLayout::new(&[
             Type::Bool,
             Type::Int1,
             Type::Int2,

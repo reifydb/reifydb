@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::AstSort;
+use crate::ast::{AstIdentifier, AstSort};
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
@@ -23,13 +23,21 @@ impl Parser {
         let mut directions = Vec::new();
 
         loop {
-            columns.push(self.parse_identifier()?);
+            columns.push(self.parse_as_identifier()?);
 
             if !self.is_eof()
                 && !self.current()?.is_separator(Comma)
                 && (!has_braces || !self.current()?.is_operator(CloseCurly))
             {
-                directions.push(Some(self.parse_identifier()?));
+                if self.current()?.is_keyword(Keyword::Asc)
+                    || self.current()?.is_keyword(Keyword::Desc)
+                {
+                    let token = self.current()?.clone();
+                    self.advance()?;
+                    directions.push(Some(AstIdentifier(token)));
+                } else {
+                    directions.push(None);
+                }
             } else {
                 directions.push(None);
             }
@@ -78,6 +86,21 @@ mod tests {
 
         assert_eq!(sort.columns[0].value(), "name");
         assert_eq!(sort.directions[0].as_ref(), None);
+    }
+
+    #[test]
+    fn test_keyword() {
+        let tokens = lex("SORT value ASC").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let sort = result.first_unchecked().as_sort();
+        assert_eq!(sort.columns.len(), 1);
+        assert_eq!(sort.directions.len(), 1);
+
+        assert_eq!(sort.columns[0].value(), "value");
+        assert_eq!(sort.directions[0].as_ref().unwrap().value(), "ASC");
     }
 
     #[test]
