@@ -119,6 +119,29 @@ mod tests {
     }
 
     #[test]
+    fn test_keyword() {
+        let tokens = lex("AGGREGATE min(value) BY value").unwrap();
+        let mut parser = Parser::new(tokens);
+        let mut result = parser.parse().unwrap();
+
+        let result = result.pop().unwrap();
+        let aggregate = result.first_unchecked().as_aggregate();
+        assert_eq!(aggregate.map.len(), 1);
+
+        let projection = &aggregate.map[0].as_call_function();
+        assert_eq!(projection.function.value(), "min");
+        assert!(projection.namespaces.is_empty());
+
+        assert_eq!(projection.arguments.len(), 1);
+        let identifier = projection.arguments.nodes[0].as_identifier();
+        assert_eq!(identifier.value(), "value");
+
+        assert_eq!(aggregate.by.len(), 1);
+        assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
+        assert_eq!(aggregate.by[0].value(), "value");
+    }
+
+    #[test]
     fn test_alias() {
         let tokens = lex("AGGREGATE min(age) as min_age BY name").unwrap();
         let mut parser = Parser::new(tokens);
@@ -136,7 +159,7 @@ mod tests {
 
         assert_eq!(min_call.arguments.len(), 1);
         let identifier = min_call.arguments.nodes[0].as_identifier();
-        assert_eq!(identifier.value(), "age");
+        assert_eq!(identifier.value(), "value");
 
         assert!(matches!(projection.operator, InfixOperator::As(_)));
         let identifier = projection.right.as_identifier();

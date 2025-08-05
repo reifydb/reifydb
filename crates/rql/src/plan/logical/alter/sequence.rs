@@ -1,25 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{AstAlterSequence, AstLiteral};
+use crate::ast::{Ast, AstAlterSequence};
+use crate::expression::ExpressionCompiler;
 use crate::plan::logical::{AlterSequenceNode, Compiler, LogicalPlan};
-use reifydb_core::value::number::parse_int;
 
 impl Compiler {
     pub(crate) fn compile_alter_sequence(ast: AstAlterSequence) -> crate::Result<LogicalPlan> {
-        // Parse the value from the literal
-        let value = match ast.value {
-            AstLiteral::Number(num) => parse_int::<i128>(num.0.span)?,
-            _ => {
-                unimplemented!("ALTER SEQUENCE requires a number literal");
-            }
-        };
-
         Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
             schema: ast.schema.map(|s| s.span()),
             table: ast.table.span(),
             column: ast.column.span(),
-            value,
+            value: ExpressionCompiler::compile(Ast::Literal(ast.value))?,
         }))
     }
 }
@@ -28,6 +20,7 @@ impl Compiler {
 mod tests {
     use crate::ast::lex::lex;
     use crate::ast::parse::parse;
+    use crate::expression::{ConstantExpression, Expression};
     use crate::plan::logical::{LogicalPlan, compile_logical};
 
     #[test]
@@ -44,7 +37,13 @@ mod tests {
                 assert_eq!(node.schema.as_ref().unwrap().fragment, "test");
                 assert_eq!(node.table.fragment, "users");
                 assert_eq!(node.column.fragment, "id");
-                assert_eq!(node.value, 1000);
+
+                assert!(matches!(
+                    node.value,
+                    Expression::Constant(ConstantExpression::Number { span: _ })
+                ));
+                let span = node.value.span();
+                assert_eq!(span.fragment, "1000");
             }
             _ => panic!("Expected AlterSequence plan"),
         }
@@ -63,7 +62,13 @@ mod tests {
                 assert!(node.schema.is_none());
                 assert_eq!(node.table.fragment, "users");
                 assert_eq!(node.column.fragment, "id");
-                assert_eq!(node.value, 500);
+
+                assert!(matches!(
+                    node.value,
+                    Expression::Constant(ConstantExpression::Number { span: _ })
+                ));
+                let span = node.value.span();
+                assert_eq!(span.fragment, "500");
             }
             _ => panic!("Expected AlterSequence plan"),
         }

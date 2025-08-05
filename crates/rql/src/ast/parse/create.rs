@@ -101,7 +101,7 @@ impl Parser {
     fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
         let schema = self.parse_identifier()?;
         self.consume_operator(Operator::Dot)?;
-        let name = self.parse_identifier()?;
+        let name = self.parse_as_identifier()?;
         let columns = self.parse_columns()?;
 
         Ok(AstCreate::Table(AstCreateTable { token, table: name, schema, columns }))
@@ -133,7 +133,7 @@ impl Parser {
     }
 
     fn parse_column(&mut self) -> crate::Result<AstColumnToCreate> {
-        let name = self.parse_identifier()?;
+        let name = self.parse_as_identifier()?;
         self.consume_operator(Colon)?;
         let ty = self.parse_identifier()?;
 
