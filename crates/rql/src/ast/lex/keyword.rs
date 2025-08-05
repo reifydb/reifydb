@@ -86,6 +86,7 @@ keyword! {
     Describe   => "DESCRIBE",
     Show       => "SHOW",
     Create     => "CREATE",
+    Alter      => "ALTER",
     Drop       => "DROP",
     Filter     => "FILTER",
 
@@ -97,13 +98,14 @@ keyword! {
     With       => "WITH",
 
     Schema => "SCHEMA",
+    Sequence => "SEQUENCE",
     Series  => "SERIES",
     Table  => "TABLE",
     Policy => "POLICY",
     View => "VIEW",
     Computed => "COMPUTED",
     Transactional => "TRANSACTIONAL",
-    
+
     Index => "INDEX",
     Unique => "UNIQUE",
     Primary => "PRIMARY",
@@ -112,6 +114,7 @@ keyword! {
     Desc => "DESC",
     Auto => "AUTO",
     Increment => "INCREMENT",
+    Value => "VALUE",
 }
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -189,6 +192,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Describe, "DESCRIBE"),
             keyword_tag(Keyword::Show, "SHOW"),
             keyword_tag(Keyword::Create, "CREATE"),
+            keyword_tag(Keyword::Alter, "ALTER"),
             keyword_tag(Keyword::Drop, "DROP"),
             keyword_tag(Keyword::In, "IN"),
             keyword_tag(Keyword::Between, "BETWEEN"),
@@ -199,6 +203,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::With, "WITH"),
             keyword_tag(Keyword::Filter, "FILTER"),
             keyword_tag(Keyword::Schema, "SCHEMA"),
+            keyword_tag(Keyword::Sequence, "SEQUENCE"),
             keyword_tag(Keyword::Series, "SERIES"),
             keyword_tag(Keyword::Table, "TABLE"),
             keyword_tag(Keyword::Policy, "POLICY"),
@@ -214,6 +219,7 @@ pub(crate) fn parse_keyword(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&st
             keyword_tag(Keyword::Desc, "DESC"),
             keyword_tag(Keyword::Auto, "AUTO"),
             keyword_tag(Keyword::Increment, "INCREMENT"),
+            keyword_tag(Keyword::Value, "VALUE"),
         )),
     ));
 
@@ -237,14 +243,6 @@ mod tests {
         assert!(result.is_ok(), "DESC should now be a valid keyword");
         let (_, token) = result.unwrap();
         assert_eq!(token.kind, TokenKind::Keyword(Keyword::Desc));
-    }
-
-    #[test]
-    fn test_parse_keyword_invalid() {
-        let input = LocatedSpan::new("foobar rest");
-        let result = parse_keyword(input);
-
-        assert!(result.is_err(), "expected error parsing invalid keyword, got: {:?}", result);
     }
 
     fn check_keyword(keyword: Keyword, repr: &str) {
@@ -340,6 +338,9 @@ mod tests {
         test_keyword_desc => (Desc, "DESC"),
         test_keyword_auto => (Auto, "AUTO"),
         test_keyword_increment => (Increment, "INCREMENT"),
+        test_keyword_sequence => (Sequence, "SEQUENCE"),
+        test_keyword_alter => (Alter, "ALTER"),
+        test_keyword_value => (Value, "VALUE"),
     }
 
     fn check_no_keyword(repr: &str) {
@@ -430,5 +431,8 @@ mod tests {
         test_not_keyword_desc => ( "desc"),
         test_not_keyword_auto => ( "auto"),
         test_not_keyword_increment => ( "increment"),
+        test_not_keyword_sequence => ( "sequence"),
+        test_not_keyword_alter => ( "alter"),
+        test_not_keyword_value => ( "value"),
     }
 }

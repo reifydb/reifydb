@@ -30,6 +30,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
         Ast::Inline(_) => "Row",
         Ast::Cast(_) => "Cast",
         Ast::Create(_) => "Create",
+        Ast::Alter(_) => "Alter",
         Ast::Describe(_) => "Describe",
         Ast::Filter(_) => "Filter",
         Ast::From(_) => "From",

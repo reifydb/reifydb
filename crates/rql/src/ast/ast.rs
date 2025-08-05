@@ -46,6 +46,7 @@ pub enum Ast {
     CallFunction(AstCallFunction),
     Cast(AstCast),
     Create(AstCreate),
+    Alter(AstAlter),
     Describe(AstDescribe),
     Filter(AstFilter),
     From(AstFrom),
@@ -83,6 +84,7 @@ impl Ast {
             Ast::CallFunction(node) => &node.token,
             Ast::Cast(node) => &node.token,
             Ast::Create(node) => node.token(),
+            Ast::Alter(node) => node.token(),
             Ast::Describe(node) => match node {
                 AstDescribe::Query { token, .. } => token,
             },
@@ -165,6 +167,13 @@ impl Ast {
     }
     pub fn as_create(&self) -> &AstCreate {
         if let Ast::Create(result) = self { result } else { panic!("not create") }
+    }
+
+    pub fn is_alter(&self) -> bool {
+        matches!(self, Ast::Alter(_))
+    }
+    pub fn as_alter(&self) -> &AstAlter {
+        if let Ast::Alter(result) = self { result } else { panic!("not alter") }
     }
 
     pub fn is_describe(&self) -> bool {
@@ -413,6 +422,20 @@ pub enum AstCreate {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AstAlter {
+    Sequence(AstAlterSequence),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterSequence {
+    pub token: Token,
+    pub schema: Option<AstIdentifier>,
+    pub table: AstIdentifier,
+    pub column: AstIdentifier,
+    pub value: AstLiteral,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateComputedView {
     pub token: Token,
     pub schema: AstIdentifier,
@@ -482,6 +505,14 @@ impl AstCreate {
             AstCreate::Series(AstCreateSeries { token, .. }) => token,
             AstCreate::Table(AstCreateTable { token, .. }) => token,
             AstCreate::Index(AstCreateIndex { token, .. }) => token,
+        }
+    }
+}
+
+impl AstAlter {
+    pub fn token(&self) -> &Token {
+        match self {
+            AstAlter::Sequence(AstAlterSequence { token, .. }) => token,
         }
     }
 }

@@ -42,6 +42,7 @@ impl Parser {
                 Keyword::Aggregate => Ok(Ast::Aggregate(self.parse_aggregate()?)),
                 Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
                 Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
+                Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
                 Keyword::Delete => Ok(Ast::AstDelete(self.parse_delete()?)),
                 Keyword::Insert => Ok(Ast::AstInsert(self.parse_insert()?)),
                 Keyword::Update => Ok(Ast::AstUpdate(self.parse_update()?)),
