@@ -14,9 +14,7 @@ impl UnversionedApply for Sqlite {
 
         for delta in delta {
             match delta {
-                Delta::Insert { key, row: bytes }
-                | Delta::Update { key, row: bytes }
-                | Delta::Upsert { key, row: bytes } => {
+                Delta::Insert { key, row: bytes } | Delta::Update { key, row: bytes } => {
                     tx.execute(
                         "INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)",
                         params![key.to_vec(), bytes.to_vec()],

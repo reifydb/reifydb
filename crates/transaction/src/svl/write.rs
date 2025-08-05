@@ -6,7 +6,9 @@ use crate::svl::range::SvlRange;
 use crate::svl::range_rev::SvlRangeRev;
 use crate::svl::scan::SvlScan;
 use crate::svl::scan_rev::SvlScanRev;
-use reifydb_core::interface::{BoxedUnversionedIter, UnversionedReadTransaction, UnversionedWriteTransaction};
+use reifydb_core::interface::{
+    BoxedUnversionedIter, UnversionedReadTransaction, UnversionedWriteTransaction,
+};
 use std::collections::HashMap;
 use std::mem::take;
 use std::ops::RangeBounds;
@@ -25,9 +27,7 @@ where
     fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Unversioned>> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
-                Delta::Insert { row, .. }
-                | Delta::Update { row, .. }
-                | Delta::Upsert { row, .. } => {
+                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                     Ok(Some(Unversioned { key: key.clone(), row: row.clone() }))
                 }
                 Delta::Remove { .. } => Ok(None),
@@ -40,7 +40,7 @@ where
     fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
-                Delta::Insert { .. } | Delta::Update { .. } | Delta::Upsert { .. } => Ok(true),
+                Delta::Insert { .. } | Delta::Update { .. } => Ok(true),
                 Delta::Remove { .. } => Ok(false),
             };
         }

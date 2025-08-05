@@ -111,7 +111,7 @@ pub trait UnversionedStorage:
     + UnversionedApply
     + UnversionedGet
     + UnversionedContains
-    + UnversionedUpsert
+    + UnversionedInsert
     + UnversionedRemove
     + UnversionedScan
     + UnversionedScanRev
@@ -133,9 +133,9 @@ pub trait UnversionedContains {
     fn contains(&self, key: &EncodedKey) -> crate::Result<bool>;
 }
 
-pub trait UnversionedUpsert: UnversionedApply {
-    fn upsert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
-        Self::apply(self, CowVec::new(vec![Delta::Upsert { key: key.clone(), row: row.clone() }]))
+pub trait UnversionedInsert: UnversionedApply {
+    fn insert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
+        Self::apply(self, CowVec::new(vec![Delta::Insert { key: key.clone(), row: row.clone() }]))
     }
 }
 

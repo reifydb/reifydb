@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::EncodedKey;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::Unversioned;
-use reifydb_core::EncodedKey;
 use std::cmp;
 
 /// Iterator for full scan in an SVL WriteTransaction with owned values.
@@ -62,11 +62,9 @@ impl Iterator for SvlScan {
                             let (key, delta) = self.next_pending.take().unwrap();
                             self.advance_pending();
                             self.last_yielded_key = Some(key.clone());
-                            
+
                             match delta {
-                                Delta::Insert { row, .. }
-                                | Delta::Update { row, .. }
-                                | Delta::Upsert { row, .. } => {
+                                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -81,11 +79,9 @@ impl Iterator for SvlScan {
                             self.advance_pending();
                             self.advance_committed(); // Skip the committed version
                             self.last_yielded_key = Some(key.clone());
-                            
+
                             match delta {
-                                Delta::Insert { row, .. }
-                                | Delta::Update { row, .. }
-                                | Delta::Upsert { row, .. } => {
+                                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -98,7 +94,7 @@ impl Iterator for SvlScan {
                         cmp::Ordering::Greater => {
                             let committed = self.next_committed.take().unwrap();
                             self.advance_committed();
-                            
+
                             // Check if this key was already yielded
                             if self.last_yielded_key.as_ref().is_none_or(|k| k != &committed.key) {
                                 self.last_yielded_key = Some(committed.key.clone());
@@ -112,11 +108,9 @@ impl Iterator for SvlScan {
                     let (key, delta) = self.next_pending.take().unwrap();
                     self.advance_pending();
                     self.last_yielded_key = Some(key.clone());
-                    
+
                     match delta {
-                        Delta::Insert { row, .. }
-                        | Delta::Update { row, .. }
-                        | Delta::Upsert { row, .. } => {
+                        Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                             return Some(Unversioned { key, row });
                         }
                         Delta::Remove { .. } => {

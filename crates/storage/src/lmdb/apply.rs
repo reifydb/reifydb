@@ -11,9 +11,7 @@ impl VersionedApply for Lmdb {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {
-                Delta::Insert { key, row }
-                | Delta::Update { key, row }
-                | Delta::Upsert { key, row } => {
+                Delta::Insert { key, row } | Delta::Update { key, row } => {
                     self.db.put(&mut tx, &key[..], &row).unwrap();
                 }
                 Delta::Remove { key } => {
@@ -31,9 +29,7 @@ impl UnversionedApply for Lmdb {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {
-                Delta::Insert { key, row }
-                | Delta::Update { key, row }
-                | Delta::Upsert { key, row } => {
+                Delta::Insert { key, row } | Delta::Update { key, row } => {
                     self.db.put(&mut tx, &key[..], &row).unwrap();
                 }
                 Delta::Remove { key } => {

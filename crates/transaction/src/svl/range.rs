@@ -65,9 +65,7 @@ impl Iterator for SvlRange {
                             self.last_yielded_key = Some(key.clone());
 
                             match delta {
-                                Delta::Insert { row, .. }
-                                | Delta::Update { row, .. }
-                                | Delta::Upsert { row, .. } => {
+                                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -84,9 +82,7 @@ impl Iterator for SvlRange {
                             self.last_yielded_key = Some(key.clone());
 
                             match delta {
-                                Delta::Insert { row, .. }
-                                | Delta::Update { row, .. }
-                                | Delta::Upsert { row, .. } => {
+                                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -115,9 +111,7 @@ impl Iterator for SvlRange {
                     self.last_yielded_key = Some(key.clone());
 
                     match delta {
-                        Delta::Insert { row, .. }
-                        | Delta::Update { row, .. }
-                        | Delta::Upsert { row, .. } => {
+                        Delta::Insert { row, .. } | Delta::Update { row, .. } => {
                             return Some(Unversioned { key, row });
                         }
                         Delta::Remove { .. } => {
