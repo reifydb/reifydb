@@ -4,7 +4,7 @@
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb::session::{SessionAsync, RqlParams};
-use reifydb::variant::embedded::Embedded;
+use reifydb::variant::embedded_async::EmbeddedAsync;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -19,7 +19,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    instance: Embedded<VT, UT>,
+    instance: EmbeddedAsync<VT, UT>,
     runtime: Runtime,
 }
 
@@ -29,7 +29,7 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        Self { instance: ReifyDB::embedded_with(input).build(), runtime: Runtime::new().unwrap() }
+        Self { instance: ReifyDB::embedded_async_with(input).build(), runtime: Runtime::new().unwrap() }
     }
 }
 
@@ -76,8 +76,8 @@ where
     }
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as embedded => test_embedded }
+test_each_path! { in "testsuite/regression/tests/scripts" as embedded_async => test_embedded_async }
 
-fn test_embedded(path: &Path) {
+fn test_embedded_async(path: &Path) {
     testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
 }

@@ -7,5 +7,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb = { workspace = true, features = ["server", "embedded"] }
+reifydb = { workspace = true, features = ["server", "embedded_async"] }
 tokio = {workspace = true}

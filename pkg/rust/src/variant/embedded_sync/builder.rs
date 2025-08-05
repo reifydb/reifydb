@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::Embedded;
+use super::EmbeddedSync;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
 use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
-pub struct EmbeddedBuilder<VT, UT>
+pub struct EmbeddedSyncBuilder<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -16,7 +16,7 @@ where
     engine: Engine<VT, UT>,
 }
 
-impl<VT, UT> EmbeddedBuilder<VT, UT>
+impl<VT, UT> EmbeddedSyncBuilder<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -25,13 +25,13 @@ where
         Self { engine: Engine::new(versioned, unversioned, hooks).unwrap() }
     }
 
-    pub fn build(self) -> Embedded<VT, UT> {
+    pub fn build(self) -> EmbeddedSync<VT, UT> {
         self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
-        Embedded { engine: self.engine }
+        EmbeddedSync { engine: self.engine }
     }
 }
 
-impl<VT, UT> WithHooks<VT, UT> for EmbeddedBuilder<VT, UT>
+impl<VT, UT> WithHooks<VT, UT> for EmbeddedSyncBuilder<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,

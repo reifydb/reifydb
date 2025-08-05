@@ -7,7 +7,7 @@ pub use builder::ServerBuilder;
 
 use crate::hook::WithHooks;
 use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
-#[cfg(feature = "embedded")]
+#[cfg(feature = "embedded_async")]
 use crate::session::SessionAsync;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
@@ -174,7 +174,7 @@ where
     }
 }
 
-#[cfg(feature = "embedded")]
+#[cfg(feature = "embedded_async")]
 impl<VT, UT> SessionAsync<VT, UT> for Server<VT, UT>
 where
     VT: VersionedTransaction,

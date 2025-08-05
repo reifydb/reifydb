@@ -28,7 +28,7 @@ where
     ) -> crate::Result<QuerySession<VT, UT>>;
 }
 
-#[cfg(feature = "embedded_blocking")]
+#[cfg(feature = "embedded_sync")]
 pub trait SessionSync<VT, UT>: Session<VT, UT>
 where
     VT: VersionedTransaction,
@@ -49,7 +49,7 @@ where
     }
 }
 
-#[cfg(feature = "embedded")]
+#[cfg(feature = "embedded_async")]
 pub trait SessionAsync<VT, UT>: Session<VT, UT> + Sync
 where
     VT: VersionedTransaction,

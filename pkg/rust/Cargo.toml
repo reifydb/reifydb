@@ -10,10 +10,10 @@ repository.workspace = true
 default = []
 server = ["dep:tokio", "dep:reifydb-network", "reifydb-network/server"]
 client = ["dep:tokio", "dep:reifydb-network", "reifydb-network/client"]
-embedded = ["dep:tokio"]
+embedded_async = ["dep:tokio"]
 grpc = ["reifydb-network/grpc"]
 websocket = ["reifydb-network/websocket"]
-embedded_blocking = []
+embedded_sync = []
 
 [dependencies]
 reifydb-auth = { workspace = true }

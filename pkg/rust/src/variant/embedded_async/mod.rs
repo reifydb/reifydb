@@ -3,17 +3,17 @@
 
 mod builder;
 
-pub use builder::EmbeddedBuilder;
+pub use builder::EmbeddedAsyncBuilder;
 
 use crate::hook::WithHooks;
 use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
-#[cfg(feature = "embedded")]
+#[cfg(feature = "embedded_async")]
 use crate::session::SessionAsync;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
-pub struct Embedded<VT, UT>
+pub struct EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -21,7 +21,7 @@ where
     engine: Engine<VT, UT>,
 }
 
-impl<VT, UT> Clone for Embedded<VT, UT>
+impl<VT, UT> Clone for EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -31,7 +31,7 @@ where
     }
 }
 
-impl<VT, UT> Embedded<VT, UT>
+impl<VT, UT> EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<VT, UT> WithHooks<VT, UT> for Embedded<VT, UT>
+impl<VT, UT> WithHooks<VT, UT> for EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<VT, UT> Session<VT, UT> for Embedded<VT, UT>
+impl<VT, UT> Session<VT, UT> for EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -71,8 +71,8 @@ where
     }
 }
 
-#[cfg(feature = "embedded")]
-impl<VT, UT> SessionAsync<VT, UT> for Embedded<VT, UT>
+#[cfg(feature = "embedded_async")]
+impl<VT, UT> SessionAsync<VT, UT> for EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,

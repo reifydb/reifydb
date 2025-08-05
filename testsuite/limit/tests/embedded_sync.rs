@@ -4,8 +4,8 @@
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb::session::{SessionSync, RqlParams};
-use reifydb::variant::embedded_blocking::EmbeddedBlocking;
-use reifydb::{ReifyDB, memory, optimistic};
+use reifydb::variant::embedded_sync::EmbeddedSync;
+use reifydb::{ReifyDB, memory, serializable};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -18,7 +18,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    instance: EmbeddedBlocking<VT, UT>,
+    engine: EmbeddedSync<VT, UT>,
 }
 
 impl<VT, UT> Runner<VT, UT>
@@ -27,7 +27,7 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        Self { instance: ReifyDB::embedded_blocking_with(input).build() }
+        Self { engine: ReifyDB::embedded_sync_with(input).build() }
     }
 }
 
@@ -40,23 +40,23 @@ where
         let mut output = String::new();
         match command.name.as_str() {
             "command" => {
-                let rql =
+                let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("command: {rql}");
+                println!("command: {query}");
 
-                for line in self.instance.command_as_root(rql.as_str(), RqlParams::None)? {
-                    writeln!(output, "{}", line)?;
+                for frame in self.engine.command_as_root(query.as_str(), RqlParams::None)? {
+                    writeln!(output, "{}", frame)?;
                 }
             }
             "query" => {
-                let rql =
+                let query =
                     command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("query: {rql}");
+                println!("query: {query}");
 
-                for line in self.instance.query_as_root(rql.as_str(), RqlParams::None)? {
-                    writeln!(output, "{}", line)?;
+                for frame in self.engine.query_as_root(query.as_str(), RqlParams::None)? {
+                    writeln!(output, "{}", frame)?;
                 }
             }
             name => return Err(format!("invalid command {name}").into()),
@@ -66,8 +66,8 @@ where
     }
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as embedded_blocking => test_embedded_blocking }
+test_each_path! { in "testsuite/limit/tests/scripts" as embedded_sync => test_embedded_sync }
 
-fn test_embedded_blocking(path: &Path) {
-    testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
+fn test_embedded_sync(path: &Path) {
+    testscript::run_path(&mut Runner::new(serializable(memory())), path).expect("test failed")
 }

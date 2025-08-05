@@ -16,7 +16,7 @@ pub use reifydb_transaction as transaction;
 use std::path::Path;
 
 use reifydb_core::hook::Hooks;
-#[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
+#[cfg(any(feature = "embedded_async", feature = "embedded_sync", feature = "server"))]
 use reifydb_core::interface::VersionedTransaction;
 use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 #[cfg(feature = "client")]
@@ -28,10 +28,10 @@ use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb_transaction::svl::SingleVersionLock;
-#[cfg(feature = "embedded")]
-use variant::embedded::EmbeddedBuilder;
-#[cfg(feature = "embedded_blocking")]
-use variant::embedded_blocking::EmbeddedBlockingBuilder;
+#[cfg(feature = "embedded_async")]
+use variant::embedded_async::EmbeddedAsyncBuilder;
+#[cfg(feature = "embedded_sync")]
+use variant::embedded_sync::EmbeddedSyncBuilder;
 #[cfg(feature = "server")]
 use variant::server::ServerBuilder;
 
@@ -42,78 +42,43 @@ pub mod variant;
 
 pub struct ReifyDB {}
 
-// pub trait DB<'a>: Sized {
-//     fn command_as(
-//         &self,
-//         principal: &Principal,
-//         rql: &str,
-//     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-//
-//     fn command_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-//
-//     fn query_as(
-//         &self,
-//         principal: &Principal,
-//         rql: &str,
-//     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-//
-//     fn query_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-// }
-
 impl ReifyDB {
-    #[cfg(feature = "embedded")]
-    pub fn embedded()
-    -> EmbeddedBuilder<Serializable<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>
-    {
-        let (versioned, unversioned, hooks) = serializable(memory());
-        EmbeddedBuilder::new(versioned, unversioned, hooks)
-    }
-
-    #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking() -> EmbeddedBlockingBuilder<
+    #[cfg(feature = "embedded_async")]
+    pub fn embedded_async() -> EmbeddedAsyncBuilder<
         Serializable<Memory, SingleVersionLock<Memory>>,
         SingleVersionLock<Memory>,
     > {
         let (versioned, unversioned, hooks) = serializable(memory());
-        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
+        EmbeddedAsyncBuilder::new(versioned, unversioned, hooks)
     }
 
-    #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded() -> EmbeddedBlockingBuilder<
+    #[cfg(feature = "embedded_async")]
+    pub fn embedded_async_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedAsyncBuilder<VT, UT>
+    where
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
+    {
+        let (versioned, unversioned, hooks) = input;
+        EmbeddedAsyncBuilder::new(versioned, unversioned, hooks)
+    }
+
+    #[cfg(feature = "embedded_sync")]
+    pub fn embedded_sync() -> EmbeddedSyncBuilder<
         Serializable<Memory, SingleVersionLock<Memory>>,
         SingleVersionLock<Memory>,
     > {
-        Self::embedded_blocking()
+        let (versioned, unversioned, hooks) = serializable(memory());
+        EmbeddedSyncBuilder::new(versioned, unversioned, hooks)
     }
 
-    #[cfg(feature = "embedded")]
-    pub fn embedded_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBuilder<VT, UT>
+    #[cfg(feature = "embedded_sync")]
+    pub fn embedded_sync_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedSyncBuilder<VT, UT>
     where
         VT: VersionedTransaction,
         UT: UnversionedTransaction,
     {
         let (versioned, unversioned, hooks) = input;
-        EmbeddedBuilder::new(versioned, unversioned, hooks)
-    }
-
-    #[cfg(all(feature = "embedded_blocking", not(feature = "embedded")))]
-    pub fn embedded_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBlockingBuilder<VT, UT>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
-        let (versioned, unversioned, hooks) = input;
-        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
-    }
-
-    #[cfg(feature = "embedded_blocking")]
-    pub fn embedded_blocking_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedBlockingBuilder<VT, UT>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
-        let (versioned, unversioned, hooks) = input;
-        EmbeddedBlockingBuilder::new(versioned, unversioned, hooks)
+        EmbeddedSyncBuilder::new(versioned, unversioned, hooks)
     }
 
     #[cfg(feature = "server")]
