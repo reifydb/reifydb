@@ -44,7 +44,7 @@ pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction>
     _phantom: PhantomData<(VT, UT)>,
 }
 
-pub fn execute_rx<VT: VersionedTransaction, UT: UnversionedTransaction>(
+pub fn execute_read<VT: VersionedTransaction, UT: UnversionedTransaction>(
     rx: &mut impl VersionedReadTransaction,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {
@@ -64,7 +64,7 @@ pub fn execute_rx<VT: VersionedTransaction, UT: UnversionedTransaction>(
     executor.execute_read(rx, plan)
 }
 
-pub fn execute_tx<VT: VersionedTransaction, UT: UnversionedTransaction>(
+pub fn execute_write<VT: VersionedTransaction, UT: UnversionedTransaction>(
     atx: &mut ActiveWriteTransaction<VT, UT>,
     plan: PhysicalPlan,
 ) -> crate::Result<Columns> {

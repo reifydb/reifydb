@@ -10,7 +10,7 @@ mod operators;
 mod sources;
 
 use crate::Result;
-use crate::flow::flow::FlowGraph;
+use crate::flow::flow::Flow;
 use crate::flow::node::{NodeId, NodeType};
 use reifydb_core::interface::{SchemaId, Table, TableId};
 use reifydb_core::result::error::diagnostic::flow::flow_error;
@@ -34,8 +34,8 @@ impl FlowCompiler {
     }
 
     /// Compiles a vector of logical plans into a single FlowGraph
-    pub fn compile(&mut self, plans: Vec<LogicalPlan>) -> Result<FlowGraph> {
-        let mut flow_graph = FlowGraph::new();
+    pub fn compile(&mut self, plans: Vec<LogicalPlan>) -> Result<Flow> {
+        let mut flow_graph = Flow::new();
 
         // Process logical plans in order, building the dataflow graph
         let mut last_node_id: Option<NodeId> = None;
@@ -57,7 +57,7 @@ impl FlowCompiler {
     /// Compiles a single logical plan node into the FlowGraph
     fn compile_plan(
         &mut self,
-        flow_graph: &mut FlowGraph,
+        flow_graph: &mut Flow,
         plan: LogicalPlan,
         index: usize,
     ) -> Result<NodeId> {
@@ -127,7 +127,7 @@ impl FlowCompiler {
     /// Compiles a CREATE COMPUTED VIEW logical plan into a FlowGraph with a Sink node
     fn compile_create_computed_view(
         &mut self,
-        flow_graph: &mut FlowGraph,
+        flow_graph: &mut Flow,
         computed_view: CreateComputedViewNode,
     ) -> Result<NodeId> {
         // If there's no WITH clause, this is just a view definition without a query
@@ -177,7 +177,7 @@ impl FlowCompiler {
 }
 
 /// Public API for compiling logical plans to FlowGraphs
-pub fn compile_to_flow(plans: Vec<LogicalPlan>) -> Result<FlowGraph> {
+pub fn compile_to_flow(plans: Vec<LogicalPlan>) -> Result<Flow> {
     let mut compiler = FlowCompiler::new();
     compiler.compile(plans)
 }

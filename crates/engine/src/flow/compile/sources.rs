@@ -5,7 +5,7 @@
 
 use super::FlowCompiler;
 use crate::Result;
-use crate::flow::flow::FlowGraph;
+use crate::flow::flow::Flow;
 use crate::flow::node::{NodeId, NodeType};
 use reifydb_core::interface::{SchemaId, Table};
 use reifydb_rql::plan::logical::{InlineDataNode, TableScanNode};
@@ -13,9 +13,9 @@ use reifydb_rql::plan::logical::{InlineDataNode, TableScanNode};
 impl FlowCompiler {
     /// Compiles a TableScan logical plan into a Source node
     pub(super) fn compile_table_scan(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        table_scan: TableScanNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		table_scan: TableScanNode,
     ) -> Result<NodeId> {
         // Extract schema and table information
         let schema_id = if let Some(_schema_span) = table_scan.schema {
@@ -44,9 +44,9 @@ impl FlowCompiler {
 
     /// Compiles an InlineData logical plan into a Source node with static data
     pub(super) fn compile_inline_data(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        _inline_data: InlineDataNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		_inline_data: InlineDataNode,
     ) -> Result<NodeId> {
         let table_id = self.next_table_id();
         let schema_id = self.schema_context.unwrap_or(SchemaId(1));

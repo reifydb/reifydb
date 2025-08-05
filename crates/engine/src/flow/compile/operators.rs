@@ -5,7 +5,7 @@
 
 use super::FlowCompiler;
 use crate::Result;
-use crate::flow::flow::FlowGraph;
+use crate::flow::flow::Flow;
 use crate::flow::node::{NodeId, NodeType, OperatorType};
 use reifydb_core::JoinType;
 use reifydb_rql::plan::logical::{
@@ -15,9 +15,9 @@ use reifydb_rql::plan::logical::{
 impl FlowCompiler {
     /// Compiles a Filter logical plan into a Filter operator
     pub(super) fn compile_filter(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        filter: FilterNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		filter: FilterNode,
     ) -> Result<NodeId> {
         let node_id = flow_graph.add_node(NodeType::Operator {
             operator: OperatorType::Filter { predicate: filter.condition },
@@ -28,9 +28,9 @@ impl FlowCompiler {
 
     /// Compiles a Map logical plan into a Map operator
     pub(super) fn compile_map(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        map: MapNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		map: MapNode,
     ) -> Result<NodeId> {
         let node_id = flow_graph
             .add_node(NodeType::Operator { operator: OperatorType::Map { expressions: map.map } });
@@ -40,9 +40,9 @@ impl FlowCompiler {
 
     /// Compiles an Aggregate logical plan into an Aggregate operator
     pub(super) fn compile_aggregate(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        aggregate: AggregateNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		aggregate: AggregateNode,
     ) -> Result<NodeId> {
         let node_id = flow_graph.add_node(NodeType::Operator {
             operator: OperatorType::Aggregate { by: aggregate.by, map: aggregate.map },
@@ -53,9 +53,9 @@ impl FlowCompiler {
 
     /// Compiles a JoinInner logical plan into a Join operator
     pub(super) fn compile_join_inner(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        join: JoinInnerNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		join: JoinInnerNode,
     ) -> Result<NodeId> {
         // For joins, we need to handle multiple inputs
         // This is a simplified implementation - proper join compilation requires
@@ -77,9 +77,9 @@ impl FlowCompiler {
 
     /// Compiles a JoinLeft logical plan into a Join operator
     pub(super) fn compile_join_left(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        join: JoinLeftNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		join: JoinLeftNode,
     ) -> Result<NodeId> {
         let node_id = flow_graph.add_node(NodeType::Operator {
             operator: OperatorType::Join {
@@ -96,9 +96,9 @@ impl FlowCompiler {
 
     /// Compiles a Take logical plan into a TopK operator
     pub(super) fn compile_take(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        take: TakeNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		take: TakeNode,
     ) -> Result<NodeId> {
         let node_id = flow_graph.add_node(NodeType::Operator {
             operator: OperatorType::TopK {
@@ -112,9 +112,9 @@ impl FlowCompiler {
 
     /// Compiles an Order logical plan into a TopK operator with sorting
     pub(super) fn compile_order(
-        &mut self,
-        flow_graph: &mut FlowGraph,
-        order: OrderNode,
+		&mut self,
+		flow_graph: &mut Flow,
+		order: OrderNode,
     ) -> Result<NodeId> {
         // Order without limit becomes a TopK with a very large K
         // In practice, this might need special handling or a dedicated Sort operator

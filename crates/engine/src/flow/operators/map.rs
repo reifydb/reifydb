@@ -1,15 +1,16 @@
+use crate::columnar::Columns;
+use crate::evaluate::{EvaluationContext, evaluate};
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
-use reifydb_core::result::Frame;
 use reifydb_rql::expression::Expression;
 
 pub struct MapOperator {
-    _expressions: Vec<Expression>,
+    expressions: Vec<Expression>,
 }
 
 impl MapOperator {
     pub fn new(expressions: Vec<Expression>) -> Self {
-        Self { _expressions: expressions }
+        Self { expressions }
     }
 }
 
@@ -40,31 +41,30 @@ impl Operator for MapOperator {
 }
 
 impl MapOperator {
-    fn project_columns(&self, _frames: &Frame) -> crate::Result<Frame> {
-        // if columns.is_empty() {
-        //     return Ok(columns.clone());
-        // }
-        //
-        // let row_count = columns.row_count();
-        //
-        // // Create evaluation context from input columns
-        // let eval_ctx = EvaluationContext {
-        //     target_column: None,
-        //     column_policies: Vec::new(),
-        //     columns: columns.columns.clone(),
-        //     row_count,
-        //     take: None,
-        // };
-        //
-        // // Evaluate each expression to get projected columns
-        // let mut projected_columns = Vec::new();
-        // for expr in &self.expressions {
-        //     let column = evaluate(expr, &eval_ctx)?;
-        //     projected_columns.push(column);
-        // }
-        //
-        // // Build new columns from projected columns
-        // Ok(Columns::new(projected_columns))
-        todo!()
+    fn project_columns(&self, columns: &Columns) -> crate::Result<Columns> {
+        if columns.is_empty() {
+            return Ok(columns.clone());
+        }
+
+        let row_count = columns.row_count();
+
+        // Create evaluation context from input columns
+        let eval_ctx = EvaluationContext {
+            target_column: None,
+            column_policies: Vec::new(),
+            columns: columns.clone(),
+            row_count,
+            take: None,
+        };
+
+        // Evaluate each expression to get projected columns
+        let mut projected_columns = Vec::new();
+        for expr in &self.expressions {
+            let column = evaluate(expr, &eval_ctx)?;
+            projected_columns.push(column);
+        }
+
+        // Build new columns from projected columns
+        Ok(Columns::new(projected_columns))
     }
 }

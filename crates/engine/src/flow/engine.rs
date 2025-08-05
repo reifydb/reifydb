@@ -1,35 +1,38 @@
-use super::change::Diff;
-use super::flow::FlowGraph;
+use super::change::{Change, Diff};
+use super::flow::Flow;
 use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
 use crate::Result;
+use crate::columnar::Columns;
+use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::interface::{
-    Column, ColumnId, ColumnIndex, EncodableKeyRange, SchemaId, Table, TableId, TableRowKeyRange,
-    UnversionedTransaction, VersionedReadTransaction, VersionedTransaction,
-    VersionedWriteTransaction,
+    ActiveWriteTransaction, Column, ColumnId, ColumnIndex, EncodableKey, EncodableKeyRange,
+    SchemaId, Table, TableId, TableRowKey, TableRowKeyRange, UnversionedTransaction,
+    VersionedReadTransaction, VersionedTransaction, VersionedWriteTransaction,
 };
-use reifydb_core::result::Frame;
 use reifydb_core::row::EncodedRowLayout;
-use reifydb_core::{EncodedKeyRange, Type};
+use reifydb_core::{EncodedKeyRange, Type, Value};
 use std::collections::Bound::Included;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
 pub struct FlowEngine<VT: VersionedTransaction, UT: UnversionedTransaction> {
-    graph: FlowGraph,
+    graph: Flow,
     operators: HashMap<NodeId, Box<dyn Operator>>,
     contexts: HashMap<NodeId, OperatorContext>,
     versioned: VT,
+    unversioned: UT,
     _phantom: PhantomData<(VT, UT)>,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
-    pub fn new(graph: FlowGraph, versioned: VT) -> Self {
+    pub fn new(graph: Flow, versioned: VT, unversioned: UT) -> Self {
         Self {
             graph,
             operators: HashMap::new(),
             contexts: HashMap::new(),
             versioned,
+            unversioned,
             _phantom: PhantomData,
         }
     }
@@ -61,17 +64,20 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
     }
 
     pub fn process_change(&mut self, node_id: &NodeId, diff: Diff) -> Result<()> {
-        let mut tx = self.versioned.begin_write()?;
+        // let mut tx = ;
 
-        self.process_change_with_tx(&mut tx, node_id, diff)?;
-        tx.commit()?;
+        let mut atx =
+            ActiveWriteTransaction::new(self.versioned.begin_write()?, self.unversioned.clone());
+
+        self.process_change_with_tx(&mut atx, node_id, diff)?;
+        atx.commit()?;
 
         Ok(())
     }
 
     fn process_change_with_tx(
         &mut self,
-        tx: &mut <VT as VersionedTransaction>::Write,
+        atx: &mut ActiveWriteTransaction<VT, UT>,
         node_id: &NodeId,
         diff: Diff,
     ) -> Result<()> {
@@ -98,21 +104,21 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
                 // Stateful operators need to persist their internal state
                 if operator.is_stateful() {
-                    self.apply_diff_to_storage_with_tx(tx, node_id, &transformed_diff)?;
+                    self.apply_diff_to_storage_with_tx(atx, node_id, &transformed_diff)?;
                 }
 
                 transformed_diff
             }
             NodeType::Sink { .. } => {
                 // Sinks persist the final results
-                self.apply_diff_to_storage_with_tx(tx, node_id, &diff)?;
+                self.apply_diff_to_storage_with_tx(atx, node_id, &diff)?;
                 diff
             }
         };
 
         // Propagate to downstream nodes
         for output_id in output_nodes {
-            self.process_change_with_tx(tx, &output_id, output_change.clone())?;
+            self.process_change_with_tx(atx, &output_id, output_change.clone())?;
         }
 
         Ok(())
@@ -134,13 +140,13 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
     fn apply_diff_to_storage_with_tx(
         &mut self,
-        _tx: &mut <VT as VersionedTransaction>::Write,
+        atx: &mut ActiveWriteTransaction<VT, UT>,
         node_id: &NodeId,
         diff: &Diff,
     ) -> Result<()> {
-        let _layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-        let _table = Table {
+        let table = Table {
             id: TableId(node_id.0),
             schema: SchemaId(0),
             name: "view".to_string(),
@@ -164,105 +170,104 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             ],
         };
 
-        for _change in &diff.changes {
-            todo!()
-            // match change {
-            //     Change::Insert { columns } => {
-            //         // Convert columns to row deltas
-            //         // let columns_deltas = self.columns_to_deltas(columns, node_id)?;
-            //         // deltas.extend(columns_deltas);
-            //
-            //         let row_count = columns.row_count();
-            //
-            //         for row_idx in 0..row_count {
-            //             // if !mask.get(row_idx) {
-            //             //     continue;
-            //             // }
-            //
-            //             let mut row = layout.allocate_row();
-            //
-            //             // For each table column, find if it exists in the input columns
-            //             for (table_idx, table_column) in table.columns.iter().enumerate() {
-            //                 let value = if let Some(input_column) =
-            //                     columns.columns.iter().find(|col| col.name() == table_column.name)
-            //                 {
-            //                     input_column.values().get_value(row_idx)
-            //                 } else {
-            //                     Value::Undefined
-            //                 };
-            //
-            //                 // let policies: Vec<ColumnPolicyKind> =
-            //                 //     table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
-            //                 //
-            //                 // value = coerce_value_to_column_type(
-            //                 //     value,
-            //                 //     table_column.ty,
-            //                 //     ColumnDescriptor::new()
-            //                 //         .with_schema(&schema.name)
-            //                 //         .with_table(&table.name)
-            //                 //         .with_column(&table_column.name)
-            //                 //         .with_column_type(table_column.ty)
-            //                 //         .with_policies(policies),
-            //                 // )?;
-            //
-            //                 match value {
-            //                     Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
-            //                     Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
-            //                     Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
-            //                     Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
-            //                     Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
-            //                     Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
-            //                     Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
-            //                     Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
-            //                     Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
-            //                     Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
-            //                     Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
-            //                     Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
-            //                     Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
-            //                     Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
-            //                     Value::Date(v) => layout.set_date(&mut row, table_idx, v),
-            //                     Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
-            //                     Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-            //                     Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
-            //                     Value::RowId(_v) => {}
-            //                     Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
-            //                     Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
-            //                     Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
-            //                     Value::Undefined => layout.set_undefined(&mut row, table_idx),
-            //                 }
-            //             }
-            //
-            //             // Insert the row into the database
-            //             let row_id = TableRowSequence::next_row_id(tx, TableId(node_id.0))?;
-            //             tx.set(
-            //                 &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
-            //                 row,
-            //             )
-            //             .unwrap();
-            //
-            //             // inserted_count += 1;
-            //         }
-            //     }
-            //     Change::Update { old: _, new: _ } => {
-            //         // For updates, we could implement a more sophisticated approach
-            //         // For now, just insert the new columns
-            //         // let columns_deltas = self.columns_to_deltas(new, node_id)?;
-            //         // deltas.extend(columns_deltas);
-            //         todo!()
-            //     }
-            //     Change::Remove { columns: _ } => {
-            //         // Convert columns to remove deltas
-            //         // let columns_deltas = self.columns_to_remove_deltas(columns, node_id)?;
-            //         // deltas.extend(columns_deltas);
-            //         todo!()
-            //     }
-            // }
+        for change in &diff.changes {
+            match change {
+                Change::Insert { columns } => {
+                    // Convert columns to row deltas
+                    // let columns_deltas = self.columns_to_deltas(columns, node_id)?;
+                    // deltas.extend(columns_deltas);
+
+                    let row_count = columns.row_count();
+
+                    for row_idx in 0..row_count {
+                        // if !mask.get(row_idx) {
+                        //     continue;
+                        // }
+
+                        let mut row = layout.allocate_row();
+
+                        // For each table column, find if it exists in the input columns
+                        for (table_idx, table_column) in table.columns.iter().enumerate() {
+                            let value = if let Some(input_column) =
+                                columns.iter().find(|col| col.name() == table_column.name)
+                            {
+                                input_column.data().get_value(row_idx)
+                            } else {
+                                Value::Undefined
+                            };
+
+                            // let policies: Vec<ColumnPolicyKind> =
+                            //     table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+                            //
+                            // value = coerce_value_to_column_type(
+                            //     value,
+                            //     table_column.ty,
+                            //     ColumnDescriptor::new()
+                            //         .with_schema(&schema.name)
+                            //         .with_table(&table.name)
+                            //         .with_column(&table_column.name)
+                            //         .with_column_type(table_column.ty)
+                            //         .with_policies(policies),
+                            // )?;
+
+                            match value {
+                                Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
+                                Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
+                                Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
+                                Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
+                                Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
+                                Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
+                                Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
+                                Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
+                                Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
+                                Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
+                                Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
+                                Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
+                                Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
+                                Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
+                                Value::Date(v) => layout.set_date(&mut row, table_idx, v),
+                                Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
+                                Value::Time(v) => layout.set_time(&mut row, table_idx, v),
+                                Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
+                                Value::RowId(_v) => {}
+                                Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
+                                Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
+                                Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
+                                Value::Undefined => layout.set_undefined(&mut row, table_idx),
+                            }
+                        }
+
+                        // Insert the row into the database
+                        let row_id = TableRowSequence::next_row_id(atx, TableId(node_id.0))?;
+                        atx.set(
+                            &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
+                            row,
+                        )
+                        .unwrap();
+
+                        // inserted_count += 1;
+                    }
+                }
+                Change::Update { old: _, new: _ } => {
+                    // For updates, we could implement a more sophisticated approach
+                    // For now, just insert the new columns
+                    // let columns_deltas = self.columns_to_deltas(new, node_id)?;
+                    // deltas.extend(columns_deltas);
+                    todo!()
+                }
+                Change::Remove { columns: _ } => {
+                    // Convert columns to remove deltas
+                    // let columns_deltas = self.columns_to_remove_deltas(columns, node_id)?;
+                    // deltas.extend(columns_deltas);
+                    todo!()
+                }
+            }
         }
 
         Ok(())
     }
 
-    pub fn get_view_data(&self, view_name: &str) -> Result<Frame> {
+    pub fn get_view_data(&self, view_name: &str) -> Result<Columns> {
         // Find view node and read from versioned storage
         for node_id in self.graph.get_all_nodes() {
             if let Some(node) = self.graph.get_node(&node_id) {
@@ -276,21 +281,21 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         panic!("View {} not found", view_name);
     }
 
-    fn read_columns_from_storage(&self, node_id: &NodeId) -> Result<Frame> {
+    fn read_columns_from_storage(&self, node_id: &NodeId) -> Result<Columns> {
         // Start a read transaction
         let mut rx = self.versioned.begin_read()?;
 
         let range = TableRowKeyRange { table: TableId(node_id.0) };
-        let _versioned_data = rx
+        let versioned_data = rx
             .range(EncodedKeyRange::new(
                 Included(range.start().unwrap()),
                 Included(range.end().unwrap()),
             ))
             .unwrap();
 
-        let _layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
+        let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-        let _table = Table {
+        let table = Table {
             id: TableId(node_id.0),
             schema: SchemaId(0),
             name: "view".to_string(),
@@ -314,17 +319,15 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             ],
         };
 
-        // let mut columns = Columns::empty_from_table(&table);
-        // let mut iter = versioned_data.into_iter();
-        // while let Some(versioned) = iter.next() {
-        //     columns.append_rows(&layout, [versioned.row])?;
-        // }
-        // Ok(columns)
-
-        todo!()
+        let mut columns = Columns::empty_from_table(&table);
+        let mut iter = versioned_data.into_iter();
+        while let Some(versioned) = iter.next() {
+            columns.append_rows(&layout, [versioned.row])?;
+        }
+        Ok(columns)
     }
 
-    pub fn get_graph(&self) -> &FlowGraph {
+    pub fn get_graph(&self) -> &Flow {
         &self.graph
     }
 }

@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct FlowGraph {
+pub struct Flow {
     graph: DirectedGraph<Node>,
     node_map: HashMap<NodeId, NodeId>,
     next_node_id: u64,
 }
 
-impl FlowGraph {
+impl Flow {
     pub fn new() -> Self {
         Self { graph: DirectedGraph::new(), node_map: HashMap::new(), next_node_id: 0 }
     }
@@ -93,7 +93,7 @@ impl FlowGraph {
     }
 }
 
-impl Default for FlowGraph {
+impl Default for Flow {
     fn default() -> Self {
         Self::new()
     }
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_dataflow_graph_basic_operations() {
-        let mut graph = FlowGraph::new();
+        let mut graph = Flow::new();
 
         // Create some test nodes
         let table1 = graph.add_node(NodeType::Source {

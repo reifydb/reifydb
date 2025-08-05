@@ -78,7 +78,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute_tx;
+    use crate::execute_write;
     use ConstantExpression::Number;
     use Expression::Constant;
     use reifydb_catalog::Catalog;
@@ -129,7 +129,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let result = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap();
+        let result = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("users".to_string()));
         assert_eq!(result.row(0)[2], Value::Utf8("id".to_string()));
@@ -167,7 +167,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("100") }),
         };
 
-        let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "SEQUENCE_002");
     }
@@ -183,7 +183,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_002");
     }
 
@@ -199,7 +199,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_004");
     }
 
@@ -234,7 +234,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
         assert_eq!(err.diagnostic().code, "QUERY_001");
     }
 }
