@@ -5,12 +5,10 @@ mod builder;
 
 pub use builder::EmbeddedBuilder;
 
-use crate::DB;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction,
-    VersionedTransaction,
+    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
@@ -54,19 +52,19 @@ where
     }
 }
 
-impl<VT, UT> DB<'_> for Embedded<VT, UT>
+impl<VT, UT> Embedded<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    async fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub async fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
             engine.command_as(&principal, &rql).map_err(|mut err| {
-                err.0.set_statement(rql.to_string());
+                err.set_statement(rql.to_string());
                 err
             })
         })
@@ -74,19 +72,19 @@ where
         .unwrap()
     }
 
-    async fn command_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub async fn command_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
         self.command_as(&principal, rql).await
     }
 
-    async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let principal = principal.clone();
 
         let engine = self.engine.clone();
         spawn_blocking(move || {
             engine.query_as(&principal, &rql).map_err(|mut err| {
-                err.0.set_statement(rql.to_string());
+                err.set_statement(rql.to_string());
                 err
             })
         })
@@ -94,7 +92,7 @@ where
         .unwrap()
     }
 
-    async fn query_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
+    pub async fn query_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
         let principal = Principal::root();
         self.query_as(&principal, rql).await
     }

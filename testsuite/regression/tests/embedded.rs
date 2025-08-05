@@ -4,7 +4,7 @@
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb::variant::embedded::Embedded;
-use reifydb::{DB, ReifyDB, memory, optimistic};
+use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;

@@ -3,14 +3,29 @@
 
 use serde::{de, ser};
 use std::fmt::{Display, Formatter};
+use std::ops::{Deref, DerefMut};
 
 pub mod diagnostic;
 mod r#macro;
 
-#[derive(Debug, PartialEq)]
-pub struct Error(pub diagnostic::Diagnostic);
-
 use diagnostic::{Diagnostic, conversion, render::DefaultRenderer, serialization};
+
+#[derive(Debug, PartialEq)]
+pub struct Error(pub Diagnostic);
+
+impl Deref for Error {
+    type Target = Diagnostic;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Error {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

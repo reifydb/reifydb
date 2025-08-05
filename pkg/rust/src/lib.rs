@@ -42,23 +42,23 @@ pub mod variant;
 
 pub struct ReifyDB {}
 
-pub trait DB<'a>: Sized {
-    fn command_as(
-        &self,
-        principal: &Principal,
-        rql: &str,
-    ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-
-    fn command_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-
-    fn query_as(
-        &self,
-        principal: &Principal,
-        rql: &str,
-    ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-
-    fn query_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
-}
+// pub trait DB<'a>: Sized {
+//     fn command_as(
+//         &self,
+//         principal: &Principal,
+//         rql: &str,
+//     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+//
+//     fn command_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+//
+//     fn query_as(
+//         &self,
+//         principal: &Principal,
+//         rql: &str,
+//     ) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+//
+//     fn query_as_root(&self, rql: &str) -> impl Future<Output = Result<Vec<Frame>>> + Send;
+// }
 
 impl ReifyDB {
     #[cfg(feature = "embedded")]

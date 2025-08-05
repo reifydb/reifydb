@@ -60,7 +60,7 @@ where
 {
     pub fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
         self.engine.command_as(principal, rql).map_err(|mut err| {
-            err.0.set_statement(rql.to_string());
+            err.set_statement(rql.to_string());
             err
         })
     }
