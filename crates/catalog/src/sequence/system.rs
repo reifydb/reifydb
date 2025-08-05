@@ -4,7 +4,7 @@
 use crate::column::ColumnId;
 use crate::column_policy::ColumnPolicyId;
 use crate::schema::SchemaId;
-use crate::sequence::u64::SequenceGeneratorU64;
+use crate::sequence::generator::u64::GeneratorU64;
 use once_cell::sync::Lazy;
 use reifydb_core::EncodedKey;
 use reifydb_core::interface::{
@@ -37,7 +37,7 @@ impl SystemSequence {
     pub(crate) fn next_schema_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
         atx: &mut ActiveWriteTransaction<VT, UT>,
     ) -> crate::Result<SchemaId> {
-        SequenceGeneratorU64::next(atx, &SCHEMA_KEY).map(SchemaId)
+        GeneratorU64::next(atx, &SCHEMA_KEY).map(SchemaId)
     }
 }
 
@@ -45,7 +45,7 @@ impl SystemSequence {
     pub(crate) fn next_table_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
         atx: &mut ActiveWriteTransaction<VT, UT>,
     ) -> crate::Result<TableId> {
-        SequenceGeneratorU64::next(atx, &TABLE_KEY).map(TableId)
+        GeneratorU64::next(atx, &TABLE_KEY).map(TableId)
     }
 }
 
@@ -53,7 +53,7 @@ impl SystemSequence {
     pub(crate) fn next_column_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
         atx: &mut ActiveWriteTransaction<VT, UT>,
     ) -> crate::Result<ColumnId> {
-        SequenceGeneratorU64::next(atx, &COLUMN_KEY).map(ColumnId)
+        GeneratorU64::next(atx, &COLUMN_KEY).map(ColumnId)
     }
 }
 
@@ -61,6 +61,6 @@ impl SystemSequence {
     pub(crate) fn next_column_policy_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
         atx: &mut ActiveWriteTransaction<VT, UT>,
     ) -> crate::Result<ColumnPolicyId> {
-        SequenceGeneratorU64::next(atx, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
+        GeneratorU64::next(atx, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
     }
 }

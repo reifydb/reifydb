@@ -61,33 +61,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         }
 
         // Convert the value to u64
-        let value_u64 = if plan.value < 0 {
-            return_error!(reifydb_core::diagnostic::Diagnostic {
-                code: "ALTER_002".to_string(),
-                statement: None,
-                message: format!("sequence value cannot be negative: {}", plan.value),
-                span: None,
-                label: Some("negative sequence value".to_string()),
-                help: Some("sequence values must be positive integers".to_string()),
-                column: None,
-                notes: vec![],
-                cause: None,
-            });
-        } else if plan.value > u64::MAX as i128 {
-            return_error!(reifydb_core::diagnostic::Diagnostic {
-                code: "ALTER_003".to_string(),
-                statement: None,
-                message: format!("sequence value too large: {}", plan.value),
-                span: None,
-                label: Some("value exceeds maximum".to_string()),
-                help: Some(format!("sequence values must not exceed {}", u64::MAX)),
-                column: None,
-                notes: vec![],
-                cause: None,
-            });
-        } else {
-            plan.value as u64
-        };
+        let value_u64 = plan.value as u64; // FIXME
+
 
         // Get the sequence key
         let key = TableColumnSequenceKey { table: table.id, column: column.id }.encode();
@@ -212,7 +187,6 @@ mod tests {
     #[test]
     fn test_schema_not_found() {
         let mut atx = create_test_write_transaction();
-        // Note: We're not creating any schema, so any schema reference should fail
 
         let plan = AlterSequencePlan {
             schema: Some(OwnedSpan::testing("non_existent_schema")),

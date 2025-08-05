@@ -4,16 +4,19 @@
 use crate::columnar::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use reifydb_catalog::{Catalog, sequence::{ColumnSequence, TableRowSequence}};
+use reifydb_catalog::{
+    Catalog,
+    sequence::{ColumnSequence, TableRowSequence},
+};
 use reifydb_core::interface::{
     ActiveWriteTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedSpan, Type, Value,
-	interface::{ColumnPolicyKind, VersionedWriteTransaction},
-	return_error,
-	row::EncodedRowLayout,
+    ColumnDescriptor, IntoOwnedSpan, Type, Value,
+    interface::{ColumnPolicyKind, VersionedWriteTransaction},
+    return_error,
+    row::EncodedRowLayout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
@@ -75,20 +78,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
                     // Handle auto-increment columns
                     if table_column.auto_increment && matches!(value, Value::Undefined) {
-                        let next_val = ColumnSequence::next_value(atx, table.id, table_column.id)?;
-                        value = match table_column.ty {
-                            Type::Int1 => Value::Int1(next_val as i8),
-                            Type::Int2 => Value::Int2(next_val as i16),
-                            Type::Int4 => Value::Int4(next_val as i32),
-                            Type::Int8 => Value::Int8(next_val as i64),
-                            Type::Int16 => Value::Int16(next_val as i128),
-                            Type::Uint1 => Value::Uint1(next_val as u8),
-                            Type::Uint2 => Value::Uint2(next_val as u16),
-                            Type::Uint4 => Value::Uint4(next_val as u32),
-                            Type::Uint8 => Value::Uint8(next_val),
-                            Type::Uint16 => Value::Uint16(next_val as u128),
-                            _ => Value::Undefined, // Auto-increment only works with integer types
-                        };
+                        value = ColumnSequence::next_value(atx, table.id, table_column.id)?;
                     }
 
                     let policies: Vec<ColumnPolicyKind> =
