@@ -40,16 +40,16 @@ describe('Concurrent requests', () => {
         }
     });
 
-    describe('write', () => {
+    describe('command', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.write<[{ result: number }]>(
+                wsClient.command<[{ result: number }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.write<[{ a: number, b: number }]>(
+                wsClient.command<[{ a: number, b: number }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.write<[{ result: string }]>(
+                wsClient.command<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
@@ -62,16 +62,16 @@ describe('Concurrent requests', () => {
     });
 
 
-    describe('read', () => {
+    describe('query', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.read<[{ result: number }]>(
+                wsClient.query<[{ result: number }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.read<[{ a: number, b: number }]>(
+                wsClient.query<[{ a: number, b: number }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.read<[{ result: string }]>(
+                wsClient.query<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
@@ -83,16 +83,16 @@ describe('Concurrent requests', () => {
         });
     });
 
-    describe('write & read mixed', () => {
+    describe('command & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.write<[{ result: number }]>(
+                wsClient.command<[{ result: number }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.read<[{ a: number, b: number }]>(
+                wsClient.query<[{ a: number, b: number }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.write<[{ result: string }]>(
+                wsClient.command<[{ result: string }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);

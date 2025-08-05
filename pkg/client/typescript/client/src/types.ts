@@ -55,33 +55,33 @@ export interface ErrorResponse {
     };
 }
 
-export interface WriteRequest {
+export interface CommandRequest {
     id: string;
-    type: "Write";
+    type: "Command";
     payload: {
         statements: string[];
     }
 }
 
-export interface WriteResponse {
+export interface CommandResponse {
     id: string;
-    type: "Write";
+    type: "Command";
     payload: {
         frames: WebsocketFrame[];
     };
 }
 
-export interface ReadRequest {
+export interface QueryRequest {
     id: string;
-    type: "Read";
+    type: "Query";
     payload: {
         statements: string[];
     }
 }
 
-export interface ReadResponse {
+export interface QueryResponse {
     id: string;
-    type: "Read";
+    type: "Query";
     payload: {
         frames: WebsocketFrame[];
     };
