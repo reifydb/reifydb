@@ -133,7 +133,7 @@ mod tests {
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("users".to_string()));
         assert_eq!(result.row(0)[2], Value::Utf8("id".to_string()));
-        assert_eq!(result.row(0)[3], Value::Uint8(1000));
+        assert_eq!(result.row(0)[3], Value::Int4(1000));
     }
 
     #[test]
@@ -169,7 +169,7 @@ mod tests {
 
         let err = execute_tx(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
         let diagnostic = err.diagnostic();
-        assert_eq!(diagnostic.code, "ALTER_001");
+        assert_eq!(diagnostic.code, "SEQUENCE_002");
     }
 
     #[test]

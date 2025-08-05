@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::AstAggregate;
 use crate::ast::lex::Keyword;
 use crate::ast::lex::Operator::{CloseCurly, OpenCurly};
 use crate::ast::lex::Separator::Comma;
 use crate::ast::parse::{Parser, Precedence};
+use crate::ast::AstAggregate;
 use reifydb_core::result::error::diagnostic::ast::multiple_expressions_without_braces;
 use reifydb_core::return_error;
 
@@ -159,7 +159,7 @@ mod tests {
 
         assert_eq!(min_call.arguments.len(), 1);
         let identifier = min_call.arguments.nodes[0].as_identifier();
-        assert_eq!(identifier.value(), "value");
+        assert_eq!(identifier.value(), "age");
 
         assert!(matches!(projection.operator, InfixOperator::As(_)));
         let identifier = projection.right.as_identifier();
