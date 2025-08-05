@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod alter;
 mod create;
 mod mutate;
 mod query;
 
 use crate::ast::{Ast, AstPolicy, AstPolicyKind, AstStatement};
-use crate::expression::{Expression, AliasExpression};
+use crate::expression::{AliasExpression, Expression};
 use reifydb_catalog::table::ColumnToCreate;
 use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy};
 use reifydb_core::{IndexType, JoinType, OwnedSpan, SortDirection, SortKey};
@@ -27,6 +28,7 @@ impl Compiler {
         for node in ast {
             match node {
                 Ast::Create(node) => result.push(Self::compile_create(node)?),
+                Ast::Alter(node) => result.push(Self::compile_alter(node)?),
                 Ast::AstDelete(node) => result.push(Self::compile_delete(node)?),
                 Ast::AstInsert(node) => result.push(Self::compile_insert(node)?),
                 Ast::AstUpdate(node) => result.push(Self::compile_update(node)?),
@@ -52,6 +54,8 @@ pub enum LogicalPlan {
     CreateSequence(CreateSequenceNode),
     CreateTable(CreateTableNode),
     CreateIndex(CreateIndexNode),
+    // Alter
+    AlterSequence(AlterSequenceNode),
     // Mutate
     Delete(DeleteNode),
     Insert(InsertNode),
@@ -96,6 +100,14 @@ pub struct CreateTableNode {
     pub table: OwnedSpan,
     pub if_not_exists: bool,
     pub columns: Vec<ColumnToCreate>,
+}
+
+#[derive(Debug)]
+pub struct AlterSequenceNode {
+    pub schema: Option<OwnedSpan>,
+    pub table: OwnedSpan,
+    pub column: OwnedSpan,
+    pub value: i128,
 }
 
 #[derive(Debug)]

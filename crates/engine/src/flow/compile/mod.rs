@@ -107,6 +107,8 @@ impl FlowCompiler {
                     "Natural joins not yet implemented in dataflow".to_string(),
                 )));
             }
+
+            LogicalPlan::AlterSequence(_) => unreachable!(),
         };
 
         // Store the mapping for this plan node

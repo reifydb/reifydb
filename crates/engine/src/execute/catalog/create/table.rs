@@ -59,7 +59,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute::catalog::create_table::CreateTablePlan;
+    use crate::execute::catalog::create::table::CreateTablePlan;
     use crate::execute_tx;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
     use reifydb_core::{OwnedSpan, Value};

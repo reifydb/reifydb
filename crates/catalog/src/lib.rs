@@ -12,5 +12,6 @@ pub mod schema;
 pub mod sequence;
 pub mod table;
 pub mod test_utils;
+mod column_sequence;
 
 pub struct Catalog {}

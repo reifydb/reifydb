@@ -19,9 +19,9 @@ use reifydb_rql::plan::physical::PhysicalPlan;
 use std::sync::Arc;
 
 pub(crate) fn compile(
-	plan: PhysicalPlan,
-	rx: &mut impl VersionedReadTransaction,
-	context: Arc<ExecutionContext>,
+    plan: PhysicalPlan,
+    rx: &mut impl VersionedReadTransaction,
+    context: Arc<ExecutionContext>,
 ) -> Box<dyn ExecutionPlan> {
     match plan {
         PhysicalPlan::Aggregate(physical::AggregateNode { by, map, input }) => {
@@ -88,7 +88,8 @@ pub(crate) fn compile(
 
             Box::new(ScanColumnsNode::new(table, context).unwrap())
         }
-        PhysicalPlan::CreateComputedView(_)
+        PhysicalPlan::AlterSequence(_)
+        | PhysicalPlan::CreateComputedView(_)
         | PhysicalPlan::CreateSchema(_)
         | PhysicalPlan::CreateTable(_)
         | PhysicalPlan::Delete(_)
