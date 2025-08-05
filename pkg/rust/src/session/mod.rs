@@ -1,8 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+#[allow(dead_code)]
 mod command;
 mod params;
+#[allow(dead_code)]
 mod query;
 
 pub use command::CommandSession;
@@ -28,7 +30,7 @@ where
     ) -> crate::Result<QuerySession<VT, UT>>;
 }
 
-#[cfg(feature = "embedded_blocking")]
+#[cfg(feature = "embedded_sync")]
 pub trait SessionSync<VT, UT>: Session<VT, UT>
 where
     VT: VersionedTransaction,
@@ -49,7 +51,7 @@ where
     }
 }
 
-#[cfg(feature = "embedded")]
+#[cfg(feature = "embedded_async")]
 pub trait SessionAsync<VT, UT>: Session<VT, UT> + Sync
 where
     VT: VersionedTransaction,

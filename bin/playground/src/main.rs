@@ -15,10 +15,10 @@ use reifydb::rql::ast;
 use reifydb::rql::plan::logical::compile_logical;
 use reifydb::session::{RqlParams, Session, SessionSync};
 use reifydb::storage::sqlite::SqliteConfig;
-use reifydb::{ReifyDB, memory, optimistic, params, serializable, sqlite};
+use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
 
 fn main() {
-    let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
+    let db = ReifyDB::embedded_sync_with(optimistic(memory())).build();
     let session = db.command_session(Principal::root()).unwrap();
 
     session.command_sync("", RqlParams::None).unwrap();
@@ -101,7 +101,7 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     // }
 
     let db =
-        ReifyDB::embedded_blocking_with(optimistic(sqlite(SqliteConfig::new("/tmp/flow")))).build();
+        ReifyDB::embedded_sync_with(optimistic(sqlite(SqliteConfig::new("/tmp/flow")))).build();
 
     // Compile logical plans to FlowGraph
     match compile_to_flow(logical_plans) {
@@ -130,7 +130,7 @@ create computed view test.adults { name: utf8, age: int1 }  with {
             "#
                 .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str())
                 .as_str(),
-                params!(),
+                RqlParams::None,
             )
             .unwrap();
         }
@@ -140,13 +140,13 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     }
 
     for frame in
-        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", params!()).unwrap()
+        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", RqlParams::None).unwrap()
     {
         println!("{}", frame);
     }
 
     let frame = db
-        .query_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }", params!())
+        .query_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }", RqlParams::None)
         .unwrap()
         .pop()
         .unwrap();

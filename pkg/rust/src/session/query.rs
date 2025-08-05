@@ -7,7 +7,7 @@ use reifydb_core::interface::{
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
-#[cfg(feature = "embedded")]
+#[cfg(feature = "embedded_async")]
 use tokio::task::spawn_blocking;
 
 pub struct QuerySession<VT, UT>
@@ -28,7 +28,7 @@ where
         Self { engine, principal }
     }
 
-    #[cfg(feature = "embedded_blocking")]
+    #[cfg(feature = "embedded_sync")]
     pub fn query_sync(&self, rql: &str, params: impl Into<RqlParams>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -39,7 +39,7 @@ where
         })
     }
 
-    #[cfg(feature = "embedded")]
+    #[cfg(feature = "embedded_async")]
     pub async fn query_async(
         &self,
         rql: &str,

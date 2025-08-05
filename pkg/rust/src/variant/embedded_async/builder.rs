@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::EmbeddedBlocking;
+use super::EmbeddedAsync;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
 use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
-pub struct EmbeddedBlockingBuilder<VT, UT>
+pub struct EmbeddedAsyncBuilder<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -16,7 +16,7 @@ where
     engine: Engine<VT, UT>,
 }
 
-impl<VT, UT> EmbeddedBlockingBuilder<VT, UT>
+impl<VT, UT> EmbeddedAsyncBuilder<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -25,13 +25,13 @@ where
         Self { engine: Engine::new(versioned, unversioned, hooks).unwrap() }
     }
 
-    pub fn build(self) -> EmbeddedBlocking<VT, UT> {
+    pub fn build(self) -> EmbeddedAsync<VT, UT> {
         self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
-        EmbeddedBlocking { engine: self.engine }
+        EmbeddedAsync { engine: self.engine }
     }
 }
 
-impl<VT, UT> WithHooks<VT, UT> for EmbeddedBlockingBuilder<VT, UT>
+impl<VT, UT> WithHooks<VT, UT> for EmbeddedAsyncBuilder<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
