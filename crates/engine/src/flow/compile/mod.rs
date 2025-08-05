@@ -35,23 +35,23 @@ impl FlowCompiler {
 
     /// Compiles a vector of logical plans into a single FlowGraph
     pub fn compile(&mut self, plans: Vec<LogicalPlan>) -> Result<Flow> {
-        let mut flow_graph = Flow::new();
+        let mut result = Flow::new();
 
         // Process logical plans in order, building the dataflow graph
         let mut last_node_id: Option<NodeId> = None;
 
         for (index, plan) in plans.into_iter().enumerate() {
-            let node_id = self.compile_plan(&mut flow_graph, plan, index)?;
-
+            let node_id = self.compile_plan(&mut result, plan, index)?;
             // Connect nodes in sequence (for simple linear plans)
             if let Some(prev_id) = last_node_id {
-                flow_graph.add_edge(&prev_id, &node_id)?;
+                result.add_edge(&prev_id, &node_id)?;
             }
-
             last_node_id = Some(node_id);
         }
 
-        Ok(flow_graph)
+        dbg!(&result);
+
+        Ok(result)
     }
 
     /// Compiles a single logical plan node into the FlowGraph

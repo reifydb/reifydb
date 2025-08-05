@@ -8,3 +8,4 @@ repository.workspace = true
 
 [dependencies]
 reifydb = { workspace = true, features = ["client", "embedded_blocking"] }
+serde_json = "1.0.142"

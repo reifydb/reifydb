@@ -43,7 +43,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
         for node_id in node_ids {
             if let Some(node) = self.graph.get_node(&node_id) {
-                match &node.node_type {
+                match &node.ty {
                     NodeType::Source { .. } => {
                         // Tables use VersionedStorage directly
                     }
@@ -82,7 +82,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         diff: Diff,
     ) -> Result<()> {
         let (node_type, output_nodes) = if let Some(node) = self.graph.get_node(node_id) {
-            (node.node_type.clone(), node.outputs.clone())
+            (node.ty.clone(), node.outputs.clone())
         } else {
             return Ok(()); // Node not found, nothing to do
         };
@@ -271,7 +271,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         // Find view node and read from versioned storage
         for node_id in self.graph.get_all_nodes() {
             if let Some(node) = self.graph.get_node(&node_id) {
-                if let NodeType::Sink { name, .. } = &node.node_type {
+                if let NodeType::Sink { name, .. } = &node.ty {
                     if name == view_name {
                         return self.read_columns_from_storage(&node_id);
                     }

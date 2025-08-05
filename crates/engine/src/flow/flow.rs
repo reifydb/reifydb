@@ -5,7 +5,7 @@ use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {
     graph: DirectedGraph<Node>,
     node_map: HashMap<NodeId, NodeId>,
@@ -21,7 +21,8 @@ impl Flow {
         let node_id = NodeId(self.next_node_id);
         self.next_node_id += 1;
 
-        let node = Node { id: node_id.clone(), node_type, inputs: Vec::new(), outputs: Vec::new() };
+        let node =
+            Node { id: node_id.clone(), ty: node_type, inputs: Vec::new(), outputs: Vec::new() };
 
         self.graph.add_node(node_id.clone(), node);
         self.node_map.insert(node_id.clone(), node_id.clone());
@@ -59,7 +60,7 @@ impl Flow {
             // Debug: Propagating update to node with change
 
             // Process update based on node type
-            match &node.node_type {
+            match &node.ty {
                 NodeType::Source { name, .. } => {
                     // Debug: Base table received update
                     let _ = name; // Avoid unused variable warning

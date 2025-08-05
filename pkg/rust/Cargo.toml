@@ -17,7 +17,6 @@ embedded_blocking = []
 
 [dependencies]
 reifydb-auth = { workspace = true }
-reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
@@ -26,8 +25,3 @@ reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
-tonic = { workspace = true }
-
-tokio-tungstenite = {workspace = true} #FIXME remove this
-futures-util = { workspace = true} #FIXME remove this
-serde_json = { workspace = true }

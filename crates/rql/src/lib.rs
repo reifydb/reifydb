@@ -36,6 +36,7 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
         "interval" => Type::Interval,
         "uuid4" => Type::Uuid4,
         "uuid7" => Type::Uuid7,
+        "blob" => Type::Blob,
         _ => return_error!(unrecognized_type(ast.span.clone())),
     })
 }

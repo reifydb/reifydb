@@ -1,9 +1,20 @@
 use crate::flow::node::NodeId;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EdgeId(pub u64);
+
+impl fmt::Display for EdgeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Edge({})", self.0)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Edge {
+    pub id: EdgeId,
     pub source: NodeId,
     pub target: NodeId,
 }
@@ -42,11 +53,15 @@ impl<NodeData> DirectedGraph<NodeData> {
         }
 
         // Check for cycles before adding edge
-        if self.would_create_cycle(source, target) {
+        if self.creates_cycle(source, target) {
             panic!("Adding edge would create a cycle");
         }
 
-        let edge = Edge { source: source.clone(), target: target.clone() };
+        let edge = Edge {
+            id: EdgeId(self.edges.len() as u64 + 1),
+            source: source.clone(),
+            target: target.clone(),
+        };
 
         self.edges.push(edge);
 
@@ -167,7 +182,7 @@ impl<NodeData> DirectedGraph<NodeData> {
         result
     }
 
-    fn would_create_cycle(&self, source: &NodeId, target: &NodeId) -> bool {
+    fn creates_cycle(&self, source: &NodeId, target: &NodeId) -> bool {
         // Check if adding edge from source to target would create a cycle
         // This happens if there's already a path from target to source
         let reachable = self.dfs_from(target);

@@ -53,7 +53,7 @@ impl OperatorType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
-    pub node_type: NodeType,
+    pub ty: NodeType,
     pub inputs: Vec<NodeId>,
     pub outputs: Vec<NodeId>,
 }

@@ -40,15 +40,8 @@ where
 create schema reifydb;
 
 create table reifydb.flows{
-    id: int8,
-};
-
-create table reifydb.flow_edges{
-    id: int8,
-};
-
-create table reifydb.flow_nodes{
-    id: int8,
+    id: int8 auto increment,
+    data: blob
 };
 
 "#,

@@ -219,6 +219,9 @@ impl Columns {
                 (ColumnData::Uuid7(container), Type::Uuid7) => {
                     container.push(layout.get_uuid7(&row, index));
                 }
+                (ColumnData::Blob(container), Type::Blob) => {
+                    container.push(layout.get_blob(&row, index));
+                }
                 (_, v) => {
                     return_error!(engine::frame_error(format!(
                         "type mismatch for column '{}'({}): incompatible with value {}",
