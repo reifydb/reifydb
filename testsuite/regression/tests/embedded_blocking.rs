@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{VersionedTransaction, UnversionedTransaction};
+use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb::session::{SessionSync, RqlParams};
 use reifydb::variant::embedded_blocking::EmbeddedBlocking;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -16,7 +17,6 @@ pub struct Runner<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-
 {
     instance: EmbeddedBlocking<VT, UT>,
 }
@@ -25,7 +25,6 @@ impl<VT, UT> Runner<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
         Self { instance: ReifyDB::embedded_blocking_with(input).build() }
@@ -36,7 +35,6 @@ impl<VT, UT> testscript::Runner for Runner<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
@@ -47,7 +45,7 @@ where
 
                 println!("command: {rql}");
 
-                for line in self.instance.command_as_root(rql.as_str())? {
+                for line in self.instance.command_as_root(rql.as_str(), RqlParams::None)? {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -57,7 +55,7 @@ where
 
                 println!("query: {rql}");
 
-                for line in self.instance.query_as_root(rql.as_str())? {
+                for line in self.instance.query_as_root(rql.as_str(), RqlParams::None)? {
                     writeln!(output, "{}", line)?;
                 }
             }

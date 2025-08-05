@@ -3,6 +3,7 @@
 
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb::session::{SessionAsync, RqlParams};
 use reifydb::variant::embedded::Embedded;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -46,9 +47,9 @@ where
 
                 println!("command: {rql}");
 
-                let engine = self.instance.clone();
+                let instance = self.instance.clone();
                 self.runtime.block_on(async {
-                    for frame in engine.command_as_root(rql.as_str()).await? {
+                    for frame in instance.command_as_root(rql.as_str(), RqlParams::None).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -60,9 +61,9 @@ where
 
                 println!("query: {rql}");
 
-                let engine = self.instance.clone();
+                let instance = self.instance.clone();
                 self.runtime.block_on(async {
-                    for frame in engine.query_as_root(rql.as_str()).await? {
+                    for frame in instance.query_as_root(rql.as_str(), RqlParams::None).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())

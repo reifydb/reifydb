@@ -6,13 +6,11 @@ mod builder;
 pub use builder::EmbeddedBlockingBuilder;
 
 use crate::hook::WithHooks;
-// use crate::session::{QuerySessionBuilder, CommandSessionBuilder};
+use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
+#[cfg(feature = "embedded_blocking")]
+use crate::session::SessionSync;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction,
-    VersionedTransaction,
-};
-use reifydb_core::result::Frame;
+use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
 pub struct EmbeddedBlocking<VT, UT>
@@ -53,37 +51,29 @@ where
     }
 }
 
-impl<'a, VT, UT> EmbeddedBlocking<VT, UT>
+impl<VT, UT> Session<VT, UT> for EmbeddedBlocking<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.command_as(principal, rql).map_err(|mut err| {
-            err.set_statement(rql.to_string());
-            err
-        })
+    fn command_session(
+        &self,
+        session: impl IntoCommandSession<VT, UT>,
+    ) -> crate::Result<CommandSession<VT, UT>> {
+        session.into_command_session(self.engine.clone())
     }
 
-    pub fn command_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
-        let principal = Principal::root();
-        self.command_as(&principal, rql)
+    fn query_session(
+        &self,
+        session: impl IntoQuerySession<VT, UT>,
+    ) -> crate::Result<QuerySession<VT, UT>> {
+        session.into_query_session(self.engine.clone())
     }
-
-    pub fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        self.engine.query_as(principal, rql)
-    }
-
-    pub fn query_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
-        let principal = Principal::root();
-        self.query_as(&principal, rql)
-    }
-    
-    // pub fn query_session(&self, principal: Principal) -> QuerySessionBuilder<VT, UT> {
-    //     QuerySessionBuilder::new(&self.engine as &dyn EngineInterface<VT, UT>, principal)
-    // }
-    //
-    // pub fn command_session(&self, principal: Principal) -> CommandSessionBuilder<VT, UT> {
-    //     CommandSessionBuilder::new(&self.engine as &dyn EngineInterface<VT, UT>, principal)
-    // }
 }
+
+#[cfg(feature = "embedded_blocking")]
+impl<VT, UT> SessionSync<VT, UT> for EmbeddedBlocking<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{}

@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb::core::Frame;
+use reifydb::core::interface::Principal;
 use reifydb::engine::columnar::{Column, ColumnData, ColumnQualified, Columns};
 use reifydb::engine::flow::change::{Change, Diff};
 use reifydb::engine::flow::compile::compile_to_flow;
@@ -12,11 +13,16 @@ use reifydb::engine::flow::flow::Flow;
 use reifydb::engine::flow::node::NodeType;
 use reifydb::rql::ast;
 use reifydb::rql::plan::logical::compile_logical;
+use reifydb::session::{RqlParams, Session, SessionSync};
 use reifydb::storage::sqlite::SqliteConfig;
-use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
+use reifydb::{ReifyDB, memory, optimistic, params, serializable, sqlite};
 
 fn main() {
-    // let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
+    let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
+    let session = db.command_session(Principal::root()).unwrap();
+
+    session.command_sync("", RqlParams::None).unwrap();
+
     // db.command_as_root(r#"create schema test"#).unwrap();
     // let err = db.command_as_root(r#"create table test.arith { id: int2, from: int2, num: int2 }"#).unwrap_err();
     // dbg!(&err);
@@ -95,9 +101,7 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     // }
 
     let db =
-        ReifyDB::embedded_blocking_with(optimistic(sqlite(SqliteConfig::new("/tmp/flow"))))
-            .build();
-
+        ReifyDB::embedded_blocking_with(optimistic(sqlite(SqliteConfig::new("/tmp/flow")))).build();
 
     // Compile logical plans to FlowGraph
     match compile_to_flow(logical_plans) {
@@ -126,9 +130,9 @@ create computed view test.adults { name: utf8, age: int1 }  with {
             "#
                 .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str())
                 .as_str(),
+                params!(),
             )
             .unwrap();
-
         }
         Err(e) => {
             println!("❌ FlowGraph compilation failed: {}", e);
@@ -136,13 +140,13 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     }
 
     for frame in
-        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }").unwrap()
+        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", params!()).unwrap()
     {
         println!("{}", frame);
     }
 
     let frame = db
-        .query_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }")
+        .query_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }", params!())
         .unwrap()
         .pop()
         .unwrap();
@@ -180,14 +184,8 @@ create computed view test.adults { name: utf8, age: int1 }  with {
         .expect("Should have a source node");
 
     // Insert sample users with different ages
-    let users_data = [
-        ("Alice", 16),
-        ("Bob", 22),
-        ("Charlie", 17),
-        ("Diana", 25),
-        ("Eve", 19),
-        ("Bob", 60),
-    ];
+    let users_data =
+        [("Alice", 16), ("Bob", 22), ("Charlie", 17), ("Diana", 25), ("Eve", 19), ("Bob", 60)];
 
     for (name, age) in users_data {
         println!("Inserting user: {} (age {})", name, age);
@@ -214,10 +212,7 @@ create computed view test.adults { name: utf8, age: int1 }  with {
         engine
             .process_change(
                 &source_node_id,
-                Diff {
-                    changes: vec![Change::Insert { columns }],
-                    metadata: Default::default(),
-                },
+                Diff { changes: vec![Change::Insert { columns }], metadata: Default::default() },
             )
             .unwrap();
         //

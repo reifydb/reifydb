@@ -3,6 +3,7 @@
 
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb::session::{SessionSync, RqlParams};
 use reifydb::variant::embedded_blocking::EmbeddedBlocking;
 use reifydb::{ReifyDB, memory, serializable};
 use reifydb_testing::testscript;
@@ -44,7 +45,7 @@ where
 
                 println!("command: {query}");
 
-                for frame in self.engine.command_as_root(query.as_str())? {
+                for frame in self.engine.command_as_root(query.as_str(), RqlParams::None)? {
                     writeln!(output, "{}", frame)?;
                 }
             }
@@ -54,7 +55,7 @@ where
 
                 println!("query: {query}");
 
-                for frame in self.engine.query_as_root(query.as_str())? {
+                for frame in self.engine.query_as_root(query.as_str(), RqlParams::None)? {
                     writeln!(output, "{}", frame)?;
                 }
             }

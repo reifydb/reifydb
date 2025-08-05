@@ -6,13 +6,12 @@ mod builder;
 pub use builder::EmbeddedBuilder;
 
 use crate::hook::WithHooks;
+use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
+#[cfg(feature = "embedded")]
+use crate::session::SessionAsync;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
-};
-use reifydb_core::result::Frame;
+use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
-use tokio::task::spawn_blocking;
 
 pub struct Embedded<VT, UT>
 where
@@ -52,48 +51,29 @@ where
     }
 }
 
-impl<VT, UT> Embedded<VT, UT>
+impl<VT, UT> Session<VT, UT> for Embedded<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub async fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        let rql = rql.to_string();
-        let principal = principal.clone();
-
-        let engine = self.engine.clone();
-        spawn_blocking(move || {
-            engine.command_as(&principal, &rql).map_err(|mut err| {
-                err.set_statement(rql.to_string());
-                err
-            })
-        })
-        .await
-        .unwrap()
+    fn command_session(
+        &self,
+        session: impl IntoCommandSession<VT, UT>,
+    ) -> crate::Result<CommandSession<VT, UT>> {
+        session.into_command_session(self.engine.clone())
     }
 
-    pub async fn command_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
-        let principal = Principal::root();
-        self.command_as(&principal, rql).await
-    }
-
-    pub async fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
-        let rql = rql.to_string();
-        let principal = principal.clone();
-
-        let engine = self.engine.clone();
-        spawn_blocking(move || {
-            engine.query_as(&principal, &rql).map_err(|mut err| {
-                err.set_statement(rql.to_string());
-                err
-            })
-        })
-        .await
-        .unwrap()
-    }
-
-    pub async fn query_as_root(&self, rql: &str) -> crate::Result<Vec<Frame>> {
-        let principal = Principal::root();
-        self.query_as(&principal, rql).await
+    fn query_session(
+        &self,
+        session: impl IntoQuerySession<VT, UT>,
+    ) -> crate::Result<QuerySession<VT, UT>> {
+        session.into_query_session(self.engine.clone())
     }
 }
+
+#[cfg(feature = "embedded")]
+impl<VT, UT> SessionAsync<VT, UT> for Embedded<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{}

@@ -6,9 +6,10 @@ mod builder;
 pub use builder::ServerBuilder;
 
 use crate::hook::WithHooks;
-use reifydb_core::interface::{
-    UnversionedTransaction, VersionedTransaction,
-};
+use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
+#[cfg(feature = "embedded")]
+use crate::session::SessionAsync;
+use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use reifydb_network::ws::server::{WsConfig, WsServer};
@@ -152,6 +153,33 @@ where
         }
     }
 }
+
+impl<VT, UT> Session<VT, UT> for Server<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    fn command_session(
+        &self,
+        session: impl IntoCommandSession<VT, UT>,
+    ) -> crate::Result<CommandSession<VT, UT>> {
+        session.into_command_session(self.engine.clone())
+    }
+
+    fn query_session(
+        &self,
+        session: impl IntoQuerySession<VT, UT>,
+    ) -> crate::Result<QuerySession<VT, UT>> {
+        session.into_query_session(self.engine.clone())
+    }
+}
+
+#[cfg(feature = "embedded")]
+impl<VT, UT> SessionAsync<VT, UT> for Server<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{}
 
 impl<VT, UT> WithHooks<VT, UT> for Server<VT, UT>
 where

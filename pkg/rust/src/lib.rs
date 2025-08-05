@@ -18,8 +18,7 @@ use std::path::Path;
 use reifydb_core::hook::Hooks;
 #[cfg(any(feature = "embedded", feature = "embedded_blocking", feature = "server"))]
 use reifydb_core::interface::VersionedTransaction;
-use reifydb_core::interface::{Principal, UnversionedTransaction, VersionedStorage};
-use reifydb_core::result::Frame;
+use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 #[cfg(feature = "client")]
 pub use reifydb_network::grpc::client;
 /// The underlying persistence responsible for data access.
@@ -37,6 +36,7 @@ use variant::embedded_blocking::EmbeddedBlockingBuilder;
 use variant::server::ServerBuilder;
 
 pub mod hook;
+#[allow(unused_imports, unused_variables)]
 pub mod session;
 pub mod variant;
 

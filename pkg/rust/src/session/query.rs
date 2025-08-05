@@ -7,6 +7,8 @@ use reifydb_core::interface::{
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
+#[cfg(feature = "embedded")]
+use tokio::task::spawn_blocking;
 
 pub struct QuerySession<VT, UT>
 where
@@ -22,14 +24,40 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-
     pub(crate) fn new(engine: Engine<VT, UT>, principal: Principal) -> Self {
         Self { engine, principal }
     }
 
-    pub fn query(&self, rql: &str, params: impl Into<RqlParams>) -> crate::Result<Vec<Frame>> {
+    #[cfg(feature = "embedded_blocking")]
+    pub fn query_sync(&self, rql: &str, params: impl Into<RqlParams>) -> crate::Result<Vec<Frame>> {
+        let rql = rql.to_string();
         let params = params.into();
-        let substituted_rql = params.substitute(rql)?;
-        self.engine.query_as(&self.principal, &substituted_rql)
+        let substituted_rql = params.substitute(&rql)?;
+        self.engine.query_as(&self.principal, &substituted_rql).map_err(|mut err| {
+            err.set_statement(rql);
+            err
+        })
+    }
+
+    #[cfg(feature = "embedded")]
+    pub async fn query_async(
+        &self,
+        rql: &str,
+        params: impl Into<RqlParams>,
+    ) -> crate::Result<Vec<Frame>> {
+        let rql = rql.to_string();
+        let params = params.into();
+        let substituted_rql = params.substitute(&rql)?;
+
+        let principal = self.principal.clone();
+        let engine = self.engine.clone();
+        spawn_blocking(move || {
+            engine.query_as(&principal, &substituted_rql).map_err(|mut err| {
+                err.set_statement(rql);
+                err
+            })
+        })
+        .await
+        .unwrap()
     }
 }
