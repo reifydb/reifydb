@@ -37,11 +37,8 @@ use variant::embedded_blocking::EmbeddedBlockingBuilder;
 use variant::server::ServerBuilder;
 
 pub mod hook;
-// pub mod session;
+pub mod session;
 pub mod variant;
-
-// Re-export the params macro
-// pub use crate::params;
 
 pub struct ReifyDB {}
 
