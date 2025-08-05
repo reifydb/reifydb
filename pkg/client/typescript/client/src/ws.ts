@@ -6,16 +6,16 @@
 
 import {
     ErrorResponse,
-    ReadRequest,
-    ReadResponse,
+    QueryRequest,
+    QueryResponse,
     ReifyError,
     WebsocketColumn,
-    WriteRequest,
-    WriteResponse
+    CommandRequest,
+    CommandResponse
 } from "./types";
 import {decodeValue} from "./decoder";
 
-type ResponsePayload = ErrorResponse | WriteResponse | ReadResponse;
+type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -90,26 +90,26 @@ export class WsClient {
         return new WsClient(socket, options);
     }
 
-    async write<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
+    async command<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = `req-${this.nextId++}`;
         return await this.send({
             id,
-            type: "Write",
+            type: "Command",
             payload: {
                 statements: [statement]
             },
         })
     }
 
-    async read<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
+    async query<T extends readonly Record<string, unknown>[]>(statement: string): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = `req-${this.nextId++}`;
         return await this.send({
             id,
-            type: "Read",
+            type: "Query",
             payload: {
                 statements: [statement]
             },
@@ -117,7 +117,7 @@ export class WsClient {
     }
 
 
-    async send<T extends readonly Record<string, unknown>[]>(req: WriteRequest | ReadRequest): Promise<{
+    async send<T extends readonly Record<string, unknown>[]>(req: CommandRequest | QueryRequest): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = req.id;

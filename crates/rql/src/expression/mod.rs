@@ -595,6 +595,37 @@ mod tests {
             }
         }
     }
+    
+    #[test]
+    fn test_equal_operator_alias() {
+        use crate::ast::lex::lex;
+        use crate::ast::parse::parse;
+        
+        // Test that = works as equality operator
+        let test_cases = vec![
+            ("a = b", "a = b"),
+            ("a == b", "a == b"),
+            ("x = 5", "x = 5"),
+            ("x == 5", "x == 5"),
+        ];
+        
+        for (input, _description) in test_cases {
+            let tokens = lex(input).unwrap();
+            let ast = parse(tokens).unwrap();
+            let expr = ast[0].first_unchecked();
+            
+            // Compile the expression
+            let compiled = ExpressionCompiler::compile(expr.clone()).unwrap();
+            
+            // Verify it compiles to an Equal expression
+            if let Expression::Equal(_equal_expr) = compiled {
+                // Both = and == should compile to Equal expression
+                assert!(true, "Successfully compiled {} to Equal expression", input);
+            } else {
+                panic!("Expected Equal expression for: {}", input);
+            }
+        }
+    }
 }
 
 pub struct ExpressionCompiler {}
@@ -878,10 +909,21 @@ impl ExpressionCompiler {
                 }))
             }
 
+            InfixOperator::Assign(token) => {
+                // Treat = as == for equality comparison in expressions
+                let left = Self::compile(*ast.left)?;
+                let right = Self::compile(*ast.right)?;
+
+                Ok(Expression::Equal(EqualExpression {
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    span: token.span,
+                }))
+            }
+            
             operator => unimplemented!("not implemented: {operator:?}"),
             // InfixOperator::Arrow(_) => {}
             // InfixOperator::AccessPackage(_) => {}
-            // InfixOperator::Assign(_) => {}
             // InfixOperator::Subtract(_) => {}
             // InfixOperator::Multiply(_) => {}
             // InfixOperator::Divide(_) => {}

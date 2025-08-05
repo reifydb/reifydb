@@ -63,7 +63,7 @@ impl Parser {
     fn new(mut tokens: Vec<Token>) -> Self {
         let mut precedence_map = HashMap::new();
         precedence_map.insert(Operator::As, Precedence::Assignment);
-        precedence_map.insert(Operator::Equal, Precedence::Assignment);
+        precedence_map.insert(Operator::Equal, Precedence::Comparison);
 
         precedence_map.insert(Operator::DoubleEqual, Precedence::Comparison);
         precedence_map.insert(Operator::BangEqual, Precedence::Comparison);
