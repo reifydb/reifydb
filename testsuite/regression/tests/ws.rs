@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
@@ -60,7 +60,7 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for frame in self.client.as_ref().unwrap().command(&rql).await? {
+                    for frame in self.client.as_ref().unwrap().command(&rql, Params::None).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -76,7 +76,7 @@ where
                 let Some(runtime) = &self.runtime else { panic!() };
 
                 runtime.block_on(async {
-                    for frame in self.client.as_ref().unwrap().query(&rql).await? {
+                    for frame in self.client.as_ref().unwrap().query(&rql, Params::None).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())

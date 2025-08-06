@@ -5,7 +5,7 @@ use crate::ast::lex::Literal::{False, Number, Temporal, Text, True, Undefined};
 use crate::ast::lex::Separator::NewLine;
 use crate::ast::lex::{Keyword, Operator, TokenKind};
 use crate::ast::parse::Parser;
-use crate::ast::{Ast, AstWildcard};
+use crate::ast::{Ast, AstWildcard, AstParameterRef};
 use reifydb_core::diagnostic::ast;
 use reifydb_core::return_error;
 
@@ -80,7 +80,17 @@ impl Parser {
                         Ok(Ast::Identifier(self.parse_identifier()?))
                     }
                 }
-                _ => return_error!(ast::unsupported_token_error(self.advance()?.span)),
+                _ => {
+                    if let TokenKind::Parameter(kind) = current.kind {
+                        let token = self.advance()?;
+                        Ok(Ast::ParameterRef(AstParameterRef {
+                            token,
+                            kind,
+                        }))
+                    } else {
+                        return_error!(ast::unsupported_token_error(self.advance()?.span))
+                    }
+                }
             },
         }
     }

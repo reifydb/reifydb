@@ -7,6 +7,7 @@ use nom::multi::many0;
 
 pub use keyword::Keyword;
 pub use operator::Operator;
+pub use parameter::ParameterKind;
 pub use separator::Separator;
 
 use crate::ast::lex::TokenKind::EOF;
@@ -14,6 +15,7 @@ use crate::ast::lex::identifier::parse_identifier;
 use crate::ast::lex::keyword::parse_keyword;
 use crate::ast::lex::literal::parse_literal;
 use crate::ast::lex::operator::parse_operator;
+use crate::ast::lex::parameter::parse_parameter;
 use crate::ast::lex::separator::parse_separator;
 use nom::combinator::complete;
 use nom::sequence::preceded;
@@ -27,6 +29,7 @@ mod identifier;
 mod keyword;
 mod literal;
 mod operator;
+mod parameter;
 mod separator;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,6 +75,7 @@ pub enum TokenKind {
     Identifier,
     Literal(Literal),
     Operator(Operator),
+    Parameter(ParameterKind),
     Separator(Separator),
 }
 
@@ -95,7 +99,14 @@ pub fn lex<'a>(input: impl Into<LocatedSpan<&'a str>>) -> crate::Result<Vec<Toke
 fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
     complete(preceded(
         multispace0(),
-        alt((parse_keyword, parse_operator, parse_literal, parse_identifier, parse_separator)),
+        alt((
+            parse_keyword,
+            parse_operator,
+            parse_literal,
+            parse_parameter,  // Must come before identifier
+            parse_identifier,
+            parse_separator
+        )),
     ))
     .parse(input)
 }
@@ -187,5 +198,37 @@ mod tests {
         let (_rest, token) = token(span("a")).unwrap();
         assert_eq!(token.kind, TokenKind::Identifier);
         assert_eq!(token.span.fragment.as_str(), "a");
+    }
+
+    #[test]
+    fn test_parameter_positional() {
+        let (_rest, token) = token(span("$1")).unwrap();
+        assert_eq!(token.kind, TokenKind::Parameter(ParameterKind::Positional(1)));
+        assert_eq!(token.span.fragment.as_str(), "$1");
+    }
+
+    #[test]
+    fn test_parameter_named() {
+        let (_rest, token) = token(span("$user_id")).unwrap();
+        assert_eq!(token.kind, TokenKind::Parameter(ParameterKind::Named));
+        assert_eq!(token.span.fragment.as_str(), "$user_id");
+    }
+
+    #[test]
+    fn test_parameter_in_expression() {
+        let tokens = lex("$1 + $2").unwrap();
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(1)));
+        assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Plus));
+        assert_eq!(tokens[2].kind, TokenKind::Parameter(ParameterKind::Positional(2)));
+    }
+
+    #[test]
+    fn test_parameter_with_identifier() {
+        let tokens = lex("name = $name").unwrap();
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].kind, TokenKind::Identifier);
+        assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Equal));
+        assert_eq!(tokens[2].kind, TokenKind::Parameter(ParameterKind::Named));
     }
 }

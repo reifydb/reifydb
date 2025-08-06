@@ -6,9 +6,9 @@ mod builder;
 pub use builder::EmbeddedAsyncBuilder;
 
 use crate::hook::WithHooks;
-use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
 #[cfg(feature = "embedded_async")]
 use crate::session::SessionAsync;
+use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session};
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
@@ -76,4 +76,5 @@ impl<VT, UT> SessionAsync<VT, UT> for EmbeddedAsync<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-{}
+{
+}

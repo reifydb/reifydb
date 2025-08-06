@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
-use reifydb::session::{SessionAsync, RqlParams};
+use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
+use reifydb::session::SessionAsync;
 use reifydb::variant::embedded_async::EmbeddedAsync;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -49,7 +49,7 @@ where
 
                 let instance = self.instance.clone();
                 self.runtime.block_on(async {
-                    for frame in instance.command_as_root(rql.as_str(), RqlParams::None).await? {
+                    for frame in instance.command_as_root(rql.as_str(), Params::None).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())
@@ -63,7 +63,7 @@ where
 
                 let instance = self.instance.clone();
                 self.runtime.block_on(async {
-                    for frame in instance.query_as_root(rql.as_str(), RqlParams::None).await? {
+                    for frame in instance.query_as_root(rql.as_str(), Params::None).await? {
                         writeln!(output, "{}", frame).unwrap();
                     }
                     Ok::<(), reifydb::Error>(())

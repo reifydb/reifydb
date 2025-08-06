@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::{Literal, Token, TokenKind};
+use crate::ast::lex::{Literal, ParameterKind, Token, TokenKind};
 use reifydb_core::{IndexType, JoinType, OwnedSpan, SortDirection};
 use std::ops::{Deref, Index};
 
@@ -61,6 +61,7 @@ pub enum Ast {
     List(AstList),
     Literal(AstLiteral),
     Nop,
+    ParameterRef(AstParameterRef),
     Sort(AstSort),
     Policy(AstPolicy),
     PolicyBlock(AstPolicyBlock),
@@ -111,6 +112,7 @@ impl Ast {
                 AstJoin::NaturalJoin { token, .. } => token,
             },
             Ast::Nop => unreachable!(),
+            Ast::ParameterRef(node) => &node.token,
             Ast::Sort(node) => &node.token,
             Ast::Policy(node) => &node.token,
             Ast::PolicyBlock(node) => &node.token,
@@ -823,3 +825,28 @@ pub struct AstBetween {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstWildcard(pub Token);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstParameterRef {
+    pub token: Token,
+    pub kind: ParameterKind,
+}
+
+impl AstParameterRef {
+    pub fn position(&self) -> Option<u32> {
+        match self.kind {
+            ParameterKind::Positional(n) => Some(n),
+            ParameterKind::Named => None,
+        }
+    }
+    
+    pub fn name(&self) -> Option<&str> {
+        match self.kind {
+            ParameterKind::Named => {
+                // Extract name from token value (skip the '$')
+                Some(&self.token.value()[1..])
+            }
+            ParameterKind::Positional(_) => None,
+        }
+    }
+}

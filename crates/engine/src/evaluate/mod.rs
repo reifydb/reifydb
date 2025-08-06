@@ -18,6 +18,7 @@ mod compare;
 pub(crate) mod constant;
 mod context;
 mod logic;
+mod parameter;
 mod prefix;
 mod tuple;
 
@@ -70,6 +71,7 @@ impl Evaluator {
             Expression::Prefix(expr) => self.prefix(expr, ctx),
             Expression::Sub(expr) => self.sub(expr, ctx),
             Expression::Tuple(expr) => self.tuple(expr, ctx),
+            Expression::Parameter(expr) => self.parameter(expr, ctx),
             expr => unimplemented!("{expr:?}"),
         }
     }

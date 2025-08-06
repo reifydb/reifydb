@@ -3,16 +3,15 @@
 
 #[allow(dead_code)]
 mod command;
-mod params;
 #[allow(dead_code)]
 mod query;
 
 pub use command::CommandSession;
-pub use params::{RqlParams, RqlValue};
 pub use query::QuerySession;
 use reifydb_core::Frame;
-use reifydb_core::interface::{Principal, UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{Params, Principal, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
+use std::future::Future;
 
 pub trait Session<VT, UT>
 where
@@ -36,16 +35,12 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn command_as_root(
-        &self,
-        rql: &str,
-        params: impl Into<RqlParams>,
-    ) -> crate::Result<Vec<Frame>> {
+    fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let session = self.command_session(Principal::root())?;
         session.command_sync(rql, params)
     }
 
-    fn query_as_root(&self, rql: &str, params: impl Into<RqlParams>) -> crate::Result<Vec<Frame>> {
+    fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let session = self.query_session(Principal::root())?;
         session.query_sync(rql, params)
     }
@@ -60,7 +55,7 @@ where
     fn command_as_root(
         &self,
         rql: &str,
-        params: impl Into<RqlParams> + Send,
+        params: impl Into<Params> + Send,
     ) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
         async {
             let session = self.command_session(Principal::root())?;
@@ -71,7 +66,7 @@ where
     fn query_as_root(
         &self,
         rql: &str,
-        params: impl Into<RqlParams> + Send,
+        params: impl Into<Params> + Send,
     ) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
         async {
             let session = self.query_session(Principal::root())?;

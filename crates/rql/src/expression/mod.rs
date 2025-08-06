@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse};
+use crate::ast::lex::ParameterKind;
 use crate::{ast, convert_data_type};
 
 mod span;
@@ -75,6 +76,8 @@ pub enum Expression {
     Xor(XorExpression),
 
     Type(DataTypeExpression),
+    
+    Parameter(ParameterExpression),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -387,6 +390,10 @@ impl Display for Expression {
                 write!(f, "({} xor {})", left, right)
             }
             Expression::Type(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
+            Expression::Parameter(param) => match param {
+                ParameterExpression::Positional { span, .. } => write!(f, "{}", span.fragment),
+                ParameterExpression::Named { span } => write!(f, "{}", span.fragment),
+            },
         }
     }
 }
@@ -425,6 +432,32 @@ impl Display for CallExpression {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentExpression(pub OwnedSpan);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParameterExpression {
+    Positional { span: OwnedSpan },
+    Named { span: OwnedSpan },
+}
+
+impl ParameterExpression {
+    pub fn position(&self) -> Option<u32> {
+        match self {
+            ParameterExpression::Positional { span } => {
+                span.fragment[1..].parse().ok()
+            }
+            ParameterExpression::Named { .. } => None,
+        }
+    }
+    
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            ParameterExpression::Named { span } => {
+                Some(&span.fragment[1..])
+            }
+            ParameterExpression::Positional { .. } => None,
+        }
+    }
+}
 
 impl IdentExpression {
     pub fn name(&self) -> &str {
@@ -730,6 +763,20 @@ impl ExpressionCompiler {
                     expression: Box::new(Self::compile(expr)?),
                     to: DataTypeExpression { span, ty },
                 }))
+            }
+            Ast::ParameterRef(param) => {
+                match param.kind {
+                    ParameterKind::Positional(_) => {
+                        Ok(Expression::Parameter(ParameterExpression::Positional {
+                            span: param.token.span,
+                        }))
+                    }
+                    ParameterKind::Named => {
+                        Ok(Expression::Parameter(ParameterExpression::Named {
+                            span: param.token.span,
+                        }))
+                    }
+                }
             }
             ast => unimplemented!("{:?}", ast),
         }

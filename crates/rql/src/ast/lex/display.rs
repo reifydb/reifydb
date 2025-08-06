@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::TokenKind;
-use crate::ast::lex::{Keyword, Literal, Operator, Separator};
+use crate::ast::lex::{Keyword, Literal, Operator, ParameterKind, Separator};
 use std::fmt::{Display, Formatter};
 
 impl Display for TokenKind {
@@ -13,6 +13,7 @@ impl Display for TokenKind {
             TokenKind::Identifier => write!(f, "identifier"),
             TokenKind::Literal(lit) => write!(f, "{}", lit),
             TokenKind::Operator(op) => write!(f, "{}", op),
+            TokenKind::Parameter(param) => write!(f, "{}", param),
             TokenKind::Separator(sep) => write!(f, "{}", sep),
         }
     }
@@ -47,5 +48,14 @@ impl Display for Operator {
 impl Display for Separator {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl Display for ParameterKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParameterKind::Positional(n) => write!(f, "parameter ${}", n),
+            ParameterKind::Named => write!(f, "named parameter"),
+        }
     }
 }

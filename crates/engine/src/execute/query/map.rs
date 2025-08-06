@@ -37,6 +37,7 @@ impl MapNode {
             columns,
             row_count,
             take: None,
+            params: &ctx.params,
         };
 
         // Check if this is an alias expression and we have table information
@@ -115,7 +116,7 @@ impl MapWithoutInputNode {
 }
 
 impl ExecutionPlan for MapWithoutInputNode {
-    fn next(&mut self, _ctx: &ExecutionContext, _rx: &mut dyn VersionedQueryTransaction) -> crate::Result<Option<Batch>> {
+    fn next(&mut self, ctx: &ExecutionContext, _rx: &mut dyn VersionedQueryTransaction) -> crate::Result<Option<Batch>> {
         if self.layout.is_some() {
             return Ok(None);
         }
@@ -131,6 +132,7 @@ impl ExecutionPlan for MapWithoutInputNode {
                     columns: Columns::empty(),
                     row_count: 1,
                     take: None,
+                    params: &ctx.params,
                 },
             )?;
 

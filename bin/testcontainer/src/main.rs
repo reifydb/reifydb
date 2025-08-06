@@ -40,8 +40,8 @@ fn main() {
     ReifyDB::server()
         .with_websocket(WsConfig::default())
         .on_create(|ctx| {
-            ctx.command_as_root("create schema test")?;
-            ctx.command_as_root("create table test.arith { id: int1, value: int2, num: int2 }")?;
+            ctx.command_as_root("create schema test", ())?;
+            ctx.command_as_root("create table test.arith { id: int1, value: int2, num: int2 }", ())?;
             ctx.command_as_root(
                 "from [
                 { id: 1, value: 1, num: 5  },
@@ -51,6 +51,7 @@ fn main() {
                 { id: 2, value: 1, num: 30 }
               ] insert test.arith
             ",
+                (),
             )?;
             Ok(())
         })

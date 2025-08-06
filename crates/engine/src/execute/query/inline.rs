@@ -101,6 +101,7 @@ impl InlineDataNode {
                         columns: Columns::empty(),
                         row_count: 1,
                         take: None,
+                        params: &self.context.params,
                     };
 
                     let evaluated = evaluate(&alias_expr.expression, &ctx)?;
@@ -177,6 +178,7 @@ impl InlineDataNode {
                         columns: Columns::empty(),
                         row_count: 1,
                         take: None,
+                        params: &self.context.params,
                     };
 
                     column_data.extend(evaluate(&alias_expr.expression, &ctx)?.data().clone())?;

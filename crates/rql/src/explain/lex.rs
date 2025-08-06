@@ -24,6 +24,7 @@ pub fn explain_lex(query: &str) -> crate::Result<String> {
                 TokenKind::Keyword(kw) => format!("Keyword({:?})", kw),
                 TokenKind::Literal(lit) => format!("Literal({:?})", lit),
                 TokenKind::Operator(op) => format!("Operator({:?})", op),
+                TokenKind::Parameter(param) => format!("Parameter({:?})", param),
                 TokenKind::Separator(sep) => format!("Separator({:?})", sep),
             };
 
