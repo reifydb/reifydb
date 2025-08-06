@@ -6,7 +6,7 @@
 TEST_CLIENTS := \
 	typescript
 
-.PHONY: testclient $(TEST_CLIENTS) ensure-testcontainer
+.PHONY: testclient $(TEST_CLIENTS) ensure-testcontainer start-testcontainer
 
 # Check if testcontainer is running and start it if needed
 ensure-testcontainer:
@@ -23,6 +23,15 @@ ensure-testcontainer:
 testclient: ensure-testcontainer
 	@echo "🧪 Running all test clients in parallel..."
 	$(MAKE) -j$(shell nproc) $(TEST_CLIENTS)
+
+# Start the test container
+start-testcontainer:
+	@echo "🚀 Starting reifydb test container..."
+	@docker rm -f reifydb-test 2>/dev/null || true
+	@docker run -d \
+		--name reifydb-test \
+		-p 8090:8090 \
+		reifydb/testcontainer
 
 # Individual test client targets
 $(TEST_CLIENTS): ensure-testcontainer
