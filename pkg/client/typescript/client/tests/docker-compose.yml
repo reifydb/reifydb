@@ -1,6 +1,0 @@
-services:
-  reifydb-test:
-    image: reifydb/testcontainer
-    container_name: reifydb-test
-    ports:
-      - "8090:8090"

@@ -78,7 +78,7 @@ impl ExecutionPlan for LeftJoinNode {
                 let all_data =
                     left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
-                let ctx = EvaluationContext {
+                let eval_ctx = EvaluationContext {
                     target_column: None,
                     column_policies: Vec::new(),
                     columns: Columns::new(
@@ -101,10 +101,11 @@ impl ExecutionPlan for LeftJoinNode {
                     ),
                     row_count: 1,
                     take: Some(1),
+                    params: &ctx.params,
                 };
 
                 let all_true = self.on.iter().fold(true, |acc, cond| {
-                    let col = evaluate(cond, &ctx).unwrap();
+                    let col = evaluate(cond, &eval_ctx).unwrap();
                     matches!(col.data().get_value(0), Value::Bool(true)) && acc
                 });
 

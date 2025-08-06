@@ -1,5 +1,5 @@
 use crate::interface::{
-    ActiveCommandTransaction, ActiveQueryTransaction, GetHooks, Principal, UnversionedTransaction,
+    ActiveCommandTransaction, ActiveQueryTransaction, GetHooks, Params, Principal, UnversionedTransaction,
     VersionedTransaction,
 };
 use crate::result::frame::Frame;
@@ -13,7 +13,7 @@ where
 
     fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<VT, UT>>;
 
-    fn command_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
+    fn command_as(&self, principal: &Principal, rql: &str, params: Params) -> crate::Result<Vec<Frame>>;
 
-    fn query_as(&self, principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>>;
+    fn query_as(&self, principal: &Principal, rql: &str, params: Params) -> crate::Result<Vec<Frame>>;
 }

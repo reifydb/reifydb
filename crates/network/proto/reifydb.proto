@@ -11,11 +11,28 @@ service DB {
 }
 
 message CommandRequest {
-  string query = 1;
+  string statements = 1;
+  optional Params params = 2;
 }
 
 message QueryRequest {
-  string query = 1;
+  string statements = 1;
+  optional Params params = 2;
+}
+
+message Params {
+  oneof params {
+    PositionalParams positional = 1;
+    NamedParams named = 2;
+  }
+}
+
+message PositionalParams {
+  repeated Value values = 1;
+}
+
+message NamedParams {
+  map<string, Value> values = 1;
 }
 
 message CommandResult {

@@ -4,6 +4,7 @@
 use crate::columnar::Columns;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::Executor;
+use crate::execute::params::ParamContext;
 use catalog::schema_not_found;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::sequence::ColumnSequence;
@@ -44,6 +45,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             return_error!(can_not_alter_not_auto_increment(plan.column));
         }
 
+        // For catalog operations, use empty params since no ExecutionContext is available
+        let empty_params = ParamContext::empty();
         let value = evaluate(
             &plan.value,
             &EvaluationContext {
@@ -58,6 +61,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                 columns: Columns::empty(),
                 row_count: 1,
                 take: None,
+                params: &empty_params,
             },
         )?;
 
@@ -78,7 +82,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute_write;
+    use crate::execute_command;
+    use reifydb_core::interface::Params;
     use ConstantExpression::Number;
     use Expression::Constant;
     use reifydb_catalog::Catalog;
@@ -129,7 +134,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let result = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap();
+        let result = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("users".to_string()));
         assert_eq!(result.row(0)[2], Value::Utf8("id".to_string()));
@@ -167,7 +172,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("100") }),
         };
 
-        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "SEQUENCE_002");
     }
@@ -183,7 +188,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_002");
     }
 
@@ -199,7 +204,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_004");
     }
 
@@ -234,7 +239,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_write(&mut atx, PhysicalPlan::AlterSequence(plan)).unwrap_err();
+        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "QUERY_001");
     }
 }

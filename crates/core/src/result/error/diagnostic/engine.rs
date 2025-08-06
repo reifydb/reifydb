@@ -73,3 +73,33 @@ pub fn invalid_row_id_values() -> Diagnostic {
         cause: None,
     }
 }
+
+/// Invalid parameter reference error
+pub fn invalid_parameter_reference(span: crate::OwnedSpan) -> Diagnostic {
+    Diagnostic {
+        code: "ENG_005".to_string(),
+        statement: None,
+        message: format!("Invalid parameter reference: {}", span.fragment),
+        column: None,
+        span: Some(span),
+        label: Some("invalid parameter syntax".to_string()),
+        help: Some("Use $1, $2 for positional parameters or $name for named parameters".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}
+
+/// Parameter not found error
+pub fn parameter_not_found(span: crate::OwnedSpan) -> Diagnostic {
+    Diagnostic {
+        code: "ENG_006".to_string(),
+        statement: None,
+        message: format!("Parameter not found: {}", span.fragment),
+        column: None,
+        span: Some(span),
+        label: Some("parameter not provided".to_string()),
+        help: Some("Ensure all referenced parameters are provided in the query call".to_string()),
+        notes: vec![],
+        cause: None,
+    }
+}

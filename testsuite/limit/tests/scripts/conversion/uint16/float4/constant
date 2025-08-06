@@ -21,20 +21,20 @@ command 'map cast(cast(16777216, uint16), float4)'
 
 !command 'map cast(cast(16777217, uint16), float4)'
 ---
->  Error CAST_002: failed to cast to FLOAT4
+>  Error CAST_002: failed to cast to Float4
 >   at "(16777217float4" (line 1, column 9)
 > 
 >   1 │ map cast(cast(16777217, uint16), float4)
 >     │          ~~~~~~~~~~~~~~~
->     │     failed to cast to FLOAT4
+>     │     failed to cast to Float4
 > 
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "16777217" (line 1, column 15)
 > 
 >     1 │ map cast(cast(16777217, uint16), float4)
 >       │               ~~~~~~~~
->       │ converting '16777217' from UINT16 to FLOAT4 would lose precision
+>       │ converting '16777217' from Uint16 to Float4 would lose precision
 > 
->     note: FLOAT4 can only represent from 0 to 16_777_216 (2^24) precisely
+>     note: Float4 can only represent from 0 to 16_777_216 (2^24) precisely
 >     note: consider using a different numeric type if exact precision is required
 > 

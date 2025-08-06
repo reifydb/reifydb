@@ -6,19 +6,23 @@ use crate::grpc::client::{GrpcClient, grpc};
 use grpc::query_result::Result as QueryResultEnum;
 use reifydb_core::Error;
 use reifydb_core::error;
+use reifydb_core::interface::Params;
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::network;
 use std::str::FromStr;
 use tonic::metadata::MetadataValue;
 
 impl GrpcClient {
-    pub async fn query(&self, query: &str) -> Result<Vec<Frame>, Error> {
+    pub async fn query(&self, statements: &str, params: Params) -> Result<Vec<Frame>, Error> {
         let uri = format!("http://{}", self.socket_addr);
         let mut client = grpc::db_client::DbClient::connect(uri)
             .await
             .map_err(|e| error!(network::transport_error(e)))?;
 
-        let mut request = tonic::Request::new(grpc::QueryRequest { query: query.into() });
+        let mut request = tonic::Request::new(grpc::QueryRequest {
+            statements: statements.into(),
+            params: crate::grpc::client::convert::core_params_to_grpc_params(params),
+        });
 
         request
             .metadata_mut()
@@ -30,7 +34,7 @@ impl GrpcClient {
             client.query(request).await.map_err(|e| error!(network::status_error(e)))?.into_inner();
         while let Some(msg) = stream.message().await.unwrap() {
             if let Some(result) = msg.result {
-                results.push(convert_result(result, query)?);
+                results.push(convert_result(result, statements)?);
             }
         }
         Ok(results)

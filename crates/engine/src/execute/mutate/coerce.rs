@@ -2,6 +2,7 @@ use crate::columnar::ColumnData;
 use crate::columnar::Columns;
 use crate::evaluate::EvaluationContext;
 use crate::evaluate::cast::cast_column_data;
+use crate::execute::ExecutionContext;
 use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 
 /// Attempts to coerce a single Value to match the target column type using the existing casting infrastructure
@@ -10,6 +11,7 @@ use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
 /// * `value` - The value that needs coercing
 /// * `target` - The type of the target table column from schema
 /// * `column` - Name of the column for error reporting
+/// * `ctx` - ExecutionContext for accessing params
 ///
 /// # Returns
 /// * `Ok(Value)` - Successfully coerced value matching target type
@@ -18,6 +20,7 @@ pub(crate) fn coerce_value_to_column_type(
     value: Value,
     target: Type,
     column: ColumnDescriptor,
+    ctx: &ExecutionContext,
 ) -> crate::Result<Value> {
     if value.get_type() == target {
         return Ok(value);
@@ -41,6 +44,7 @@ pub(crate) fn coerce_value_to_column_type(
             columns: Columns::empty(),
             row_count: 1,
             take: None,
+            params: &ctx.params,
         },
         || BorrowedSpan::new(&value_str).to_owned(),
     )?;

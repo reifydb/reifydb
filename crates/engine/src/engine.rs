@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{execute_read, execute_write};
+use crate::execute::{execute_query, execute_command};
 use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
     ActiveCommandTransaction, ActiveQueryTransaction, Engine as EngineInterface, GetHooks,
-    Principal, UnversionedTransaction, VersionedCommandTransaction, VersionedTransaction,
+    Params, Principal, UnversionedTransaction, VersionedCommandTransaction, VersionedTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
@@ -43,7 +43,7 @@ where
         Ok(ActiveQueryTransaction::new(self.versioned.begin_query()?, self.unversioned.clone()))
     }
 
-    fn command_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    fn command_as(&self, _principal: &Principal, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
@@ -51,7 +51,7 @@ where
 
         for statement in statements {
             if let Some(plan) = plan(&mut atx, statement)? {
-                let er = execute_write(&mut atx, plan)?;
+                let er = execute_command(&mut atx, plan, params.clone())?;
                 result.push(er);
             }
         }
@@ -61,14 +61,14 @@ where
         Ok(result.into_iter().map(Frame::from).collect())
     }
 
-    fn query_as(&self, _principal: &Principal, rql: &str) -> crate::Result<Vec<Frame>> {
+    fn query_as(&self, _principal: &Principal, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(rql)?;
 
         let mut rx = self.begin_query()?;
         for statement in statements {
             if let Some(plan) = plan(&mut rx, statement)? {
-                let er = execute_read::<VT, UT>(&mut rx, plan)?;
+                let er = execute_query::<VT, UT>(&mut rx, plan, params.clone())?;
                 result.push(er);
             }
         }

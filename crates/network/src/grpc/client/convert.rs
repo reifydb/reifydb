@@ -3,17 +3,19 @@
 
 use crate::grpc::client::grpc;
 use reifydb_core::FrameColumnData;
+use reifydb_core::interface::Params;
 use reifydb_core::result::error::diagnostic::{Diagnostic, DiagnosticColumn};
 use reifydb_core::result::{Frame, FrameColumn};
-use reifydb_core::value::Blob;
 use reifydb_core::value::container::{
     BlobContainer, BoolContainer, NumberContainer, RowIdContainer, StringContainer,
     TemporalContainer, UndefinedContainer, UuidContainer,
 };
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
+use reifydb_core::value::{Blob, Value};
 use reifydb_core::{
     BitVec, Date, DateTime, Interval, OwnedSpan, RowId, SpanColumn, SpanLine, Time, Type,
 };
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
@@ -489,4 +491,82 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
     }
 
     Frame::new(columns)
+}
+
+pub(crate) fn core_params_to_grpc_params(params: Params) -> Option<grpc::Params> {
+    use grpc::params::Params as GrpcParamsType;
+
+    match params {
+        Params::None => None,
+        Params::Positional(values) => {
+            let grpc_values: Vec<grpc::Value> =
+                values.iter().map(core_value_to_grpc_value).collect();
+            Some(grpc::Params {
+                params: Some(GrpcParamsType::Positional(grpc::PositionalParams {
+                    values: grpc_values,
+                })),
+            })
+        }
+        Params::Named(map) => {
+            let grpc_map: HashMap<String, grpc::Value> =
+                map.iter().map(|(k, v)| (k.clone(), core_value_to_grpc_value(v))).collect();
+            Some(grpc::Params {
+                params: Some(GrpcParamsType::Named(grpc::NamedParams { values: grpc_map })),
+            })
+        }
+    }
+}
+
+fn core_value_to_grpc_value(value: &Value) -> grpc::Value {
+    use grpc::value::Type as GrpcType;
+
+    let grpc_type = match value {
+        Value::Bool(b) => Some(GrpcType::BoolValue(*b)),
+        Value::Float4(f) => Some(GrpcType::Float32Value(f.value())),
+        Value::Float8(f) => Some(GrpcType::Float64Value(f.value())),
+        Value::Int1(i) => Some(GrpcType::Int1Value(*i as i32)),
+        Value::Int2(i) => Some(GrpcType::Int2Value(*i as i32)),
+        Value::Int4(i) => Some(GrpcType::Int4Value(*i)),
+        Value::Int8(i) => Some(GrpcType::Int8Value(*i)),
+        Value::Int16(i) => Some(GrpcType::Int16Value(grpc::Int128 {
+            high: (*i as u128 >> 64) as u64,
+            low: *i as u64,
+        })),
+        Value::Uint1(u) => Some(GrpcType::Uint1Value(*u as u32)),
+        Value::Uint2(u) => Some(GrpcType::Uint2Value(*u as u32)),
+        Value::Uint4(u) => Some(GrpcType::Uint4Value(*u)),
+        Value::Uint8(u) => Some(GrpcType::Uint8Value(*u)),
+        Value::Uint16(u) => {
+            Some(GrpcType::Uint16Value(grpc::UInt128 { high: (*u >> 64) as u64, low: *u as u64 }))
+        }
+        Value::Utf8(s) => Some(GrpcType::StringValue(s.clone())),
+        Value::Date(d) => Some(GrpcType::DateValue(grpc::Date {
+            days_since_epoch: d.to_days_since_epoch(),
+        })),
+        Value::DateTime(dt) => Some(GrpcType::DatetimeValue(grpc::DateTime {
+            seconds: dt.timestamp(),
+            nanos: dt.timestamp_nanos() as u32,
+        })),
+        Value::Time(t) => {
+            Some(GrpcType::TimeValue(grpc::Time { nanos_since_midnight: t.to_nanos_since_midnight() }))
+        }
+        Value::Interval(i) => Some(GrpcType::IntervalValue(grpc::Interval {
+            months: i.get_months(),
+            days: i.get_days(),
+            nanos: i.get_nanos(),
+        })),
+        Value::Undefined => Some(GrpcType::UndefinedValue(true)),
+        Value::RowId(id) => Some(GrpcType::RowIdValue(id.value())),
+        Value::Uuid4(u) => {
+            let std_uuid: uuid::Uuid = (*u).into();
+            Some(GrpcType::Uuid4Value(std_uuid.as_bytes().to_vec()))
+        }
+        Value::Uuid7(u) => {
+            let std_uuid: uuid::Uuid = (*u).into();
+            Some(GrpcType::Uuid7Value(std_uuid.as_bytes().to_vec()))
+        }
+        Value::Blob(b) => Some(GrpcType::BlobValue(b.to_vec())),
+    };
+
+    grpc::Value { r#type: grpc_type }
 }

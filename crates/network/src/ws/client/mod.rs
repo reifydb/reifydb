@@ -5,9 +5,10 @@ mod rx;
 
 use crate::ws::{
     AuthRequest, CommandRequest, CommandResponse, QueryRequest, QueryResponse, Request,
-    RequestPayload, Response, ResponsePayload,
+    RequestPayload, Response, ResponsePayload, WsParams,
 };
 use futures_util::{SinkExt, StreamExt};
+use reifydb_core::interface::Params;
 use reifydb_core::result::error::diagnostic::Diagnostic;
 use reifydb_core::result::{Frame, FrameColumn, FrameColumnData};
 use reifydb_core::value::Blob;
@@ -131,7 +132,7 @@ impl WsClient {
         }
     }
 
-    pub async fn command(&self, statement: &str) -> Result<Vec<Frame>, Error> {
+    pub async fn command(&self, statements: &str, params: Params) -> Result<Vec<Frame>, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -141,7 +142,8 @@ impl WsClient {
             .send(Request {
                 id,
                 payload: RequestPayload::Command(CommandRequest {
-                    statements: vec![statement.to_string()],
+                    statements: vec![statements.to_string()],
+                    params: core_params_to_ws_params(params),
                 }),
             })
             .unwrap();
@@ -163,7 +165,7 @@ impl WsClient {
         Ok(convert_execute_response(response))
     }
 
-    pub async fn query(&self, statement: &str) -> Result<Vec<Frame>, Error> {
+    pub async fn query(&self, statements: &str, params: Params) -> Result<Vec<Frame>, Error> {
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
 
@@ -173,7 +175,8 @@ impl WsClient {
             .send(Request {
                 id,
                 payload: RequestPayload::Query(QueryRequest {
-                    statements: vec![statement.to_string()],
+                    statements: vec![statements.to_string()],
+                    params: core_params_to_ws_params(params),
                 }),
             })
             .unwrap();
@@ -191,7 +194,7 @@ impl WsClient {
                 panic!("Unexpected query response type")
             }
         }?;
-        
+
         Ok(convert_query_response(response))
     }
 }
@@ -244,6 +247,14 @@ fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
 fn parse_interval_string(s: &str) -> Result<Interval, ()> {
     let span = OwnedSpan::testing(s);
     parse_interval(span).map_err(|_| ())
+}
+
+fn core_params_to_ws_params(params: Params) -> Option<WsParams> {
+    match params {
+        Params::None => None,
+        Params::Positional(values) => Some(WsParams::Positional(values.clone())),
+        Params::Named(map) => Some(WsParams::Named(map.clone())),
+    }
 }
 
 fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {

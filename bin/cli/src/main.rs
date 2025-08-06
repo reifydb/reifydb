@@ -20,6 +20,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::network::ws::client::WsClient;
+use reifydb::core::interface::Params;
 
 #[tokio::main]
 async fn main() {
@@ -34,6 +35,7 @@ async fn main() {
         map 1 + 2, 3 + 4, cast(129, int1) as X
     "#
             .into(),
+            Params::None,
         )
         .await
         .unwrap();

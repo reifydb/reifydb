@@ -4,12 +4,13 @@
 use crate::columnar::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
+use crate::execute::params::ParamContext;
 use reifydb_catalog::{
     Catalog,
     sequence::{ColumnSequence, TableRowSequence},
 };
 use reifydb_core::interface::{
-    ActiveCommandTransaction, EncodableKey, TableRowKey, UnversionedTransaction, VersionedTransaction,
+    ActiveCommandTransaction, EncodableKey, Params, TableRowKey, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
@@ -26,6 +27,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         &mut self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: InsertPlan,
+        params: Params,
     ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
@@ -38,27 +40,25 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         let table_types: Vec<Type> = table.columns.iter().map(|c| c.ty).collect();
         let layout = EncodedRowLayout::new(&table_types);
 
+        let execution_context = Arc::new(ExecutionContext {
+            functions: self.functions.clone(),
+            table: Some(table.clone()),
+            batch_size: 1024,
+            preserve_row_ids: false,
+            params: ParamContext::new(params.clone()),
+        });
+
         let mut input_node = compile(
             *plan.input,
             atx,
-            Arc::new(ExecutionContext {
-                functions: self.functions.clone(),
-                table: Some(table.clone()),
-                batch_size: 1024,
-                preserve_row_ids: false,
-            }),
+            execution_context.clone(),
         );
 
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
         while let Some(Batch { columns }) = input_node.next(
-            &Arc::new(ExecutionContext {
-                functions: self.functions.clone(),
-                table: Some(table.clone()),
-                batch_size: 1024,
-                preserve_row_ids: false,
-            }),
+            &execution_context,
             atx,
         )? {
             let row_count = columns.row_count();
@@ -93,6 +93,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                             .with_column(&table_column.name)
                             .with_column_type(table_column.ty)
                             .with_policies(policies),
+                        &execution_context,
                     )?;
 
                     match value {

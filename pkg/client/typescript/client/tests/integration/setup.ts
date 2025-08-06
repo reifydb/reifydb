@@ -4,38 +4,7 @@
  * See license.md file for full license text
  */
 
-import {execSync} from 'child_process';
 import {Client} from "../../src";
-
-
-const COMPOSE_FILE = 'tests/docker-compose.yml';
-const SERVICE_NAME = 'reifydb-test';
-
-function isContainerRunning(): boolean {
-    try {
-        const result = execSync(
-            `docker compose -f ${COMPOSE_FILE} ps -q ${SERVICE_NAME}`,
-            {encoding: 'utf8'}
-        );
-        return result.trim().length > 0;
-    } catch {
-        return false;
-    }
-}
-
-async function startContainer(): Promise<void> {
-    execSync(`docker compose -f ${COMPOSE_FILE} up -d ${SERVICE_NAME}`, {stdio: 'inherit'});
-    await new Promise(resolve => setTimeout(resolve, 2000));
-}
-
-
-export default async function setup() {
-    if (!process.env.CI && !isContainerRunning()) {
-        console.info('Starting test container...');
-        await startContainer();
-        console.info('Test container started successfully');
-    }
-}
 
 
 export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<void> {

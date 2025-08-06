@@ -4,6 +4,7 @@
 use crate::Value;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 mod get;
 mod promote;
@@ -239,29 +240,29 @@ impl Type {
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Bool => f.write_str("BOOL"),
-            Type::Float4 => f.write_str("FLOAT4"),
-            Type::Float8 => f.write_str("FLOAT8"),
-            Type::Int1 => f.write_str("INT1"),
-            Type::Int2 => f.write_str("INT2"),
-            Type::Int4 => f.write_str("INT4"),
-            Type::Int8 => f.write_str("INT8"),
-            Type::Int16 => f.write_str("INT16"),
-            Type::Utf8 => f.write_str("UTF8"),
-            Type::Uint1 => f.write_str("UINT1"),
-            Type::Uint2 => f.write_str("UINT2"),
-            Type::Uint4 => f.write_str("UINT4"),
-            Type::Uint8 => f.write_str("UINT8"),
-            Type::Uint16 => f.write_str("UINT16"),
-            Type::Date => f.write_str("DATE"),
-            Type::DateTime => f.write_str("DATETIME"),
-            Type::Time => f.write_str("TIME"),
-            Type::Interval => f.write_str("INTERVAL"),
-            Type::RowId => f.write_str("ROWID"),
-            Type::Uuid4 => f.write_str("UUID4"),
-            Type::Uuid7 => f.write_str("UUID7"),
-            Type::Blob => f.write_str("BLOB"),
-            Type::Undefined => f.write_str("UNDEFINED"),
+            Type::Bool => f.write_str("Bool"),
+            Type::Float4 => f.write_str("Float4"),
+            Type::Float8 => f.write_str("Float8"),
+            Type::Int1 => f.write_str("Int1"),
+            Type::Int2 => f.write_str("Int2"),
+            Type::Int4 => f.write_str("Int4"),
+            Type::Int8 => f.write_str("Int8"),
+            Type::Int16 => f.write_str("Int16"),
+            Type::Utf8 => f.write_str("Utf8"),
+            Type::Uint1 => f.write_str("Uint1"),
+            Type::Uint2 => f.write_str("Uint2"),
+            Type::Uint4 => f.write_str("Uint4"),
+            Type::Uint8 => f.write_str("Uint8"),
+            Type::Uint16 => f.write_str("Uint16"),
+            Type::Date => f.write_str("Date"),
+            Type::DateTime => f.write_str("DateTime"),
+            Type::Time => f.write_str("Time"),
+            Type::Interval => f.write_str("Interval"),
+            Type::RowId => f.write_str("RowId"),
+            Type::Uuid4 => f.write_str("Uuid4"),
+            Type::Uuid7 => f.write_str("Uuid7"),
+            Type::Blob => f.write_str("Blob"),
+            Type::Undefined => f.write_str("Undefined"),
         }
     }
 }
@@ -292,6 +293,39 @@ impl From<&Value> for Type {
             Value::Uuid4(_) => Type::Uuid4,
             Value::Uuid7(_) => Type::Uuid7,
             Value::Blob(_) => Type::Blob,
+        }
+    }
+}
+
+impl FromStr for Type {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "BOOL" => Ok(Type::Bool),
+            "FLOAT4" => Ok(Type::Float4),
+            "FLOAT8" => Ok(Type::Float8),
+            "INT1" => Ok(Type::Int1),
+            "INT2" => Ok(Type::Int2),
+            "INT4" => Ok(Type::Int4),
+            "INT8" => Ok(Type::Int8),
+            "INT16" => Ok(Type::Int16),
+            "UTF8" | "TEXT" => Ok(Type::Utf8),
+            "UINT1" => Ok(Type::Uint1),
+            "UINT2" => Ok(Type::Uint2),
+            "UINT4" => Ok(Type::Uint4),
+            "UINT8" => Ok(Type::Uint8),
+            "UINT16" => Ok(Type::Uint16),
+            "DATE" => Ok(Type::Date),
+            "DATETIME" => Ok(Type::DateTime),
+            "TIME" => Ok(Type::Time),
+            "INTERVAL" => Ok(Type::Interval),
+            "ROWID" => Ok(Type::RowId),
+            "UUID4" => Ok(Type::Uuid4),
+            "UUID7" => Ok(Type::Uuid7),
+            "BLOB" => Ok(Type::Blob),
+            "UNDEFINED" => Ok(Type::Undefined),
+            _ => Err(()),
         }
     }
 }

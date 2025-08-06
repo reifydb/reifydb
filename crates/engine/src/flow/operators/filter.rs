@@ -1,5 +1,6 @@
 use crate::columnar::{ColumnData, Columns};
 use crate::evaluate::{EvaluationContext, evaluate};
+use crate::execute::params::ParamContext;
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
 use reifydb_core::BitVec;
@@ -51,12 +52,15 @@ impl FilterOperator {
     fn filter(&self, columns: &Columns) -> crate::Result<Columns> {
         let row_count = columns.row_count();
 
+        // TODO: Flow operators need access to params through OperatorContext
+        let empty_params = ParamContext::empty();
         let eval_ctx = EvaluationContext {
             target_column: None,
             column_policies: Vec::new(),
             columns: columns.clone(),
             row_count,
             take: None,
+            params: &empty_params,
         };
 
         // Evaluate predicate to get boolean column

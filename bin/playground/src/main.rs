@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb::core::Frame;
-use reifydb::core::interface::Principal;
+use reifydb::core::interface::{Params, Principal};
 use reifydb::engine::columnar::{Column, ColumnData, ColumnQualified, Columns};
 use reifydb::engine::flow::change::{Change, Diff};
 use reifydb::engine::flow::compile::compile_to_flow;
@@ -13,7 +13,7 @@ use reifydb::engine::flow::flow::Flow;
 use reifydb::engine::flow::node::NodeType;
 use reifydb::rql::ast;
 use reifydb::rql::plan::logical::compile_logical;
-use reifydb::session::{RqlParams, Session, SessionSync};
+use reifydb::session::{Session, SessionSync};
 use reifydb::storage::sqlite::SqliteConfig;
 use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
 
@@ -21,7 +21,7 @@ fn main() {
     let db = ReifyDB::embedded_sync_with(optimistic(memory())).build();
     let session = db.command_session(Principal::root()).unwrap();
 
-    session.command_sync("", RqlParams::None).unwrap();
+    session.command_sync("", Params::None).unwrap();
 
     // db.command_as_root(r#"create schema test"#).unwrap();
     // let err = db.command_as_root(r#"create table test.arith { id: int2, from: int2, num: int2 }"#).unwrap_err();
@@ -130,7 +130,7 @@ create computed view test.adults { name: utf8, age: int1 }  with {
             "#
                 .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str())
                 .as_str(),
-                RqlParams::None,
+                Params::None,
             )
             .unwrap();
         }
@@ -140,13 +140,16 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     }
 
     for frame in
-        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", RqlParams::None).unwrap()
+        db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", Params::None).unwrap()
     {
         println!("{}", frame);
     }
 
     let frame = db
-        .query_as_root("FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }", RqlParams::None)
+        .query_as_root(
+            "FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
+            Params::None,
+        )
         .unwrap()
         .pop()
         .unwrap();

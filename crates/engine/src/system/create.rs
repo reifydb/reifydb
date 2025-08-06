@@ -45,6 +45,7 @@ create table reifydb.flows{
 };
 
 "#,
+            reifydb_core::interface::Params::None,
         )?;
         return_hooks!()
     }

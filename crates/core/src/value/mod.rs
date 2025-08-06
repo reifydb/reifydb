@@ -11,6 +11,7 @@ pub mod container;
 mod date;
 mod datetime;
 mod interval;
+mod into;
 mod is;
 pub mod number;
 mod ordered_f32;
@@ -25,6 +26,7 @@ pub use blob::Blob;
 pub use date::Date;
 pub use datetime::DateTime;
 pub use interval::Interval;
+pub use into::IntoValue;
 pub use is::*;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
@@ -90,40 +92,6 @@ impl Value {
     }
     pub fn float8(v: impl Into<f64>) -> Self {
         OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::Undefined)
-    }
-}
-
-impl Value {
-    pub fn negate(&self) -> Self {
-        match self {
-            Value::Float4(f) => {
-                OrderedF32::try_from(-f.value()).map(Value::Float4).unwrap_or(Value::Undefined)
-            }
-            Value::Float8(f) => {
-                OrderedF64::try_from(-f.value()).map(Value::Float8).unwrap_or(Value::Undefined)
-            }
-            Value::Int1(v) => Value::Int1(-v),
-            Value::Int2(v) => Value::Int2(-v),
-            Value::Int4(v) => Value::Int4(-v),
-            Value::Int8(v) => Value::Int8(-v),
-            Value::Int16(v) => Value::Int16(-v),
-            Value::Interval(i) => Value::Interval(i.negate()),
-            Value::Undefined => Value::Undefined,
-            Value::Bool(_) => Value::Undefined,
-            Value::Utf8(_) => Value::Undefined,
-            Value::Date(_) => Value::Undefined,
-            Value::DateTime(_) => Value::Undefined,
-            Value::Time(_) => Value::Undefined,
-            Value::Uint1(_)
-            | Value::Uint2(_)
-            | Value::Uint4(_)
-            | Value::Uint8(_)
-            | Value::Uint16(_)
-            | Value::RowId(_)
-            | Value::Uuid4(_)
-            | Value::Uuid7(_)
-            | Value::Blob(_) => Value::Undefined,
-        }
     }
 }
 

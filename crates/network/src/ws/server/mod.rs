@@ -5,10 +5,11 @@ use crate::ws::RequestPayload::Auth;
 use crate::ws::{
     AuthRequest, AuthResponse, CommandRequest, CommandResponse, ErrResponse, QueryRequest,
     QueryResponse, Request, RequestPayload, ResponsePayload, WebsocketColumn, WebsocketFrame,
+    WsParams,
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params as CoreParams, Principal, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
@@ -26,6 +27,14 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 
 const DEFAULT_SOCKET: SocketAddr = SocketAddr::new(V4(Ipv4Addr::new(0, 0, 0, 0)), 8090);
+
+fn ws_params_to_core_params(ws_params: Option<WsParams>) -> CoreParams {
+    match ws_params {
+        Some(WsParams::Positional(values)) => CoreParams::Positional(values),
+        Some(WsParams::Named(map)) => CoreParams::Named(map),
+        None => CoreParams::None,
+    }
+}
 
 #[derive(Debug)]
 pub struct WsConfig {
@@ -244,13 +253,15 @@ where
                                         Some(Ok(Message::Text(text))) => {
                                             match serde_json::from_str::<Request>(&text) {
                                                 Ok(request) => match request.payload {
-                                                      RequestPayload::Command(CommandRequest { statements }) => {
+                                                      RequestPayload::Command(CommandRequest { statements, params }) => {
                                                         println!("Command: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
+                                                            let params = ws_params_to_core_params(params);
                                                             match engine.command_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
+                                                                params,
                                                             ) {
                                                                 Ok(result) => {
                                                                     let response = crate::ws::response::Response {
@@ -301,13 +312,15 @@ where
                                                         }
                                                     }
 
-                                                    RequestPayload::Query(QueryRequest { statements }) => {
+                                                    RequestPayload::Query(QueryRequest { statements, params }) => {
                                                         println!("Query: {}", statements.join(","));
 
                                                         if let Some(statement) = statements.first() {
+                                                            let params = ws_params_to_core_params(params);
                                                             match engine.query_as(
                                                                 &Principal::System { id: 1, name: "root".to_string() },
                                                                 statement,
+                                                                params,
                                                             ) {
                                                                 Ok(result) => {
                                                                     let response = crate::ws::response::Response {
@@ -359,8 +372,8 @@ where
                                                     }
                                                     _ => {}
                                                 },
-                                                Err(err) => {
-                                                    eprintln!("❌ Invalid message: {err}");
+                                                Err(err) =>{
+                                                    eprintln!("❌ Invalid message: {err} - {text}");
                                                 }
                                             }
                                         }

@@ -4,9 +4,10 @@
 use crate::columnar::ColumnData;
 use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
+use crate::execute::params::ParamContext;
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, EncodableKey, EncodableKeyRange, TableRowKey, TableRowKeyRange,
+    ActiveCommandTransaction, EncodableKey, EncodableKeyRange, Params, TableRowKey, TableRowKeyRange,
     UnversionedTransaction, VersionedQueryTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
@@ -24,6 +25,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 		&mut self,
 		atx: &mut ActiveCommandTransaction<VT, UT>,
 		plan: DeletePlan,
+		params: Params,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
             return_error!(schema_not_found(None::<reifydb_core::OwnedSpan>, "default"));
@@ -48,6 +50,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                     table: Some(table.clone()),
                     batch_size: 1024,
                     preserve_row_ids: true,
+                    params: ParamContext::new(params.clone()),
                 }),
             );
 
@@ -56,6 +59,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: true,
+                params: ParamContext::new(params.clone()),
             };
 
             while let Some(Batch { columns }) = input_node.next(&context, atx)? {

@@ -122,5 +122,6 @@ fn simplified_name(expr: &Expression) -> String {
             format!("{}xor{}", simplified_name(&expr.left), simplified_name(&expr.right))
         }
         Expression::Type(type_expr) => type_expr.span.fragment.clone(),
+        Expression::Parameter(_) => "parameter".to_string(),
     }
 }

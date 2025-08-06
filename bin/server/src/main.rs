@@ -40,7 +40,7 @@ fn main() {
     ReifyDB::server()
         .with_websocket(WsConfig::default())
         .on_create(|ctx| {
-            ctx.command_as_root("create schema test")?;
+            ctx.command_as_root("create schema test", ())?;
             Ok(())
         })
         .build()

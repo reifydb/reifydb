@@ -11,12 +11,13 @@ use crate::grpc::server::grpc::QueryResult;
 use crate::grpc::server::grpc::{CommandRequest, CommandResult, QueryRequest};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params as CoreParams, Principal, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
 use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
+use std::collections::HashMap;
 
 pub struct DbService<VT, UT>
 where
@@ -25,6 +26,68 @@ where
 {
     pub(crate) engine: Arc<Engine<VT, UT>>,
     _phantom: std::marker::PhantomData<(VT, UT)>,
+}
+
+fn grpc_value_to_core_value(grpc_val: grpc::Value) -> Option<Value> {
+    use grpc::value::Type as GrpcType;
+    
+    match grpc_val.r#type? {
+        GrpcType::BoolValue(b) => Some(Value::Bool(b)),
+        GrpcType::Float32Value(f) => Some(Value::float4(f)),
+        GrpcType::Float64Value(f) => Some(Value::float8(f)),
+        GrpcType::Int1Value(i) => Some(Value::Int1(i as i8)),
+        GrpcType::Int2Value(i) => Some(Value::Int2(i as i16)),
+        GrpcType::Int4Value(i) => Some(Value::Int4(i)),
+        GrpcType::Int8Value(i) => Some(Value::Int8(i)),
+        GrpcType::Int16Value(i128) => Some(Value::Int16(((i128.high as i128) << 64) | (i128.low as i128))),
+        GrpcType::Uint1Value(u) => Some(Value::Uint1(u as u8)),
+        GrpcType::Uint2Value(u) => Some(Value::Uint2(u as u16)),
+        GrpcType::Uint4Value(u) => Some(Value::Uint4(u)),
+        GrpcType::Uint8Value(u) => Some(Value::Uint8(u)),
+        GrpcType::Uint16Value(u128) => Some(Value::Uint16(((u128.high as u128) << 64) | (u128.low as u128))),
+        GrpcType::StringValue(s) => Some(Value::Utf8(s)),
+        GrpcType::DateValue(d) => reifydb_core::Date::from_days_since_epoch(d.days_since_epoch).map(Value::Date),
+        GrpcType::DatetimeValue(dt) => reifydb_core::DateTime::from_parts(dt.seconds, dt.nanos).ok().map(Value::DateTime),
+        GrpcType::TimeValue(t) => reifydb_core::Time::from_nanos_since_midnight(t.nanos_since_midnight).map(Value::Time),
+        GrpcType::IntervalValue(i) => Some(Value::Interval(reifydb_core::Interval::new(i.months, i.days, i.nanos))),
+        GrpcType::UndefinedValue(_) => Some(Value::Undefined),
+        GrpcType::RowIdValue(id) => Some(Value::RowId(reifydb_core::RowId::new(id))),
+        GrpcType::Uuid4Value(bytes) => {
+            uuid::Uuid::from_slice(&bytes).ok()
+                .filter(|u| u.get_version_num() == 4)
+                .map(|u| Value::Uuid4(reifydb_core::Uuid4::from(u)))
+        },
+        GrpcType::Uuid7Value(bytes) => {
+            uuid::Uuid::from_slice(&bytes).ok()
+                .filter(|u| u.get_version_num() == 7)
+                .map(|u| Value::Uuid7(reifydb_core::Uuid7::from(u)))
+        },
+        GrpcType::BlobValue(bytes) => Some(Value::Blob(reifydb_core::Blob::new(bytes))),
+    }
+}
+
+fn grpc_params_to_core_params(grpc_params: Option<grpc::Params>) -> CoreParams {
+    use grpc::params::Params as GrpcParamsType;
+    
+    match grpc_params.and_then(|p| p.params) {
+        Some(GrpcParamsType::Positional(pos)) => {
+            let values: Vec<Value> = pos.values
+                .into_iter()
+                .filter_map(grpc_value_to_core_value)
+                .collect();
+            CoreParams::Positional(values)
+        },
+        Some(GrpcParamsType::Named(named)) => {
+            let mut map = HashMap::new();
+            for (key, value) in named.values {
+                if let Some(v) = grpc_value_to_core_value(value) {
+                    map.insert(key, v);
+                }
+            }
+            CoreParams::Named(map)
+        },
+        None => CoreParams::None,
+    }
 }
 
 impl<VT, UT> DbService<VT, UT>
@@ -60,13 +123,15 @@ where
 
         println!("Authenticated as: {:?}", user);
 
-        let query = request.into_inner().query;
-        println!("Received query: {}", query);
+        let req = request.into_inner();
+        let rql = req.statements;
+        let params = grpc_params_to_core_params(req.params);
+        println!("Received query: {}", rql);
 
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &rql, params)
             {
                 Ok(frames) => {
                     let mut responses: Vec<Result<CommandResult, Status>> = vec![];
@@ -112,13 +177,15 @@ where
 
         println!("Authenticated as: {:?}", user);
 
-        let query = request.into_inner().query;
-        println!("Received query: {}", query);
+        let req = request.into_inner();
+        let rql = req.statements;
+        let params = grpc_params_to_core_params(req.params);
+        println!("Received query: {}", rql);
 
         let engine = self.engine.clone();
 
         spawn_blocking(move || {
-            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &query)
+            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &rql, params)
             {
                 Ok(frames) => {
                     let mut responses: Vec<Result<QueryResult, Status>> = vec![];

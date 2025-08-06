@@ -12,6 +12,7 @@ mod promote;
 
 use crate::columnar::ColumnData;
 use crate::columnar::Columns;
+use crate::execute::params::ParamContext;
 
 use reifydb_core::{
     ColumnDescriptor, Type,
@@ -25,17 +26,22 @@ pub(crate) struct EvaluationContext<'a> {
     pub(crate) columns: Columns,
     pub(crate) row_count: usize,
     pub(crate) take: Option<usize>,
+    pub(crate) params: &'a ParamContext,
 }
 
 impl<'a> EvaluationContext<'a> {
     #[cfg(test)]
     pub fn testing() -> Self {
+        use crate::execute::params::ParamContext;
+        use std::sync::LazyLock;
+        static EMPTY_PARAMS: LazyLock<ParamContext> = LazyLock::new(|| ParamContext::empty());
         Self {
             target_column: None,
             column_policies: Vec::new(),
             columns: Columns::empty(),
             row_count: 1,
             take: None,
+            params: &EMPTY_PARAMS,
         }
     }
 

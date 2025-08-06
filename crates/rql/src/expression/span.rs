@@ -48,6 +48,10 @@ impl Expression {
             Expression::Prefix(expr) => expr.span(),
 
             Expression::Call(expr) => expr.span(),
+            Expression::Parameter(param) => match param {
+                crate::expression::ParameterExpression::Positional { span, .. } => span.clone(),
+                crate::expression::ParameterExpression::Named { span } => span.clone(),
+            },
         }
     }
 }

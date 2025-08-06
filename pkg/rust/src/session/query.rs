@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::session::RqlParams;
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params, Principal, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
@@ -29,11 +28,10 @@ where
     }
 
     #[cfg(feature = "embedded_sync")]
-    pub fn query_sync(&self, rql: &str, params: impl Into<RqlParams>) -> crate::Result<Vec<Frame>> {
+    pub fn query_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
-        let substituted_rql = params.substitute(&rql)?;
-        self.engine.query_as(&self.principal, &substituted_rql).map_err(|mut err| {
+        self.engine.query_as(&self.principal, &rql, params).map_err(|mut err| {
             err.set_statement(rql);
             err
         })
@@ -43,16 +41,15 @@ where
     pub async fn query_async(
         &self,
         rql: &str,
-        params: impl Into<RqlParams>,
+        params: impl Into<Params>,
     ) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
-        let substituted_rql = params.substitute(&rql)?;
 
         let principal = self.principal.clone();
         let engine = self.engine.clone();
         spawn_blocking(move || {
-            engine.query_as(&principal, &substituted_rql).map_err(|mut err| {
+            engine.query_as(&principal, &rql, params).map_err(|mut err| {
                 err.set_statement(rql);
                 err
             })

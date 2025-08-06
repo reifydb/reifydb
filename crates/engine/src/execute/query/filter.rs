@@ -39,6 +39,7 @@ impl ExecutionPlan for FilterNode {
                     columns: columns.clone(),
                     row_count,
                     take: None,
+                    params: &ctx.params,
                 };
 
                 // Evaluate the filter expression

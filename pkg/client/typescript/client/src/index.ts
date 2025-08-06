@@ -20,5 +20,6 @@ export class Client {
 }
 
 export {WsClient, WsClientOptions} from "./ws";
-export {DataType, ReifyError, Diagnostic, Span, DiagnosticColumn} from "./types";
+export {Type, ReifyError, Diagnostic, Span, DiagnosticColumn, WsParams} from "./types";
 export {Interval} from "./interval";
+export {ReifyValue, Value} from "./value";

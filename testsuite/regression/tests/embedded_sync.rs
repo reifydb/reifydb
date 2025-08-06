@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction};
-use reifydb::session::{SessionSync, RqlParams};
+use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
+use reifydb::session::SessionSync;
 use reifydb::variant::embedded_sync::EmbeddedSync;
 use reifydb::{ReifyDB, memory, optimistic};
 use reifydb_testing::testscript;
@@ -45,7 +45,7 @@ where
 
                 println!("command: {rql}");
 
-                for line in self.instance.command_as_root(rql.as_str(), RqlParams::None)? {
+                for line in self.instance.command_as_root(rql.as_str(), Params::None)? {
                     writeln!(output, "{}", line)?;
                 }
             }
@@ -55,7 +55,7 @@ where
 
                 println!("query: {rql}");
 
-                for line in self.instance.query_as_root(rql.as_str(), RqlParams::None)? {
+                for line in self.instance.query_as_root(rql.as_str(), Params::None)? {
                     writeln!(output, "{}", line)?;
                 }
             }

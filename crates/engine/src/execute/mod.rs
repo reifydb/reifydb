@@ -4,10 +4,11 @@
 use crate::columnar::Columns;
 use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
+use crate::execute::params::ParamContext;
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, Table, UnversionedTransaction, VersionedQueryTransaction,
+    ActiveCommandTransaction, Params, Table, UnversionedTransaction, VersionedQueryTransaction,
     VersionedTransaction,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 
 mod catalog;
 mod mutate;
+pub mod params;
 mod query;
 
 pub struct ExecutionContext {
@@ -23,6 +25,7 @@ pub struct ExecutionContext {
     pub table: Option<Table>,
     pub batch_size: usize,
     pub preserve_row_ids: bool,
+    pub params: ParamContext,
 }
 
 #[derive(Debug)]
@@ -44,9 +47,10 @@ pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction>
     _phantom: PhantomData<(VT, UT)>,
 }
 
-pub fn execute_read<VT: VersionedTransaction, UT: UnversionedTransaction>(
+pub fn execute_query<VT: VersionedTransaction, UT: UnversionedTransaction>(
     rx: &mut impl VersionedQueryTransaction,
     plan: PhysicalPlan,
+    params: Params,
 ) -> crate::Result<Columns> {
     let executor: Executor<VT, UT> = Executor {
         // FIXME receive functions from RX
@@ -61,12 +65,13 @@ pub fn execute_read<VT: VersionedTransaction, UT: UnversionedTransaction>(
         _phantom: PhantomData,
     };
 
-    executor.execute_read(rx, plan)
+    executor.execute_query(rx, plan, params)
 }
 
-pub fn execute_write<VT: VersionedTransaction, UT: UnversionedTransaction>(
+pub fn execute_command<VT: VersionedTransaction, UT: UnversionedTransaction>(
     atx: &mut ActiveCommandTransaction<VT, UT>,
     plan: PhysicalPlan,
+    params: Params,
 ) -> crate::Result<Columns> {
     // FIXME receive functions from atx
     let executor: Executor<VT, UT> = Executor {
@@ -81,14 +86,15 @@ pub fn execute_write<VT: VersionedTransaction, UT: UnversionedTransaction>(
         _phantom: PhantomData,
     };
 
-    executor.execute_write(atx, plan)
+    executor.execute_command(atx, plan, params)
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
-    pub(crate) fn execute_read(
+    pub(crate) fn execute_query(
         self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
+        params: Params,
     ) -> crate::Result<Columns> {
         match plan {
             // Query
@@ -104,7 +110,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Delete(_)
             | PhysicalPlan::Insert(_)
             | PhysicalPlan::Update(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan),
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan, params),
 
             PhysicalPlan::AlterSequence(_)
             | PhysicalPlan::CreateComputedView(_)
@@ -113,19 +119,20 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         }
     }
 
-    pub(crate) fn execute_write(
+    pub(crate) fn execute_command(
         mut self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: PhysicalPlan,
+        params: Params,
     ) -> crate::Result<Columns> {
         match plan {
             PhysicalPlan::AlterSequence(plan) => self.alter_sequence(atx, plan),
             PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(atx, plan),
             PhysicalPlan::CreateSchema(plan) => self.create_schema(atx, plan),
             PhysicalPlan::CreateTable(plan) => self.create_table(atx, plan),
-            PhysicalPlan::Delete(plan) => self.delete(atx, plan),
-            PhysicalPlan::Insert(plan) => self.insert(atx, plan),
-            PhysicalPlan::Update(plan) => self.update(atx, plan),
+            PhysicalPlan::Delete(plan) => self.delete(atx, plan, params),
+            PhysicalPlan::Insert(plan) => self.insert(atx, plan, params),
+            PhysicalPlan::Update(plan) => self.update(atx, plan, params),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
@@ -136,7 +143,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(atx, plan),
+            | PhysicalPlan::TableScan(_) => self.execute_query_plan(atx, plan, params),
         }
     }
 
@@ -144,6 +151,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
+        params: Params,
     ) -> crate::Result<Columns> {
         match plan {
             // PhysicalPlan::Describe { plan } => {
@@ -158,6 +166,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                     table: None,
                     batch_size: 1024,
                     preserve_row_ids: false,
+                    params: ParamContext::new(params.clone()),
                 });
                 let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Columns> = None;

@@ -16,7 +16,7 @@ mod function;
 mod system;
 
 pub use engine::Engine;
-pub use execute::{execute_read, execute_write};
+pub use execute::{execute_query, execute_command};
 pub use reifydb_core::Result;
 
 pub type GroupKey = Vec<Value>;
