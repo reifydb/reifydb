@@ -5,13 +5,10 @@
   "scripts": {
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "dev": "pnpm -r dev",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
     "test:integration": "pnpm -r test:integration",
     "test:coverage": "pnpm -r test:coverage",
     "test:watch": "pnpm -r test:unit:watch"
-  },
-  "devDependencies": {
   }
 }

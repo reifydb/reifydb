@@ -1,0 +1,44 @@
+{
+  "name": "@reifydb/core",
+  "type": "module",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:unit:watch": "vitest --config vitest.config.ts",
+    "test:unit:coverage": "vitest run --coverage --config vitest.config.ts",
+    "test:coverage": "pnpm test:unit:coverage && pnpm test:integration:coverage"
+  },
+  "dependencies": {
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "@vitest/coverage-v8": "^2.1.8",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "reifydb",
+    "database",
+    "core",
+    "typescript"
+  ],
+  "files": [
+    "dist/",
+    "package.json",
+    "readme.md",
+    "license.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}
