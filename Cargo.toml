@@ -14,9 +14,9 @@ members = ["bin/cli",
     "crates/storage",
     "crates/testing",
     "crates/transaction",
-    "pkg/client/rust",
     "pkg/python",
-    "pkg/rust",
+    "pkg/rust/db",
+    "pkg/rust/client",
     "testsuite/limit",
     "testsuite/regression",
 ]
@@ -34,8 +34,8 @@ default-members = ["bin/cli",
     "crates/storage",
     "crates/testing",
     "crates/transaction",
-    "pkg/client/rust",
-    "pkg/rust",
+    "pkg/rust/db",
+    "pkg/rust/client",
     "testsuite/limit",
     "testsuite/regression",
 ]
@@ -71,7 +71,7 @@ debug-assertions = true
 overflow-checks = true
 
 [workspace.dependencies]
-reifydb = { path = "pkg/rust", version = "0.0.1" }
+reifydb = { path = "pkg/rust/db", version = "0.0.1" }
 reifydb-auth = { path = "crates/auth", version = "0.0.1" }
 reifydb-catalog = { path = "crates/catalog", version = "0.0.1" }
 reifydb-core = { path = "crates/core", version = "0.0.1" }

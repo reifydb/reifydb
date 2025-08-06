@@ -1,3 +1,0 @@
-# ReifyDB Clients
-
-- MIT license
