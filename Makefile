@@ -4,7 +4,7 @@
 
 # Configuration
 TEST_SUITE_DIR ?= ../testsuite
-TEST_CLIENT_DIR := ./pkg/client
+TEST_PKG_DIR := ./pkg
 
 # Load .env file if it exists
 ifneq (,$(wildcard ./.env))
@@ -37,7 +37,7 @@ help:
 	@echo "🔧 Test Components:"
 	@echo "  make testsuite     Run all test suites (smoke, compatibility, diagnostic, functional, stress)"
 	@echo "  make testsuite-dev Run fast development tests for all test suites"
-	@echo "  make testclient    Run test clients (typescript)"
+	@echo "  make testpkg    	Run test packages (typescript)"
 	@echo ""
 	@echo "🏗️  Building:"
 	@echo "  make build         Build release version"
@@ -90,7 +90,7 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-local testsuite testclient
+test-full: test-local testsuite testpkg
 	@echo "✅ All tests completed successfully!"
 
 test-dev: test-local testsuite-dev
@@ -98,8 +98,8 @@ test-dev: test-local testsuite-dev
 
 # Include testing sub-makefiles
 include mk/test-local.mk
+include mk/test-pkg.mk
 include mk/test-suites.mk
-include mk/test-clients.mk
 
 # =============================================================================
 # Build Targets
