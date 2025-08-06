@@ -4,7 +4,6 @@
 use crate::columnar::Columns;
 use crate::evaluate::{EvaluationContext, evaluate};
 use crate::execute::Executor;
-use crate::execute::params::ParamContext;
 use catalog::schema_not_found;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::sequence::ColumnSequence;
@@ -13,7 +12,7 @@ use reifydb_core::diagnostic::catalog::table_not_found;
 use reifydb_core::diagnostic::query::column_not_found;
 use reifydb_core::diagnostic::sequence::can_not_alter_not_auto_increment;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, UnversionedTransaction, VersionedTransaction,
+    ActiveCommandTransaction, Params, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::{ColumnDescriptor, Value, return_error};
 use reifydb_rql::plan::physical::AlterSequencePlan;
@@ -46,7 +45,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         }
 
         // For catalog operations, use empty params since no ExecutionContext is available
-        let empty_params = ParamContext::empty();
+        let empty_params = Params::None;
         let value = evaluate(
             &plan.value,
             &EvaluationContext {

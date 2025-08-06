@@ -4,7 +4,6 @@
 use crate::columnar::ColumnData;
 use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use crate::execute::params::ParamContext;
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::{
     ActiveCommandTransaction, EncodableKey, EncodableKeyRange, Params, TableRowKey, TableRowKeyRange,
@@ -50,7 +49,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                     table: Some(table.clone()),
                     batch_size: 1024,
                     preserve_row_ids: true,
-                    params: ParamContext::new(params.clone()),
+                    params: params.clone(),
                 }),
             );
 
@@ -59,7 +58,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                 table: Some(table.clone()),
                 batch_size: 1024,
                 preserve_row_ids: true,
-                params: ParamContext::new(params.clone()),
+                params: params.clone(),
             };
 
             while let Some(Batch { columns }) = input_node.next(&context, atx)? {
