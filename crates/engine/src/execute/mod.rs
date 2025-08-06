@@ -4,7 +4,6 @@
 use crate::columnar::Columns;
 use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
-use crate::execute::params::ParamContext;
 use crate::function::{Functions, math};
 use query::compile::compile;
 use reifydb_core::interface::{
@@ -17,7 +16,6 @@ use std::sync::Arc;
 
 mod catalog;
 mod mutate;
-pub mod params;
 mod query;
 
 pub struct ExecutionContext {
@@ -25,7 +23,7 @@ pub struct ExecutionContext {
     pub table: Option<Table>,
     pub batch_size: usize,
     pub preserve_row_ids: bool,
-    pub params: ParamContext,
+    pub params: Params,
 }
 
 #[derive(Debug)]
@@ -166,7 +164,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                     table: None,
                     batch_size: 1024,
                     preserve_row_ids: false,
-                    params: ParamContext::new(params.clone()),
+                    params: params.clone(),
                 });
                 let mut node = compile(plan, rx, context.clone());
                 let mut result: Option<Columns> = None;

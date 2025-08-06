@@ -4,7 +4,6 @@
 use crate::columnar::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
-use crate::execute::params::ParamContext;
 use reifydb_catalog::{
     Catalog,
     sequence::{ColumnSequence, TableRowSequence},
@@ -45,7 +44,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             table: Some(table.clone()),
             batch_size: 1024,
             preserve_row_ids: false,
-            params: ParamContext::new(params.clone()),
+            params: params.clone(),
         });
 
         let mut input_node = compile(

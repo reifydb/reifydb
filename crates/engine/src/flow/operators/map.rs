@@ -1,8 +1,8 @@
 use crate::columnar::Columns;
 use crate::evaluate::{EvaluationContext, evaluate};
-use crate::execute::params::ParamContext;
 use crate::flow::change::{Change, Diff};
 use crate::flow::operators::{Operator, OperatorContext};
+use reifydb_core::interface::Params;
 use reifydb_rql::expression::Expression;
 
 pub struct MapOperator {
@@ -51,7 +51,7 @@ impl MapOperator {
 
         // Create evaluation context from input columns
         // TODO: Flow operators need access to params through OperatorContext
-        let empty_params = ParamContext::empty();
+        let empty_params = Params::None;
         let eval_ctx = EvaluationContext {
             target_column: None,
             column_policies: Vec::new(),
