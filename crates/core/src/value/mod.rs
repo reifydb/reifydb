@@ -95,40 +95,6 @@ impl Value {
     }
 }
 
-impl Value {
-    pub fn negate(&self) -> Self {
-        match self {
-            Value::Float4(f) => {
-                OrderedF32::try_from(-f.value()).map(Value::Float4).unwrap_or(Value::Undefined)
-            }
-            Value::Float8(f) => {
-                OrderedF64::try_from(-f.value()).map(Value::Float8).unwrap_or(Value::Undefined)
-            }
-            Value::Int1(v) => Value::Int1(-v),
-            Value::Int2(v) => Value::Int2(-v),
-            Value::Int4(v) => Value::Int4(-v),
-            Value::Int8(v) => Value::Int8(-v),
-            Value::Int16(v) => Value::Int16(-v),
-            Value::Interval(i) => Value::Interval(i.negate()),
-            Value::Undefined => Value::Undefined,
-            Value::Bool(_) => Value::Undefined,
-            Value::Utf8(_) => Value::Undefined,
-            Value::Date(_) => Value::Undefined,
-            Value::DateTime(_) => Value::Undefined,
-            Value::Time(_) => Value::Undefined,
-            Value::Uint1(_)
-            | Value::Uint2(_)
-            | Value::Uint4(_)
-            | Value::Uint8(_)
-            | Value::Uint16(_)
-            | Value::RowId(_)
-            | Value::Uuid4(_)
-            | Value::Uuid7(_)
-            | Value::Blob(_) => Value::Undefined,
-        }
-    }
-}
-
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {

@@ -212,10 +212,10 @@ describe('Websocket Data Type', () => {
             expect(frames[0]).toHaveLength(1);
             const result = frames[0][0].result;
             expect(result).toBeInstanceOf(Date);
-            expect(result.getHours()).toBe(14);
-            expect(result.getMinutes()).toBe(30);
-            expect(result.getSeconds()).toBe(0);
-            expect(result.getMilliseconds()).toBe(123);
+            expect(result.getUTCHours()).toBe(14);
+            expect(result.getUTCMinutes()).toBe(30);
+            expect(result.getUTCSeconds()).toBe(0);
+            expect(result.getUTCMilliseconds()).toBe(123);
         }, 1000);
 
         it('interval', async () => {
@@ -427,10 +427,10 @@ describe('Websocket Data Type', () => {
             expect(frames[0]).toHaveLength(1);
             const result = frames[0][0].result;
             expect(result).toBeInstanceOf(Date);
-            expect(result.getHours()).toBe(14);
-            expect(result.getMinutes()).toBe(30);
-            expect(result.getSeconds()).toBe(0);
-            expect(result.getMilliseconds()).toBe(123);
+            expect(result.getUTCHours()).toBe(14);
+            expect(result.getUTCMinutes()).toBe(30);
+            expect(result.getUTCSeconds()).toBe(0);
+            expect(result.getUTCMilliseconds()).toBe(123);
         }, 1000);
 
         it('interval', async () => {

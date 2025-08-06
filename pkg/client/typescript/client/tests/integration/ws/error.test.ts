@@ -50,7 +50,7 @@ describe('Error', () => {
                 code: 'CAST_002',
                 cause: expect.objectContaining({
                     code: expect.stringContaining('NUMBER_002'),
-                    label: expect.stringContaining("value '129' exceeds the valid range for type INT1 (-128 to 127)"),
+                    label: expect.stringContaining("value '129' exceeds the valid range for type Int1 (-128 to 127)"),
                     message: expect.stringContaining('number out of range')
                 })
             });
@@ -70,7 +70,7 @@ describe('Error', () => {
                 code: 'CAST_002',
                 cause: expect.objectContaining({
                     code: expect.stringContaining('NUMBER_002'),
-                    label: expect.stringContaining("value '129' exceeds the valid range for type INT1 (-128 to 127)"),
+                    label: expect.stringContaining("value '129' exceeds the valid range for type Int1 (-128 to 127)"),
                     message: expect.stringContaining('number out of range')
                 })
             });

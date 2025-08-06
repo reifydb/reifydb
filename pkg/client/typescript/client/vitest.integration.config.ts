@@ -17,8 +17,6 @@ export default defineConfig({
             'dist/**'
         ],
 
-        globalSetup: ['./tests/integration/setup.ts'],
-
         pool: 'threads',
         poolOptions: {
             threads: {

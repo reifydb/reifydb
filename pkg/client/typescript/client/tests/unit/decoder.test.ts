@@ -6,14 +6,14 @@
 
 import {describe, expect, it} from 'vitest';
 import {decodeValue} from '../../src/decoder';
-import {DataType, Interval} from "../../src";
+import {Type, Interval} from "../../src";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
 
 describe('decodeValue', () => {
     describe('undefined value handling', () => {
         it('should return undefined for ⟪undefined⟫ regardless of type', () => {
-            const types: DataType[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Uuid4', 'Uuid7', 'Undefined'];
+            const types: Type[] = ['Bool', 'Float4', 'Int1', 'Utf8', 'Date', 'DateTime', 'Time', 'Interval', 'Uuid4', 'Uuid7', 'Undefined'];
 
             types.forEach(ty => {
                 expect(decodeValue(ty, UNDEFINED_VALUE)).toBeUndefined();
@@ -37,7 +37,7 @@ describe('decodeValue', () => {
     });
 
     describe('Float types (Float4, Float8)', () => {
-        const floatKinds: DataType[] = ['Float4', 'Float8'];
+        const floatKinds: Type[] = ['Float4', 'Float8'];
 
         floatKinds.forEach(ty => {
             describe(`${ty}`, () => {
@@ -64,7 +64,7 @@ describe('decodeValue', () => {
     });
 
     describe('Small singed integer types (Int1, Int2, Int4)', () => {
-        const intKinds: DataType[] = ['Int1', 'Int2', 'Int4'];
+        const intKinds: Type[] = ['Int1', 'Int2', 'Int4'];
 
         intKinds.forEach(ty => {
             describe(`${ty}`, () => {
@@ -85,7 +85,7 @@ describe('decodeValue', () => {
     });
 
     describe('Small unsinged integer types (Uint1, Uint2, Uint4)', () => {
-        const intKinds: DataType[] = ['Uint1', 'Uint2', 'Uint4'];
+        const intKinds: Type[] = ['Uint1', 'Uint2', 'Uint4'];
 
         intKinds.forEach(ty => {
             describe(`${ty}`, () => {
@@ -105,7 +105,7 @@ describe('decodeValue', () => {
 
 
     describe('big signed integer (Int8, Int16)', () => {
-        const bigintKinds: DataType[] = ['Int8', 'Int16'];
+        const bigintKinds: Type[] = ['Int8', 'Int16'];
 
         bigintKinds.forEach(ty => {
             describe(`${ty}`, () => {
@@ -130,7 +130,7 @@ describe('decodeValue', () => {
     });
 
     describe('big unsigned integer(Uint8, Uint16)', () => {
-        const bigintKinds: DataType[] = ['Uint8', 'Uint16'];
+        const bigintKinds: Type[] = ['Uint8', 'Uint16'];
 
         bigintKinds.forEach(ty => {
             describe(`${ty}`, () => {
@@ -204,32 +204,32 @@ describe('decodeValue', () => {
         it('should convert time strings to Date objects with today\'s date', () => {
             const result = decodeValue('Time', '14:30:00.000000000') as Date;
             expect(result).toBeInstanceOf(Date);
-            expect(result.getHours()).toBe(14);
-            expect(result.getMinutes()).toBe(30);
-            expect(result.getSeconds()).toBe(0);
-            expect(result.getMilliseconds()).toBe(0);
+            expect(result.getUTCHours()).toBe(14);
+            expect(result.getUTCMinutes()).toBe(30);
+            expect(result.getUTCSeconds()).toBe(0);
+            expect(result.getUTCMilliseconds()).toBe(0);
         });
 
         it('should handle time with nanoseconds', () => {
             const result = decodeValue('Time', '14:30:00.123456789') as Date;
             expect(result).toBeInstanceOf(Date);
-            expect(result.getHours()).toBe(14);
-            expect(result.getMinutes()).toBe(30);
-            expect(result.getSeconds()).toBe(0);
-            expect(result.getMilliseconds()).toBe(123); // Only milliseconds precision in JS
+            expect(result.getUTCHours()).toBe(14);
+            expect(result.getUTCMinutes()).toBe(30);
+            expect(result.getUTCSeconds()).toBe(0);
+            expect(result.getUTCMilliseconds()).toBe(123); // Only milliseconds precision in JS
         });
 
         it('should handle edge cases', () => {
             const midnight = decodeValue('Time', '00:00:00.000000000') as Date;
-            expect(midnight.getHours()).toBe(0);
-            expect(midnight.getMinutes()).toBe(0);
-            expect(midnight.getSeconds()).toBe(0);
+            expect(midnight.getUTCHours()).toBe(0);
+            expect(midnight.getUTCMinutes()).toBe(0);
+            expect(midnight.getUTCSeconds()).toBe(0);
 
             const almostMidnight = decodeValue('Time', '23:59:59.999999999') as Date;
-            expect(almostMidnight.getHours()).toBe(23);
-            expect(almostMidnight.getMinutes()).toBe(59);
-            expect(almostMidnight.getSeconds()).toBe(59);
-            expect(almostMidnight.getMilliseconds()).toBe(999);
+            expect(almostMidnight.getUTCHours()).toBe(23);
+            expect(almostMidnight.getUTCMinutes()).toBe(59);
+            expect(almostMidnight.getUTCSeconds()).toBe(59);
+            expect(almostMidnight.getUTCMilliseconds()).toBe(999);
         });
     });
 
@@ -343,7 +343,7 @@ describe('decodeValue', () => {
     });
 
     describe('UUID types (Uuid4, Uuid7)', () => {
-        const uuidTypes: DataType[] = ['Uuid4', 'Uuid7'];
+        const uuidTypes: Type[] = ['Uuid4', 'Uuid7'];
 
         uuidTypes.forEach(ty => {
             describe(`${ty}`, () => {

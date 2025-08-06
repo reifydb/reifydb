@@ -4,16 +4,17 @@
  * See license.md file for full license text
  */
 
-import {DataType} from "./types";
+import {Type} from "./types";
 import {Interval} from "./interval";
+import {ReifyValue} from "./value";
 
 const UNDEFINED_VALUE = "⟪undefined⟫";
 
-export function decodeValue(ty: DataType, value: string): unknown {
+export function decodeValue(type: Type, value: string): ReifyValue {
     if (value == UNDEFINED_VALUE) {
         return undefined
     }
-    switch (ty) {
+    switch (type) {
         case "Bool":
             return value === "true";
         case "Float4":
@@ -33,23 +34,44 @@ export function decodeValue(ty: DataType, value: string): unknown {
         case "Utf8":
             return value;
         case "Date":
+            // Parse YYYY-MM-DD format from Rust
+            // The value might already be in ISO format if it came from JS, 
+            // or it might be just YYYY-MM-DD from Rust
+            if (value.length === 10 && value[4] === '-' && value[7] === '-') {
+                // Just date, add time component for JavaScript Date
+                return new Date(value + 'T00:00:00.000Z');
+            }
             return new Date(value);
         case "DateTime":
+            // Parse YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z format from Rust
+            // The Rust side outputs with nanosecond precision
+            // JavaScript Date constructor can handle various ISO formats
             return new Date(value);
         case "Time":
-            // Parse time string (HH:MM:SS.nnnnnnnnn) and return as Date with today's date
-            const [time, nanos] = value.split('.');
-            const [hours, minutes, seconds] = time.split(':').map(Number);
+            // Parse time string HH:MM:SS[.nnnnnnnnn] from Rust
+            // Return as Date with today's date in UTC
+            const timeMatch = value.match(/^(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?/);
+            if (!timeMatch) {
+                throw new Error(`Invalid time format: ${value}`);
+            }
+            const [, hoursStr, minutesStr, secondsStr, nanosStr] = timeMatch;
+            const hours = parseInt(hoursStr, 10);
+            const minutes = parseInt(minutesStr, 10);
+            const seconds = parseInt(secondsStr, 10);
+
+            // Create a date in UTC for consistency
             const timeDate = new Date();
-            timeDate.setHours(hours, minutes, seconds, 0);
-            if (nanos) {
-                // Add nanoseconds as microseconds (JavaScript Date only supports milliseconds)
-                const microseconds = Math.floor(parseInt(nanos.padEnd(9, '0')) / 1000000);
-                timeDate.setMilliseconds(microseconds);
+            timeDate.setUTCHours(hours, minutes, seconds, 0);
+
+            if (nanosStr) {
+                // Convert nanoseconds to milliseconds
+                // Pad to 9 digits, then take first 3 for milliseconds
+                const paddedNanos = nanosStr.padEnd(9, '0');
+                const millis = Math.floor(parseInt(paddedNanos.substring(0, 3), 10));
+                timeDate.setUTCMilliseconds(millis);
             }
             return timeDate;
         case "Interval":
-            // Return interval as Interval instance
             return Interval.parse(value);
         case "Uuid4":
         case "Uuid7":
@@ -57,7 +79,7 @@ export function decodeValue(ty: DataType, value: string): unknown {
         case "Undefined":
             return undefined;
         default:
-            throw new Error(`Unknown data type: ${ty}`);
+            throw new Error(`Unknown data type: ${type}`);
     }
 }
 

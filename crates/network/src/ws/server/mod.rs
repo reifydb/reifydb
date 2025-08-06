@@ -372,8 +372,8 @@ where
                                                     }
                                                     _ => {}
                                                 },
-                                                Err(err) => {
-                                                    eprintln!("❌ Invalid message: {err}");
+                                                Err(err) =>{
+                                                    eprintln!("❌ Invalid message: {err} - {text}");
                                                 }
                                             }
                                         }

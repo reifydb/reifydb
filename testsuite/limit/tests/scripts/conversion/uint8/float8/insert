@@ -28,20 +28,20 @@ command 'from test.conversion map col'
 (command 'create table test.float8_test10{col: float8}')
 !command 'from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10'
 ---
->  Error CAST_002: failed to cast to FLOAT8
+>  Error CAST_002: failed to cast to Float8
 >   at "(9007199254740993float8" (line 1, column 18)
 > 
 >   1 │ from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10
 >     │                   ~~~~~~~~~~~~~~~~~~~~~~~
->     │                  failed to cast to FLOAT8
+>     │                  failed to cast to Float8
 > 
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "9007199254740993" (line 1, column 24)
 > 
 >     1 │ from [{ col: cast(cast(9007199254740993, uint8), float8) }] insert test.float8_test10
 >       │                        ~~~~~~~~~~~~~~~~
->       │ converting '9007199254740993' from UINT8 to FLOAT8 would lose precision
+>       │ converting '9007199254740993' from Uint8 to Float8 would lose precision
 > 
->     note: FLOAT8 can only represent from 0 to 9_007_199_254_740_992 (2^53) precisely
+>     note: Float8 can only represent from 0 to 9_007_199_254_740_992 (2^53) precisely
 >     note: consider using a different numeric type if exact precision is required
 > 

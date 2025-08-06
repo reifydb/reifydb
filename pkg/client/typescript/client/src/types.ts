@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-export type DataType =
+export type Type =
     | "Bool"
     | "Float4" | "Float8"
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
@@ -14,13 +14,22 @@ export type DataType =
     | "Uuid4" | "Uuid7"
     | "Undefined";
 
+export interface WsValue {
+    type: Type;
+    value: string;
+}
+
+// WsParams matches Rust: array for positional, object for named
+// This represents the encoded params sent over the wire
+export type WsParams = (WsValue | null)[] | Record<string, WsValue | null>;
+
 export interface WebsocketFrame {
     columns: WebsocketColumn[];
 }
 
 export interface DiagnosticColumn {
     name: string,
-    ty: DataType,
+    ty: Type,
 }
 
 export interface Span {
@@ -43,7 +52,7 @@ export interface Diagnostic {
 
 export interface WebsocketColumn {
     name: string;
-    ty: DataType;
+    ty: Type;
     data: string[];
 }
 
@@ -60,6 +69,7 @@ export interface CommandRequest {
     type: "Command";
     payload: {
         statements: string[];
+        params?: WsParams;
     }
 }
 
@@ -76,6 +86,7 @@ export interface QueryRequest {
     type: "Query";
     payload: {
         statements: string[];
+        params?: WsParams;
     }
 }
 
