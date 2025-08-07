@@ -6,8 +6,8 @@ use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, EncodableKey, EncodableKeyRange, Params, TableRowKey, TableRowKeyRange,
-    UnversionedTransaction, VersionedQueryTransaction, VersionedTransaction,
+    ActiveCommandTransaction, EncodableKey, EncodableKeyRange, Params, TableRowKey,
+    TableRowKeyRange, UnversionedTransaction, VersionedQueryTransaction, VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
@@ -21,10 +21,10 @@ use std::sync::Arc;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn delete(
-		&mut self,
-		atx: &mut ActiveCommandTransaction<VT, UT>,
-		plan: DeletePlan,
-		params: Params,
+        &self,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
+        plan: DeletePlan,
+        params: Params,
     ) -> crate::Result<Columns> {
         let Some(schema_ref) = plan.schema.as_ref() else {
             return_error!(schema_not_found(None::<reifydb_core::OwnedSpan>, "default"));

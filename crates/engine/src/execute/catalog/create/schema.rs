@@ -14,7 +14,7 @@ use reifydb_rql::plan::physical::CreateSchemaPlan;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_schema(
-        &mut self,
+        &self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: CreateSchemaPlan,
     ) -> crate::Result<Columns> {
@@ -46,7 +46,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute_command_plan;
+    use crate::execute::Executor;
     use reifydb_core::interface::Params;
     use reifydb_core::{OwnedSpan, Value};
     use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
@@ -60,19 +60,33 @@ mod tests {
             CreateSchemaPlan { schema: OwnedSpan::testing("my_schema"), if_not_exists: false };
 
         // First creation should succeed
-        let result = execute_command_plan(&mut atx, PhysicalPlan::CreateSchema(plan.clone()), Params::default()).unwrap();
+        let result = Executor::testing()
+            .execute_command_plan(
+                &mut atx,
+                PhysicalPlan::CreateSchema(plan.clone()),
+                Params::default(),
+            )
+            .unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Bool(true));
 
         // Creating the same schema again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
-        let result = execute_command_plan(&mut atx, PhysicalPlan::CreateSchema(plan.clone()), Params::default()).unwrap();
+        let result = Executor::testing()
+            .execute_command_plan(
+                &mut atx,
+                PhysicalPlan::CreateSchema(plan.clone()),
+                Params::default(),
+            )
+            .unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Bool(false));
 
         // Creating the same schema again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
-        let err = execute_command_plan(&mut atx, PhysicalPlan::CreateSchema(plan), Params::default()).unwrap_err();
+        let err = Executor::testing()
+            .execute_command_plan(&mut atx, PhysicalPlan::CreateSchema(plan), Params::default())
+            .unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_001");
     }
 }

@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{execute_command_plan, execute_query_plan};
+use crate::execute::Executor;
+use crate::function::{Functions, math};
 use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
@@ -10,8 +11,7 @@ use reifydb_core::interface::{
     ExecuteCommand, ExecuteQuery, GetHooks, Params, Principal, Query, UnversionedTransaction,
     VersionedCommandTransaction, VersionedTransaction,
 };
-use reifydb_rql::ast;
-use reifydb_rql::plan::plan;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -72,22 +72,13 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
+    #[inline]
     fn execute_command<'a>(
         &'a self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         cmd: Command<'a>,
     ) -> crate::Result<Vec<Frame>> {
-        let mut result = vec![];
-        let statements = ast::parse(cmd.rql)?;
-
-        for statement in statements {
-            if let Some(plan) = plan(atx, statement)? {
-                let er = execute_command_plan(atx, plan, cmd.params.clone())?;
-                result.push(er);
-            }
-        }
-
-        Ok(result.into_iter().map(Frame::from).collect())
+        self.executor.execute_command(atx, cmd)
     }
 }
 
@@ -96,22 +87,13 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
+    #[inline]
     fn execute_query<'a>(
         &'a self,
         atx: &mut ActiveQueryTransaction<VT, UT>,
         qry: Query<'a>,
     ) -> crate::Result<Vec<Frame>> {
-        let mut result = vec![];
-        let statements = ast::parse(qry.rql)?;
-
-        for statement in statements {
-            if let Some(plan) = plan(atx, statement)? {
-                let er = execute_query_plan::<VT, UT>(atx, plan, qry.params.clone())?;
-                result.push(er);
-            }
-        }
-
-        Ok(result.into_iter().map(Frame::from).collect())
+        self.executor.execute_query(atx, qry)
     }
 }
 
@@ -145,6 +127,7 @@ where
     versioned: VT,
     unversioned: UT,
     hooks: Hooks,
+    executor: Executor<VT, UT>,
 }
 
 impl<VT, UT> Engine<VT, UT>
@@ -153,7 +136,22 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
-        let result = Self(Arc::new(EngineInner { versioned, unversioned, hooks }));
+        let result = Self(Arc::new(EngineInner {
+            versioned,
+            unversioned,
+            hooks,
+            executor: Executor {
+                functions: Functions::builder()
+                    .register_aggregate("sum", math::aggregate::Sum::new)
+                    .register_aggregate("min", math::aggregate::Min::new)
+                    .register_aggregate("max", math::aggregate::Max::new)
+                    .register_aggregate("avg", math::aggregate::Avg::new)
+                    .register_scalar("abs", math::scalar::Abs::new)
+                    .register_scalar("avg", math::scalar::Avg::new)
+                    .build(),
+                _phantom: PhantomData,
+            },
+        }));
         result.setup_hooks()?;
         Ok(result)
     }

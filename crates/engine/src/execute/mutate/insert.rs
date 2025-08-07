@@ -9,7 +9,8 @@ use reifydb_catalog::{
     sequence::{ColumnSequence, TableRowSequence},
 };
 use reifydb_core::interface::{
-    ActiveCommandTransaction, EncodableKey, Params, TableRowKey, UnversionedTransaction, VersionedTransaction,
+    ActiveCommandTransaction, EncodableKey, Params, TableRowKey, UnversionedTransaction,
+    VersionedTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
@@ -23,7 +24,7 @@ use std::sync::Arc;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn insert(
-        &mut self,
+        &self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: InsertPlan,
         params: Params,
@@ -47,19 +48,12 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             params: params.clone(),
         });
 
-        let mut input_node = compile(
-            *plan.input,
-            atx,
-            execution_context.clone(),
-        );
+        let mut input_node = compile(*plan.input, atx, execution_context.clone());
 
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { columns }) = input_node.next(
-            &execution_context,
-            atx,
-        )? {
+        while let Some(Batch { columns }) = input_node.next(&execution_context, atx)? {
             let row_count = columns.row_count();
 
             for row_idx in 0..row_count {

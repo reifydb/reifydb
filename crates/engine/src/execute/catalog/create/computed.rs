@@ -14,7 +14,7 @@ use reifydb_rql::plan::physical::CreateComputedViewPlan;
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_computed_view(
-        &mut self,
+        &self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: CreateComputedViewPlan,
     ) -> crate::Result<Columns> {

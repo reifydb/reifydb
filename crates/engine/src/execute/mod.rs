@@ -12,11 +12,11 @@ use reifydb_core::interface::{
     ExecuteQuery, Params, Query, Table, UnversionedTransaction, VersionedQueryTransaction,
     VersionedTransaction,
 };
+use reifydb_rql::ast;
 use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_rql::plan::plan;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use reifydb_rql::ast;
-use reifydb_rql::plan::plan;
 
 mod catalog;
 mod mutate;
@@ -45,51 +45,24 @@ pub(crate) trait ExecutionPlan {
 }
 
 pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction> {
-    functions: Functions,
-    _phantom: PhantomData<(VT, UT)>,
-
+    pub functions: Functions,
+    pub _phantom: PhantomData<(VT, UT)>,
 }
 
-pub fn execute_query_plan<VT: VersionedTransaction, UT: UnversionedTransaction>(
-    rx: &mut impl VersionedQueryTransaction,
-    plan: PhysicalPlan,
-    params: Params,
-) -> crate::Result<Columns> {
-    let executor: Executor<VT, UT> = Executor {
-        // FIXME receive functions from RX
-        functions: Functions::builder()
-            .register_aggregate("sum", math::aggregate::Sum::new)
-            .register_aggregate("min", math::aggregate::Min::new)
-            .register_aggregate("max", math::aggregate::Max::new)
-            .register_aggregate("avg", math::aggregate::Avg::new)
-            .register_scalar("abs", math::scalar::Abs::new)
-            .register_scalar("avg", math::scalar::Avg::new)
-            .build(),
-        _phantom: PhantomData,
-    };
-
-    executor.execute_query_plan(rx, plan, params)
-}
-
-pub fn execute_command_plan<VT: VersionedTransaction, UT: UnversionedTransaction>(
-    atx: &mut ActiveCommandTransaction<VT, UT>,
-    plan: PhysicalPlan,
-    params: Params,
-) -> crate::Result<Columns> {
-    // FIXME receive functions from atx
-    let executor: Executor<VT, UT> = Executor {
-        functions: Functions::builder()
-            .register_aggregate("sum", math::aggregate::Sum::new)
-            .register_aggregate("min", math::aggregate::Min::new)
-            .register_aggregate("max", math::aggregate::Max::new)
-            .register_aggregate("avg", math::aggregate::Avg::new)
-            .register_scalar("abs", math::scalar::Abs::new)
-            .register_scalar("avg", math::scalar::Avg::new)
-            .build(),
-        _phantom: PhantomData,
-    };
-
-    executor.execute_command_plan(atx, plan, params)
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+    pub(crate) fn testing() -> Self {
+        Self {
+            functions: Functions::builder()
+                .register_aggregate("sum", math::aggregate::Sum::new)
+                .register_aggregate("min", math::aggregate::Min::new)
+                .register_aggregate("max", math::aggregate::Max::new)
+                .register_aggregate("avg", math::aggregate::Avg::new)
+                .register_scalar("abs", math::scalar::Abs::new)
+                .register_scalar("avg", math::scalar::Avg::new)
+                .build(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT>
@@ -105,7 +78,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT
 
         for statement in statements {
             if let Some(plan) = plan(atx, statement)? {
-                let er = execute_command_plan(atx, plan, cmd.params.clone())?;
+                let er = self.execute_command_plan(atx, plan, cmd.params.clone())?;
                 result.push(er);
             }
         }
@@ -127,7 +100,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteQuery<VT, UT>
 
         for statement in statements {
             if let Some(plan) = plan(atx, statement)? {
-                let er = execute_query_plan::<VT, UT>(atx, plan, qry.params.clone())?;
+                let er = self.execute_query_plan(atx, plan, qry.params.clone())?;
                 result.push(er);
             }
         }
@@ -140,7 +113,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Execute<VT, UT> for E
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn execute_query_plan(
-        self,
+        &self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
         params: Params,
@@ -169,7 +142,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     }
 
     pub(crate) fn execute_command_plan(
-        mut self,
+        &self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: PhysicalPlan,
         params: Params,
@@ -197,7 +170,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     }
 
     fn query(
-        self,
+        &self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
         params: Params,
@@ -211,7 +184,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             // }
             _ => {
                 let context = Arc::new(ExecutionContext {
-                    functions: self.functions,
+                    functions: self.functions.clone(),
                     table: None,
                     batch_size: 1024,
                     preserve_row_ids: false,
