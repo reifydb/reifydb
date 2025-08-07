@@ -5,6 +5,7 @@
  */
 
 import {describe, expect, it} from 'vitest';
+import {Bool} from '../../src/value/bool';
 import {Int1} from '../../src/value/int1';
 import {Int2} from '../../src/value/int2';
 import {Int4} from '../../src/value/int4';
@@ -21,6 +22,11 @@ import {Float8} from '../../src/value/float8';
 
 describe('UNDEFINED_VALUE parsing', () => {
     const undefinedString = "⟪undefined⟫";
+
+    it('should parse UNDEFINED_VALUE as undefined for Bool', () => {
+        const bool = Bool.parse(undefinedString);
+        expect(bool.value).toBeUndefined();
+    });
 
     it('should parse UNDEFINED_VALUE as undefined for Float4', () => {
         const float4 = Float4.parse(undefinedString);
