@@ -7,7 +7,8 @@ export type Type =
     | "Utf8"
     | "Date" | "DateTime" | "Time" | "Interval"
     | "Uuid4" | "Uuid7"
-    | "Undefined";
+    | "Undefined"
+    | "RowId";
 
 export interface Value {
     readonly type: Type;
