@@ -1,13 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{execute_query, execute_command};
+use crate::execute::{execute_command, execute_query};
 use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, ActiveQueryTransaction, Engine as EngineInterface, GetHooks,
-    Params, Principal, UnversionedTransaction, VersionedCommandTransaction, VersionedTransaction,
+    ActiveCommandTransaction, ActiveQueryTransaction, Command, Engine as EngineInterface,
+    ExecuteCommand, ExecuteQuery, GetHooks, Params, Principal, Query, UnversionedTransaction,
+    VersionedCommandTransaction, VersionedTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
@@ -43,32 +44,70 @@ where
         Ok(ActiveQueryTransaction::new(self.versioned.begin_query()?, self.unversioned.clone()))
     }
 
-    fn command_as(&self, _principal: &Principal, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
-        let mut result = vec![];
-        let statements = ast::parse(rql)?;
-
+    fn command_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+        params: Params,
+    ) -> crate::Result<Vec<Frame>> {
         let mut atx = self.begin_command()?;
+        let result = self.execute_command(&mut atx, Command { rql, params, principal })?;
+        atx.commit()?;
+        Ok(result)
+    }
+
+    fn query_as(
+        &self,
+        principal: &Principal,
+        rql: &str,
+        params: Params,
+    ) -> crate::Result<Vec<Frame>> {
+        let mut atx = self.begin_query()?;
+        let result = self.execute_query(&mut atx, Query { rql, params, principal })?;
+        Ok(result)
+    }
+}
+
+impl<VT, UT> ExecuteCommand<VT, UT> for Engine<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    fn execute_command<'a>(
+        &'a self,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
+        cmd: Command<'a>,
+    ) -> crate::Result<Vec<Frame>> {
+        let mut result = vec![];
+        let statements = ast::parse(cmd.rql)?;
 
         for statement in statements {
-            if let Some(plan) = plan(&mut atx, statement)? {
-                let er = execute_command(&mut atx, plan, params.clone())?;
+            if let Some(plan) = plan(atx, statement)? {
+                let er = execute_command(atx, plan, cmd.params.clone())?;
                 result.push(er);
             }
         }
 
-        atx.commit()?;
-
         Ok(result.into_iter().map(Frame::from).collect())
     }
+}
 
-    fn query_as(&self, _principal: &Principal, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
+impl<VT, UT> ExecuteQuery<VT, UT> for Engine<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    fn execute_query<'a>(
+        &'a self,
+        atx: &mut ActiveQueryTransaction<VT, UT>,
+        qry: Query<'a>,
+    ) -> crate::Result<Vec<Frame>> {
         let mut result = vec![];
-        let statements = ast::parse(rql)?;
+        let statements = ast::parse(qry.rql)?;
 
-        let mut rx = self.begin_query()?;
         for statement in statements {
-            if let Some(plan) = plan(&mut rx, statement)? {
-                let er = execute_query::<VT, UT>(&mut rx, plan, params.clone())?;
+            if let Some(plan) = plan(atx, statement)? {
+                let er = execute_query::<VT, UT>(atx, plan, qry.params.clone())?;
                 result.push(er);
             }
         }
