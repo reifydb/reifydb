@@ -1569,6 +1569,7 @@ dependencies = [
  "reifydb-testing",
  "reifydb-transaction",
  "serde",
+ "serde_json",
  "unicode-width",
  "uuid",
 ]

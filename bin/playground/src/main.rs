@@ -14,14 +14,24 @@ use reifydb::engine::flow::node::NodeType;
 use reifydb::rql::ast;
 use reifydb::rql::plan::logical::compile_logical;
 use reifydb::session::{Session, SessionSync};
-use reifydb::storage::sqlite::SqliteConfig;
-use reifydb::{ReifyDB, memory, optimistic, serializable, sqlite};
+use reifydb::{ReifyDB, memory, optimistic, serializable};
 
 fn main() {
     let db = ReifyDB::embedded_sync_with(optimistic(memory())).build();
     let session = db.command_session(Principal::root()).unwrap();
 
-    session.command_sync("", Params::None).unwrap();
+    session
+        .command_sync(
+            r#"
+    create computed view test.adults { name: utf8, age: int1 }  with {
+        from users
+        filter { age > 18  and name == 'Bob' }
+        map { name, age }
+    }
+    "#,
+            Params::None,
+        )
+        .unwrap();
 
     // db.command_as_root(r#"create schema test"#).unwrap();
     // let err = db.command_as_root(r#"create table test.arith { id: int2, from: int2, num: int2 }"#).unwrap_err();
@@ -65,35 +75,35 @@ fn rql_to_flow_example() {
     println!("\n=== RQL to FlowGraph Compilation Example ===");
 
     // Parse a simple RQL query
-    let rql = r#"
-create computed view test.adults { name: utf8, age: int1 }  with {
-    from users
-    filter { age > 18  and name == 'Bob' }
-    map { name, age }
-}
-"#;
+//     let rql = r#"
+// create computed view test.adults { name: utf8, age: int1 }  with {
+//     from users
+//     filter { age > 18  and name == 'Bob' }
+//     map { name, age }
+// }
+// "#;
 
-    println!("Compiling RQL: {}", rql);
-
-    // Parse RQL into AST
-    let ast_statements = match ast::parse(rql) {
-        Ok(statements) => statements,
-        Err(e) => {
-            println!("RQL parsing failed: {}", e);
-            return;
-        }
-    };
-
-    println!("AST statements: {} nodes", ast_statements.len());
-
-    // Compile AST to logical plans
-    let logical_plans = match compile_logical(ast_statements.into_iter().next().unwrap()) {
-        Ok(plans) => plans,
-        Err(e) => {
-            println!("Logical plan compilation failed: {}", e);
-            return;
-        }
-    };
+    // println!("Compiling RQL: {}", rql);
+    //
+    // // Parse RQL into AST
+    // let ast_statements = match ast::parse(rql) {
+    //     Ok(statements) => statements,
+    //     Err(e) => {
+    //         println!("RQL parsing failed: {}", e);
+    //         return;
+    //     }
+    // };
+    //
+    // println!("AST statements: {} nodes", ast_statements.len());
+    //
+    // // Compile AST to logical plans
+    // let logical_plans = match compile_logical(ast_statements.into_iter().next().unwrap()) {
+    //     Ok(plans) => plans,
+    //     Err(e) => {
+    //         println!("Logical plan compilation failed: {}", e);
+    //         return;
+    //     }
+    // };
 
     // println!("Logical plans: {} nodes", logical_plans.len());
     // for (i, plan) in logical_plans.iter().enumerate() {
@@ -101,43 +111,44 @@ create computed view test.adults { name: utf8, age: int1 }  with {
     // }
 
     let db =
-        ReifyDB::embedded_sync_with(optimistic(sqlite(SqliteConfig::new("/tmp/flow")))).build();
+        // ReifyDB::embedded_sync_with(optimistic(sqlite(SqliteConfig::new("/tmp/flow")))).build();
+        ReifyDB::embedded_sync_with(optimistic(memory())).build();
 
     // Compile logical plans to FlowGraph
-    match compile_to_flow(logical_plans) {
-        Ok(flow) => {
-            println!("✅ Successfully compiled Flow!");
-            println!("Flow has {} nodes", flow.get_all_nodes().count());
-
-            // Print the nodes in the graph
-            // for node_id in flow.get_all_nodes() {
-            //     if let Some(node) = flow.get_node(&node_id) {
-            //         // println!("  Node {}: {:?}", node_id, node.node_type);
-            //
-            //         println!("{}", serde_json::to_string(&node).unwrap());
-            //     }
-            // }
-            //
-
-            println!("{}", serde_json::to_string(&flow).unwrap());
-
-            // let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
-
-            db.command_as_root(
-                r#"
-                from[{data: blob::utf8('$REPLACE')}]
-                insert reifydb.flows
-            "#
-                .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str())
-                .as_str(),
-                Params::None,
-            )
-            .unwrap();
-        }
-        Err(e) => {
-            println!("❌ FlowGraph compilation failed: {}", e);
-        }
-    }
+    // match compile_to_flow(logical_plans) {
+    //     Ok(flow) => {
+    //         println!("✅ Successfully compiled Flow!");
+    //         println!("Flow has {} nodes", flow.get_all_nodes().count());
+    //
+    //         // Print the nodes in the graph
+    //         // for node_id in flow.get_all_nodes() {
+    //         //     if let Some(node) = flow.get_node(&node_id) {
+    //         //         // println!("  Node {}: {:?}", node_id, node.node_type);
+    //         //
+    //         //         println!("{}", serde_json::to_string(&node).unwrap());
+    //         //     }
+    //         // }
+    //         //
+    //
+    //         println!("{}", serde_json::to_string(&flow).unwrap());
+    //
+    //         // let db = ReifyDB::embedded_blocking_with(optimistic(memory())).build();
+    //
+    //         db.command_as_root(
+    //             r#"
+    //             from[{data: blob::utf8('$REPLACE')}]
+    //             insert reifydb.flows
+    //         "#
+    //             .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str())
+    //             .as_str(),
+    //             Params::None,
+    //         )
+    //         .unwrap();
+    //     }
+    //     Err(e) => {
+    //         println!("❌ FlowGraph compilation failed: {}", e);
+    //     }
+    // }
 
     for frame in
         db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", Params::None).unwrap()

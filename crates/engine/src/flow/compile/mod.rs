@@ -49,8 +49,6 @@ impl FlowCompiler {
             last_node_id = Some(node_id);
         }
 
-        dbg!(&result);
-
         Ok(result)
     }
 

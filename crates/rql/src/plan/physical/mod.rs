@@ -49,6 +49,10 @@ impl Compiler {
                     stack.push(Self::compile_create_table(rx, create)?);
                 }
 
+                LogicalPlan::CreateComputedView(create) => {
+                    stack.push(Self::compile_create_computed(rx, create)?);
+                }
+
                 LogicalPlan::AlterSequence(alter) => {
                     stack.push(Self::compile_alter_sequence(rx, alter)?);
                 }
