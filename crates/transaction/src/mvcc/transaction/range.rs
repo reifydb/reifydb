@@ -24,7 +24,7 @@ pub struct TransactionRange<'a, VS, C>
 where
     VS: VersionedStorage + 'a,
 {
-    pub(crate) committed: VS::ScanRangeIter<'a>,
+    pub(crate) committed: VS::RangeIter<'a>,
     pub(crate) pending: BTreeMapRange<'a, EncodedKey, Pending>,
     next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
@@ -50,7 +50,7 @@ where
 
     pub fn new(
         pending: BTreeMapRange<'a, EncodedKey, Pending>,
-        committed: VS::ScanRangeIter<'a>,
+        committed: VS::RangeIter<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = TransactionRange {

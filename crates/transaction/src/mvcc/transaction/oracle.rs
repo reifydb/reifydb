@@ -40,16 +40,16 @@ where
     C: Conflict,
     L: VersionProvider,
 {
-    // write_serialize_lock is for ensuring that transactions go to the write
+    // command_serialize_lock is for ensuring that transactions go to the command
     // channel in the same order as their commit timestamps.
-    pub(super) write_serialize_lock: Mutex<()>,
+    pub(super) command_serialize_lock: Mutex<()>,
 
     pub(super) inner: Mutex<OracleInner<C, L>>,
 
     /// Used by DB
-    pub(super) rx: WaterMark,
-    /// Used to block new transaction, so all previous commits are visible to a new read.
-    pub(super) tx: WaterMark,
+    pub(super) query: WaterMark,
+    /// Used to block new transaction, so all previous commits are visible to a new query.
+    pub(super) command: WaterMark,
 
     /// closer is used to stop watermarks.
     closer: Closer,
@@ -88,7 +88,7 @@ where
 
         let version = {
             if !*done_read {
-                self.rx.done(version);
+                self.query.done(version);
                 *done_read = true;
             }
 
@@ -96,7 +96,7 @@ where
 
             // This is the general case, when user doesn't specify the read and commit ts.
             let version = inner.clock.next()?;
-            self.tx.begin(version);
+            self.command.begin(version);
             version
         };
 
@@ -120,7 +120,7 @@ where
             return;
         }
 
-        let max_read_ts = self.rx.done_until();
+        let max_read_ts = self.query.done_until();
 
         assert!(max_read_ts >= inner.last_cleanup);
 
@@ -144,10 +144,10 @@ where
     pub fn new(rx_mark_name: Cow<'static, str>, tx_mark_name: Cow<'static, str>, clock: L) -> Self {
         let closer = Closer::new(2);
         Self {
-            write_serialize_lock: Mutex::new(()),
+            command_serialize_lock: Mutex::new(()),
             inner: Mutex::new(OracleInner { clock, last_cleanup: 0, committed: Vec::new() }),
-            rx: WaterMark::new(rx_mark_name, closer.clone()),
-            tx: WaterMark::new(tx_mark_name, closer.clone()),
+            query: WaterMark::new(rx_mark_name, closer.clone()),
+            command: WaterMark::new(tx_mark_name, closer.clone()),
             closer,
         }
     }
@@ -157,7 +157,7 @@ where
             let inner = self.inner.lock().unwrap();
 
             let version = inner.clock.current()?;
-            self.rx.begin(version);
+            self.query.begin(version);
             version
         };
 
@@ -165,20 +165,20 @@ where
         // timestamp and are going through the write to value log and LSM tree
         // process. Not waiting here could mean that some txns which have been
         // committed would not be read.
-        self.tx.wait_for_mark(version);
+        self.command.wait_for_mark(version);
         Ok(version)
     }
 
     pub(super) fn discard_at_or_below(&self) -> Version {
-        self.rx.done_until()
+        self.query.done_until()
     }
 
-    pub(super) fn done_read(&self, version: Version) {
-        self.rx.done(version)
+    pub(super) fn done_query(&self, version: Version) {
+        self.query.done(version)
     }
 
     pub(super) fn done_commit(&self, version: Version) {
-        self.tx.done(version)
+        self.command.done(version)
     }
 
     fn stop(&self) {

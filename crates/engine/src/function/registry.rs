@@ -25,8 +25,8 @@ impl Deref for Functions {
 
 #[derive(Clone)]
 pub struct FunctionsInner {
-    scalars: HashMap<String, Arc<dyn Fn() -> Box<dyn ScalarFunction>>>,
-    aggregates: HashMap<String, Arc<dyn Fn() -> Box<dyn AggregateFunction>>>,
+    scalars: HashMap<String, Arc<dyn Fn() -> Box<dyn ScalarFunction> + Send + Sync>>,
+    aggregates: HashMap<String, Arc<dyn Fn() -> Box<dyn AggregateFunction> + Send + Sync>>,
 }
 
 impl FunctionsInner {
@@ -44,7 +44,7 @@ pub struct FunctionsBuilder(FunctionsInner);
 impl FunctionsBuilder {
     pub fn register_scalar<F, A>(mut self, name: &str, init: F) -> Self
     where
-        F: Fn() -> A + 'static,
+        F: Fn() -> A + Send + Sync + 'static,
         A: ScalarFunction + 'static,
     {
         self.0.scalars.insert(
@@ -57,7 +57,7 @@ impl FunctionsBuilder {
 
     pub fn register_aggregate<F, A>(mut self, name: &str, init: F) -> Self
     where
-        F: Fn() -> A + 'static,
+        F: Fn() -> A + Send + Sync + 'static,
         A: AggregateFunction + 'static,
     {
         self.0.aggregates.insert(

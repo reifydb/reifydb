@@ -31,12 +31,12 @@ pub struct ColumnToCreate<'a> {
 
 impl Catalog {
     pub(crate) fn create_column<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         table: TableId,
         column_to_create: ColumnToCreate,
     ) -> crate::Result<Column> {
         // FIXME policies
-        if let Some(column) = Catalog::get_column_by_name(atx, table, &column_to_create.column)? {
+        if let Some(column) = Catalog::get_column_by_name(txn, table, &column_to_create.column)? {
             return_error!(column_already_exists(
                 None::<OwnedSpan>,
                 column_to_create.schema_name,
@@ -62,7 +62,7 @@ impl Catalog {
             }
         }
 
-        let id = SystemSequence::next_column_id(atx)?;
+        let id = SystemSequence::next_column_id(txn)?;
 
         let mut row = column::LAYOUT.allocate_row();
         column::LAYOUT.set_u64(&mut row, column::ID, id);
@@ -72,16 +72,16 @@ impl Catalog {
         column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
         column::LAYOUT.set_bool(&mut row, column::AUTO_INCREMENT, column_to_create.auto_increment);
 
-        atx.set(&Key::Column(ColumnKey { column: id }).encode(), row)?;
+        txn.set(&Key::Column(ColumnKey { column: id }).encode(), row)?;
 
         let mut row = table_column::LAYOUT.allocate_row();
         table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
         table_column::LAYOUT.set_utf8(&mut row, table_column::NAME, &column_to_create.column);
         table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
-        atx.set(&TableColumnKey { table, column: id }.encode(), row)?;
+        txn.set(&TableColumnKey { table, column: id }.encode(), row)?;
 
         for policy in column_to_create.policies {
-            Catalog::create_column_policy(atx, id, policy)?;
+            Catalog::create_column_policy(txn, id, policy)?;
         }
 
         Ok(Column {
@@ -89,7 +89,7 @@ impl Catalog {
             name: column_to_create.column,
             ty: column_to_create.value,
             index: column_to_create.index,
-            policies: Catalog::list_column_policies(atx, id)?,
+            policies: Catalog::list_column_policies(txn, id)?,
             auto_increment: column_to_create.auto_increment,
         })
     }
@@ -102,15 +102,15 @@ mod test {
     use crate::test_utils::ensure_test_table;
     use reifydb_core::Type;
     use reifydb_core::interface::{ColumnId, TableId};
-    use reifydb_transaction::test_utils::create_test_write_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
     #[test]
     fn test_create_column() {
-        let mut atx = create_test_write_transaction();
-        ensure_test_table(&mut atx);
+        let mut txn = create_test_command_transaction();
+        ensure_test_table(&mut txn);
 
         Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -128,7 +128,7 @@ mod test {
         .unwrap();
 
         Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -145,13 +145,13 @@ mod test {
         )
         .unwrap();
 
-        let column_1 = Catalog::get_column(&mut atx, ColumnId(1)).unwrap().unwrap();
+        let column_1 = Catalog::get_column(&mut txn, ColumnId(1)).unwrap().unwrap();
         assert_eq!(column_1.id, 1);
         assert_eq!(column_1.name, "col_1");
         assert_eq!(column_1.ty, Type::Bool);
         assert_eq!(column_1.auto_increment, false);
 
-        let column_2 = Catalog::get_column(&mut atx, ColumnId(2)).unwrap().unwrap();
+        let column_2 = Catalog::get_column(&mut txn, ColumnId(2)).unwrap().unwrap();
         assert_eq!(column_2.id, 2);
         assert_eq!(column_2.name, "col_2");
         assert_eq!(column_2.ty, Type::Int2);
@@ -160,11 +160,11 @@ mod test {
 
     #[test]
     fn test_create_column_with_auto_increment() {
-        let mut atx = create_test_write_transaction();
-        ensure_test_table(&mut atx);
+        let mut txn = create_test_command_transaction();
+        ensure_test_table(&mut txn);
 
         Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -181,7 +181,7 @@ mod test {
         )
         .unwrap();
 
-        let column = Catalog::get_column(&mut atx, ColumnId(1)).unwrap().unwrap();
+        let column = Catalog::get_column(&mut txn, ColumnId(1)).unwrap().unwrap();
         assert_eq!(column.id, 1);
         assert_eq!(column.name, "id");
         assert_eq!(column.ty, Type::Uint8);
@@ -190,12 +190,12 @@ mod test {
 
     #[test]
     fn test_auto_increment_invalid_type() {
-        let mut atx = create_test_write_transaction();
-        ensure_test_table(&mut atx);
+        let mut txn = create_test_command_transaction();
+        ensure_test_table(&mut txn);
 
         // Try to create a text column with auto_increment
         let err = Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -218,7 +218,7 @@ mod test {
 
         // Try with bool type
         let err = Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -239,7 +239,7 @@ mod test {
 
         // Try with float type
         let err = Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -261,11 +261,11 @@ mod test {
 
     #[test]
     fn test_column_already_exists() {
-        let mut atx = create_test_write_transaction();
-        ensure_test_table(&mut atx);
+        let mut txn = create_test_command_transaction();
+        ensure_test_table(&mut txn);
 
         Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -284,7 +284,7 @@ mod test {
 
         // Tries to create a column with the same name again
         let err = Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,

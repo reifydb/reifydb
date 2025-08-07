@@ -4,6 +4,7 @@
 use crate::delta::Delta;
 use crate::{CowVec, Version, impl_hook};
 
+#[derive(Debug)]
 pub struct PreCommitHook {
     pub deltas: CowVec<Delta>,
     pub version: Version,
@@ -11,6 +12,7 @@ pub struct PreCommitHook {
 
 impl_hook!(PreCommitHook);
 
+#[derive(Debug)]
 pub struct PostCommitHook {
     pub deltas: CowVec<Delta>,
     pub version: Version,

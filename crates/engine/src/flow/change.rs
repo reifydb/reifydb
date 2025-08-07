@@ -3,21 +3,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Change {
+pub enum Diff {
     Insert { columns: Columns },
     Update { old: Columns, new: Columns },
     Remove { columns: Columns },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Diff {
-    pub changes: Vec<Change>,
+pub struct Change {
+    pub diffs: Vec<Diff>,
     pub metadata: HashMap<String, String>,
 }
 
-impl Diff {
-    pub fn new(changes: Vec<Change>) -> Self {
-        Self { changes, metadata: HashMap::new() }
+impl Change {
+    pub fn new(diffs: Vec<Diff>) -> Self {
+        Self { diffs, metadata: HashMap::new() }
     }
 
     pub fn with_metadata(mut self, key: String, value: String) -> Self {

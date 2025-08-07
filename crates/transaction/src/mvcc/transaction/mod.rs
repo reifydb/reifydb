@@ -13,7 +13,7 @@ use core::mem;
 use std::sync::Arc;
 
 pub use crate::mvcc::types::*;
-pub use write::*;
+pub use command::*;
 
 use oracle::*;
 use reifydb_core::Version;
@@ -26,14 +26,14 @@ pub mod optimistic;
 mod oracle;
 pub mod range;
 pub mod range_rev;
-pub mod read;
+pub mod query;
 pub mod serializable;
 mod version;
-mod write;
+mod command;
 
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::pending::PendingWrites;
-use crate::mvcc::transaction::read::TransactionManagerRx;
+use crate::mvcc::transaction::query::TransactionManagerQuery;
 
 pub struct TransactionManager<C, L, P>
 where
@@ -62,8 +62,8 @@ where
     L: VersionProvider,
     P: PendingWrites,
 {
-    pub fn write(&self) -> Result<TransactionManagerTx<C, L, P>, reifydb_core::Error> {
-        Ok(TransactionManagerTx {
+    pub fn write(&self) -> Result<TransactionManagerCommand<C, L, P>, reifydb_core::Error> {
+        Ok(TransactionManagerCommand {
             oracle: self.inner.clone(),
             version: self.inner.version()?,
             size: 0,
@@ -72,7 +72,7 @@ where
             pending_writes: P::new(),
             duplicates: Vec::new(),
             discarded: false,
-            done_read: false,
+            done_query: false,
         })
     }
 }
@@ -92,8 +92,8 @@ where
                     format!("{}.txn_timestamps", name).into(),
                     clock,
                 );
-                oracle.rx.done(version);
-                oracle.tx.done(version);
+                oracle.query.done(version);
+                oracle.command.done(version);
                 oracle
             }),
             _phantom: std::marker::PhantomData,
@@ -115,11 +115,11 @@ where
         self.inner.discard_at_or_below()
     }
 
-    pub fn read(&self, version: Option<Version>) -> crate::Result<TransactionManagerRx<C, L, P>> {
+    pub fn query(&self, version: Option<Version>) -> crate::Result<TransactionManagerQuery<C, L, P>> {
         Ok(if let Some(version) = version {
-            TransactionManagerRx::new_time_travel(self.clone(), version)
+            TransactionManagerQuery::new_time_travel(self.clone(), version)
         } else {
-            TransactionManagerRx::new_current(self.clone(), self.inner.version()?)
+            TransactionManagerQuery::new_current(self.clone(), self.inner.version()?)
         })
     }
 }

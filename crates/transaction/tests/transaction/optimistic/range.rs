@@ -33,14 +33,14 @@ fn test_range() {
     let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
     let txn = engine.begin_query().unwrap();
-    let iter = txn.scan_range(four_to_one.clone()).unwrap();
+    let iter = txn.range(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).rev().zip(iter) {
         assert_eq!(v.key, as_key!(expected));
         assert_eq!(v.row, as_row!(expected));
         assert_eq!(v.version, 2);
     }
 
-    let iter = txn.scan_range_rev(four_to_one).unwrap();
+    let iter = txn.range_rev(four_to_one).unwrap();
     for (expected, v) in (1..=3).zip(iter) {
         assert_eq!(v.key, as_key!(expected));
         assert_eq!(v.row, as_row!(expected));
@@ -58,14 +58,14 @@ fn test_range2() {
 
     let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
-    let iter = txn.scan_range(four_to_one.clone()).unwrap();
+    let iter = txn.range(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
         assert_eq!(v.version(), 1);
     }
 
-    let iter = txn.scan_range_rev(four_to_one.clone()).unwrap();
+    let iter = txn.range_rev(four_to_one.clone()).unwrap();
     for (expected, v) in (1..=3).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
@@ -81,14 +81,14 @@ fn test_range2() {
 
     let seven_to_one = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(1)));
 
-    let iter = txn.scan_range(seven_to_one.clone()).unwrap();
+    let iter = txn.range(seven_to_one.clone()).unwrap();
     for (expected, v) in (1..=6).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
         assert_eq!(v.version(), 2);
     }
 
-    let iter = txn.scan_range_rev(seven_to_one.clone()).unwrap();
+    let iter = txn.range_rev(seven_to_one.clone()).unwrap();
     for (expected, v) in (1..=6).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
@@ -106,14 +106,14 @@ fn test_range3() {
 
     let seven_to_four = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(4)));
 
-    let iter = txn.scan_range(seven_to_four.clone()).unwrap();
+    let iter = txn.range(seven_to_four.clone()).unwrap();
     for (expected, v) in (4..=6).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
         assert_eq!(v.version(), 1);
     }
 
-    let iter = txn.scan_range_rev(seven_to_four.clone()).unwrap();
+    let iter = txn.range_rev(seven_to_four.clone()).unwrap();
     for (expected, v) in (4..=6).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
@@ -129,14 +129,14 @@ fn test_range3() {
     txn.set(&as_key!(2), as_row!(2)).unwrap();
     txn.set(&as_key!(3), as_row!(3)).unwrap();
 
-    let iter = txn.scan_range(five_to_one.clone()).unwrap();
+    let iter = txn.range(five_to_one.clone()).unwrap();
     for (expected, v) in (1..=5).rev().zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
         assert_eq!(v.version(), 2);
     }
 
-    let iter = txn.scan_range_rev(five_to_one.clone()).unwrap();
+    let iter = txn.range_rev(five_to_one.clone()).unwrap();
     for (expected, v) in (1..=5).zip(iter) {
         assert_eq!(v.key(), &as_key!(expected));
         assert_eq!(v.row(), &as_row!(expected));
@@ -212,13 +212,13 @@ fn test_range_edge() {
     let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
 
     let mut txn = engine.begin_command().unwrap();
-    let itr = txn.scan_range(ten_to_one.clone()).unwrap();
+    let itr = txn.range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 13]);
-    let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
+    let itr = txn.range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[13, 32]);
 
     txn.as_of_version(6);
-    let itr = txn.scan_range(ten_to_one.clone()).unwrap();
+    let itr = txn.range(ten_to_one.clone()).unwrap();
     let mut count = 2;
     for v in itr {
         if *v.key() == as_key!(1) {
@@ -231,7 +231,7 @@ fn test_range_edge() {
     }
     assert_eq!(0, count);
 
-    let itr = txn.scan_range(ten_to_one.clone()).unwrap();
+    let itr = txn.range(ten_to_one.clone()).unwrap();
     let mut count = 2;
     for v in itr {
         if *v.key() == as_key!(1) {
@@ -245,22 +245,22 @@ fn test_range_edge() {
     assert_eq!(0, count);
 
     txn.as_of_version(4);
-    let itr = txn.scan_range(ten_to_one.clone()).unwrap();
+    let itr = txn.range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 23, 13]);
 
-    let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
+    let itr = txn.range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[13, 23, 32]);
 
     txn.as_of_version(3);
-    let itr = txn.scan_range(ten_to_one.clone()).unwrap();
+    let itr = txn.range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[32, 12]);
 
-    let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
+    let itr = txn.range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[12, 32]);
 
     txn.as_of_version(2);
-    let itr = txn.scan_range(ten_to_one.clone()).unwrap();
+    let itr = txn.range(ten_to_one.clone()).unwrap();
     check_iter(itr, &[31]);
-    let itr = txn.scan_range_rev(ten_to_one.clone()).unwrap();
+    let itr = txn.range_rev(ten_to_one.clone()).unwrap();
     check_rev_iter(itr, &[31]);
 }

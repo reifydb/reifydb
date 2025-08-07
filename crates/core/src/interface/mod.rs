@@ -4,6 +4,7 @@
 mod auth;
 mod catalog;
 mod engine;
+mod execute;
 mod key;
 mod params;
 mod span;
@@ -14,6 +15,7 @@ use crate::hook::Hooks;
 pub use auth::*;
 pub use catalog::*;
 pub use engine::*;
+pub use execute::*;
 pub use key::*;
 pub use params::*;
 pub use span::*;

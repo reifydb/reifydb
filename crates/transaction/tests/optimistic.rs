@@ -222,8 +222,8 @@
 //                 }
 //             }
 //
-//             // scan_range RANGE [reverse=BOOL]
-//             "scan_range" => {
+//             // range RANGE [reverse=BOOL]
+//             "range" => {
 //                 let t = self.get_transaction(&command.prefix)?;
 //
 //                 let mut args = command.consume_args();
@@ -236,23 +236,23 @@
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         if !reverse {
-//                             print_rx(&mut output, rx.scan_range(range).into_iter())
+//                             print_rx(&mut output, rx.range(range).into_iter())
 //                         } else {
-//                             print_rx(&mut output, rx.scan_range_rev(range).into_iter())
+//                             print_rx(&mut output, rx.range_rev(range).into_iter())
 //                         }
 //                     }
 //                     Transaction::Tx(tx) => {
 //                         if !reverse {
-//                             print_tx(&mut output, tx.scan_range(range).unwrap().into_iter())
+//                             print_tx(&mut output, tx.range(range).unwrap().into_iter())
 //                         } else {
-//                             print_tx(&mut output, tx.scan_range_rev(range).unwrap().into_iter())
+//                             print_tx(&mut output, tx.range_rev(range).unwrap().into_iter())
 //                         }
 //                     }
 //                 };
 //             }
 //
-//             // scan_prefix PREFIX [reverse=BOOL] [version=VERSION]
-//             "scan_prefix" => {
+//             // prefix PREFIX [reverse=BOOL] [version=VERSION]
+//             "prefix" => {
 //                 let t = self.get_transaction(&command.prefix)?;
 //
 //                 let mut args = command.consume_args();
@@ -264,16 +264,16 @@
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         if !reverse {
-//                             print_rx(&mut output, rx.scan_prefix(&prefix).into_iter())
+//                             print_rx(&mut output, rx.prefix(&prefix).into_iter())
 //                         } else {
-//                             print_rx(&mut output, rx.scan_prefix_rev(&prefix).into_iter())
+//                             print_rx(&mut output, rx.prefix_rev(&prefix).into_iter())
 //                         }
 //                     }
 //                     Transaction::Tx(tx) => {
 //                         if !reverse {
-//                             print_tx(&mut output, tx.scan_prefix(&prefix).unwrap().into_iter())
+//                             print_tx(&mut output, tx.prefix(&prefix).unwrap().into_iter())
 //                         } else {
-//                             print_tx(&mut output, tx.scan_prefix_rev(&prefix).unwrap().into_iter())
+//                             print_tx(&mut output, tx.prefix_rev(&prefix).unwrap().into_iter())
 //                         }
 //                     }
 //                 };

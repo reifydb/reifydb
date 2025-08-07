@@ -16,34 +16,34 @@ impl FilterOperator {
 }
 
 impl Operator for FilterOperator {
-    fn apply(&mut self, _ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
-        let mut output_changes = Vec::new();
+    fn apply(&self, _ctx: &OperatorContext, change: Change) -> crate::Result<Change> {
+        let mut output = Vec::new();
 
-        for change in diff.changes {
-            match change {
-                Change::Insert { columns } => {
+        for diff in change.diffs {
+            match diff {
+                Diff::Insert { columns } => {
                     let filtered_columns = self.filter(&columns)?;
                     if !filtered_columns.is_empty() {
-                        output_changes.push(Change::Insert { columns: filtered_columns });
+                        output.push(Diff::Insert { columns: filtered_columns });
                     }
                 }
-                Change::Update { old, new } => {
+                Diff::Update { old, new } => {
                     let filtered_new = self.filter(&new)?;
                     if !filtered_new.is_empty() {
-                        output_changes.push(Change::Update { old, new: filtered_new });
+                        output.push(Diff::Update { old, new: filtered_new });
                     } else {
                         // If new doesn't pass filter, emit remove of old
-                        output_changes.push(Change::Remove { columns: old });
+                        output.push(Diff::Remove { columns: old });
                     }
                 }
-                Change::Remove { columns } => {
+                Diff::Remove { columns } => {
                     // Always pass through removes
-                    output_changes.push(Change::Remove { columns });
+                    output.push(Diff::Remove { columns });
                 }
             }
         }
 
-        Ok(Diff::new(output_changes))
+        Ok(Change::new(output))
     }
 }
 
@@ -79,6 +79,8 @@ impl FilterOperator {
         }
 
         columns.filter(&bv)?;
+
+        dbg!(&columns);
 
         Ok(columns)
     }

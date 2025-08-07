@@ -19,7 +19,7 @@ pub enum TransactionKind {
 }
 
 /// TransactionManagerRx is a read-only transaction manager.
-pub struct TransactionManagerRx<C, L, P>
+pub struct TransactionManagerQuery<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -29,7 +29,7 @@ where
     transaction: TransactionKind,
 }
 
-impl<C, L, P> TransactionManagerRx<C, L, P>
+impl<C, L, P> TransactionManagerQuery<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<C, L, P> Drop for TransactionManagerRx<C, L, P>
+impl<C, L, P> Drop for TransactionManagerQuery<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -60,7 +60,7 @@ where
     fn drop(&mut self) {
         // time travel transaction have no effect on mvcc
         if let TransactionKind::Current(version) = self.transaction {
-            self.engine.inner.done_read(version);
+            self.engine.inner.done_query(version);
         }
     }
 }

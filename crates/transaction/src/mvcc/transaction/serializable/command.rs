@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
-use crate::mvcc::transaction::TransactionManagerTx;
+use crate::mvcc::transaction::TransactionManagerCommand;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
 use crate::mvcc::transaction::range::TransactionRange;
@@ -25,19 +25,19 @@ use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
 use std::collections::HashMap;
 use std::ops::RangeBounds;
 
-pub struct WriteTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
+pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
     engine: Serializable<VS, UT>,
-    tm: TransactionManagerTx<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
+    tm: TransactionManagerCommand<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
     pub fn new(engine: Serializable<VS, UT>) -> crate::Result<Self> {
         let tm = engine.tm.write()?;
         Ok(Self { engine, tm })
     }
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
     /// Commits the transaction, following these steps:
     ///
     /// 1. If there are no writes, return immediately.
@@ -49,27 +49,32 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> 
     /// 4. Batch up all writes, write them to database.
     ///
     pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
-        self.tm.commit(|pending| {
-            let mut grouped: HashMap<Version, CowVec<Delta>> = HashMap::new();
+        let mut grouped: HashMap<Version, CowVec<Delta>> = HashMap::new();
 
+        self.tm.commit(|pending| {
             for p in pending {
                 grouped.entry(p.version).or_default().push(p.delta);
             }
 
-            for (version, deltas) in grouped {
-                self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
-
-                self.engine.versioned.apply(deltas.clone(), version)?;
-
-                self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
+            for (version, deltas) in grouped.iter() {
+                self.engine
+                    .hooks
+                    .trigger(PreCommitHook { deltas: deltas.clone(), version: *version })?;
+                self.engine.versioned.apply(deltas.clone(), *version)?;
             }
 
             Ok(())
-        })
+        })?;
+
+        for (version, deltas) in grouped {
+            self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
+        }
+
+        Ok(())
     }
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }
@@ -140,7 +145,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> 
         Ok(TransactionIterRev::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_range(
+    pub fn range(
         &mut self,
         range: EncodedKeyRange,
     ) -> Result<TransactionRange<'_, VS, BTreeConflict>, reifydb_core::Error> {
@@ -151,12 +156,12 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> 
 
         marker.mark_range(range.clone());
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.versioned.scan_range(range, version)?;
+        let commited = self.engine.versioned.range(range, version)?;
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_range_rev(
+    pub fn range_rev(
         &mut self,
         range: EncodedKeyRange,
     ) -> Result<TransactionRangeRev<'_, VS, BTreeConflict>, reifydb_core::Error> {
@@ -167,22 +172,22 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> WriteTransaction<VS, UT> 
 
         marker.mark_range(range.clone());
         let pending = pw.range_comparable((start, end));
-        let commited = self.engine.versioned.scan_range_rev(range, version)?;
+        let commited = self.engine.versioned.range_rev(range, version)?;
 
         Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
     }
 
-    pub fn scan_prefix<'a>(
+    pub fn prefix<'a>(
         &'a mut self,
         prefix: &EncodedKey,
     ) -> Result<TransactionRange<'a, VS, BTreeConflict>, reifydb_core::Error> {
-        self.scan_range(EncodedKeyRange::prefix(prefix))
+        self.range(EncodedKeyRange::prefix(prefix))
     }
 
-    pub fn scan_prefix_rev<'a>(
+    pub fn prefix_rev<'a>(
         &'a mut self,
         prefix: &EncodedKey,
     ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, reifydb_core::Error> {
-        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
+        self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

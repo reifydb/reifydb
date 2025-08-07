@@ -27,31 +27,31 @@ ok
 
 # Various bounded scans around ba-bc at version 2.
 t3: begin readonly version=2
-t3: scan_range "ba..bc"
+t3: range "ba..bc"
 ---
 t3: "ba" => "ba2"
 t3: "bb" => "bb2"
 
-t3: scan_range "ba..=bc"
+t3: range "ba..=bc"
 ---
 t3: "ba" => "ba2"
 t3: "bb" => "bb2"
 t3: "bc" => "bc2"
 
-t3: scan_range ba..
+t3: range ba..
 ---
 t3: "ba" => "ba2"
 t3: "bb" => "bb2"
 t3: "bc" => "bc2"
 t3: "c" => "c1"
 
-t3: scan_range "..bc"
+t3: range "..bc"
 ---
 t3: "B" => "B1"
 t3: "ba" => "ba2"
 t3: "bb" => "bb2"
 
-t3: scan_range "..=bc"
+t3: range "..=bc"
 ---
 t3: "B" => "B1"
 t3: "ba" => "ba2"

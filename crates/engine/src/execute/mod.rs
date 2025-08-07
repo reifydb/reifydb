@@ -6,11 +6,15 @@ use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
+use reifydb_core::Frame;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, Params, Table, UnversionedTransaction, VersionedQueryTransaction,
+    ActiveCommandTransaction, ActiveQueryTransaction, Command, Execute, ExecuteCommand,
+    ExecuteQuery, Params, Query, Table, UnversionedTransaction, VersionedQueryTransaction,
     VersionedTransaction,
 };
+use reifydb_rql::ast;
 use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_rql::plan::plan;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -41,55 +45,75 @@ pub(crate) trait ExecutionPlan {
 }
 
 pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction> {
-    functions: Functions,
-    _phantom: PhantomData<(VT, UT)>,
-}
-
-pub fn execute_query<VT: VersionedTransaction, UT: UnversionedTransaction>(
-    rx: &mut impl VersionedQueryTransaction,
-    plan: PhysicalPlan,
-    params: Params,
-) -> crate::Result<Columns> {
-    let executor: Executor<VT, UT> = Executor {
-        // FIXME receive functions from RX
-        functions: Functions::builder()
-            .register_aggregate("sum", math::aggregate::Sum::new)
-            .register_aggregate("min", math::aggregate::Min::new)
-            .register_aggregate("max", math::aggregate::Max::new)
-            .register_aggregate("avg", math::aggregate::Avg::new)
-            .register_scalar("abs", math::scalar::Abs::new)
-            .register_scalar("avg", math::scalar::Avg::new)
-            .build(),
-        _phantom: PhantomData,
-    };
-
-    executor.execute_query(rx, plan, params)
-}
-
-pub fn execute_command<VT: VersionedTransaction, UT: UnversionedTransaction>(
-    atx: &mut ActiveCommandTransaction<VT, UT>,
-    plan: PhysicalPlan,
-    params: Params,
-) -> crate::Result<Columns> {
-    // FIXME receive functions from atx
-    let executor: Executor<VT, UT> = Executor {
-        functions: Functions::builder()
-            .register_aggregate("sum", math::aggregate::Sum::new)
-            .register_aggregate("min", math::aggregate::Min::new)
-            .register_aggregate("max", math::aggregate::Max::new)
-            .register_aggregate("avg", math::aggregate::Avg::new)
-            .register_scalar("abs", math::scalar::Abs::new)
-            .register_scalar("avg", math::scalar::Avg::new)
-            .build(),
-        _phantom: PhantomData,
-    };
-
-    executor.execute_command(atx, plan, params)
+    pub functions: Functions,
+    pub _phantom: PhantomData<(VT, UT)>,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
-    pub(crate) fn execute_query(
-        self,
+    pub(crate) fn testing() -> Self {
+        Self {
+            functions: Functions::builder()
+                .register_aggregate("sum", math::aggregate::Sum::new)
+                .register_aggregate("min", math::aggregate::Min::new)
+                .register_aggregate("max", math::aggregate::Max::new)
+                .register_aggregate("avg", math::aggregate::Avg::new)
+                .register_scalar("abs", math::scalar::Abs::new)
+                .register_scalar("avg", math::scalar::Avg::new)
+                .build(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT>
+    for Executor<VT, UT>
+{
+    fn execute_command<'a>(
+        &'a self,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
+        cmd: Command<'a>,
+    ) -> reifydb_core::Result<Vec<Frame>> {
+        let mut result = vec![];
+        let statements = ast::parse(cmd.rql)?;
+
+        for statement in statements {
+            if let Some(plan) = plan(txn, statement)? {
+                let er = self.execute_command_plan(txn, plan, cmd.params.clone())?;
+                result.push(er);
+            }
+        }
+
+        Ok(result.into_iter().map(Frame::from).collect())
+    }
+}
+
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteQuery<VT, UT>
+    for Executor<VT, UT>
+{
+    fn execute_query<'a>(
+        &'a self,
+        txn: &mut ActiveQueryTransaction<VT, UT>,
+        qry: Query<'a>,
+    ) -> reifydb_core::Result<Vec<Frame>> {
+        let mut result = vec![];
+        let statements = ast::parse(qry.rql)?;
+
+        for statement in statements {
+            if let Some(plan) = plan(txn, statement)? {
+                let er = self.execute_query_plan(txn, plan, qry.params.clone())?;
+                result.push(er);
+            }
+        }
+
+        Ok(result.into_iter().map(Frame::from).collect())
+    }
+}
+
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Execute<VT, UT> for Executor<VT, UT> {}
+
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+    pub(crate) fn execute_query_plan(
+        &self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
         params: Params,
@@ -108,7 +132,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Delete(_)
             | PhysicalPlan::Insert(_)
             | PhysicalPlan::Update(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan, params),
+            | PhysicalPlan::TableScan(_) => self.query(rx, plan, params),
 
             PhysicalPlan::AlterSequence(_)
             | PhysicalPlan::CreateComputedView(_)
@@ -117,20 +141,20 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         }
     }
 
-    pub(crate) fn execute_command(
-        mut self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+    pub(crate) fn execute_command_plan(
+        &self,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: PhysicalPlan,
         params: Params,
     ) -> crate::Result<Columns> {
         match plan {
-            PhysicalPlan::AlterSequence(plan) => self.alter_sequence(atx, plan),
-            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(atx, plan),
-            PhysicalPlan::CreateSchema(plan) => self.create_schema(atx, plan),
-            PhysicalPlan::CreateTable(plan) => self.create_table(atx, plan),
-            PhysicalPlan::Delete(plan) => self.delete(atx, plan, params),
-            PhysicalPlan::Insert(plan) => self.insert(atx, plan, params),
-            PhysicalPlan::Update(plan) => self.update(atx, plan, params),
+            PhysicalPlan::AlterSequence(plan) => self.alter_sequence(txn, plan),
+            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(txn, plan),
+            PhysicalPlan::CreateSchema(plan) => self.create_schema(txn, plan),
+            PhysicalPlan::CreateTable(plan) => self.create_table(txn, plan),
+            PhysicalPlan::Delete(plan) => self.delete(txn, plan, params),
+            PhysicalPlan::Insert(plan) => self.insert(txn, plan, params),
+            PhysicalPlan::Update(plan) => self.update(txn, plan, params),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
@@ -141,12 +165,12 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(atx, plan, params),
+            | PhysicalPlan::TableScan(_) => self.query(txn, plan, params),
         }
     }
 
-    fn execute_query_plan(
-        self,
+    fn query(
+        &self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
         params: Params,
@@ -160,7 +184,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             // }
             _ => {
                 let context = Arc::new(ExecutionContext {
-                    functions: self.functions,
+                    functions: self.functions.clone(),
                     table: None,
                     batch_size: 1024,
                     preserve_row_ids: false,

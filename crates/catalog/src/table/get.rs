@@ -54,22 +54,22 @@ mod tests {
         use crate::Catalog;
         use crate::schema::SchemaId;
         use crate::test_utils::{create_schema, create_table, ensure_test_schema};
-        use reifydb_transaction::test_utils::create_test_write_transaction;
+        use reifydb_transaction::test_utils::create_test_command_transaction;
 
         #[test]
         fn test_ok() {
-            let mut atx = create_test_write_transaction();
-            ensure_test_schema(&mut atx);
-            create_schema(&mut atx, "schema_one");
-            create_schema(&mut atx, "schema_two");
-            create_schema(&mut atx, "schema_three");
+            let mut txn = create_test_command_transaction();
+            ensure_test_schema(&mut txn);
+            create_schema(&mut txn, "schema_one");
+            create_schema(&mut txn, "schema_two");
+            create_schema(&mut txn, "schema_three");
 
-            create_table(&mut atx, "schema_one", "table_one", &[]);
-            create_table(&mut atx, "schema_two", "table_two", &[]);
-            create_table(&mut atx, "schema_three", "table_three", &[]);
+            create_table(&mut txn, "schema_one", "table_one", &[]);
+            create_table(&mut txn, "schema_two", "table_two", &[]);
+            create_table(&mut txn, "schema_three", "table_three", &[]);
 
             let result =
-                Catalog::get_table_by_name(&mut atx, SchemaId(3), "table_two").unwrap().unwrap();
+                Catalog::get_table_by_name(&mut txn, SchemaId(3), "table_two").unwrap().unwrap();
             assert_eq!(result.id, 2);
             assert_eq!(result.schema, 3);
             assert_eq!(result.name, "table_two");
@@ -77,41 +77,41 @@ mod tests {
 
         #[test]
         fn test_empty() {
-            let mut atx = create_test_write_transaction();
-            let result = Catalog::get_table_by_name(&mut atx, SchemaId(1), "some_table").unwrap();
+            let mut txn = create_test_command_transaction();
+            let result = Catalog::get_table_by_name(&mut txn, SchemaId(1), "some_table").unwrap();
             assert!(result.is_none());
         }
 
         #[test]
         fn test_not_found_different_table() {
-            let mut atx = create_test_write_transaction();
-            ensure_test_schema(&mut atx);
-            create_schema(&mut atx, "schema_one");
-            create_schema(&mut atx, "schema_two");
-            create_schema(&mut atx, "schema_three");
+            let mut txn = create_test_command_transaction();
+            ensure_test_schema(&mut txn);
+            create_schema(&mut txn, "schema_one");
+            create_schema(&mut txn, "schema_two");
+            create_schema(&mut txn, "schema_three");
 
-            create_table(&mut atx, "schema_one", "table_one", &[]);
-            create_table(&mut atx, "schema_two", "table_two", &[]);
-            create_table(&mut atx, "schema_three", "table_three", &[]);
+            create_table(&mut txn, "schema_one", "table_one", &[]);
+            create_table(&mut txn, "schema_two", "table_two", &[]);
+            create_table(&mut txn, "schema_three", "table_three", &[]);
 
             let result =
-                Catalog::get_table_by_name(&mut atx, SchemaId(1), "table_four_two").unwrap();
+                Catalog::get_table_by_name(&mut txn, SchemaId(1), "table_four_two").unwrap();
             assert!(result.is_none());
         }
 
         #[test]
         fn test_not_found_different_schema() {
-            let mut atx = create_test_write_transaction();
-            ensure_test_schema(&mut atx);
-            create_schema(&mut atx, "schema_one");
-            create_schema(&mut atx, "schema_two");
-            create_schema(&mut atx, "schema_three");
+            let mut txn = create_test_command_transaction();
+            ensure_test_schema(&mut txn);
+            create_schema(&mut txn, "schema_one");
+            create_schema(&mut txn, "schema_two");
+            create_schema(&mut txn, "schema_three");
 
-            create_table(&mut atx, "schema_one", "table_one", &[]);
-            create_table(&mut atx, "schema_two", "table_two", &[]);
-            create_table(&mut atx, "schema_three", "table_three", &[]);
+            create_table(&mut txn, "schema_one", "table_one", &[]);
+            create_table(&mut txn, "schema_two", "table_two", &[]);
+            create_table(&mut txn, "schema_three", "table_three", &[]);
 
-            let result = Catalog::get_table_by_name(&mut atx, SchemaId(2), "table_two").unwrap();
+            let result = Catalog::get_table_by_name(&mut txn, SchemaId(2), "table_two").unwrap();
             assert!(result.is_none());
         }
     }
@@ -120,21 +120,21 @@ mod tests {
         use crate::Catalog;
         use crate::test_utils::{create_schema, create_table, ensure_test_schema};
         use reifydb_core::interface::TableId;
-        use reifydb_transaction::test_utils::create_test_write_transaction;
+        use reifydb_transaction::test_utils::create_test_command_transaction;
 
         #[test]
         fn test_ok() {
-            let mut atx = create_test_write_transaction();
-            ensure_test_schema(&mut atx);
-            create_schema(&mut atx, "schema_one");
-            create_schema(&mut atx, "schema_two");
-            create_schema(&mut atx, "schema_three");
+            let mut txn = create_test_command_transaction();
+            ensure_test_schema(&mut txn);
+            create_schema(&mut txn, "schema_one");
+            create_schema(&mut txn, "schema_two");
+            create_schema(&mut txn, "schema_three");
 
-            create_table(&mut atx, "schema_one", "table_one", &[]);
-            create_table(&mut atx, "schema_two", "table_two", &[]);
-            create_table(&mut atx, "schema_three", "table_three", &[]);
+            create_table(&mut txn, "schema_one", "table_one", &[]);
+            create_table(&mut txn, "schema_two", "table_two", &[]);
+            create_table(&mut txn, "schema_three", "table_three", &[]);
 
-            let result = Catalog::get_table(&mut atx, TableId(2)).unwrap().unwrap();
+            let result = Catalog::get_table(&mut txn, TableId(2)).unwrap().unwrap();
             assert_eq!(result.id, 2);
             assert_eq!(result.schema, 3);
             assert_eq!(result.name, "table_two");
@@ -142,17 +142,17 @@ mod tests {
 
         #[test]
         fn test_not_found() {
-            let mut atx = create_test_write_transaction();
-            ensure_test_schema(&mut atx);
-            create_schema(&mut atx, "schema_one");
-            create_schema(&mut atx, "schema_two");
-            create_schema(&mut atx, "schema_three");
+            let mut txn = create_test_command_transaction();
+            ensure_test_schema(&mut txn);
+            create_schema(&mut txn, "schema_one");
+            create_schema(&mut txn, "schema_two");
+            create_schema(&mut txn, "schema_three");
 
-            create_table(&mut atx, "schema_one", "table_one", &[]);
-            create_table(&mut atx, "schema_two", "table_two", &[]);
-            create_table(&mut atx, "schema_three", "table_three", &[]);
+            create_table(&mut txn, "schema_one", "table_one", &[]);
+            create_table(&mut txn, "schema_two", "table_two", &[]);
+            create_table(&mut txn, "schema_three", "table_three", &[]);
 
-            let result = Catalog::get_table(&mut atx, TableId(42)).unwrap();
+            let result = Catalog::get_table(&mut txn, TableId(42)).unwrap();
             assert!(result.is_none());
         }
     }

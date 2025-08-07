@@ -24,7 +24,7 @@ pub struct TransactionRangeRev<'a, VS, C>
 where
     VS: VersionedStorage + 'a,
 {
-    pub(crate) committed: VS::ScanRangeIterRev<'a>,
+    pub(crate) committed: VS::RangeIterRev<'a>,
     pub(crate) pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
     next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
@@ -50,7 +50,7 @@ where
 
     pub fn new(
         pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
-        committed: VS::ScanRangeIterRev<'a>,
+        committed: VS::RangeIterRev<'a>,
         marker: Option<Marker<'a, C>>,
     ) -> Self {
         let mut iterator = Self {

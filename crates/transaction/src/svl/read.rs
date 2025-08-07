@@ -33,22 +33,22 @@ where
     }
 
     fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
-        let iter = self.storage.scan_range(range)?;
+        let iter = self.storage.range(range)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
-        let iter = self.storage.scan_range_rev(range)?;
+        let iter = self.storage.range_rev(range)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
-        let iter = self.storage.scan_prefix(prefix)?;
+        let iter = self.storage.prefix(prefix)?;
         Ok(Box::new(iter.into_iter()))
     }
 
     fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
-        let iter = self.storage.scan_prefix_rev(prefix)?;
+        let iter = self.storage.prefix_rev(prefix)?;
         Ok(Box::new(iter.into_iter()))
     }
 }

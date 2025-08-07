@@ -4,12 +4,11 @@ pub mod map;
 pub use filter::FilterOperator;
 pub use map::MapOperator;
 
-use crate::flow::change::Diff;
+use crate::flow::change::Change;
 use crate::flow::state::StateStore;
 
 pub trait Operator {
-    /// Apply the operator to a change and return the resulting change
-    fn apply(&mut self, ctx: &mut OperatorContext, change: Diff) -> crate::Result<Diff>;
+    fn apply(&self, ctx: &OperatorContext, change: Change) -> crate::Result<Change>;
 }
 
 pub struct OperatorContext {

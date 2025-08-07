@@ -1,0 +1,53 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use crate::Frame;
+use crate::interface::{
+    ActiveCommandTransaction, ActiveQueryTransaction, Params, Principal, UnversionedTransaction,
+    VersionedTransaction,
+};
+
+#[derive(Debug)]
+pub struct Command<'a> {
+    pub rql: &'a str,
+    pub params: Params,
+    pub principal: &'a Principal,
+}
+
+#[derive(Debug)]
+pub struct Query<'a> {
+    pub rql: &'a str,
+    pub params: Params,
+    pub principal: &'a Principal,
+}
+
+pub trait Execute<VT, UT>: ExecuteCommand<VT, UT> + ExecuteQuery<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+}
+
+pub trait ExecuteCommand<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    fn execute_command<'a>(
+        &'a self,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
+        cmd: Command<'a>,
+    ) -> crate::Result<Vec<Frame>>;
+}
+
+pub trait ExecuteQuery<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    fn execute_query<'a>(
+        &'a self,
+        txn: &mut ActiveQueryTransaction<VT, UT>,
+        qry: Query<'a>,
+    ) -> crate::Result<Vec<Frame>>;
+}

@@ -19,15 +19,15 @@ use crate::mvcc::transaction::TransactionManager;
 use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::types::Committed;
 use crate::svl::SingleVersionLock;
-pub use read::ReadTransaction;
+pub use query::QueryTransaction;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 use reifydb_storage::memory::Memory;
-pub use write::WriteTransaction;
+pub use command::CommandTransaction;
 
-mod read;
-mod write;
+mod query;
+mod command;
 
 pub struct Optimistic<VS: VersionedStorage, UT: UnversionedTransaction>(Arc<Inner<VS, UT>>);
 
@@ -81,20 +81,20 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
     pub fn version(&self) -> crate::Result<Version> {
         self.0.version()
     }
-    pub fn begin_query(&self) -> crate::Result<ReadTransaction<VS, UT>> {
-        ReadTransaction::new(self.clone(), None)
+    pub fn begin_query(&self) -> crate::Result<QueryTransaction<VS, UT>> {
+        QueryTransaction::new(self.clone(), None)
     }
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
-    pub fn begin_command(&self) -> crate::Result<WriteTransaction<VS, UT>> {
-        WriteTransaction::new(self.clone())
+    pub fn begin_command(&self) -> crate::Result<CommandTransaction<VS, UT>> {
+        CommandTransaction::new(self.clone())
     }
 }
 
 pub enum Transaction<VS: VersionedStorage, UT: UnversionedTransaction> {
-    Rx(ReadTransaction<VS, UT>),
-    Tx(WriteTransaction<VS, UT>),
+    Rx(QueryTransaction<VS, UT>),
+    Tx(CommandTransaction<VS, UT>),
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
@@ -122,19 +122,19 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
         self.versioned.scan_rev(version)
     }
 
-    pub fn scan_range(
+    pub fn range(
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<VS::ScanRangeIter<'_>, reifydb_core::Error> {
-        self.versioned.scan_range(range, version)
+    ) -> Result<VS::RangeIter<'_>, reifydb_core::Error> {
+        self.versioned.range(range, version)
     }
 
-    pub fn scan_range_rev(
+    pub fn range_rev(
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<VS::ScanRangeIterRev<'_>, reifydb_core::Error> {
-        self.versioned.scan_range_rev(range, version)
+    ) -> Result<VS::RangeIterRev<'_>, reifydb_core::Error> {
+        self.versioned.range_rev(range, version)
     }
 }

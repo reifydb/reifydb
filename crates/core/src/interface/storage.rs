@@ -27,8 +27,8 @@ pub trait VersionedStorage:
     + VersionedContains
     + VersionedScan
     + VersionedScanRev
-    + VersionedScanRange
-    + VersionedScanRangeRev
+    + VersionedRange
+    + VersionedRangeRev
     + 'static
 {
 }
@@ -64,43 +64,43 @@ pub trait VersionedScanRev {
     fn scan_rev(&self, version: Version) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
-pub trait VersionedScanRange {
-    type ScanRangeIter<'a>: VersionedIter
+pub trait VersionedRange {
+    type RangeIter<'a>: VersionedIter
     where
         Self: 'a;
 
-    fn scan_range(
+    fn range(
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> crate::Result<Self::ScanRangeIter<'_>>;
+    ) -> crate::Result<Self::RangeIter<'_>>;
 
-    fn scan_prefix(
+    fn prefix(
         &self,
         prefix: &EncodedKey,
         version: Version,
-    ) -> crate::Result<Self::ScanRangeIter<'_>> {
-        self.scan_range(EncodedKeyRange::prefix(prefix), version)
+    ) -> crate::Result<Self::RangeIter<'_>> {
+        self.range(EncodedKeyRange::prefix(prefix), version)
     }
 }
 
-pub trait VersionedScanRangeRev {
-    type ScanRangeIterRev<'a>: VersionedIter
+pub trait VersionedRangeRev {
+    type RangeIterRev<'a>: VersionedIter
     where
         Self: 'a;
 
-    fn scan_range_rev(
+    fn range_rev(
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> crate::Result<Self::ScanRangeIterRev<'_>>;
+    ) -> crate::Result<Self::RangeIterRev<'_>>;
 
-    fn scan_prefix_rev(
+    fn prefix_rev(
         &self,
         prefix: &EncodedKey,
         version: Version,
-    ) -> crate::Result<Self::ScanRangeIterRev<'_>> {
-        self.scan_range_rev(EncodedKeyRange::prefix(prefix), version)
+    ) -> crate::Result<Self::RangeIterRev<'_>> {
+        self.range_rev(EncodedKeyRange::prefix(prefix), version)
     }
 }
 
@@ -115,8 +115,8 @@ pub trait UnversionedStorage:
     + UnversionedRemove
     + UnversionedScan
     + UnversionedScanRev
-    + UnversionedScanRange
-    + UnversionedScanRangeRev
+    + UnversionedRange
+    + UnversionedRangeRev
     + 'static
 {
 }
@@ -164,26 +164,26 @@ pub trait UnversionedScanRev {
     fn scan_rev(&self) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
-pub trait UnversionedScanRange {
-    type ScanRange<'a>: UnversionedIter
+pub trait UnversionedRange {
+    type Range<'a>: UnversionedIter
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRange<'_>>;
+    fn range(&self, range: EncodedKeyRange) -> crate::Result<Self::Range<'_>>;
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRange<'_>> {
-        self.scan_range(EncodedKeyRange::prefix(prefix))
+    fn prefix(&self, prefix: &EncodedKey) -> crate::Result<Self::Range<'_>> {
+        self.range(EncodedKeyRange::prefix(prefix))
     }
 }
 
-pub trait UnversionedScanRangeRev {
-    type ScanRangeRev<'a>: UnversionedIter
+pub trait UnversionedRangeRev {
+    type RangeRev<'a>: UnversionedIter
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRangeRev<'_>>;
+    fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::RangeRev<'_>>;
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRangeRev<'_>> {
-        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
+    fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::RangeRev<'_>> {
+        self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }
