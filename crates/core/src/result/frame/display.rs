@@ -517,6 +517,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_float8() {
         let frame =
             Frame::new(vec![float8_column_with_bitvec("float8", [3.14, 6.28], [true, false])]);

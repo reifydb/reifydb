@@ -206,6 +206,7 @@ impl<const N: usize> IntoValue for &[u8; N] {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use crate::{Blob, CowVec};
     use crate::value::{IntoValue, OrderedF32, OrderedF64, Value};

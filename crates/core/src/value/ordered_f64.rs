@@ -127,6 +127,7 @@ impl TryFrom<f64> for OrderedF64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
 

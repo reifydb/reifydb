@@ -88,6 +88,7 @@ impl EncodedRowLayout {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use crate::row::EncodedRowLayout;
     use crate::value::{Uuid4, Uuid7};

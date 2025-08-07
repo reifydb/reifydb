@@ -50,6 +50,7 @@ pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction>
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+    #[allow(dead_code)]
     pub(crate) fn testing() -> Self {
         Self {
             functions: Functions::builder()

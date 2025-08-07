@@ -14,7 +14,7 @@ pub use parse::{parse_uuid4, parse_uuid7};
 
 /// A UUID version 4 (random) wrapper type
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid4(pub(crate) StdUuid);
 
 impl Uuid4 {
@@ -38,13 +38,6 @@ impl Deref for Uuid4 {
     }
 }
 
-impl PartialEq for Uuid4 {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
-impl Eq for Uuid4 {}
 
 impl PartialOrd for Uuid4 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -79,7 +72,7 @@ impl Display for Uuid4 {
 
 /// A UUID version 7 (timestamp-based) wrapper type
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid7(pub(crate) StdUuid);
 
 impl Default for Uuid7 {
@@ -103,13 +96,6 @@ impl Deref for Uuid7 {
     }
 }
 
-impl PartialEq for Uuid7 {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
-
-impl Eq for Uuid7 {}
 
 impl PartialOrd for Uuid7 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -143,6 +129,7 @@ impl Display for Uuid7 {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
 

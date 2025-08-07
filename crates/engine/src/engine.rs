@@ -136,7 +136,7 @@ where
     hooks: Hooks,
     executor: Executor<VT, UT>,
 
-    processor: FlowProcessor<VT, UT>, // FIXME remove me
+    _processor: FlowProcessor<VT, UT>, // FIXME remove me
 }
 
 impl<VT, UT> Engine<VT, UT>
@@ -160,7 +160,7 @@ where
                     .build(),
                 _phantom: PhantomData,
             },
-            processor: FlowProcessor::new(Flow::default(), versioned, unversioned),
+            _processor: FlowProcessor::new(Flow::default(), versioned, unversioned),
         }));
 
         result.setup_hooks()?;
@@ -176,6 +176,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 struct FlowPostCommit<VT, UT>
 where
     VT: VersionedTransaction,
@@ -251,7 +252,7 @@ where
                         .expect("Should have a source node");
 
                     self.engine
-                        .processor
+                        ._processor
                         .hack(
                             &flow,
                             &mut txn,

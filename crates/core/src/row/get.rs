@@ -214,6 +214,7 @@ impl EncodedRowLayout {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use crate::Type;
     use crate::row::EncodedRowLayout;

@@ -16,7 +16,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_computed_view(
         &self,
         txn: &mut ActiveCommandTransaction<VT, UT>,
-        plan: CreateComputedViewPlan,
+        _plan: CreateComputedViewPlan,
     ) -> crate::Result<Columns> {
         let rql = r#"
     create computed view test.adults { name: utf8, age: int1 }  with {
