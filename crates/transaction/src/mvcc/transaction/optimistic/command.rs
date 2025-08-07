@@ -60,6 +60,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
                 self.engine
                     .hooks
                     .trigger(PreCommitHook { deltas: deltas.clone(), version: *version })?;
+            }
+
+            for (version, deltas) in grouped.iter() {
+                // FIXME insertion into storage layer must be transactional as well
                 self.engine.versioned.apply(deltas.clone(), *version)?;
             }
 
