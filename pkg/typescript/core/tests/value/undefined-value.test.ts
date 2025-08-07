@@ -7,6 +7,7 @@
 import {describe, expect, it} from 'vitest';
 import {Bool} from '../../src/value/bool';
 import {Utf8} from '../../src/value/utf8';
+import {RowId} from '../../src/value/rowid';
 import {Int1} from '../../src/value/int1';
 import {Int2} from '../../src/value/int2';
 import {Int4} from '../../src/value/int4';
@@ -32,6 +33,11 @@ describe('UNDEFINED_VALUE parsing', () => {
     it('should parse UNDEFINED_VALUE as undefined for Utf8', () => {
         const utf8 = Utf8.parse(undefinedString);
         expect(utf8.value).toBeUndefined();
+    });
+
+    it('should parse UNDEFINED_VALUE as undefined for RowId', () => {
+        const rowId = RowId.parse(undefinedString);
+        expect(rowId.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Float4', () => {
