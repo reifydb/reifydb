@@ -1,7 +1,7 @@
-name: Client Typescript
+name: Typescript
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 env:
   NODE_VERSION: '18'
   PNPM_VERSION: '8'
-  CLIENT_DIR: 'pkg/client/typescript'
+  PKG_DIR: 'pkg/typescript'
 
 jobs:
   lint-and-typecheck:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.CLIENT_DIR }}
+        working-directory: ${{ env.PKG_DIR }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.CLIENT_DIR }}
+        working-directory: ${{ env.PKG_DIR }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,7 +109,7 @@ jobs:
         if: always()
         with:
           files: |
-            ${{ env.CLIENT_DIR }}/**/test-results/**/*.xml
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
           check_name: "Unit Test Results"
           comment_title: "Unit Test Results"
           fail_on: "test failures"
@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.CLIENT_DIR }}
+        working-directory: ${{ env.PKG_DIR }}
     services:
       reifydb-test:
         image: reifydb/testcontainer
@@ -186,7 +186,7 @@ jobs:
         if: always()  #
         with:
           files: |
-            ${{ env.CLIENT_DIR }}/**/test-results/**/*.xml
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
           check_name: "Integration Test Results"
           comment_title: "Integration Test Results"
           fail_on: "test failures"
