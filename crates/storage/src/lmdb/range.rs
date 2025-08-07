@@ -4,21 +4,21 @@
 use crate::lmdb::Lmdb;
 use heed::types::Bytes;
 use heed::{Database, Env};
-use reifydb_core::interface::{Unversioned, UnversionedScanRange, Versioned, VersionedScanRange};
+use reifydb_core::interface::{Unversioned, UnversionedRange as RangeInterface, Versioned, VersionedRange};
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Result, Version};
 use std::collections::{Bound, VecDeque};
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
-impl VersionedScanRange for Lmdb {
-    type ScanRangeIter<'a> = Range;
+impl VersionedRange for Lmdb {
+    type RangeIter<'a> = Range;
 
     fn range(
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<Self::ScanRangeIter<'_>> {
+    ) -> Result<Self::RangeIter<'_>> {
         Ok(Range::new(self.env.clone(), self.db, version, range, 100))
     }
 }
@@ -115,13 +115,13 @@ impl Iterator for Range {
     }
 }
 
-impl UnversionedScanRange for Lmdb {
-    type ScanRange<'a>
+impl RangeInterface for Lmdb {
+    type Range<'a>
         = UnversionedRange
     where
         Self: 'a;
 
-    fn range(&self, _range: EncodedKeyRange) -> Result<Self::ScanRange<'_>> {
+    fn range(&self, _range: EncodedKeyRange) -> Result<Self::Range<'_>> {
         todo!()
     }
 }

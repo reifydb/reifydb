@@ -55,7 +55,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> 
         Ok(self.engine.scan_rev(version)?)
     }
 
-    pub fn range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>> {
+    pub fn range(&self, range: EncodedKeyRange) -> crate::Result<VS::RangeIter<'_>> {
         let version = self.tm.version();
         Ok(self.engine.range(range, version)?)
     }
@@ -63,16 +63,16 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> 
     pub fn range_rev(
         &self,
         range: EncodedKeyRange,
-    ) -> crate::Result<VS::ScanRangeIterRev<'_>> {
+    ) -> crate::Result<VS::RangeIterRev<'_>> {
         let version = self.tm.version();
         Ok(self.engine.range_rev(range, version)?)
     }
 
-    pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>> {
+    pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::RangeIter<'_>> {
         self.range(EncodedKeyRange::prefix(prefix))
     }
 
-    pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>> {
+    pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::RangeIterRev<'_>> {
         self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

@@ -5,19 +5,19 @@ use super::{build_range_query, execute_batched_range_query, table_name_for_range
 use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::interface::{Versioned, VersionedScanRangeRev};
+use reifydb_core::interface::{Versioned, VersionedRangeRev};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::collections::VecDeque;
 use std::ops::Bound;
 
-impl VersionedScanRangeRev for Sqlite {
-    type ScanRangeIterRev<'a> = RangeRev;
+impl VersionedRangeRev for Sqlite {
+    type RangeIterRev<'a> = RangeRev;
 
     fn range_rev(
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<Self::ScanRangeIterRev<'_>> {
+    ) -> Result<Self::RangeIterRev<'_>> {
         Ok(RangeRev::new(self.get_conn(), range, version, 1024))
     }
 }

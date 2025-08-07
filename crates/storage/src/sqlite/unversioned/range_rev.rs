@@ -5,18 +5,18 @@ use super::{build_unversioned_query, execute_range_query};
 use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::interface::{Unversioned, UnversionedScanRangeRev};
+use reifydb_core::interface::{Unversioned, UnversionedRangeRev};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Result};
 use std::collections::VecDeque;
 use std::ops::Bound;
 
-impl UnversionedScanRangeRev for Sqlite {
-    type ScanRangeRev<'a>
+impl UnversionedRangeRev for Sqlite {
+    type RangeRev<'a>
         = RangeRev
     where
         Self: 'a;
 
-    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
+    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
         Ok(RangeRev::new(self.get_conn(), range, 1024))
     }
 }

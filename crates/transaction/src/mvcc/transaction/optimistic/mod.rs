@@ -126,7 +126,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<VS::ScanRangeIter<'_>, reifydb_core::Error> {
+    ) -> Result<VS::RangeIter<'_>, reifydb_core::Error> {
         self.versioned.range(range, version)
     }
 
@@ -134,7 +134,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<VS::ScanRangeIterRev<'_>, reifydb_core::Error> {
+    ) -> Result<VS::RangeIterRev<'_>, reifydb_core::Error> {
         self.versioned.range_rev(range, version)
     }
 }

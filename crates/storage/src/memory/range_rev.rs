@@ -15,14 +15,14 @@ use crossbeam_skiplist::map::Range as MapRange;
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use reifydb_core::interface::{
-    Unversioned, UnversionedScanRangeRev, Versioned, VersionedScanRangeRev,
+    Unversioned, UnversionedRangeRev as RangeRevInterface, Versioned, VersionedRangeRev,
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::ops::Bound;
 
-impl VersionedScanRangeRev for Memory {
-    type ScanRangeIterRev<'a>
+impl VersionedRangeRev for Memory {
+    type RangeIterRev<'a>
         = RangeRev<'a>
     where
         Self: 'a;
@@ -31,7 +31,7 @@ impl VersionedScanRangeRev for Memory {
         &self,
         range: EncodedKeyRange,
         version: Version,
-    ) -> Result<Self::ScanRangeIterRev<'_>> {
+    ) -> Result<Self::RangeIterRev<'_>> {
         Ok(RangeRev { range: self.versioned.range(range).rev(), version })
     }
 }
@@ -62,13 +62,13 @@ impl Iterator for RangeRev<'_> {
     }
 }
 
-impl UnversionedScanRangeRev for Memory {
-    type ScanRangeRev<'a>
+impl RangeRevInterface for Memory {
+    type RangeRev<'a>
         = UnversionedRangeRev<'a>
     where
         Self: 'a;
 
-    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
+    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
         Ok(UnversionedRangeRev { range: self.unversioned.range(range) })
     }
 }
