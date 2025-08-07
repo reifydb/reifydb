@@ -1,4 +1,4 @@
-use super::change::Diff;
+use super::change::Change;
 use super::graph::DirectedGraph;
 use super::node::{Node, NodeId, NodeType};
 use crate::Result;
@@ -49,7 +49,7 @@ impl Flow {
         Ok(self.graph.topological_sort())
     }
 
-    pub fn propagate_update(&mut self, node_id: &NodeId, change: Diff) -> Result<()> {
+    pub fn propagate_update(&mut self, node_id: &NodeId, change: Change) -> Result<()> {
         // This is a placeholder for update propagation logic
         // In a full implementation, this would:
         // 1. Process the update at the given node

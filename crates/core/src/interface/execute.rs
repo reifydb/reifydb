@@ -7,16 +7,25 @@ use crate::interface::{
     VersionedTransaction,
 };
 
+#[derive(Debug)]
 pub struct Command<'a> {
     pub rql: &'a str,
     pub params: Params,
     pub principal: &'a Principal,
 }
 
+#[derive(Debug)]
 pub struct Query<'a> {
     pub rql: &'a str,
     pub params: Params,
     pub principal: &'a Principal,
+}
+
+pub trait Execute<VT, UT>: ExecuteCommand<VT, UT> + ExecuteQuery<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
 }
 
 pub trait ExecuteCommand<VT, UT>

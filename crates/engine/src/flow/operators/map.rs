@@ -16,33 +16,33 @@ impl MapOperator {
 }
 
 impl Operator for MapOperator {
-    fn apply(&mut self, _ctx: &mut OperatorContext, diff: Diff) -> crate::Result<Diff> {
-        let mut output_changes = Vec::new();
+    fn apply(&mut self, _ctx: &mut OperatorContext, change: Change) -> crate::Result<Change> {
+        let mut output = Vec::new();
 
-        for change in diff.changes {
-            match change {
-                Change::Insert { columns } => {
-                    let projected_columns = self.project_columns(&columns)?;
-                    output_changes.push(Change::Insert { columns: projected_columns });
+        for diff in change.diffs {
+            match diff {
+                Diff::Insert { columns } => {
+                    let projected_columns = self.project(&columns)?;
+                    output.push(Diff::Insert { columns: projected_columns });
                 }
-                Change::Update { old, new } => {
-                    let projected_columns = self.project_columns(&new)?;
-                    output_changes.push(Change::Update { old, new: projected_columns });
+                Diff::Update { old, new } => {
+                    let projected_columns = self.project(&new)?;
+                    output.push(Diff::Update { old, new: projected_columns });
                 }
-                Change::Remove { columns } => {
+                Diff::Remove { columns } => {
                     // For removes, we might need to project to maintain schema consistency
-                    let projected_columns = self.project_columns(&columns)?;
-                    output_changes.push(Change::Remove { columns: projected_columns });
+                    let projected_columns = self.project(&columns)?;
+                    output.push(Diff::Remove { columns: projected_columns });
                 }
             }
         }
 
-        Ok(Diff::new(output_changes))
+        Ok(Change::new(output))
     }
 }
 
 impl MapOperator {
-    fn project_columns(&self, columns: &Columns) -> crate::Result<Columns> {
+    fn project(&self, columns: &Columns) -> crate::Result<Columns> {
         if columns.is_empty() {
             return Ok(columns.clone());
         }

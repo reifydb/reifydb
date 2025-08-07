@@ -4,7 +4,10 @@
 use crate::columnar::Columns;
 use crate::execute::Executor;
 use crate::flow::compile::compile_to_flow;
-use reifydb_core::interface::{ActiveCommandTransaction, Params, UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{
+    ActiveCommandTransaction, Command, ExecuteCommand, Params, Principal, UnversionedTransaction,
+    VersionedTransaction,
+};
 use reifydb_rql::ast;
 use reifydb_rql::plan::logical::compile_logical;
 use reifydb_rql::plan::physical::CreateComputedViewPlan;
@@ -53,6 +56,16 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         // )
         // .unwrap();
 
+        let rql = r#"
+                 from[{data: blob::utf8('$REPLACE')}]
+                 insert reifydb.flows
+             "#
+        .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str());
+
+        self.execute_command(
+            atx,
+            Command { rql: rql.as_str(), params: Params::default(), principal: &Principal::root() },
+        )?;
 
         Ok(Columns::empty())
     }

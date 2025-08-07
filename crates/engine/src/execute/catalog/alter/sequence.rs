@@ -81,7 +81,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
 #[cfg(test)]
 mod tests {
-    use crate::execute_command;
+    use crate::execute_command_plan;
     use reifydb_core::interface::Params;
     use ConstantExpression::Number;
     use Expression::Constant;
@@ -133,7 +133,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let result = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap();
+        let result = execute_command_plan(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("users".to_string()));
         assert_eq!(result.row(0)[2], Value::Utf8("id".to_string()));
@@ -171,7 +171,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("100") }),
         };
 
-        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
+        let err = execute_command_plan(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         let diagnostic = err.diagnostic();
         assert_eq!(diagnostic.code, "SEQUENCE_002");
     }
@@ -187,7 +187,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
+        let err = execute_command_plan(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_002");
     }
 
@@ -203,7 +203,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
+        let err = execute_command_plan(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_004");
     }
 
@@ -238,7 +238,7 @@ mod tests {
             value: Constant(Number { span: OwnedSpan::testing("1000") }),
         };
 
-        let err = execute_command(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
+        let err = execute_command_plan(&mut atx, PhysicalPlan::AlterSequence(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "QUERY_001");
     }
 }

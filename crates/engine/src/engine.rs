@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::{execute_command, execute_query};
+use crate::execute::{execute_command_plan, execute_query_plan};
 use crate::system::register_system_hooks;
 use reifydb_core::Frame;
 use reifydb_core::hook::Hooks;
@@ -12,7 +12,6 @@ use reifydb_core::interface::{
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::plan;
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -83,7 +82,7 @@ where
 
         for statement in statements {
             if let Some(plan) = plan(atx, statement)? {
-                let er = execute_command(atx, plan, cmd.params.clone())?;
+                let er = execute_command_plan(atx, plan, cmd.params.clone())?;
                 result.push(er);
             }
         }
@@ -107,7 +106,7 @@ where
 
         for statement in statements {
             if let Some(plan) = plan(atx, statement)? {
-                let er = execute_query::<VT, UT>(atx, plan, qry.params.clone())?;
+                let er = execute_query_plan::<VT, UT>(atx, plan, qry.params.clone())?;
                 result.push(er);
             }
         }
@@ -146,7 +145,6 @@ where
     versioned: VT,
     unversioned: UT,
     hooks: Hooks,
-    _phantom: PhantomData<(VT, UT)>,
 }
 
 impl<VT, UT> Engine<VT, UT>
@@ -155,8 +153,7 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
-        let result =
-            Self(Arc::new(EngineInner { versioned, unversioned, hooks, _phantom: PhantomData }));
+        let result = Self(Arc::new(EngineInner { versioned, unversioned, hooks }));
         result.setup_hooks()?;
         Ok(result)
     }

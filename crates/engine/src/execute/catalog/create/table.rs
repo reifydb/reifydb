@@ -60,7 +60,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 #[cfg(test)]
 mod tests {
     use crate::execute::catalog::create::table::CreateTablePlan;
-    use crate::execute_command;
+    use crate::execute_command_plan;
     use reifydb_core::interface::Params;
     use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
     use reifydb_core::{OwnedSpan, Value};
@@ -81,21 +81,21 @@ mod tests {
         };
 
         // First creation should succeed
-        let result = execute_command(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
+        let result = execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
 
         // Creating the same table again with `if_not_exists = true` should not error
         plan.if_not_exists = true;
-        let result = execute_command(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
+        let result = execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(false));
 
         // Creating the same table again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
-        let err = execute_command(&mut atx, PhysicalPlan::CreateTable(plan), Params::default()).unwrap_err();
+        let err = execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_003");
     }
 
@@ -113,7 +113,7 @@ mod tests {
             columns: vec![],
         };
 
-        let result = execute_command(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
+        let result = execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("test_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
@@ -125,7 +125,7 @@ mod tests {
             columns: vec![],
         };
 
-        let result = execute_command(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
+        let result = execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan.clone()), Params::default()).unwrap();
         assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
         assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
         assert_eq!(result.row(0)[2], Value::Bool(true));
@@ -142,7 +142,7 @@ mod tests {
             columns: vec![],
         };
 
-        let err = execute_command(&mut atx, PhysicalPlan::CreateTable(plan), Params::default()).unwrap_err();
+        let err = execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan), Params::default()).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_002");
     }
 }

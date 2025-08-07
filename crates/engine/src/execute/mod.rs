@@ -6,13 +6,17 @@ use crate::columnar::layout::ColumnsLayout;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
 use crate::function::{Functions, math};
 use query::compile::compile;
+use reifydb_core::Frame;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, Params, Table, UnversionedTransaction, VersionedQueryTransaction,
+    ActiveCommandTransaction, ActiveQueryTransaction, Command, Execute, ExecuteCommand,
+    ExecuteQuery, Params, Query, Table, UnversionedTransaction, VersionedQueryTransaction,
     VersionedTransaction,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use reifydb_rql::ast;
+use reifydb_rql::plan::plan;
 
 mod catalog;
 mod mutate;
@@ -43,9 +47,10 @@ pub(crate) trait ExecutionPlan {
 pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction> {
     functions: Functions,
     _phantom: PhantomData<(VT, UT)>,
+
 }
 
-pub fn execute_query<VT: VersionedTransaction, UT: UnversionedTransaction>(
+pub fn execute_query_plan<VT: VersionedTransaction, UT: UnversionedTransaction>(
     rx: &mut impl VersionedQueryTransaction,
     plan: PhysicalPlan,
     params: Params,
@@ -63,10 +68,10 @@ pub fn execute_query<VT: VersionedTransaction, UT: UnversionedTransaction>(
         _phantom: PhantomData,
     };
 
-    executor.execute_query(rx, plan, params)
+    executor.execute_query_plan(rx, plan, params)
 }
 
-pub fn execute_command<VT: VersionedTransaction, UT: UnversionedTransaction>(
+pub fn execute_command_plan<VT: VersionedTransaction, UT: UnversionedTransaction>(
     atx: &mut ActiveCommandTransaction<VT, UT>,
     plan: PhysicalPlan,
     params: Params,
@@ -84,11 +89,57 @@ pub fn execute_command<VT: VersionedTransaction, UT: UnversionedTransaction>(
         _phantom: PhantomData,
     };
 
-    executor.execute_command(atx, plan, params)
+    executor.execute_command_plan(atx, plan, params)
 }
 
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT>
+    for Executor<VT, UT>
+{
+    fn execute_command<'a>(
+        &'a self,
+        atx: &mut ActiveCommandTransaction<VT, UT>,
+        cmd: Command<'a>,
+    ) -> reifydb_core::Result<Vec<Frame>> {
+        let mut result = vec![];
+        let statements = ast::parse(cmd.rql)?;
+
+        for statement in statements {
+            if let Some(plan) = plan(atx, statement)? {
+                let er = execute_command_plan(atx, plan, cmd.params.clone())?;
+                result.push(er);
+            }
+        }
+
+        Ok(result.into_iter().map(Frame::from).collect())
+    }
+}
+
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteQuery<VT, UT>
+    for Executor<VT, UT>
+{
+    fn execute_query<'a>(
+        &'a self,
+        atx: &mut ActiveQueryTransaction<VT, UT>,
+        qry: Query<'a>,
+    ) -> reifydb_core::Result<Vec<Frame>> {
+        let mut result = vec![];
+        let statements = ast::parse(qry.rql)?;
+
+        for statement in statements {
+            if let Some(plan) = plan(atx, statement)? {
+                let er = execute_query_plan::<VT, UT>(atx, plan, qry.params.clone())?;
+                result.push(er);
+            }
+        }
+
+        Ok(result.into_iter().map(Frame::from).collect())
+    }
+}
+
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> Execute<VT, UT> for Executor<VT, UT> {}
+
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
-    pub(crate) fn execute_query(
+    pub(crate) fn execute_query_plan(
         self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,
@@ -108,7 +159,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Delete(_)
             | PhysicalPlan::Insert(_)
             | PhysicalPlan::Update(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(rx, plan, params),
+            | PhysicalPlan::TableScan(_) => self.query(rx, plan, params),
 
             PhysicalPlan::AlterSequence(_)
             | PhysicalPlan::CreateComputedView(_)
@@ -117,7 +168,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         }
     }
 
-    pub(crate) fn execute_command(
+    pub(crate) fn execute_command_plan(
         mut self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         plan: PhysicalPlan,
@@ -141,11 +192,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
-            | PhysicalPlan::TableScan(_) => self.execute_query_plan(atx, plan, params),
+            | PhysicalPlan::TableScan(_) => self.query(atx, plan, params),
         }
     }
 
-    fn execute_query_plan(
+    fn query(
         self,
         rx: &mut impl VersionedQueryTransaction,
         plan: PhysicalPlan,

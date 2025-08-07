@@ -1,4 +1,4 @@
-use super::change::{Change, Diff};
+use super::change::{Diff, Change};
 use super::flow::Flow;
 use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
@@ -63,13 +63,13 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         Ok(())
     }
 
-    pub fn process_change(&mut self, node_id: &NodeId, diff: Diff) -> Result<()> {
+    pub fn process_change(&mut self, node_id: &NodeId, change: Change) -> Result<()> {
         // let mut tx = ;
 
         let mut atx =
             ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone());
 
-        self.process_change_with_tx(&mut atx, node_id, diff)?;
+        self.process_change_with_tx(&mut atx, node_id, change)?;
         atx.commit()?;
 
         Ok(())
@@ -79,7 +79,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         &mut self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         node_id: &NodeId,
-        diff: Diff,
+        change: Change,
     ) -> Result<()> {
         let (node_type, output_nodes) = if let Some(node) = self.graph.get_node(node_id) {
             (node.ty.clone(), node.outputs.clone())
@@ -90,14 +90,14 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         let output_change = match &node_type {
             NodeType::Source { .. } => {
                 // Source are handled elsewhere in the system - just propagate
-                diff
+                change
             }
             NodeType::Operator { operator } => {
                 // Process through operator
                 let transformed_diff = if let (Some(op), Some(context)) =
                     (self.operators.get_mut(node_id), self.contexts.get_mut(node_id))
                 {
-                    op.apply(context, diff)?
+                    op.apply(context, change)?
                 } else {
                     panic!("Operator or context not found");
                 };
@@ -111,8 +111,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             }
             NodeType::Sink { .. } => {
                 // Sinks persist the final results
-                self.apply_diff_to_storage_with_tx(atx, node_id, &diff)?;
-                diff
+                self.apply_diff_to_storage_with_tx(atx, node_id, &change)?;
+                change
             }
         };
 
@@ -142,7 +142,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         &mut self,
         atx: &mut ActiveCommandTransaction<VT, UT>,
         node_id: &NodeId,
-        diff: &Diff,
+        change: &Change,
     ) -> Result<()> {
         let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
@@ -170,9 +170,9 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             ],
         };
 
-        for change in &diff.changes {
-            match change {
-                Change::Insert { columns } => {
+        for diff in &change.diffs {
+            match diff {
+                Diff::Insert { columns } => {
                     // Convert columns to row deltas
                     // let columns_deltas = self.columns_to_deltas(columns, node_id)?;
                     // deltas.extend(columns_deltas);
@@ -248,14 +248,14 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                         // inserted_count += 1;
                     }
                 }
-                Change::Update { old: _, new: _ } => {
+                Diff::Update { old: _, new: _ } => {
                     // For updates, we could implement a more sophisticated approach
                     // For now, just insert the new columns
                     // let columns_deltas = self.columns_to_deltas(new, node_id)?;
                     // deltas.extend(columns_deltas);
                     todo!()
                 }
-                Change::Remove { columns: _ } => {
+                Diff::Remove { columns: _ } => {
                     // Convert columns to remove deltas
                     // let columns_deltas = self.columns_to_remove_deltas(columns, node_id)?;
                     // deltas.extend(columns_deltas);
