@@ -1,4 +1,5 @@
 import {Type, Value} from "./type";
+import {UNDEFINED_VALUE} from "../constant";
 
 export class Int1 implements Value {
     readonly type: Type = "Int1" as const;
@@ -21,7 +22,7 @@ export class Int1 implements Value {
 
     static parse(str: string): Int1 {
         const trimmed = str.trim();
-        if (trimmed === '') {
+        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
             return new Int1(undefined);
         }
         

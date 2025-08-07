@@ -1,12 +1,12 @@
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Int16 implements Value {
-    readonly type: Type = "Int16" as const;
+export class Uint16 implements Value {
+    readonly type: Type = "Uint16" as const;
     public readonly value?: bigint;
 
-    private static readonly MIN_VALUE = BigInt("-170141183460469231731687303715884105728");
-    private static readonly MAX_VALUE = BigInt("170141183460469231731687303715884105727");
+    private static readonly MIN_VALUE = BigInt(0);
+    private static readonly MAX_VALUE = BigInt("340282366920938463463374607431768211455");
 
     constructor(value?: bigint | number | string) {
         if (value !== undefined) {
@@ -16,7 +16,7 @@ export class Int16 implements Value {
                 try {
                     bigintValue = BigInt(value);
                 } catch (e) {
-                    throw new Error(`Int16 value must be a valid integer, got ${value}`);
+                    throw new Error(`Uint16 value must be a valid integer, got ${value}`);
                 }
             } else if (typeof value === 'number') {
                 bigintValue = BigInt(Math.trunc(value));
@@ -24,8 +24,8 @@ export class Int16 implements Value {
                 bigintValue = value;
             }
             
-            if (bigintValue < Int16.MIN_VALUE || bigintValue > Int16.MAX_VALUE) {
-                throw new Error(`Int16 value must be between ${Int16.MIN_VALUE} and ${Int16.MAX_VALUE}, got ${bigintValue}`);
+            if (bigintValue < Uint16.MIN_VALUE || bigintValue > Uint16.MAX_VALUE) {
+                throw new Error(`Uint16 value must be between ${Uint16.MIN_VALUE} and ${Uint16.MAX_VALUE}, got ${bigintValue}`);
             }
             this.value = bigintValue;
         } else {
@@ -33,27 +33,31 @@ export class Int16 implements Value {
         }
     }
 
-    static parse(str: string): Int16 {
+    static parse(str: string): Uint16 {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Int16(undefined);
+            return new Uint16(undefined);
         }
         
         let value: bigint;
         try {
             value = BigInt(trimmed);
         } catch (e) {
-            throw new Error(`Cannot parse "${str}" as Int16`);
+            throw new Error(`Cannot parse "${str}" as Uint16`);
         }
         
-        if (value < Int16.MIN_VALUE || value > Int16.MAX_VALUE) {
-            throw new Error(`Int16 value must be between ${Int16.MIN_VALUE} and ${Int16.MAX_VALUE}, got ${value}`);
+        if (value < Uint16.MIN_VALUE || value > Uint16.MAX_VALUE) {
+            throw new Error(`Uint16 value must be between ${Uint16.MIN_VALUE} and ${Uint16.MAX_VALUE}, got ${value}`);
         }
         
-        return new Int16(value);
+        return new Uint16(value);
     }
 
     valueOf(): bigint | undefined {
         return this.value;
+    }
+
+    toString(): string {
+        return this.value === undefined ? 'undefined' : this.value.toString();
     }
 }
