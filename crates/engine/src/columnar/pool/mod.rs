@@ -11,6 +11,18 @@ mod allocator;
 mod capacity;
 mod guard;
 mod stats;
+pub mod thread_local;
+pub mod config;
+pub mod scoped;
+pub mod lazy;
+#[cfg(test)]
+pub mod testing;
+
+pub use guard::PooledGuard;
+pub use config::{PoolConfig, init_thread_pools, init_default_thread_pools, init_test_pools};
+pub use scoped::{ScopedPools, with_scoped_pools, with_default_pools, with_test_pools};
+pub use thread_local::{thread_pools, get_thread_pools, has_thread_pools};
+pub use lazy::{get_or_init_pools, ensure_thread_pools, thread_pools_lazy};
 
 use crate::columnar::pool::allocator::{PoolAllocator, StdPoolAllocator};
 use crate::columnar::pool::stats::PoolStats;
@@ -39,9 +51,17 @@ pub struct PoolsInner {
     row_id_pool: StdPoolAllocator<RowIdContainer>,
     undefined_pool: StdPoolAllocator<UndefinedContainer>,
 
-    // Numeric pools for common types
+    // Numeric pools for all types
+    i8_pool: StdPoolAllocator<NumberContainer<i8>>,
+    i16_pool: StdPoolAllocator<NumberContainer<i16>>,
     i32_pool: StdPoolAllocator<NumberContainer<i32>>,
     i64_pool: StdPoolAllocator<NumberContainer<i64>>,
+    i128_pool: StdPoolAllocator<NumberContainer<i128>>,
+    u8_pool: StdPoolAllocator<NumberContainer<u8>>,
+    u16_pool: StdPoolAllocator<NumberContainer<u16>>,
+    u32_pool: StdPoolAllocator<NumberContainer<u32>>,
+    u64_pool: StdPoolAllocator<NumberContainer<u64>>,
+    u128_pool: StdPoolAllocator<NumberContainer<u128>>,
     f32_pool: StdPoolAllocator<NumberContainer<f32>>,
     f64_pool: StdPoolAllocator<NumberContainer<f64>>,
 
@@ -71,8 +91,16 @@ impl Pools {
             row_id_pool: StdPoolAllocator::new(max_pool_size),
             undefined_pool: StdPoolAllocator::new(max_pool_size),
 
+            i8_pool: StdPoolAllocator::new(max_pool_size),
+            i16_pool: StdPoolAllocator::new(max_pool_size),
             i32_pool: StdPoolAllocator::new(max_pool_size),
             i64_pool: StdPoolAllocator::new(max_pool_size),
+            i128_pool: StdPoolAllocator::new(max_pool_size),
+            u8_pool: StdPoolAllocator::new(max_pool_size),
+            u16_pool: StdPoolAllocator::new(max_pool_size),
+            u32_pool: StdPoolAllocator::new(max_pool_size),
+            u64_pool: StdPoolAllocator::new(max_pool_size),
+            u128_pool: StdPoolAllocator::new(max_pool_size),
             f32_pool: StdPoolAllocator::new(max_pool_size),
             f64_pool: StdPoolAllocator::new(max_pool_size),
 
@@ -103,11 +131,35 @@ impl Pools {
         &self.undefined_pool
     }
 
+    pub fn i8_pool(&self) -> &StdPoolAllocator<NumberContainer<i8>> {
+        &self.i8_pool
+    }
+    pub fn i16_pool(&self) -> &StdPoolAllocator<NumberContainer<i16>> {
+        &self.i16_pool
+    }
     pub fn i32_pool(&self) -> &StdPoolAllocator<NumberContainer<i32>> {
         &self.i32_pool
     }
     pub fn i64_pool(&self) -> &StdPoolAllocator<NumberContainer<i64>> {
         &self.i64_pool
+    }
+    pub fn i128_pool(&self) -> &StdPoolAllocator<NumberContainer<i128>> {
+        &self.i128_pool
+    }
+    pub fn u8_pool(&self) -> &StdPoolAllocator<NumberContainer<u8>> {
+        &self.u8_pool
+    }
+    pub fn u16_pool(&self) -> &StdPoolAllocator<NumberContainer<u16>> {
+        &self.u16_pool
+    }
+    pub fn u32_pool(&self) -> &StdPoolAllocator<NumberContainer<u32>> {
+        &self.u32_pool
+    }
+    pub fn u64_pool(&self) -> &StdPoolAllocator<NumberContainer<u64>> {
+        &self.u64_pool
+    }
+    pub fn u128_pool(&self) -> &StdPoolAllocator<NumberContainer<u128>> {
+        &self.u128_pool
     }
     pub fn f32_pool(&self) -> &StdPoolAllocator<NumberContainer<f32>> {
         &self.f32_pool
@@ -144,8 +196,16 @@ impl Pools {
         self.row_id_pool.clear();
         self.undefined_pool.clear();
 
+        self.i8_pool.clear();
+        self.i16_pool.clear();
         self.i32_pool.clear();
         self.i64_pool.clear();
+        self.i128_pool.clear();
+        self.u8_pool.clear();
+        self.u16_pool.clear();
+        self.u32_pool.clear();
+        self.u64_pool.clear();
+        self.u128_pool.clear();
         self.f32_pool.clear();
         self.f64_pool.clear();
 
@@ -168,8 +228,16 @@ impl Pools {
         stats.insert("row_id".to_string(), self.row_id_pool.stats());
         stats.insert("undefined".to_string(), self.undefined_pool.stats());
 
+        stats.insert("i8".to_string(), self.i8_pool.stats());
+        stats.insert("i16".to_string(), self.i16_pool.stats());
         stats.insert("i32".to_string(), self.i32_pool.stats());
         stats.insert("i64".to_string(), self.i64_pool.stats());
+        stats.insert("i128".to_string(), self.i128_pool.stats());
+        stats.insert("u8".to_string(), self.u8_pool.stats());
+        stats.insert("u16".to_string(), self.u16_pool.stats());
+        stats.insert("u32".to_string(), self.u32_pool.stats());
+        stats.insert("u64".to_string(), self.u64_pool.stats());
+        stats.insert("u128".to_string(), self.u128_pool.stats());
         stats.insert("f32".to_string(), self.f32_pool.stats());
         stats.insert("f64".to_string(), self.f64_pool.stats());
 
