@@ -6,11 +6,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
-    "test": "pnpm test:unit && pnpm test:integration",
+    "test": "pnpm test:unit",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
     "test:unit:coverage": "vitest run --coverage --config vitest.config.ts",
-    "test:coverage": "pnpm test:unit:coverage && pnpm test:integration:coverage"
+    "test:coverage": "pnpm test:unit:coverage"
   },
   "dependencies": {
     "uuid": "^11.1.0"
