@@ -7,6 +7,7 @@
 //! to their respective pools when dropped, implementing the RAII pattern for memory
 //! pool management.
 
+use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::rc::{Rc, Weak};
 
@@ -14,10 +15,10 @@ use reifydb_core::value::container::*;
 use reifydb_core::value::uuid::{Uuid4, Uuid7};
 use reifydb_core::value::{Date, DateTime, Interval, Time};
 
-use super::{PoolAllocator, Pools};
+use super::{PoolAllocator, Pools, PoolsInner};
 
 /// Trait for containers that can be released back to a pool
-pub trait Releasable: Clone {
+pub trait Releasable: Clone + Debug {
     fn release_to_pool(self, pools: &Pools);
 }
 
@@ -76,6 +77,54 @@ impl Releasable for NumberContainer<f64> {
     }
 }
 
+impl Releasable for NumberContainer<i8> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.i8_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<i16> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.i16_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<i128> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.i128_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<u8> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.u8_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<u16> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.u16_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<u32> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.u32_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<u64> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.u64_pool().release(self);
+    }
+}
+
+impl Releasable for NumberContainer<u128> {
+    fn release_to_pool(self, pools: &Pools) {
+        pools.u128_pool().release(self);
+    }
+}
+
 impl Releasable for TemporalContainer<Date> {
     fn release_to_pool(self, pools: &Pools) {
         pools.date_pool().release(self);
@@ -119,13 +168,19 @@ impl Releasable for UuidContainer<Uuid7> {
 /// for reuse.
 pub struct PooledGuard<T: Releasable> {
     container: Option<T>,
-    pools: Weak<Pools>,
+    pools: Weak<PoolsInner>,
+}
+
+impl<T: Releasable> Debug for PooledGuard<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.container, f)
+    }
 }
 
 impl<T: Releasable> PooledGuard<T> {
     /// Create a new pooled guard with the given container and pool reference
-    fn new(container: T, pools: Rc<Pools>) -> Self {
-        Self { container: Some(container), pools: Rc::downgrade(&pools) }
+    fn new(container: T, pools: Pools) -> Self {
+        Self { container: Some(container), pools: Rc::downgrade(&pools.0) }
     }
 
     /// Clone the container and release the guard back to the pool
@@ -137,8 +192,8 @@ impl<T: Releasable> PooledGuard<T> {
         let cloned_container = container.clone();
 
         // Release the original container back to the pool
-        if let Some(pools) = self.pools.upgrade() {
-            container.release_to_pool(&pools);
+        if let Some(pools_inner) = self.pools.upgrade() {
+            container.release_to_pool(&Pools(pools_inner));
         }
 
         cloned_container
@@ -153,7 +208,7 @@ impl<T: Releasable> PooledGuard<T> {
 // Container-specific constructors
 impl PooledGuard<BoolContainer> {
     /// Create a new pooled BoolContainer with the specified capacity
-    pub fn new_bool(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_bool(pools: Pools, capacity: usize) -> Self {
         let container = pools.bool_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -161,7 +216,7 @@ impl PooledGuard<BoolContainer> {
 
 impl PooledGuard<StringContainer> {
     /// Create a new pooled StringContainer with the specified capacity
-    pub fn new_string(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_string(pools: Pools, capacity: usize) -> Self {
         let container = pools.string_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -169,7 +224,7 @@ impl PooledGuard<StringContainer> {
 
 impl PooledGuard<BlobContainer> {
     /// Create a new pooled BlobContainer with the specified capacity
-    pub fn new_blob(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_blob(pools: Pools, capacity: usize) -> Self {
         let container = pools.blob_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -177,7 +232,7 @@ impl PooledGuard<BlobContainer> {
 
 impl PooledGuard<RowIdContainer> {
     /// Create a new pooled RowIdContainer with the specified capacity
-    pub fn new_row_id(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_row_id(pools: Pools, capacity: usize) -> Self {
         let container = pools.row_id_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -185,7 +240,7 @@ impl PooledGuard<RowIdContainer> {
 
 impl PooledGuard<UndefinedContainer> {
     /// Create a new pooled UndefinedContainer with the specified capacity
-    pub fn new_undefined(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_undefined(pools: Pools, capacity: usize) -> Self {
         let container = pools.undefined_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -194,7 +249,7 @@ impl PooledGuard<UndefinedContainer> {
 // Numeric container constructors
 impl PooledGuard<NumberContainer<i32>> {
     /// Create a new pooled NumberContainer<i32> with the specified capacity
-    pub fn new_i32(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_i32(pools: Pools, capacity: usize) -> Self {
         let container = pools.i32_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -202,7 +257,7 @@ impl PooledGuard<NumberContainer<i32>> {
 
 impl PooledGuard<NumberContainer<i64>> {
     /// Create a new pooled NumberContainer<i64> with the specified capacity
-    pub fn new_i64(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_i64(pools: Pools, capacity: usize) -> Self {
         let container = pools.i64_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -210,7 +265,7 @@ impl PooledGuard<NumberContainer<i64>> {
 
 impl PooledGuard<NumberContainer<f32>> {
     /// Create a new pooled NumberContainer<f32> with the specified capacity
-    pub fn new_f32(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_f32(pools: Pools, capacity: usize) -> Self {
         let container = pools.f32_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -218,8 +273,72 @@ impl PooledGuard<NumberContainer<f32>> {
 
 impl PooledGuard<NumberContainer<f64>> {
     /// Create a new pooled NumberContainer<f64> with the specified capacity
-    pub fn new_f64(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_f64(pools: Pools, capacity: usize) -> Self {
         let container = pools.f64_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<i8>> {
+    /// Create a new pooled NumberContainer<i8> with the specified capacity
+    pub fn new_i8(pools: Pools, capacity: usize) -> Self {
+        let container = pools.i8_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<i16>> {
+    /// Create a new pooled NumberContainer<i16> with the specified capacity
+    pub fn new_i16(pools: Pools, capacity: usize) -> Self {
+        let container = pools.i16_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<i128>> {
+    /// Create a new pooled NumberContainer<i128> with the specified capacity
+    pub fn new_i128(pools: Pools, capacity: usize) -> Self {
+        let container = pools.i128_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<u8>> {
+    /// Create a new pooled NumberContainer<u8> with the specified capacity
+    pub fn new_u8(pools: Pools, capacity: usize) -> Self {
+        let container = pools.u8_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<u16>> {
+    /// Create a new pooled NumberContainer<u16> with the specified capacity
+    pub fn new_u16(pools: Pools, capacity: usize) -> Self {
+        let container = pools.u16_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<u32>> {
+    /// Create a new pooled NumberContainer<u32> with the specified capacity
+    pub fn new_u32(pools: Pools, capacity: usize) -> Self {
+        let container = pools.u32_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<u64>> {
+    /// Create a new pooled NumberContainer<u64> with the specified capacity
+    pub fn new_u64(pools: Pools, capacity: usize) -> Self {
+        let container = pools.u64_pool().acquire(capacity);
+        Self::new(container, pools)
+    }
+}
+
+impl PooledGuard<NumberContainer<u128>> {
+    /// Create a new pooled NumberContainer<u128> with the specified capacity
+    pub fn new_u128(pools: Pools, capacity: usize) -> Self {
+        let container = pools.u128_pool().acquire(capacity);
         Self::new(container, pools)
     }
 }
@@ -227,7 +346,7 @@ impl PooledGuard<NumberContainer<f64>> {
 // Temporal container constructors
 impl PooledGuard<TemporalContainer<Date>> {
     /// Create a new pooled TemporalContainer<Date> with the specified capacity
-    pub fn new_date(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_date(pools: Pools, capacity: usize) -> Self {
         let container = pools.date_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -235,7 +354,7 @@ impl PooledGuard<TemporalContainer<Date>> {
 
 impl PooledGuard<TemporalContainer<DateTime>> {
     /// Create a new pooled TemporalContainer<DateTime> with the specified capacity
-    pub fn new_datetime(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_datetime(pools: Pools, capacity: usize) -> Self {
         let container = pools.datetime_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -243,7 +362,7 @@ impl PooledGuard<TemporalContainer<DateTime>> {
 
 impl PooledGuard<TemporalContainer<Time>> {
     /// Create a new pooled TemporalContainer<Time> with the specified capacity
-    pub fn new_time(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_time(pools: Pools, capacity: usize) -> Self {
         let container = pools.time_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -251,7 +370,7 @@ impl PooledGuard<TemporalContainer<Time>> {
 
 impl PooledGuard<TemporalContainer<Interval>> {
     /// Create a new pooled TemporalContainer<Interval> with the specified capacity
-    pub fn new_interval(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_interval(pools: Pools, capacity: usize) -> Self {
         let container = pools.interval_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -260,7 +379,7 @@ impl PooledGuard<TemporalContainer<Interval>> {
 // UUID container constructors
 impl PooledGuard<UuidContainer<Uuid4>> {
     /// Create a new pooled UuidContainer<Uuid4> with the specified capacity
-    pub fn new_uuid4(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_uuid4(pools: Pools, capacity: usize) -> Self {
         let container = pools.uuid4_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -268,7 +387,7 @@ impl PooledGuard<UuidContainer<Uuid4>> {
 
 impl PooledGuard<UuidContainer<Uuid7>> {
     /// Create a new pooled UuidContainer<Uuid7> with the specified capacity
-    pub fn new_uuid7(pools: Rc<Pools>, capacity: usize) -> Self {
+    pub fn new_uuid7(pools: Pools, capacity: usize) -> Self {
         let container = pools.uuid7_pool().acquire(capacity);
         Self::new(container, pools)
     }
@@ -277,8 +396,9 @@ impl PooledGuard<UuidContainer<Uuid7>> {
 // Implement Drop for automatic pool release
 impl<T: Releasable> Drop for PooledGuard<T> {
     fn drop(&mut self) {
-        if let (Some(container), Some(pools)) = (self.container.take(), self.pools.upgrade()) {
-            container.release_to_pool(&pools);
+        if let (Some(container), Some(pools_inner)) = (self.container.take(), self.pools.upgrade())
+        {
+            container.release_to_pool(&Pools(pools_inner));
         }
     }
 }
@@ -302,11 +422,10 @@ impl<T: Releasable> DerefMut for PooledGuard<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
 
     #[test]
     fn test_bool_container_guard() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         // Initial pool should be empty
         let initial_stats = pools.bool_pool().stats();
@@ -332,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_number_container_guard() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         {
             let mut guard = PooledGuard::new_i32(pools.clone(), 20);
@@ -353,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_string_container_guard() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         {
             let mut guard = PooledGuard::new_string(pools.clone(), 5);
@@ -368,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_guard_to_owned() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         let guard = PooledGuard::new_bool(pools.clone(), 10);
         let container = guard.to_owned(); // Clone container and release guard to pool
@@ -386,7 +505,7 @@ mod tests {
 
     #[test]
     fn test_multiple_guards_same_pool() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         {
             let _guard1 = PooledGuard::new_f32(pools.clone(), 100);
@@ -406,7 +525,7 @@ mod tests {
 
     #[test]
     fn test_guard_reuse() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         // First usage
         {
@@ -431,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_temporal_containers() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         {
             let _date_guard = PooledGuard::new_date(pools.clone(), 10);
@@ -449,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_uuid_containers() {
-        let pools = Rc::new(Pools::default());
+        let pools = Pools::default();
 
         {
             let _uuid4_guard = PooledGuard::new_uuid4(pools.clone(), 15);
