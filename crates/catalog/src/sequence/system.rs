@@ -35,32 +35,32 @@ pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
     pub(crate) fn next_schema_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
-		atx: &mut ActiveCommandTransaction<VT, UT>,
+		txn: &mut ActiveCommandTransaction<VT, UT>,
     ) -> crate::Result<SchemaId> {
-        GeneratorU64::next(atx, &SCHEMA_KEY).map(SchemaId)
+        GeneratorU64::next(txn, &SCHEMA_KEY).map(SchemaId)
     }
 }
 
 impl SystemSequence {
     pub(crate) fn next_table_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
-		atx: &mut ActiveCommandTransaction<VT, UT>,
+		txn: &mut ActiveCommandTransaction<VT, UT>,
     ) -> crate::Result<TableId> {
-        GeneratorU64::next(atx, &TABLE_KEY).map(TableId)
+        GeneratorU64::next(txn, &TABLE_KEY).map(TableId)
     }
 }
 
 impl SystemSequence {
     pub(crate) fn next_column_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
-		atx: &mut ActiveCommandTransaction<VT, UT>,
+		txn: &mut ActiveCommandTransaction<VT, UT>,
     ) -> crate::Result<ColumnId> {
-        GeneratorU64::next(atx, &COLUMN_KEY).map(ColumnId)
+        GeneratorU64::next(txn, &COLUMN_KEY).map(ColumnId)
     }
 }
 
 impl SystemSequence {
     pub(crate) fn next_column_policy_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
-		atx: &mut ActiveCommandTransaction<VT, UT>,
+		txn: &mut ActiveCommandTransaction<VT, UT>,
     ) -> crate::Result<ColumnPolicyId> {
-        GeneratorU64::next(atx, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
+        GeneratorU64::next(txn, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
     }
 }

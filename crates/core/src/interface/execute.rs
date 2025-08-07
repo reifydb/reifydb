@@ -35,7 +35,7 @@ where
 {
     fn execute_command<'a>(
         &'a self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         cmd: Command<'a>,
     ) -> crate::Result<Vec<Frame>>;
 }
@@ -47,7 +47,7 @@ where
 {
     fn execute_query<'a>(
         &'a self,
-        atx: &mut ActiveQueryTransaction<VT, UT>,
+        txn: &mut ActiveQueryTransaction<VT, UT>,
         qry: Query<'a>,
     ) -> crate::Result<Vec<Frame>>;
 }

@@ -27,7 +27,7 @@ set "\xff\xff\xff"=fff
 set "\xff\xff\xff\xff"=ffff
 
 # An empty prefix returns everything.
-scan_prefix ""
+prefix ""
 ---
 "a" => "1"
 "b" => "2"
@@ -45,14 +45,14 @@ scan_prefix ""
 
 
 # A missing prefix returns nothing.
-scan_prefix bx
+prefix bx
 ---
 ok
 
 
 # Various prefixes under b. In particular, this tests that the bounds generation
 # handles 0xff bytes properly.
-scan_prefix b
+prefix b
 ---
 "b" => "2"
 "ba" => "21"
@@ -62,7 +62,7 @@ scan_prefix b
 "b\xffb" => "2fb"
 "b\xff\xff" => "2ff"
 
-scan_prefix b reverse=true
+prefix b reverse=true
 ---
 "b\xff\xff" => "2ff"
 "b\xffb" => "2fb"
@@ -73,48 +73,48 @@ scan_prefix b reverse=true
 "b" => "2"
 
 
-scan_prefix bb
+prefix bb
 ---
 "bb" => "22"
 
-scan_prefix "b\xff"
+prefix "b\xff"
 ---
 "b\xff" => "2f"
 "b\xff\x00" => "2f0"
 "b\xffb" => "2fb"
 "b\xff\xff" => "2ff"
 
-scan_prefix "b\xff\x00"
+prefix "b\xff\x00"
 ---
 "b\xff\x00" => "2f0"
 
-scan_prefix "b\xff\xff"
+prefix "b\xff\xff"
 ---
 "b\xff\xff" => "2ff"
 
 # Chains of \xff prefixes.
-scan_prefix "\xff"
+prefix "\xff"
 ---
 "\xff" => "f"
 "\xff\xff" => "ff"
 "\xff\xff\xff" => "fff"
 "\xff\xff\xff\xff" => "ffff"
 
-scan_prefix "\xff\xff"
+prefix "\xff\xff"
 ---
 "\xff\xff" => "ff"
 "\xff\xff\xff" => "fff"
 "\xff\xff\xff\xff" => "ffff"
 
-scan_prefix "\xff\xff\xff"
+prefix "\xff\xff\xff"
 ---
 "\xff\xff\xff" => "fff"
 "\xff\xff\xff\xff" => "ffff"
 
-scan_prefix "\xff\xff\xff\xff"
+prefix "\xff\xff\xff\xff"
 ---
 "\xff\xff\xff\xff" => "ffff"
 
-scan_prefix "\xff\xff\xff\xff\xff"
+prefix "\xff\xff\xff\xff\xff"
 ---
 ok

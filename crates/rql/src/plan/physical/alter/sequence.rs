@@ -28,7 +28,7 @@ mod tests {
     use crate::expression::{ConstantExpression, Expression};
     use crate::plan::logical::compile_logical;
     use crate::plan::physical::{PhysicalPlan, compile_physical};
-    use reifydb_transaction::test_utils::create_test_write_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
     #[test]
     fn test_compile_alter_sequence_physical() {
@@ -37,7 +37,7 @@ mod tests {
 
         let logical_plans = compile_logical(ast.into_iter().next().unwrap()).unwrap();
 
-        let mut rx = create_test_write_transaction();
+        let mut rx = create_test_command_transaction();
         let physical_plan = compile_physical(&mut rx, logical_plans).unwrap().unwrap();
 
         match physical_plan {

@@ -16,14 +16,14 @@ pub(crate) struct GeneratorI16 {}
 
 impl GeneratorI16 {
     pub(crate) fn next<VT, UT>(
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         key: &EncodedKey,
     ) -> crate::Result<i16>
     where
         VT: VersionedTransaction,
         UT: UnversionedTransaction,
     {
-        atx.with_unversioned_command(|tx| match tx.get(key)? {
+        txn.with_unversioned_command(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
                 let current_value = LAYOUT.get_i16(&row, 0);
@@ -47,7 +47,7 @@ impl GeneratorI16 {
     }
 
     pub(crate) fn set<VT, UT>(
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         key: &EncodedKey,
         value: i16,
     ) -> crate::Result<()>
@@ -55,7 +55,7 @@ impl GeneratorI16 {
         VT: VersionedTransaction,
         UT: UnversionedTransaction,
     {
-        atx.with_unversioned_command(|tx| {
+        txn.with_unversioned_command(|tx| {
             let mut row = match tx.get(key)? {
                 Some(unversioned_row) => unversioned_row.row,
                 None => LAYOUT.allocate_row(),
@@ -75,17 +75,17 @@ mod tests {
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::{EncodedKey, Type};
-    use reifydb_transaction::test_utils::create_test_write_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
     #[test]
     fn test_ok() {
-        let mut atx = create_test_write_transaction();
+        let mut txn = create_test_command_transaction();
         for expected in 1..1000 {
-            let got = GeneratorI16::next(&mut atx, &EncodedKey::new("sequence")).unwrap();
+            let got = GeneratorI16::next(&mut txn, &EncodedKey::new("sequence")).unwrap();
             assert_eq!(got, expected);
         }
 
-        atx.with_unversioned_query(|tx| {
+        txn.with_unversioned_query(|tx| {
             let mut unversioned: Vec<Unversioned> = tx.scan()?.collect();
             assert_eq!(unversioned.len(), 2);
 
@@ -101,14 +101,14 @@ mod tests {
 
     #[test]
     fn test_exhaustion() {
-        let mut atx = create_test_write_transaction();
+        let mut txn = create_test_command_transaction();
 
         let mut row = LAYOUT.allocate_row();
         LAYOUT.set_i16(&mut row, 0, i16::MAX);
 
-        atx.with_unversioned_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
+        txn.with_unversioned_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
 
-        let err = GeneratorI16::next(&mut atx, &EncodedKey::new("sequence")).unwrap_err();
+        let err = GeneratorI16::next(&mut txn, &EncodedKey::new("sequence")).unwrap_err();
         assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int2));
     }
 }

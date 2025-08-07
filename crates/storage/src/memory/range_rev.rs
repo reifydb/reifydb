@@ -27,7 +27,7 @@ impl VersionedScanRangeRev for Memory {
     where
         Self: 'a;
 
-    fn scan_range_rev(
+    fn range_rev(
         &self,
         range: EncodedKeyRange,
         version: Version,
@@ -68,7 +68,7 @@ impl UnversionedScanRangeRev for Memory {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
+    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
         Ok(UnversionedRangeRev { range: self.unversioned.range(range) })
     }
 }

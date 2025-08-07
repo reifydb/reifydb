@@ -25,14 +25,14 @@ use std::sync::Arc;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn insert(
         &self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: InsertPlan,
         params: Params,
     ) -> crate::Result<Columns> {
         let schema_name = plan.schema.as_ref().map(|s| s.fragment.as_str()).unwrap(); // FIXME
 
-        let schema = Catalog::get_schema_by_name(atx, schema_name)?.unwrap();
-        let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table.fragment)? else {
+        let schema = Catalog::get_schema_by_name(txn, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(txn, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
             return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
@@ -48,12 +48,12 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             params: params.clone(),
         });
 
-        let mut input_node = compile(*plan.input, atx, execution_context.clone());
+        let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
         let mut inserted_count = 0;
 
         // Process all input batches using volcano iterator pattern
-        while let Some(Batch { columns }) = input_node.next(&execution_context, atx)? {
+        while let Some(Batch { columns }) = input_node.next(&execution_context, txn)? {
             let row_count = columns.row_count();
 
             for row_idx in 0..row_count {
@@ -71,7 +71,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
                     // Handle auto-increment columns
                     if table_column.auto_increment && matches!(value, Value::Undefined) {
-                        value = ColumnSequence::next_value(atx, table.id, table_column.id)?;
+                        value = ColumnSequence::next_value(txn, table.id, table_column.id)?;
                     }
 
                     let policies: Vec<ColumnPolicyKind> =
@@ -117,8 +117,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                 }
 
                 // Insert the row into the database
-                let row_id = TableRowSequence::next_row_id(atx, table.id)?;
-                atx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
+                let row_id = TableRowSequence::next_row_id(txn, table.id)?;
+                txn.set(&TableRowKey { table: table.id, row: row_id }.encode(), row).unwrap();
 
                 inserted_count += 1;
             }

@@ -11,26 +11,26 @@
 
 use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
-use crate::mvcc::transaction::optimistic::Optimistic;
-use crate::mvcc::transaction::read::TransactionManagerRx;
+use crate::mvcc::transaction::query::TransactionManagerQuery;
+use crate::mvcc::transaction::serializable::Serializable;
 use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 
-pub struct ReadTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
-    pub(crate) engine: Optimistic<VS, UT>,
-    pub(crate) tm: TransactionManagerRx<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
+pub struct QueryTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
+    pub(crate) engine: Serializable<VS, UT>,
+    pub(crate) tm: TransactionManagerQuery<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> ReadTransaction<VS, UT> {
-    pub fn new(engine: Optimistic<VS, UT>, version: Option<Version>) -> crate::Result<Self> {
-        let tm = engine.tm.read(version)?;
+impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> {
+    pub fn new(engine: Serializable<VS, UT>, version: Option<Version>) -> crate::Result<Self> {
+        let tm = engine.tm.query(version)?;
         Ok(Self { engine, tm })
     }
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> ReadTransaction<VS, UT> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> {
     pub fn version(&self) -> Version {
         self.tm.version()
     }
@@ -55,24 +55,24 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> ReadTransaction<VS, UT> {
         Ok(self.engine.scan_rev(version)?)
     }
 
-    pub fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>> {
+    pub fn range(&self, range: EncodedKeyRange) -> crate::Result<VS::ScanRangeIter<'_>> {
         let version = self.tm.version();
-        Ok(self.engine.scan_range(range, version)?)
+        Ok(self.engine.range(range, version)?)
     }
 
-    pub fn scan_range_rev(
+    pub fn range_rev(
         &self,
         range: EncodedKeyRange,
     ) -> crate::Result<VS::ScanRangeIterRev<'_>> {
         let version = self.tm.version();
-        Ok(self.engine.scan_range_rev(range, version)?)
+        Ok(self.engine.range_rev(range, version)?)
     }
 
-    pub fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>> {
-        self.scan_range(EncodedKeyRange::prefix(prefix))
+    pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIter<'_>> {
+        self.range(EncodedKeyRange::prefix(prefix))
     }
 
-    pub fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>> {
-        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
+    pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::ScanRangeIterRev<'_>> {
+        self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

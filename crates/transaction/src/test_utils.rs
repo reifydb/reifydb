@@ -7,7 +7,7 @@ use reifydb_core::hook::Hooks;
 use reifydb_core::interface::ActiveCommandTransaction;
 use reifydb_storage::memory::Memory;
 
-pub fn create_test_write_transaction() -> ActiveCommandTransaction<
+pub fn create_test_command_transaction() -> ActiveCommandTransaction<
     Serializable<Memory, SingleVersionLock<Memory>>,
     SingleVersionLock<Memory>,
 > {

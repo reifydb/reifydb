@@ -16,7 +16,7 @@ use crate::transaction::keycode;
 use crate::{as_key, as_row, from_key, from_row};
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, WriteTransaction};
+use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, CommandTransaction};
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 use reifydb_transaction::svl::SingleVersionLock;
 
@@ -36,7 +36,7 @@ fn test_write_skew() {
     assert_eq!(2, engine.version().unwrap());
 
     let get_bal =
-        |txn: &mut WriteTransaction<Memory, SingleVersionLock<Memory>>, k: &EncodedKey| -> u64 {
+        |txn: &mut CommandTransaction<Memory, SingleVersionLock<Memory>>, k: &EncodedKey| -> u64 {
             let sv = txn.get(k).unwrap().unwrap();
             let val = sv.row();
             from_row!(u64, val)
@@ -323,7 +323,7 @@ fn test_intersecting_data2() {
 
     let mut txn1 = engine.begin_command().unwrap();
     let val = txn1
-        .scan_range(EncodedKeyRange::parse("a..b"))
+        .range(EncodedKeyRange::parse("a..b"))
         .unwrap()
         .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
@@ -333,7 +333,7 @@ fn test_intersecting_data2() {
 
     let mut txn2 = engine.begin_command().unwrap();
     let val = txn2
-        .scan_range(EncodedKeyRange::parse("b..c"))
+        .range(EncodedKeyRange::parse("b..c"))
         .unwrap()
         .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
@@ -372,7 +372,7 @@ fn test_intersecting_data3() {
 
     let mut txn1 = engine.begin_command().unwrap();
     let val = txn1
-        .scan_range(EncodedKeyRange::parse("a..b"))
+        .range(EncodedKeyRange::parse("a..b"))
         .unwrap()
         .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();
@@ -381,7 +381,7 @@ fn test_intersecting_data3() {
 
     let mut txn2 = engine.begin_command().unwrap();
     let val = txn2
-        .scan_range(EncodedKeyRange::parse("b..c"))
+        .range(EncodedKeyRange::parse("b..c"))
         .unwrap()
         .map(|tv| from_row!(u64, *tv.row()))
         .sum::<u64>();

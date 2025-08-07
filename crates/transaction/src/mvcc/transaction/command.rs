@@ -18,7 +18,7 @@ use reifydb_core::diagnostic::transaction;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version, error, return_error};
 
-pub struct TransactionManagerTx<C, L, P>
+pub struct TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -34,10 +34,10 @@ where
     pub(super) duplicates: Vec<Pending>,
 
     pub(super) discarded: bool,
-    pub(super) done_read: bool,
+    pub(super) done_query: bool,
 }
 
-impl<C, L, P> Drop for TransactionManagerTx<C, L, P>
+impl<C, L, P> Drop for TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -50,7 +50,7 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -77,7 +77,7 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -107,7 +107,7 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -201,7 +201,7 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -259,7 +259,7 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -323,7 +323,7 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
@@ -338,11 +338,11 @@ where
         // the order in which we push these updates to the write channel. So, we
         // acquire a writeChLock before getting a commit timestamp, and only release
         // it after pushing the entries to it.
-        let _write_lock = self.oracle.write_serialize_lock.lock();
+        let _write_lock = self.oracle.command_serialize_lock.lock();
 
         let conflict_manager = mem::take(&mut self.conflicts);
 
-        match self.oracle.new_commit(&mut self.done_read, self.version, conflict_manager)? {
+        match self.oracle.new_commit(&mut self.done_query, self.version, conflict_manager)? {
             CreateCommitResult::Conflict(conflicts) => {
                 // If there is a conflict, we should not send the updates to the write channel.
                 // Instead, we should return the conflict error to the user.
@@ -383,16 +383,16 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerTx<C, L, P>
+impl<C, L, P> TransactionManagerCommand<C, L, P>
 where
     C: Conflict,
     L: VersionProvider,
     P: PendingWrites,
 {
-    fn done_read(&mut self) {
-        if !self.done_read {
-            self.done_read = true;
-            self.oracle().rx.done(self.version);
+    fn done_query(&mut self) {
+        if !self.done_query {
+            self.done_query = true;
+            self.oracle().query.done(self.version);
         }
     }
 
@@ -408,7 +408,7 @@ where
             return;
         }
         self.discarded = true;
-        self.done_read();
+        self.done_query();
     }
 
     /// Returns true if the transaction is discarded.

@@ -69,18 +69,18 @@ pub trait VersionedScanRange {
     where
         Self: 'a;
 
-    fn scan_range(
+    fn range(
         &self,
         range: EncodedKeyRange,
         version: Version,
     ) -> crate::Result<Self::ScanRangeIter<'_>>;
 
-    fn scan_prefix(
+    fn prefix(
         &self,
         prefix: &EncodedKey,
         version: Version,
     ) -> crate::Result<Self::ScanRangeIter<'_>> {
-        self.scan_range(EncodedKeyRange::prefix(prefix), version)
+        self.range(EncodedKeyRange::prefix(prefix), version)
     }
 }
 
@@ -89,18 +89,18 @@ pub trait VersionedScanRangeRev {
     where
         Self: 'a;
 
-    fn scan_range_rev(
+    fn range_rev(
         &self,
         range: EncodedKeyRange,
         version: Version,
     ) -> crate::Result<Self::ScanRangeIterRev<'_>>;
 
-    fn scan_prefix_rev(
+    fn prefix_rev(
         &self,
         prefix: &EncodedKey,
         version: Version,
     ) -> crate::Result<Self::ScanRangeIterRev<'_>> {
-        self.scan_range_rev(EncodedKeyRange::prefix(prefix), version)
+        self.range_rev(EncodedKeyRange::prefix(prefix), version)
     }
 }
 
@@ -169,10 +169,10 @@ pub trait UnversionedScanRange {
     where
         Self: 'a;
 
-    fn scan_range(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRange<'_>>;
+    fn range(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRange<'_>>;
 
-    fn scan_prefix(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRange<'_>> {
-        self.scan_range(EncodedKeyRange::prefix(prefix))
+    fn prefix(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRange<'_>> {
+        self.range(EncodedKeyRange::prefix(prefix))
     }
 }
 
@@ -181,9 +181,9 @@ pub trait UnversionedScanRangeRev {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRangeRev<'_>>;
+    fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::ScanRangeRev<'_>>;
 
-    fn scan_prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRangeRev<'_>> {
-        self.scan_range_rev(EncodedKeyRange::prefix(prefix))
+    fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::ScanRangeRev<'_>> {
+        self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }

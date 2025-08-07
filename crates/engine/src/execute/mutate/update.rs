@@ -25,7 +25,7 @@ use std::sync::Arc;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn update(
         &self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: UpdatePlan,
         params: Params,
     ) -> crate::Result<Columns> {
@@ -34,8 +34,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         };
         let schema_name = schema_ref.fragment.as_str();
 
-        let schema = Catalog::get_schema_by_name(atx, schema_name)?.unwrap();
-        let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table.fragment)? else {
+        let schema = Catalog::get_schema_by_name(txn, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(txn, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
             return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
@@ -46,7 +46,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         // Compile the input plan into an execution node with table context
         let mut input_node = compile(
             *plan.input,
-            atx,
+            txn,
             Arc::new(ExecutionContext {
                 functions: self.functions.clone(),
                 table: Some(table.clone()),
@@ -66,7 +66,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             preserve_row_ids: true,
             params: params.clone(),
         };
-        while let Some(Batch { columns }) = input_node.next(&context, atx)? {
+        while let Some(Batch { columns }) = input_node.next(&context, txn)? {
             // Find the RowId column - return error if not found
             let Some(row_id_column) = columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
             else {
@@ -148,7 +148,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
                 // Update the row using the existing RowId from the columns
                 let row_id = row_ids[row_idx];
-                atx.set(&TableRowKey { table: table.id, row: row_id }.encode(), row)?;
+                txn.set(&TableRowKey { table: table.id, row: row_id }.encode(), row)?;
 
                 updated_count += 1;
             }

@@ -13,7 +13,7 @@ use std::ops::Bound;
 impl VersionedScanRange for Sqlite {
     type ScanRangeIter<'a> = Range;
 
-    fn scan_range(
+    fn range(
         &self,
         range: EncodedKeyRange,
         version: Version,

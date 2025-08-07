@@ -16,7 +16,7 @@ impl UnversionedScanRangeRev for Sqlite {
     where
         Self: 'a;
 
-    fn scan_range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
+    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::ScanRangeRev<'_>> {
         Ok(RangeRev::new(self.get_conn(), range, 1024))
     }
 }

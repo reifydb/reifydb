@@ -15,7 +15,7 @@ use crate::transaction::keycode;
 use crate::{as_key, as_row, from_row};
 use reifydb_core::EncodedKey;
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, WriteTransaction};
+use reifydb_transaction::mvcc::transaction::optimistic::{Optimistic, CommandTransaction};
 use reifydb_transaction::svl::SingleVersionLock;
 
 #[test]
@@ -34,7 +34,7 @@ fn test_write_skew() {
     assert_eq!(2, engine.version().unwrap());
 
     let get_bal =
-        |txn: &mut WriteTransaction<Memory, SingleVersionLock<Memory>>, k: &EncodedKey| -> u64 {
+        |txn: &mut CommandTransaction<Memory, SingleVersionLock<Memory>>, k: &EncodedKey| -> u64 {
             let sv = txn.get(k).unwrap().unwrap();
             let val = sv.row();
             from_row!(u64, val)

@@ -15,13 +15,13 @@ use reifydb_rql::plan::physical::CreateComputedViewPlan;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_computed_view(
         &self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: CreateComputedViewPlan,
     ) -> crate::Result<Columns> {
         let rql = r#"
     create computed view test.adults { name: utf8, age: int1 }  with {
-        from users
-        filter { age > 18  and name == 'Bob' }
+        from test.users
+        filter { age > 18  }
         map { name, age }
     }"#;
 
@@ -45,7 +45,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         let flow = compile_to_flow(logical_plans).unwrap();
         // dbg!(&flow);
 
-        // atx.command_as_root(
+        // txn.command_as_root(
         //     r#"
         //     from[{data: blob::utf8('$REPLACE')}]
         //     insert reifydb.flows
@@ -63,7 +63,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         .replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str());
 
         self.execute_command(
-            atx,
+            txn,
             Command { rql: rql.as_str(), params: Params::default(), principal: &Principal::root() },
         )?;
 

@@ -70,15 +70,15 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT
 {
     fn execute_command<'a>(
         &'a self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         cmd: Command<'a>,
     ) -> reifydb_core::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(cmd.rql)?;
 
         for statement in statements {
-            if let Some(plan) = plan(atx, statement)? {
-                let er = self.execute_command_plan(atx, plan, cmd.params.clone())?;
+            if let Some(plan) = plan(txn, statement)? {
+                let er = self.execute_command_plan(txn, plan, cmd.params.clone())?;
                 result.push(er);
             }
         }
@@ -92,15 +92,15 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteQuery<VT, UT>
 {
     fn execute_query<'a>(
         &'a self,
-        atx: &mut ActiveQueryTransaction<VT, UT>,
+        txn: &mut ActiveQueryTransaction<VT, UT>,
         qry: Query<'a>,
     ) -> reifydb_core::Result<Vec<Frame>> {
         let mut result = vec![];
         let statements = ast::parse(qry.rql)?;
 
         for statement in statements {
-            if let Some(plan) = plan(atx, statement)? {
-                let er = self.execute_query_plan(atx, plan, qry.params.clone())?;
+            if let Some(plan) = plan(txn, statement)? {
+                let er = self.execute_query_plan(txn, plan, qry.params.clone())?;
                 result.push(er);
             }
         }
@@ -143,18 +143,18 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
     pub(crate) fn execute_command_plan(
         &self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: PhysicalPlan,
         params: Params,
     ) -> crate::Result<Columns> {
         match plan {
-            PhysicalPlan::AlterSequence(plan) => self.alter_sequence(atx, plan),
-            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(atx, plan),
-            PhysicalPlan::CreateSchema(plan) => self.create_schema(atx, plan),
-            PhysicalPlan::CreateTable(plan) => self.create_table(atx, plan),
-            PhysicalPlan::Delete(plan) => self.delete(atx, plan, params),
-            PhysicalPlan::Insert(plan) => self.insert(atx, plan, params),
-            PhysicalPlan::Update(plan) => self.update(atx, plan, params),
+            PhysicalPlan::AlterSequence(plan) => self.alter_sequence(txn, plan),
+            PhysicalPlan::CreateComputedView(plan) => self.create_computed_view(txn, plan),
+            PhysicalPlan::CreateSchema(plan) => self.create_schema(txn, plan),
+            PhysicalPlan::CreateTable(plan) => self.create_table(txn, plan),
+            PhysicalPlan::Delete(plan) => self.delete(txn, plan, params),
+            PhysicalPlan::Insert(plan) => self.insert(txn, plan, params),
+            PhysicalPlan::Update(plan) => self.update(txn, plan, params),
 
             PhysicalPlan::Aggregate(_)
             | PhysicalPlan::Filter(_)
@@ -165,7 +165,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             | PhysicalPlan::Sort(_)
             | PhysicalPlan::Map(_)
             | PhysicalPlan::InlineData(_)
-            | PhysicalPlan::TableScan(_) => self.query(atx, plan, params),
+            | PhysicalPlan::TableScan(_) => self.query(txn, plan, params),
         }
     }
 

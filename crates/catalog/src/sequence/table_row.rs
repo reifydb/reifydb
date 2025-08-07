@@ -12,9 +12,9 @@ pub struct TableRowSequence {}
 
 impl TableRowSequence {
     pub fn next_row_id<VT: VersionedTransaction, UT: UnversionedTransaction>(
-		atx: &mut ActiveCommandTransaction<VT, UT>,
+		txn: &mut ActiveCommandTransaction<VT, UT>,
 		table: TableId,
     ) -> crate::Result<RowId> {
-        GeneratorU64::next(atx, &TableRowSequenceKey { table }.encode()).map(RowId)
+        GeneratorU64::next(txn, &TableRowSequenceKey { table }.encode()).map(RowId)
     }
 }

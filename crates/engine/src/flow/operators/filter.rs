@@ -16,7 +16,7 @@ impl FilterOperator {
 }
 
 impl Operator for FilterOperator {
-    fn apply(&mut self, _ctx: &mut OperatorContext, change: Change) -> crate::Result<Change> {
+    fn apply(&self, _ctx: &OperatorContext, change: Change) -> crate::Result<Change> {
         let mut output = Vec::new();
 
         for diff in change.diffs {
@@ -79,6 +79,8 @@ impl FilterOperator {
         }
 
         columns.filter(&bv)?;
+
+        dbg!(&columns);
 
         Ok(columns)
     }

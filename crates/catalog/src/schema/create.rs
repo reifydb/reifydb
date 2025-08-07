@@ -20,22 +20,22 @@ pub struct SchemaToCreate {
 
 impl Catalog {
     pub fn create_schema<VT: VersionedTransaction, UT: UnversionedTransaction>(
-		atx: &mut ActiveCommandTransaction<VT, UT>,
+		txn: &mut ActiveCommandTransaction<VT, UT>,
 		to_create: SchemaToCreate,
     ) -> crate::Result<Schema> {
-        if let Some(schema) = Catalog::get_schema_by_name(atx, &to_create.name)? {
+        if let Some(schema) = Catalog::get_schema_by_name(txn, &to_create.name)? {
             return_error!(schema_already_exists(to_create.schema_span, &schema.name));
         }
 
-        let schema_id = SystemSequence::next_schema_id(atx)?;
+        let schema_id = SystemSequence::next_schema_id(txn)?;
 
         let mut row = schema::LAYOUT.allocate_row();
         schema::LAYOUT.set_u64(&mut row, schema::ID, schema_id);
         schema::LAYOUT.set_utf8(&mut row, schema::NAME, &to_create.name);
 
-        atx.set(&SchemaKey { schema: schema_id }.encode(), row)?;
+        txn.set(&SchemaKey { schema: schema_id }.encode(), row)?;
 
-        Ok(Catalog::get_schema(atx, schema_id)?.unwrap())
+        Ok(Catalog::get_schema(txn, schema_id)?.unwrap())
     }
 }
 
@@ -43,21 +43,21 @@ impl Catalog {
 mod tests {
     use crate::Catalog;
     use crate::schema::create::SchemaToCreate;
-    use reifydb_transaction::test_utils::create_test_write_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
     #[test]
     fn test_create_schema() {
-        let mut atx = create_test_write_transaction();
+        let mut txn = create_test_command_transaction();
 
         let to_create = SchemaToCreate { schema_span: None, name: "test_schema".to_string() };
 
         // First creation should succeed
-        let result = Catalog::create_schema(&mut atx, to_create.clone()).unwrap();
+        let result = Catalog::create_schema(&mut txn, to_create.clone()).unwrap();
         assert_eq!(result.id, 1);
         assert_eq!(result.name, "test_schema");
 
         // Creating the same schema again with `if_not_exists = false` should return error
-        let err = Catalog::create_schema(&mut atx, to_create).unwrap_err();
+        let err = Catalog::create_schema(&mut txn, to_create).unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_001");
     }
 }

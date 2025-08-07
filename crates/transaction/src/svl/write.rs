@@ -111,8 +111,8 @@ where
         // Get committed items from storage
         let committed_items: Vec<Unversioned> = {
             match (range, reverse) {
-                (Some(r), true) => self.storage.scan_range_rev(r)?.collect(),
-                (Some(r), false) => self.storage.scan_range(r)?.collect(),
+                (Some(r), true) => self.storage.range_rev(r)?.collect(),
+                (Some(r), false) => self.storage.range(r)?.collect(),
                 (None, true) => self.storage.scan_rev()?.collect(),
                 (None, false) => self.storage.scan()?.collect(),
             }

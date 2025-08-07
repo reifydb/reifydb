@@ -22,7 +22,7 @@ use std::sync::Arc;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn delete(
         &self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: DeletePlan,
         params: Params,
     ) -> crate::Result<Columns> {
@@ -31,8 +31,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         };
         let schema_name = schema_ref.fragment.as_str();
 
-        let schema = Catalog::get_schema_by_name(atx, schema_name)?.unwrap();
-        let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table.fragment)? else {
+        let schema = Catalog::get_schema_by_name(txn, schema_name)?.unwrap();
+        let Some(table) = Catalog::get_table_by_name(txn, schema.id, &plan.table.fragment)? else {
             let span = plan.table.into_span();
             return_error!(table_not_found(span.clone(), schema_name, &span.fragment,));
         };
@@ -43,7 +43,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             // Delete specific rows based on input plan
             let mut input_node = compile(
                 *input_plan,
-                atx,
+                txn,
                 Arc::new(ExecutionContext {
                     functions: self.functions.clone(),
                     table: Some(table.clone()),
@@ -61,7 +61,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                 params: params.clone(),
             };
 
-            while let Some(Batch { columns }) = input_node.next(&context, atx)? {
+            while let Some(Batch { columns }) = input_node.next(&context, txn)? {
                 // Find the RowId column - return error if not found
                 let Some(row_id_column) =
                     columns.iter().find(|col| col.name() == ROW_ID_COLUMN_NAME)
@@ -85,7 +85,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
                 for row_idx in 0..columns.row_count() {
                     let row_id = row_ids[row_idx];
-                    atx.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
+                    txn.remove(&TableRowKey { table: table.id, row: row_id }.encode())?;
                     deleted_count += 1;
                 }
             }
@@ -93,7 +93,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
             // Delete entire table - scan all rows and delete them
             let range = TableRowKeyRange { table: table.id };
 
-            let keys = atx
+            let keys = txn
                 .range(EncodedKeyRange::new(
                     Included(range.start().unwrap()),
                     Included(range.end().unwrap()),
@@ -101,7 +101,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
                 .map(|versioned| versioned.key)
                 .collect::<Vec<_>>();
             for key in keys {
-                atx.remove(&key)?;
+                txn.remove(&key)?;
                 deleted_count += 1;
             }
         }

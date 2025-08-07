@@ -8,8 +8,7 @@ use crate::flow::change::Change;
 use crate::flow::state::StateStore;
 
 pub trait Operator {
-    /// Apply the operator to a change and return the resulting change
-    fn apply(&mut self, ctx: &mut OperatorContext, change: Change) -> crate::Result<Change>;
+    fn apply(&self, ctx: &OperatorContext, change: Change) -> crate::Result<Change>;
 }
 
 pub struct OperatorContext {

@@ -15,14 +15,14 @@ use reifydb_rql::plan::physical::CreateTablePlan;
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     pub(crate) fn create_table(
         &self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         plan: CreateTablePlan,
     ) -> crate::Result<Columns> {
-        let Some(schema) = Catalog::get_schema_by_name(atx, &plan.schema)? else {
+        let Some(schema) = Catalog::get_schema_by_name(txn, &plan.schema)? else {
             return_error!(schema_not_found(Some(plan.schema.clone()), &plan.schema.as_ref(),));
         };
 
-        if let Some(table) = Catalog::get_table_by_name(atx, schema.id, &plan.table)? {
+        if let Some(table) = Catalog::get_table_by_name(txn, schema.id, &plan.table)? {
             if plan.if_not_exists {
                 return Ok(Columns::single_row([
                     ("schema", Value::Utf8(plan.schema.to_string())),
@@ -39,7 +39,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
         }
 
         Catalog::create_table(
-            atx,
+            txn,
             TableToCreate {
                 span: Some(plan.table.clone()),
                 table: plan.table.to_string(),
@@ -64,13 +64,13 @@ mod tests {
     use reifydb_core::interface::Params;
     use reifydb_core::{OwnedSpan, Value};
     use reifydb_rql::plan::physical::PhysicalPlan;
-    use reifydb_transaction::test_utils::create_test_write_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
     #[test]
     fn test_create_table() {
-        let mut atx = create_test_write_transaction();
+        let mut txn = create_test_command_transaction();
 
-        ensure_test_schema(&mut atx);
+        ensure_test_schema(&mut txn);
 
         let mut plan = CreateTablePlan {
             schema: OwnedSpan::testing("test_schema"),
@@ -82,7 +82,7 @@ mod tests {
         // First creation should succeed
         let result = Executor::testing()
             .execute_command_plan(
-                &mut atx,
+                &mut txn,
                 PhysicalPlan::CreateTable(plan.clone()),
                 Params::default(),
             )
@@ -95,7 +95,7 @@ mod tests {
         plan.if_not_exists = true;
         let result = Executor::testing()
             .execute_command_plan(
-                &mut atx,
+                &mut txn,
                 PhysicalPlan::CreateTable(plan.clone()),
                 Params::default(),
             )
@@ -107,17 +107,17 @@ mod tests {
         // Creating the same table again with `if_not_exists = false` should return error
         plan.if_not_exists = false;
         let err = Executor::testing()
-            .execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan), Params::default())
+            .execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
             .unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_003");
     }
 
     #[test]
     fn test_create_same_table_in_different_schema() {
-        let mut atx = create_test_write_transaction();
+        let mut txn = create_test_command_transaction();
 
-        ensure_test_schema(&mut atx);
-        create_schema(&mut atx, "another_schema");
+        ensure_test_schema(&mut txn);
+        create_schema(&mut txn, "another_schema");
 
         let plan = CreateTablePlan {
             schema: OwnedSpan::testing("test_schema"),
@@ -128,7 +128,7 @@ mod tests {
 
         let result = Executor::testing()
             .execute_command_plan(
-                &mut atx,
+                &mut txn,
                 PhysicalPlan::CreateTable(plan.clone()),
                 Params::default(),
             )
@@ -146,7 +146,7 @@ mod tests {
 
         let result = Executor::testing()
             .execute_command_plan(
-                &mut atx,
+                &mut txn,
                 PhysicalPlan::CreateTable(plan.clone()),
                 Params::default(),
             )
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_create_table_missing_schema() {
-        let mut atx = create_test_write_transaction();
+        let mut txn = create_test_command_transaction();
 
         let plan = CreateTablePlan {
             schema: OwnedSpan::testing("missing_schema"),
@@ -168,7 +168,7 @@ mod tests {
         };
 
         let err = Executor::testing()
-            .execute_command_plan(&mut atx, PhysicalPlan::CreateTable(plan), Params::default())
+            .execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
             .unwrap_err();
         assert_eq!(err.diagnostic().code, "CA_002");
     }

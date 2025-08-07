@@ -1,4 +1,4 @@
-use super::change::{Diff, Change};
+use super::change::{Change, Diff};
 use super::flow::Flow;
 use super::node::{NodeId, NodeType, OperatorType};
 use super::operators::{FilterOperator, MapOperator, Operator, OperatorContext};
@@ -8,41 +8,32 @@ use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::interface::{
     ActiveCommandTransaction, Column, ColumnId, ColumnIndex, EncodableKey, EncodableKeyRange,
     SchemaId, Table, TableId, TableRowKey, TableRowKeyRange, UnversionedTransaction,
-    VersionedQueryTransaction, VersionedTransaction, VersionedCommandTransaction,
+    VersionedCommandTransaction, VersionedQueryTransaction, VersionedTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKeyRange, Type, Value};
 use std::collections::Bound::Included;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
-pub struct FlowEngine<VT: VersionedTransaction, UT: UnversionedTransaction> {
-    graph: Flow,
-    operators: HashMap<NodeId, Box<dyn Operator>>,
+pub struct FlowProcessor<VT: VersionedTransaction, UT: UnversionedTransaction> {
+    flow: Flow,
+    operators: HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static> >,
     contexts: HashMap<NodeId, OperatorContext>,
     versioned: VT,
     unversioned: UT,
-    _phantom: PhantomData<(VT, UT)>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
-    pub fn new(graph: Flow, versioned: VT, unversioned: UT) -> Self {
-        Self {
-            graph,
-            operators: HashMap::new(),
-            contexts: HashMap::new(),
-            versioned,
-            unversioned,
-            _phantom: PhantomData,
-        }
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT> {
+    pub fn new(flow: Flow, versioned: VT, unversioned: UT) -> Self {
+        Self { flow, operators: HashMap::new(), contexts: HashMap::new(), versioned, unversioned }
     }
 
     pub fn initialize(&mut self) -> Result<()> {
         // Initialize operators for all nodes
-        let node_ids: Vec<NodeId> = self.graph.get_all_nodes().collect();
+        let node_ids: Vec<NodeId> = self.flow.get_all_nodes().collect();
 
         for node_id in node_ids {
-            if let Some(node) = self.graph.get_node(&node_id) {
+            if let Some(node) = self.flow.get_node(&node_id) {
                 match &node.ty {
                     NodeType::Source { .. } => {
                         // Tables use VersionedStorage directly
@@ -63,25 +54,27 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
         Ok(())
     }
 
-    pub fn process_change(&mut self, node_id: &NodeId, change: Change) -> Result<()> {
+    pub fn process_change(&self, node_id: &NodeId, change: Change) -> Result<()> {
         // let mut tx = ;
 
-        let mut atx =
-            ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone());
+        let mut txn = ActiveCommandTransaction::new(
+            self.versioned.begin_command()?,
+            self.unversioned.clone(),
+        );
 
-        self.process_change_with_tx(&mut atx, node_id, change)?;
-        atx.commit()?;
+        self.process_change_with_tx(&mut txn, node_id, change)?;
+        txn.commit()?;
 
         Ok(())
     }
 
     fn process_change_with_tx(
-        &mut self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        &self,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         node_id: &NodeId,
         change: Change,
     ) -> Result<()> {
-        let (node_type, output_nodes) = if let Some(node) = self.graph.get_node(node_id) {
+        let (node_type, output_nodes) = if let Some(node) = self.flow.get_node(node_id) {
             (node.ty.clone(), node.outputs.clone())
         } else {
             return Ok(()); // Node not found, nothing to do
@@ -95,7 +88,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             NodeType::Operator { operator } => {
                 // Process through operator
                 let transformed_diff = if let (Some(op), Some(context)) =
-                    (self.operators.get_mut(node_id), self.contexts.get_mut(node_id))
+                    (self.operators.get(node_id), self.contexts.get(node_id))
                 {
                     op.apply(context, change)?
                 } else {
@@ -104,27 +97,110 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
                 // Stateful operators need to persist their internal state
                 if operator.is_stateful() {
-                    self.apply_diff_to_storage_with_tx(atx, node_id, &transformed_diff)?;
+                    self.apply_diff_to_storage_with_tx(txn, node_id, &transformed_diff)?;
                 }
 
                 transformed_diff
             }
             NodeType::Sink { .. } => {
                 // Sinks persist the final results
-                self.apply_diff_to_storage_with_tx(atx, node_id, &change)?;
+                self.apply_diff_to_storage_with_tx(txn, node_id, &change)?;
                 change
             }
         };
 
         // Propagate to downstream nodes
         for output_id in output_nodes {
-            self.process_change_with_tx(atx, &output_id, output_change.clone())?;
+            self.process_change_with_tx(txn, &output_id, output_change.clone())?;
         }
 
         Ok(())
     }
 
-    fn create_operator(&self, operator_type: &OperatorType) -> Result<Box<dyn Operator>> {
+    pub fn hack(
+        &self,
+        flow: &Flow,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
+        node_id: &NodeId,
+        change: Change,
+    ) -> Result<()> {
+
+        let mut operators :  HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static> > = HashMap::new();
+        let mut contexts: HashMap<NodeId, OperatorContext> = HashMap::new();
+
+        // Initialize operators for all nodes
+        let node_ids: Vec<NodeId> = flow.get_all_nodes().collect();
+
+        for node_id in node_ids {
+            if let Some(node) = flow.get_node(&node_id) {
+                match &node.ty {
+                    NodeType::Source { .. } => {
+                        // Tables use VersionedStorage directly
+                    }
+                    NodeType::Operator { operator } => {
+                        // Create operator and context
+                        let op = self.create_operator(operator)?;
+                        operators.insert(node_id.clone(), op);
+                        contexts.insert(node_id.clone(), OperatorContext::new());
+                    }
+                    NodeType::Sink { .. } => {
+                        // Views use VersionedStorage directly
+                    }
+                }
+            }
+        }
+
+
+        let (node_type, output_nodes) = if let Some(node) = flow.get_node(node_id) {
+            (node.ty.clone(), node.outputs.clone())
+        } else {
+            return Ok(()); // Node not found, nothing to do
+        };
+
+        let output_change = match &node_type {
+            NodeType::Source { .. } => {
+                // Source are handled elsewhere in the system - just propagate
+                change
+            }
+            NodeType::Operator { operator } => {
+                // Process through operator
+                let transformed_diff = if let (Some(op), Some(context)) =
+                    (operators.get(node_id), contexts.get(node_id))
+                {
+                    op.apply(context, change)?
+                } else {
+                    panic!("Operator or context not found");
+                };
+
+                // Stateful operators need to persist their internal state
+                if operator.is_stateful() {
+                    self.apply_diff_to_storage_with_tx(txn, node_id, &transformed_diff)?;
+                }
+
+                transformed_diff
+            }
+            NodeType::Sink { .. } => {
+                // Sinks persist the final results
+                self.apply_diff_to_storage_with_tx(txn, node_id, &change)?;
+                change
+            }
+        };
+
+        // Propagate to downstream nodes
+        for output_id in output_nodes {
+            // self.process_change_with_tx(txn, &output_id, output_change.clone())?;
+            self.hack(
+                flow,
+                txn,
+                &output_id,
+                output_change.clone(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn create_operator(&self, operator_type: &OperatorType) -> Result<Box<dyn Operator + Send + Sync + 'static>> {
         match operator_type {
             OperatorType::Filter { predicate } => {
                 Ok(Box::new(FilterOperator::new(predicate.clone())))
@@ -139,8 +215,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
     }
 
     fn apply_diff_to_storage_with_tx(
-        &mut self,
-        atx: &mut ActiveCommandTransaction<VT, UT>,
+        &self,
+        txn: &mut ActiveCommandTransaction<VT, UT>,
         node_id: &NodeId,
         change: &Change,
     ) -> Result<()> {
@@ -169,6 +245,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                 },
             ],
         };
+
+        dbg!(&change);
 
         for diff in &change.diffs {
             match diff {
@@ -238,8 +316,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
                         }
 
                         // Insert the row into the database
-                        let row_id = TableRowSequence::next_row_id(atx, TableId(node_id.0))?;
-                        atx.set(
+                        let row_id = TableRowSequence::next_row_id(txn, TableId(node_id.0))?;
+                        txn.set(
                             &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
                             row,
                         )
@@ -269,8 +347,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
 
     pub fn get_view_data(&self, view_name: &str) -> Result<Columns> {
         // Find view node and read from versioned storage
-        for node_id in self.graph.get_all_nodes() {
-            if let Some(node) = self.graph.get_node(&node_id) {
+        for node_id in self.flow.get_all_nodes() {
+            if let Some(node) = self.flow.get_node(&node_id) {
                 if let NodeType::Sink { name, .. } = &node.ty {
                     if name == view_name {
                         return self.read_columns_from_storage(&node_id);
@@ -325,9 +403,5 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowEngine<VT, UT> {
             columns.append_rows(&layout, [versioned.row])?;
         }
         Ok(columns)
-    }
-
-    pub fn get_graph(&self) -> &Flow {
-        &self.graph
     }
 }

@@ -86,8 +86,8 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                     print(&mut output, self.storage.scan_rev(version)?)
                 };
             }
-            // scan_range RANGE [reverse=BOOL] [version=VERSION]
-            "scan_range" => {
+            // range RANGE [reverse=BOOL] [version=VERSION]
+            "range" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let range = EncodedKeyRange::parse(
@@ -97,14 +97,14 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_range(range, version)?)
+                    print(&mut output, self.storage.range(range, version)?)
                 } else {
-                    print(&mut output, self.storage.scan_range_rev(range, version)?)
+                    print(&mut output, self.storage.range_rev(range, version)?)
                 };
             }
 
-            // scan_prefix PREFIX [reverse=BOOL] [version=VERSION]
-            "scan_prefix" => {
+            // prefix PREFIX [reverse=BOOL] [version=VERSION]
+            "prefix" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
@@ -113,9 +113,9 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_prefix(&prefix, version)?)
+                    print(&mut output, self.storage.prefix(&prefix, version)?)
                 } else {
-                    print(&mut output, self.storage.scan_prefix_rev(&prefix, version)?)
+                    print(&mut output, self.storage.prefix_rev(&prefix, version)?)
                 };
             }
 

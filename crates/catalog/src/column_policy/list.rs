@@ -39,15 +39,15 @@ mod tests {
     use crate::test_utils::ensure_test_table;
     use reifydb_core::Type;
     use reifydb_core::interface::TableId;
-    use reifydb_transaction::test_utils::create_test_write_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
     #[test]
     fn test_ok() {
-        let mut atx = create_test_write_transaction();
-        ensure_test_table(&mut atx);
+        let mut txn = create_test_command_transaction();
+        ensure_test_table(&mut txn);
 
         Catalog::create_column(
-            &mut atx,
+            &mut txn,
             TableId(1),
             ColumnToCreate {
                 span: None,
@@ -64,9 +64,9 @@ mod tests {
         )
         .unwrap();
 
-        let column = Catalog::get_column(&mut atx, ColumnId(1)).unwrap().unwrap();
+        let column = Catalog::get_column(&mut txn, ColumnId(1)).unwrap().unwrap();
 
-        let policies = Catalog::list_column_policies(&mut atx, column.id).unwrap();
+        let policies = Catalog::list_column_policies(&mut txn, column.id).unwrap();
         assert_eq!(policies.len(), 1);
         assert_eq!(policies[0].column, column.id);
         assert!(matches!(

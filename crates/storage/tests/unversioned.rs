@@ -83,8 +83,8 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                     print(&mut output, self.storage.scan_rev().unwrap())
                 };
             }
-            // scan_range RANGE [reverse=BOOL]
-            "scan_range" => {
+            // range RANGE [reverse=BOOL]
+            "range" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let range = EncodedKeyRange::parse(
@@ -93,14 +93,14 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_range(range).unwrap())
+                    print(&mut output, self.storage.range(range).unwrap())
                 } else {
-                    print(&mut output, self.storage.scan_range_rev(range).unwrap())
+                    print(&mut output, self.storage.range_rev(range).unwrap())
                 };
             }
 
-            // scan_prefix PREFIX [reverse=BOOL]
-            "scan_prefix" => {
+            // prefix PREFIX [reverse=BOOL]
+            "prefix" => {
                 let mut args = command.consume_args();
                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
                 let prefix =
@@ -108,9 +108,9 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 args.reject_rest()?;
 
                 if !reverse {
-                    print(&mut output, self.storage.scan_prefix(&prefix).unwrap())
+                    print(&mut output, self.storage.prefix(&prefix).unwrap())
                 } else {
-                    print(&mut output, self.storage.scan_prefix_rev(&prefix).unwrap())
+                    print(&mut output, self.storage.prefix_rev(&prefix).unwrap())
                 };
             }
 

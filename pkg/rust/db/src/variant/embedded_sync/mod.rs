@@ -18,7 +18,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    engine: Engine<VT, UT>,
+    pub engine: Engine<VT, UT>,
 }
 
 impl<VT, UT> Clone for EmbeddedSync<VT, UT>
