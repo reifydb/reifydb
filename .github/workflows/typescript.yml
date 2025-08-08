@@ -104,18 +104,24 @@ jobs:
       - name: Run unit tests
         run: pnpm -r --reporter-hide-prefix --stream test:unit
 
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
+          check_name: "Unit Test Results"
+          comment_title: "Unit Test Results"
+          fail_on: "test failures"
+          action_fail: true
+          action_fail_on_inconclusive: true
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ${{ env.PKG_DIR }}
-    services:
-      reifydb-test:
-        image: reifydb/testcontainer
-        ports:
-          - 8090:8090
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -149,6 +155,10 @@ jobs:
       - name: Build project
         run: pnpm build
 
+      - name: Start ReifyDB testcontainer
+        run: |
+          docker run -d --name reifydb-test -p 8090:8090 reifydb/testcontainer
+
       - name: Wait for ReifyDB service to be ready
         run: |
           echo "Waiting for ReifyDB service to be ready..."
@@ -167,4 +177,17 @@ jobs:
         if: failure()
         run: |
           echo "=== ReifyDB Service Logs ==="
+          docker ps -a
           docker logs reifydb-test || echo "No service logs available"
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()  #
+        with:
+          files: |
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
+          check_name: "Integration Test Results"
+          comment_title: "Integration Test Results"
+          fail_on: "test failures"
+          action_fail: true
+          action_fail_on_inconclusive: true
