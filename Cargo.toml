@@ -5,18 +5,18 @@ members = ["bin/cli",
     "bin/playground",
     "bin/server",
     "bin/testcontainer",
-    "crates/auth",
-    "crates/catalog",
-    "crates/core",
-    "crates/engine",
-    "crates/network",
-    "crates/rql",
-    "crates/storage",
-    "crates/testing",
-    "crates/transaction",
-    "pkg/python",
-    "pkg/rust/db",
-    "pkg/rust/client",
+    "crates/reifydb-auth",
+    "crates/reifydb-catalog",
+    "crates/reifydb-core",
+    "crates/reifydb-engine",
+    "crates/reifydb-network",
+    "crates/reifydb-rql",
+    "crates/reifydb-storage",
+    "crates/reifydb-testing",
+    "crates/reifydb-transaction",
+    "pkg/python/reifydb-py",
+    "pkg/rust/reifydb",
+    "pkg/rust/reifydb-client",
     "testsuite/limit",
     "testsuite/regression",
 ]
@@ -25,17 +25,17 @@ default-members = ["bin/cli",
     "bin/playground",
     "bin/server",
     "bin/testcontainer",
-    "crates/auth",
-    "crates/catalog",
-    "crates/core",
-    "crates/engine",
-    "crates/network",
-    "crates/rql",
-    "crates/storage",
-    "crates/testing",
-    "crates/transaction",
-    "pkg/rust/db",
-    "pkg/rust/client",
+    "crates/reifydb-auth",
+    "crates/reifydb-catalog",
+    "crates/reifydb-core",
+    "crates/reifydb-engine",
+    "crates/reifydb-network",
+    "crates/reifydb-rql",
+    "crates/reifydb-storage",
+    "crates/reifydb-testing",
+    "crates/reifydb-transaction",
+    "pkg/rust/reifydb",
+    "pkg/rust/reifydb-client",
     "testsuite/limit",
     "testsuite/regression",
 ]
@@ -71,16 +71,16 @@ debug-assertions = true
 overflow-checks = true
 
 [workspace.dependencies]
-reifydb = { path = "pkg/rust/db", version = "0.0.1" }
-reifydb-auth = { path = "crates/auth", version = "0.0.1" }
-reifydb-catalog = { path = "crates/catalog", version = "0.0.1" }
-reifydb-core = { path = "crates/core", version = "0.0.1" }
-reifydb-engine = { path = "crates/engine", version = "0.0.1" }
-reifydb-network = { path = "crates/network", version = "0.0.1" }
-reifydb-rql = { path = "crates/rql", version = "0.0.1" }
-reifydb-storage = { path = "crates/storage", version = "0.0.1" }
-reifydb-testing = { path = "crates/testing", version = "0.0.1" }
-reifydb-transaction = { path = "crates/transaction", version = "0.0.1" }
+reifydb = { path = "pkg/rust/reifydb", version = "0.0.1" }
+reifydb-auth = { path = "crates/reifydb-auth", version = "0.0.1" }
+reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
+reifydb-core = { path = "crates/reifydb-core", version = "0.0.1" }
+reifydb-engine = { path = "crates/reifydb-engine", version = "0.0.1" }
+reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
+reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
+reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
+reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
+reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
 
 # util
 chrono = { version = "0.4.41", features = ["serde"] }
@@ -128,7 +128,7 @@ prost = "0.13.5"
 heed = { version = "0.22.0", features = ["preserve_order"] }
 
 
-# testing
+# reifydb-testing
 goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
 

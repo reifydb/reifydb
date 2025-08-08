@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-playground"
+name = "playground"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

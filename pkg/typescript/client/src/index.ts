@@ -11,7 +11,7 @@ export class Client {
      * Connect to ReifyDB via WebSocket
      * @param url WebSocket URL
      * @param options Optional configuration
-     * @returns Connected WebSocket client
+     * @returns Connected WebSocket reifydb-client
      */
     static async connect_ws(url: string, options: Omit<WsClientOptions, 'url'> = {}): Promise<WsClient> {
         return WsClient.connect({url, ...options});

@@ -151,7 +151,7 @@ fn rql_to_flow_example(
     // Query the computed view results
     println!("\n--- Computed View Results ---");
     let results = get_view_data(db, &flow, "adults").unwrap();
-    // let results = db
+    // let results = reifydb
     //     .query_as_root(
     //         r#"
 	//     from test.users

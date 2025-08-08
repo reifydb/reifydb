@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-cli"
+name = "cli"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

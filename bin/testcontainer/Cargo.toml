@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-testcontainer"
+name = "testcontainer"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true

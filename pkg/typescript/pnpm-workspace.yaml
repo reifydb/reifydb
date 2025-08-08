@@ -1,4 +1,4 @@
 packages:
-  - 'client'
-  - 'core'
+  - 'reifydb-client'
+  - 'reifydb-core'
   - 'react'

@@ -87,7 +87,7 @@ export class WsClient {
             });
         }
 
-        socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
+        socket.send("{\"id\":\"reifydb-auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
 
         return new WsClient(socket, options);
     }
