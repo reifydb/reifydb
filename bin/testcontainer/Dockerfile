@@ -31,12 +31,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Add unprivileged user with no login shell
 RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin reifydb
 
-COPY --from=builder /build/target/release/reifydb-testcontainer /usr/local/bin/
+COPY --from=builder /build/target/release/testcontainer /usr/local/bin/
 
-RUN chown root:root /usr/local/bin/reifydb-testcontainer && \
-    chmod 0755 /usr/local/bin/reifydb-testcontainer
+RUN chown root:root /usr/local/bin/testcontainer && \
+    chmod 0755 /usr/local/bin/testcontainer
 
 USER reifydb
 
 EXPOSE 8090
-CMD ["reifydb-testcontainer"]
+CMD ["testcontainer"]
