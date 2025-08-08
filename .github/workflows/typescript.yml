@@ -104,6 +104,18 @@ jobs:
       - name: Run unit tests
         run: pnpm -r --reporter-hide-prefix --stream test:unit
 
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
+          check_name: "Unit Test Results"
+          comment_title: "Unit Test Results"
+          fail_on: "test failures"
+          action_fail: true
+          action_fail_on_inconclusive: true
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
@@ -167,4 +179,17 @@ jobs:
         if: failure()
         run: |
           echo "=== ReifyDB Service Logs ==="
+          docker ps -a
           docker logs reifydb-test || echo "No service logs available"
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()  #
+        with:
+          files: |
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
+          check_name: "Integration Test Results"
+          comment_title: "Integration Test Results"
+          fail_on: "test failures"
+          action_fail: true
+          action_fail_on_inconclusive: true
