@@ -40,3 +40,7 @@ max 2^53 = 9,007,199,254,740,992 for float8  - otherwise loss of precision
 
 # __ROW__ID__ 
    - column can not be named like this - because it used internally to store row_ids
+
+# Transaction
+
+A transaction shall not produce more than u16 deltas, otherwise those changes beyond can not be captured by cdc
