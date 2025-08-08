@@ -19,10 +19,8 @@ use crate::mvcc::transaction::range_rev::TransactionRangeRev;
 use crate::mvcc::transaction::version::StdVersionProvider;
 use crate::mvcc::types::TransactionValue;
 use reifydb_core::CowVec;
-use reifydb_core::delta::Delta;
 use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
 use reifydb_core::row::EncodedRow;
-use std::collections::HashMap;
 use std::ops::RangeBounds;
 
 pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
@@ -49,28 +47,30 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
     /// 4. Batch up all writes, write them to database.
     ///
     pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
-        let mut grouped: HashMap<Version, CowVec<Delta>> = HashMap::new();
+        let mut version: Option<Version> = None;
+        let mut deltas = CowVec::with_capacity(8);
 
         self.tm.commit(|pending| {
             for p in pending {
-                grouped.entry(p.version).or_default().push(p.delta);
+                if version.is_none() {
+                    version = Some(p.version);
+                }
+
+                debug_assert_eq!(version.unwrap(), p.version);
+                deltas.push(p.delta);
             }
 
-            for (version, deltas) in grouped.iter() {
+            if let Some(version) = version {
                 self.engine
                     .hooks
-                    .trigger(PreCommitHook { deltas: deltas.clone(), version: *version })?;
-            }
+                    .trigger(PreCommitHook { deltas: deltas.clone(), version: version })?;
 
-            for (version, deltas) in grouped.iter() {
-                // FIXME insertion into storage layer must be transactional as well
-                self.engine.versioned.apply(deltas.clone(), *version)?;
+                self.engine.versioned.apply(deltas.clone(), version)?;
             }
-
             Ok(())
         })?;
 
-        for (version, deltas) in grouped {
+        if let Some(version) = version {
             self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
         }
 

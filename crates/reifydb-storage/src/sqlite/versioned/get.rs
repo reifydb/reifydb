@@ -20,13 +20,19 @@ impl VersionedGet for Sqlite {
 
         Ok(conn
             .query_row(&query, params![key.to_vec(), version], |row| {
-                Ok(Versioned {
-                    key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                    row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                    version: row.get(2)?,
-                })
+                let encoded_row: EncodedRow = EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?));
+                if encoded_row.is_deleted() {
+                    Ok(None)
+                } else {
+                    Ok(Some(Versioned {
+                        key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+                        row: encoded_row,
+                        version: row.get(2)?,
+                    }))
+                }
             })
             .optional()
-            .unwrap())
+            .unwrap()
+            .flatten())
     }
 }

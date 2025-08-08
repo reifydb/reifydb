@@ -1,34 +1,49 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// Copyright (c) reifydb.com 2025.
+// This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use super::execute_iter_query;
+use super::{execute_scan_query, get_table_names};
 use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::EncodedKey;
-use reifydb_core::Result;
-use reifydb_core::interface::{Unversioned, UnversionedScan};
+use reifydb_core::interface::{Versioned, VersionedScan};
+use reifydb_core::{EncodedKey, Result, Version};
 use std::collections::VecDeque;
 
-impl UnversionedScan for Sqlite {
+impl VersionedScan for Sqlite {
     type ScanIter<'a> = Iter;
 
-    fn scan(&self) -> Result<Self::ScanIter<'_>> {
-        Ok(Iter::new(self.get_conn(), 1024))
+    fn scan(&self, version: Version) -> Result<Self::ScanIter<'_>> {
+        Ok(Iter::new(self.get_conn(), version, 1024))
     }
 }
 
 pub struct Iter {
     conn: PooledConnection<SqliteConnectionManager>,
-    buffer: VecDeque<Unversioned>,
+    version: Version,
+    table_names: Vec<String>,
+    buffer: VecDeque<Versioned>,
     last_key: Option<EncodedKey>,
     batch_size: usize,
     exhausted: bool,
 }
 
 impl Iter {
-    pub fn new(conn: PooledConnection<SqliteConnectionManager>, batch_size: usize) -> Self {
-        Self { conn, buffer: VecDeque::new(), last_key: None, batch_size, exhausted: false }
+    pub fn new(
+        conn: PooledConnection<SqliteConnectionManager>,
+        version: Version,
+        batch_size: usize,
+    ) -> Self {
+        let table_names = get_table_names(&conn);
+
+        Self {
+            conn,
+            version,
+            table_names,
+            buffer: VecDeque::new(),
+            last_key: None,
+            batch_size,
+            exhausted: false,
+        }
     }
 
     fn refill_buffer(&mut self) {
@@ -38,8 +53,10 @@ impl Iter {
 
         self.buffer.clear();
 
-        let count = execute_iter_query(
+        let count = execute_scan_query(
             &self.conn,
+            &self.table_names,
+            self.version,
             self.batch_size,
             self.last_key.as_ref(),
             "ASC",
@@ -59,7 +76,7 @@ impl Iter {
 }
 
 impl Iterator for Iter {
-    type Item = Unversioned;
+    type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.buffer.is_empty() {

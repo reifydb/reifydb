@@ -26,6 +26,14 @@ impl Deref for EncodedRow {
 }
 
 impl EncodedRow {
+    pub fn deleted() -> Self {
+        EncodedRow(CowVec::new(vec![0x42]))
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.0.len() == 1 && self.0[0] == 0x42
+    }
+
     pub fn make_mut(&mut self) -> &mut [u8] {
         self.0.make_mut()
     }
@@ -47,6 +55,3 @@ impl EncodedRow {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {}
