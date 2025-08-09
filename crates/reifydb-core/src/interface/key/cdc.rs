@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{EncodedKey, Version};
 use crate::util::encoding::keycode;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CdcEventKey {
     pub version: Version,
     pub sequence: u16,

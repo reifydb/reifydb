@@ -81,9 +81,7 @@ impl Iterator for UnversionedRangeRev<'_> {
     type Item = Unversioned;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.range.next_back()?;
-            return Some(Unversioned { key: item.key().clone(), row: item.value().clone() });
-        }
+        let item = self.range.next_back()?;
+        Some(Unversioned { key: item.key().clone(), row: item.value().clone() })
     }
 }

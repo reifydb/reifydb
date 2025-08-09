@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use super::{ensure_table_exists, table_name};
+use crate::cdc::generate_cdc_event;
 use crate::sqlite::Sqlite;
+use crate::sqlite::cdc::{fetch_before_value, store_cdc_event};
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::VersionedApply;
 use reifydb_core::row::EncodedRow;
@@ -19,8 +21,21 @@ impl VersionedApply for Sqlite {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 
+        let timestamp = self.clock.now_millis();
+
         for delta in delta {
-            match delta {
+            let sequence = self.cdc_seq.next_sequence(version);
+            // Get before value for updates and deletes
+            let before_value = match &delta {
+                Delta::Insert { .. } => None,
+                Delta::Update { key, .. } | Delta::Remove { key } => {
+                    let table = table_name(&key);
+                    fetch_before_value(&tx, &key, table).ok().flatten()
+                }
+            };
+
+            // Apply the data change
+            match &delta {
                 Delta::Insert { key, row } | Delta::Update { key, row } => {
                     let table = table_name(&key);
 
@@ -55,6 +70,10 @@ impl VersionedApply for Sqlite {
                     .unwrap();
                 }
             }
+
+            // Generate and store CDC event
+            let cdc_event = generate_cdc_event(&delta, version, sequence, timestamp, before_value);
+            store_cdc_event(&tx, cdc_event, version, sequence).unwrap();
         }
 
         tx.commit().unwrap();

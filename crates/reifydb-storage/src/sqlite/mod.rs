@@ -1,17 +1,20 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+mod cdc;
 mod config;
 mod unversioned;
 mod versioned;
 
 pub use config::*;
 
+use crate::cdc::sequence::SequenceTracker;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{
-	UnversionedRemove, UnversionedStorage, UnversionedInsert, VersionedStorage,
+    UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage,
 };
+use reifydb_core::util::{Clock, SystemClock};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -20,6 +23,8 @@ pub struct Sqlite(Arc<SqliteInner>);
 
 pub struct SqliteInner {
     pool: Arc<Pool<SqliteConnectionManager>>,
+    clock: Box<dyn Clock>,
+    cdc_seq: SequenceTracker,
 }
 
 impl Deref for Sqlite {
@@ -32,8 +37,16 @@ impl Deref for Sqlite {
 impl Sqlite {
     /// Create a new Sqlite storage with the given configuration
     pub fn new(config: SqliteConfig) -> Self {
-        let db_path =
-            if config.path.is_dir() { config.path.join("reify.reifydb") } else { config.path.clone() };
+        Self::with_clock(config, Box::new(SystemClock))
+    }
+
+    /// Create a new Sqlite storage with the given configuration and clock
+    pub fn with_clock(config: SqliteConfig, clock: Box<dyn Clock>) -> Self {
+        let db_path = if config.path.is_dir() {
+            config.path.join("reify.reifydb")
+        } else {
+            config.path.clone()
+        };
 
         let manager =
             SqliteConnectionManager::file(db_path).with_flags(Self::convert_flags(&config.flags));
@@ -59,12 +72,19 @@ impl Sqlite {
                      value   BLOB NOT NULL,
                      PRIMARY KEY (key)
                  );
+
+                 CREATE TABLE IF NOT EXISTS cdc (
+                     key     BLOB NOT NULL,
+                     version INTEGER NOT NULL,
+                     value   BLOB NOT NULL,
+                     PRIMARY KEY (key, version)
+                 );
                  COMMIT;",
             )
             .unwrap();
         }
 
-        Self(Arc::new(SqliteInner { pool: Arc::new(pool) }))
+        Self(Arc::new(SqliteInner { pool: Arc::new(pool), clock, cdc_seq: SequenceTracker::new() }))
     }
 
     fn convert_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {

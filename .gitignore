@@ -6,3 +6,4 @@
 .ai/
 **/dist/
 **/node_modules/
+.claude/
