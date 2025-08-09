@@ -5,6 +5,8 @@
  */
 
 export { BoolValue } from './bool';
+export { DateValue } from './date';
+export { DateTimeValue } from './datetime';
 export { Float4Value } from './float4';
 export { Float8Value } from './float8';
 export { Int1Value } from './int1';
@@ -12,6 +14,8 @@ export { Int2Value } from './int2';
 export { Int4Value } from './int4';
 export { Int8Value } from './int8';
 export { Int16Value } from './int16';
+export { IntervalValue } from './interval';
+export { TimeValue } from './time';
 export { Uint1Value } from './uint1';
 export { Uint2Value } from './uint2';
 export { Uint4Value } from './uint4';

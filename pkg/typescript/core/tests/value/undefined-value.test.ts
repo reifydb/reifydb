@@ -7,12 +7,17 @@
 import {describe, expect, it} from 'vitest';
 import {
     BoolValue,
+    DateValue,
+    DateTimeValue,
     Float4Value,
     Float8Value, Int16Value,
     Int1Value,
     Int2Value,
     Int4Value, Int8Value,
-    RowIdValue, Uint16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
+    IntervalValue,
+    RowIdValue,
+    TimeValue,
+    Uint16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Utf8Value
 } from "../../src/value";
 
@@ -93,5 +98,25 @@ describe('UNDEFINED_VALUE parsing', () => {
     it('should parse UNDEFINED_VALUE as undefined for Uint16', () => {
         const uint16 = Uint16Value.parse(undefinedString);
         expect(uint16.value).toBeUndefined();
+    });
+
+    it('should parse UNDEFINED_VALUE as undefined for Date', () => {
+        const date = DateValue.parse(undefinedString);
+        expect(date.value).toBeUndefined();
+    });
+
+    it('should parse UNDEFINED_VALUE as undefined for Time', () => {
+        const time = TimeValue.parse(undefinedString);
+        expect(time.value).toBeUndefined();
+    });
+
+    it('should parse UNDEFINED_VALUE as undefined for DateTime', () => {
+        const datetime = DateTimeValue.parse(undefinedString);
+        expect(datetime.value).toBeUndefined();
+    });
+
+    it('should parse UNDEFINED_VALUE as undefined for Interval', () => {
+        const interval = IntervalValue.parse(undefinedString);
+        expect(interval.value).toBeUndefined();
     });
 });
