@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Uint4 implements Value {
+export class Uint4Value implements Value {
     readonly type: Type = "Uint4" as const;
     public readonly value?: number;
 
@@ -13,17 +19,17 @@ export class Uint4 implements Value {
             if (!Number.isInteger(value)) {
                 throw new Error(`Uint4 value must be an integer, got ${value}`);
             }
-            if (value < Uint4.MIN_VALUE || value > Uint4.MAX_VALUE) {
-                throw new Error(`Uint4 value must be between ${Uint4.MIN_VALUE} and ${Uint4.MAX_VALUE}, got ${value}`);
+            if (value < Uint4Value.MIN_VALUE || value > Uint4Value.MAX_VALUE) {
+                throw new Error(`Uint4 value must be between ${Uint4Value.MIN_VALUE} and ${Uint4Value.MAX_VALUE}, got ${value}`);
             }
         }
         this.value = value;
     }
 
-    static parse(str: string): Uint4 {
+    static parse(str: string): Uint4Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Uint4(undefined);
+            return new Uint4Value(undefined);
         }
         
         const num = Number(trimmed);
@@ -32,7 +38,7 @@ export class Uint4 implements Value {
             throw new Error(`Cannot parse "${str}" as Uint4`);
         }
         
-        return new Uint4(num);
+        return new Uint4Value(num);
     }
 
     valueOf(): number | undefined {

@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Float8 implements Value {
+export class Float8Value implements Value {
     readonly type: Type = "Float8" as const;
     public readonly value?: number;
 
@@ -16,10 +22,10 @@ export class Float8 implements Value {
         }
     }
 
-    static parse(str: string): Float8 {
+    static parse(str: string): Float8Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Float8(undefined);
+            return new Float8Value(undefined);
         }
 
         const num = Number(trimmed);
@@ -28,7 +34,7 @@ export class Float8 implements Value {
             throw new Error(`Cannot parse "${str}" as Float8`);
         }
 
-        return new Float8(num);
+        return new Float8Value(num);
     }
 
     valueOf(): number | undefined {

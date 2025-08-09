@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Uint2 implements Value {
+export class Uint2Value implements Value {
     readonly type: Type = "Uint2" as const;
     public readonly value?: number;
 
@@ -13,17 +19,17 @@ export class Uint2 implements Value {
             if (!Number.isInteger(value)) {
                 throw new Error(`Uint2 value must be an integer, got ${value}`);
             }
-            if (value < Uint2.MIN_VALUE || value > Uint2.MAX_VALUE) {
-                throw new Error(`Uint2 value must be between ${Uint2.MIN_VALUE} and ${Uint2.MAX_VALUE}, got ${value}`);
+            if (value < Uint2Value.MIN_VALUE || value > Uint2Value.MAX_VALUE) {
+                throw new Error(`Uint2 value must be between ${Uint2Value.MIN_VALUE} and ${Uint2Value.MAX_VALUE}, got ${value}`);
             }
         }
         this.value = value;
     }
 
-    static parse(str: string): Uint2 {
+    static parse(str: string): Uint2Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Uint2(undefined);
+            return new Uint2Value(undefined);
         }
         
         const num = Number(trimmed);
@@ -32,7 +38,7 @@ export class Uint2 implements Value {
             throw new Error(`Cannot parse "${str}" as Uint2`);
         }
         
-        return new Uint2(num);
+        return new Uint2Value(num);
     }
 
     valueOf(): number | undefined {

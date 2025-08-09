@@ -5,98 +5,93 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import {Bool} from '../../src/value/bool';
-import {Utf8} from '../../src/value/utf8';
-import {RowId} from '../../src/value/rowid';
-import {Int1} from '../../src/value/int1';
-import {Int2} from '../../src/value/int2';
-import {Int4} from '../../src/value/int4';
-import {Int8} from '../../src/value/int8';
-import {Int16} from '../../src/value/int16';
-import {Uint1} from '../../src/value/uint1';
-import {Uint2} from '../../src/value/uint2';
-import {Uint4} from '../../src/value/uint4';
-import {Uint8} from '../../src/value/uint8';
-import {Uint16} from '../../src/value/uint16';
-import {Float4} from '../../src/value/float4';
-import {Float8} from '../../src/value/float8';
+import {
+    BoolValue,
+    Float4Value,
+    Float8Value, Int16Value,
+    Int1Value,
+    Int2Value,
+    Int4Value, Int8Value,
+    RowIdValue, Uint16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
+    Utf8Value
+} from "../../src/value";
 
 
 describe('UNDEFINED_VALUE parsing', () => {
     const undefinedString = "⟪undefined⟫";
 
     it('should parse UNDEFINED_VALUE as undefined for Bool', () => {
-        const bool = Bool.parse(undefinedString);
+        const bool = BoolValue.parse(undefinedString);
         expect(bool.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Utf8', () => {
-        const utf8 = Utf8.parse(undefinedString);
+        const utf8 = Utf8Value.parse(undefinedString);
         expect(utf8.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for RowId', () => {
-        const rowId = RowId.parse(undefinedString);
+        const rowId = RowIdValue.parse(undefinedString);
         expect(rowId.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Float4', () => {
-        const float4 = Float4.parse(undefinedString);
+        const float4 = Float4Value.parse(undefinedString);
         expect(float4.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Float8', () => {
-        const float8 = Float8.parse(undefinedString);
+        const float8 = Float8Value.parse(undefinedString);
         expect(float8.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Int1', () => {
-        const int1 = Int1.parse(undefinedString);
+        const int1 = Int1Value.parse(undefinedString);
         expect(int1.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Int2', () => {
-        const int2 = Int2.parse(undefinedString);
+        const int2 = Int2Value.parse(undefinedString);
         expect(int2.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Int4', () => {
-        const int4 = Int4.parse(undefinedString);
+        const int4 = Int4Value.parse(undefinedString);
         expect(int4.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Int8', () => {
-        const int8 = Int8.parse(undefinedString);
+        const int8 = Int8Value.parse(undefinedString);
         expect(int8.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Int16', () => {
-        const int16 = Int16.parse(undefinedString);
+        const int16 = Int16Value.parse(undefinedString);
         expect(int16.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Uint1', () => {
-        const uint1 = Uint1.parse(undefinedString);
+        const uint1 = Uint1Value.parse(undefinedString);
         expect(uint1.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Uint2', () => {
-        const uint2 = Uint2.parse(undefinedString);
+        const uint2 = Uint2Value.parse(undefinedString);
         expect(uint2.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Uint4', () => {
-        const uint4 = Uint4.parse(undefinedString);
+        const uint4 = Uint4Value.parse(undefinedString);
         expect(uint4.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Uint8', () => {
-        const uint8 = Uint8.parse(undefinedString);
+        const uint8 = Uint8Value.parse(undefinedString);
         expect(uint8.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Uint16', () => {
-        const uint16 = Uint16.parse(undefinedString);
+        const uint16 = Uint16Value.parse(undefinedString);
         expect(uint16.value).toBeUndefined();
     });
 });

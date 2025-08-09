@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Utf8 implements Value {
+export class Utf8Value implements Value {
     readonly type: Type = "Utf8" as const;
     public readonly value?: string;
 
@@ -16,12 +22,12 @@ export class Utf8 implements Value {
         }
     }
 
-    static parse(str: string): Utf8 {
+    static parse(str: string): Utf8Value {
         if (str === UNDEFINED_VALUE) {
-            return new Utf8(undefined);
+            return new Utf8Value(undefined);
         }
         
-        return new Utf8(str);
+        return new Utf8Value(str);
     }
 
     valueOf(): string | undefined {

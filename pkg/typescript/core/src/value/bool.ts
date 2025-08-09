@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Bool implements Value {
+export class BoolValue implements Value {
     readonly type: Type = "Bool" as const;
     public readonly value?: boolean;
 
@@ -16,19 +22,19 @@ export class Bool implements Value {
         }
     }
 
-    static parse(str: string): Bool {
+    static parse(str: string): BoolValue {
         const trimmed = str.trim().toLowerCase();
 
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Bool(undefined);
+            return new BoolValue(undefined);
         }
 
         if (trimmed === 'true') {
-            return new Bool(true);
+            return new BoolValue(true);
         }
 
         if (trimmed === 'false') {
-            return new Bool(false);
+            return new BoolValue(false);
         }
 
         throw new Error(`Cannot parse "${str}" as Bool`);

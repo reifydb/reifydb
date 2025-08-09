@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Float4 implements Value {
+export class Float4Value implements Value {
 
     private static readonly MAX_VALUE = 3.4028235e+38;
     private static readonly MIN_VALUE = -3.4028235e+38;
@@ -20,13 +26,13 @@ export class Float4 implements Value {
                 this.value = undefined;
             } else {
                 // Clamp to Float32 range
-                if (value !== 0 && Math.abs(value) < Float4.MIN_POSITIVE) {
+                if (value !== 0 && Math.abs(value) < Float4Value.MIN_POSITIVE) {
                     // Underflow to zero
                     this.value = 0;
-                } else if (value > Float4.MAX_VALUE) {
-                    throw new Error(`Float4 overflow: value ${value} exceeds maximum ${Float4.MAX_VALUE}`);
-                } else if (value < Float4.MIN_VALUE) {
-                    throw new Error(`Float4 underflow: value ${value} exceeds minimum ${Float4.MIN_VALUE}`);
+                } else if (value > Float4Value.MAX_VALUE) {
+                    throw new Error(`Float4 overflow: value ${value} exceeds maximum ${Float4Value.MAX_VALUE}`);
+                } else if (value < Float4Value.MIN_VALUE) {
+                    throw new Error(`Float4 underflow: value ${value} exceeds minimum ${Float4Value.MIN_VALUE}`);
                 } else {
                     // Convert to Float32 precision
                     const float32Array = new Float32Array(1);
@@ -39,10 +45,10 @@ export class Float4 implements Value {
         }
     }
 
-    static parse(str: string): Float4 {
+    static parse(str: string): Float4Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Float4(undefined);
+            return new Float4Value(undefined);
         }
 
         const num = Number(trimmed);
@@ -51,7 +57,7 @@ export class Float4 implements Value {
             throw new Error(`Cannot parse "${str}" as Float4`);
         }
 
-        return new Float4(num);
+        return new Float4Value(num);
     }
 
     valueOf(): number | undefined {

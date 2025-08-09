@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class RowId implements Value {
+export class RowIdValue implements Value {
     private static readonly MIN_VALUE = BigInt(0);
     private static readonly MAX_VALUE = BigInt("18446744073709551615");
     readonly type: Type = "RowId" as const;
@@ -11,8 +17,8 @@ export class RowId implements Value {
         if (value !== undefined) {
             const bigintValue = typeof value === 'number' ? BigInt(Math.trunc(value)) : value;
 
-            if (bigintValue < RowId.MIN_VALUE || bigintValue > RowId.MAX_VALUE) {
-                throw new Error(`RowId value must be between ${RowId.MIN_VALUE} and ${RowId.MAX_VALUE}, got ${bigintValue}`);
+            if (bigintValue < RowIdValue.MIN_VALUE || bigintValue > RowIdValue.MAX_VALUE) {
+                throw new Error(`RowId value must be between ${RowIdValue.MIN_VALUE} and ${RowIdValue.MAX_VALUE}, got ${bigintValue}`);
             }
             this.value = bigintValue;
         } else {
@@ -20,10 +26,10 @@ export class RowId implements Value {
         }
     }
 
-    static parse(str: string): RowId {
+    static parse(str: string): RowIdValue {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new RowId(undefined);
+            return new RowIdValue(undefined);
         }
 
         let value: bigint;
@@ -33,11 +39,11 @@ export class RowId implements Value {
             throw new Error(`Cannot parse "${str}" as RowId`);
         }
 
-        if (value < RowId.MIN_VALUE || value > RowId.MAX_VALUE) {
-            throw new Error(`RowId value must be between ${RowId.MIN_VALUE} and ${RowId.MAX_VALUE}, got ${value}`);
+        if (value < RowIdValue.MIN_VALUE || value > RowIdValue.MAX_VALUE) {
+            throw new Error(`RowId value must be between ${RowIdValue.MIN_VALUE} and ${RowIdValue.MAX_VALUE}, got ${value}`);
         }
 
-        return new RowId(value);
+        return new RowIdValue(value);
     }
 
     valueOf(): bigint | undefined {

@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Uint16 implements Value {
+export class Uint16Value implements Value {
     readonly type: Type = "Uint16" as const;
     public readonly value?: bigint;
 
@@ -24,8 +30,8 @@ export class Uint16 implements Value {
                 bigintValue = value;
             }
             
-            if (bigintValue < Uint16.MIN_VALUE || bigintValue > Uint16.MAX_VALUE) {
-                throw new Error(`Uint16 value must be between ${Uint16.MIN_VALUE} and ${Uint16.MAX_VALUE}, got ${bigintValue}`);
+            if (bigintValue < Uint16Value.MIN_VALUE || bigintValue > Uint16Value.MAX_VALUE) {
+                throw new Error(`Uint16 value must be between ${Uint16Value.MIN_VALUE} and ${Uint16Value.MAX_VALUE}, got ${bigintValue}`);
             }
             this.value = bigintValue;
         } else {
@@ -33,10 +39,10 @@ export class Uint16 implements Value {
         }
     }
 
-    static parse(str: string): Uint16 {
+    static parse(str: string): Uint16Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Uint16(undefined);
+            return new Uint16Value(undefined);
         }
         
         let value: bigint;
@@ -46,11 +52,11 @@ export class Uint16 implements Value {
             throw new Error(`Cannot parse "${str}" as Uint16`);
         }
         
-        if (value < Uint16.MIN_VALUE || value > Uint16.MAX_VALUE) {
-            throw new Error(`Uint16 value must be between ${Uint16.MIN_VALUE} and ${Uint16.MAX_VALUE}, got ${value}`);
+        if (value < Uint16Value.MIN_VALUE || value > Uint16Value.MAX_VALUE) {
+            throw new Error(`Uint16 value must be between ${Uint16Value.MIN_VALUE} and ${Uint16Value.MAX_VALUE}, got ${value}`);
         }
         
-        return new Uint16(value);
+        return new Uint16Value(value);
     }
 
     valueOf(): bigint | undefined {

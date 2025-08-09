@@ -1,7 +1,13 @@
+/**
+ * MIT License
+ * Copyright (c) 2025 ReifyDB
+ * See license.md file for full license text
+ */
+
 import {Type, Value} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class Int8 implements Value {
+export class Int8Value implements Value {
     readonly type: Type = "Int8" as const;
     public readonly value?: bigint;
 
@@ -12,8 +18,8 @@ export class Int8 implements Value {
         if (value !== undefined) {
             const bigintValue = typeof value === 'number' ? BigInt(Math.trunc(value)) : value;
             
-            if (bigintValue < Int8.MIN_VALUE || bigintValue > Int8.MAX_VALUE) {
-                throw new Error(`Int8 value must be between ${Int8.MIN_VALUE} and ${Int8.MAX_VALUE}, got ${bigintValue}`);
+            if (bigintValue < Int8Value.MIN_VALUE || bigintValue > Int8Value.MAX_VALUE) {
+                throw new Error(`Int8 value must be between ${Int8Value.MIN_VALUE} and ${Int8Value.MAX_VALUE}, got ${bigintValue}`);
             }
             this.value = bigintValue;
         } else {
@@ -21,10 +27,10 @@ export class Int8 implements Value {
         }
     }
 
-    static parse(str: string): Int8 {
+    static parse(str: string): Int8Value {
         const trimmed = str.trim();
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new Int8(undefined);
+            return new Int8Value(undefined);
         }
         
         let value: bigint;
@@ -34,11 +40,11 @@ export class Int8 implements Value {
             throw new Error(`Cannot parse "${str}" as Int8`);
         }
         
-        if (value < Int8.MIN_VALUE || value > Int8.MAX_VALUE) {
-            throw new Error(`Int8 value must be between ${Int8.MIN_VALUE} and ${Int8.MAX_VALUE}, got ${value}`);
+        if (value < Int8Value.MIN_VALUE || value > Int8Value.MAX_VALUE) {
+            throw new Error(`Int8 value must be between ${Int8Value.MIN_VALUE} and ${Int8Value.MAX_VALUE}, got ${value}`);
         }
         
-        return new Int8(value);
+        return new Int8Value(value);
     }
 
     valueOf(): bigint | undefined {
