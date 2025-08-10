@@ -11,9 +11,7 @@ pub use config::*;
 use crate::cdc::sequence::SequenceTracker;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::interface::{
-    UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage,
-};
+use reifydb_core::interface::{CdcStorage, UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage};
 use reifydb_core::util::{Clock, SystemClock};
 use std::ops::Deref;
 use std::sync::Arc;
@@ -129,6 +127,7 @@ impl VersionedStorage for Sqlite {}
 impl UnversionedStorage for Sqlite {}
 impl UnversionedInsert for Sqlite {}
 impl UnversionedRemove for Sqlite {}
+impl CdcStorage for Sqlite {}
 
 #[cfg(test)]
 mod tests {

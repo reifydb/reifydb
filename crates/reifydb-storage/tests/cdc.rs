@@ -2,13 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{CdcEvent, Change, VersionedStorage, VersionedApply, VersionedGet, CdcStorage};
+use reifydb_core::interface::{
+    CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, Change, VersionedApply, VersionedGet,
+    VersionedStorage,
+};
 use reifydb_core::row::EncodedRow;
+use reifydb_core::util::MockClock;
 use reifydb_core::util::encoding::binary::decode_binary;
 use reifydb_core::util::encoding::format;
 use reifydb_core::util::encoding::format::Formatter;
-use reifydb_core::util::MockClock;
-use reifydb_core::{EncodedKey, async_cow_vec, Version, CowVec};
+use reifydb_core::{CowVec, EncodedKey, Version, async_cow_vec};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_testing::tempdir::temp_dir;
@@ -46,13 +49,9 @@ pub struct Runner<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStor
 
 impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> Runner<VS> {
     fn new(storage: VS, clock: Arc<MockClock>) -> Self {
-        Self { 
-            storage,
-            next_version: 1,
-            clock,
-        }
+        Self { storage, next_version: 1, clock }
     }
-    
+
     fn format_cdc_event(event: &CdcEvent) -> String {
         let format_value = |row: &EncodedRow| {
             if row.is_deleted() {
@@ -61,32 +60,42 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> Runner<V
                 format::Raw::bytes(row.as_slice())
             }
         };
-        
+
         let change_str = match &event.change {
             Change::Insert { key, after } => {
-                format!("Insert {{ key: {}, after: {} }}", 
+                format!(
+                    "Insert {{ key: {}, after: {} }}",
                     format::Raw::key(key),
-                    format_value(after))
-            },
+                    format_value(after)
+                )
+            }
             Change::Update { key, before, after } => {
-                format!("Update {{ key: {}, before: {}, after: {} }}",
+                format!(
+                    "Update {{ key: {}, before: {}, after: {} }}",
                     format::Raw::key(key),
                     format_value(before),
-                    format_value(after))
-            },
+                    format_value(after)
+                )
+            }
             Change::Delete { key, before } => {
-                format!("Delete {{ key: {}, before: {} }}",
+                format!(
+                    "Delete {{ key: {}, before: {} }}",
                     format::Raw::key(key),
-                    format_value(before))
-            },
+                    format_value(before)
+                )
+            }
         };
-        
-        format!("CdcEvent {{ version: {}, seq: {}, ts: {}, change: {} }}",
-            event.version, event.sequence, event.timestamp, change_str)
+
+        format!(
+            "CdcEvent {{ version: {}, seq: {}, ts: {}, change: {} }}",
+            event.version, event.sequence, event.timestamp, change_str
+        )
     }
 }
 
-impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscript::Runner for Runner<VS> {
+impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscript::Runner
+    for Runner<VS>
+{
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
         let mut output = String::new();
         match command.name.as_str() {
@@ -94,191 +103,218 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
             // apply VERSION KEY=VALUE
             "apply" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = EncodedKey(decode_binary(&kv.key.unwrap()));
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
-                
+
                 self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
-            
+
             // insert VERSION KEY=VALUE
             "insert" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = EncodedKey(decode_binary(&kv.key.unwrap()));
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
-                
+
                 self.storage.apply(async_cow_vec![(Delta::Insert { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
-            
+
             // update VERSION KEY=VALUE
             "update" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
                 let kv = args.next_key().ok_or("key=value not given")?.clone();
                 let key = EncodedKey(decode_binary(&kv.key.unwrap()));
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
-                
+
                 self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
-            
+
             // delete VERSION KEY
             "delete" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
-                
+
                 self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)?;
                 writeln!(output, "ok")?;
             }
-            
+
             // cdc_get VERSION SEQUENCE
             "cdc_get" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
-                let sequence = args.next_pos()
+                let sequence = args
+                    .next_pos()
                     .ok_or("sequence not given")?
-                    .value.parse::<u16>()
+                    .value
+                    .parse::<u16>()
                     .map_err(|_| "invalid sequence")?;
                 args.reject_rest()?;
-                
-                if let Some(event) = self.storage.get_cdc_event(version, sequence)? {
+
+                // Get all events for the version and find the one with matching sequence
+                let events = CdcGet::get(&self.storage, version)?;
+                let event = events.into_iter().find(|e| e.sequence == sequence);
+
+                if let Some(event) = event {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 } else {
                     writeln!(output, "None")?;
                 }
             }
-            
+
             // cdc_range VERSION_START VERSION_END
             "cdc_range" => {
                 let mut args = command.consume_args();
-                let start_version = args.next_pos()
+                let start_version = args
+                    .next_pos()
                     .ok_or("start version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid start version")?;
-                let end_version = args.next_pos()
+                let end_version = args
+                    .next_pos()
                     .ok_or("end version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
-                
-                let events = self.storage.cdc_range(start_version, end_version)?;
+
+                let events = CdcRange::range(&self.storage, start_version, end_version)?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
             }
-            
-            // cdc_scan [limit=N]
+
+            // cdc_scan
             "cdc_scan" => {
-                let mut args = command.consume_args();
-                let limit = args.lookup_parse::<usize>("limit")?;
+                let args = command.consume_args();
                 args.reject_rest()?;
-                
-                let events = self.storage.cdc_scan(limit)?;
+
+                let events = CdcScan::scan(&self.storage)?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
             }
-            
+
             // cdc_count VERSION
             "cdc_count" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
                 args.reject_rest()?;
-                
-                let count = self.storage.cdc_count(version)?;
+
+                let count = self.storage.count(version)?;
                 writeln!(output, "count: {}", count)?;
             }
-            
+
             // advance_clock MILLIS
             "advance_clock" => {
                 let mut args = command.consume_args();
-                let millis = args.next_pos()
+                let millis = args
+                    .next_pos()
                     .ok_or("millis not given")?
-                    .value.parse::<u64>()
+                    .value
+                    .parse::<u64>()
                     .map_err(|_| "invalid millis")?;
                 args.reject_rest()?;
-                
+
                 self.clock.advance(millis);
                 writeln!(output, "ok")?;
             }
-            
+
             // next_version
             "next_version" => {
                 let version = self.next_version;
                 self.next_version += 1;
                 writeln!(output, "{}", version)?;
             }
-            
+
             // bulk_insert VERSION COUNT - Insert COUNT events with the same version
             "bulk_insert" => {
                 let mut args = command.consume_args();
-                let version = args.next_pos()
+                let version = args
+                    .next_pos()
                     .ok_or("version not given")?
-                    .value.parse::<Version>()
+                    .value
+                    .parse::<Version>()
                     .map_err(|_| "invalid version")?;
-                let count = args.next_pos()
+                let count = args
+                    .next_pos()
                     .ok_or("count not given")?
-                    .value.parse::<usize>()
+                    .value
+                    .parse::<usize>()
                     .map_err(|_| "invalid count")?;
                 args.reject_rest()?;
-                
+
                 // Insert events in batches to avoid creating a huge vector at once
                 const BATCH_SIZE: usize = 1000;
                 let mut inserted = 0;
-                
+
                 while inserted < count {
                     let batch_end = std::cmp::min(inserted + BATCH_SIZE, count);
                     let mut batch = Vec::new();
-                    
+
                     for i in inserted..batch_end {
                         let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
                         let row = EncodedRow(CowVec::new(i.to_string().into_bytes()));
                         batch.push(Delta::Insert { key, row });
                     }
-                    
+
                     self.storage.apply(CowVec::new(batch), version)?;
                     inserted = batch_end;
                 }
-                
+
                 writeln!(output, "ok")?;
             }
-            
+
             name => return Err(format!("invalid command {name}").into()),
         }
-        
+
         // Ensure output ends with newline if not empty
         if !output.is_empty() && !output.ends_with('\n') {
             writeln!(output)?;
         }
-        
+
         Ok(output)
     }
 }

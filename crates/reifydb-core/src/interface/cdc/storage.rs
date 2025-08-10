@@ -4,20 +4,25 @@
 use super::CdcEvent;
 use crate::{Result, Version};
 
-/// Trait for CDC event storage and retrieval
-pub trait CdcStorage: Send + Sync {
-    /// Retrieve a specific CDC event by version and sequence
-    fn get_cdc_event(&self, version: Version, sequence: u16) -> Result<Option<CdcEvent>>;
+/// Combined trait for all CDC storage operations
+pub trait CdcStorage: CdcGet + CdcRange + CdcScan + CdcCount {}
 
-    /// Query CDC events within a version range
-    fn cdc_range(&self, start_version: Version, end_version: Version) -> Result<Vec<CdcEvent>>;
+/// Retrieve CDC events for a specific version
+pub trait CdcGet: Send + Sync {
+    fn get(&self, version: Version) -> Result<Vec<CdcEvent>>;
+}
 
-    /// Scan all CDC events with optional limit
-    fn cdc_scan(&self, limit: Option<usize>) -> Result<Vec<CdcEvent>>;
+/// Query CDC events within a version range
+pub trait CdcRange: Send + Sync {
+    fn range(&self, start_version: Version, end_version: Version) -> Result<Vec<CdcEvent>>;
+}
 
-    /// Count CDC events for a specific version
-    fn cdc_count(&self, version: Version) -> Result<usize>;
+/// Scan all CDC events
+pub trait CdcScan: Send + Sync {
+    fn scan(&self) -> Result<Vec<CdcEvent>>;
+}
 
-    /// Get all CDC events for a specific version
-    fn cdc_events_for_version(&self, version: Version) -> Result<Vec<CdcEvent>>;
+/// Count CDC events for a specific version
+pub trait CdcCount: Send + Sync {
+    fn count(&self, version: Version) -> Result<usize>;
 }

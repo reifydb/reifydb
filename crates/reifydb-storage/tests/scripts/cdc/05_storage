@@ -52,11 +52,13 @@ CdcEvent { version: 2, seq: 1, ts: 1000, change: Insert { key: "b", after: "2" }
 CdcEvent { version: 3, seq: 1, ts: 1000, change: Update { key: "a", before: "1", after: "10" } }
 CdcEvent { version: 4, seq: 1, ts: 1000, change: Delete { key: "b", before: "2" } }
 
-# Test CDC scan with limit
-cdc_scan limit=2
+# Test CDC scan (returns all events)
+cdc_scan
 ---
 CdcEvent { version: 1, seq: 1, ts: 1000, change: Insert { key: "a", after: "1" } }
 CdcEvent { version: 2, seq: 1, ts: 1000, change: Insert { key: "b", after: "2" } }
+CdcEvent { version: 3, seq: 1, ts: 1000, change: Update { key: "a", before: "1", after: "10" } }
+CdcEvent { version: 4, seq: 1, ts: 1000, change: Delete { key: "b", before: "2" } }
 
 # Test CDC count per version
 cdc_count 1
