@@ -6,6 +6,7 @@
 
 import {describe, expect, it} from 'vitest';
 import {
+    BlobValue,
     BoolValue,
     DateValue,
     DateTimeValue,
@@ -24,6 +25,11 @@ import {
 
 describe('UNDEFINED_VALUE parsing', () => {
     const undefinedString = "⟪undefined⟫";
+
+    it('should parse UNDEFINED_VALUE as undefined for Blob', () => {
+        const blob = BlobValue.parse(undefinedString);
+        expect(blob.value).toBeUndefined();
+    });
 
     it('should parse UNDEFINED_VALUE as undefined for Bool', () => {
         const bool = BoolValue.parse(undefinedString);

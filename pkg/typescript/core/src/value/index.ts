@@ -4,6 +4,7 @@
  * See license.md file for full license text
  */
 
+export { BlobValue } from './blob';
 export { BoolValue } from './bool';
 export { DateValue } from './date';
 export { DateTimeValue } from './datetime';
