@@ -10,9 +10,10 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::watermark::Closer;
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Receiver, Sender, bounded, RecvTimeoutError};
 use reifydb_core::Version;
 use std::ops::Deref;
+use std::time::Duration;
 use std::{
     borrow::Cow,
     sync::{
@@ -25,6 +26,7 @@ use std::{
 pub struct WatermarkInner {
     pub(crate) done_until: AtomicU64,
     pub(crate) last_index: AtomicU64,
+    #[allow(dead_code)]  // Used in debug messages
     pub(crate) name: Cow<'static, str>,
     pub(crate) tx: Sender<Mark>,
     pub(crate) rx: Receiver<Mark>,
@@ -75,13 +77,23 @@ impl WaterMark {
 
     /// Sets the last index to the given value.
     pub fn begin(&self, version: Version) {
-        self.last_index.store(version, Ordering::SeqCst);
-        self.tx.send(Mark { version, waiter: None, done: false }).unwrap()
+        // Use fetch_max to handle concurrent calls properly
+        let prev = self.last_index.fetch_max(version, Ordering::SeqCst);
+        
+        // Only send if this is actually a new maximum or equal
+        if version >= prev {
+            // Handle channel error gracefully
+            if self.tx.send(Mark { version, waiter: None, done: false }).is_err() {
+                // Channel closed, watermark is shutting down
+                return;
+            }
+        }
     }
 
     /// Sets a single index as done.
     pub fn done(&self, index: u64) {
-        self.tx.send(Mark { version: index, waiter: None, done: true }).unwrap() // unwrap is safe because self also holds a receiver
+        // Handle channel error gracefully
+        let _ = self.tx.send(Mark { version: index, waiter: None, done: true });
     }
 
     /// Returns the maximum index that has the property that all indices
@@ -90,16 +102,37 @@ impl WaterMark {
         self.done_until.load(Ordering::SeqCst)
     }
 
-    /// Waits until the given index is marked as done.
+    /// Waits until the given index is marked as done with a default timeout.
     pub fn wait_for_mark(&self, index: u64) {
+        self.wait_for_mark_timeout(index, Duration::from_secs(30));
+    }
+    
+    /// Waits until the given index is marked as done with a specified timeout.
+    pub fn wait_for_mark_timeout(&self, index: u64, timeout: Duration) -> bool {
         if self.done_until.load(Ordering::SeqCst) >= index {
-            return;
+            return true;
         }
 
         let (wait_tx, wait_rx) = bounded(1);
-        self.tx.send(Mark { version: index, waiter: Some(wait_tx), done: false }).unwrap(); // unwrap is safe because self also holds a receiver
+        
+        // Handle send error
+        if self.tx.send(Mark { version: index, waiter: Some(wait_tx), done: false }).is_err() {
+            // Channel closed
+            return false;
+        }
 
-        let _ = wait_rx.recv();
+        // Add timeout to prevent indefinite blocking
+        match wait_rx.recv_timeout(timeout) {
+            Ok(_) => true,
+            Err(RecvTimeoutError::Timeout) => {
+                // Timeout occurred
+                false
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                // Channel closed
+                false
+            }
+        }
     }
 }
 

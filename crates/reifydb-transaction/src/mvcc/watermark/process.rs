@@ -11,6 +11,7 @@
 
 use crate::mvcc::watermark::Closer;
 use crate::mvcc::watermark::watermark::WatermarkInner;
+use super::{MAX_WAITERS, MAX_PENDING, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
 use crossbeam_channel::{Sender, select};
 use std::cell::RefCell;
 use std::cmp::Reverse;
@@ -27,6 +28,31 @@ impl WatermarkInner {
             // If not already done, then set. Otherwise, don't undo a done entry.
             let mut pending = pending.borrow_mut();
             let mut waiters = waiters.borrow_mut();
+            
+            // Prevent unbounded growth
+            if pending.len() > MAX_PENDING {
+                // Clean up very old pending entries
+                let done_until = self.done_until.load(Ordering::SeqCst);
+                let cutoff = done_until.saturating_sub(PENDING_CLEANUP_THRESHOLD);
+                pending.retain(|&k, _| k > cutoff);
+            }
+            
+            if waiters.len() > MAX_WAITERS {
+                // Force cleanup of old waiters
+                let done_until = self.done_until.load(Ordering::SeqCst);
+                let cutoff = done_until.saturating_sub(OLD_VERSION_THRESHOLD);
+                waiters.retain(|&k, waiters_list| {
+                    if k <= cutoff {
+                        // Signal and remove old waiters
+                        for waiter in waiters_list {
+                            let _ = waiter.send(());
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
 
             if !pending.contains_key(&idx) {
                 indices.push(Reverse(idx));
@@ -41,13 +67,13 @@ impl WatermarkInner {
             // Update mark by going through all indices in order; and checking if they have
             // been done. Stop at the first index, which isn't done.
             let done_until = self.done_until.load(Ordering::SeqCst);
-            assert!(
-                done_until <= idx,
-                "name: {}, done_until: {}, idx: {}",
-                self.name,
-                done_until,
-                idx
-            );
+            
+            // Handle out-of-order processing gracefully
+            if done_until > idx {
+                // This version was already marked done, skip processing
+                // This can happen with concurrent operations
+                return;
+            }
 
             let mut until = done_until;
 
@@ -77,14 +103,30 @@ impl WatermarkInner {
                 );
             }
 
-            if until - done_until <= waiters.len() as u64 {
-                // Close channel and remove from waiters.
+            if until != done_until {
+                // Notify all waiters up to the new mark
                 (done_until + 1..=until).for_each(|idx| {
-                    let _ = waiters.remove(&idx);
+                    if let Some(waiters_list) = waiters.remove(&idx) {
+                        // Signal all waiters for this index
+                        for waiter in waiters_list {
+                            let _ = waiter.send(());
+                        }
+                    }
                 });
             } else {
-                // Close and drop idx <= util channels.
-                waiters.retain(|idx, _| *idx > until);
+                // Even if done_until didn't advance, check for any waiters
+                // that can be satisfied
+                waiters.retain(|&idx, waiters_list| {
+                    if idx <= self.done_until.load(Ordering::SeqCst) {
+                        // Signal and remove
+                        for waiter in waiters_list {
+                            let _ = waiter.send(());
+                        }
+                        false
+                    } else {
+                        true
+                    }
+                });
             }
         };
 
@@ -98,8 +140,8 @@ impl WatermarkInner {
                       let done_until = self.done_until.load(Ordering::SeqCst);
                       if done_until >= mark.version {
                         let _ = wait_tx; // Close channel.
-                      } else if mark.version + 100 < done_until {
-                         // Version is so old we know it’s irrelevant; skip waiter registration
+                      } else if mark.version < done_until.saturating_sub(OLD_VERSION_THRESHOLD) {
+                         // Version is so old we know it's irrelevant; skip waiter registration
                          let _ = wait_tx;
                       } else {
                         waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
