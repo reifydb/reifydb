@@ -12,8 +12,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use crate::mvcc::conflict::BTreeConflict;
-use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::TransactionManager;
 
 use crate::mvcc::transaction::version::StdVersionProvider;
@@ -46,7 +44,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone for Optimistic<VS, 
 }
 
 pub struct Inner<VS: VersionedStorage, UT: UnversionedTransaction> {
-    pub(crate) tm: TransactionManager<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
+    pub(crate) tm: TransactionManager<StdVersionProvider<UT>>,
     pub(crate) versioned: VS,
     pub(crate) hooks: Hooks,
 }

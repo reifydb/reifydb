@@ -9,26 +9,22 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::{Conflict, ConflictRange};
+use crate::mvcc::conflict::ConflictManager;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 
-pub struct Marker<'a, C> {
-    marker: &'a mut C,
+pub struct Marker<'a> {
+    marker: &'a mut ConflictManager,
 }
 
-impl<'a, C> Marker<'a, C> {
-    pub fn new(marker: &'a mut C) -> Self {
+impl<'a> Marker<'a> {
+    pub fn new(marker: &'a mut ConflictManager) -> Self {
         Self { marker }
     }
-}
 
-impl<C: Conflict> Marker<'_, C> {
     pub fn mark(&mut self, k: &EncodedKey) {
         self.marker.mark_read(k);
     }
-}
 
-impl<C: ConflictRange> Marker<'_, C> {
     pub fn mark_range(&mut self, range: EncodedKeyRange) {
         self.marker.mark_range(range);
     }

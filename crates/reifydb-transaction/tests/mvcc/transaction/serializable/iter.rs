@@ -9,12 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::EncodedKey;
-use crate::transaction::FromRow;
-use crate::transaction::IntoRow;
-use crate::transaction::keycode;
+use crate::mvcc::transaction::FromRow;
 use crate::{as_key, as_row, from_row};
-use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
@@ -180,7 +176,7 @@ fn test_iter_edge_case() {
         assert_eq!(5, engine.version().unwrap());
     }
 
-    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, expected: &[u64]| {
+    let check_iter = |itr: TransactionIter<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
@@ -189,7 +185,7 @@ fn test_iter_edge_case() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
@@ -271,7 +267,7 @@ fn test_iter_edge_case2() {
         assert_eq!(5, engine.version().unwrap());
     }
 
-    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, expected: &[u64]| {
+    let check_iter = |itr: TransactionIter<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_row!(u64, *r.row()));
@@ -280,7 +276,7 @@ fn test_iter_edge_case2() {
         assert_eq!(expected.len(), i);
     };
 
-    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, expected: &[u64]| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _>, expected: &[u64]| {
         let mut i = 0;
         for r in itr {
             assert_eq!(expected[i], from_row!(u64, *r.row()));

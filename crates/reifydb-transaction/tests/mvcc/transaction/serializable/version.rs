@@ -9,19 +9,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::EncodedKey;
-use crate::transaction::FromRow;
-use crate::transaction::IntoRow;
-use crate::transaction::keycode;
-use crate::{as_key, as_row, from_row};
-use reifydb_transaction::mvcc::conflict::BTreeConflict;
+use crate::from_row;
+use crate::mvcc::transaction::FromRow;
+use crate::{as_key, as_row};
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_versions() {
-    let engine = Optimistic::testing();
+    let engine = Serializable::testing();
 
     let k0 = as_key!(0);
 
@@ -32,7 +29,7 @@ fn test_versions() {
         assert_eq!(i + 1, engine.version().unwrap());
     }
 
-    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, i: u64| {
+    let check_iter = |itr: TransactionIter<'_, _>, i: u64| {
         let mut count = 0;
         for sv in itr {
             assert_eq!(sv.key(), &k0);
@@ -43,7 +40,7 @@ fn test_versions() {
         assert_eq!(1, count) // should only loop once.
     };
 
-    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, i: u64| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _>, i: u64| {
         let mut count = 0;
         for sv in itr {
             let value = from_row!(u64, sv.row());

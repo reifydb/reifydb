@@ -1,27 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
-use crate::as_key;
-use crate::transaction::EncodedKey;
-use crate::transaction::FromRow;
-use crate::transaction::IntoRow;
-use crate::transaction::keycode;
-use crate::{as_row, from_row};
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+use crate::mvcc::transaction::FromRow;
+use crate::{as_key, as_row, from_row};
+use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 #[test]
 fn test_write() {
     let key = as_key!("foo");
 
-    let engine = Optimistic::testing();
+    let engine = Serializable::testing();
     {
         let mut tx = engine.begin_command().unwrap();
         assert_eq!(tx.version(), 1);
@@ -35,14 +23,14 @@ fn test_write() {
     {
         let rx = engine.begin_query().unwrap();
         assert_eq!(rx.version(), 2);
-        let value: String = from_row!(String, *rx.get(&key).unwrap().unwrap().row());
+        let value: String = from_row!(String, rx.get(&key).unwrap().unwrap().row());
         assert_eq!(value.as_str(), "foo1");
     }
 }
 
 #[test]
 fn test_multiple_write() {
-    let engine = Optimistic::testing();
+    let engine = Serializable::testing();
 
     {
         let mut txn = engine.begin_command().unwrap();
