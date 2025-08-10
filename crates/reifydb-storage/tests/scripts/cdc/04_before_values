@@ -1,0 +1,97 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test Insert has no before value
+insert 1 a=1
+---
+ok
+
+cdc_get 1 1
+---
+CdcEvent { version: 1, seq: 1, ts: 1000, change: Insert { key: "a", after: "1" } }
+
+# Test Update captures correct before value
+update 2 a=2
+---
+ok
+
+cdc_get 2 1
+---
+CdcEvent { version: 2, seq: 1, ts: 1000, change: Update { key: "a", before: "1", after: "2" } }
+
+# Chain of updates - each captures previous value
+update 3 a=3
+---
+ok
+
+cdc_get 3 1
+---
+CdcEvent { version: 3, seq: 1, ts: 1000, change: Update { key: "a", before: "2", after: "3" } }
+
+update 4 a=4
+---
+ok
+
+cdc_get 4 1
+---
+CdcEvent { version: 4, seq: 1, ts: 1000, change: Update { key: "a", before: "3", after: "4" } }
+
+# Test Delete captures correct before value
+delete 5 a
+---
+ok
+
+cdc_get 5 1
+---
+CdcEvent { version: 5, seq: 1, ts: 1000, change: Delete { key: "a", before: "4" } }
+
+# Test Update on non-existent key (should be Insert or have deleted before value)
+update 6 b=10
+---
+ok
+
+cdc_get 6 1
+---
+CdcEvent { version: 6, seq: 1, ts: 1000, change: Update { key: "b", before: "<deleted>", after: "10" } }
+
+# Test multiple keys with different histories
+insert 7 x=100
+---
+ok
+
+insert 7 y=200
+---
+ok
+
+update 8 x=101
+---
+ok
+
+update 8 y=201
+---
+ok
+
+cdc_get 8 1
+---
+CdcEvent { version: 8, seq: 1, ts: 1000, change: Update { key: "x", before: "100", after: "101" } }
+
+cdc_get 8 2
+---
+CdcEvent { version: 8, seq: 2, ts: 1000, change: Update { key: "y", before: "200", after: "201" } }
+
+# Delete multiple keys - each should have correct before value
+delete 9 x
+---
+ok
+
+delete 9 y
+---
+ok
+
+cdc_get 9 1
+---
+CdcEvent { version: 9, seq: 1, ts: 1000, change: Delete { key: "x", before: "101" } }
+
+cdc_get 9 2
+---
+CdcEvent { version: 9, seq: 2, ts: 1000, change: Delete { key: "y", before: "201" } }

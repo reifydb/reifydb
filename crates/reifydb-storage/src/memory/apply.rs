@@ -5,17 +5,21 @@ use crate::cdc::generate_cdc_event;
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{UnversionedApply, VersionedApply, CdcEventKey};
+use reifydb_core::interface::{CdcEventKey, UnversionedApply, VersionedApply};
+use reifydb_core::result::error::diagnostic::sequence;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, Result, Version};
+use reifydb_core::{CowVec, Result, Version, return_error};
 
 impl VersionedApply for Memory {
     fn apply(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
         let timestamp = self.clock.now_millis();
-        
+
         for delta in delta {
-            let sequence = self.cdc_seq.next_sequence(version);
-            
+            let sequence = match self.cdc_seq.next_sequence(version) {
+                Some(seq) => seq,
+                None => return_error!(sequence::transaction_sequence_exhausted()),
+            };
+
             // Get before value for updates and deletes
             let before_value = match &delta {
                 Delta::Insert { .. } => None,
@@ -24,13 +28,13 @@ impl VersionedApply for Memory {
                     self.versioned.get(key).and_then(|entry| {
                         let values = entry.value();
                         // Get the most recent value from the SkipMap
-                        values.back().map(|e| {
-                            e.value().clone().unwrap_or_else(|| EncodedRow::deleted())
-                        })
+                        values
+                            .back()
+                            .map(|e| e.value().clone().unwrap_or_else(|| EncodedRow::deleted()))
                     })
                 }
             };
-            
+
             // Apply the data change
             match &delta {
                 Delta::Insert { key, row } | Delta::Update { key, row } => {
@@ -49,7 +53,7 @@ impl VersionedApply for Memory {
                     }
                 }
             }
-            
+
             // Generate and store CDC event
             let cdc_event = generate_cdc_event(&delta, version, sequence, timestamp, before_value);
             let cdc_key = CdcEventKey { version, sequence };

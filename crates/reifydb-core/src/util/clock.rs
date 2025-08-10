@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A trait for getting the current timestamp, allowing for test injection
@@ -46,6 +47,42 @@ impl Clock for FixedClock {
     }
 }
 
+/// Mock clock implementation for testing with controllable timestamps
+#[derive(Debug)]
+pub struct MockClock {
+    timestamp_millis: AtomicU64,
+}
+
+impl MockClock {
+    pub fn new(initial_millis: u64) -> Self {
+        Self {
+            timestamp_millis: AtomicU64::new(initial_millis),
+        }
+    }
+    
+    /// Advance the clock by the specified number of milliseconds
+    pub fn advance(&self, millis: u64) {
+        self.timestamp_millis.fetch_add(millis, Ordering::SeqCst);
+    }
+    
+    /// Set the clock to a specific timestamp
+    pub fn set(&self, millis: u64) {
+        self.timestamp_millis.store(millis, Ordering::SeqCst);
+    }
+}
+
+impl Clock for MockClock {
+    fn now_millis(&self) -> u64 {
+        self.timestamp_millis.load(Ordering::SeqCst)
+    }
+}
+
+impl Clock for std::sync::Arc<MockClock> {
+    fn now_millis(&self) -> u64 {
+        self.as_ref().now_millis()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +101,27 @@ mod tests {
         let clock = FixedClock::new(1234567890);
         assert_eq!(clock.now_millis(), 1234567890);
         assert_eq!(clock.now_millis(), 1234567890);
+    }
+
+    #[test]
+    fn test_mock_clock_initial() {
+        let clock = MockClock::new(1000);
+        assert_eq!(clock.now_millis(), 1000);
+    }
+
+    #[test]
+    fn test_mock_clock_advance() {
+        let clock = MockClock::new(1000);
+        clock.advance(500);
+        assert_eq!(clock.now_millis(), 1500);
+        clock.advance(250);
+        assert_eq!(clock.now_millis(), 1750);
+    }
+
+    #[test]
+    fn test_mock_clock_set() {
+        let clock = MockClock::new(1000);
+        clock.set(5000);
+        assert_eq!(clock.now_millis(), 5000);
     }
 }

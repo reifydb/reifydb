@@ -7,8 +7,9 @@ use crate::sqlite::Sqlite;
 use crate::sqlite::cdc::{fetch_before_value, store_cdc_event};
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::VersionedApply;
+use reifydb_core::result::error::diagnostic::sequence;
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, Result, Version};
+use reifydb_core::{CowVec, Result, Version, return_error};
 use rusqlite::params;
 use std::collections::HashSet;
 use std::sync::{LazyLock, RwLock};
@@ -24,7 +25,11 @@ impl VersionedApply for Sqlite {
         let timestamp = self.clock.now_millis();
 
         for delta in delta {
-            let sequence = self.cdc_seq.next_sequence(version);
+            let sequence = match self.cdc_seq.next_sequence(version) {
+                Some(seq) => seq,
+                None => return_error!(sequence::transaction_sequence_exhausted()),
+            };
+            
             // Get before value for updates and deletes
             let before_value = match &delta {
                 Delta::Insert { .. } => None,

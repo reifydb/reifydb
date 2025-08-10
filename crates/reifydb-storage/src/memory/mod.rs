@@ -9,6 +9,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 mod apply;
+mod cdc;
 mod contains;
 mod get;
 mod scan;

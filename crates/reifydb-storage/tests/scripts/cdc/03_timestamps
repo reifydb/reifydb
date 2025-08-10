@@ -1,0 +1,76 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test initial timestamp
+insert 1 a=1
+---
+ok
+
+cdc_get 1 1
+---
+CdcEvent { version: 1, seq: 1, ts: 1000, change: Insert { key: "a", after: "1" } }
+
+# Advance clock and verify new timestamp
+advance_clock 500
+---
+ok
+
+insert 2 b=2
+---
+ok
+
+cdc_get 2 1
+---
+CdcEvent { version: 2, seq: 1, ts: 1500, change: Insert { key: "b", after: "2" } }
+
+# Multiple operations at same timestamp
+insert 3 c=3
+---
+ok
+
+update 3 a=10
+---
+ok
+
+delete 3 b
+---
+ok
+
+# All should have same timestamp since no clock advance
+cdc_get 3 1
+---
+CdcEvent { version: 3, seq: 1, ts: 1500, change: Insert { key: "c", after: "3" } }
+
+cdc_get 3 2
+---
+CdcEvent { version: 3, seq: 2, ts: 1500, change: Update { key: "a", before: "1", after: "10" } }
+
+cdc_get 3 3
+---
+CdcEvent { version: 3, seq: 3, ts: 1500, change: Delete { key: "b", before: "2" } }
+
+# Test timestamp monotonicity
+advance_clock 1000
+---
+ok
+
+insert 4 d=4
+---
+ok
+
+cdc_get 4 1
+---
+CdcEvent { version: 4, seq: 1, ts: 2500, change: Insert { key: "d", after: "4" } }
+
+# Large time jump
+advance_clock 10000
+---
+ok
+
+update 5 d=5
+---
+ok
+
+cdc_get 5 1
+---
+CdcEvent { version: 5, seq: 1, ts: 12500, change: Update { key: "d", before: "4", after: "5" } }
