@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
-use crate::mvcc::pending::{BTreePendingWrites, PendingWritesComparableRange};
 use crate::mvcc::transaction::TransactionManagerCommand;
 use crate::mvcc::transaction::iter::TransactionIter;
 use crate::mvcc::transaction::iter_rev::TransactionIterRev;
@@ -25,7 +24,7 @@ use std::ops::RangeBounds;
 
 pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
     engine: Optimistic<VS, UT>,
-    tm: TransactionManagerCommand<StdVersionProvider<UT>, BTreePendingWrites>,
+    tm: TransactionManagerCommand<StdVersionProvider<UT>>,
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
@@ -36,16 +35,6 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
-    /// Commits the transaction, following these steps:
-    ///
-    /// 1. If there are no writes, return immediately.
-    ///
-    /// 2. Check if read rows were updated since txn started. If so, return `transaction_conflict()`.
-    ///
-    /// 3. If no conflict, generate a commit timestamp and update written rows' commit ts.
-    ///
-    /// 4. Batch up all writes, write them to database.
-    ///
     pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
         let mut version: Option<Version> = None;
         let mut deltas = CowVec::with_capacity(8);
@@ -61,9 +50,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
             }
 
             if let Some(version) = version {
-                self.engine
-                    .hooks
-                    .trigger(PreCommitHook { deltas: deltas.clone(), version })?;
+                self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
 
                 self.engine.versioned.apply(deltas.clone(), version)?;
             }
@@ -134,9 +121,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
         Ok(TransactionIter::new(pending, commited, Some(marker)))
     }
 
-    pub fn scan_rev(
-        &mut self,
-    ) -> Result<TransactionIterRev<'_, VS>, reifydb_core::Error> {
+    pub fn scan_rev(&mut self) -> Result<TransactionIterRev<'_, VS>, reifydb_core::Error> {
         let version = self.tm.version();
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter().rev();
@@ -153,7 +138,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
-        let pending = pw.range_comparable((start, end));
+        let pending = pw.range((start, end));
         let commited = self.engine.versioned.range(range, version)?;
 
         Ok(TransactionRange::new(pending, commited, Some(marker)))
@@ -167,7 +152,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
         let (marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
         let end = range.end_bound();
-        let pending = pw.range_comparable((start, end));
+        let pending = pw.range((start, end));
         let commited = self.engine.versioned.range_rev(range, version)?;
 
         Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))

@@ -36,38 +36,34 @@ use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::query::TransactionManagerQuery;
 pub use oracle::MAX_COMMITTED_TXNS;
 
-pub struct TransactionManager<L, P>
+pub struct TransactionManager<L>
 where
     L: VersionProvider,
-    P: PendingWrites,
 {
     inner: Arc<Oracle<L>>,
-    _phantom: std::marker::PhantomData<P>,
 }
 
-impl<L, P> Clone for TransactionManager<L, P>
+impl<L> Clone for TransactionManager<L>
 where
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(), _phantom: std::marker::PhantomData }
+        Self { inner: self.inner.clone() }
     }
 }
 
-impl<L, P> TransactionManager<L, P>
+impl<L> TransactionManager<L>
 where
     L: VersionProvider,
-    P: PendingWrites,
 {
-    pub fn write(&self) -> Result<TransactionManagerCommand<L, P>, reifydb_core::Error> {
+    pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_core::Error> {
         Ok(TransactionManagerCommand {
             oracle: self.inner.clone(),
             version: self.inner.version()?,
             size: 0,
             count: 0,
             conflicts: ConflictManager::new(),
-            pending_writes: P::new(),
+            pending_writes: PendingWrites::new(),
             duplicates: Vec::new(),
             discarded: false,
             done_query: false,
@@ -75,10 +71,9 @@ where
     }
 }
 
-impl<L, P> TransactionManager<L, P>
+impl<L> TransactionManager<L>
 where
     L: VersionProvider,
-    P: PendingWrites,
 {
     pub fn new(name: &str, clock: L) -> crate::Result<Self> {
         let version = clock.next()?;
@@ -93,7 +88,6 @@ where
                 oracle.command.done(version);
                 oracle
             }),
-            _phantom: std::marker::PhantomData,
         })
     }
 
@@ -102,16 +96,15 @@ where
     }
 }
 
-impl<L, P> TransactionManager<L, P>
+impl<L> TransactionManager<L>
 where
     L: VersionProvider,
-    P: PendingWrites,
 {
     pub fn discard_hint(&self) -> Version {
         self.inner.discard_at_or_below()
     }
 
-    pub fn query(&self, version: Option<Version>) -> crate::Result<TransactionManagerQuery<L, P>> {
+    pub fn query(&self, version: Option<Version>) -> crate::Result<TransactionManagerQuery<L>> {
         Ok(if let Some(version) = version {
             TransactionManagerQuery::new_time_travel(self.clone(), version)
         } else {
