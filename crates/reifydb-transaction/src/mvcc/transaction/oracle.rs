@@ -40,6 +40,11 @@ where
     C: Conflict,
     L: VersionProvider,
 {
+    // LOCK ORDERING: To prevent deadlocks, always acquire locks in this order:
+    // 1. command_serialize_lock (if needed)
+    // 2. inner
+    // Never acquire inner first if command_serialize_lock will also be needed.
+
     // command_serialize_lock is for ensuring that transactions go to the command
     // channel in the same order as their commit timestamps.
     pub(super) command_serialize_lock: Mutex<()>,
@@ -105,6 +110,14 @@ where
         // We should ensure that txns are not added to o.committedTxns slice when
         // conflict detection is disabled otherwise this slice would keep growing.
         inner.committed.push(CommittedTxn { version, conflict_manager: Some(conflicts) });
+
+        // Limit the size of committed transactions to prevent unbounded growth
+        const MAX_COMMITTED_TXNS: usize = 10000;
+        if inner.committed.len() > MAX_COMMITTED_TXNS {
+            // Force cleanup of old transactions
+            let cutoff = inner.committed.len() / 2;
+            inner.committed.drain(0..cutoff);
+        }
 
         Ok(CreateCommitResult::Success(version))
     }

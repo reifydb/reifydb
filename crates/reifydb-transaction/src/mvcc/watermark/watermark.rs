@@ -13,6 +13,8 @@ use crate::mvcc::watermark::Closer;
 use crossbeam_channel::{Receiver, Sender, bounded, RecvTimeoutError};
 use reifydb_core::Version;
 use std::ops::Deref;
+use std::sync::Mutex;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{
     borrow::Cow,
@@ -22,7 +24,6 @@ use std::{
     },
 };
 
-#[derive(Debug)]
 pub struct WatermarkInner {
     pub(crate) done_until: AtomicU64,
     pub(crate) last_index: AtomicU64,
@@ -30,6 +31,7 @@ pub struct WatermarkInner {
     pub(crate) name: Cow<'static, str>,
     pub(crate) tx: Sender<Mark>,
     pub(crate) rx: Receiver<Mark>,
+    pub(crate) processor_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 #[derive(Debug)]
@@ -43,8 +45,17 @@ pub(crate) struct Mark {
 /// finished or "done" according to a WaterMark once `done(k)` has been called
 ///  1. as many times as `begin(k)` has, AND
 ///  2. a positive number of times.
-#[derive(Debug)]
 pub struct WaterMark(Arc<WatermarkInner>);
+
+impl std::fmt::Debug for WaterMark {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WaterMark")
+            .field("name", &self.name)
+            .field("done_until", &self.done_until.load(Ordering::Relaxed))
+            .field("last_index", &self.last_index.load(Ordering::Relaxed))
+            .finish()
+    }
+}
 
 impl Deref for WaterMark {
     type Target = WatermarkInner;
@@ -57,7 +68,7 @@ impl Deref for WaterMark {
 impl WaterMark {
     /// Create a new WaterMark with given name and closer.
     pub fn new(name: Cow<'static, str>, closer: Closer) -> Self {
-        let (tx, rx) = bounded(100);
+        let (tx, rx) = bounded(super::WATERMARK_CHANNEL_SIZE);
 
         let inner = Arc::new(WatermarkInner {
             done_until: AtomicU64::new(0),
@@ -65,29 +76,28 @@ impl WaterMark {
             name,
             tx,
             rx,
+            processor_thread: Mutex::new(None),
         });
 
         let processing_inner = inner.clone();
-        std::thread::spawn(move || {
+        let thread_handle = std::thread::spawn(move || {
             processing_inner.process(closer);
         });
+        
+        // Store the thread handle
+        *inner.processor_thread.lock().unwrap() = Some(thread_handle);
 
         Self(inner)
     }
 
     /// Sets the last index to the given value.
     pub fn begin(&self, version: Version) {
-        // Use fetch_max to handle concurrent calls properly
-        let prev = self.last_index.fetch_max(version, Ordering::SeqCst);
+        // Update last_index to the maximum
+        self.last_index.fetch_max(version, Ordering::SeqCst);
         
-        // Only send if this is actually a new maximum or equal
-        if version >= prev {
-            // Handle channel error gracefully
-            if self.tx.send(Mark { version, waiter: None, done: false }).is_err() {
-                // Channel closed, watermark is shutting down
-                return;
-            }
-        }
+        // Always send the mark - the processing thread will handle ordering
+        // Handle channel error gracefully
+        let _ = self.tx.send(Mark { version, waiter: None, done: false });
     }
 
     /// Sets a single index as done.
