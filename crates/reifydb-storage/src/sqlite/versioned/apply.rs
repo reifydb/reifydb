@@ -5,6 +5,7 @@ use super::{ensure_table_exists, table_name};
 use crate::sqlite::Sqlite;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::VersionedApply;
+use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, Result, Version};
 use rusqlite::params;
 use std::collections::HashSet;
@@ -43,8 +44,15 @@ impl VersionedApply for Sqlite {
                 }
                 Delta::Remove { key } => {
                     let table = table_name(&key);
-                    let query = format!("DELETE FROM {} WHERE key = ?1 AND version = ?2", table);
-                    tx.execute(&query, params![key.to_vec(), version]).unwrap();
+                    let query = format!(
+                        "INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
+                        table
+                    );
+                    tx.execute(
+                        &query,
+                        params![key.to_vec(), version, EncodedRow::deleted().to_vec()],
+                    )
+                    .unwrap();
                 }
             }
         }

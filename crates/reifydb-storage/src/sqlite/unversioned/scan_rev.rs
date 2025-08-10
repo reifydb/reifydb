@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::execute_iter_query;
+use super::execute_scan_query;
 use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -38,7 +38,7 @@ impl IterRev {
 
         self.buffer.clear();
 
-        let count = execute_iter_query(
+        let count = execute_scan_query(
             &self.conn,
             self.batch_size,
             self.last_key.as_ref(),

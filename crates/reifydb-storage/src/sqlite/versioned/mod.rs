@@ -4,10 +4,10 @@
 mod apply;
 mod contains;
 mod get;
-mod iter;
-mod iter_rev;
 mod range;
 mod range_rev;
+mod scan;
+mod scan_rev;
 
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -16,7 +16,7 @@ use reifydb_core::interface::{
 };
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, Version};
-use rusqlite::{Connection, Statement};
+use rusqlite::{Connection, Statement, params};
 use std::collections::{HashMap, VecDeque};
 use std::ops::Bound;
 use std::sync::{Mutex, OnceLock};
@@ -197,7 +197,7 @@ pub(crate) fn execute_batched_range_query(
     match param_count {
         1 => {
             let rows = stmt
-                .query_map(rusqlite::params![version, batch_size], |row| {
+                .query_map(params![version, batch_size], |row| {
                     Ok(Versioned {
                         key: EncodedKey(CowVec::new(row.get(0)?)),
                         row: EncodedRow(CowVec::new(row.get(1)?)),
@@ -209,8 +209,10 @@ pub(crate) fn execute_batched_range_query(
             for result in rows {
                 match result {
                     Ok(versioned) => {
-                        buffer.push_back(versioned);
-                        count += 1;
+                        if !versioned.row.is_deleted() {
+                            buffer.push_back(versioned);
+                            count += 1;
+                        }
                     }
                     Err(_) => break,
                 }
@@ -223,7 +225,7 @@ pub(crate) fn execute_batched_range_query(
                 _ => unreachable!(),
             };
             let rows = stmt
-                .query_map(rusqlite::params![param, version, batch_size], |row| {
+                .query_map(params![param, version, batch_size], |row| {
                     Ok(Versioned {
                         key: EncodedKey(CowVec::new(row.get(0)?)),
                         row: EncodedRow(CowVec::new(row.get(1)?)),
@@ -235,8 +237,10 @@ pub(crate) fn execute_batched_range_query(
             for result in rows {
                 match result {
                     Ok(versioned) => {
-                        buffer.push_back(versioned);
-                        count += 1;
+                        if !versioned.row.is_deleted() {
+                            buffer.push_back(versioned);
+                            count += 1;
+                        }
                     }
                     Err(_) => break,
                 }
@@ -252,7 +256,7 @@ pub(crate) fn execute_batched_range_query(
                 _ => unreachable!(),
             };
             let rows = stmt
-                .query_map(rusqlite::params![start_param, end_param, version, batch_size], |row| {
+                .query_map(params![start_param, end_param, version, batch_size], |row| {
                     Ok(Versioned {
                         key: EncodedKey(CowVec::new(row.get(0)?)),
                         row: EncodedRow(CowVec::new(row.get(1)?)),
@@ -264,8 +268,10 @@ pub(crate) fn execute_batched_range_query(
             for result in rows {
                 match result {
                     Ok(versioned) => {
-                        buffer.push_back(versioned);
-                        count += 1;
+                        if !versioned.row.is_deleted() {
+                            buffer.push_back(versioned);
+                            count += 1;
+                        }
                     }
                     Err(_) => break,
                 }
@@ -286,7 +292,7 @@ pub(crate) fn get_table_names(conn: &PooledConnection<SqliteConnectionManager>) 
 }
 
 /// Helper function to execute batched iteration queries across multiple tables
-pub(crate) fn execute_iter_query(
+pub(crate) fn execute_scan_query(
     conn: &PooledConnection<SqliteConnectionManager>,
     table_names: &[String],
     version: Version,
@@ -345,7 +351,11 @@ pub(crate) fn execute_iter_query(
 
         for result in rows {
             match result {
-                Ok(versioned) => all_rows.push(versioned),
+                Ok(versioned) => {
+                    if !versioned.row.is_deleted() {
+                        all_rows.push(versioned)
+                    }
+                }
                 Err(_) => break,
             }
         }

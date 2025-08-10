@@ -1,23 +1,23 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use super::{execute_iter_query, get_table_names};
+use super::{execute_scan_query, get_table_names};
 use crate::sqlite::Sqlite;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::interface::{Versioned, VersionedScan};
+use reifydb_core::interface::{Versioned, VersionedScanRev};
 use reifydb_core::{EncodedKey, Result, Version};
 use std::collections::VecDeque;
 
-impl VersionedScan for Sqlite {
-    type ScanIter<'a> = Iter;
+impl VersionedScanRev for Sqlite {
+    type ScanIterRev<'a> = IterRev;
 
-    fn scan(&self, version: Version) -> Result<Self::ScanIter<'_>> {
-        Ok(Iter::new(self.get_conn(), version, 1024))
+    fn scan_rev(&self, version: Version) -> Result<Self::ScanIterRev<'_>> {
+        Ok(IterRev::new(self.get_conn(), version, 1024))
     }
 }
 
-pub struct Iter {
+pub struct IterRev {
     conn: PooledConnection<SqliteConnectionManager>,
     version: Version,
     table_names: Vec<String>,
@@ -27,7 +27,7 @@ pub struct Iter {
     exhausted: bool,
 }
 
-impl Iter {
+impl IterRev {
     pub fn new(
         conn: PooledConnection<SqliteConnectionManager>,
         version: Version,
@@ -53,17 +53,17 @@ impl Iter {
 
         self.buffer.clear();
 
-        let count = execute_iter_query(
+        let count = execute_scan_query(
             &self.conn,
             &self.table_names,
             self.version,
             self.batch_size,
             self.last_key.as_ref(),
-            "ASC",
+            "DESC",
             &mut self.buffer,
         );
 
-        // Update last_key to the last item we retrieved
+        // Update last_key to the last item we retrieved (which is the smallest key due to DESC order)
         if let Some(last_item) = self.buffer.back() {
             self.last_key = Some(last_item.key.clone());
         }
@@ -75,7 +75,7 @@ impl Iter {
     }
 }
 
-impl Iterator for Iter {
+impl Iterator for IterRev {
     type Item = Versioned;
 
     fn next(&mut self) -> Option<Self::Item> {

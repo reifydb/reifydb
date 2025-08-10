@@ -179,6 +179,7 @@ jobs:
         if: failure()
         run: |
           echo "=== ReifyDB Service Logs ==="
+          docker ps -a
           docker logs reifydb-test || echo "No service logs available"
 
       - name: Publish Test Results

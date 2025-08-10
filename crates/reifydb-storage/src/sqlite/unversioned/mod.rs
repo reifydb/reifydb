@@ -4,8 +4,8 @@
 mod apply;
 mod contains;
 mod get;
-mod iter;
-mod iter_rev;
+mod scan;
+mod scan_rev;
 mod range;
 mod range_rev;
 
@@ -203,7 +203,7 @@ pub(crate) fn execute_range_query(
 }
 
 /// Helper function to execute batched unversioned iteration queries
-pub(crate) fn execute_iter_query(
+pub(crate) fn execute_scan_query(
     conn: &PooledConnection<SqliteConnectionManager>,
     batch_size: usize,
     last_key: Option<&EncodedKey>,
