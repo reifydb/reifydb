@@ -2,12 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::memory::Memory;
+use crossbeam_skiplist::map::Entry;
 use reifydb_core::interface::{CdcEvent, CdcEventKey, CdcRange};
 use reifydb_core::{Result, Version};
 use std::ops::Bound;
 
 impl CdcRange for Memory {
-    fn range(&self, start: Bound<Version>, end: Bound<Version>) -> Result<Vec<CdcEvent>> {
+    type RangeIter<'a> = Range<'a>;
+
+    fn range(&self, start: Bound<Version>, end: Bound<Version>) -> Result<Self::RangeIter<'_>> {
         let start_key = match start {
             Bound::Included(v) => Bound::Included(CdcEventKey { version: v, sequence: 0 }),
             Bound::Excluded(v) => Bound::Excluded(CdcEventKey { version: v, sequence: u16::MAX }),
@@ -22,12 +25,18 @@ impl CdcRange for Memory {
             Bound::Unbounded => Bound::Unbounded,
         };
 
-        let events: Vec<CdcEvent> = self
-            .cdc_events
-            .range((start_key, end_key))
-            .map(|entry| entry.value().clone())
-            .collect();
+        Ok(Range { iter: Box::new(self.cdc_events.range((start_key, end_key))) })
+    }
+}
 
-        Ok(events)
+pub struct Range<'a> {
+    iter: Box<dyn Iterator<Item = Entry<'a, CdcEventKey, CdcEvent>> + 'a>,
+}
+
+impl<'a> Iterator for Range<'a> {
+    type Item = CdcEvent;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|entry| entry.value().clone())
     }
 }

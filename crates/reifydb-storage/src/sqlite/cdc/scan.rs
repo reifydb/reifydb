@@ -3,18 +3,74 @@
 
 use crate::cdc::codec::decode_cdc_event;
 use crate::sqlite::Sqlite;
+use r2d2::PooledConnection;
+use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{CdcEvent, CdcScan};
 use reifydb_core::row::EncodedRow;
-use reifydb_core::{CowVec, Result};
+use reifydb_core::{CowVec, Result, Version};
+use std::collections::VecDeque;
 
 impl CdcScan for Sqlite {
-    fn scan(&self) -> Result<Vec<CdcEvent>> {
-        let conn = self.get_conn();
+    type ScanIter<'a> = Scan;
 
-        let mut stmt = conn.prepare_cached("SELECT value FROM cdc ORDER BY version ASC, key DESC").unwrap();
+    fn scan(&self) -> Result<Self::ScanIter<'_>> {
+        Ok(Scan::new(self.get_conn(), 1024))
+    }
+}
 
-        let events = stmt
-            .query_map([], |row| {
+pub struct Scan {
+    conn: PooledConnection<SqliteConnectionManager>,
+    buffer: VecDeque<CdcEvent>,
+    last_version: Option<Version>,
+    last_sequence: Option<u16>,
+    batch_size: usize,
+    exhausted: bool,
+}
+
+impl Scan {
+    pub fn new(
+        conn: PooledConnection<SqliteConnectionManager>,
+        batch_size: usize,
+    ) -> Self {
+        Self {
+            conn,
+            buffer: VecDeque::new(),
+            last_version: None,
+            last_sequence: None,
+            batch_size,
+            exhausted: false,
+        }
+    }
+
+    fn refill_buffer(&mut self) {
+        if self.exhausted {
+            return;
+        }
+
+        self.buffer.clear();
+
+        let (where_clause, params) = if let (Some(last_version), Some(last_sequence)) = (self.last_version, self.last_sequence) {
+            (
+                "WHERE (version > ? OR (version = ? AND sequence > ?))".to_string(),
+                vec![last_version as i64, last_version as i64, last_sequence as i64]
+            )
+        } else {
+            (String::new(), vec![])
+        };
+
+        let query = if where_clause.is_empty() {
+            "SELECT value FROM cdc ORDER BY version ASC, key DESC LIMIT ?".to_string()
+        } else {
+            format!("SELECT value FROM cdc {} ORDER BY version ASC, key DESC LIMIT ?", where_clause)
+        };
+
+        let mut stmt = self.conn.prepare_cached(&query).unwrap();
+        
+        let mut query_params = params;
+        query_params.push(self.batch_size as i64);
+
+        let events: Vec<EncodedRow> = stmt
+            .query_map(rusqlite::params_from_iter(query_params), |row| {
                 let bytes: Vec<u8> = row.get(0)?;
                 Ok(EncodedRow(CowVec::new(bytes)))
             })
@@ -22,11 +78,30 @@ impl CdcScan for Sqlite {
             .collect::<rusqlite::Result<Vec<_>>>()
             .unwrap();
 
-        let mut result = Vec::new();
+        let count = events.len();
+        
         for encoded in events {
-            result.push(decode_cdc_event(&encoded)?);
+            if let Ok(event) = decode_cdc_event(&encoded) {
+                self.last_version = Some(event.version);
+                self.last_sequence = Some(event.sequence);
+                self.buffer.push_back(event);
+            }
         }
 
-        Ok(result)
+        // If we got fewer results than requested, we've reached the end
+        if count < self.batch_size {
+            self.exhausted = true;
+        }
+    }
+}
+
+impl Iterator for Scan {
+    type Item = CdcEvent;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            self.refill_buffer();
+        }
+        self.buffer.pop_front()
     }
 }
