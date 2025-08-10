@@ -12,9 +12,6 @@ reifydb-storage = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 
-[[bench]]
-name = "oracle_benchmark"
-harness = false
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

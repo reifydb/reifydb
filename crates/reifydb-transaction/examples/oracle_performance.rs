@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use encoding::{bincode, keycode};
+use reifydb_core::EncodedKey;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::util::encoding;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
@@ -9,9 +10,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
-// Helper macros for creating keys and values (copied from test module)
 macro_rules! as_key {
-    ($key:expr) => {{ reifydb_core::EncodedKey::new(keycode::serialize(&$key)) }};
+    ($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
 }
 
 macro_rules! as_row {
@@ -158,7 +158,7 @@ pub fn conflict_detection_benchmark() {
 }
 
 fn main() {
-    println!("Running Oracle Benchmarks...\n");
+    println!("🚀 ReifyDB Oracle Performance Benchmarks\n");
 
     oracle_performance_benchmark();
     println!("\n{}\n", "=".repeat(60));
@@ -168,5 +168,5 @@ fn main() {
 
     conflict_detection_benchmark();
 
-    println!("\nAll benchmarks completed!");
+    println!("\n✅ All benchmarks completed!");
 }
