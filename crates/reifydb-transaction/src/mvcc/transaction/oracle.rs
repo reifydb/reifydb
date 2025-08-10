@@ -16,6 +16,9 @@ use reifydb_core::Version;
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard};
 
+
+pub const MAX_COMMITTED_TXNS: usize = 10000;
+
 #[derive(Debug)]
 pub(super) struct OracleInner<C, L>
 where
@@ -112,7 +115,6 @@ where
         inner.committed.push(CommittedTxn { version, conflict_manager: Some(conflicts) });
 
         // Limit the size of committed transactions to prevent unbounded growth
-        const MAX_COMMITTED_TXNS: usize = 10000;
         if inner.committed.len() > MAX_COMMITTED_TXNS {
             // Force cleanup of old transactions
             let cutoff = inner.committed.len() / 2;

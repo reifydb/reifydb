@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::mvcc::watermark::Closer;
-use crossbeam_channel::{Receiver, Sender, bounded, RecvTimeoutError};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use reifydb_core::Version;
 use std::ops::Deref;
 use std::sync::Mutex;
@@ -27,7 +27,7 @@ use std::{
 pub struct WatermarkInner {
     pub(crate) done_until: AtomicU64,
     pub(crate) last_index: AtomicU64,
-    #[allow(dead_code)]  // Used in debug messages
+    #[allow(dead_code)] // Used in debug messages
     pub(crate) name: Cow<'static, str>,
     pub(crate) tx: Sender<Mark>,
     pub(crate) rx: Receiver<Mark>,
@@ -83,7 +83,7 @@ impl WaterMark {
         let thread_handle = std::thread::spawn(move || {
             processing_inner.process(closer);
         });
-        
+
         // Store the thread handle
         *inner.processor_thread.lock().unwrap() = Some(thread_handle);
 
@@ -94,7 +94,7 @@ impl WaterMark {
     pub fn begin(&self, version: Version) {
         // Update last_index to the maximum
         self.last_index.fetch_max(version, Ordering::SeqCst);
-        
+
         // Always send the mark - the processing thread will handle ordering
         // Handle channel error gracefully
         let _ = self.tx.send(Mark { version, waiter: None, done: false });
@@ -116,7 +116,7 @@ impl WaterMark {
     pub fn wait_for_mark(&self, index: u64) {
         self.wait_for_mark_timeout(index, Duration::from_secs(30));
     }
-    
+
     /// Waits until the given index is marked as done with a specified timeout.
     pub fn wait_for_mark_timeout(&self, index: u64, timeout: Duration) -> bool {
         if self.done_until.load(Ordering::SeqCst) >= index {
@@ -124,7 +124,7 @@ impl WaterMark {
         }
 
         let (wait_tx, wait_rx) = bounded(1);
-        
+
         // Handle send error
         if self.tx.send(Mark { version: index, waiter: Some(wait_tx), done: false }).is_err() {
             // Channel closed
@@ -149,6 +149,7 @@ impl WaterMark {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn test_basic() {
@@ -192,6 +193,141 @@ mod tests {
         init_and_close(|watermark| {
             watermark.done_until.store(1, Ordering::SeqCst);
             assert_eq!(watermark.done_until(), 1);
+        });
+    }
+
+    #[test]
+    fn test_high_concurrency() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let closer = Closer::new(1);
+        let watermark = Arc::new(WaterMark::new("concurrent".into(), closer.clone()));
+
+        const NUM_THREADS: usize = 50;
+        const OPS_PER_THREAD: usize = 100;
+
+        let mut handles = vec![];
+
+        // Spawn threads that perform concurrent begin/done operations
+        for thread_id in 0..NUM_THREADS {
+            let wm = watermark.clone();
+            let handle = thread::spawn(move || {
+                for i in 0..OPS_PER_THREAD {
+                    let version = (thread_id * OPS_PER_THREAD + i) as u64 + 1;
+                    wm.begin(version);
+                    wm.done(version);
+                }
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().expect("Thread panicked");
+        }
+
+        thread::sleep(Duration::from_millis(100));
+
+        // Verify the watermark progressed
+        let final_done = watermark.done_until();
+        assert!(final_done > 0, "Watermark should have progressed");
+
+        closer.signal_and_wait();
+    }
+
+    #[test]
+    fn test_concurrent_wait_for_mark() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicUsize;
+        use std::thread;
+
+        let closer = Closer::new(1);
+        let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), closer.clone()));
+        let success_count = Arc::new(AtomicUsize::new(0));
+
+        // Start some versions
+        for i in 1..=10 {
+            watermark.begin(i);
+        }
+
+        let mut handles = vec![];
+
+        // Spawn threads that wait for marks
+        for version in 1..=10 {
+            let wm = watermark.clone();
+            let counter = success_count.clone();
+            let handle = thread::spawn(move || {
+                // Use timeout to avoid hanging if something goes wrong
+                if wm.wait_for_mark_timeout(version, Duration::from_secs(5)) {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Give threads time to start waiting
+        thread::sleep(Duration::from_millis(50));
+
+        // Complete the versions
+        for i in 1..=10 {
+            watermark.done(i);
+        }
+
+        for handle in handles {
+            handle.join().expect("Thread panicked");
+        }
+
+        // All waits should have succeeded
+        assert_eq!(success_count.load(Ordering::Relaxed), 10);
+
+        closer.signal_and_wait();
+    }
+
+    #[test]
+    fn test_old_version_rejection() {
+        use std::thread;
+
+        init_and_close(|watermark| {
+            // Advance done_until significantly
+            for i in 1..=100 {
+                watermark.begin(i);
+                watermark.done(i);
+            }
+
+            // Wait for processing
+            thread::sleep(Duration::from_millis(50));
+
+            let done_until = watermark.done_until();
+            assert!(done_until >= 50, "Should have processed many versions");
+
+            // Try to wait for a very old version (should return immediately)
+            let very_old = done_until.saturating_sub(super::super::OLD_VERSION_THRESHOLD + 10);
+            let start = Instant::now();
+            watermark.wait_for_mark(very_old);
+            let elapsed = start.elapsed();
+
+            // Should return almost immediately (< 10ms)
+            assert!(elapsed.as_millis() < 10, "Old version wait should return immediately");
+        });
+    }
+
+    #[test]
+    fn test_timeout_behavior() {
+        init_and_close(|watermark| {
+            // Begin but don't complete a version
+            watermark.begin(1);
+
+            // Wait with short timeout
+            let start = Instant::now();
+            let result = watermark.wait_for_mark_timeout(1, Duration::from_millis(100));
+            let elapsed = start.elapsed();
+
+            // Should timeout and return false
+            assert!(!result, "Should timeout waiting for uncompleted version");
+            assert!(
+                elapsed.as_millis() >= 100 && elapsed.as_millis() < 200,
+                "Should respect timeout duration"
+            );
         });
     }
 

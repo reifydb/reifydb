@@ -5,8 +5,11 @@ mod optimistic;
 mod serializable;
 
 use reifydb_core::row::EncodedRow;
-use reifydb_core::util::encoding::{bincode, keycode};
-use reifydb_core::{CowVec, EncodedKey};
+use reifydb_core::util::encoding::bincode;
+use reifydb_core::CowVec;
+
+pub use reifydb_core::EncodedKey;
+pub use reifydb_core::util::encoding::keycode;
 
 pub trait IntoRow {
     fn into_row(self) -> EncodedRow;
@@ -22,12 +25,16 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-    ($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
+    ($key:expr) => {{ 
+        reifydb_core::EncodedKey::new(reifydb_core::util::encoding::keycode::serialize(&$key)) 
+    }};
 }
 
 #[macro_export]
 macro_rules! as_row {
-    ($val:expr) => {{ IntoRow::into_row($val) }};
+    ($val:expr) => {{ 
+        <_ as crate::mvcc::transaction::IntoRow>::into_row($val) 
+    }};
 }
 
 #[macro_export]

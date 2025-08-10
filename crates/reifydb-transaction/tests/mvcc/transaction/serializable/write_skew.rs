@@ -9,10 +9,8 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
-use crate::transaction::FromKey;
-use crate::transaction::FromRow;
-use crate::transaction::IntoRow;
-use crate::transaction::keycode;
+use crate::mvcc::transaction::FromKey;
+use crate::mvcc::transaction::FromRow;
 use crate::{as_key, as_row, from_key, from_row};
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_storage::memory::Memory;

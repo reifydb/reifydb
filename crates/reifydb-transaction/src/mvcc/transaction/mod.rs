@@ -34,6 +34,7 @@ mod command;
 use crate::mvcc::conflict::Conflict;
 use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::query::TransactionManagerQuery;
+pub use oracle::MAX_COMMITTED_TXNS;
 
 pub struct TransactionManager<C, L, P>
 where

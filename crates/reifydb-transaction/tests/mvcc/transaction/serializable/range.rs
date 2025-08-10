@@ -12,10 +12,7 @@
 use crate::as_key;
 use crate::as_row;
 use crate::from_row;
-use crate::transaction::EncodedKey;
-use crate::transaction::FromRow;
-use crate::transaction::IntoRow;
-use crate::transaction::keycode;
+use crate::mvcc::transaction::FromRow;
 use reifydb_core::EncodedKeyRange;
 use reifydb_transaction::mvcc::transaction::range::TransactionRange;
 use reifydb_transaction::mvcc::transaction::range_rev::TransactionRangeRev;
