@@ -25,3 +25,5 @@ export {Uint8Value} from './value/uint8';
 export {Uint16Value} from './value/uint16';
 export {RowIdValue} from './value/rowid';
 export {Utf8Value} from './value/utf8';
+export {Uuid4Value} from './value/uuid4';
+export {Uuid7Value} from './value/uuid7';

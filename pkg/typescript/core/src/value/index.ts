@@ -24,4 +24,6 @@ export { Uint8Value } from './uint8';
 export { Uint16Value } from './uint16';
 export { RowIdValue } from './rowid';
 export { Utf8Value } from './utf8';
+export { Uuid4Value } from './uuid4';
+export { Uuid7Value } from './uuid7';
 export { Type, Value } from './type';

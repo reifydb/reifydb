@@ -17,6 +17,7 @@
     "pretest:integration": "pnpm build"
   },
   "dependencies": {
+    "@reifydb/core": "workspace:*",
     "uuid": "^11.1.0",
     "ws": "^8.18.3"
   },
