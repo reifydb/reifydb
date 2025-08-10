@@ -16,7 +16,6 @@ export type Type =
     | "Undefined"
     | "RowId";
 
-export interface Value {
-    readonly type: Type;
-
+export abstract class Value {
+    abstract readonly type: Type;
 }

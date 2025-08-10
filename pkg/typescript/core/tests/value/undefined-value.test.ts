@@ -19,6 +19,7 @@ import {
     RowIdValue,
     TimeValue,
     Uint16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
+    UndefinedValue,
     Utf8Value,
     Uuid4Value,
     Uuid7Value
@@ -136,5 +137,11 @@ describe('UNDEFINED_VALUE parsing', () => {
     it('should parse UNDEFINED_VALUE as undefined for Uuid7', () => {
         const uuid7 = Uuid7Value.parse(undefinedString);
         expect(uuid7.value).toBeUndefined();
+    });
+
+    it('should parse UNDEFINED_VALUE for UndefinedValue', () => {
+        const undefinedValue = UndefinedValue.parse(undefinedString);
+        expect(undefinedValue.value).toBeUndefined();
+        expect(undefinedValue.type).toBe('Undefined');
     });
 });
