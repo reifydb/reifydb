@@ -162,6 +162,23 @@ impl Conflict for BTreeConflict {
         self.reads.clear();
         self.conflict_keys.clear();
     }
+    
+    fn get_read_keys(&self) -> Vec<EncodedKey> {
+        let mut keys = Vec::new();
+        for read in &self.reads {
+            match read {
+                Read::Single(key) => keys.push(key.clone()),
+                // For ranges and All, we cannot extract specific keys efficiently
+                // These will be handled separately in the oracle implementation
+                Read::Range { .. } | Read::All => {}
+            }
+        }
+        keys
+    }
+    
+    fn get_conflict_keys(&self) -> Vec<EncodedKey> {
+        self.conflict_keys.iter().cloned().collect()
+    }
 }
 
 impl ConflictRange for BTreeConflict {

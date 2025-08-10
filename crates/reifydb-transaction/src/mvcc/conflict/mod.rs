@@ -22,6 +22,12 @@ pub trait Conflict: Default + Sized {
     fn mark_conflict(&mut self, key: &EncodedKey);
     fn has_conflict(&self, other: &Self) -> bool;
     fn rollback(&mut self);
+    
+    /// Get all keys that were read by this transaction for efficient conflict detection
+    fn get_read_keys(&self) -> Vec<EncodedKey>;
+    
+    /// Get all keys that were written by this transaction
+    fn get_conflict_keys(&self) -> Vec<EncodedKey>;
 }
 
 pub trait ConflictRange: Conflict + Sized {
