@@ -11,7 +11,6 @@
 
 use crate::mvcc::transaction::FromRow;
 use crate::{as_key, as_row, from_row};
-use reifydb_transaction::mvcc::conflict::BTreeConflict;
 use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
 use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
@@ -29,7 +28,7 @@ fn test_versions() {
         assert_eq!(i + 1, engine.version().unwrap());
     }
 
-    let check_iter = |itr: TransactionIter<'_, _, BTreeConflict>, i: u64| {
+    let check_iter = |itr: TransactionIter<'_, _>, i: u64| {
         let mut count = 0;
         for sv in itr {
             assert_eq!(sv.key(), &k0);
@@ -40,7 +39,7 @@ fn test_versions() {
         assert_eq!(1, count) // should only loop once.
     };
 
-    let check_rev_iter = |itr: TransactionIterRev<'_, _, BTreeConflict>, i: u64| {
+    let check_rev_iter = |itr: TransactionIterRev<'_, _>, i: u64| {
         let mut count = 0;
         for sv in itr {
             let value = from_row!(u64, sv.row());

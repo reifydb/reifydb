@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::mvcc::conflict::Conflict;
+use crate::mvcc::conflict::ConflictManager;
 use crate::mvcc::transaction::version::VersionProvider;
 use crate::mvcc::watermark::{Closer, WaterMark};
 use reifydb_core::{EncodedKey, Version};
@@ -18,24 +18,21 @@ pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
 
 /// Time window containing committed transactions
 #[derive(Debug)]
-pub(super) struct CommittedWindow<C> {
+pub(super) struct CommittedWindow {
     /// All transactions committed in this window
-    transactions: Vec<CommittedTxn<C>>,
+    transactions: Vec<CommittedTxn>,
     /// Set of all keys modified in this window for quick filtering
     modified_keys: HashSet<EncodedKey>,
     /// Maximum version in this window  
     max_version: Version,
 }
 
-impl<C> CommittedWindow<C> {
+impl CommittedWindow {
     fn new(min_version: Version) -> Self {
         Self { transactions: Vec::new(), modified_keys: HashSet::new(), max_version: min_version }
     }
 
-    fn add_transaction(&mut self, txn: CommittedTxn<C>)
-    where
-        C: Conflict,
-    {
+    fn add_transaction(&mut self, txn: CommittedTxn) {
         self.max_version = self.max_version.max(txn.version);
 
         // Add all conflict keys to our modified keys set
@@ -51,16 +48,15 @@ impl<C> CommittedWindow<C> {
 
 /// Oracle implementation with time-window based conflict detection
 #[derive(Debug)]
-pub(super) struct OracleInner<C, L>
+pub(super) struct OracleInner<L>
 where
-    C: Conflict,
     L: VersionProvider,
 {
     pub clock: L,
     pub last_cleanup: Version,
 
     /// Time windows containing committed transactions, keyed by window start version
-    pub time_windows: BTreeMap<Version, CommittedWindow<C>>,
+    pub time_windows: BTreeMap<Version, CommittedWindow>,
 
     /// Index: key -> set of window versions that modified this key
     pub key_to_windows: HashMap<EncodedKey, BTreeSet<Version>>,
@@ -70,21 +66,20 @@ where
 }
 
 #[derive(Debug)]
-pub(super) struct CommittedTxn<C> {
+pub(super) struct CommittedTxn {
     version: Version,
-    conflict_manager: Option<C>,
+    conflict_manager: Option<ConflictManager>,
 }
 
-pub(super) enum CreateCommitResult<C> {
+pub(super) enum CreateCommitResult {
     Success(Version),
-    Conflict(C),
+    Conflict(ConflictManager),
 }
 
 /// Oracle with time-window based conflict detection
 #[derive(Debug)]
-pub(super) struct Oracle<C, L>
+pub(super) struct Oracle<L>
 where
-    C: Conflict,
     L: VersionProvider,
 {
     // LOCK ORDERING: To prevent deadlocks, always acquire locks in this order:
@@ -96,7 +91,7 @@ where
     // channel in the same order as their commit timestamps.
     pub(super) command_serialize_lock: Mutex<()>,
 
-    pub(super) inner: Mutex<OracleInner<C, L>>,
+    pub(super) inner: Mutex<OracleInner<L>>,
 
     /// Used by DB
     pub(super) query: WaterMark,
@@ -107,9 +102,9 @@ where
     closer: Closer,
 }
 
-impl<C, L> Oracle<C, L>
+impl<L> Oracle<L>
 where
-    C: Conflict,
+
     L: VersionProvider,
 {
     /// Create a new oracle with efficient conflict detection
@@ -135,8 +130,8 @@ where
         &self,
         done_read: &mut bool,
         version: Version,
-        conflicts: C,
-    ) -> crate::Result<CreateCommitResult<C>> {
+        conflicts: ConflictManager,
+    ) -> crate::Result<CreateCommitResult> {
         let mut inner = self.inner.lock().unwrap();
 
         // Get keys involved in this transaction for efficient filtering
@@ -232,13 +227,13 @@ where
     }
 }
 
-impl<C, L> OracleInner<C, L>
+impl<L> OracleInner<L>
 where
-    C: Conflict,
+
     L: VersionProvider,
 {
     /// Add a committed transaction to the appropriate time window
-    fn add_committed_transaction(&mut self, version: Version, conflicts: C) {
+    fn add_committed_transaction(&mut self, version: Version, conflicts: ConflictManager) {
         // Determine which window this transaction belongs to
         let window_start = (version / self.window_size) * self.window_size;
 
@@ -292,9 +287,9 @@ where
     }
 }
 
-impl<C, L> Drop for Oracle<C, L>
+impl<L> Drop for Oracle<L>
 where
-    C: Conflict,
+
     L: VersionProvider,
 {
     fn drop(&mut self) {
@@ -305,7 +300,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mvcc::conflict::BTreeConflict;
     use crate::mvcc::transaction::version::VersionProvider;
     use reifydb_core::{EncodedKey, Version};
     use std::sync::Arc;
@@ -341,7 +335,7 @@ mod tests {
     fn test_oracle_basic_creation() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         // Oracle should be created successfully
         assert_eq!(oracle.version().unwrap(), 0);
@@ -351,10 +345,10 @@ mod tests {
     fn test_window_creation_and_indexing() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         // Create a conflict manager with some keys
-        let mut conflicts = BTreeConflict::new();
+        let mut conflicts = ConflictManager::new();
         let key1 = create_test_key("key1");
         let key2 = create_test_key("key2");
         conflicts.mark_conflict(&key1);
@@ -384,12 +378,12 @@ mod tests {
     fn test_conflict_detection_between_transactions() {
         let clock = MockVersionProvider::new(1);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let shared_key = create_test_key("shared_key");
 
         // First transaction: reads and writes shared_key, starts reading at version 1
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_read(&shared_key);
         conflicts1.mark_conflict(&shared_key);
 
@@ -402,7 +396,7 @@ mod tests {
 
         // Second transaction: reads shared_key and writes to it (should conflict)
         // Started reading at version 1 (before txn1 committed)
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_read(&shared_key);
         conflicts2.mark_conflict(&shared_key);
 
@@ -419,13 +413,13 @@ mod tests {
     fn test_no_conflict_different_keys() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let key1 = create_test_key("key1");
         let key2 = create_test_key("key2");
 
         // First transaction: reads and writes key1
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_read(&key1);
         conflicts1.mark_conflict(&key1);
 
@@ -434,7 +428,7 @@ mod tests {
         assert!(matches!(result1, CreateCommitResult::Success(_)));
 
         // Second transaction: reads and writes key2 (different key, no conflict)
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_read(&key2);
         conflicts2.mark_conflict(&key2);
 
@@ -449,14 +443,14 @@ mod tests {
     fn test_key_indexing_multiple_windows() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let key1 = create_test_key("key1");
         let key2 = create_test_key("key2");
 
         // Add transactions to different windows by using different version ranges
         for i in 0..3 {
-            let mut conflicts = BTreeConflict::new();
+            let mut conflicts = ConflictManager::new();
             if i % 2 == 0 {
                 conflicts.mark_conflict(&key1);
             } else {
@@ -485,12 +479,12 @@ mod tests {
     fn test_version_filtering_in_conflict_detection() {
         let clock = MockVersionProvider::new(2);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let shared_key = create_test_key("shared_key");
 
         // First transaction at version 5
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_conflict(&shared_key);
 
         let mut done_read1 = false;
@@ -502,7 +496,7 @@ mod tests {
 
         // Second transaction that started BEFORE the first committed (version 3)
         // Should NOT conflict because txn1 committed after txn2 started reading
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_read(&shared_key);
         conflicts2.mark_conflict(&shared_key);
 
@@ -512,7 +506,7 @@ mod tests {
 
         // Third transaction that started BEFORE the first committed
         // Should conflict because txn1 wrote to shared_key after txn3 started reading
-        let mut conflicts3 = BTreeConflict::new();
+        let mut conflicts3 = ConflictManager::new();
         conflicts3.mark_read(&shared_key);
         conflicts3.mark_conflict(&shared_key);
 
@@ -526,12 +520,12 @@ mod tests {
     fn test_range_operations_fallback() {
         let clock = MockVersionProvider::new(1);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let key1 = create_test_key("key1");
 
         // First transaction: writes to a specific key
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_conflict(&key1);
 
         let mut done_read1 = false;
@@ -539,9 +533,8 @@ mod tests {
         assert!(matches!(result1, CreateCommitResult::Success(_)));
 
         // Second transaction: does a range operation (which can't be indexed by specific keys)
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         // Simulate a range read that doesn't return specific keys
-        use crate::mvcc::conflict::ConflictRange;
         use reifydb_core::EncodedKeyRange;
         let range = EncodedKeyRange::parse("a..z");
         conflicts2.mark_range(range);
@@ -559,7 +552,7 @@ mod tests {
     fn test_window_cleanup_mechanism() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         // Add many transactions to trigger cleanup
         let mut keys = Vec::new();
@@ -567,7 +560,7 @@ mod tests {
             let key = create_test_key(&format!("key{}", i));
             keys.push(key.clone());
 
-            let mut conflicts = BTreeConflict::new();
+            let mut conflicts = ConflictManager::new();
             conflicts.mark_conflict(&key);
 
             let mut done_read = false;
@@ -596,10 +589,10 @@ mod tests {
     fn test_empty_conflict_manager() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         // Transaction with no conflicts (read-only)
-        let conflicts = BTreeConflict::new(); // Empty conflict manager
+        let conflicts = ConflictManager::new(); // Empty conflict manager
 
         let mut done_read = false;
         let result = oracle.new_commit(&mut done_read, 1, conflicts).unwrap();
@@ -620,12 +613,12 @@ mod tests {
     fn test_write_write_conflict() {
         let clock = MockVersionProvider::new(1);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let shared_key = create_test_key("shared_key");
 
         // First transaction: writes to shared_key (no read)
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_conflict(&shared_key);
 
         let mut done_read1 = false;
@@ -633,7 +626,7 @@ mod tests {
         assert!(matches!(result1, CreateCommitResult::Success(_)));
 
         // Second transaction: also writes to shared_key (write-write conflict)
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_conflict(&shared_key);
 
         let mut done_read2 = false;
@@ -647,12 +640,12 @@ mod tests {
     fn test_read_write_conflict() {
         let clock = MockVersionProvider::new(1);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let shared_key = create_test_key("shared_key");
 
         // First transaction: writes to shared_key
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_conflict(&shared_key);
 
         let mut done_read1 = false;
@@ -660,7 +653,7 @@ mod tests {
         assert!(matches!(result1, CreateCommitResult::Success(_)));
 
         // Second transaction: reads from shared_key (read-write conflict)
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_read(&shared_key);
 
         let mut done_read2 = false;
@@ -674,12 +667,12 @@ mod tests {
     fn test_sequential_transactions_no_conflict() {
         let clock = MockVersionProvider::new(0);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let shared_key = create_test_key("shared_key");
 
         // First transaction
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_read(&shared_key);
         conflicts1.mark_conflict(&shared_key);
 
@@ -691,7 +684,7 @@ mod tests {
         };
 
         // Second transaction starts AFTER first transaction committed
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_read(&shared_key);
         conflicts2.mark_conflict(&shared_key);
 
@@ -707,14 +700,14 @@ mod tests {
     fn test_complex_multi_key_scenario() {
         let clock = MockVersionProvider::new(1);
         let oracle =
-            Oracle::<BTreeConflict, _>::new("test_query".into(), "test_command".into(), clock);
+            Oracle::<_>::new("test_query".into(), "test_command".into(), clock);
 
         let key_a = create_test_key("key_a");
         let key_b = create_test_key("key_b");
         let key_c = create_test_key("key_c");
 
         // Transaction 1: reads A, writes B
-        let mut conflicts1 = BTreeConflict::new();
+        let mut conflicts1 = ConflictManager::new();
         conflicts1.mark_read(&key_a);
         conflicts1.mark_conflict(&key_b);
 
@@ -723,7 +716,7 @@ mod tests {
         assert!(matches!(result1, CreateCommitResult::Success(_)));
 
         // Transaction 2: reads B, writes C (should conflict because txn1 wrote B)
-        let mut conflicts2 = BTreeConflict::new();
+        let mut conflicts2 = ConflictManager::new();
         conflicts2.mark_read(&key_b);
         conflicts2.mark_conflict(&key_c);
 
@@ -732,7 +725,7 @@ mod tests {
         assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 
         // Transaction 3: reads C, writes A (should not conflict)
-        let mut conflicts3 = BTreeConflict::new();
+        let mut conflicts3 = ConflictManager::new();
         conflicts3.mark_read(&key_c);
         conflicts3.mark_conflict(&key_a);
 

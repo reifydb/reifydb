@@ -24,7 +24,6 @@ pub(crate) mod query;
 #[allow(clippy::module_inception)]
 mod command;
 
-use crate::mvcc::conflict::BTreeConflict;
 use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::{Committed, TransactionManager};
 use crate::svl::SingleVersionLock;
@@ -32,7 +31,7 @@ use crate::svl::SingleVersionLock;
 pub struct Serializable<VS: VersionedStorage, UT: UnversionedTransaction>(Arc<Inner<VS, UT>>);
 
 pub struct Inner<VS: VersionedStorage, UT: UnversionedTransaction> {
-    pub(crate) tm: TransactionManager<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
+    pub(crate) tm: TransactionManager<StdVersionProvider<UT>, BTreePendingWrites>,
     pub(crate) versioned: VS,
     pub(crate) hooks: Hooks,
 }

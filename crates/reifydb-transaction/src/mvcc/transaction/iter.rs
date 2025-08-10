@@ -1,15 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
-use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::Pending;
 use crate::mvcc::types::TransactionValue;
@@ -20,7 +11,7 @@ use reifydb_core::EncodedKey;
 use reifydb_core::interface::VersionedStorage;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
-pub struct TransactionIter<'a, VS, C>
+pub struct TransactionIter<'a, VS>
 where
     VS: VersionedStorage + 'a,
 {
@@ -29,12 +20,11 @@ where
     next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a EncodedKey, TransactionValue>>,
-    marker: Option<Marker<'a, C>>,
+    marker: Option<Marker<'a>>,
 }
 
-impl<'a, VS, C> TransactionIter<'a, VS, C>
+impl<'a, VS> TransactionIter<'a, VS>
 where
-    C: Conflict,
     VS: VersionedStorage,
 {
     fn advance_pending(&mut self) {
@@ -51,7 +41,7 @@ where
     pub fn new(
         pending: BTreeMapIter<'a, EncodedKey, Pending>,
         committed: VS::ScanIter<'a>,
-        marker: Option<Marker<'a, C>>,
+        marker: Option<Marker<'a>>,
     ) -> Self {
         let mut iterator = TransactionIter {
             pending,
@@ -69,9 +59,8 @@ where
     }
 }
 
-impl<'a, VS, C> Iterator for TransactionIter<'a, VS, C>
+impl<'a, VS> Iterator for TransactionIter<'a, VS>
 where
-    C: Conflict,
     VS: VersionedStorage + 'a,
 {
     type Item = TransactionValue;

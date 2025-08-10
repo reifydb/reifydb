@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::mvcc::conflict::ConflictManager;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::transaction::version::VersionProvider;
 use crate::mvcc::types::Pending;
@@ -18,17 +19,16 @@ use reifydb_core::diagnostic::transaction;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version, error, return_error};
 
-pub struct TransactionManagerCommand<C, L, P>
+pub struct TransactionManagerCommand<L, P>
 where
-    C: Conflict,
     L: VersionProvider,
     P: PendingWrites,
 {
     pub(super) version: Version,
     pub(super) size: u64,
     pub(super) count: u64,
-    pub(super) oracle: Arc<Oracle<C, L>>,
-    pub(super) conflicts: C,
+    pub(super) oracle: Arc<Oracle<L>>,
+    pub(super) conflicts: ConflictManager,
     // stores any writes done by tx
     pub(super) pending_writes: P,
     pub(super) duplicates: Vec<Pending>,
@@ -37,9 +37,8 @@ where
     pub(super) done_query: bool,
 }
 
-impl<C, L, P> Drop for TransactionManagerCommand<C, L, P>
+impl<L, P> Drop for TransactionManagerCommand<L, P>
 where
-    C: Conflict,
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -50,9 +49,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -72,27 +71,27 @@ where
     }
 
     /// Returns the conflict manager.
-    pub fn conflicts(&self) -> &C {
+    pub fn conflicts(&self) -> &ConflictManager {
         &self.conflicts
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
     /// This method is used to create a marker for the keys that are operated.
     /// It must be used to mark keys when end user is implementing iterators to
     /// make sure the transaction manager works correctly.
-    pub fn marker(&mut self) -> Marker<'_, C> {
+    pub fn marker(&mut self) -> Marker<'_> {
         Marker::new(&mut self.conflicts)
     }
 
     /// Returns a marker for the keys that are operated and the pending writes manager.
     /// As Rust's borrow checker does not allow to borrow mutable marker and the immutable pending writes manager at the same
-    pub fn marker_with_pending_writes(&mut self) -> (Marker<'_, C>, &P) {
+    pub fn marker_with_pending_writes(&mut self) -> (Marker<'_>, &P) {
         (Marker::new(&mut self.conflicts), &self.pending_writes)
     }
 
@@ -107,9 +106,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -201,9 +200,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -259,9 +258,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -323,9 +322,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -383,9 +382,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L, P> TransactionManagerCommand<L, P>
 where
-    C: Conflict,
+
     L: VersionProvider,
     P: PendingWrites,
 {
@@ -396,7 +395,7 @@ where
         }
     }
 
-    fn oracle(&self) -> &Oracle<C, L> {
+    fn oracle(&self) -> &Oracle<L> {
         &self.oracle
     }
 

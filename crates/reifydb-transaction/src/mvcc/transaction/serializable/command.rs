@@ -25,7 +25,7 @@ use std::ops::RangeBounds;
 
 pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
     engine: Serializable<VS, UT>,
-    tm: TransactionManagerCommand<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
+    tm: TransactionManagerCommand<StdVersionProvider<UT>, BTreePendingWrites>,
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
@@ -125,7 +125,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
         self.tm.remove(key)
     }
 
-    pub fn scan(&mut self) -> Result<TransactionIter<'_, VS, BTreeConflict>, reifydb_core::Error> {
+    pub fn scan(&mut self) -> Result<TransactionIter<'_, VS>, reifydb_core::Error> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter();
@@ -138,7 +138,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
 
     pub fn scan_rev(
         &mut self,
-    ) -> Result<TransactionIterRev<'_, VS, BTreeConflict>, reifydb_core::Error> {
+    ) -> Result<TransactionIterRev<'_, VS>, reifydb_core::Error> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let pending = pw.iter().rev();
@@ -152,7 +152,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
     pub fn range(
         &mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRange<'_, VS, BTreeConflict>, reifydb_core::Error> {
+    ) -> Result<TransactionRange<'_, VS>, reifydb_core::Error> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -168,7 +168,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
     pub fn range_rev(
         &mut self,
         range: EncodedKeyRange,
-    ) -> Result<TransactionRangeRev<'_, VS, BTreeConflict>, reifydb_core::Error> {
+    ) -> Result<TransactionRangeRev<'_, VS>, reifydb_core::Error> {
         let version = self.tm.version();
         let (mut marker, pw) = self.tm.marker_with_pending_writes();
         let start = range.start_bound();
@@ -184,14 +184,14 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
     pub fn prefix<'a>(
         &'a mut self,
         prefix: &EncodedKey,
-    ) -> Result<TransactionRange<'a, VS, BTreeConflict>, reifydb_core::Error> {
+    ) -> Result<TransactionRange<'a, VS>, reifydb_core::Error> {
         self.range(EncodedKeyRange::prefix(prefix))
     }
 
     pub fn prefix_rev<'a>(
         &'a mut self,
         prefix: &EncodedKey,
-    ) -> Result<TransactionRangeRev<'a, VS, BTreeConflict>, reifydb_core::Error> {
+    ) -> Result<TransactionRangeRev<'a, VS>, reifydb_core::Error> {
         self.range_rev(EncodedKeyRange::prefix(prefix))
     }
 }
