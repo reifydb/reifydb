@@ -3,6 +3,7 @@
 
 use super::CdcEvent;
 use crate::{Result, Version};
+use std::ops::Bound;
 
 /// Combined trait for all CDC storage operations
 pub trait CdcStorage: CdcGet + CdcRange + CdcScan + CdcCount {}
@@ -14,7 +15,7 @@ pub trait CdcGet: Send + Sync {
 
 /// Query CDC events within a version range
 pub trait CdcRange: Send + Sync {
-    fn range(&self, start_version: Version, end_version: Version) -> Result<Vec<CdcEvent>>;
+    fn range(&self, start: Bound<Version>, end: Bound<Version>) -> Result<Vec<CdcEvent>>;
 }
 
 /// Scan all CDC events

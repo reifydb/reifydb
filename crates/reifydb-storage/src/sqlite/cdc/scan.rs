@@ -11,7 +11,7 @@ impl CdcScan for Sqlite {
     fn scan(&self) -> Result<Vec<CdcEvent>> {
         let conn = self.get_conn();
 
-        let mut stmt = conn.prepare_cached("SELECT value FROM cdc ORDER BY version, key").unwrap();
+        let mut stmt = conn.prepare_cached("SELECT value FROM cdc ORDER BY version ASC, key DESC").unwrap();
 
         let events = stmt
             .query_map([], |row| {

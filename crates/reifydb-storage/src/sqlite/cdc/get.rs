@@ -13,7 +13,7 @@ impl CdcGet for Sqlite {
         let conn = self.get_conn();
 
         let mut stmt = conn
-            .prepare_cached("SELECT value FROM cdc WHERE version = ? ORDER BY key")
+            .prepare_cached("SELECT value FROM cdc WHERE version = ? ORDER BY key DESC")
             .unwrap();
 
         let events = stmt

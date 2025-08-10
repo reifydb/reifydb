@@ -18,6 +18,7 @@ use reifydb_testing::tempdir::temp_dir;
 use reifydb_testing::testscript;
 use std::error::Error as StdError;
 use std::fmt::Write;
+use std::ops::Bound;
 use std::path::Path;
 use std::sync::Arc;
 use test_each_file::test_each_path;
@@ -198,7 +199,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                 }
             }
 
-            // cdc_range VERSION_START VERSION_END
+            // cdc_range VERSION_START VERSION_END (for backward compatibility)
             "cdc_range" => {
                 let mut args = command.consume_args();
                 let start_version = args
@@ -215,7 +216,178 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, start_version, end_version)?;
+                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Included(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_unbounded - get all CDC events
+            "cdc_range_unbounded" => {
+                let args = command.consume_args();
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Unbounded)?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_included START END - [start, end]
+            "cdc_range_included" => {
+                let mut args = command.consume_args();
+                let start_version = args
+                    .next_pos()
+                    .ok_or("start version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid start version")?;
+                let end_version = args
+                    .next_pos()
+                    .ok_or("end version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid end version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Included(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_included_excluded START END - [start, end)
+            "cdc_range_included_excluded" => {
+                let mut args = command.consume_args();
+                let start_version = args
+                    .next_pos()
+                    .ok_or("start version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid start version")?;
+                let end_version = args
+                    .next_pos()
+                    .ok_or("end version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid end version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Excluded(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_excluded_included START END - (start, end]
+            "cdc_range_excluded_included" => {
+                let mut args = command.consume_args();
+                let start_version = args
+                    .next_pos()
+                    .ok_or("start version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid start version")?;
+                let end_version = args
+                    .next_pos()
+                    .ok_or("end version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid end version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Excluded(start_version), Bound::Included(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_excluded_excluded START END - (start, end)
+            "cdc_range_excluded_excluded" => {
+                let mut args = command.consume_args();
+                let start_version = args
+                    .next_pos()
+                    .ok_or("start version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid start version")?;
+                let end_version = args
+                    .next_pos()
+                    .ok_or("end version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid end version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Excluded(start_version), Bound::Excluded(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_to_included END - ..=end
+            "cdc_range_to_included" => {
+                let mut args = command.consume_args();
+                let end_version = args
+                    .next_pos()
+                    .ok_or("end version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid end version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_to_excluded END - ..<end
+            "cdc_range_to_excluded" => {
+                let mut args = command.consume_args();
+                let end_version = args
+                    .next_pos()
+                    .ok_or("end version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid end version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_from_included START - start..
+            "cdc_range_from_included" => {
+                let mut args = command.consume_args();
+                let start_version = args
+                    .next_pos()
+                    .ok_or("start version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid start version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Unbounded)?;
+                for event in events {
+                    writeln!(output, "{}", Self::format_cdc_event(&event))?;
+                }
+            }
+
+            // cdc_range_from_excluded START - start>..
+            "cdc_range_from_excluded" => {
+                let mut args = command.consume_args();
+                let start_version = args
+                    .next_pos()
+                    .ok_or("start version not given")?
+                    .value
+                    .parse::<Version>()
+                    .map_err(|_| "invalid start version")?;
+                args.reject_rest()?;
+
+                let events = CdcRange::range(&self.storage, Bound::Excluded(start_version), Bound::Unbounded)?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
