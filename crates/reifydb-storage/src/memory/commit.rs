@@ -5,13 +5,13 @@ use crate::cdc::generate_cdc_event;
 use crate::memory::Memory;
 use crate::memory::versioned::VersionedRow;
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{CdcEventKey, UnversionedApply, VersionedApply};
+use reifydb_core::interface::{CdcEventKey, UnversionedCommit, VersionedCommit};
 use reifydb_core::result::error::diagnostic::sequence;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, Result, Version, return_error};
 
-impl VersionedApply for Memory {
-    fn apply(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
+impl VersionedCommit for Memory {
+    fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
         let timestamp = self.clock.now_millis();
 
         for delta in delta {
@@ -63,8 +63,8 @@ impl VersionedApply for Memory {
     }
 }
 
-impl UnversionedApply for Memory {
-    fn apply(&mut self, delta: CowVec<Delta>) -> Result<()> {
+impl UnversionedCommit for Memory {
+    fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
         for delta in delta {
             match delta {
                 Delta::Insert { key, row } | Delta::Update { key, row } => {

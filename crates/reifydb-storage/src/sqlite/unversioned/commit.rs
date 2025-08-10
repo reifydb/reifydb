@@ -3,12 +3,12 @@
 
 use crate::sqlite::Sqlite;
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::UnversionedApply;
+use reifydb_core::interface::UnversionedCommit;
 use reifydb_core::{CowVec, Result};
 use rusqlite::params;
 
-impl UnversionedApply for Sqlite {
-    fn apply(&mut self, delta: CowVec<Delta>) -> Result<()> {
+impl UnversionedCommit for Sqlite {
+    fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 

@@ -8,7 +8,7 @@ pub use range_rev::RangeRev;
 use std::ops::Deref;
 use std::sync::Arc;
 
-mod apply;
+mod commit;
 mod cdc;
 mod contains;
 mod get;

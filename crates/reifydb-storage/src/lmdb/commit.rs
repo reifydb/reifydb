@@ -3,11 +3,11 @@
 
 use crate::lmdb::Lmdb;
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::{UnversionedApply, VersionedApply};
+use reifydb_core::interface::{UnversionedCommit, VersionedCommit};
 use reifydb_core::{CowVec, Result, Version};
 
-impl VersionedApply for Lmdb {
-    fn apply(&self, delta: CowVec<Delta>, _version: Version) -> Result<()> {
+impl VersionedCommit for Lmdb {
+    fn commit(&self, delta: CowVec<Delta>, _version: Version) -> Result<()> {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {
@@ -24,8 +24,8 @@ impl VersionedApply for Lmdb {
     }
 }
 
-impl UnversionedApply for Lmdb {
-    fn apply(&mut self, delta: CowVec<Delta>) -> Result<()> {
+impl UnversionedCommit for Lmdb {
+    fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
         let mut tx = self.env.write_txn().unwrap();
         for delta in delta {
             match delta {

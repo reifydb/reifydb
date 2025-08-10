@@ -3,7 +3,7 @@
 
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{
-    CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, Change, VersionedApply, VersionedGet,
+    CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, Change, VersionedCommit, VersionedGet,
     VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
@@ -42,13 +42,13 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> {
+pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> {
     storage: VS,
     next_version: Version,
     clock: Arc<MockClock>,
 }
 
-impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> Runner<VS> {
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<VS> {
     fn new(storage: VS, clock: Arc<MockClock>) -> Self {
         Self { storage, next_version: 1, clock }
     }
@@ -94,7 +94,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> Runner<V
     }
 }
 
-impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscript::Runner
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscript::Runner
     for Runner<VS>
 {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
@@ -115,7 +115,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?;
+                self.storage.commit(async_cow_vec![(Delta::Update { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
 
@@ -133,7 +133,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Insert { key, row })], version)?;
+                self.storage.commit(async_cow_vec![(Delta::Insert { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
 
@@ -151,7 +151,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?;
+                self.storage.commit(async_cow_vec![(Delta::Update { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
 
@@ -167,7 +167,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)?;
+                self.storage.commit(async_cow_vec![(Delta::Remove { key })], version)?;
                 writeln!(output, "ok")?;
             }
 
@@ -472,7 +472,7 @@ impl<VS: VersionedStorage + VersionedApply + VersionedGet + CdcStorage> testscri
                         batch.push(Delta::Insert { key, row });
                     }
 
-                    self.storage.apply(CowVec::new(batch), version)?;
+                    self.storage.commit(CowVec::new(batch), version)?;
                     inserted = batch_end;
                 }
 

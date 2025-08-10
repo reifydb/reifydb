@@ -122,7 +122,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Update { key, row })]).unwrap()
+                self.storage.commit(async_cow_vec![(Delta::Update { key, row })]).unwrap()
             }
 
             // remove KEY
@@ -131,7 +131,7 @@ impl<US: UnversionedStorage> testscript::Runner for Runner<US> {
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Remove { key })]).unwrap()
+                self.storage.commit(async_cow_vec![(Delta::Remove { key })]).unwrap()
             }
 
             name => return Err(format!("invalid command {name}").into()),

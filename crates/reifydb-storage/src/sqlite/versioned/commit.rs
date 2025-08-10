@@ -6,7 +6,7 @@ use crate::cdc::generate_cdc_event;
 use crate::sqlite::Sqlite;
 use crate::sqlite::cdc::{fetch_before_value, store_cdc_event};
 use reifydb_core::delta::Delta;
-use reifydb_core::interface::VersionedApply;
+use reifydb_core::interface::VersionedCommit;
 use reifydb_core::result::error::diagnostic::sequence;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{CowVec, Result, Version, return_error};
@@ -17,8 +17,8 @@ use std::sync::{LazyLock, RwLock};
 static ENSURED_TABLES: LazyLock<RwLock<HashSet<String>>> =
     LazyLock::new(|| RwLock::new(HashSet::new()));
 
-impl VersionedApply for Sqlite {
-    fn apply(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
+impl VersionedCommit for Sqlite {
+    fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
         let mut conn = self.get_conn();
         let tx = conn.transaction().unwrap();
 

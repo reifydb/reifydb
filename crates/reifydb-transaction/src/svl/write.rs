@@ -146,7 +146,7 @@ where
             take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
         if !deltas.is_empty() {
-            self.storage.apply(CowVec::new(deltas))?;
+            self.storage.commit(CowVec::new(deltas))?;
         }
 
         self.completed = true;

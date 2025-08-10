@@ -52,7 +52,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT
             if let Some(version) = version {
                 self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
 
-                self.engine.versioned.apply(deltas.clone(), version)?;
+                self.engine.versioned.commit(deltas.clone(), version)?;
             }
             Ok(())
         })?;
