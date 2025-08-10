@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {Type, Value} from "./type";
+import {Type, Value, TypeValuePair} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
 export class Uint16Value implements Value {
@@ -65,5 +65,12 @@ export class Uint16Value implements Value {
 
     toString(): string {
         return this.value === undefined ? 'undefined' : this.value.toString();
+    }
+
+    encode(): TypeValuePair {
+        return {
+            type: this.type,
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+        };
     }
 }

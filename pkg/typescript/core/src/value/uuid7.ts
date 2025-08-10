@@ -5,7 +5,7 @@
  */
 
 import { v7 as uuidv7, NIL as NIL_UUID, validate, version } from 'uuid';
-import { Type, Value } from "./type";
+import { Type, Value, TypeValuePair } from "./type";
 import { UNDEFINED_VALUE } from "../constant";
 
 /**
@@ -188,5 +188,12 @@ export class Uuid7Value implements Value {
         }
         
         return 0;
+    }
+
+    encode(): TypeValuePair {
+        return {
+            type: this.type,
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+        };
     }
 }

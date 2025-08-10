@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {Type, Value} from "./type";
+import {Type, Value, TypeValuePair} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 import {DateValue} from "./date";
 import {TimeValue} from "./time";
@@ -446,5 +446,12 @@ export class DateTimeValue implements Value {
         return date.getUTCFullYear() === year &&
             date.getUTCMonth() === month - 1 &&
             date.getUTCDate() === day;
+    }
+
+    encode(): TypeValuePair {
+        return {
+            type: this.type,
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+        };
     }
 }

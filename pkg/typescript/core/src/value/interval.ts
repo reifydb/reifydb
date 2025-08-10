@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import { Type, Value } from "./type";
+import { Type, Value, TypeValuePair } from "./type";
 import { UNDEFINED_VALUE } from "../constant";
 
 /**
@@ -399,5 +399,12 @@ export class IntervalValue implements Value {
                 nanos: totalNanos
             };
         }
+    }
+
+    encode(): TypeValuePair {
+        return {
+            type: this.type,
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+        };
     }
 }

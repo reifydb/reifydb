@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {Type, Value} from "./type";
+import {Type, Value, TypeValuePair} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
 /**
@@ -79,5 +79,12 @@ export class UndefinedValue implements Value {
      */
     compare(other: UndefinedValue): number {
         return 0;
+    }
+
+    encode(): TypeValuePair {
+        return {
+            type: this.type,
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+        };
     }
 }

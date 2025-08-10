@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {Type, Value} from "./type";
+import {Type, Value, TypeValuePair} from "./type";
 import {UNDEFINED_VALUE} from "../constant";
 
 export class Uint8Value implements Value {
@@ -54,5 +54,16 @@ export class Uint8Value implements Value {
     toNumber(): number | undefined {
         if (this.value === undefined) return undefined;
         return Number(this.value);
+    }
+
+    toString(): string {
+        return this.value === undefined ? 'undefined' : this.value.toString();
+    }
+
+    encode(): TypeValuePair {
+        return {
+            type: this.type,
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+        };
     }
 }

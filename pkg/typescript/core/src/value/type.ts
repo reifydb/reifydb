@@ -16,6 +16,12 @@ export type Type =
     | "Undefined"
     | "RowId";
 
+export interface TypeValuePair {
+    type: Type;
+    value: string;
+}
+
 export abstract class Value {
     abstract readonly type: Type;
+    abstract encode(): TypeValuePair;
 }

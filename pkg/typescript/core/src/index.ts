@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-export {Type, Value} from './value/type';
+export {Type, Value, TypeValuePair} from './value/type';
 export {BlobValue} from './value/blob';
 export {BoolValue} from './value/bool';
 export {DateValue} from './value/date';
@@ -29,3 +29,4 @@ export {Utf8Value} from './value/utf8';
 export {Uuid4Value} from './value/uuid4';
 export {Uuid7Value} from './value/uuid7';
 export {ReifyValue} from './value';
+export {decode} from './decoder';
