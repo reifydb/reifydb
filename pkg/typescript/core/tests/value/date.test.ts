@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { DateValue } from '../../src/value/date';
+import { DateValue } from '../../src';
 
 describe('DateValue', () => {
     describe('constructor', () => {

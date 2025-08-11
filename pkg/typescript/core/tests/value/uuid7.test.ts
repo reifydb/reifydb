@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { Uuid7Value } from '../../src/value/uuid7';
+import { Uuid7Value } from '../../src';
 import { NIL as NIL_UUID } from 'uuid';
 
 describe('Uuid7Value', () => {

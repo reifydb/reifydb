@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {Type, Value, TypeValuePair} from "./type";
+import {Type, Value, TypeValuePair} from ".";
 import {UNDEFINED_VALUE} from "../constant";
 import {DateValue} from "./date";
 import {TimeValue} from "./time";

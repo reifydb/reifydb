@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { IntervalValue } from '../../src/value/interval';
+import { IntervalValue } from '../../src';
 
 describe('IntervalValue', () => {
     describe('display zero', () => {

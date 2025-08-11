@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {Type, Value, TypeValuePair} from "./type";
+import {Type, Value, TypeValuePair} from ".";
 import {UNDEFINED_VALUE} from "../constant";
 
 export class Uint4Value implements Value {

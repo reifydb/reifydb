@@ -5,7 +5,7 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import {Utf8Value} from '../../src/value/utf8';
+import {Utf8Value} from '../../src';
 
 describe('Utf8Value', () => {
     describe('constructor', () => {

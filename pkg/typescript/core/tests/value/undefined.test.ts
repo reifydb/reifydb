@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { UndefinedValue } from '../../src/value/undefined';
+import { UndefinedValue } from '../../src';
 
 describe('UndefinedValue', () => {
     describe('constructor', () => {

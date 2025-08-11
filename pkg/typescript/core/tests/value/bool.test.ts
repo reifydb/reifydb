@@ -5,7 +5,7 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import {BoolValue} from '../../src/value/bool';
+import {BoolValue} from '../../src';
 
 describe('BoolValue', () => {
     describe('constructor', () => {

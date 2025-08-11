@@ -4,8 +4,8 @@
  * See license.md file for full license text
  */
 
-import { Type, Value, TypeValuePair } from "./type";
-import { UNDEFINED_VALUE } from "../constant";
+import {Type, Value, TypeValuePair} from ".";
+import {UNDEFINED_VALUE} from "../constant";
 
 /**
  * A binary large object (BLOB) value that can hold arbitrary byte data.
@@ -69,8 +69,8 @@ export class BlobValue implements Value {
      */
     static fromHex(hex: string): BlobValue {
         // Remove 0x prefix if present
-        const cleanHex = hex.startsWith('0x') || hex.startsWith('0X') 
-            ? hex.substring(2) 
+        const cleanHex = hex.startsWith('0x') || hex.startsWith('0X')
+            ? hex.substring(2)
             : hex;
 
         if (cleanHex.length % 2 !== 0) {
@@ -96,7 +96,7 @@ export class BlobValue implements Value {
         if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
             throw new Error(`Invalid base64 string: ${base64}`);
         }
-        
+
         try {
             if (typeof Buffer !== 'undefined') {
                 // Node.js environment
@@ -129,7 +129,7 @@ export class BlobValue implements Value {
      */
     static parse(str: string): BlobValue {
         const trimmed = str.trim();
-        
+
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
             return new BlobValue(undefined);
         }
@@ -168,7 +168,7 @@ export class BlobValue implements Value {
      */
     toHex(): string | undefined {
         if (this.bytes === undefined) return undefined;
-        
+
         const hex = Array.from(this.bytes)
             .map(byte => byte.toString(16).padStart(2, '0'))
             .join('');
@@ -198,7 +198,7 @@ export class BlobValue implements Value {
      */
     toUtf8(): string | undefined {
         if (this.bytes === undefined) return undefined;
-        
+
         const decoder = new TextDecoder();
         return decoder.decode(this.bytes);
     }
@@ -231,17 +231,17 @@ export class BlobValue implements Value {
         if (this.bytes === undefined || other.bytes === undefined) {
             return this.bytes === other.bytes;
         }
-        
+
         if (this.bytes.length !== other.bytes.length) {
             return false;
         }
-        
+
         for (let i = 0; i < this.bytes.length; i++) {
             if (this.bytes[i] !== other.bytes[i]) {
                 return false;
             }
         }
-        
+
         return true;
     }
 
@@ -257,7 +257,7 @@ export class BlobValue implements Value {
                 return null;
             }
         }
-        
+
         // Check if it looks like hex (all hex digits)
         if (/^[0-9a-fA-F]+$/.test(str) && str.length % 2 === 0) {
             try {
@@ -266,7 +266,7 @@ export class BlobValue implements Value {
                 return null;
             }
         }
-        
+
         return null;
     }
 

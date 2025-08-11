@@ -5,7 +5,7 @@
  */
 
 import { v7 as uuidv7, NIL as NIL_UUID, validate, version } from 'uuid';
-import { Type, Value, TypeValuePair } from "./type";
+import { Type, Value, TypeValuePair } from ".";
 import { UNDEFINED_VALUE } from "../constant";
 
 /**

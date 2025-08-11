@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BlobValue } from '../../src/value/blob';
+import { BlobValue } from '../../src';
 
 describe('BlobValue', () => {
     describe('constructor', () => {

@@ -5,7 +5,7 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import {RowIdValue} from '../../src/value/rowid';
+import {RowIdValue} from '../../src';
 
 describe('RowIdValue', () => {
     describe('constructor', () => {

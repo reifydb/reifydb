@@ -5,7 +5,7 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import {Int8Value} from '../../src/value/int8';
+import {Int8Value} from '../../src';
 
 describe('Int8Value', () => {
     describe('constructor', () => {

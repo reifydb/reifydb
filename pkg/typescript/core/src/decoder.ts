@@ -9,9 +9,8 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
     RowIdValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value,
-    Type, Value
+    Value, TypeValuePair
 } from './value';
-import {TypeValuePair} from "./value/type";
 
 
 export function decode(pair: TypeValuePair): Value {

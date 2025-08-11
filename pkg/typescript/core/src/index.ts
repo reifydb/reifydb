@@ -4,8 +4,8 @@
  * See license.md file for full license text
  */
 
-export {decode} from './decoder';
-export * from './value';
 export {UNDEFINED_VALUE} from './constant';
+export {decode} from './decoder';
+export * from './schema'
+export * from './value';
 
-export * from './schema';
