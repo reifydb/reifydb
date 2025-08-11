@@ -10,6 +10,7 @@ use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 #[cfg(feature = "async")]
 use tokio::task::JoinHandle;
+use tokio::sync::oneshot;
 
 /// Adapter to make GrpcServer compatible with the Subsystem trait
 ///
@@ -28,6 +29,8 @@ pub struct GrpcSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransac
     task_handle: Option<JoinHandle<()>>,
     /// Shared runtime provider
     runtime_provider: RuntimeProvider,
+    /// Cached socket address (stored when server starts)
+    socket_addr: Option<std::net::SocketAddr>,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<VT, UT> {
@@ -45,6 +48,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<
             #[cfg(feature = "async")]
             task_handle: None,
             runtime_provider: runtime_provider.clone(),
+            socket_addr: None,
         }
     }
 
@@ -63,12 +67,13 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<
             #[cfg(feature = "async")]
             task_handle: None,
             runtime_provider: runtime_provider.clone(),
+            socket_addr: None,
         }
     }
 
     /// Get the socket address if the server is running
     pub fn socket_addr(&self) -> Option<std::net::SocketAddr> {
-        self.grpc_server.as_ref().and_then(|server| server.socket_addr())
+        self.socket_addr
     }
 }
 
@@ -88,13 +93,34 @@ where
 
         if let Some(server) = self.grpc_server.take() {
             let running = Arc::clone(&self.running);
+            let (addr_tx, addr_rx) = oneshot::channel();
             
             // Use shared runtime to spawn the server
             let handle = self.runtime_provider.spawn(async move {
                 running.store(true, Ordering::Relaxed);
                 println!("[GrpcSubsystem] Starting gRPC server");
                 
-                if let Err(e) = server.serve().await {
+                // Clone server to capture socket address before serving
+                let server_clone = server.clone();
+                
+                // Start a task that waits for the socket address to be set
+                let addr_task = tokio::spawn(async move {
+                    // Poll until socket address is available (set during serve())
+                    for _ in 0..50 {  // Try for up to 500ms
+                        if let Some(addr) = server_clone.socket_addr() {
+                            let _ = addr_tx.send(Some(addr));
+                            return;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                    let _ = addr_tx.send(None);
+                });
+                
+                // Start serving (this will set the socket address)
+                let serve_result = server.serve().await;
+                addr_task.abort(); // Clean up address polling task
+                
+                if let Err(e) = serve_result {
                     eprintln!("[GrpcSubsystem] gRPC server error: {}", e);
                 }
                 
@@ -102,8 +128,14 @@ where
                 println!("[GrpcSubsystem] gRPC server stopped");
             });
 
-            // Give the server a moment to start
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            // Wait for the socket address from the async task
+            if let Ok(addr) = self.runtime_provider.block_on(async {
+                tokio::time::timeout(std::time::Duration::from_millis(1000), addr_rx).await
+            }) {
+                if let Ok(socket_addr) = addr {
+                    self.socket_addr = socket_addr;
+                }
+            }
             
             #[cfg(feature = "async")]
             {
@@ -121,6 +153,9 @@ where
         }
 
         self.running.store(false, Ordering::Relaxed);
+        
+        // Clear cached socket address
+        self.socket_addr = None;
         
         // Clean up task handle
         #[cfg(feature = "async")]
@@ -144,5 +179,13 @@ where
         } else {
             HealthStatus::Unknown
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn socket_addr(&self) -> Option<std::net::SocketAddr> {
+        self.socket_addr
     }
 }

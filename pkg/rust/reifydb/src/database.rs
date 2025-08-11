@@ -3,6 +3,11 @@
 
 use crate::health::{HealthMonitor, HealthStatus};
 use crate::manager::SubsystemManager;
+#[cfg(feature = "async")]
+use crate::session::SessionAsync;
+use crate::session::{
+    CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session, SessionSync,
+};
 use reifydb_core::Result;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
@@ -88,13 +93,7 @@ where
         config: DatabaseConfig,
         health_monitor: Arc<HealthMonitor>,
     ) -> Self {
-        Self {
-            engine,
-            subsystem_manager,
-            config,
-            health_monitor,
-            running: false,
-        }
+        Self { engine, subsystem_manager, config, health_monitor, running: false }
     }
 
     /// Get a reference to the engine
@@ -149,9 +148,7 @@ where
                 // Update system health to reflect failure
                 self.health_monitor.update_component_health(
                     "system".to_string(),
-                    HealthStatus::Failed {
-                        message: format!("Startup failed: {}", e),
-                    },
+                    HealthStatus::Failed { message: format!("Startup failed: {}", e) },
                     false,
                 );
                 Err(e)
@@ -212,7 +209,9 @@ where
     }
 
     /// Get health status of all components
-    pub fn get_all_component_health(&self) -> std::collections::HashMap<String, crate::health::ComponentHealth> {
+    pub fn get_all_component_health(
+        &self,
+    ) -> std::collections::HashMap<String, crate::health::ComponentHealth> {
         self.health_monitor.get_all_health()
     }
 
@@ -220,14 +219,14 @@ where
     pub fn update_health_monitoring(&mut self) {
         // Update subsystem health
         self.subsystem_manager.update_health_monitoring();
-        
+
         // Update system health
         let system_health = if self.running {
             self.health_monitor.get_system_health()
         } else {
             HealthStatus::Healthy
         };
-        
+
         self.health_monitor.update_component_health(
             "system".to_string(),
             system_health,
@@ -244,6 +243,30 @@ where
     pub fn get_stale_components(&self) -> Vec<String> {
         self.health_monitor.get_stale_components(self.config.health_check_interval * 2)
     }
+
+    /// Get the gRPC socket address if the gRPC subsystem is running
+    #[cfg(feature = "sub_grpc")]
+    pub fn grpc_socket_addr(&self) -> Option<std::net::SocketAddr> {
+        // Look through subsystems to find the gRPC one
+        for subsystem in &self.subsystem_manager.subsystems {
+            if subsystem.name() == "grpc" {
+                return subsystem.socket_addr();
+            }
+        }
+        None
+    }
+
+    /// Get the WebSocket socket address if the WebSocket subsystem is running
+    #[cfg(feature = "sub_ws")]
+    pub fn ws_socket_addr(&self) -> Option<std::net::SocketAddr> {
+        // Look through subsystems to find the WebSocket one
+        for subsystem in &self.subsystem_manager.subsystems {
+            if subsystem.name() == "websocket" {
+                return subsystem.socket_addr();
+            }
+        }
+        None
+    }
 }
 
 impl<VT, UT> Drop for Database<VT, UT>
@@ -257,4 +280,40 @@ where
             let _ = self.stop();
         }
     }
+}
+
+// Session trait implementations for Database
+impl<VT, UT> Session<VT, UT> for Database<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    fn command_session(
+        &self,
+        session: impl IntoCommandSession<VT, UT>,
+    ) -> Result<CommandSession<VT, UT>> {
+        session.into_command_session(self.engine.clone())
+    }
+
+    fn query_session(
+        &self,
+        session: impl IntoQuerySession<VT, UT>,
+    ) -> Result<QuerySession<VT, UT>> {
+        session.into_query_session(self.engine.clone())
+    }
+}
+
+impl<VT, UT> SessionSync<VT, UT> for Database<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+}
+
+#[cfg(feature = "async")]
+impl<VT, UT> SessionAsync<VT, UT> for Database<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
 }

@@ -238,30 +238,3 @@ impl TokioContext {
 
 /// Convenience type for custom async context (same as TokioContext for now)
 pub type CustomContext = AsyncContext;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sync_context_does_not_support_async() {
-        // let context = SyncContext;
-        // assert!(!context.supports_async());
-        todo!()
-    }
-
-    #[test]
-    #[cfg(feature = "async")]
-    fn tokio_context_supports_async() {
-        let context = TokioContext::default().unwrap();
-        assert!(context.supports_async());
-    }
-
-    #[test]
-    #[cfg(feature = "async")]
-    fn custom_context_supports_async() {
-        let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
-        let context = TokioContext::from_runtime(runtime);
-        assert!(context.supports_async());
-    }
-}

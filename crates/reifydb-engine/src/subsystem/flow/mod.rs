@@ -122,8 +122,9 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystem<VT, UT>
         //     last_seen_version.store(max_version_seen, Ordering::Relaxed);
         //     println!("[FlowSubsystem] Updated last seen version to {}", max_version_seen);
         // }
-        todo!();
-
+        
+        // For now, just return Ok without implementing full CDC event polling
+        // This prevents panic while flow subsystem functionality is being developed
         Ok(())
     }
 

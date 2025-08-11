@@ -13,7 +13,7 @@ use std::time::Duration;
 /// in a controlled manner, handles errors, and provides health monitoring.
 pub struct SubsystemManager {
     /// Collection of managed subsystems
-    subsystems: Vec<Box<dyn Subsystem>>,
+    pub(crate) subsystems: Vec<Box<dyn Subsystem>>,
     /// Whether the manager is currently running
     running: Arc<AtomicBool>,
     /// Health monitor for tracking subsystem status

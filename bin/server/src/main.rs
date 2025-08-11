@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::ReifyDB;
-use reifydb::hook::WithHooks;
+use reifydb::WithHooks;
 use reifydb::network::ws::server::WsConfig;
 use std::thread;
 use tokio::runtime::Runtime;
@@ -37,13 +37,22 @@ fn main() {
     });
 
     let rt = Runtime::new().unwrap();
-    ReifyDB::server()
+    let mut db = ReifyDB::new_server()
         .with_websocket(WsConfig::default())
         .on_create(|ctx| {
             ctx.command_as_root("create schema test", ())?;
             Ok(())
         })
-        .build()
-        .serve_blocking(&rt, rx)
-        .unwrap();
+        .build();
+    
+    // Start the database
+    db.start().unwrap();
+    
+    // Wait for shutdown signal
+    rt.block_on(async {
+        rx.await.unwrap();
+    });
+    
+    // Stop the database
+    db.stop().unwrap();
 }

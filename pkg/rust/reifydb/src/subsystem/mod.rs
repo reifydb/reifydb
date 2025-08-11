@@ -39,14 +39,23 @@ pub trait Subsystem: Send + Sync {
     /// This should provide information about the subsystem's operational
     /// status and any errors or warnings.
     fn health_status(&self) -> HealthStatus;
+
+    /// Downcast support for accessing concrete subsystem types
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Get the socket address if this subsystem provides network services
+    /// Returns None if the subsystem doesn't provide network services or isn't bound
+    fn socket_addr(&self) -> Option<std::net::SocketAddr> {
+        None // Default implementation
+    }
 }
 
 #[cfg(feature = "sub_flow")]
 mod flow;
 #[cfg(feature = "sub_grpc")]
-mod grpc;
+pub(crate) mod grpc;
 #[cfg(feature = "sub_ws")]
-mod websocket;
+pub(crate) mod websocket;
 
 #[cfg(feature = "sub_flow")]
 pub use flow::FlowSubsystemAdapter;

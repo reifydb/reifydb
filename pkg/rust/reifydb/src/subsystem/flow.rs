@@ -64,4 +64,8 @@ where
     fn health_status(&self) -> HealthStatus {
         if self.flow_subsystem.is_running() { HealthStatus::Healthy } else { HealthStatus::Unknown }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

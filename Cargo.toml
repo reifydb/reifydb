@@ -2,10 +2,10 @@
 resolver = "2"
 
 members = [
-#    "bin/cli",
+    "bin/cli",
     "bin/playground",
-#    "bin/server",
-#    "bin/testcontainer",
+    "bin/server",
+    "bin/testcontainer",
     "crates/reifydb-auth",
     "crates/reifydb-catalog",
     "crates/reifydb-core",
@@ -16,18 +16,18 @@ members = [
     "pkg/rust/reifydb",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
-#    "pkg/python/reifydb-py",
+    "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
-#    "testsuite/limit",
-#    "testsuite/regression",
+    "testsuite/limit",
+    "testsuite/regression",
 ]
 
 default-members = [
-#    "bin/cli",
+    "bin/cli",
     "bin/playground",
-#    "bin/server",
-#    "bin/testcontainer",
+    "bin/server",
+    "bin/testcontainer",
     "crates/reifydb-auth",
     "crates/reifydb-catalog",
     "crates/reifydb-core",
@@ -40,8 +40,8 @@ default-members = [
     "crates/reifydb-transaction",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
-#    "testsuite/limit",
-#    "testsuite/regression",
+    "testsuite/limit",
+    "testsuite/regression",
 ]
 
 [workspace.package]
