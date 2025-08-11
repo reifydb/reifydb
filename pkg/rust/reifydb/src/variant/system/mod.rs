@@ -49,30 +49,30 @@ where
         self.reify_system.is_running()
     }
 
-    /// Get the current health status of the system
-    pub fn health_status(&self) -> reifydb_system::HealthStatus {
-        self.reify_system.health_status()
-    }
-
-    /// Get health status of all components
-    pub fn get_all_component_health(&self) -> std::collections::HashMap<String, reifydb_system::health::ComponentHealth> {
-        self.reify_system.get_all_component_health()
-    }
-
-    /// Get the names of all managed subsystems
-    pub fn get_subsystem_names(&self) -> Vec<String> {
-        self.reify_system.get_subsystem_names()
-    }
-
-    /// Update health monitoring for all components
-    pub fn update_health_monitoring(&mut self) {
-        self.reify_system.update_health_monitoring()
-    }
-
-    /// Get the number of managed subsystems
-    pub fn subsystem_count(&self) -> usize {
-        self.reify_system.subsystem_count()
-    }
+    // /// Get the current health status of the system
+    // pub fn health_status(&self) -> reifydb_system::HealthStatus {
+    //     self.reify_system.health_status()
+    // }
+    //
+    // /// Get health status of all components
+    // pub fn get_all_component_health(&self) -> std::collections::HashMap<String, reifydb_system::health::ComponentHealth> {
+    //     self.reify_system.get_all_component_health()
+    // }
+    //
+    // /// Get the names of all managed subsystems
+    // pub fn get_subsystem_names(&self) -> Vec<String> {
+    //     self.reify_system.get_subsystem_names()
+    // }
+    //
+    // /// Update health monitoring for all components
+    // pub fn update_health_monitoring(&mut self) {
+    //     self.reify_system.update_health_monitoring()
+    // }
+    //
+    // /// Get the number of managed subsystems
+    // pub fn subsystem_count(&self) -> usize {
+    //     self.reify_system.subsystem_count()
+    // }
 }
 
 impl<VT, UT> Session<VT, UT> for System<VT, UT>

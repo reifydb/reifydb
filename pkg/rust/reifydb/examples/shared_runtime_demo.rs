@@ -46,8 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut system = async_system.build();
 
-    println!("   • Created system with {} subsystems", system.subsystem_count());
-    println!("   • Subsystems: {:?}\n", system.get_subsystem_names());
+    // println!("   • Created system with {} subsystems", system.subsystem_count());
+    // println!("   • Subsystems: {:?}\n", system.get_subsystem_names());
 
     // Start all servers (they share the same runtime)
     system.start()?;

@@ -1,6 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+//! Subsystem trait and implementations
+//!
+//! This module defines the core Subsystem trait and provides concrete implementations
+//! and adapters for various subsystem types like Flow, gRPC, and WebSocket servers.
+
 use crate::health::HealthStatus;
 use reifydb_core::Result;
 
@@ -35,3 +40,17 @@ pub trait Subsystem: Send + Sync {
     /// status and any errors or warnings.
     fn health_status(&self) -> HealthStatus;
 }
+
+#[cfg(feature = "sub_flow")]
+mod flow;
+#[cfg(feature = "sub_grpc")]
+mod grpc;
+#[cfg(feature = "sub_ws")]
+mod websocket;
+
+#[cfg(feature = "sub_flow")]
+pub use flow::FlowSubsystemAdapter;
+#[cfg(feature = "sub_grpc")]
+pub use grpc::GrpcSubsystemAdapter;
+#[cfg(feature = "sub_ws")]
+pub use websocket::WsSubsystemAdapter;

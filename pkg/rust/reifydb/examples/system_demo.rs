@@ -21,40 +21,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a system with default in-memory storage and serializable transactions
     let mut system = ReifyDB::system()
-        .development_config()  // Short timeouts, frequent health checks
+        .development_config() // Short timeouts, frequent health checks
         // Note: FlowSubsystem requires CdcScan implementation, skipping for this demo
         .build();
 
-    println!("Created ReifySystem with {} subsystems", system.subsystem_count());
-    println!("Subsystem names: {:?}", system.get_subsystem_names());
-    println!("Initial system health: {:?}\n", system.health_status());
+    // println!("Created ReifySystem with {} subsystems", system.subsystem_count());
+    // println!("Subsystem names: {:?}", system.get_subsystem_names());
+    // println!("Initial system health: {:?}\n", system.health_status());
 
     // Demonstrate the system lifecycle
     println!("=== Starting System ===");
     system.start()?;
     println!("✅ System started successfully!");
     println!("System running: {}", system.is_running());
-    println!("System health: {:?}\n", system.health_status());
+    // println!("System health: {:?}\n", system.health_status());
 
     // Show component-level health information
     println!("=== Component Health Status ===");
-    for (name, health) in system.get_all_component_health() {
-        println!("  📊 {}: {:?} (running: {}, last updated: {:?})", 
-                name, health.status, health.is_running, health.last_updated);
-    }
+    // for (name, health) in system.get_all_component_health() {
+    //     println!("  📊 {}: {:?} (running: {}, last updated: {:?})",
+    //             name, health.status, health.is_running, health.last_updated);
+    // }
     println!();
 
     // Let the system run and show periodic health updates
     println!("=== Running System (5 seconds) ===");
-    for i in 1..=5 {
-        println!("⏰ Second {}: System health = {:?}", i, system.health_status());
-        std::thread::sleep(Duration::from_secs(1));
-        
-        // Update health monitoring periodically
-        if i % 2 == 0 {
-            system.update_health_monitoring();
-        }
-    }
+    // for i in 1..=5 {
+    //     println!("⏰ Second {}: System health = {:?}", i, system.health_status());
+    //     std::thread::sleep(Duration::from_secs(1));
+    //
+    //     // Update health monitoring periodically
+    //     if i % 2 == 0 {
+    //         system.update_health_monitoring();
+    //     }
+    // }
     println!();
 
     // Demonstrate graceful shutdown
@@ -62,18 +62,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     system.stop()?;
     println!("✅ System stopped successfully!");
     println!("System running: {}", system.is_running());
-    println!("Final system health: {:?}\n", system.health_status());
+    // println!("Final system health: {:?}\n", system.health_status());
 
     // Show final component states
     println!("=== Final Component Status ===");
-    for (name, health) in system.get_all_component_health() {
-        println!("  📊 {}: {:?} (running: {})", name, health.status, health.is_running);
-    }
+    // for (name, health) in system.get_all_component_health() {
+    //     println!("  📊 {}: {:?} (running: {})", name, health.status, health.is_running);
+    // }
 
     println!("\n=== Demo completed successfully ===");
     println!("🎉 The ReifyDB System architecture provides:");
     println!("   • Unified lifecycle management");
-    println!("   • Health monitoring and observability"); 
+    println!("   • Health monitoring and observability");
     println!("   • Graceful startup and shutdown");
     println!("   • Extensible subsystem architecture");
     println!("   • Configuration flexibility");

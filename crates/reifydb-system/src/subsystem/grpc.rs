@@ -1,21 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#[cfg(any(feature = "server", feature = "grpc"))]
 use crate::context::RuntimeProvider;
-#[cfg(any(feature = "server", feature = "grpc"))]
 use crate::health::HealthStatus;
-#[cfg(any(feature = "server", feature = "grpc"))]
 use crate::subsystem::Subsystem;
-#[cfg(any(feature = "server", feature = "grpc"))]
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
-#[cfg(any(feature = "server", feature = "grpc"))]
 use reifydb_core::Result;
-#[cfg(any(feature = "server", feature = "grpc"))]
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
-#[cfg(any(feature = "server", feature = "grpc"))]
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-#[cfg(any(feature = "server", feature = "grpc"))]
+#[cfg(feature = "async")]
 use tokio::task::JoinHandle;
 
 /// Adapter to make GrpcServer compatible with the Subsystem trait
@@ -23,7 +16,6 @@ use tokio::task::JoinHandle;
 /// This wrapper implements the Subsystem trait for GrpcServer, allowing
 /// it to be managed by the ReifySystem architecture. It handles the 
 /// async-to-sync bridge for the gRPC server lifecycle.
-#[cfg(any(feature = "server", feature = "grpc"))]
 pub struct GrpcSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransaction> {
     /// The wrapped GrpcServer
     grpc_server: Option<GrpcServer<VT, UT>>,
@@ -32,12 +24,12 @@ pub struct GrpcSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransac
     /// Whether the server is running
     running: Arc<AtomicBool>,
     /// Handle to the async task
+    #[cfg(feature = "async")]
     task_handle: Option<JoinHandle<()>>,
     /// Shared runtime provider
     runtime_provider: RuntimeProvider,
 }
 
-#[cfg(any(feature = "server", feature = "grpc"))]
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<VT, UT> {
     /// Create a new GrpcServer adapter with shared runtime
     pub fn new(
@@ -50,6 +42,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<
             grpc_server: Some(grpc_server),
             name: "grpc".to_string(),
             running: Arc::new(AtomicBool::new(false)),
+            #[cfg(feature = "async")]
             task_handle: None,
             runtime_provider: runtime_provider.clone(),
         }
@@ -67,6 +60,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<
             grpc_server: Some(grpc_server),
             name,
             running: Arc::new(AtomicBool::new(false)),
+            #[cfg(feature = "async")]
             task_handle: None,
             runtime_provider: runtime_provider.clone(),
         }
@@ -78,7 +72,6 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<
     }
 }
 
-#[cfg(any(feature = "server", feature = "grpc"))]
 impl<VT, UT> Subsystem for GrpcSubsystemAdapter<VT, UT>
 where
     VT: VersionedTransaction + Send + Sync + 'static,
@@ -112,7 +105,10 @@ where
             // Give the server a moment to start
             std::thread::sleep(std::time::Duration::from_millis(100));
             
-            self.task_handle = Some(handle);
+            #[cfg(feature = "async")]
+            {
+                self.task_handle = Some(handle);
+            }
         }
 
         self.running.store(true, Ordering::Relaxed);
@@ -127,8 +123,11 @@ where
         self.running.store(false, Ordering::Relaxed);
         
         // Clean up task handle
-        if let Some(handle) = self.task_handle.take() {
-            handle.abort();
+        #[cfg(feature = "async")]
+        {
+            if let Some(handle) = self.task_handle.take() {
+                handle.abort();
+            }
         }
 
         println!("[GrpcSubsystem] gRPC server stopped");

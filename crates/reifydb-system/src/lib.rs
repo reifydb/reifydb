@@ -7,27 +7,29 @@
 //! along with multiple subsystems in a coordinated fashion. It handles lifecycle
 //! management, health monitoring, and graceful shutdown without using async/await.
 
-pub mod adapters;
-pub mod builder;
-pub mod context;
-pub mod health;
-pub mod manager;
-pub mod subsystem;
-pub mod system;
+mod builder;
+mod context;
+mod health;
+mod manager;
+mod subsystem;
+mod system;
 
-pub use adapters::FlowSubsystemAdapter;
-#[cfg(any(feature = "server", feature = "grpc"))]
-pub use adapters::GrpcSubsystemAdapter;
-#[cfg(any(feature = "server", feature = "websocket"))]
-pub use adapters::WsSubsystemAdapter;
 pub use builder::ReifySystemBuilder;
+#[cfg(feature = "async")]
+pub use context::TokioRuntimeProvider;
 pub use context::{
-    AsyncContext, CustomContext, RuntimeProvider, SyncContext, SystemContext, 
-    TokioContext, TokioRuntimeProvider
+    AsyncContext, CustomContext, RuntimeProvider, SyncContext, SystemContext, TokioContext,
 };
 pub use health::{HealthMonitor, HealthStatus};
+
 pub use manager::SubsystemManager;
+#[cfg(feature = "sub_flow")]
+pub use subsystem::FlowSubsystemAdapter;
+#[cfg(feature = "sub_grpc")]
+pub use subsystem::GrpcSubsystemAdapter;
 pub use subsystem::Subsystem;
+#[cfg(feature = "sub_ws")]
+pub use subsystem::WsSubsystemAdapter;
 pub use system::{ReifySystem, SystemConfig};
 
 use std::time::Duration;

@@ -26,9 +26,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_websocket_server(WsConfig::default())  // Add WebSocket server
         .build();
 
-    println!("Created server system with {} subsystems", system.subsystem_count());
-    println!("Subsystems: {:?}", system.get_subsystem_names());
-    println!("Initial health: {:?}\n", system.health_status());
+    // println!("Created server system with {} subsystems", system.subsystem_count());
+    // println!("Subsystems: {:?}", system.get_subsystem_names());
+    // println!("Initial health: {:?}\n", system.health_status());
 
     // Start all servers and subsystems
     println!("=== Starting All Servers ===");
@@ -37,10 +37,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Show running status
     println!("\n=== Server Status ===");
-    for (name, health) in system.get_all_component_health() {
-        let status_icon = if health.is_running { "🟢" } else { "🔴" };
-        println!("  {} {}: {:?}", status_icon, name, health.status);
-    }
+    // for (name, health) in system.get_all_component_health() {
+    //     let status_icon = if health.is_running { "🟢" } else { "🔴" };
+    //     println!("  {} {}: {:?}", status_icon, name, health.status);
+    // }
 
     println!("\n🌐 Servers are now running and accepting connections!");
     println!("  • gRPC server: Available for database operations");
@@ -57,10 +57,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ All servers stopped gracefully!");
 
     println!("\n=== Final Status ===");
-    for (name, health) in system.get_all_component_health() {
-        let status_icon = if health.is_running { "🟢" } else { "⚪" };
-        println!("  {} {}: {:?}", status_icon, name, health.status);
-    }
+    // for (name, health) in system.get_all_component_health() {
+    //     let status_icon = if health.is_running { "🟢" } else { "⚪" };
+    //     println!("  {} {}: {:?}", status_icon, name, health.status);
+    // }
 
     println!("\n🎯 Benefits of the System Architecture:");
     println!("   • All servers start/stop together");

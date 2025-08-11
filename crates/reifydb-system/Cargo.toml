@@ -11,15 +11,17 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-network = { workspace = true, optional = true }
 
-# async runtime for network adapters and context management
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 
 [features]
 default = []
-server = ["dep:reifydb-network", "reifydb-network/server"]
-grpc = ["reifydb-network/grpc"]
-websocket = ["reifydb-network/websocket"]
+async = ["dep:tokio"]
+
+# Subsystem features
+sub_flow = []
+sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server"]
+sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server"]
+
 
 [[example]]
 name = "basic_system"

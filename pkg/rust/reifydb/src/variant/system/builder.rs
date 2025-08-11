@@ -7,9 +7,9 @@ use reifydb_core::hook::Hooks;
 use reifydb_core::hook::lifecycle::OnInitHook;
 use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
-#[cfg(any(feature = "server", feature = "grpc"))]
+#[cfg(feature = "sub_grpc")]
 use reifydb_network::grpc::server::GrpcConfig;
-#[cfg(any(feature = "server", feature = "websocket"))]
+#[cfg(feature = "sub_ws")]
 use reifydb_network::ws::server::WsConfig;
 use reifydb_system::{ReifySystemBuilder, Subsystem, SyncContext, SystemContext, TokioContext};
 use std::sync::Arc;
@@ -47,6 +47,7 @@ where
 
     /// Transform to async context with default Tokio runtime
     /// This enables async subsystems like gRPC and WebSocket servers
+    #[cfg(feature = "async")]
     pub fn with_async_runtime(self) -> SystemBuilder<VT, UT, TokioContext> {
         let context =
             TokioContext::default().expect("Failed to create Tokio runtime for async operations");
@@ -59,6 +60,7 @@ where
     }
 
     /// Transform to async context with custom Tokio runtime configuration
+    #[cfg(feature = "async")]
     pub fn with_tokio_runtime(
         self,
         builder: tokio::runtime::Builder,
@@ -74,10 +76,11 @@ where
     }
 
     /// Transform to async context with user-provided runtime
+    #[cfg(feature = "async")]
     pub fn with_custom_runtime(
         self,
         runtime: Arc<tokio::runtime::Runtime>,
-    ) -> SystemBuilder<VT, UT, reifydb_system::CustomContext> {
+    ) -> SystemBuilder<VT, UT, TokioContext> {
         let context = TokioContext::from_runtime(runtime);
 
         SystemBuilder {
@@ -166,14 +169,14 @@ where
     }
 }
 
-// Implementation for AsyncContext (after transformation from SyncContext)
-impl<VT, UT> SystemBuilder<VT, UT, reifydb_system::AsyncContext>
+// Implementation for TokioContext (after transformation from SyncContext)
+impl<VT, UT> SystemBuilder<VT, UT, TokioContext>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     /// Add a gRPC server subsystem (uses shared runtime)
-    #[cfg(any(feature = "server", feature = "grpc"))]
+    #[cfg(feature = "sub_grpc")]
     pub fn with_grpc_server(mut self, config: GrpcConfig) -> Self {
         let adapter = reifydb_system::GrpcSubsystemAdapter::new(
             config,
@@ -185,7 +188,7 @@ where
     }
 
     /// Add a WebSocket server subsystem (uses shared runtime)
-    #[cfg(any(feature = "server", feature = "websocket"))]
+    #[cfg(feature = "sub_ws")]
     pub fn with_websocket_server(mut self, config: WsConfig) -> Self {
         let adapter = reifydb_system::WsSubsystemAdapter::new(
             config,
@@ -204,13 +207,13 @@ where
     UT: UnversionedTransaction,
 {
     /// Add a gRPC server subsystem - automatically transforms to async context
-    #[cfg(any(feature = "server", feature = "grpc"))]
+    #[cfg(all(feature = "sub_grpc", feature = "async"))]
     pub fn with_grpc_server(self, config: GrpcConfig) -> SystemBuilder<VT, UT, TokioContext> {
         self.with_async_runtime().with_grpc_server(config)
     }
 
     /// Add a WebSocket server subsystem - automatically transforms to async context
-    #[cfg(any(feature = "server", feature = "websocket"))]
+    #[cfg(all(feature = "sub_ws", feature = "async"))]
     pub fn with_websocket_server(self, config: WsConfig) -> SystemBuilder<VT, UT, TokioContext> {
         self.with_async_runtime().with_websocket_server(config)
     }
