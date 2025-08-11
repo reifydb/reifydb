@@ -12,6 +12,7 @@ reifydb-storage = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 
+
 [dev-dependencies]
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

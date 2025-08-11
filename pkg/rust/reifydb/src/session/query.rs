@@ -6,9 +6,10 @@ use reifydb_core::interface::{
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
-#[cfg(feature = "embedded_async")]
+#[cfg(feature = "async")]
 use tokio::task::spawn_blocking;
 
+/// Session for executing read-only database queries
 pub struct QuerySession<VT, UT>
 where
     VT: VersionedTransaction,
@@ -27,7 +28,7 @@ where
         Self { engine, principal }
     }
 
-    #[cfg(feature = "embedded_sync")]
+    /// Execute a synchronous query
     pub fn query_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -37,7 +38,8 @@ where
         })
     }
 
-    #[cfg(feature = "embedded_async")]
+    /// Execute an asynchronous query
+    #[cfg(feature = "async")]
     pub async fn query_async(
         &self,
         rql: &str,
@@ -50,7 +52,7 @@ where
         let engine = self.engine.clone();
         spawn_blocking(move || {
             engine.query_as(&principal, &rql, params).map_err(|mut err| {
-                err.set_statement(rql);
+                err.set_statement(rql.to_string());
                 err
             })
         })

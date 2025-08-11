@@ -3,6 +3,8 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+pub(crate) mod cdc;
 pub mod lmdb;
 pub mod memory;
 pub mod sqlite;
+

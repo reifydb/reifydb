@@ -3,9 +3,9 @@
 
 pub mod conflict;
 pub mod marker;
+pub mod optimistic;
 pub mod pending;
+pub mod serializable;
 pub mod transaction;
 pub mod types;
-mod watermark;
-mod optimistic;
-mod serializable;
+pub mod watermark;

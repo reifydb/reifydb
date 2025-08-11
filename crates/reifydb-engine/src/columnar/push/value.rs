@@ -341,6 +341,7 @@ impl ColumnData {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use crate::columnar::data::ColumnData;
     use reifydb_core::value::uuid::{Uuid4, Uuid7};

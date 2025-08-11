@@ -128,7 +128,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Update { key, row })], version)?
+                self.storage.commit(async_cow_vec![(Delta::Update { key, row })], version)?
             }
 
             // remove KEY [version=VERSION]
@@ -138,7 +138,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.apply(async_cow_vec![(Delta::Remove { key })], version)?
+                self.storage.commit(async_cow_vec![(Delta::Remove { key })], version)?
             }
 
             name => return Err(format!("invalid command {name}").into()),

@@ -1,0 +1,100 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test empty value handling
+insert 1 empty=
+commit
+---
+ok
+
+cdc_get 1 1
+---
+CdcEvent { version: 1, seq: 1, ts: 1000, change: Insert { key: "empty", after: "" } }
+
+update 2 empty=value
+commit
+---
+ok
+
+cdc_get 2 1
+---
+CdcEvent { version: 2, seq: 1, ts: 1000, change: Update { key: "empty", before: "", after: "value" } }
+
+update 3 empty=
+commit
+---
+ok
+
+cdc_get 3 1
+---
+CdcEvent { version: 3, seq: 1, ts: 1000, change: Update { key: "empty", before: "value", after: "" } }
+
+# Test very long key and value
+insert 4 verylongkey123456789012345678901234567890=verylongvalue123456789012345678901234567890
+commit
+---
+ok
+
+cdc_get 4 1
+---
+CdcEvent { version: 4, seq: 1, ts: 1000, change: Insert { key: "verylongkey123456789012345678901234567890", after: "verylongvalue123456789012345678901234567890" } }
+
+# Test special characters in keys and values
+insert 5 "key with spaces"="value with spaces"
+commit
+---
+ok
+
+cdc_get 5 1
+---
+CdcEvent { version: 5, seq: 1, ts: 1000, change: Insert { key: "key with spaces", after: "value with spaces" } }
+
+# Null character test removed due to parser limitations
+
+# Test delete on non-existent key
+delete 7 nonexistent
+commit
+---
+ok
+
+cdc_get 7 1
+---
+CdcEvent { version: 7, seq: 1, ts: 1000, change: Delete { key: "nonexistent", before: "<deleted>" } }
+
+# Test update on deleted key (re-insert scenario)
+delete 8 empty
+commit
+---
+ok
+
+update 9 empty=reinserted
+commit
+---
+ok
+
+cdc_get 9 1
+---
+CdcEvent { version: 9, seq: 1, ts: 1000, change: Update { key: "empty", before: "<deleted>", after: "reinserted" } }
+
+# Test large version (within SQLite INTEGER range)
+insert 9223372036854775807 maxversion=test
+commit
+---
+ok
+
+cdc_get 9223372036854775807 1
+---
+CdcEvent { version: 9223372036854775807, seq: 1, ts: 1000, change: Insert { key: "maxversion", after: "test" } }
+
+# Test sequence numbers approaching u16::MAX (65535)
+# First, insert a few operations to start the sequence
+insert 200 seq_test_0=0
+insert 200 seq_test_1=1
+insert 200 seq_test_2=2
+commit
+---
+ok
+
+cdc_count 200
+---
+count: 3

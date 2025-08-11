@@ -59,6 +59,15 @@ where
     {
         self.unversioned.with_query(f)
     }
+
+    /// Execute a function with access to the versioned query transaction.
+    /// This operates within the same transaction context.
+    pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut VT::Query) -> crate::Result<R>,
+    {
+        f(&mut self.versioned)
+    }
 }
 
 impl<VT, UT> VersionedQueryTransaction for ActiveQueryTransaction<VT, UT>
@@ -149,6 +158,47 @@ where
     {
         self.check_active()?;
         self.unversioned.with_command(f)
+    }
+
+    /// Execute a function with access to the versioned command transaction.
+    /// This operates within the same transaction context.
+    pub fn with_versioned_command<F, R>(&mut self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut VT::Command) -> crate::Result<R>,
+    {
+        self.check_active()?;
+        let result = f(self.versioned.as_mut().unwrap());
+        
+        // If there was an error, we should rollback the transaction
+        if result.is_err() {
+            if let Some(versioned) = self.versioned.take() {
+                self.state = TransactionState::RolledBack;
+                let _ = versioned.rollback(); // Ignore rollback errors
+            }
+        }
+        
+        result
+    }
+
+    /// Execute a function with access to the versioned query capabilities.
+    /// This operates within the same transaction context and provides read-only access.
+    pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut VT::Command) -> crate::Result<R>,
+        VT::Command: VersionedQueryTransaction,
+    {
+        self.check_active()?;
+        let result = f(self.versioned.as_mut().unwrap());
+        
+        // If there was an error, we should rollback the transaction
+        if result.is_err() {
+            if let Some(versioned) = self.versioned.take() {
+                self.state = TransactionState::RolledBack;
+                let _ = versioned.rollback(); // Ignore rollback errors
+            }
+        }
+        
+        result
     }
 
     /// Commit the transaction.

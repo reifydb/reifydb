@@ -31,45 +31,39 @@ pub mod serializable;
 mod version;
 mod command;
 
-use crate::mvcc::conflict::Conflict;
+use crate::mvcc::conflict::ConflictManager;
 use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::query::TransactionManagerQuery;
+pub use oracle::MAX_COMMITTED_TXNS;
 
-pub struct TransactionManager<C, L, P>
+pub struct TransactionManager<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
-    inner: Arc<Oracle<C, L>>,
-    _phantom: std::marker::PhantomData<P>,
+    inner: Arc<Oracle<L>>,
 }
 
-impl<C, L, P> Clone for TransactionManager<C, L, P>
+impl<L> Clone for TransactionManager<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone(), _phantom: std::marker::PhantomData }
+        Self { inner: self.inner.clone() }
     }
 }
 
-impl<C, L, P> TransactionManager<C, L, P>
+impl<L> TransactionManager<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
-    pub fn write(&self) -> Result<TransactionManagerCommand<C, L, P>, reifydb_core::Error> {
+    pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_core::Error> {
         Ok(TransactionManagerCommand {
             oracle: self.inner.clone(),
             version: self.inner.version()?,
             size: 0,
             count: 0,
-            conflicts: C::new(),
-            pending_writes: P::new(),
+            conflicts: ConflictManager::new(),
+            pending_writes: PendingWrites::new(),
             duplicates: Vec::new(),
             discarded: false,
             done_query: false,
@@ -77,11 +71,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManager<C, L, P>
+impl<L> TransactionManager<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     pub fn new(name: &str, clock: L) -> crate::Result<Self> {
         let version = clock.next()?;
@@ -96,7 +88,6 @@ where
                 oracle.command.done(version);
                 oracle
             }),
-            _phantom: std::marker::PhantomData,
         })
     }
 
@@ -105,17 +96,15 @@ where
     }
 }
 
-impl<C, L, P> TransactionManager<C, L, P>
+impl<L> TransactionManager<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     pub fn discard_hint(&self) -> Version {
         self.inner.discard_at_or_below()
     }
 
-    pub fn query(&self, version: Option<Version>) -> crate::Result<TransactionManagerQuery<C, L, P>> {
+    pub fn query(&self, version: Option<Version>) -> crate::Result<TransactionManagerQuery<L>> {
         Ok(if let Some(version) = version {
             TransactionManagerQuery::new_time_travel(self.clone(), version)
         } else {

@@ -6,15 +6,6 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[features]
-default = []
-server = ["dep:tokio", "dep:reifydb-network", "reifydb-network/server"]
-client = ["dep:tokio", "dep:reifydb-network", "reifydb-network/client"]
-embedded_async = ["dep:tokio"]
-grpc = ["reifydb-network/grpc"]
-websocket = ["reifydb-network/websocket"]
-embedded_sync = []
-
 [dependencies]
 reifydb-auth = { workspace = true }
 reifydb-core = { workspace = true }
@@ -25,3 +16,13 @@ reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
+
+[features]
+default = []
+async = ["dep:tokio"]
+
+# Subsystem features
+sub_flow = []
+sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server"]
+sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server"]
+

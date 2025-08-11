@@ -10,7 +10,9 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use super::*;
+use crate::mvcc::conflict::ConflictManager;
 use crate::mvcc::marker::Marker;
+use crate::mvcc::pending::PendingWrites;
 use crate::mvcc::transaction::version::VersionProvider;
 use crate::mvcc::types::Pending;
 use reifydb_core::delta::Delta;
@@ -18,30 +20,26 @@ use reifydb_core::diagnostic::transaction;
 use reifydb_core::row::EncodedRow;
 use reifydb_core::{EncodedKey, Version, error, return_error};
 
-pub struct TransactionManagerCommand<C, L, P>
+pub struct TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     pub(super) version: Version,
     pub(super) size: u64,
     pub(super) count: u64,
-    pub(super) oracle: Arc<Oracle<C, L>>,
-    pub(super) conflicts: C,
+    pub(super) oracle: Arc<Oracle<L>>,
+    pub(super) conflicts: ConflictManager,
     // stores any writes done by tx
-    pub(super) pending_writes: P,
+    pub(super) pending_writes: PendingWrites,
     pub(super) duplicates: Vec<Pending>,
 
     pub(super) discarded: bool,
     pub(super) done_query: bool,
 }
 
-impl<C, L, P> Drop for TransactionManagerCommand<C, L, P>
+impl<L> Drop for TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn drop(&mut self) {
         if !self.discarded {
@@ -50,11 +48,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     /// Returns the version of the transaction.
     pub fn version(&self) -> Version {
@@ -67,32 +63,30 @@ where
     }
 
     /// Returns the pending writes
-    pub fn pending_writes(&self) -> &P {
+    pub fn pending_writes(&self) -> &PendingWrites {
         &self.pending_writes
     }
 
     /// Returns the conflict manager.
-    pub fn conflicts(&self) -> &C {
+    pub fn conflicts(&self) -> &ConflictManager {
         &self.conflicts
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     /// This method is used to create a marker for the keys that are operated.
     /// It must be used to mark keys when end user is implementing iterators to
     /// make sure the transaction manager works correctly.
-    pub fn marker(&mut self) -> Marker<'_, C> {
+    pub fn marker(&mut self) -> Marker<'_> {
         Marker::new(&mut self.conflicts)
     }
 
     /// Returns a marker for the keys that are operated and the pending writes manager.
     /// As Rust's borrow checker does not allow to borrow mutable marker and the immutable pending writes manager at the same
-    pub fn marker_with_pending_writes(&mut self) -> (Marker<'_, C>, &P) {
+    pub fn marker_with_pending_writes(&mut self) -> (Marker<'_>, &PendingWrites) {
         (Marker::new(&mut self.conflicts), &self.pending_writes)
     }
 
@@ -107,11 +101,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     /// Set a key-value pair to the transaction.
     pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_core::Error> {
@@ -201,27 +193,11 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
-    /// Commits the transaction, following these steps:
-    ///
-    /// 1. If there are no writes, return immediately.
-    ///
-    /// 2. Check if read rows were updated since txn started. If so, return `transaction_conflict()`.
-    ///
-    /// 3. If no conflict, generate a commit timestamp and update written rows' commit ts.
-    ///
-    /// 4. Batch up all writes, write them to database.
-    ///
-    /// 5. If callback is provided, Badger will return immediately after checking
-    ///    for conflicts. Writes to the database will happen in the background.  If
-    ///    there is a conflict, an error will be returned and the callback will not
-    ///    run. If there are no conflicts, the callback will be called in the
-    ///    background upon successful completion of writes or any error during write.
+
     pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_core::Error>
     where
         F: FnOnce(Vec<Pending>) -> Result<(), Box<dyn std::error::Error>>,
@@ -259,11 +235,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn set_internal(
         &mut self,
@@ -323,11 +297,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn commit_pending(&mut self) -> Result<(Version, Vec<Pending>), reifydb_core::Error> {
         if self.discarded {
@@ -383,11 +355,9 @@ where
     }
 }
 
-impl<C, L, P> TransactionManagerCommand<C, L, P>
+impl<L> TransactionManagerCommand<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn done_query(&mut self) {
         if !self.done_query {
@@ -396,7 +366,7 @@ where
         }
     }
 
-    fn oracle(&self) -> &Oracle<C, L> {
+    fn oracle(&self) -> &Oracle<L> {
         &self.oracle
     }
 

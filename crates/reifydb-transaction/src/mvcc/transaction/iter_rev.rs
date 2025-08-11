@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use crate::mvcc::types::TransactionValue;
 use core::{cmp, iter::Rev};
@@ -20,7 +19,7 @@ use reifydb_core::EncodedKey;
 use reifydb_core::interface::VersionedStorage;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
-pub struct TransactionIterRev<'a, VS, C>
+pub struct TransactionIterRev<'a, VS>
 where
     VS: VersionedStorage + 'a,
 {
@@ -29,12 +28,11 @@ where
     next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a EncodedKey, TransactionValue>>,
-    marker: Option<Marker<'a, C>>,
+    marker: Option<Marker<'a>>,
 }
 
-impl<'a, VS, C> TransactionIterRev<'a, VS, C>
+impl<'a, VS> TransactionIterRev<'a, VS>
 where
-    C: Conflict,
     VS: VersionedStorage + 'a,
 {
     fn advance_pending(&mut self) {
@@ -51,7 +49,7 @@ where
     pub fn new(
         pending: Rev<BTreeMapIter<'a, EncodedKey, Pending>>,
         committed: VS::ScanIterRev<'a>,
-        marker: Option<Marker<'a, C>>,
+        marker: Option<Marker<'a>>,
     ) -> Self {
         let mut iterator = TransactionIterRev {
             pending,
@@ -69,9 +67,8 @@ where
     }
 }
 
-impl<'a, VS, C> Iterator for TransactionIterRev<'a, VS, C>
+impl<'a, VS> Iterator for TransactionIterRev<'a, VS>
 where
-    C: Conflict,
     VS: VersionedStorage + 'a,
 {
     type Item = TransactionValue;

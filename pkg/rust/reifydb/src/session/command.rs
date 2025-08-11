@@ -6,7 +6,7 @@ use reifydb_core::interface::{
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
-#[cfg(feature = "embedded_async")]
+#[cfg(feature = "async")]
 use tokio::task::spawn_blocking;
 
 pub struct CommandSession<VT, UT>
@@ -27,7 +27,6 @@ where
         Self { engine, principal }
     }
 
-    #[cfg(feature = "embedded_sync")]
     pub fn query_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -37,7 +36,6 @@ where
         })
     }
 
-    #[cfg(feature = "embedded_sync")]
     pub fn command_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -47,7 +45,7 @@ where
         })
     }
 
-    #[cfg(feature = "embedded_async")]
+    #[cfg(feature = "async")]
     pub async fn command_async(
         &self,
         rql: &str,
@@ -68,7 +66,7 @@ where
         .unwrap()
     }
 
-    #[cfg(feature = "embedded_async")]
+    #[cfg(feature = "async")]
     pub async fn query_async(
         &self,
         rql: &str,

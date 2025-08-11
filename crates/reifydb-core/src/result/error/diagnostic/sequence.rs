@@ -36,3 +36,17 @@ pub fn can_not_alter_not_auto_increment(span: impl IntoOwnedSpan) -> Diagnostic 
         cause: None,
     }
 }
+
+pub fn transaction_sequence_exhausted() -> Diagnostic {
+    Diagnostic {
+        code: "SEQUENCE_003".to_string(),
+        statement: None,
+        message: "transaction sequence number exhausted".to_string(),
+        span: None,
+        label: Some("no more CDC sequence numbers available for this version".to_string()),
+        help: Some("transaction has reached the maximum of 65535 CDC events (sequences 1-65535)".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}

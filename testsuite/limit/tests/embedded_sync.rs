@@ -2,10 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
-use reifydb::session::SessionSync;
-use reifydb::variant::embedded_sync::EmbeddedSync;
-use reifydb::{ReifyDB, memory, serializable};
+use reifydb::core::interface::{Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::{Database, ReifyDB, SessionSync, memory, serializable};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -18,7 +16,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    engine: EmbeddedSync<VT, UT>,
+    instance: Database<VT, UT>,
 }
 
 impl<VT, UT> Runner<VT, UT>
@@ -27,7 +25,7 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        Self { engine: ReifyDB::embedded_sync_with(input).build() }
+        Self { instance: ReifyDB::new_sync_with(input).build() }
     }
 }
 
@@ -45,7 +43,7 @@ where
 
                 println!("command: {query}");
 
-                for frame in self.engine.command_as_root(query.as_str(), Params::None)? {
+                for frame in self.instance.command_as_root(query.as_str(), Params::None)? {
                     writeln!(output, "{}", frame)?;
                 }
             }
@@ -55,7 +53,7 @@ where
 
                 println!("query: {query}");
 
-                for frame in self.engine.query_as_root(query.as_str(), Params::None)? {
+                for frame in self.instance.query_as_root(query.as_str(), Params::None)? {
                     writeln!(output, "{}", frame)?;
                 }
             }

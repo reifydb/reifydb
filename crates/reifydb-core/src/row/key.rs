@@ -4,10 +4,11 @@
 use crate::util::CowVec;
 use crate::util::encoding::binary::decode_binary;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::Bound;
 use std::ops::{Deref, RangeBounds};
 
-#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncodedKey(pub CowVec<u8>);
 
 impl Deref for EncodedKey {

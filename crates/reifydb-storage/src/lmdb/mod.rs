@@ -10,7 +10,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
-mod apply;
+mod commit;
 mod contains;
 mod get;
 mod iter;

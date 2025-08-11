@@ -3,6 +3,7 @@
 
 use crate::util::encoding::keycode;
 use crate::{EncodedKey, EncodedKeyRange};
+pub use cdc::CdcEventKey;
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
@@ -19,6 +20,7 @@ pub use table_row_sequence::TableRowSequenceKey;
 pub use table_column_sequence::TableColumnSequenceKey;
 pub use transaction_version::TransactionVersionKey;
 
+mod cdc;
 mod column;
 mod column_policy;
 mod kind;
@@ -37,6 +39,7 @@ mod transaction_version;
 
 #[derive(Debug)]
 pub enum Key {
+    CdcEvent(CdcEventKey),
     Column(ColumnKey),
     ColumnPolicy(ColumnPolicyKey),
     Schema(SchemaKey),
@@ -56,6 +59,7 @@ pub enum Key {
 impl Key {
     pub fn encode(&self) -> EncodedKey {
         match &self {
+            Key::CdcEvent(key) => key.encode(),
             Key::Column(key) => key.encode(),
             Key::ColumnPolicy(key) => key.encode(),
             Key::Schema(key) => key.encode(),
@@ -104,6 +108,7 @@ impl Key {
 
         let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
         match kind {
+            KeyKind::CdcEvent => CdcEventKey::decode(&key).map(Self::CdcEvent),
             KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
             KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key).map(Self::ColumnPolicy),
             KeyKind::Schema => SchemaKey::decode(&key).map(Self::Schema),
@@ -130,7 +135,7 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
-    use super::ColumnPolicyKey;
+    use super::{CdcEventKey, ColumnPolicyKey};
     use super::{TableRowSequenceKey, TableColumnSequenceKey};
     use super::{
         ColumnKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey, TableColumnKey, TableIndexKey,
@@ -327,5 +332,24 @@ mod tests {
         let key = Key::TransactionVersion(TransactionVersionKey {});
         let encoded = key.encode();
         Key::decode(&encoded).expect("Failed to decode key");
+    }
+
+    #[test]
+    fn test_cdc_event() {
+        let key = Key::CdcEvent(CdcEventKey {
+            version: 123456789,
+            sequence: 999,
+        });
+
+        let encoded = key.encode();
+        let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+        match decoded {
+            Key::CdcEvent(decoded_inner) => {
+                assert_eq!(decoded_inner.version, 123456789);
+                assert_eq!(decoded_inner.sequence, 999);
+            }
+            _ => unreachable!(),
+        }
     }
 }
