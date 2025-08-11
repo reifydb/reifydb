@@ -6,8 +6,9 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient} from "../../../src";
-import { LEGACY_SCHEMA } from "../test-helpers";
+import {Client, WsClient, Schema, InferPrimitiveSchemaResult, BidirectionalSchema} from "../../../src";
+import {LEGACY_SCHEMA, PRIMITIVE_RESULT_SCHEMA} from "../test-helpers";
+import {ObjectSchemaNode, OptionalSchemaNode} from "@reifydb/core";
 
 describe('Primitive Result Types', () => {
     let wsClient: WsClient;
@@ -41,23 +42,28 @@ describe('Primitive Result Types', () => {
 
     describe('command with primitive result types', () => {
         it('should return primitive boolean result', async () => {
-            const frames = await wsClient.command<[{ result: boolean }]>(
+            const frames = await wsClient.command(
                 'MAP $value as result',
-                { value: true },
-                LEGACY_SCHEMA
+                {value: true},
+                [Schema.object({result: Schema.boolean()})]
             );
+
+
+            console.log('Raw frames:', JSON.stringify(frames, null, 2));
+            console.log('Result type:', typeof frames[0][0].result);
+            console.log('Result value:', frames[0][0].result);
+            console.log('Result constructor:', frames[0][0].result?.constructor?.name);
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            // Value object returned, but TypeScript expects primitive boolean
-            expect(typeof frames[0][0].result.value).toBe('boolean');
-            expect(frames[0][0].result.value).toBe(true);
+            expect(typeof frames[0][0].result).toBe('boolean');
+            expect(frames[0][0].result).toBe(true);
         }, 1000);
 
         it('should return primitive number result for small integer', async () => {
             const frames = await wsClient.command<[{ result: number }]>(
                 'MAP $num as result',
-                { num: 42 },
+                {num: 42},
                 LEGACY_SCHEMA
             );
 
@@ -71,7 +77,7 @@ describe('Primitive Result Types', () => {
         it('should return primitive number result for medium integer', async () => {
             const frames = await wsClient.command<[{ result: number }]>(
                 'MAP $num as result',
-                { num: 30000 },
+                {num: 30000},
                 LEGACY_SCHEMA
             );
 
@@ -85,7 +91,7 @@ describe('Primitive Result Types', () => {
         it('should return primitive number result for large integer', async () => {
             const frames = await wsClient.command<[{ result: number }]>(
                 'MAP $num as result',
-                { num: 2000000 },
+                {num: 2000000},
                 LEGACY_SCHEMA
             );
 
@@ -99,7 +105,7 @@ describe('Primitive Result Types', () => {
         it('should return primitive bigint result for very large integer', async () => {
             const frames = await wsClient.command<[{ result: bigint }]>(
                 'MAP $num as result',
-                { num: 3000000000 },
+                {num: 3000000000},
                 LEGACY_SCHEMA
             );
 
@@ -113,7 +119,7 @@ describe('Primitive Result Types', () => {
         it('should return primitive number result for float', async () => {
             const frames = await wsClient.command<[{ result: number }]>(
                 'MAP $num as result',
-                { num: 3.14159 },
+                {num: 3.14159},
                 LEGACY_SCHEMA
             );
 
@@ -127,7 +133,7 @@ describe('Primitive Result Types', () => {
         it('should return primitive string result', async () => {
             const frames = await wsClient.command<[{ result: string }]>(
                 'MAP $text as result',
-                { text: "hello primitive result" },
+                {text: "hello primitive result"},
                 LEGACY_SCHEMA
             );
 
@@ -141,7 +147,7 @@ describe('Primitive Result Types', () => {
         it('should return primitive bigint result for explicit bigint', async () => {
             const frames = await wsClient.command<[{ result: bigint }]>(
                 'MAP $bignum as result',
-                { bignum: BigInt("9223372036854775807") },
+                {bignum: BigInt("9223372036854775807")},
                 LEGACY_SCHEMA
             );
 
@@ -156,7 +162,7 @@ describe('Primitive Result Types', () => {
             const testDate = new Date('2024-12-25T12:00:00Z');
             const frames = await wsClient.command<[{ result: Date }]>(
                 'MAP $timestamp as result',
-                { timestamp: testDate },
+                {timestamp: testDate},
                 LEGACY_SCHEMA
             );
 
@@ -170,13 +176,13 @@ describe('Primitive Result Types', () => {
         it('should return primitive undefined result for null/undefined', async () => {
             const frames1 = await wsClient.command<[{ result: undefined }]>(
                 'MAP $value as result',
-                { value: null },
+                {value: null},
                 LEGACY_SCHEMA
             );
 
             const frames2 = await wsClient.command<[{ result: undefined }]>(
                 'MAP $value as result',
-                { value: undefined },
+                {value: undefined},
                 LEGACY_SCHEMA
             );
 
@@ -204,7 +210,7 @@ describe('Primitive Result Types', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            
+
             const result = frames[0][0];
             // Value objects returned, but TypeScript expects primitive types
             expect(typeof result.bool_val.value).toBe('boolean');
@@ -218,7 +224,7 @@ describe('Primitive Result Types', () => {
         }, 1000);
 
         it('should return primitive array result types', async () => {
-            const frames = await wsClient.command<[{ 
+            const frames = await wsClient.command<[{
                 bool_result: boolean,
                 int_result: number,
                 str_result: string
@@ -230,7 +236,7 @@ describe('Primitive Result Types', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            
+
             const result = frames[0][0];
             // Value objects returned, but TypeScript expects primitive types
             expect(typeof result.bool_result.value).toBe('boolean');
@@ -244,10 +250,10 @@ describe('Primitive Result Types', () => {
 
     describe('query with primitive result types', () => {
         it('should return primitive boolean result', async () => {
-            const frames = await wsClient.query<[{ result: boolean }]>(
+            const frames = await wsClient.query(
                 'MAP $value as result',
-                { value: false },
-                LEGACY_SCHEMA
+                {value: false},
+                Schema.withPrimitiveResult({result: 'boolean'})
             );
 
             expect(frames).toHaveLength(1);
@@ -257,10 +263,10 @@ describe('Primitive Result Types', () => {
         }, 1000);
 
         it('should return primitive number result for integer', async () => {
-            const frames = await wsClient.query<[{ result: number }]>(
+            const frames = await wsClient.query(
                 'MAP $num as result',
-                { num: 50000 },
-                LEGACY_SCHEMA
+                {num: 50000},
+                Schema.withPrimitiveResult({result: 'number'})
             );
 
             expect(frames).toHaveLength(1);
@@ -270,10 +276,10 @@ describe('Primitive Result Types', () => {
         }, 1000);
 
         it('should return primitive number result for float', async () => {
-            const frames = await wsClient.query<[{ result: number }]>(
+            const frames = await wsClient.query(
                 'MAP $pi as result',
-                { pi: Math.PI },
-                LEGACY_SCHEMA
+                {pi: Math.PI},
+                Schema.withPrimitiveResult({result: 'number'})
             );
 
             expect(frames).toHaveLength(1);
@@ -283,10 +289,10 @@ describe('Primitive Result Types', () => {
         }, 1000);
 
         it('should return primitive string result', async () => {
-            const frames = await wsClient.query<[{ result: string }]>(
+            const frames = await wsClient.query(
                 'MAP $text as result',
-                { text: "query primitive result test" },
-                LEGACY_SCHEMA
+                {text: "query primitive result test"},
+                Schema.withPrimitiveResult({result: 'string'})
             );
 
             expect(frames).toHaveLength(1);
@@ -297,10 +303,10 @@ describe('Primitive Result Types', () => {
 
         it('should return primitive Date result', async () => {
             const testDate = new Date('2024-06-15T08:30:00Z');
-            const frames = await wsClient.query<[{ result: Date }]>(
+            const frames = await wsClient.query(
                 'MAP $date as result',
-                { date: testDate },
-                LEGACY_SCHEMA
+                {date: testDate},
+                Schema.withPrimitiveResult({result: 'Date'})
             );
 
             expect(frames).toHaveLength(1);
@@ -321,12 +327,12 @@ describe('Primitive Result Types', () => {
                     int_param: 777,
                     str_param: "query mixed primitive results"
                 },
-                LEGACY_SCHEMA
+                {params: LEGACY_SCHEMA.params, result: Schema.auto()}
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            
+
             const result = frames[0][0];
             expect(typeof result.mixed_bool).toBe('boolean');
             expect(result.mixed_bool).toBe(true);
@@ -344,12 +350,12 @@ describe('Primitive Result Types', () => {
             }]>(
                 'MAP { $1 as first, $2 as second, $3 as third }',
                 [false, 42.5, "query array results"],
-                LEGACY_SCHEMA
+                {params: LEGACY_SCHEMA.params, result: Schema.auto()}
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            
+
             const result = frames[0][0];
             expect(typeof result.first).toBe('boolean');
             expect(result.first).toBe(false);
@@ -375,12 +381,12 @@ describe('Primitive Result Types', () => {
                     text: "complex primitive result scenario",
                     active: true
                 },
-                LEGACY_SCHEMA
+                {params: LEGACY_SCHEMA.params, result: Schema.auto()}
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            
+
             const result = frames[0][0];
             expect(typeof result.small_int).toBe('number');
             expect(result.small_int).toBe(100);

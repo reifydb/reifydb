@@ -53,7 +53,6 @@ export {SchemaHelpers, DEFAULT_SCHEMA} from "./schema-helpers";
 
 // Re-export schema types from core
 export {
-    Schema,
     SchemaPatterns,
     SchemaTransformer,
     BidirectionalSchema,
@@ -61,6 +60,58 @@ export {
     InferSchemaType,
     InferParamType,
     InferResultType,
+    InferPrimitiveSchemaResult,
+    InferPrimitiveObject,
     PrimitiveType,
     ValueType
 } from "@reifydb/core";
+
+// Extended Schema with additional functions
+import { Schema as CoreSchema } from "@reifydb/core";
+
+export const Schema = {
+    // Core Schema methods
+    string: CoreSchema.string,
+    number: CoreSchema.number,
+    boolean: CoreSchema.boolean,
+    bigint: CoreSchema.bigint,
+    date: CoreSchema.date,
+    undefined: CoreSchema.undefined,
+    null: CoreSchema.null,
+    boolValue: CoreSchema.boolValue,
+    int1Value: CoreSchema.int1Value,
+    int2Value: CoreSchema.int2Value,
+    int4Value: CoreSchema.int4Value,
+    int8Value: CoreSchema.int8Value,
+    int16Value: CoreSchema.int16Value,
+    uint1Value: CoreSchema.uint1Value,
+    uint2Value: CoreSchema.uint2Value,
+    uint4Value: CoreSchema.uint4Value,
+    uint8Value: CoreSchema.uint8Value,
+    uint16Value: CoreSchema.uint16Value,
+    float4Value: CoreSchema.float4Value,
+    float8Value: CoreSchema.float8Value,
+    utf8Value: CoreSchema.utf8Value,
+    dateValue: CoreSchema.dateValue,
+    dateTimeValue: CoreSchema.dateTimeValue,
+    timeValue: CoreSchema.timeValue,
+    intervalValue: CoreSchema.intervalValue,
+    uuid4Value: CoreSchema.uuid4Value,
+    uuid7Value: CoreSchema.uuid7Value,
+    undefinedValue: CoreSchema.undefinedValue,
+    blobValue: CoreSchema.blobValue,
+    rowIdValue: CoreSchema.rowIdValue,
+    object: CoreSchema.object,
+    array: CoreSchema.array,
+    tuple: CoreSchema.tuple,
+    union: CoreSchema.union,
+    optional: CoreSchema.optional,
+    auto: CoreSchema.auto,
+    bidirectional: CoreSchema.bidirectional,
+    
+    // New convenience methods
+    withPrimitiveResult: CoreSchema.withPrimitiveResult,
+    primitive: CoreSchema.primitive,
+    result: CoreSchema.result,
+    legacyParams: CoreSchema.legacyParams
+};

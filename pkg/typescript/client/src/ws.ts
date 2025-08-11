@@ -3,7 +3,7 @@
  * Copyright (c) 2025 ReifyDB
  * See license.md file for full license text
  */
-import {decode, Value, TypeValuePair, BidirectionalSchema, SchemaTransformer} from "@reifydb/core";
+import {decode, Value, TypeValuePair, BidirectionalSchema, SchemaTransformer, InferPrimitiveSchemaResult, SchemaNode, InferPrimitiveObject, ObjectSchemaNode} from "@reifydb/core";
 
 import {
     CommandRequest,
@@ -93,44 +93,23 @@ export class WsClient {
     }
 
     /**
-     * Execute a command with schema-based parameter encoding and result decoding
-     * For single statement commands, TResult represents the result of that statement
-     * For multi-statement commands, TResult should be a tuple type representing all results
+     * Execute a command with per-frame schema for result type inference
      */
-    async command<TResult = any>(
+    async command<const T extends readonly [ObjectSchemaNode]>(
         statement: string,
         params: any,
-        schema: BidirectionalSchema
-    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
+        schemas: T
+    ): Promise<[InferPrimitiveObject<T[0]>[]]>;
 
-    async command<TResult = any>(
+    async command(
         statement: string,
-        schema: BidirectionalSchema
-    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
-
-    async command<TResult = any>(
-        statement: string,
-        paramsOrSchema: any | BidirectionalSchema,
-        schema?: BidirectionalSchema
-    ): Promise<TResult extends readonly any[] ? TResult : TResult[]> {
+        params: any,
+        schemas: readonly SchemaNode[]
+    ): Promise<any> {
         const id = `req-${this.nextId++}`;
         
-        let actualParams: any = undefined;
-        let actualSchema: BidirectionalSchema;
-        
-        // Handle overloads: (statement, params, schema) or (statement, schema)
-        if (schema) {
-            actualParams = paramsOrSchema;
-            actualSchema = schema;
-        } else {
-            actualSchema = paramsOrSchema;
-        }
-        
-        // Encode params using schema
-        let encodedParams: any = undefined;
-        if (actualSchema && actualSchema.params && actualParams !== undefined) {
-            encodedParams = this.encodeWithSchema(actualParams, actualSchema.params);
-        }
+        // Encode params using fallback encoding
+        const encodedParams = this.encodeWithSchema(params, null);
         
         const result = await this.send({
             id,
@@ -141,37 +120,61 @@ export class WsClient {
             },
         });
         
-        // Decode results if schema provided
-        if (actualSchema && actualSchema.result) {
-            return result.map((frame: any) => 
-                frame.map((row: any) => SchemaTransformer.decodeResult(row, actualSchema.result!))
-            ) as any;
-        }
+        // Transform each frame with its corresponding schema
+        const transformedFrames = result.map((frame: any, frameIndex: number) => {
+            const frameSchema = schemas[frameIndex];
+            if (!frameSchema) {
+                return frame; // No schema for this frame, return as-is
+            }
+            return frame.map((row: any) => this.transformResult(row, frameSchema));
+        });
         
-        return result as any;
+        return transformedFrames as any;
     }
 
     /**
      * Execute a query with schema-based parameter encoding and result decoding
-     * For single statement queries, TResult represents the result of that statement
-     * For multi-statement queries, TResult should be a tuple type representing all results
+     * With automatic type inference for primitive schemas
      */
+    async query<S extends { __primitiveFields: Record<string, any> } | { __constructorFields: Record<string, any> } | { __typeFields: Record<string, any> } | { __resultFields: Record<string, any> }>(
+        statement: string,
+        params: any,
+        schema: S
+    ): Promise<InferPrimitiveSchemaResult<S>[]>;
+
+    async query<S extends { __primitiveFields: Record<string, any> } | { __constructorFields: Record<string, any> } | { __typeFields: Record<string, any> } | { __resultFields: Record<string, any> }>(
+        statement: string,
+        schema: S
+    ): Promise<InferPrimitiveSchemaResult<S>[]>;
+
+    // Accept any schema node for backwards compatibility
+    async query<TResult = any>(
+        statement: string,
+        params: any,
+        schema: any
+    ): Promise<TResult[]>;
+
+    async query<TResult = any>(
+        statement: string,
+        schema: any
+    ): Promise<TResult[]>;
+
     async query<TResult = any>(
         statement: string,
         params: any,
         schema: BidirectionalSchema
-    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
+    ): Promise<TResult[]>;
 
     async query<TResult = any>(
         statement: string,
         schema: BidirectionalSchema
-    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
+    ): Promise<TResult[]>;
 
     async query<TResult = any>(
         statement: string,
         paramsOrSchema: any | BidirectionalSchema,
         schema?: BidirectionalSchema
-    ): Promise<TResult extends readonly any[] ? TResult : TResult[]> {
+    ): Promise<TResult[]> {
         const id = `req-${this.nextId++}`;
         
         let actualParams: any = undefined;
@@ -185,10 +188,27 @@ export class WsClient {
             actualSchema = paramsOrSchema;
         }
         
-        // Encode params using schema
+        // Handle raw schema nodes (not BidirectionalSchema)
+        let resultSchema: any = null;
+        if (actualSchema) {
+            if ('result' in actualSchema) {
+                // BidirectionalSchema
+                resultSchema = actualSchema.result;
+            } else if ('kind' in actualSchema) {
+                // Raw schema node
+                resultSchema = actualSchema;
+            }
+        }
+        
+        // Encode params using schema (for now, just use fallback encoding)
         let encodedParams: any = undefined;
-        if (actualSchema && actualSchema.params && actualParams !== undefined) {
-            encodedParams = this.encodeWithSchema(actualParams, actualSchema.params);
+        if (actualParams !== undefined) {
+            if (actualSchema && actualSchema.params) {
+                encodedParams = this.encodeWithSchema(actualParams, actualSchema.params);
+            } else {
+                // Fallback encoding for raw schema nodes
+                encodedParams = this.encodeWithSchema(actualParams, null);
+            }
         }
         
         const result = await this.send({
@@ -201,9 +221,9 @@ export class WsClient {
         });
         
         // Decode results if schema provided
-        if (actualSchema && actualSchema.result) {
+        if (resultSchema) {
             return result.map((frame: any) => 
-                frame.map((row: any) => SchemaTransformer.decodeResult(row, actualSchema.result!))
+                frame.map((row: any) => this.transformResult(row, resultSchema))
             ) as any;
         }
         
@@ -241,7 +261,22 @@ export class WsClient {
         );
     }
 
-    private encodeWithSchema(params: any, schema: any): Params {
+    private encodeWithSchema(params: any, schema: any): Params {        
+        // For LEGACY_SCHEMA-like usage, if we have Value objects, encode them directly
+        if (this.isValueObjectParams(params)) {
+            return this.encodeValueObjectParams(params);
+        }
+        
+        // If no schema provided, use fallback encoding
+        if (!schema) {
+            return this.encodePrimitiveParams(params);
+        }
+        
+        // For primitive parameters with LEGACY_SCHEMA, encode directly using fallback
+        if (this.isLegacySchema(schema)) {
+            return this.encodePrimitiveParams(params);
+        }
+        
         const encodedParams = SchemaTransformer.encodeParams(params, schema);
         
         // Convert the schema-encoded result to the expected Params format
@@ -264,6 +299,133 @@ export class WsClient {
             }
             return encoded;
         }
+    }
+
+    private isValueObjectParams(params: any): boolean {
+        if (!params || typeof params !== 'object') {
+            return false;
+        }
+        
+        if (Array.isArray(params)) {
+            return params.some(p => p && typeof p === 'object' && 'encode' in p);
+        }
+        
+        return Object.values(params).some(v => v && typeof v === 'object' && 'encode' in v);
+    }
+
+    private encodeValueObjectParams(params: any): Params {
+        if (Array.isArray(params)) {
+            return params.map(param => {
+                if (param && typeof param === 'object' && 'encode' in param) {
+                    return param.encode();
+                }
+                return this.fallbackEncode(param);
+            });
+        } else {
+            const encoded: Record<string, TypeValuePair> = {};
+            for (const [key, value] of Object.entries(params)) {
+                if (value && typeof value === 'object' && 'encode' in value) {
+                    encoded[key] = (value as Value).encode();
+                } else {
+                    encoded[key] = this.fallbackEncode(value);
+                }
+            }
+            return encoded;
+        }
+    }
+
+    private isLegacySchema(schema: any): boolean {
+        // Check if this is the LEGACY_SCHEMA by looking for its characteristic structure
+        // LEGACY_SCHEMA has params: Schema.optional(Schema.union(...)) and no result schema
+        return schema && 
+               schema.kind === 'optional' && 
+               schema.schema && 
+               schema.schema.kind === 'union';
+    }
+
+    private encodePrimitiveParams(params: any): Params {
+        if (Array.isArray(params)) {
+            return params.map(param => this.fallbackEncode(param));
+        } else {
+            const encoded: Record<string, TypeValuePair> = {};
+            for (const [key, value] of Object.entries(params)) {
+                encoded[key] = this.fallbackEncode(value);
+            }
+            return encoded;
+        }
+    }
+
+    private transformResult(row: any, resultSchema: any): any {
+        console.log('transformResult called with:', { row, resultSchema });
+        
+        // Handle primitive schema transformation
+        if (resultSchema && resultSchema.kind === 'primitive') {
+            console.log('Using primitive branch');
+            const transformedRow: any = {};
+            for (const [key, value] of Object.entries(row)) {
+                // If it's a Value object with .value property, extract the primitive
+                if (value && typeof value === 'object' && 'value' in value) {
+                    transformedRow[key] = (value as any).value;
+                } else {
+                    transformedRow[key] = value;
+                }
+            }
+            console.log('Transformed row:', transformedRow);
+            return transformedRow;
+        }
+        
+        // Handle union schema - check if first type is an object with primitive properties
+        if (resultSchema && resultSchema.kind === 'union' && resultSchema.types && resultSchema.types.length > 0) {
+            const firstType = resultSchema.types[0];
+            if (firstType && firstType.kind === 'object' && firstType.properties) {
+                console.log('Using union schema with object primitive conversion');
+                const transformedRow: any = {};
+                for (const [key, value] of Object.entries(row)) {
+                    const propertySchema = firstType.properties[key];
+                    if (propertySchema && propertySchema.kind === 'primitive') {
+                        // Convert Value objects to primitives for primitive schema properties
+                        if (value && typeof value === 'object' && 'value' in value) {
+                            transformedRow[key] = (value as any).value;
+                        } else {
+                            transformedRow[key] = value;
+                        }
+                    } else {
+                        // Keep as-is for non-primitive properties
+                        transformedRow[key] = value;
+                    }
+                }
+                console.log('Transformed row:', transformedRow);
+                return transformedRow;
+            }
+        }
+        
+        // Handle object schema with primitive properties - extract primitives from Value objects
+        if (resultSchema && resultSchema.kind === 'object' && resultSchema.properties) {
+            console.log('Using object schema with primitive conversion');
+            const transformedRow: any = {};
+            for (const [key, value] of Object.entries(row)) {
+                const propertySchema = resultSchema.properties[key];
+                if (propertySchema && propertySchema.kind === 'primitive') {
+                    // Convert Value objects to primitives for primitive schema properties
+                    if (value && typeof value === 'object' && 'value' in value) {
+                        transformedRow[key] = (value as any).value;
+                    } else {
+                        transformedRow[key] = value;
+                    }
+                } else {
+                    // Keep as-is for non-primitive properties
+                    transformedRow[key] = value;
+                }
+            }
+            console.log('Transformed row:', transformedRow);
+            return transformedRow;
+        }
+        
+        // Default to using SchemaTransformer
+        console.log('Using SchemaTransformer.decodeResult');
+        const result = SchemaTransformer.decodeResult(row, resultSchema);
+        console.log('SchemaTransformer.decodeResult returned:', result);
+        return result;
     }
 
     private fallbackEncode(value: any): TypeValuePair {

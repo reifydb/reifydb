@@ -43,18 +43,37 @@ export class TestSchemas {
 
     /**
      * Create a flexible schema that mimics the old behavior exactly
+     * This schema should pass through Value objects without re-encoding them
      */
     static legacyCompatible(): BidirectionalSchema {
         return {
             params: Schema.optional(Schema.union(
-                Schema.auto(), // Single parameter
-                Schema.object({}), // Named parameters
-                Schema.array(Schema.auto()) // Array parameters
+                Schema.auto(), // Single parameter (Value object or primitive)
+                Schema.object({}), // Named parameters (Value objects or primitives)
+                Schema.array(Schema.auto()) // Array parameters (Value objects or primitives)
             )),
             // No result schema = returns raw Value objects like before
+        };
+    }
+
+    /**
+     * Create a schema that accepts primitives as parameters and returns primitive results
+     * This schema converts Value objects to their primitive values
+     */
+    static primitiveResults(): BidirectionalSchema {
+        return {
+            params: Schema.optional(Schema.union(
+                Schema.auto(), // Single parameter (Value object or primitive)
+                Schema.object({}), // Named parameters (Value objects or primitives)
+                Schema.array(Schema.auto()) // Array parameters (Value objects or primitives)
+            )),
+            result: Schema.object({}) // Use object schema to auto-convert fields to primitives
         };
     }
 }
 
 // Default schema that mimics old behavior exactly
 export const LEGACY_SCHEMA: BidirectionalSchema = TestSchemas.legacyCompatible();
+
+// Schema for tests expecting primitive results
+export const PRIMITIVE_RESULT_SCHEMA: BidirectionalSchema = TestSchemas.primitiveResults();
