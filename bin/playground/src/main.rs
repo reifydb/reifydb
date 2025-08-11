@@ -14,12 +14,13 @@ use reifydb::engine::flow::node::{NodeId, NodeType};
 use reifydb::storage::memory::Memory;
 use reifydb::transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::transaction::svl::SingleVersionLock;
-use reifydb::{Database, ReifyDB, memory, optimistic};
+use reifydb::{Database, MemoryDatabaseOptimistic, ReifyDB, memory, optimistic};
 use reifydb::{SessionSync, Subsystem};
 use std::collections::Bound::Included;
 
 fn main() {
-    let mut db = ReifyDB::new_sync_with(optimistic(memory())).build();
+    let mut db: MemoryDatabaseOptimistic = ReifyDB::new_sync_with(optimistic(memory())).build();
+    let mut db = ReifyDB::new_sync().build();
 
     {
         // let x = db.subsystem::<FlowSubsystemAdapter<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>>();
@@ -80,9 +81,7 @@ fn main() {
     rql_to_flow_example(&mut db);
 }
 
-fn rql_to_flow_example(
-    db: &mut Database<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>,
-) {
+fn rql_to_flow_example(db: &mut MemoryDatabaseOptimistic) {
     // for frame in
     //     db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", Params::None).unwrap()
     // {

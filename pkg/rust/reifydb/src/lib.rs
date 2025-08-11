@@ -6,6 +6,7 @@ mod context;
 mod database;
 mod health;
 mod hook;
+mod presets;
 mod session;
 mod subsystem;
 
@@ -42,6 +43,7 @@ pub use subsystem::WsSubsystem;
 use std::path::Path;
 use std::time::Duration;
 
+pub use presets::*;
 pub use reifydb_core::hook::Hooks;
 pub use reifydb_core::interface::{UnversionedTransaction, VersionedStorage, VersionedTransaction};
 pub use reifydb_storage::lmdb::Lmdb;
