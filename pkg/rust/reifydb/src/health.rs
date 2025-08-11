@@ -11,11 +11,11 @@ pub enum HealthStatus {
     /// Component is healthy and operating normally
     Healthy,
     /// Component is running but experiencing non-critical issues
-    Warning { message: String },
+    Warning { description: String },
     /// Component is experiencing critical issues but is still running
-    Degraded { message: String },
+    Degraded { description: String },
     /// Component has failed and is not operational
-    Failed { message: String },
+    Failed { description: String },
     /// Component status is unknown (e.g., during startup)
     Unknown,
 }
@@ -35,9 +35,9 @@ impl HealthStatus {
     pub fn description(&self) -> &str {
         match self {
             HealthStatus::Healthy => "Healthy",
-            HealthStatus::Warning { message } => message,
-            HealthStatus::Degraded { message } => message,
-            HealthStatus::Failed { message } => message,
+            HealthStatus::Warning { description: message } => message,
+            HealthStatus::Degraded { description: message } => message,
+            HealthStatus::Failed { description: message } => message,
             HealthStatus::Unknown => "Unknown",
         }
     }
@@ -66,9 +66,7 @@ pub struct HealthMonitor {
 impl HealthMonitor {
     /// Create a new health monitor
     pub fn new() -> Self {
-        Self {
-            components: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self { components: Arc::new(Mutex::new(HashMap::new())) }
     }
 
     /// Update the health status of a component
@@ -76,12 +74,7 @@ impl HealthMonitor {
         let mut components = self.components.lock().unwrap();
         components.insert(
             name.clone(),
-            ComponentHealth {
-                name,
-                status,
-                last_updated: Instant::now(),
-                is_running,
-            },
+            ComponentHealth { name, status, last_updated: Instant::now(), is_running },
         );
     }
 
@@ -107,7 +100,7 @@ impl HealthMonitor {
     /// - Unknown: if any component status is unknown
     pub fn get_system_health(&self) -> HealthStatus {
         let components = self.components.lock().unwrap();
-        
+
         if components.is_empty() {
             return HealthStatus::Unknown;
         }
@@ -121,9 +114,9 @@ impl HealthMonitor {
                 HealthStatus::Healthy => continue,
                 HealthStatus::Warning { .. } => has_warning = true,
                 HealthStatus::Degraded { .. } => has_degraded = true,
-                HealthStatus::Failed { message } => {
+                HealthStatus::Failed { description: message } => {
                     return HealthStatus::Failed {
-                        message: format!("Component '{}' failed: {}", health.name, message),
+                        description: format!("Component '{}' failed: {}", health.name, message),
                     };
                 }
                 HealthStatus::Unknown => has_unknown = true,
@@ -134,11 +127,11 @@ impl HealthMonitor {
             HealthStatus::Unknown
         } else if has_degraded {
             HealthStatus::Degraded {
-                message: "One or more components are degraded".to_string(),
+                description: "One or more components are degraded".to_string(),
             }
         } else if has_warning {
             HealthStatus::Warning {
-                message: "One or more components have warnings".to_string(),
+                description: "One or more components have warnings".to_string(),
             }
         } else {
             HealthStatus::Healthy
@@ -156,7 +149,7 @@ impl HealthMonitor {
     pub fn get_stale_components(&self, max_age: Duration) -> Vec<String> {
         let components = self.components.lock().unwrap();
         let now = Instant::now();
-        
+
         components
             .values()
             .filter_map(|health| {

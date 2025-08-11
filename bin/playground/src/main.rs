@@ -16,7 +16,7 @@ use reifydb::storage::memory::Memory;
 use reifydb::transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::transaction::svl::SingleVersionLock;
 use reifydb::{Database, ReifyDB, memory, optimistic};
-use reifydb::{FlowSubsystemAdapter, Session, SessionSync, Subsystem};
+use reifydb::{FlowSubsystem, Session, SessionSync, Subsystem};
 use std::collections::Bound::Included;
 
 fn main() {

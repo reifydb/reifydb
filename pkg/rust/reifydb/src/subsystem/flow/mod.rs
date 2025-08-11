@@ -1,40 +1,40 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::any::Any;
 use crate::health::HealthStatus;
-use crate::subsystem::Subsystem;
+use super::Subsystem;
 use reifydb_core::Result;
 use reifydb_core::interface::{CdcScan, UnversionedTransaction, VersionedTransaction};
-use reifydb_engine::subsystem::flow::FlowSubsystem;
+use reifydb_engine::subsystem::flow::FlowSubsystem as Delegate;
+use std::any::Any;
 
 /// Adapter to make FlowSubsystem compatible with the Subsystem trait
 ///
 /// This wrapper implements the Subsystem trait for FlowSubsystem, allowing
 /// it to be managed by the Database architecture.
-pub struct FlowSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransaction> {
+pub struct FlowSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
     /// The wrapped FlowSubsystem
-    flow_subsystem: FlowSubsystem<VT, UT>,
+    flow_subsystem: Delegate<VT, UT>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystemAdapter<VT, UT> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystem<VT, UT> {
     /// Create a new FlowSubsystem adapter
-    pub fn new(flow_subsystem: FlowSubsystem<VT, UT>) -> Self {
+    pub fn new(flow_subsystem: Delegate<VT, UT>) -> Self {
         Self { flow_subsystem }
     }
 
     /// Get a reference to the underlying FlowSubsystem
-    pub fn inner(&self) -> &FlowSubsystem<VT, UT> {
+    pub fn inner(&self) -> &Delegate<VT, UT> {
         &self.flow_subsystem
     }
 
     /// Get a mutable reference to the underlying FlowSubsystem
-    pub fn inner_mut(&mut self) -> &mut FlowSubsystem<VT, UT> {
+    pub fn inner_mut(&mut self) -> &mut Delegate<VT, UT> {
         &mut self.flow_subsystem
     }
 }
 
-impl<VT, UT> Subsystem for FlowSubsystemAdapter<VT, UT>
+impl<VT, UT> Subsystem for FlowSubsystem<VT, UT>
 where
     VT: VersionedTransaction + Send + Sync,
     UT: UnversionedTransaction + Send + Sync,

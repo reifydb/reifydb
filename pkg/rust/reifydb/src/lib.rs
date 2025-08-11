@@ -12,7 +12,6 @@ mod context;
 mod database;
 mod health;
 mod hook;
-mod manager;
 mod session;
 mod subsystem;
 
@@ -29,24 +28,22 @@ pub use reifydb_transaction as transaction;
 pub use builder::*;
 #[cfg(feature = "async")]
 pub use context::TokioRuntimeProvider;
-pub use context::{
-    AsyncContext, CustomContext, RuntimeProvider, SyncContext, SystemContext, TokioContext,
-};
+pub use context::{AsyncContext, RuntimeProvider, SystemContext, TokioContext};
 pub use health::{HealthMonitor, HealthStatus};
 pub use hook::{OnCreateContext, WithHooks};
 
 pub use database::{Database, DatabaseConfig};
-pub use manager::SubsystemManager;
 #[cfg(feature = "async")]
 pub use session::SessionAsync;
 pub use session::{CommandSession, QuerySession, Session, SessionSync};
 #[cfg(feature = "sub_flow")]
-pub use subsystem::FlowSubsystemAdapter;
+pub use subsystem::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
-pub use subsystem::GrpcSubsystemAdapter;
+pub use subsystem::GrpcSubsystem;
 pub use subsystem::Subsystem;
+pub use subsystem::SubsystemManager;
 #[cfg(feature = "sub_ws")]
-pub use subsystem::WsSubsystemAdapter;
+pub use subsystem::WsSubsystem;
 
 use std::path::Path;
 use std::time::Duration;

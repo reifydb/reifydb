@@ -1,25 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+#[cfg(feature = "sub_flow")]
+use crate::FlowSubsystem;
+#[cfg(feature = "sub_grpc")]
+use crate::GrpcSubsystem;
+#[cfg(feature = "sub_ws")]
+use crate::WsSubsystem;
 use crate::health::{HealthMonitor, HealthStatus};
-use crate::manager::SubsystemManager;
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
 use crate::session::{
     CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session, SessionSync,
 };
+use crate::SubsystemManager;
 use reifydb_core::Result;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 use std::sync::Arc;
 use std::time::Duration;
-
-#[cfg(feature = "sub_flow")]
-use crate::FlowSubsystemAdapter;
-#[cfg(feature = "sub_grpc")]
-use crate::GrpcSubsystemAdapter;
-#[cfg(feature = "sub_ws")]
-use crate::WsSubsystemAdapter;
 
 /// System configuration
 #[derive(Debug, Clone)]
@@ -94,18 +93,18 @@ where
     UT: UnversionedTransaction,
 {
     #[cfg(feature = "sub_flow")]
-    pub fn subsystem_flow(&self) -> Option<&FlowSubsystemAdapter<VT, UT>> {
-        self.subsystem::<FlowSubsystemAdapter<VT, UT>>()
+    pub fn subsystem_flow(&self) -> Option<&FlowSubsystem<VT, UT>> {
+        self.subsystem::<FlowSubsystem<VT, UT>>()
     }
 
     #[cfg(feature = "sub_grpc")]
-    pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystemAdapter<VT, UT>> {
-        self.subsystem::<GrpcSubsystemAdapter<VT, UT>>()
+    pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystem<VT, UT>> {
+        self.subsystem::<GrpcSubsystem<VT, UT>>()
     }
 
     #[cfg(feature = "sub_ws")]
-    pub fn subsystem_ws(&self) -> Option<&WsSubsystemAdapter<VT, UT>> {
-        self.subsystem::<WsSubsystemAdapter<VT, UT>>()
+    pub fn subsystem_ws(&self) -> Option<&WsSubsystem<VT, UT>> {
+        self.subsystem::<WsSubsystem<VT, UT>>()
     }
 }
 
@@ -176,7 +175,7 @@ where
                 // Update system health to reflect failure
                 self.health_monitor.update_component_health(
                     "system".to_string(),
-                    HealthStatus::Failed { message: format!("Startup failed: {}", e) },
+                    HealthStatus::Failed { description: format!("Startup failed: {}", e) },
                     false,
                 );
                 Err(e)
@@ -222,7 +221,7 @@ where
                 self.health_monitor.update_component_health(
                     "system".to_string(),
                     HealthStatus::Warning {
-                        message: format!("Shutdown completed with errors: {}", e),
+                        description: format!("Shutdown completed with errors: {}", e),
                     },
                     false,
                 );
@@ -296,12 +295,7 @@ where
     /// Returns the first subsystem that matches the type, or None if no subsystem of that type is found.
     ///
     pub fn subsystem<T: 'static>(&self) -> Option<&T> {
-        for subsystem in &self.subsystem_manager.subsystems {
-            if let Some(typed_subsystem) = subsystem.as_any().downcast_ref::<T>() {
-                return Some(typed_subsystem);
-            }
-        }
-        None
+        self.subsystem_manager.get::<T>()
     }
 }
 

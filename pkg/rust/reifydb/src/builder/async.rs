@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::hook::WithHooks;
 use super::DatabaseBuilder;
 use crate::Database;
+#[cfg(feature = "sub_flow")]
+use crate::FlowSubsystem as Adapter;
+use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
@@ -39,7 +41,7 @@ where
             use std::time::Duration;
 
             let flow = FlowSubsystem::new(engine.clone(), Duration::from_millis(100));
-            let flow_subsystem = Box::new(crate::subsystem::FlowSubsystemAdapter::new(flow));
+            let flow_subsystem = Box::new(Adapter::new(flow));
             inner = inner.add_subsystem(flow_subsystem);
         }
 

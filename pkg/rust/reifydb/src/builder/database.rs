@@ -3,8 +3,7 @@
 
 use crate::database::{Database, DatabaseConfig};
 use crate::health::HealthMonitor;
-use crate::manager::SubsystemManager;
-use crate::subsystem::Subsystem;
+use crate::{SubsystemManager, Subsystem};
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 use std::sync::Arc;

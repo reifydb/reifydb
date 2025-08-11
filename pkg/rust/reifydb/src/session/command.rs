@@ -9,7 +9,6 @@ use reifydb_engine::Engine;
 #[cfg(feature = "async")]
 use tokio::task::spawn_blocking;
 
-/// Session for executing database commands (DDL/DML operations)
 pub struct CommandSession<VT, UT>
 where
     VT: VersionedTransaction,
@@ -28,7 +27,6 @@ where
         Self { engine, principal }
     }
 
-    /// Execute a synchronous query command
     pub fn query_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -38,7 +36,6 @@ where
         })
     }
 
-    /// Execute a synchronous command
     pub fn command_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -48,7 +45,6 @@ where
         })
     }
 
-    /// Execute an asynchronous command
     #[cfg(feature = "async")]
     pub async fn command_async(
         &self,
@@ -70,7 +66,6 @@ where
         .unwrap()
     }
 
-    /// Execute an asynchronous query
     #[cfg(feature = "async")]
     pub async fn query_async(
         &self,

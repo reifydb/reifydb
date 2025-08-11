@@ -75,15 +75,6 @@ pub trait SystemContext: Send + Sync + 'static {
     fn supports_async(&self) -> bool;
 }
 
-/// Synchronous context - no async runtime available
-///
-/// This is the default context type that provides no async capabilities.
-/// Used when no network servers or async subsystems are configured.
-#[derive(Debug, Clone)]
-pub struct SyncContext {
-    runtime_provider: RuntimeProvider,
-}
-
 /// No-op runtime provider for synchronous contexts
 #[derive(Debug, Clone)]
 pub struct NoRuntimeProvider;
@@ -114,22 +105,6 @@ impl NoRuntimeProvider {
         panic!(
             "No runtime handle available in synchronous context. Add .with_async_runtime() to enable async operations."
         );
-    }
-}
-
-impl Default for SyncContext {
-    fn default() -> Self {
-        Self { runtime_provider: RuntimeProvider::None(NoRuntimeProvider) }
-    }
-}
-
-impl SystemContext for SyncContext {
-    fn runtime(&self) -> &RuntimeProvider {
-        &self.runtime_provider
-    }
-
-    fn supports_async(&self) -> bool {
-        false
     }
 }
 
@@ -235,6 +210,3 @@ impl TokioContext {
         AsyncContext::new(RuntimeProvider::Tokio(provider))
     }
 }
-
-/// Convenience type for custom async context (same as TokioContext for now)
-pub type CustomContext = AsyncContext;

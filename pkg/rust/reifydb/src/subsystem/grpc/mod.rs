@@ -3,90 +3,61 @@
 
 use crate::context::RuntimeProvider;
 use crate::health::HealthStatus;
-use crate::subsystem::Subsystem;
+use super::Subsystem;
 use reifydb_core::Result;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
-use reifydb_network::ws::server::{WsConfig, WsServer};
+use reifydb_engine::Engine;
+use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use std::any::Any;
+use std::net::SocketAddr;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::oneshot;
-#[cfg(feature = "async")]
 use tokio::task::JoinHandle;
 
-/// Adapter to make WsServer compatible with the Subsystem trait
-///
-/// This wrapper implements the Subsystem trait for WsServer, allowing
-/// it to be managed by the Database architecture. It handles the
-/// async-to-sync bridge for the WebSocket server lifecycle.
-pub struct WsSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransaction> {
-    /// The wrapped WsServer
-    ws_server: Option<WsServer<VT, UT>>,
-    /// Subsystem name
-    name: String,
+pub struct GrpcSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
+    /// The wrapped GrpcServer
+    server: Option<GrpcServer<VT, UT>>,
     /// Whether the server is running
     running: Arc<AtomicBool>,
     /// Handle to the async task
     task_handle: Option<JoinHandle<()>>,
     /// Shared runtime provider
     runtime_provider: RuntimeProvider,
-    /// Cached socket address (stored when server starts)  
-    socket_addr: Option<std::net::SocketAddr>,
+    /// Cached socket address (stored when server starts)
+    socket_addr: Option<SocketAddr>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> WsSubsystemAdapter<VT, UT> {
-    /// Create a new WsServer adapter with shared runtime
+impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystem<VT, UT> {
     pub fn new(
-        config: WsConfig,
-        engine: reifydb_engine::Engine<VT, UT>,
+        config: GrpcConfig,
+        engine: Engine<VT, UT>,
         runtime_provider: &RuntimeProvider,
     ) -> Self {
-        let ws_server = WsServer::new(config, engine);
+        let grpc_server = GrpcServer::new(config, engine);
         Self {
-            ws_server: Some(ws_server),
-            name: "websocket".to_string(),
+            server: Some(grpc_server),
             running: Arc::new(AtomicBool::new(false)),
-            #[cfg(feature = "async")]
             task_handle: None,
             runtime_provider: runtime_provider.clone(),
             socket_addr: None,
         }
     }
 
-    /// Create a new WsServer adapter with custom name and shared runtime
-    pub fn with_name(
-        config: WsConfig,
-        engine: reifydb_engine::Engine<VT, UT>,
-        name: String,
-        runtime_provider: &RuntimeProvider,
-    ) -> Self {
-        let ws_server = WsServer::new(config, engine);
-        Self {
-            ws_server: Some(ws_server),
-            name,
-            running: Arc::new(AtomicBool::new(false)),
-            #[cfg(feature = "async")]
-            task_handle: None,
-            runtime_provider: runtime_provider.clone(),
-            socket_addr: None,
-        }
-    }
-
-    /// Get the socket address if the server is running
-    pub fn socket_addr(&self) -> Option<std::net::SocketAddr> {
+    pub fn socket_addr(&self) -> Option<SocketAddr> {
         self.socket_addr
     }
 }
 
-impl<VT, UT> Subsystem for WsSubsystemAdapter<VT, UT>
+impl<VT, UT> Subsystem for GrpcSubsystem<VT, UT>
 where
     VT: VersionedTransaction + Send + Sync + 'static,
     UT: UnversionedTransaction + Send + Sync + 'static,
 {
     fn name(&self) -> &'static str {
-        "Ws"
+        "Grpc"
     }
 
     fn start(&mut self) -> Result<()> {
@@ -94,14 +65,14 @@ where
             return Ok(()); // Already running
         }
 
-        if let Some(server) = self.ws_server.take() {
+        if let Some(server) = self.server.take() {
             let running = Arc::clone(&self.running);
             let (addr_tx, addr_rx) = oneshot::channel();
 
             // Use shared runtime to spawn the server
             let handle = self.runtime_provider.spawn(async move {
                 running.store(true, Ordering::Relaxed);
-                println!("[WsSubsystem] Starting WebSocket server");
+                println!("[GrpcSubsystem] Starting gRPC server");
 
                 // Clone server to capture socket address before serving
                 let server_clone = server.clone();
@@ -125,11 +96,11 @@ where
                 addr_task.abort(); // Clean up address polling task
 
                 if let Err(e) = serve_result {
-                    eprintln!("[WsSubsystem] WebSocket server error: {}", e);
+                    eprintln!("[GrpcSubsystem] gRPC server error: {}", e);
                 }
 
                 running.store(false, Ordering::Relaxed);
-                println!("[WsSubsystem] WebSocket server stopped");
+                println!("[GrpcSubsystem] gRPC server stopped");
             });
 
             // Wait for the socket address from the async task
@@ -141,10 +112,7 @@ where
                 }
             }
 
-            #[cfg(feature = "async")]
-            {
-                self.task_handle = Some(handle);
-            }
+            self.task_handle = Some(handle);
         }
 
         self.running.store(true, Ordering::Relaxed);
@@ -156,30 +124,14 @@ where
             return Ok(()); // Already stopped
         }
 
-        // Request shutdown from the server using shared runtime
-        if let Some(server) = &self.ws_server {
-            let server_close = server.close();
-            self.runtime_provider.block_on(async {
-                if let Err(e) = server_close.await {
-                    eprintln!("[WsSubsystem] Error during WebSocket server shutdown: {}", e);
-                }
-            });
-        }
-
         self.running.store(false, Ordering::Relaxed);
-
-        // Clear cached socket address
         self.socket_addr = None;
 
-        // Clean up task handle
-        #[cfg(feature = "async")]
-        {
-            if let Some(handle) = self.task_handle.take() {
-                handle.abort();
-            }
+        if let Some(handle) = self.task_handle.take() {
+            handle.abort();
         }
 
-        println!("[WsSubsystem] WebSocket server stopped");
+        println!("[GrpcSubsystem] gRPC server stopped");
         Ok(())
     }
 

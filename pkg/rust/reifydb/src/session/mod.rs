@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 //! Session management for ReifyDB
-//! 
+//!
 //! Provides session-based access to the database engine with different
 //! execution modes (sync/async) and permission levels.
 
@@ -18,7 +18,6 @@ use reifydb_core::interface::{Params, Principal, UnversionedTransaction, Version
 use reifydb_engine::Engine;
 use std::future::Future;
 
-/// Core session trait for database access
 pub trait Session<VT, UT>
 where
     VT: VersionedTransaction,
@@ -35,7 +34,6 @@ where
     ) -> crate::Result<QuerySession<VT, UT>>;
 }
 
-/// Synchronous session operations
 pub trait SessionSync<VT, UT>: Session<VT, UT>
 where
     VT: VersionedTransaction,
@@ -52,7 +50,6 @@ where
     }
 }
 
-/// Asynchronous session operations
 #[cfg(feature = "async")]
 pub trait SessionAsync<VT, UT>: Session<VT, UT> + Sync
 where
@@ -82,7 +79,6 @@ where
     }
 }
 
-/// Trait for converting values into command sessions
 pub trait IntoCommandSession<VT, UT>
 where
     VT: VersionedTransaction,
@@ -91,7 +87,6 @@ where
     fn into_command_session(self, engine: Engine<VT, UT>) -> crate::Result<CommandSession<VT, UT>>;
 }
 
-/// Trait for converting values into query sessions
 pub trait IntoQuerySession<VT, UT>
 where
     VT: VersionedTransaction,

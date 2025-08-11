@@ -1,27 +1,31 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Subsystem trait and implementations
+//! Subsystem management and implementations
 //!
-//! This module defines the core Subsystem trait and provides concrete implementations
-//! and adapters for various subsystem types like Flow, gRPC, and WebSocket servers.
+//! This module defines the core Subsystem trait, SubsystemManager for lifecycle management,
+//! and provides concrete implementations for various subsystem types like Flow, gRPC, and WebSocket servers.
 
 use crate::health::HealthStatus;
 use reifydb_core::Result;
 
+mod manager;
+
 #[cfg(feature = "sub_flow")]
 mod flow;
 #[cfg(feature = "sub_grpc")]
-pub(crate) mod grpc;
+mod grpc;
 #[cfg(feature = "sub_ws")]
-pub(crate) mod websocket;
+mod ws;
+
+pub use manager::SubsystemManager;
 
 #[cfg(feature = "sub_flow")]
-pub use flow::FlowSubsystemAdapter;
+pub use flow::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
-pub use grpc::GrpcSubsystemAdapter;
+pub use grpc::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
-pub use websocket::WsSubsystemAdapter;
+pub use ws::WsSubsystem;
 
 /// Uniform interface that all subsystems must implement
 ///
@@ -57,3 +61,4 @@ pub trait Subsystem: Send + Sync + std::any::Any {
     /// Get a reference to self as Any for downcasting
     fn as_any(&self) -> &dyn std::any::Any;
 }
+

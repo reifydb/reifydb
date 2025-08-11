@@ -6,9 +6,14 @@ use crate::context::{RuntimeProvider, TokioRuntimeProvider};
 use crate::hook::WithHooks;
 use super::DatabaseBuilder;
 use crate::Database;
+#[cfg(feature = "sub_grpc")]
+use crate::GrpcSubsystem;
+#[cfg(feature = "sub_ws")]
+use crate::WsSubsystem;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
+use reifydb_network::ws::server::WsConfig;
 
 /// Builder for server database configurations
 ///
@@ -42,8 +47,8 @@ where
 
     /// Configure WebSocket server subsystem
     #[cfg(feature = "sub_ws")]
-    pub fn with_websocket(mut self, config: reifydb_network::ws::server::WsConfig) -> Self {
-        let subsystem = Box::new(crate::subsystem::WsSubsystemAdapter::new(
+    pub fn with_websocket(mut self, config: WsConfig) -> Self {
+        let subsystem = Box::new(WsSubsystem::new(
             config,
             self.engine.clone(),
             &self.runtime_provider,
@@ -55,7 +60,7 @@ where
     /// Configure gRPC server subsystem  
     #[cfg(feature = "sub_grpc")]
     pub fn with_grpc(mut self, config: reifydb_network::grpc::server::GrpcConfig) -> Self {
-        let subsystem = Box::new(crate::subsystem::GrpcSubsystemAdapter::new(
+        let subsystem = Box::new(GrpcSubsystem::new(
             config,
             self.engine.clone(),
             &self.runtime_provider,
