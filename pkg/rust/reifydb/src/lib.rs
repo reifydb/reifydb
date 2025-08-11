@@ -1,12 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! System-level coordination for ReifyDB Engine and Subsystems
-//!
-//! This crate provides a comprehensive architecture for managing the ReifyDB Engine
-//! along with multiple subsystems in a coordinated fashion. It handles lifecycle
-//! management, health monitoring, and graceful shutdown without using async/await.
-
 mod builder;
 mod context;
 mod database;
@@ -41,7 +35,7 @@ pub use subsystem::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
 pub use subsystem::GrpcSubsystem;
 pub use subsystem::Subsystem;
-pub use subsystem::SubsystemManager;
+pub use subsystem::Subsystems;
 #[cfg(feature = "sub_ws")]
 pub use subsystem::WsSubsystem;
 

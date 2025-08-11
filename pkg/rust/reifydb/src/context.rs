@@ -1,33 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! System Context and Runtime Management
-//!
-//! This module provides the SystemContext trait and associated types for managing
-//! shared resources across subsystems using static dispatch. The context acts as
-//! an IoC (Inversion of Control) container that provides access to shared resources
-//! like async runtimes without requiring dynamic dispatch.
-
 use std::future::Future;
+#[cfg(feature = "async")]
 use std::sync::Arc;
+#[cfg(feature = "async")]
+use tokio::runtime::Runtime;
 #[cfg(feature = "async")]
 use tokio::task::JoinHandle;
 
-/// Runtime provider enum for different async runtime implementations
-///
-/// Uses an enum instead of trait objects to maintain static dispatch
-/// and avoid object safety issues.
 #[derive(Debug, Clone)]
 pub enum RuntimeProvider {
-    /// No runtime available (for sync contexts)
     None(NoRuntimeProvider),
-    /// Tokio runtime provider
     #[cfg(feature = "async")]
     Tokio(TokioRuntimeProvider),
 }
 
 impl RuntimeProvider {
-    /// Spawn a future on the runtime
     #[cfg(feature = "async")]
     pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
     where
@@ -41,7 +30,6 @@ impl RuntimeProvider {
         }
     }
 
-    /// Block on a future until completion
     pub fn block_on<F>(&self, future: F) -> F::Output
     where
         F: Future,
@@ -53,7 +41,6 @@ impl RuntimeProvider {
         }
     }
 
-    /// Get a handle to the runtime for direct tokio operations
     #[cfg(feature = "async")]
     pub fn handle(&self) -> &tokio::runtime::Handle {
         match self {
@@ -64,18 +51,11 @@ impl RuntimeProvider {
     }
 }
 
-/// System context trait providing access to shared resources
-///
-/// Uses the RuntimeProvider enum for consistent interface across all contexts.
 pub trait SystemContext: Send + Sync + 'static {
-    /// Get access to the runtime provider
     fn runtime(&self) -> &RuntimeProvider;
-
-    /// Check if this context supports async operations
     fn supports_async(&self) -> bool;
 }
 
-/// No-op runtime provider for synchronous contexts
 #[derive(Debug, Clone)]
 pub struct NoRuntimeProvider;
 
@@ -108,10 +88,6 @@ impl NoRuntimeProvider {
     }
 }
 
-/// Async context with a shared runtime
-///
-/// This context provides access to a shared async runtime that can be used
-/// by multiple subsystems to avoid creating individual runtimes.
 #[derive(Debug, Clone)]
 pub struct AsyncContext {
     runtime_provider: RuntimeProvider,
@@ -134,32 +110,25 @@ impl SystemContext for AsyncContext {
     }
 }
 
-/// Built-in Tokio runtime provider
-///
-/// This provides a default tokio runtime implementation that can be shared
-/// across subsystems.
 #[cfg(feature = "async")]
 #[derive(Debug, Clone)]
 pub struct TokioRuntimeProvider {
-    runtime: Arc<tokio::runtime::Runtime>,
+    runtime: Arc<Runtime>,
 }
 
 #[cfg(feature = "async")]
 impl TokioRuntimeProvider {
-    /// Create a new Tokio runtime provider with default configuration
     pub fn new() -> Result<Self, tokio::io::Error> {
         let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread().enable_all().build()?);
         Ok(Self { runtime })
     }
 
-    /// Create a new Tokio runtime provider with custom configuration
     pub fn with_builder(mut builder: tokio::runtime::Builder) -> Result<Self, tokio::io::Error> {
         let runtime = Arc::new(builder.build()?);
         Ok(Self { runtime })
     }
 
-    /// Create a new Tokio runtime provider from an existing runtime
-    pub fn from_runtime(runtime: Arc<tokio::runtime::Runtime>) -> Self {
+    pub fn from_runtime(runtime: Arc<Runtime>) -> Self {
         Self { runtime }
     }
 }
@@ -186,26 +155,20 @@ impl TokioRuntimeProvider {
     }
 }
 
-/// Convenience type for async context with Tokio runtime
 pub type TokioContext = AsyncContext;
 
 #[cfg(feature = "async")]
 impl TokioContext {
-    /// Create a new Tokio context with default runtime configuration
     pub fn default() -> Result<Self, tokio::io::Error> {
         let provider = TokioRuntimeProvider::new()?;
         Ok(AsyncContext::new(RuntimeProvider::Tokio(provider)))
     }
-
-    /// Create a new Tokio context with custom runtime configuration
     pub fn with_builder(builder: tokio::runtime::Builder) -> Result<Self, tokio::io::Error> {
         let provider = TokioRuntimeProvider::with_builder(builder)?;
         Ok(AsyncContext::new(RuntimeProvider::Tokio(provider)))
     }
-
-    /// Create a new Tokio context from an existing runtime
     #[cfg(feature = "async")]
-    pub fn from_runtime(runtime: Arc<tokio::runtime::Runtime>) -> Self {
+    pub fn from_runtime(runtime: Arc<Runtime>) -> Self {
         let provider = TokioRuntimeProvider::from_runtime(runtime);
         AsyncContext::new(RuntimeProvider::Tokio(provider))
     }

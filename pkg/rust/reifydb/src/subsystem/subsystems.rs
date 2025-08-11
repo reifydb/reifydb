@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::health::{HealthMonitor, HealthStatus};
 use crate::Subsystem;
+use crate::health::{HealthMonitor, HealthStatus};
 use reifydb_core::Result;
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -12,26 +12,18 @@ use std::sync::{
 };
 use std::time::Duration;
 
-/// Manages the lifecycle of multiple subsystems
-///
-/// The SubsystemManager coordinates the starting and stopping of subsystems
-/// in a controlled manner, handles errors, and provides health monitoring.
-pub struct SubsystemManager {
-    /// Collection of managed subsystems, keyed by their TypeId for efficient lookup
+pub struct Subsystems {
     subsystems: HashMap<TypeId, Box<dyn Subsystem>>,
-    /// Whether the manager is currently running
     running: Arc<AtomicBool>,
-    /// Health monitor for tracking subsystem status
     health_monitor: Arc<HealthMonitor>,
 }
 
-impl SubsystemManager {
-    /// Create a new subsystem manager
+impl Subsystems {
     pub fn new(health_monitor: Arc<HealthMonitor>) -> Self {
-        Self { 
-            subsystems: HashMap::new(), 
-            running: Arc::new(AtomicBool::new(false)), 
-            health_monitor 
+        Self {
+            subsystems: HashMap::new(),
+            running: Arc::new(AtomicBool::new(false)),
+            health_monitor,
         }
     }
 
@@ -49,21 +41,14 @@ impl SubsystemManager {
         self.subsystems.insert(type_id, subsystem);
     }
 
-    /// Get the number of managed subsystems
     pub fn subsystem_count(&self) -> usize {
         self.subsystems.len()
     }
 
-    /// Check if the manager is running
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
     }
 
-    /// Start all subsystems sequentially
-    ///
-    /// Subsystems are started in insertion order. If any subsystem
-    /// fails to start, the startup process is aborted and all previously
-    /// started subsystems are stopped.
     pub fn start_all(&mut self, startup_timeout: Duration) -> Result<()> {
         if self.running.load(Ordering::Relaxed) {
             return Ok(()); // Already running
@@ -102,9 +87,7 @@ impl SubsystemManager {
                     // Update health monitoring with failure
                     self.health_monitor.update_component_health(
                         name.clone(),
-                        HealthStatus::Failed {
-                            description: format!("Startup failed: {}", e),
-                        },
+                        HealthStatus::Failed { description: format!("Startup failed: {}", e) },
                         false,
                     );
                     // Rollback: stop all previously started subsystems
@@ -115,15 +98,13 @@ impl SubsystemManager {
         }
 
         self.running.store(true, Ordering::Relaxed);
-        println!("[SubsystemManager] All {} subsystems started successfully", started_subsystems.len());
+        println!(
+            "[SubsystemManager] All {} subsystems started successfully",
+            started_subsystems.len()
+        );
         Ok(())
     }
 
-    /// Stop all subsystems
-    ///
-    /// Subsystems are stopped in arbitrary order (HashMap iteration order).
-    /// Errors during shutdown are logged but don't prevent other subsystems
-    /// from being stopped.
     pub fn stop_all(&mut self, shutdown_timeout: Duration) -> Result<()> {
         if !self.running.load(Ordering::Relaxed) {
             return Ok(()); // Already stopped
@@ -160,9 +141,7 @@ impl SubsystemManager {
                     // Update health monitoring with failure
                     self.health_monitor.update_component_health(
                         name.clone(),
-                        HealthStatus::Failed {
-                            description: format!("Shutdown failed: {}", e),
-                        },
+                        HealthStatus::Failed { description: format!("Shutdown failed: {}", e) },
                         subsystem.is_running(),
                     );
                     errors.push((name.clone(), e));
@@ -183,7 +162,6 @@ impl SubsystemManager {
         }
     }
 
-    /// Update health monitoring for all subsystems
     pub fn update_health_monitoring(&mut self) {
         for (_type_id, subsystem) in &self.subsystems {
             self.health_monitor.update_component_health(
@@ -194,21 +172,15 @@ impl SubsystemManager {
         }
     }
 
-    /// Get the names of all managed subsystems
     pub fn get_subsystem_names(&self) -> Vec<String> {
         self.subsystems.iter().map(|(_type_id, subsystem)| subsystem.name().to_string()).collect()
     }
 
-    /// Get a reference to a subsystem of a specific type
-    ///
-    /// This method uses the TypeId for O(1) lookup efficiency.
-    /// Returns the subsystem if found and successfully downcasted, or None otherwise.
     pub fn get<T: 'static>(&self) -> Option<&T> {
         let type_id = TypeId::of::<T>();
         self.subsystems.get(&type_id)?.as_any().downcast_ref::<T>()
     }
 
-    /// Stop subsystems by name (used for rollback during failed startup)
     fn stop_started_subsystems(&mut self, started_names: &[String]) -> Result<()> {
         let mut errors = Vec::new();
 

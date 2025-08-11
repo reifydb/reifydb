@@ -5,55 +5,50 @@
 use crate::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
 use crate::GrpcSubsystem;
+use crate::Subsystems;
 #[cfg(feature = "sub_ws")]
 use crate::WsSubsystem;
+use crate::defaults::{GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME};
 use crate::health::{HealthMonitor, HealthStatus};
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
 use crate::session::{
     CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session, SessionSync,
 };
-use crate::SubsystemManager;
 use reifydb_core::Result;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
+#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// System configuration
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
-    /// Maximum time to wait for graceful shutdown
     pub graceful_shutdown_timeout: Duration,
-    /// Interval for health checks
     pub health_check_interval: Duration,
-    /// Maximum time allowed for system startup
     pub max_startup_time: Duration,
 }
 
 impl DatabaseConfig {
-    /// Create a new system configuration with default values
     pub fn new() -> Self {
         Self {
-            graceful_shutdown_timeout: crate::defaults::GRACEFUL_SHUTDOWN_TIMEOUT,
-            health_check_interval: crate::defaults::HEALTH_CHECK_INTERVAL,
-            max_startup_time: crate::defaults::MAX_STARTUP_TIME,
+            graceful_shutdown_timeout: GRACEFUL_SHUTDOWN_TIMEOUT,
+            health_check_interval: HEALTH_CHECK_INTERVAL,
+            max_startup_time: MAX_STARTUP_TIME,
         }
     }
 
-    /// Set the graceful shutdown timeout
     pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
         self.graceful_shutdown_timeout = timeout;
         self
     }
 
-    /// Set the health check interval
     pub fn with_health_check_interval(mut self, interval: Duration) -> Self {
         self.health_check_interval = interval;
         self
     }
 
-    /// Set the maximum startup time
     pub fn with_max_startup_time(mut self, timeout: Duration) -> Self {
         self.max_startup_time = timeout;
         self
@@ -66,24 +61,15 @@ impl Default for DatabaseConfig {
     }
 }
 
-/// Main system coordinator that manages Engine and all subsystems
-///
-/// Database provides a unified interface for managing the entire ReifyDB
-/// system lifecycle, including the engine and all associated subsystems.
 pub struct Database<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    /// The ReifyDB engine
-    engine: Engine<VT, UT>,
-    /// Subsystem manager
-    subsystem_manager: SubsystemManager,
-    /// System configuration
     config: DatabaseConfig,
-    /// Health monitor
+    engine: Engine<VT, UT>,
+    subsystems: Subsystems,
     health_monitor: Arc<HealthMonitor>,
-    /// System running state
     running: bool,
 }
 
@@ -113,41 +99,31 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    /// Create a new Database (typically use DatabaseBuilder instead)
     pub(crate) fn new(
         engine: Engine<VT, UT>,
-        subsystem_manager: SubsystemManager,
+        subsystem_manager: Subsystems,
         config: DatabaseConfig,
         health_monitor: Arc<HealthMonitor>,
     ) -> Self {
-        Self { engine, subsystem_manager, config, health_monitor, running: false }
+        Self { engine, subsystems: subsystem_manager, config, health_monitor, running: false }
     }
 
-    /// Get a reference to the engine
     pub fn engine(&self) -> &Engine<VT, UT> {
         &self.engine
     }
 
-    /// Get the system configuration
     pub fn config(&self) -> &DatabaseConfig {
         &self.config
     }
 
-    /// Check if the system is running
     pub fn is_running(&self) -> bool {
         self.running
     }
 
-    /// Get the number of managed subsystems
     pub fn subsystem_count(&self) -> usize {
-        self.subsystem_manager.subsystem_count()
+        self.subsystems.subsystem_count()
     }
 
-    /// Start the entire system
-    ///
-    /// This starts the engine (if needed) and all subsystems in a coordinated manner.
-    /// If any component fails to start, the entire startup process is aborted and
-    /// all successfully started components are stopped.
     pub fn start(&mut self) -> Result<()> {
         if self.running {
             return Ok(()); // Already running
@@ -163,7 +139,7 @@ where
         );
 
         // Start all subsystems
-        match self.subsystem_manager.start_all(self.config.max_startup_time) {
+        match self.subsystems.start_all(self.config.max_startup_time) {
             Ok(()) => {
                 self.running = true;
                 println!("[Database] System started successfully");
@@ -183,10 +159,6 @@ where
         }
     }
 
-    /// Stop the entire system gracefully
-    ///
-    /// This stops all subsystems in reverse order and performs cleanup.
-    /// The system attempts to shut down gracefully within the configured timeout.
     pub fn stop(&mut self) -> Result<()> {
         if !self.running {
             return Ok(()); // Already stopped
@@ -195,7 +167,7 @@ where
         println!("[Database] Stopping system gracefully");
 
         // Stop all subsystems
-        let result = self.subsystem_manager.stop_all(self.config.graceful_shutdown_timeout);
+        let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
 
         // Update engine health monitoring (engine is stopped when system stops)
         self.health_monitor.update_component_health(
@@ -230,22 +202,19 @@ where
         }
     }
 
-    /// Get the current health status of the entire system
     pub fn health_status(&self) -> HealthStatus {
         self.health_monitor.get_system_health()
     }
 
-    /// Get health status of all components
     pub fn get_all_component_health(
         &self,
     ) -> std::collections::HashMap<String, crate::health::ComponentHealth> {
         self.health_monitor.get_all_health()
     }
 
-    /// Update health monitoring for all components
     pub fn update_health_monitoring(&mut self) {
         // Update subsystem health
-        self.subsystem_manager.update_health_monitoring();
+        self.subsystems.update_health_monitoring();
 
         // Update system health
         let system_health = if self.running {
@@ -261,41 +230,32 @@ where
         );
     }
 
-    /// Get the names of all managed subsystems
     pub fn get_subsystem_names(&self) -> Vec<String> {
-        self.subsystem_manager.get_subsystem_names()
+        self.subsystems.get_subsystem_names()
     }
 
-    /// Check for components with stale health information
     pub fn get_stale_components(&self) -> Vec<String> {
         self.health_monitor.get_stale_components(self.config.health_check_interval * 2)
     }
 
-    /// Get the gRPC socket address if the gRPC subsystem is running
     #[cfg(feature = "sub_grpc")]
-    pub fn grpc_socket_addr(&self) -> Option<std::net::SocketAddr> {
+    pub fn grpc_socket_addr(&self) -> Option<SocketAddr> {
         if let Some(subsystem) = self.subsystem_grpc() {
             return subsystem.socket_addr();
         }
         None
     }
 
-    /// Get the WebSocket socket address if the WebSocket subsystem is running
     #[cfg(feature = "sub_ws")]
-    pub fn ws_socket_addr(&self) -> Option<std::net::SocketAddr> {
+    pub fn ws_socket_addr(&self) -> Option<SocketAddr> {
         if let Some(subsystem) = self.subsystem_ws() {
             return subsystem.socket_addr();
         }
         None
     }
 
-    /// Get a reference to a subsystem of a specific type
-    ///
-    /// This method attempts to downcast each managed subsystem to the requested type T.
-    /// Returns the first subsystem that matches the type, or None if no subsystem of that type is found.
-    ///
     pub fn subsystem<T: 'static>(&self) -> Option<&T> {
-        self.subsystem_manager.get::<T>()
+        self.subsystems.get::<T>()
     }
 }
 
@@ -312,7 +272,6 @@ where
     }
 }
 
-// Session trait implementations for Database
 impl<VT, UT> Session<VT, UT> for Database<VT, UT>
 where
     VT: VersionedTransaction,

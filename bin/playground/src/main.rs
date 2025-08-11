@@ -4,8 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb::core::interface::{
-    ColumnId, ColumnIndex, EncodableKeyRange, Params, Principal, SchemaId, Table, TableId,
-    TableRowKeyRange,
+    ColumnId, ColumnIndex, EncodableKeyRange, Params, SchemaId, Table, TableId, TableRowKeyRange,
 };
 use reifydb::core::row::EncodedRowLayout;
 use reifydb::core::{EncodedKeyRange, Frame, Type};
@@ -16,7 +15,7 @@ use reifydb::storage::memory::Memory;
 use reifydb::transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::transaction::svl::SingleVersionLock;
 use reifydb::{Database, ReifyDB, memory, optimistic};
-use reifydb::{FlowSubsystem, Session, SessionSync, Subsystem};
+use reifydb::{SessionSync, Subsystem};
 use std::collections::Bound::Included;
 
 fn main() {
@@ -38,7 +37,7 @@ fn main() {
         dbg!(x.unwrap().is_running());
     }
 
-    let session = db.command_session(Principal::root()).unwrap();
+    // let session = db.command_session(Principal::root()).unwrap();
 
     db.command_as_root(
         r#"
@@ -78,7 +77,7 @@ fn main() {
     .unwrap();
 
     println!("Basic database operations completed successfully!");
-    // rql_to_flow_example(&mut db);
+    rql_to_flow_example(&mut db);
 }
 
 fn rql_to_flow_example(

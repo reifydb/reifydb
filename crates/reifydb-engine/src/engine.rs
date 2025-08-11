@@ -8,7 +8,6 @@ use crate::flow::flow::Flow;
 use crate::flow::node::NodeType;
 use crate::flow::processor::FlowProcessor;
 use crate::function::{Functions, math};
-use crate::subsystem::flow::FlowSubsystem;
 use crate::subsystem::init::register_system_hooks;
 use reifydb_core::hook::transaction::PostCommitHook;
 use reifydb_core::hook::{BoxedHookIter, Callback, Hooks};
@@ -20,9 +19,8 @@ use reifydb_core::interface::{
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{Frame, Type, return_hooks};
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::Arc;
-use std::time::Duration;
 
 pub struct Engine<VT, UT>(Arc<EngineInner<VT, UT>>)
 where
@@ -147,7 +145,7 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
-        let mut result = Self(Arc::new(EngineInner {
+        let result = Self(Arc::new(EngineInner {
             versioned: versioned.clone(),
             unversioned: unversioned.clone(),
             hooks,
@@ -165,15 +163,8 @@ where
             _processor: FlowProcessor::new(Flow::default(), versioned, unversioned),
         }));
 
-        let fs = FlowSubsystem::new(result.clone(), Duration::from_millis(100));
-
         result.setup_hooks()?;
         Ok(result)
-    }
-
-    /// Create a FlowSubsystem for this engine
-    pub fn create_flow_subsystem(&self, poll_interval: Duration) -> FlowSubsystem<VT, UT> {
-        FlowSubsystem::new(self.clone(), poll_interval)
     }
 
     pub fn versioned(&self) -> &VT {

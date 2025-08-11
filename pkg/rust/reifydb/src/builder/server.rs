@@ -1,23 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-use crate::context::{RuntimeProvider, TokioRuntimeProvider};
-use crate::hook::WithHooks;
 use super::DatabaseBuilder;
 use crate::Database;
 #[cfg(feature = "sub_grpc")]
 use crate::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
 use crate::WsSubsystem;
+#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+use crate::context::{RuntimeProvider, TokioRuntimeProvider};
+use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 use reifydb_network::ws::server::WsConfig;
 
-/// Builder for server database configurations
-///
-/// Provides APIs for configuring network subsystems like gRPC and WebSocket
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub struct ServerBuilder<VT, UT>
 where
@@ -25,7 +22,6 @@ where
     UT: UnversionedTransaction,
 {
     inner: DatabaseBuilder<VT, UT>,
-    hooks: Hooks,
     engine: Engine<VT, UT>,
     runtime_provider: RuntimeProvider,
 }
@@ -42,34 +38,23 @@ where
         let runtime_provider = RuntimeProvider::Tokio(
             TokioRuntimeProvider::new().expect("Failed to create Tokio runtime for server"),
         );
-        Self { inner, hooks, engine, runtime_provider }
+        Self { inner, engine, runtime_provider }
     }
 
-    /// Configure WebSocket server subsystem
     #[cfg(feature = "sub_ws")]
     pub fn with_websocket(mut self, config: WsConfig) -> Self {
-        let subsystem = Box::new(WsSubsystem::new(
-            config,
-            self.engine.clone(),
-            &self.runtime_provider,
-        ));
+        let subsystem = WsSubsystem::new(config, self.engine.clone(), &self.runtime_provider);
         self.inner = self.inner.add_subsystem(subsystem);
         self
     }
 
-    /// Configure gRPC server subsystem  
     #[cfg(feature = "sub_grpc")]
     pub fn with_grpc(mut self, config: reifydb_network::grpc::server::GrpcConfig) -> Self {
-        let subsystem = Box::new(GrpcSubsystem::new(
-            config,
-            self.engine.clone(),
-            &self.runtime_provider,
-        ));
+        let subsystem = GrpcSubsystem::new(config, self.engine.clone(), &self.runtime_provider);
         self.inner = self.inner.add_subsystem(subsystem);
         self
     }
 
-    /// Build the database
     pub fn build(self) -> Database<VT, UT> {
         self.inner.build()
     }

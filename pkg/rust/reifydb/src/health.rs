@@ -5,33 +5,24 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// Health status of a component
 #[derive(Debug, Clone, PartialEq)]
 pub enum HealthStatus {
-    /// Component is healthy and operating normally
     Healthy,
-    /// Component is running but experiencing non-critical issues
     Warning { description: String },
-    /// Component is experiencing critical issues but is still running
     Degraded { description: String },
-    /// Component has failed and is not operational
     Failed { description: String },
-    /// Component status is unknown (e.g., during startup)
     Unknown,
 }
 
 impl HealthStatus {
-    /// Check if the status represents a healthy state
     pub fn is_healthy(&self) -> bool {
         matches!(self, HealthStatus::Healthy)
     }
 
-    /// Check if the status represents a failure state
     pub fn is_failed(&self) -> bool {
         matches!(self, HealthStatus::Failed { .. })
     }
 
-    /// Get a human-readable description of the status
     pub fn description(&self) -> &str {
         match self {
             HealthStatus::Healthy => "Healthy",
@@ -43,33 +34,24 @@ impl HealthStatus {
     }
 }
 
-/// System health information for a specific component
 #[derive(Debug, Clone)]
 pub struct ComponentHealth {
-    /// Name of the component
     pub name: String,
-    /// Current health status
     pub status: HealthStatus,
-    /// Last time the health was updated
     pub last_updated: Instant,
-    /// Whether the component is currently running
     pub is_running: bool,
 }
 
-/// Monitors and aggregates health status across all system components
 #[derive(Debug)]
 pub struct HealthMonitor {
-    /// Health status of all components
     components: Arc<Mutex<HashMap<String, ComponentHealth>>>,
 }
 
 impl HealthMonitor {
-    /// Create a new health monitor
     pub fn new() -> Self {
         Self { components: Arc::new(Mutex::new(HashMap::new())) }
     }
 
-    /// Update the health status of a component
     pub fn update_component_health(&self, name: String, status: HealthStatus, is_running: bool) {
         let mut components = self.components.lock().unwrap();
         components.insert(
@@ -78,26 +60,16 @@ impl HealthMonitor {
         );
     }
 
-    /// Get the health status of a specific component
     pub fn get_component_health(&self, name: &str) -> Option<ComponentHealth> {
         let components = self.components.lock().unwrap();
         components.get(name).cloned()
     }
 
-    /// Get the health status of all components
     pub fn get_all_health(&self) -> HashMap<String, ComponentHealth> {
         let components = self.components.lock().unwrap();
         components.clone()
     }
 
-    /// Get the overall system health status
-    ///
-    /// The system is considered:
-    /// - Healthy: if all components are healthy
-    /// - Warning: if any component has warnings but none are degraded/failed
-    /// - Degraded: if any component is degraded but none are failed
-    /// - Failed: if any component has failed
-    /// - Unknown: if any component status is unknown
     pub fn get_system_health(&self) -> HealthStatus {
         let components = self.components.lock().unwrap();
 
@@ -138,14 +110,11 @@ impl HealthMonitor {
         }
     }
 
-    /// Remove a component from health monitoring
     pub fn remove_component(&self, name: &str) {
         let mut components = self.components.lock().unwrap();
         components.remove(name);
     }
 
-    /// Check if any components have stale health information
-    /// (not updated within the specified duration)
     pub fn get_stale_components(&self, max_age: Duration) -> Vec<String> {
         let components = self.components.lock().unwrap();
         let now = Instant::now();

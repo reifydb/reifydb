@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::{CdcQuery, GetHooks, Versioned};
+use crate::interface::{GetHooks, Versioned};
 use crate::row::EncodedRow;
 use crate::{EncodedKey, EncodedKeyRange};
 

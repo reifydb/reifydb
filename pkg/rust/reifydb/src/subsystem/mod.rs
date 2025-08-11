@@ -8,8 +8,9 @@
 
 use crate::health::HealthStatus;
 use reifydb_core::Result;
+use std::any::Any;
 
-mod manager;
+mod subsystems;
 
 #[cfg(feature = "sub_flow")]
 mod flow;
@@ -18,7 +19,7 @@ mod grpc;
 #[cfg(feature = "sub_ws")]
 mod ws;
 
-pub use manager::SubsystemManager;
+pub use subsystems::Subsystems;
 
 #[cfg(feature = "sub_flow")]
 pub use flow::FlowSubsystem;
@@ -31,17 +32,15 @@ pub use ws::WsSubsystem;
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
 /// for all subsystems managed by the Database.
-pub trait Subsystem: Send + Sync + std::any::Any {
+pub trait Subsystem: Send + Sync + Any {
     /// Get the unique name of this subsystem
     fn name(&self) -> &'static str;
-
     /// Start the subsystem
     ///
     /// This method should initialize the subsystem and start any background
     /// threads or processes. It should be idempotent - calling start() on
     /// an already running subsystem should succeed without side effects.
     fn start(&mut self) -> Result<()>;
-
     /// Stop the subsystem
     ///
     /// This method should gracefully shut down the subsystem and clean up
@@ -59,6 +58,5 @@ pub trait Subsystem: Send + Sync + std::any::Any {
     fn health_status(&self) -> HealthStatus;
 
     /// Get a reference to self as Any for downcasting
-    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any(&self) -> &dyn Any;
 }
-

@@ -16,7 +16,6 @@ pub use query::QuerySession;
 use reifydb_core::Frame;
 use reifydb_core::interface::{Params, Principal, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
-use std::future::Future;
 
 pub trait Session<VT, UT>
 where
