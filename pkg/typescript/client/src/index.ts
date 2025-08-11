@@ -11,15 +11,41 @@ export class Client {
      * Connect to ReifyDB via WebSocket
      * @param url WebSocket URL
      * @param options Optional configuration
-     * @returns Connected WebSocket reifydb-client
+     * @returns Connected WebSocket client
      */
     static async connect_ws(url: string, options: Omit<WsClientOptions, 'url'> = {}): Promise<WsClient> {
         return WsClient.connect({url, ...options});
     }
-
 }
 
+export {ReifyError, Diagnostic, Span, DiagnosticColumn} from "./types";
+
+// Re-export core Value classes
+export {
+    BoolValue,
+    Int1Value,
+    Int2Value,
+    Int4Value,
+    Int8Value,
+    Int16Value,
+    Uint1Value,
+    Uint2Value,
+    Uint4Value,
+    Uint8Value,
+    Uint16Value,
+    Float4Value,
+    Float8Value,
+    Utf8Value,
+    DateValue,
+    DateTimeValue,
+    TimeValue,
+    IntervalValue,
+    Uuid4Value,
+    Uuid7Value,
+    UndefinedValue,
+    BlobValue,
+    RowIdValue
+} from "@reifydb/core";
+
+
 export {WsClient, WsClientOptions} from "./ws";
-export {Type, ReifyError, Diagnostic, Span, DiagnosticColumn, WsParams} from "./types";
-export {Interval} from "./interval";
-export {ReifyValue, Value} from "./value";

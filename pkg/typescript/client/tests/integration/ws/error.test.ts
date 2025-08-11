@@ -6,7 +6,7 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient} from "../../../src";
+import {Client, Int1Value, WsClient} from "../../../src";
 
 describe('Error', () => {
     let wsClient: WsClient;
@@ -42,7 +42,7 @@ describe('Error', () => {
     describe('command', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.command<[{ result: number }]>(
+                wsClient.command<[{ result: Int1Value }]>(
                     "MAP cast(129, int1) as result;"
                 )
             ).rejects.toMatchObject({
@@ -62,7 +62,7 @@ describe('Error', () => {
     describe('query', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.query<[{ result: number }]>(
+                wsClient.query<[{ result: Int1Value }]>(
                     "MAP cast(129, int1) as result;"
                 )
             ).rejects.toMatchObject({

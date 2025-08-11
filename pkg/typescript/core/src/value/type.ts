@@ -23,5 +23,6 @@ export interface TypeValuePair {
 
 export abstract class Value {
     abstract readonly type: Type;
+
     abstract encode(): TypeValuePair;
 }

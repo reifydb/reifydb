@@ -4,20 +4,17 @@
  * See license.md file for full license text
  */
 
-import { 
+import {
     BlobValue, BoolValue, DateValue, DateTimeValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
     RowIdValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value,
-    ReifyValue, Type
+    Type, Value
 } from './value';
+import {TypeValuePair} from "./value/type";
 
-export interface TypeValuePair {
-    type: Type;
-    value: string;
-}
 
-export function decode(pair: TypeValuePair): ReifyValue {
+export function decode(pair: TypeValuePair): Value {
     switch (pair.type) {
         case "Blob":
             return BlobValue.parse(pair.value);

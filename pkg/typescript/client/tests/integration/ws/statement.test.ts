@@ -6,7 +6,7 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient} from "../../../src";
+import {Client, WsClient, Int4Value, Utf8Value} from "../../../src";
 
 describe('Statement', () => {
     let wsClient: WsClient;
@@ -66,36 +66,36 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.command<[
-                { one: number },
-                { two: number }
+                { one: Int4Value },
+                { two: Int4Value }
             ]>(
                 ';MAP 1 as one ;;;MAP 2 as two'
             );
             expect(frames).toHaveLength(2);
 
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].one).toBe(1);
+            expect(frames[0][0].one.value).toBe(1);
 
             expect(frames[1]).toHaveLength(1);
-            expect(frames[1][0].two).toBe(2);
+            expect(frames[1][0].two.value).toBe(2);
 
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await wsClient.command<[{ result: boolean }]>(
+            const frames = await wsClient.command<[{ result: Int4Value }]>(
                 'MAP 1 as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result.value).toBe(1);
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.command<[
-                { result: number },
-                { result: number },
-                { result: number },
+                { result: Int4Value },
+                { result: Int4Value },
+                { result: Int4Value },
             ]>(
                 'MAP 1 as result;' +
                 'MAP 2 as result;' +
@@ -108,16 +108,16 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
-            expect(frames[1][0].result).toBe(2);
-            expect(frames[2][0].result).toBe(3);
+            expect(frames[0][0].result.value).toBe(1);
+            expect(frames[1][0].result.value).toBe(2);
+            expect(frames[2][0].result.value).toBe(3);
         }, 1000);
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.command<[
-                { result: number },
-                { a: number, b: number },
-                { result: string },
+                { result: Int4Value },
+                { a: Int4Value, b: Int4Value },
+                { result: Utf8Value },
             ]>(
                 'MAP 1 as result;' +
                 'MAP { 2 as a, 3 as b };' +
@@ -130,12 +130,12 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result.value).toBe(1);
 
-            expect(frames[1][0].a).toBe(2);
-            expect(frames[1][0].b).toBe(3);
+            expect(frames[1][0].a.value).toBe(2);
+            expect(frames[1][0].b.value).toBe(3);
 
-            expect(frames[2][0].result).toBe("ReifyDB");
+            expect(frames[2][0].result.value).toBe("ReifyDB");
         }, 1000);
     });
 
@@ -166,36 +166,36 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.query<[
-                { one: number },
-                { two: number }
+                { one: Int4Value },
+                { two: Int4Value }
             ]>(
                 ';MAP 1 as one ;;;MAP 2 as two'
             );
             expect(frames).toHaveLength(2);
 
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].one).toBe(1);
+            expect(frames[0][0].one.value).toBe(1);
 
             expect(frames[1]).toHaveLength(1);
-            expect(frames[1][0].two).toBe(2);
+            expect(frames[1][0].two.value).toBe(2);
 
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await wsClient.query<[{ result: boolean }]>(
+            const frames = await wsClient.query<[{ result: Int4Value }]>(
                 'MAP 1 as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result.value).toBe(1);
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.query<[
-                { result: number },
-                { result: number },
-                { result: number },
+                { result: Int4Value },
+                { result: Int4Value },
+                { result: Int4Value },
             ]>(
                 'MAP 1 as result;' +
                 'MAP 2 as result;' +
@@ -208,16 +208,16 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
-            expect(frames[1][0].result).toBe(2);
-            expect(frames[2][0].result).toBe(3);
+            expect(frames[0][0].result.value).toBe(1);
+            expect(frames[1][0].result.value).toBe(2);
+            expect(frames[2][0].result.value).toBe(3);
         }, 1000);
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.query<[
-                { result: number },
-                { a: number, b: number },
-                { result: string },
+                { result: Int4Value },
+                { a: Int4Value, b: Int4Value },
+                { result: Utf8Value },
             ]>(
                 'MAP 1 as result;' +
                 'MAP { 2 as a, 3 as b } ;' +
@@ -230,12 +230,12 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result.value).toBe(1);
 
-            expect(frames[1][0].a).toBe(2);
-            expect(frames[1][0].b).toBe(3);
+            expect(frames[1][0].a.value).toBe(2);
+            expect(frames[1][0].b.value).toBe(3);
 
-            expect(frames[2][0].result).toBe("ReifyDB");
+            expect(frames[2][0].result.value).toBe("ReifyDB");
         }, 1000);
 
     });

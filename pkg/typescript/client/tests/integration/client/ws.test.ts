@@ -6,7 +6,7 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient} from "../../../src";
+import {Client, WsClient, Int4Value} from "../../../src";
 
 describe('ReifyDB Client Integration Tests', () => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
@@ -43,23 +43,23 @@ describe('ReifyDB Client Integration Tests', () => {
         });
 
         it('should execute simple command', async () => {
-            const frames = await wsClient.command<[{ result: number }]>(
+            const frames = await wsClient.command<[{ result: Int4Value }]>(
                 'MAP 42 as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(42);
+            expect(frames[0][0].result.value).toBe(42);
         }, 10000);
 
         it('should execute simple query', async () => {
-            const frames = await wsClient.query<[{ result: number }]>(
+            const frames = await wsClient.query<[{ result: Int4Value }]>(
                 'MAP 42 as result;'
             );
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(42);
+            expect(frames[0][0].result.value).toBe(42);
         }, 10000);
     });
 });

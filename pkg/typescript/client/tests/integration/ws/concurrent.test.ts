@@ -6,7 +6,7 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient} from "../../../src";
+import {Client, WsClient, Int4Value, Utf8Value} from "../../../src";
 
 describe('Concurrent requests', () => {
     let wsClient: WsClient;
@@ -43,21 +43,21 @@ describe('Concurrent requests', () => {
     describe('command', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.command<[{ result: number }]>(
+                wsClient.command<[{ result: Int4Value }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.command<[{ a: number, b: number }]>(
+                wsClient.command<[{ a: Int4Value, b: Int4Value }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.command<[{ result: string }]>(
+                wsClient.command<[{ result: Utf8Value }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
 
-            expect(result1[0][0].result).toBe(1);
-            expect(result2[0][0].a).toBe(2);
-            expect(result2[0][0].b).toBe(3);
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 
@@ -65,42 +65,42 @@ describe('Concurrent requests', () => {
     describe('query', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.query<[{ result: number }]>(
+                wsClient.query<[{ result: Int4Value }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.query<[{ a: number, b: number }]>(
+                wsClient.query<[{ a: Int4Value, b: Int4Value }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.query<[{ result: string }]>(
+                wsClient.query<[{ result: Utf8Value }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
 
-            expect(result1[0][0].result).toBe(1);
-            expect(result2[0][0].a).toBe(2);
-            expect(result2[0][0].b).toBe(3);
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 
     describe('command & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.command<[{ result: number }]>(
+                wsClient.command<[{ result: Int4Value }]>(
                     'MAP 1 as result;'
                 ),
-                wsClient.query<[{ a: number, b: number }]>(
+                wsClient.query<[{ a: Int4Value, b: Int4Value }]>(
                     'MAP { 2 as a, 3 as b };'
                 ),
-                wsClient.command<[{ result: string }]>(
+                wsClient.command<[{ result: Utf8Value }]>(
                     "MAP 'ReifyDB' as result;"
                 )
             ]);
 
-            expect(result1[0][0].result).toBe(1);
-            expect(result2[0][0].a).toBe(2);
-            expect(result2[0][0].b).toBe(3);
-            expect(result3[0][0].result).toBe('ReifyDB');
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
         });
     });
 });

@@ -1,8 +1,9 @@
-/**
+/*
  * MIT License
  * Copyright (c) 2025 ReifyDB
  * See license.md file for full license text
  */
+import {decode, Value, TypeValuePair} from "@reifydb/core";
 
 import {
     CommandRequest,
@@ -11,11 +12,27 @@ import {
     QueryRequest,
     QueryResponse,
     ReifyError,
-    WebsocketColumn
+    Column,
+    Params
 } from "./types";
-import {decodeValue} from "./decoder";
-import {ReifyValue} from "./value";
-import {encodeParams} from "./encoder";
+
+export interface WsClientOptions {
+    url: string;
+    timeoutMs?: number;
+    token?: string;
+}
+
+function encodeTypedParams(params: Value[] | Record<string, Value>): Params {
+    if (Array.isArray(params)) {
+        return params.map(param => param.encode());
+    } else {
+        const encoded: Record<string, TypeValuePair> = {};
+        for (const [key, value] of Object.entries(params)) {
+            encoded[key] = value.encode();
+        }
+        return encoded;
+    }
+}
 
 type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse;
 
@@ -29,11 +46,6 @@ async function createWebSocket(url: string): Promise<WebSocket> {
     }
 }
 
-export interface WsClientOptions {
-    url: string;
-    timeoutMs?: number;
-    token?: string;
-}
 
 export class WsClient {
     private options: WsClientOptions;
@@ -92,23 +104,23 @@ export class WsClient {
         return new WsClient(socket, options);
     }
 
-    async command<T extends readonly Record<string, ReifyValue>[]>(
+    async command<T extends readonly Record<string, Value>[]>(
         statement: string
     ): Promise<{ [K in keyof T]: T[K][] }>;
 
-    async command<T extends readonly Record<string, ReifyValue>[]>(
+    async command<T extends readonly Record<string, Value>[]>(
         statement: string,
-        params: ReifyValue[]
+        params: Value[]
     ): Promise<{ [K in keyof T]: T[K][] }>;
 
-    async command<T extends readonly Record<string, ReifyValue>[]>(
+    async command<T extends readonly Record<string, Value>[]>(
         statement: string,
-        params: Record<string, ReifyValue>
+        params: Record<string, Value>
     ): Promise<{ [K in keyof T]: T[K][] }>;
 
-    async command<T extends readonly Record<string, ReifyValue>[]>(
+    async command<T extends readonly Record<string, Value>[]>(
         statement: string,
-        params?: ReifyValue[] | Record<string, ReifyValue>
+        params?: Value[] | Record<string, Value>
     ): Promise<{ [K in keyof T]: T[K][] }> {
         const id = `req-${this.nextId++}`;
         return await this.send({
@@ -116,28 +128,28 @@ export class WsClient {
             type: "Command",
             payload: {
                 statements: [statement],
-                params: params ? encodeParams(params) : undefined
+                params: params ? encodeTypedParams(params) : undefined
             },
         })
     }
 
-    async query<T extends readonly Record<string, ReifyValue>[]>(
+    async query<T extends readonly Record<string, Value>[]>(
         statement: string
     ): Promise<{ [K in keyof T]: T[K][] }>;
 
-    async query<T extends readonly Record<string, ReifyValue>[]>(
+    async query<T extends readonly Record<string, Value>[]>(
         statement: string,
-        params: ReifyValue[]
+        params: Value[]
     ): Promise<{ [K in keyof T]: T[K][] }>;
 
-    async query<T extends readonly Record<string, ReifyValue>[]>(
+    async query<T extends readonly Record<string, Value>[]>(
         statement: string,
-        params: Record<string, ReifyValue>
+        params: Record<string, Value>
     ): Promise<{ [K in keyof T]: T[K][] }>;
 
-    async query<T extends readonly Record<string, ReifyValue>[]>(
+    async query<T extends readonly Record<string, Value>[]>(
         statement: string,
-        params?: ReifyValue[] | Record<string, ReifyValue>
+        params?: Value[] | Record<string, Value>
     ): Promise<{ [K in keyof T]: T[K][] }> {
         const id = `req-${this.nextId++}`;
         return await this.send({
@@ -145,13 +157,13 @@ export class WsClient {
             type: "Query",
             payload: {
                 statements: [statement],
-                params: params ? encodeParams(params) : undefined
+                params: params ? encodeTypedParams(params) : undefined
             },
         })
     }
 
 
-    async send<T extends readonly Record<string, ReifyValue>[]>(req: CommandRequest | QueryRequest): Promise<{
+    async send<T extends readonly Record<string, Value>[]>(req: CommandRequest | QueryRequest): Promise<{
         [K in keyof T]: T[K][];
     }> {
         const id = req.id;
@@ -190,12 +202,12 @@ export class WsClient {
 }
 
 
-function columnsToRows(columns: WebsocketColumn[]): Record<string, ReifyValue>[] {
+function columnsToRows(columns: Column[]): Record<string, Value>[] {
     const rowCount = columns[0]?.data.length ?? 0;
     return Array.from({length: rowCount}, (_, i) => {
-        const row: Record<string, ReifyValue> = {};
+        const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decodeValue(col.ty, col.data[i]);
+            row[col.name] = decode({type: col.ty, value: col.data[i]});
         }
         return row;
     });

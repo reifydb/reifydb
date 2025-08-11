@@ -3,28 +3,12 @@
  * Copyright (c) 2025 ReifyDB
  * See license.md file for full license text
  */
+import {Type, TypeValuePair} from "@reifydb/core";
 
-export type Type =
-    | "Bool"
-    | "Float4" | "Float8"
-    | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
-    | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
-    | "Utf8"
-    | "Date" | "DateTime" | "Time" | "Interval"
-    | "Uuid4" | "Uuid7"
-    | "Undefined";
+export type Params = (TypeValuePair | null)[] | Record<string, TypeValuePair | null>;
 
-export interface WsValue {
-    type: Type;
-    value: string;
-}
-
-// WsParams matches Rust: array for positional, object for named
-// This represents the encoded params sent over the wire
-export type WsParams = (WsValue | null)[] | Record<string, WsValue | null>;
-
-export interface WebsocketFrame {
-    columns: WebsocketColumn[];
+export interface Frame {
+    columns: Column[];
 }
 
 export interface DiagnosticColumn {
@@ -50,7 +34,7 @@ export interface Diagnostic {
     cause?: Diagnostic,
 }
 
-export interface WebsocketColumn {
+export interface Column {
     name: string;
     ty: Type;
     data: string[];
@@ -69,7 +53,7 @@ export interface CommandRequest {
     type: "Command";
     payload: {
         statements: string[];
-        params?: WsParams;
+        params?: Params;
     }
 }
 
@@ -77,7 +61,7 @@ export interface CommandResponse {
     id: string;
     type: "Command";
     payload: {
-        frames: WebsocketFrame[];
+        frames: Frame[];
     };
 }
 
@@ -86,7 +70,7 @@ export interface QueryRequest {
     type: "Query";
     payload: {
         statements: string[];
-        params?: WsParams;
+        params?: Params;
     }
 }
 
@@ -94,7 +78,7 @@ export interface QueryResponse {
     id: string;
     type: "Query";
     payload: {
-        frames: WebsocketFrame[];
+        frames: Frame[];
     };
 }
 
