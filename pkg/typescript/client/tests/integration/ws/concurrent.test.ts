@@ -7,6 +7,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Client, WsClient, Int4Value, Utf8Value} from "../../../src";
+import { LEGACY_SCHEMA } from "../test-helpers";
 
 describe('Concurrent requests', () => {
     let wsClient: WsClient;
@@ -44,13 +45,16 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.command<[{ result: Int4Value }]>(
-                    'MAP 1 as result;'
+                    'MAP 1 as result;',
+                    LEGACY_SCHEMA
                 ),
                 wsClient.command<[{ a: Int4Value, b: Int4Value }]>(
-                    'MAP { 2 as a, 3 as b };'
+                    'MAP { 2 as a, 3 as b };',
+                    LEGACY_SCHEMA
                 ),
                 wsClient.command<[{ result: Utf8Value }]>(
-                    "MAP 'ReifyDB' as result;"
+                    "MAP 'ReifyDB' as result;",
+                    LEGACY_SCHEMA
                 )
             ]);
 
@@ -66,13 +70,16 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.query<[{ result: Int4Value }]>(
-                    'MAP 1 as result;'
+                    'MAP 1 as result;',
+                    LEGACY_SCHEMA
                 ),
                 wsClient.query<[{ a: Int4Value, b: Int4Value }]>(
-                    'MAP { 2 as a, 3 as b };'
+                    'MAP { 2 as a, 3 as b };',
+                    LEGACY_SCHEMA
                 ),
                 wsClient.query<[{ result: Utf8Value }]>(
-                    "MAP 'ReifyDB' as result;"
+                    "MAP 'ReifyDB' as result;",
+                    LEGACY_SCHEMA
                 )
             ]);
 
@@ -87,13 +94,16 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.command<[{ result: Int4Value }]>(
-                    'MAP 1 as result;'
+                    'MAP 1 as result;',
+                    LEGACY_SCHEMA
                 ),
                 wsClient.query<[{ a: Int4Value, b: Int4Value }]>(
-                    'MAP { 2 as a, 3 as b };'
+                    'MAP { 2 as a, 3 as b };',
+                    LEGACY_SCHEMA
                 ),
                 wsClient.command<[{ result: Utf8Value }]>(
-                    "MAP 'ReifyDB' as result;"
+                    "MAP 'ReifyDB' as result;",
+                    LEGACY_SCHEMA
                 )
             ]);
 

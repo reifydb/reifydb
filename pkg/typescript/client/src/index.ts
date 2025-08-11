@@ -49,3 +49,18 @@ export {
 
 
 export {WsClient, WsClientOptions} from "./ws";
+export {SchemaHelpers, DEFAULT_SCHEMA} from "./schema-helpers";
+
+// Re-export schema types from core
+export {
+    Schema,
+    SchemaPatterns,
+    SchemaTransformer,
+    BidirectionalSchema,
+    SchemaNode,
+    InferSchemaType,
+    InferParamType,
+    InferResultType,
+    PrimitiveType,
+    ValueType
+} from "@reifydb/core";

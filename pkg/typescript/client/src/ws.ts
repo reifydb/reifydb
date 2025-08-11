@@ -3,7 +3,7 @@
  * Copyright (c) 2025 ReifyDB
  * See license.md file for full license text
  */
-import {decode, Value, TypeValuePair} from "@reifydb/core";
+import {decode, Value, TypeValuePair, BidirectionalSchema, SchemaTransformer} from "@reifydb/core";
 
 import {
     CommandRequest,
@@ -20,18 +20,6 @@ export interface WsClientOptions {
     url: string;
     timeoutMs?: number;
     token?: string;
-}
-
-function encodeTypedParams(params: Value[] | Record<string, Value>): Params {
-    if (Array.isArray(params)) {
-        return params.map(param => param.encode());
-    } else {
-        const encoded: Record<string, TypeValuePair> = {};
-        for (const [key, value] of Object.entries(params)) {
-            encoded[key] = value.encode();
-        }
-        return encoded;
-    }
 }
 
 type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse;
@@ -104,68 +92,125 @@ export class WsClient {
         return new WsClient(socket, options);
     }
 
-    async command<T extends readonly Record<string, Value>[]>(
-        statement: string
-    ): Promise<{ [K in keyof T]: T[K][] }>;
-
-    async command<T extends readonly Record<string, Value>[]>(
+    /**
+     * Execute a command with schema-based parameter encoding and result decoding
+     * For single statement commands, TResult represents the result of that statement
+     * For multi-statement commands, TResult should be a tuple type representing all results
+     */
+    async command<TResult = any>(
         statement: string,
-        params: Value[]
-    ): Promise<{ [K in keyof T]: T[K][] }>;
+        params: any,
+        schema: BidirectionalSchema
+    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
 
-    async command<T extends readonly Record<string, Value>[]>(
+    async command<TResult = any>(
         statement: string,
-        params: Record<string, Value>
-    ): Promise<{ [K in keyof T]: T[K][] }>;
+        schema: BidirectionalSchema
+    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
 
-    async command<T extends readonly Record<string, Value>[]>(
+    async command<TResult = any>(
         statement: string,
-        params?: Value[] | Record<string, Value>
-    ): Promise<{ [K in keyof T]: T[K][] }> {
+        paramsOrSchema: any | BidirectionalSchema,
+        schema?: BidirectionalSchema
+    ): Promise<TResult extends readonly any[] ? TResult : TResult[]> {
         const id = `req-${this.nextId++}`;
-        return await this.send({
+        
+        let actualParams: any = undefined;
+        let actualSchema: BidirectionalSchema;
+        
+        // Handle overloads: (statement, params, schema) or (statement, schema)
+        if (schema) {
+            actualParams = paramsOrSchema;
+            actualSchema = schema;
+        } else {
+            actualSchema = paramsOrSchema;
+        }
+        
+        // Encode params using schema
+        let encodedParams: any = undefined;
+        if (actualSchema && actualSchema.params && actualParams !== undefined) {
+            encodedParams = this.encodeWithSchema(actualParams, actualSchema.params);
+        }
+        
+        const result = await this.send({
             id,
             type: "Command",
             payload: {
                 statements: [statement],
-                params: params ? encodeTypedParams(params) : undefined
+                params: encodedParams
             },
-        })
+        });
+        
+        // Decode results if schema provided
+        if (actualSchema && actualSchema.result) {
+            return result.map((frame: any) => 
+                frame.map((row: any) => SchemaTransformer.decodeResult(row, actualSchema.result!))
+            ) as any;
+        }
+        
+        return result as any;
     }
 
-    async query<T extends readonly Record<string, Value>[]>(
-        statement: string
-    ): Promise<{ [K in keyof T]: T[K][] }>;
-
-    async query<T extends readonly Record<string, Value>[]>(
+    /**
+     * Execute a query with schema-based parameter encoding and result decoding
+     * For single statement queries, TResult represents the result of that statement
+     * For multi-statement queries, TResult should be a tuple type representing all results
+     */
+    async query<TResult = any>(
         statement: string,
-        params: Value[]
-    ): Promise<{ [K in keyof T]: T[K][] }>;
+        params: any,
+        schema: BidirectionalSchema
+    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
 
-    async query<T extends readonly Record<string, Value>[]>(
+    async query<TResult = any>(
         statement: string,
-        params: Record<string, Value>
-    ): Promise<{ [K in keyof T]: T[K][] }>;
+        schema: BidirectionalSchema
+    ): Promise<TResult extends readonly any[] ? TResult : TResult[]>;
 
-    async query<T extends readonly Record<string, Value>[]>(
+    async query<TResult = any>(
         statement: string,
-        params?: Value[] | Record<string, Value>
-    ): Promise<{ [K in keyof T]: T[K][] }> {
+        paramsOrSchema: any | BidirectionalSchema,
+        schema?: BidirectionalSchema
+    ): Promise<TResult extends readonly any[] ? TResult : TResult[]> {
         const id = `req-${this.nextId++}`;
-        return await this.send({
+        
+        let actualParams: any = undefined;
+        let actualSchema: BidirectionalSchema;
+        
+        // Handle overloads: (statement, params, schema) or (statement, schema)
+        if (schema) {
+            actualParams = paramsOrSchema;
+            actualSchema = schema;
+        } else {
+            actualSchema = paramsOrSchema;
+        }
+        
+        // Encode params using schema
+        let encodedParams: any = undefined;
+        if (actualSchema && actualSchema.params && actualParams !== undefined) {
+            encodedParams = this.encodeWithSchema(actualParams, actualSchema.params);
+        }
+        
+        const result = await this.send({
             id,
             type: "Query",
             payload: {
                 statements: [statement],
-                params: params ? encodeTypedParams(params) : undefined
+                params: encodedParams
             },
-        })
+        });
+        
+        // Decode results if schema provided
+        if (actualSchema && actualSchema.result) {
+            return result.map((frame: any) => 
+                frame.map((row: any) => SchemaTransformer.decodeResult(row, actualSchema.result!))
+            ) as any;
+        }
+        
+        return result as any;
     }
 
-
-    async send<T extends readonly Record<string, Value>[]>(req: CommandRequest | QueryRequest): Promise<{
-        [K in keyof T]: T[K][];
-    }> {
+    async send(req: CommandRequest | QueryRequest): Promise<any> {
         const id = req.id;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
@@ -193,7 +238,66 @@ export class WsClient {
 
         return response.payload.frames.map((frame) =>
             columnsToRows(frame.columns)
-        ) as { [K in keyof T]: T[K][] };
+        );
+    }
+
+    private encodeWithSchema(params: any, schema: any): Params {
+        const encodedParams = SchemaTransformer.encodeParams(params, schema);
+        
+        // Convert the schema-encoded result to the expected Params format
+        if (Array.isArray(encodedParams)) {
+            return encodedParams.map(param => {
+                if (param && typeof param === 'object' && 'encode' in param) {
+                    return param.encode();
+                }
+                // Fallback encoding for primitives
+                return this.fallbackEncode(param);
+            });
+        } else {
+            const encoded: Record<string, TypeValuePair> = {};
+            for (const [key, value] of Object.entries(encodedParams)) {
+                if (value && typeof value === 'object' && 'encode' in value) {
+                    encoded[key] = (value as Value).encode();
+                } else {
+                    encoded[key] = this.fallbackEncode(value);
+                }
+            }
+            return encoded;
+        }
+    }
+
+    private fallbackEncode(value: any): TypeValuePair {
+        if (value === null || value === undefined) {
+            return { type: 'Undefined', value: '⟪undefined⟫' };
+        }
+        
+        switch (typeof value) {
+            case 'boolean':
+                return { type: 'Bool', value: value.toString() };
+            case 'number':
+                if (Number.isInteger(value)) {
+                    if (value >= -128 && value <= 127) {
+                        return { type: 'Int1', value: value.toString() };
+                    } else if (value >= -32768 && value <= 32767) {
+                        return { type: 'Int2', value: value.toString() };
+                    } else if (value >= -2147483648 && value <= 2147483647) {
+                        return { type: 'Int4', value: value.toString() };
+                    } else {
+                        return { type: 'Int8', value: value.toString() };
+                    }
+                } else {
+                    return { type: 'Float8', value: value.toString() };
+                }
+            case 'string':
+                return { type: 'Utf8', value: value };
+            case 'bigint':
+                return { type: 'Int8', value: value.toString() };
+            default:
+                if (value instanceof Date) {
+                    return { type: 'DateTime', value: value.toISOString() };
+                }
+                throw new Error(`Unsupported parameter type: ${typeof value}`);
+        }
     }
 
     disconnect() {

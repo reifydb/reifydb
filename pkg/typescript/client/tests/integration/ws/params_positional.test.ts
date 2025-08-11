@@ -31,6 +31,7 @@ import {
     Uuid7Value,
     UndefinedValue
 } from "../../../src";
+import { LEGACY_SCHEMA } from "../test-helpers";
 
 describe('Positional Parameters', () => {
     let wsClient: WsClient;
@@ -66,7 +67,8 @@ describe('Positional Parameters', () => {
         it('Bool type', async () => {
             const frames = await wsClient.command<[{ result: BoolValue }]>(
                 'MAP $1 as result',
-                [new BoolValue(true)]
+                [new BoolValue(true)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -78,7 +80,8 @@ describe('Positional Parameters', () => {
         it('Int4 type', async () => {
             const frames = await wsClient.command<[{ result: Int4Value }]>(
                 'MAP $1 as result',
-                [new Int4Value(42)]
+                [new Int4Value(42)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -90,7 +93,8 @@ describe('Positional Parameters', () => {
         it('Int8 type with bigint', async () => {
             const frames = await wsClient.command<[{ result: Int8Value }]>(
                 'MAP $1 as result',
-                [new Int8Value(BigInt("9223372036854775807"))]
+                [new Int8Value(BigInt("9223372036854775807"))],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -102,7 +106,8 @@ describe('Positional Parameters', () => {
         it('Float8 type', async () => {
             const frames = await wsClient.command<[{ result: Float8Value }]>(
                 'MAP $1 as result',
-                [new Float8Value(3.14159)]
+                [new Float8Value(3.14159)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -114,7 +119,8 @@ describe('Positional Parameters', () => {
         it('Utf8 type', async () => {
             const frames = await wsClient.command<[{ result: Utf8Value }]>(
                 'MAP $1 as result',
-                [new Utf8Value("Hello, ReifyDB!")]
+                [new Utf8Value("Hello, ReifyDB!")],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -127,7 +133,8 @@ describe('Positional Parameters', () => {
             const testDate = new Date('2024-01-15T10:30:00Z');
             const frames = await wsClient.command<[{ result: DateTimeValue }]>(
                 'MAP $1 as result',
-                [new DateTimeValue(testDate)]
+                [new DateTimeValue(testDate)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -139,7 +146,8 @@ describe('Positional Parameters', () => {
         it('Undefined type', async () => {
             const frames = await wsClient.command<[{ result: UndefinedValue }]>(
                 'MAP $1 as result',
-                [new UndefinedValue()]
+                [new UndefinedValue()],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -151,7 +159,8 @@ describe('Positional Parameters', () => {
         it('Time type', async () => {
             const frames = await wsClient.command<[{ result: TimeValue }]>(
                 'MAP $1 as result',
-                [new TimeValue("15:45:30.250000000")]
+                [new TimeValue("15:45:30.250000000")],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -172,7 +181,8 @@ describe('Positional Parameters', () => {
             });
             const frames = await wsClient.command<[{ result: IntervalValue }]>(
                 'MAP $1 as result',
-                [interval]
+                [interval],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -188,7 +198,8 @@ describe('Positional Parameters', () => {
         it('Int1 type', async () => {
             const frames = await wsClient.command<[{ result: Int1Value }]>(
                 'MAP $1 as result',
-                [new Int1Value(127)]
+                [new Int1Value(127)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -200,7 +211,8 @@ describe('Positional Parameters', () => {
         it('Int2 type', async () => {
             const frames = await wsClient.command<[{ result: Int2Value }]>(
                 'MAP $1 as result',
-                [new Int2Value(32767)]
+                [new Int2Value(32767)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -212,7 +224,8 @@ describe('Positional Parameters', () => {
         it('Uint1 type', async () => {
             const frames = await wsClient.command<[{ result: Uint1Value }]>(
                 'MAP $1 as result',
-                [new Uint1Value(255)]
+                [new Uint1Value(255)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -224,7 +237,8 @@ describe('Positional Parameters', () => {
         it('Uint2 type', async () => {
             const frames = await wsClient.command<[{ result: Uint2Value }]>(
                 'MAP $1 as result',
-                [new Uint2Value(65535)]
+                [new Uint2Value(65535)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -236,7 +250,8 @@ describe('Positional Parameters', () => {
         it('Uint4 type', async () => {
             const frames = await wsClient.command<[{ result: Uint4Value }]>(
                 'MAP $1 as result',
-                [new Uint4Value(4294967295)]
+                [new Uint4Value(4294967295)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -252,7 +267,8 @@ describe('Positional Parameters', () => {
                 str_val: Utf8Value
             }]>(
                 'MAP { $1 as bool_val, $2 as int_val, $3 as str_val }',
-                [new BoolValue(true), new Int4Value(123), new Utf8Value("test")]
+                [new BoolValue(true), new Int4Value(123), new Utf8Value("test")],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -269,7 +285,8 @@ describe('Positional Parameters', () => {
                 str_val: Utf8Value
             }]>(
                 'MAP { $1 as bool_val, $2 as num_val, $3 as str_val }',
-                [new BoolValue(true), new Float8Value(42.5), new Utf8Value("auto-inferred")]
+                [new BoolValue(true), new Float8Value(42.5), new Utf8Value("auto-inferred")],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -284,7 +301,8 @@ describe('Positional Parameters', () => {
         it('Bool type', async () => {
             const frames = await wsClient.query<[{ result: BoolValue }]>(
                 'MAP $1 as result',
-                [new BoolValue(false)]
+                [new BoolValue(false)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -296,7 +314,8 @@ describe('Positional Parameters', () => {
         it('Int4 type', async () => {
             const frames = await wsClient.query<[{ result: Int4Value }]>(
                 'MAP $1 as result',
-                [new Int4Value(-42)]
+                [new Int4Value(-42)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -308,7 +327,8 @@ describe('Positional Parameters', () => {
         it('Float4 type', async () => {
             const frames = await wsClient.query<[{ result: Float4Value }]>(
                 'MAP $1 as result',
-                [new Float4Value(2.71828)]
+                [new Float4Value(2.71828)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -321,7 +341,8 @@ describe('Positional Parameters', () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
             const frames = await wsClient.query<[{ result: Uuid7Value }]>(
                 'MAP $1 as result',
-                [new Uuid7Value(uuid)]
+                [new Uuid7Value(uuid)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -334,7 +355,8 @@ describe('Positional Parameters', () => {
             const testDate = new Date('2024-01-15');
             const frames = await wsClient.query<[{ result: DateValue }]>(
                 'MAP $1 as result',
-                [new DateValue(testDate)]
+                [new DateValue(testDate)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -347,7 +369,8 @@ describe('Positional Parameters', () => {
             const testTime = new Date('1970-01-01T09:15:45.500Z');
             const frames = await wsClient.query<[{ result: TimeValue }]>(
                 'MAP $1 as result',
-                [new TimeValue("09:15:45.500000000")]
+                [new TimeValue("09:15:45.500000000")],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -368,7 +391,8 @@ describe('Positional Parameters', () => {
             });
             const frames = await wsClient.query<[{ result: IntervalValue }]>(
                 'MAP $1 as result',
-                [interval]
+                [interval],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -383,7 +407,8 @@ describe('Positional Parameters', () => {
             const uuid = '550e8400-e29b-41d4-a716-446655440000';
             const frames = await wsClient.query<[{ result: Uuid4Value }]>(
                 'MAP $1 as result',
-                [new Uuid4Value(uuid)]
+                [new Uuid4Value(uuid)],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -395,7 +420,8 @@ describe('Positional Parameters', () => {
         it('Int16 type', async () => {
             const frames = await wsClient.query<[{ result: Int16Value }]>(
                 'MAP $1 as result',
-                [new Int16Value(BigInt('123456789012345'))]
+                [new Int16Value(BigInt('123456789012345'))],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -407,7 +433,8 @@ describe('Positional Parameters', () => {
         it('Uint8 type', async () => {
             const frames = await wsClient.query<[{ result: Uint8Value }]>(
                 'MAP $1 as result',
-                [new Uint8Value(BigInt('18446744073709551615'))]
+                [new Uint8Value(BigInt('18446744073709551615'))],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -419,7 +446,8 @@ describe('Positional Parameters', () => {
         it('Uint16 type', async () => {
             const frames = await wsClient.query<[{ result: Uint16Value }]>(
                 'MAP $1 as result',
-                [new Uint16Value(BigInt('340282366920938463463374607431768211455'))]
+                [new Uint16Value(BigInt('340282366920938463463374607431768211455'))],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -435,7 +463,8 @@ describe('Positional Parameters', () => {
                 explicit_str: Utf8Value
             }]>(
                 'MAP { $1 as explicit_int, $2 as auto_bool, $3 as explicit_str }',
-                [new Int2Value(32767), new BoolValue(false), new Utf8Value("explicit")]
+                [new Int2Value(32767), new BoolValue(false), new Utf8Value("explicit")],
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);

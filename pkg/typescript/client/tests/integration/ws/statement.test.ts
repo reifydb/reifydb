@@ -6,7 +6,8 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient, Int4Value, Utf8Value} from "../../../src";
+import {Client, WsClient, Int4Value, Utf8Value, Schema} from "../../../src";
+import { LEGACY_SCHEMA } from "../test-helpers";
 
 describe('Statement', () => {
     let wsClient: WsClient;
@@ -44,14 +45,16 @@ describe('Statement', () => {
 
         it('no statements', async () => {
             const frames = await wsClient.command<[{}]>(
-                ''
+                '',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
             const frames = await wsClient.command<[{}]>(
-                ';'
+                ';',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(0);
         }, 1000);
@@ -59,7 +62,8 @@ describe('Statement', () => {
 
         it('many empty statement', async () => {
             const frames = await wsClient.command<[{}]>(
-                ';;;;;'
+                ';;;;;',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(0);
         }, 1000);
@@ -69,7 +73,8 @@ describe('Statement', () => {
                 { one: Int4Value },
                 { two: Int4Value }
             ]>(
-                ';MAP 1 as one ;;;MAP 2 as two'
+                ';MAP 1 as one ;;;MAP 2 as two',
+                LEGACY_SCHEMA // Returns Value objects
             );
             expect(frames).toHaveLength(2);
 
@@ -83,7 +88,8 @@ describe('Statement', () => {
 
         it('single statement', async () => {
             const frames = await wsClient.command<[{ result: Int4Value }]>(
-                'MAP 1 as result;'
+                'MAP 1 as result;',
+                LEGACY_SCHEMA // Returns Value objects
             );
 
             expect(frames).toHaveLength(1);
@@ -99,7 +105,8 @@ describe('Statement', () => {
             ]>(
                 'MAP 1 as result;' +
                 'MAP 2 as result;' +
-                'MAP 3 as result;'
+                'MAP 3 as result;',
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(3);
@@ -121,7 +128,8 @@ describe('Statement', () => {
             ]>(
                 'MAP 1 as result;' +
                 'MAP { 2 as a, 3 as b };' +
-                "MAP 'ReifyDB' as result;"
+                "MAP 'ReifyDB' as result;",
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(3);
@@ -144,14 +152,16 @@ describe('Statement', () => {
 
         it('no statements', async () => {
             const frames = await wsClient.query<[{}]>(
-                ''
+                '',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
             const frames = await wsClient.query<[{}]>(
-                ';'
+                ';',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(0);
         }, 1000);
@@ -159,7 +169,8 @@ describe('Statement', () => {
 
         it('many empty statement', async () => {
             const frames = await wsClient.query<[{}]>(
-                ';;;;;'
+                ';;;;;',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(0);
         }, 1000);
@@ -169,7 +180,8 @@ describe('Statement', () => {
                 { one: Int4Value },
                 { two: Int4Value }
             ]>(
-                ';MAP 1 as one ;;;MAP 2 as two'
+                ';MAP 1 as one ;;;MAP 2 as two',
+                LEGACY_SCHEMA
             );
             expect(frames).toHaveLength(2);
 
@@ -183,7 +195,8 @@ describe('Statement', () => {
 
         it('single statement', async () => {
             const frames = await wsClient.query<[{ result: Int4Value }]>(
-                'MAP 1 as result;'
+                'MAP 1 as result;',
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(1);
@@ -199,7 +212,8 @@ describe('Statement', () => {
             ]>(
                 'MAP 1 as result;' +
                 'MAP 2 as result;' +
-                'MAP 3 as result;'
+                'MAP 3 as result;',
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(3);
@@ -221,7 +235,8 @@ describe('Statement', () => {
             ]>(
                 'MAP 1 as result;' +
                 'MAP { 2 as a, 3 as b } ;' +
-                "MAP 'ReifyDB' as result;"
+                "MAP 'ReifyDB' as result;",
+                LEGACY_SCHEMA
             );
 
             expect(frames).toHaveLength(3);
