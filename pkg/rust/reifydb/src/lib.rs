@@ -11,12 +11,12 @@ pub use reifydb_engine as engine;
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
+pub use reifydb_system as system;
 pub use reifydb_transaction as transaction;
 
 use std::path::Path;
 
 use reifydb_core::hook::Hooks;
-#[cfg(any(feature = "embedded_async", feature = "embedded_sync", feature = "server"))]
 use reifydb_core::interface::VersionedTransaction;
 use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
 #[cfg(feature = "client")]
@@ -34,6 +34,7 @@ use variant::embedded_async::EmbeddedAsyncBuilder;
 use variant::embedded_sync::EmbeddedSyncBuilder;
 #[cfg(feature = "server")]
 use variant::server::ServerBuilder;
+use variant::system::SystemBuilder;
 
 pub mod hook;
 #[allow(unused_imports, unused_variables)]
@@ -97,6 +98,25 @@ impl ReifyDB {
     {
         let (versioned, unversioned, hooks) = input;
         ServerBuilder::new(versioned, unversioned, hooks)
+    }
+
+    /// Create a new system with default in-memory storage and serializable transactions
+    pub fn system() -> SystemBuilder<
+        Serializable<Memory, SingleVersionLock<Memory>>, 
+        SingleVersionLock<Memory>
+    > {
+        let (versioned, unversioned, hooks) = serializable(memory());
+        SystemBuilder::new(versioned, unversioned, hooks)
+    }
+
+    /// Create a new system with custom storage and transaction layers
+    pub fn system_with<VT, UT>(input: (VT, UT, Hooks)) -> SystemBuilder<VT, UT>
+    where
+        VT: VersionedTransaction,
+        UT: UnversionedTransaction,
+    {
+        let (versioned, unversioned, hooks) = input;
+        SystemBuilder::new(versioned, unversioned, hooks)
     }
 }
 

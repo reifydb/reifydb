@@ -1651,9 +1651,8 @@ version = "0.0.1"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
- "reifydb-storage",
- "reifydb-transaction",
- "uuid",
+ "reifydb-network",
+ "tokio",
 ]
 
 [[package]]

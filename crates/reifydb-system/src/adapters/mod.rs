@@ -7,5 +7,13 @@
 //! to make them compatible with the unified Subsystem trait.
 
 pub mod flow;
+#[cfg(any(feature = "server", feature = "grpc"))]
+pub mod grpc;
+#[cfg(any(feature = "server", feature = "websocket"))]
+pub mod websocket;
 
 pub use flow::FlowSubsystemAdapter;
+#[cfg(any(feature = "server", feature = "grpc"))]
+pub use grpc::GrpcSubsystemAdapter;
+#[cfg(any(feature = "server", feature = "websocket"))]
+pub use websocket::WsSubsystemAdapter;

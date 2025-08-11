@@ -9,13 +9,22 @@
 
 pub mod adapters;
 pub mod builder;
+pub mod context;
 pub mod health;
 pub mod manager;
 pub mod subsystem;
 pub mod system;
 
 pub use adapters::FlowSubsystemAdapter;
+#[cfg(any(feature = "server", feature = "grpc"))]
+pub use adapters::GrpcSubsystemAdapter;
+#[cfg(any(feature = "server", feature = "websocket"))]
+pub use adapters::WsSubsystemAdapter;
 pub use builder::ReifySystemBuilder;
+pub use context::{
+    AsyncContext, CustomContext, RuntimeProvider, SyncContext, SystemContext, 
+    TokioContext, TokioRuntimeProvider
+};
 pub use health::{HealthMonitor, HealthStatus};
 pub use manager::SubsystemManager;
 pub use subsystem::Subsystem;

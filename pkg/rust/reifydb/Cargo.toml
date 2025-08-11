@@ -8,11 +8,11 @@ repository.workspace = true
 
 [features]
 default = []
-server = ["dep:tokio", "dep:reifydb-network", "reifydb-network/server"]
-client = ["dep:tokio", "dep:reifydb-network", "reifydb-network/client"]
-embedded_async = ["dep:tokio"]
-grpc = ["reifydb-network/grpc"]
-websocket = ["reifydb-network/websocket"]
+server = ["dep:reifydb-network", "reifydb-network/server", "reifydb-system/server"]
+client = ["dep:reifydb-network", "reifydb-network/client"]
+embedded_async = []
+grpc = ["reifydb-network/grpc", "reifydb-system/grpc"]
+websocket = ["reifydb-network/websocket", "reifydb-system/websocket"]
 embedded_sync = []
 
 [dependencies]
@@ -25,4 +25,4 @@ reifydb-system = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
