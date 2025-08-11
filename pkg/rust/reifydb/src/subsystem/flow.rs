@@ -10,7 +10,7 @@ use reifydb_engine::subsystem::flow::FlowSubsystem;
 /// Adapter to make FlowSubsystem compatible with the Subsystem trait
 ///
 /// This wrapper implements the Subsystem trait for FlowSubsystem, allowing
-/// it to be managed by the ReifySystem architecture.
+/// it to be managed by the Database architecture.
 pub struct FlowSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransaction> {
     /// The wrapped FlowSubsystem
     flow_subsystem: FlowSubsystem<VT, UT>,

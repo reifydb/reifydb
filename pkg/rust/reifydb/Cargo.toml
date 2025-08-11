@@ -6,35 +6,24 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[features]
-default = []
-
-# Core async capability - derived automatically when async subsystems are used
-async = ["dep:tokio", "reifydb-system/async"]
-
-# Subsystem features - async ones enable the async feature
-sub_flow = ["reifydb-system/sub_flow"]
-sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server", "reifydb-system/sub_grpc"]
-sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server", "reifydb-system/sub_ws"]
-
-# Convenience features
-server = ["sub_grpc", "sub_ws"]  # Enable all network subsystems
-client = ["dep:reifydb-network", "reifydb-network/client"]
-embedded_async = []
-embedded_sync = []
-
-# Backwards compatibility aliases
-grpc = ["sub_grpc"]
-websocket = ["sub_ws"]
-
 [dependencies]
-reifydb-auth = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
-reifydb-storage = { workspace = true }
-reifydb-system = { workspace = true }
-reifydb-rql = { workspace = true }
-reifydb-transaction = { workspace = true }
+reifydb-network = { workspace = true, optional = true }
 
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
+
+[features]
+default = []
+async = ["dep:tokio"]
+
+# Subsystem features
+sub_flow = []
+sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server"]
+sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server"]
+
+
+[[example]]
+name = "basic_system"
+path = "examples/basic_system.rs"
+

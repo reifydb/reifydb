@@ -11,7 +11,7 @@ use reifydb_engine::Engine;
 use reifydb_network::grpc::server::GrpcConfig;
 #[cfg(feature = "sub_ws")]
 use reifydb_network::ws::server::WsConfig;
-use reifydb_system::{ReifySystemBuilder, Subsystem, SyncContext, SystemContext, TokioContext};
+use reifydb_system::{DatabaseBuilder, Subsystem, SyncContext, SystemContext, TokioContext};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,7 +27,7 @@ where
     Ctx: SystemContext,
 {
     engine: Engine<VT, UT>,
-    reify_system_builder: ReifySystemBuilder<VT, UT>,
+    reify_system_builder: DatabaseBuilder<VT, UT>,
     context: Ctx,
 }
 
@@ -40,7 +40,7 @@ where
     /// Starts with SyncContext (no async runtime) by default
     pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks).unwrap();
-        let reify_system_builder = ReifySystemBuilder::new(engine.clone());
+        let reify_system_builder = DatabaseBuilder::new(engine.clone());
 
         Self { engine, reify_system_builder, context: SyncContext::default() }
     }
@@ -162,7 +162,7 @@ where
         // Trigger initialization hooks
         self.engine.get_hooks().trigger(OnInitHook {}).unwrap();
 
-        // Build the ReifySystem
+        // Build the Database
         let reify_system = self.reify_system_builder.build();
 
         System::new(reify_system)

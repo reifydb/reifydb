@@ -12,7 +12,7 @@ use reifydb_core::Result;
 /// Uniform interface that all subsystems must implement
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
-/// for all subsystems managed by the ReifySystem.
+/// for all subsystems managed by the Database.
 pub trait Subsystem: Send + Sync {
     /// Get the unique name of this subsystem
     fn name(&self) -> &str;

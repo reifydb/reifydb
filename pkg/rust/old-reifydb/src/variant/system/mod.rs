@@ -10,18 +10,18 @@ use crate::session::{CommandSession, IntoCommandSession, IntoQuerySession, Query
 #[cfg(feature = "embedded_async")]
 use crate::session::SessionAsync;
 use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
-use reifydb_system::ReifySystem;
+use reifydb_system::Database;
 
 /// System variant that provides unified lifecycle management for ReifyDB Engine and subsystems
 ///
-/// This variant uses the ReifySystem architecture to coordinate the engine and multiple
+/// This variant uses the Database architecture to coordinate the engine and multiple
 /// subsystems (like FlowSubsystem, gRPC server, WebSocket server) in a single coherent system.
 pub struct System<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) reify_system: ReifySystem<VT, UT>,
+    pub(crate) reify_system: Database<VT, UT>,
 }
 
 impl<VT, UT> System<VT, UT>
@@ -29,8 +29,8 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    /// Create a new System with the given ReifySystem
-    pub fn new(reify_system: ReifySystem<VT, UT>) -> Self {
+    /// Create a new System with the given Database
+    pub fn new(reify_system: Database<VT, UT>) -> Self {
         Self { reify_system }
     }
 

@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Note: FlowSubsystem requires CdcScan implementation, skipping for this demo
         .build();
 
-    // println!("Created ReifySystem with {} subsystems", system.subsystem_count());
+    // println!("Created Database with {} subsystems", system.subsystem_count());
     // println!("Subsystem names: {:?}", system.get_subsystem_names());
     // println!("Initial system health: {:?}\n", system.health_status());
 

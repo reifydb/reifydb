@@ -11,7 +11,7 @@ use std::time::Duration;
 
 /// System configuration
 #[derive(Debug, Clone)]
-pub struct SystemConfig {
+pub struct DatabaseConfig {
     /// Maximum time to wait for graceful shutdown
     pub graceful_shutdown_timeout: Duration,
     /// Interval for health checks
@@ -20,7 +20,7 @@ pub struct SystemConfig {
     pub max_startup_time: Duration,
 }
 
-impl SystemConfig {
+impl DatabaseConfig {
     /// Create a new system configuration with default values
     pub fn new() -> Self {
         Self {
@@ -49,7 +49,7 @@ impl SystemConfig {
     }
 }
 
-impl Default for SystemConfig {
+impl Default for DatabaseConfig {
     fn default() -> Self {
         Self::new()
     }
@@ -57,9 +57,9 @@ impl Default for SystemConfig {
 
 /// Main system coordinator that manages Engine and all subsystems
 ///
-/// ReifySystem provides a unified interface for managing the entire ReifyDB
+/// Database provides a unified interface for managing the entire ReifyDB
 /// system lifecycle, including the engine and all associated subsystems.
-pub struct ReifySystem<VT, UT>
+pub struct Database<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -69,23 +69,23 @@ where
     /// Subsystem manager
     subsystem_manager: SubsystemManager,
     /// System configuration
-    config: SystemConfig,
+    config: DatabaseConfig,
     /// Health monitor
     health_monitor: Arc<HealthMonitor>,
     /// System running state
     running: bool,
 }
 
-impl<VT, UT> ReifySystem<VT, UT>
+impl<VT, UT> Database<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    /// Create a new ReifySystem (typically use ReifySystemBuilder instead)
+    /// Create a new Database (typically use DatabaseBuilder instead)
     pub(crate) fn new(
         engine: Engine<VT, UT>,
         subsystem_manager: SubsystemManager,
-        config: SystemConfig,
+        config: DatabaseConfig,
         health_monitor: Arc<HealthMonitor>,
     ) -> Self {
         Self {
@@ -103,7 +103,7 @@ where
     }
 
     /// Get the system configuration
-    pub fn config(&self) -> &SystemConfig {
+    pub fn config(&self) -> &DatabaseConfig {
         &self.config
     }
 
@@ -127,7 +127,7 @@ where
             return Ok(()); // Already running
         }
 
-        println!("[ReifySystem] Starting system with {} subsystems", self.subsystem_count());
+        println!("[Database] Starting system with {} subsystems", self.subsystem_count());
 
         // Initialize engine health monitoring
         self.health_monitor.update_component_health(
@@ -140,12 +140,12 @@ where
         match self.subsystem_manager.start_all(self.config.max_startup_time) {
             Ok(()) => {
                 self.running = true;
-                println!("[ReifySystem] System started successfully");
+                println!("[Database] System started successfully");
                 self.update_health_monitoring();
                 Ok(())
             }
             Err(e) => {
-                eprintln!("[ReifySystem] System startup failed: {}", e);
+                eprintln!("[Database] System startup failed: {}", e);
                 // Update system health to reflect failure
                 self.health_monitor.update_component_health(
                     "system".to_string(),
@@ -168,7 +168,7 @@ where
             return Ok(()); // Already stopped
         }
 
-        println!("[ReifySystem] Stopping system gracefully");
+        println!("[Database] Stopping system gracefully");
 
         // Stop all subsystems
         let result = self.subsystem_manager.stop_all(self.config.graceful_shutdown_timeout);
@@ -184,7 +184,7 @@ where
 
         match result {
             Ok(()) => {
-                println!("[ReifySystem] System stopped successfully");
+                println!("[Database] System stopped successfully");
                 self.health_monitor.update_component_health(
                     "system".to_string(),
                     HealthStatus::Healthy,
@@ -193,7 +193,7 @@ where
                 Ok(())
             }
             Err(e) => {
-                eprintln!("[ReifySystem] System shutdown completed with errors: {}", e);
+                eprintln!("[Database] System shutdown completed with errors: {}", e);
                 self.health_monitor.update_component_health(
                     "system".to_string(),
                     HealthStatus::Warning {
@@ -246,14 +246,14 @@ where
     }
 }
 
-impl<VT, UT> Drop for ReifySystem<VT, UT>
+impl<VT, UT> Drop for Database<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
     fn drop(&mut self) {
         if self.running {
-            println!("[ReifySystem] System being dropped while running, attempting graceful shutdown");
+            println!("[Database] System being dropped while running, attempting graceful shutdown");
             let _ = self.stop();
         }
     }
