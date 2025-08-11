@@ -3,7 +3,6 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::{SessionSync, Session};
 use reifydb::core::interface::{
     ColumnId, ColumnIndex, EncodableKeyRange, Params, Principal, SchemaId, Table, TableId,
     TableRowKeyRange,
@@ -11,20 +10,34 @@ use reifydb::core::interface::{
 use reifydb::core::row::EncodedRowLayout;
 use reifydb::core::{EncodedKeyRange, Frame, Type};
 use reifydb::engine::columnar::Columns;
+use reifydb::engine::flow::flow::Flow;
 use reifydb::engine::flow::node::{NodeId, NodeType};
 use reifydb::storage::memory::Memory;
 use reifydb::transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::transaction::svl::SingleVersionLock;
-use reifydb::{ReifyDB, memory, optimistic, Database};
+use reifydb::{Database, ReifyDB, memory, optimistic};
+use reifydb::{FlowSubsystemAdapter, Session, SessionSync, Subsystem};
 use std::collections::Bound::Included;
-use reifydb::engine::flow::flow::Flow;
 
 fn main() {
     let mut db = ReifyDB::new_sync_with(optimistic(memory())).build();
-    
+
+    {
+        // let x = db.subsystem::<FlowSubsystemAdapter<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>>();
+        let x = db.subsystem_flow();
+
+        dbg!(x.unwrap().name());
+        dbg!(x.unwrap().is_running());
+    }
     // Start the database
     db.start().unwrap();
-    
+
+    {
+        let x = db.subsystem_flow();
+        dbg!(x.unwrap().name());
+        dbg!(x.unwrap().is_running());
+    }
+
     let session = db.command_session(Principal::root()).unwrap();
 
     db.command_as_root(
@@ -34,7 +47,7 @@ fn main() {
     "#,
         Params::None,
     )
-        .unwrap();
+    .unwrap();
 
     // Skip computed view for now since flow subsystem has unimplemented parts
     // session
@@ -159,8 +172,8 @@ fn rql_to_flow_example(
     // let results = reifydb
     //     .query_as_root(
     //         r#"
-	//     from test.users
-	// "#,
+    //     from test.users
+    // "#,
     //         Params::None,
     //     )
     //     .unwrap()
@@ -174,8 +187,8 @@ fn rql_to_flow_example(
 pub fn get_view_data(
     db: &mut Database<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>,
     flow: &Flow,
-    view_name: &str
- ) -> reifydb::Result<Columns> {
+    view_name: &str,
+) -> reifydb::Result<Columns> {
     // Find view node and read from versioned storage
     for node_id in flow.get_all_nodes() {
         if let Some(node) = flow.get_node(&node_id) {
@@ -195,7 +208,6 @@ fn read_columns_from_storage(
     db: &mut Database<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>,
     node_id: &NodeId,
 ) -> reifydb::Result<Columns> {
-
     let range = TableRowKeyRange { table: TableId(node_id.0) };
     let versioned_data = db
         .engine()

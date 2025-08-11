@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::any::Any;
 use crate::health::HealthStatus;
 use crate::subsystem::Subsystem;
 use reifydb_core::Result;
@@ -14,19 +15,12 @@ use reifydb_engine::subsystem::flow::FlowSubsystem;
 pub struct FlowSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransaction> {
     /// The wrapped FlowSubsystem
     flow_subsystem: FlowSubsystem<VT, UT>,
-    /// Subsystem name
-    name: String,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystemAdapter<VT, UT> {
     /// Create a new FlowSubsystem adapter
     pub fn new(flow_subsystem: FlowSubsystem<VT, UT>) -> Self {
-        Self { flow_subsystem, name: "flow".to_string() }
-    }
-
-    /// Create a new FlowSubsystem adapter with a custom name
-    pub fn with_name(flow_subsystem: FlowSubsystem<VT, UT>, name: String) -> Self {
-        Self { flow_subsystem, name }
+        Self { flow_subsystem }
     }
 
     /// Get a reference to the underlying FlowSubsystem
@@ -45,8 +39,8 @@ where
     VT: VersionedTransaction + Send + Sync,
     UT: UnversionedTransaction + Send + Sync,
 {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> &'static str {
+        "Flow"
     }
 
     fn start(&mut self) -> Result<()> {
@@ -65,7 +59,7 @@ where
         if self.flow_subsystem.is_running() { HealthStatus::Healthy } else { HealthStatus::Unknown }
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }

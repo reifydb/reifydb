@@ -10,27 +10,6 @@ use reifydb_engine::Engine;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Builder for configuring and constructing a Database
-///
-/// The DatabaseBuilder provides a fluent interface for configuring
-/// the ReifyDB system before starting it up. This includes setting
-/// timeouts, adding subsystems, and configuring health monitoring.
-///
-/// # Example
-/// ```rust,ignore
-/// use reifydb_system::DatabaseBuilder;
-/// use std::time::Duration;
-///
-/// let mut system = DatabaseBuilder::new(engine)
-///     .with_graceful_shutdown_timeout(Duration::from_secs(30))
-///     .with_health_check_interval(Duration::from_secs(5))
-///     .add_subsystem(Box::new(my_subsystem))
-///     .build();
-///
-/// system.start()?;
-/// // ... system is running
-/// system.stop()?;
-/// ```
 pub struct DatabaseBuilder<VT, UT>
 where
     VT: VersionedTransaction,

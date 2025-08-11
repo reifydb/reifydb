@@ -15,7 +15,6 @@ mod hook;
 mod manager;
 mod session;
 mod subsystem;
-mod variant;
 
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
@@ -27,7 +26,7 @@ pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
 pub use reifydb_transaction as transaction;
 
-pub use builder::DatabaseBuilder;
+pub use builder::*;
 #[cfg(feature = "async")]
 pub use context::TokioRuntimeProvider;
 pub use context::{
@@ -48,12 +47,6 @@ pub use subsystem::GrpcSubsystemAdapter;
 pub use subsystem::Subsystem;
 #[cfg(feature = "sub_ws")]
 pub use subsystem::WsSubsystemAdapter;
-
-#[cfg(feature = "async")]
-pub use variant::AsyncBuilder;
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-pub use variant::ServerBuilder;
-pub use variant::SyncBuilder;
 
 use std::path::Path;
 use std::time::Duration;

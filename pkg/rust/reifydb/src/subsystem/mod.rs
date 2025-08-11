@@ -9,13 +9,27 @@
 use crate::health::HealthStatus;
 use reifydb_core::Result;
 
+#[cfg(feature = "sub_flow")]
+mod flow;
+#[cfg(feature = "sub_grpc")]
+pub(crate) mod grpc;
+#[cfg(feature = "sub_ws")]
+pub(crate) mod websocket;
+
+#[cfg(feature = "sub_flow")]
+pub use flow::FlowSubsystemAdapter;
+#[cfg(feature = "sub_grpc")]
+pub use grpc::GrpcSubsystemAdapter;
+#[cfg(feature = "sub_ws")]
+pub use websocket::WsSubsystemAdapter;
+
 /// Uniform interface that all subsystems must implement
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
 /// for all subsystems managed by the Database.
-pub trait Subsystem: Send + Sync {
+pub trait Subsystem: Send + Sync + std::any::Any {
     /// Get the unique name of this subsystem
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Start the subsystem
     ///
@@ -40,26 +54,6 @@ pub trait Subsystem: Send + Sync {
     /// status and any errors or warnings.
     fn health_status(&self) -> HealthStatus;
 
-    /// Downcast support for accessing concrete subsystem types
+    /// Get a reference to self as Any for downcasting
     fn as_any(&self) -> &dyn std::any::Any;
-
-    /// Get the socket address if this subsystem provides network services
-    /// Returns None if the subsystem doesn't provide network services or isn't bound
-    fn socket_addr(&self) -> Option<std::net::SocketAddr> {
-        None // Default implementation
-    }
 }
-
-#[cfg(feature = "sub_flow")]
-mod flow;
-#[cfg(feature = "sub_grpc")]
-pub(crate) mod grpc;
-#[cfg(feature = "sub_ws")]
-pub(crate) mod websocket;
-
-#[cfg(feature = "sub_flow")]
-pub use flow::FlowSubsystemAdapter;
-#[cfg(feature = "sub_grpc")]
-pub use grpc::GrpcSubsystemAdapter;
-#[cfg(feature = "sub_ws")]
-pub use websocket::WsSubsystemAdapter;

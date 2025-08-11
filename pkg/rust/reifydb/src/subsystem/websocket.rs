@@ -12,9 +12,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use tokio::sync::oneshot;
 #[cfg(feature = "async")]
 use tokio::task::JoinHandle;
-use tokio::sync::oneshot;
 
 /// Adapter to make WsServer compatible with the Subsystem trait
 ///
@@ -29,7 +29,6 @@ pub struct WsSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransacti
     /// Whether the server is running
     running: Arc<AtomicBool>,
     /// Handle to the async task
-    #[cfg(feature = "async")]
     task_handle: Option<JoinHandle<()>>,
     /// Shared runtime provider
     runtime_provider: RuntimeProvider,
@@ -86,8 +85,8 @@ where
     VT: VersionedTransaction + Send + Sync + 'static,
     UT: UnversionedTransaction + Send + Sync + 'static,
 {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> &'static str {
+        "Ws"
     }
 
     fn start(&mut self) -> Result<()> {
@@ -106,11 +105,12 @@ where
 
                 // Clone server to capture socket address before serving
                 let server_clone = server.clone();
-                
+
                 // Start a task that waits for the socket address to be set
                 let addr_task = tokio::spawn(async move {
                     // Poll until socket address is available (set during serve())
-                    for _ in 0..50 {  // Try for up to 500ms
+                    for _ in 0..50 {
+                        // Try for up to 500ms
                         if let Some(addr) = server_clone.socket_addr() {
                             let _ = addr_tx.send(Some(addr));
                             return;
@@ -193,9 +193,5 @@ where
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-
-    fn socket_addr(&self) -> Option<std::net::SocketAddr> {
-        self.socket_addr
     }
 }

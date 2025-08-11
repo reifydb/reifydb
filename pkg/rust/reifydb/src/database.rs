@@ -14,6 +14,13 @@ use reifydb_engine::Engine;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(feature = "sub_flow")]
+use crate::FlowSubsystemAdapter;
+#[cfg(feature = "sub_grpc")]
+use crate::GrpcSubsystemAdapter;
+#[cfg(feature = "sub_ws")]
+use crate::WsSubsystemAdapter;
+
 /// System configuration
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
@@ -79,6 +86,27 @@ where
     health_monitor: Arc<HealthMonitor>,
     /// System running state
     running: bool,
+}
+
+impl<VT, UT> Database<VT, UT>
+where
+    VT: VersionedTransaction,
+    UT: UnversionedTransaction,
+{
+    #[cfg(feature = "sub_flow")]
+    pub fn subsystem_flow(&self) -> Option<&FlowSubsystemAdapter<VT, UT>> {
+        self.subsystem::<FlowSubsystemAdapter<VT, UT>>()
+    }
+
+    #[cfg(feature = "sub_grpc")]
+    pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystemAdapter<VT, UT>> {
+        self.subsystem::<GrpcSubsystemAdapter<VT, UT>>()
+    }
+
+    #[cfg(feature = "sub_ws")]
+    pub fn subsystem_ws(&self) -> Option<&WsSubsystemAdapter<VT, UT>> {
+        self.subsystem::<WsSubsystemAdapter<VT, UT>>()
+    }
 }
 
 impl<VT, UT> Database<VT, UT>
@@ -247,11 +275,8 @@ where
     /// Get the gRPC socket address if the gRPC subsystem is running
     #[cfg(feature = "sub_grpc")]
     pub fn grpc_socket_addr(&self) -> Option<std::net::SocketAddr> {
-        // Look through subsystems to find the gRPC one
-        for subsystem in &self.subsystem_manager.subsystems {
-            if subsystem.name() == "grpc" {
-                return subsystem.socket_addr();
-            }
+        if let Some(subsystem) = self.subsystem_grpc() {
+            return subsystem.socket_addr();
         }
         None
     }
@@ -259,10 +284,21 @@ where
     /// Get the WebSocket socket address if the WebSocket subsystem is running
     #[cfg(feature = "sub_ws")]
     pub fn ws_socket_addr(&self) -> Option<std::net::SocketAddr> {
-        // Look through subsystems to find the WebSocket one
+        if let Some(subsystem) = self.subsystem_ws() {
+            return subsystem.socket_addr();
+        }
+        None
+    }
+
+    /// Get a reference to a subsystem of a specific type
+    ///
+    /// This method attempts to downcast each managed subsystem to the requested type T.
+    /// Returns the first subsystem that matches the type, or None if no subsystem of that type is found.
+    ///
+    pub fn subsystem<T: 'static>(&self) -> Option<&T> {
         for subsystem in &self.subsystem_manager.subsystems {
-            if subsystem.name() == "websocket" {
-                return subsystem.socket_addr();
+            if let Some(typed_subsystem) = subsystem.as_any().downcast_ref::<T>() {
+                return Some(typed_subsystem);
             }
         }
         None

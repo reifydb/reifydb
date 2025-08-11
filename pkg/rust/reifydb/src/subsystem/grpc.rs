@@ -1,16 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::any::Any;
 use crate::context::RuntimeProvider;
 use crate::health::HealthStatus;
 use crate::subsystem::Subsystem;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_core::Result;
+use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use tokio::sync::oneshot;
 #[cfg(feature = "async")]
 use tokio::task::JoinHandle;
-use tokio::sync::oneshot;
 
 /// Adapter to make GrpcServer compatible with the Subsystem trait
 ///
@@ -25,7 +29,6 @@ pub struct GrpcSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransac
     /// Whether the server is running
     running: Arc<AtomicBool>,
     /// Handle to the async task
-    #[cfg(feature = "async")]
     task_handle: Option<JoinHandle<()>>,
     /// Shared runtime provider
     runtime_provider: RuntimeProvider,
@@ -36,7 +39,7 @@ pub struct GrpcSubsystemAdapter<VT: VersionedTransaction, UT: UnversionedTransac
 impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<VT, UT> {
     /// Create a new GrpcServer adapter with shared runtime
     pub fn new(
-        config: GrpcConfig, 
+        config: GrpcConfig,
         engine: reifydb_engine::Engine<VT, UT>,
         runtime_provider: &RuntimeProvider,
     ) -> Self {
@@ -54,8 +57,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystemAdapter<
 
     /// Create a new GrpcServer adapter with custom name and shared runtime
     pub fn with_name(
-        config: GrpcConfig, 
-        engine: reifydb_engine::Engine<VT, UT>, 
+        config: GrpcConfig,
+        engine: reifydb_engine::Engine<VT, UT>,
         name: String,
         runtime_provider: &RuntimeProvider,
     ) -> Self {
@@ -82,8 +85,8 @@ where
     VT: VersionedTransaction + Send + Sync + 'static,
     UT: UnversionedTransaction + Send + Sync + 'static,
 {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> &'static str {
+        "Grpc"
     }
 
     fn start(&mut self) -> Result<()> {
@@ -94,19 +97,20 @@ where
         if let Some(server) = self.grpc_server.take() {
             let running = Arc::clone(&self.running);
             let (addr_tx, addr_rx) = oneshot::channel();
-            
+
             // Use shared runtime to spawn the server
             let handle = self.runtime_provider.spawn(async move {
                 running.store(true, Ordering::Relaxed);
                 println!("[GrpcSubsystem] Starting gRPC server");
-                
+
                 // Clone server to capture socket address before serving
                 let server_clone = server.clone();
-                
+
                 // Start a task that waits for the socket address to be set
                 let addr_task = tokio::spawn(async move {
                     // Poll until socket address is available (set during serve())
-                    for _ in 0..50 {  // Try for up to 500ms
+                    for _ in 0..50 {
+                        // Try for up to 500ms
                         if let Some(addr) = server_clone.socket_addr() {
                             let _ = addr_tx.send(Some(addr));
                             return;
@@ -115,15 +119,15 @@ where
                     }
                     let _ = addr_tx.send(None);
                 });
-                
+
                 // Start serving (this will set the socket address)
                 let serve_result = server.serve().await;
                 addr_task.abort(); // Clean up address polling task
-                
+
                 if let Err(e) = serve_result {
                     eprintln!("[GrpcSubsystem] gRPC server error: {}", e);
                 }
-                
+
                 running.store(false, Ordering::Relaxed);
                 println!("[GrpcSubsystem] gRPC server stopped");
             });
@@ -136,7 +140,7 @@ where
                     self.socket_addr = socket_addr;
                 }
             }
-            
+
             #[cfg(feature = "async")]
             {
                 self.task_handle = Some(handle);
@@ -153,10 +157,10 @@ where
         }
 
         self.running.store(false, Ordering::Relaxed);
-        
+
         // Clear cached socket address
         self.socket_addr = None;
-        
+
         // Clean up task handle
         #[cfg(feature = "async")]
         {
@@ -174,18 +178,10 @@ where
     }
 
     fn health_status(&self) -> HealthStatus {
-        if self.is_running() {
-            HealthStatus::Healthy
-        } else {
-            HealthStatus::Unknown
-        }
+        if self.is_running() { HealthStatus::Healthy } else { HealthStatus::Unknown }
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn as_any(&self) -> &dyn Any {
         self
-    }
-
-    fn socket_addr(&self) -> Option<std::net::SocketAddr> {
-        self.socket_addr
     }
 }
