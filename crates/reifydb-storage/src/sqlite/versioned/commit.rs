@@ -24,10 +24,10 @@ impl VersionedCommit for Sqlite {
 
         let timestamp = self.clock.now_millis();
 
-        for delta in delta {
-            let sequence = match self.cdc_seq.next_sequence(version) {
-                Some(seq) => seq,
-                None => return_error!(sequence::transaction_sequence_exhausted()),
+        for (idx, delta) in delta.iter().enumerate() {
+            let sequence = match u16::try_from(idx + 1) {
+                Ok(seq) => seq,
+                Err(_) => return_error!(sequence::transaction_sequence_exhausted()),
             };
             
             // Get before value for updates and deletes

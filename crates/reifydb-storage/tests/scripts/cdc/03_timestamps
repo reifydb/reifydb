@@ -3,6 +3,7 @@
 
 # Test initial timestamp
 insert 1 a=1
+commit
 ---
 ok
 
@@ -16,6 +17,7 @@ advance_clock 500
 ok
 
 insert 2 b=2
+commit
 ---
 ok
 
@@ -25,14 +27,9 @@ CdcEvent { version: 2, seq: 1, ts: 1500, change: Insert { key: "b", after: "2" }
 
 # Multiple operations at same timestamp
 insert 3 c=3
----
-ok
-
 update 3 a=10
----
-ok
-
 delete 3 b
+commit
 ---
 ok
 
@@ -55,6 +52,7 @@ advance_clock 1000
 ok
 
 insert 4 d=4
+commit
 ---
 ok
 
@@ -68,6 +66,7 @@ advance_clock 10000
 ok
 
 update 5 d=5
+commit
 ---
 ok
 

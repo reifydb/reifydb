@@ -8,7 +8,6 @@ mod versioned;
 
 pub use config::*;
 
-use crate::cdc::sequence::SequenceTracker;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::interface::{CdcStorage, UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage};
@@ -22,7 +21,6 @@ pub struct Sqlite(Arc<SqliteInner>);
 pub struct SqliteInner {
     pool: Arc<Pool<SqliteConnectionManager>>,
     clock: Box<dyn Clock>,
-    cdc_seq: SequenceTracker,
 }
 
 impl Deref for Sqlite {
@@ -82,7 +80,7 @@ impl Sqlite {
             .unwrap();
         }
 
-        Self(Arc::new(SqliteInner { pool: Arc::new(pool), clock, cdc_seq: SequenceTracker::new() }))
+        Self(Arc::new(SqliteInner { pool: Arc::new(pool), clock }))
     }
 
     fn convert_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {

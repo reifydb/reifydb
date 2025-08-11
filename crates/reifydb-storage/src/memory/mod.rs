@@ -19,7 +19,6 @@ mod range_rev;
 mod versioned;
 
 use crate::memory::versioned::VersionedRow;
-use crate::cdc::sequence::SequenceTracker;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::EncodedKey;
 use reifydb_core::interface::{
@@ -35,7 +34,6 @@ pub struct MemoryInner {
     versioned: SkipMap<EncodedKey, VersionedRow>,
     unversioned: SkipMap<EncodedKey, EncodedRow>,
     cdc_events: SkipMap<CdcEventKey, CdcEvent>,
-    cdc_seq: SequenceTracker,
     clock: Box<dyn Clock>,
 }
 
@@ -63,7 +61,6 @@ impl Memory {
             versioned: SkipMap::new(), 
             unversioned: SkipMap::new(),
             cdc_events: SkipMap::new(),
-            cdc_seq: SequenceTracker::new(),
             clock,
         }))
     }

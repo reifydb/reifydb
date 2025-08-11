@@ -3,18 +3,22 @@
 
 # Test CDC event storage and retrieval
 insert 1 a=1
+commit
 ---
 ok
 
 insert 2 b=2
+commit
 ---
 ok
 
 update 3 a=10
+commit
 ---
 ok
 
 delete 4 b
+commit
 ---
 ok
 
@@ -83,14 +87,9 @@ count: 0
 
 # Test multiple events in same version
 insert 10 x=100
----
-ok
-
 insert 10 y=200
----
-ok
-
 update 10 x=101
+commit
 ---
 ok
 

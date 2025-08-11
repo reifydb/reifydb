@@ -3,7 +3,6 @@
 
 pub(crate) mod codec;
 mod layout;
-pub(crate) mod sequence;
 
 use reifydb_core::Version;
 use reifydb_core::delta::Delta;

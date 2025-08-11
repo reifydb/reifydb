@@ -29,9 +29,9 @@ cdc_get 1000 65535
 ---
 CdcEvent { version: 1000, seq: 65535, ts: 1000, change: Insert { key: "bulk_65534", after: "65534" } }
 
-# Now test overflow behavior - try to add one more event to the same version
+# Now test overflow behavior - try to insert 65536 events in one transaction
 # This should return an error since we've exhausted the sequence space
-!insert 1000 overflow_test=overflow
+!bulk_insert 2000 65536
 ---
 > Error SEQUENCE_003
 >   transaction sequence number exhausted

@@ -41,7 +41,7 @@ pub(crate) fn store_cdc_event(
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
     tx.execute(
-        "INSERT INTO cdc (key, version, value) VALUES (?1, ?2, ?3)",
+        "INSERT OR REPLACE INTO cdc (key, version, value) VALUES (?1, ?2, ?3)",
         params![cdc_key.encode().to_vec(), version, encoded_event.to_vec()],
     )?;
 

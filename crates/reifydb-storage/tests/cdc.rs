@@ -46,11 +46,13 @@ pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcSto
     storage: VS,
     next_version: Version,
     clock: Arc<MockClock>,
+    /// Buffer of deltas to be committed
+    deltas: Vec<Delta>,
 }
 
 impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<VS> {
     fn new(storage: VS, clock: Arc<MockClock>) -> Self {
-        Self { storage, next_version: 1, clock }
+        Self { storage, next_version: 1, clock, deltas: Vec::new() }
     }
 
     fn format_cdc_event(event: &CdcEvent) -> String {
@@ -133,8 +135,10 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.commit(async_cow_vec![(Delta::Insert { key, row })], version)?;
-                writeln!(output, "ok")?;
+                // Update next_version to match the given version
+                self.next_version = version;
+                // Buffer the delta
+                self.deltas.push(Delta::Insert { key, row });
             }
 
             // update VERSION KEY=VALUE
@@ -151,8 +155,10 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.commit(async_cow_vec![(Delta::Update { key, row })], version)?;
-                writeln!(output, "ok")?;
+                // Update next_version to match the given version
+                self.next_version = version;
+                // Buffer the delta
+                self.deltas.push(Delta::Update { key, row });
             }
 
             // delete VERSION KEY
@@ -167,7 +173,23 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                 let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
                 args.reject_rest()?;
 
-                self.storage.commit(async_cow_vec![(Delta::Remove { key })], version)?;
+                // Update next_version to match the given version
+                self.next_version = version;
+                // Buffer the delta
+                self.deltas.push(Delta::Remove { key });
+            }
+
+            // commit - commits all buffered deltas
+            "commit" => {
+                let args = command.consume_args();
+                args.reject_rest()?;
+
+                if !self.deltas.is_empty() {
+                    let version = self.next_version;
+                    let deltas = CowVec::new(std::mem::take(&mut self.deltas));
+                    self.storage.commit(deltas, version)?;
+                    self.next_version += 1;
+                }
                 writeln!(output, "ok")?;
             }
 
@@ -216,7 +238,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Included(end_version))?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Included(start_version),
+                    Bound::Included(end_version),
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -250,7 +276,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Included(end_version))?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Included(start_version),
+                    Bound::Included(end_version),
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -273,7 +303,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Excluded(end_version))?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Included(start_version),
+                    Bound::Excluded(end_version),
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -296,7 +330,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Excluded(start_version), Bound::Included(end_version))?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Excluded(start_version),
+                    Bound::Included(end_version),
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -319,7 +357,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Excluded(start_version), Bound::Excluded(end_version))?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Excluded(start_version),
+                    Bound::Excluded(end_version),
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -336,7 +378,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
+                let events =
+                    CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -353,7 +396,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid end version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
+                let events =
+                    CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -370,7 +414,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid start version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Included(start_version), Bound::Unbounded)?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Included(start_version),
+                    Bound::Unbounded,
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -387,7 +435,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid start version")?;
                 args.reject_rest()?;
 
-                let events = CdcRange::range(&self.storage, Bound::Excluded(start_version), Bound::Unbounded)?;
+                let events = CdcRange::range(
+                    &self.storage,
+                    Bound::Excluded(start_version),
+                    Bound::Unbounded,
+                )?;
                 for event in events {
                     writeln!(output, "{}", Self::format_cdc_event(&event))?;
                 }
@@ -458,24 +510,16 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                     .map_err(|_| "invalid count")?;
                 args.reject_rest()?;
 
-                // Insert events in batches to avoid creating a huge vector at once
-                const BATCH_SIZE: usize = 1000;
-                let mut inserted = 0;
+                // Create all events in a single transaction to test sequence boundaries
+                let mut deltas = Vec::new();
 
-                while inserted < count {
-                    let batch_end = std::cmp::min(inserted + BATCH_SIZE, count);
-                    let mut batch = Vec::new();
-
-                    for i in inserted..batch_end {
-                        let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
-                        let row = EncodedRow(CowVec::new(i.to_string().into_bytes()));
-                        batch.push(Delta::Insert { key, row });
-                    }
-
-                    self.storage.commit(CowVec::new(batch), version)?;
-                    inserted = batch_end;
+                for i in 0..count {
+                    let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
+                    let row = EncodedRow(CowVec::new(i.to_string().into_bytes()));
+                    deltas.push(Delta::Insert { key, row });
                 }
 
+                self.storage.commit(CowVec::new(deltas), version)?;
                 writeln!(output, "ok")?;
             }
 

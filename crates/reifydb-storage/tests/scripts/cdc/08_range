@@ -5,38 +5,23 @@
 
 # Insert events at different versions
 insert 10 A=VersionA
----
-ok
-
 insert 10 B=VersionB
----
-ok
-
-insert 10 C=VersionC  
+insert 10 C=VersionC
+commit
 ---
 ok
 
 insert 20 D=VersionD
----
-ok
-
 insert 20 E=VersionE
----
-ok
-
 insert 20 F=VersionF
+commit
 ---
 ok
 
 insert 30 G=VersionG
----
-ok
-
 insert 30 H=VersionH
----
-ok
-
 insert 30 I=VersionI
+commit
 ---
 ok
 
