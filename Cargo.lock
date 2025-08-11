@@ -249,13 +249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cli"
-version = "0.0.1"
-dependencies = [
- "tokio",
-]
-
-[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1985,7 +1978,6 @@ dependencies = [
  "io-uring",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "slab",
