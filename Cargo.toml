@@ -12,6 +12,7 @@ members = ["bin/cli",
     "crates/reifydb-network",
     "crates/reifydb-rql",
     "crates/reifydb-storage",
+    "crates/reifydb-system",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
     "pkg/python/reifydb-py",
@@ -32,6 +33,7 @@ default-members = ["bin/cli",
     "crates/reifydb-network",
     "crates/reifydb-rql",
     "crates/reifydb-storage",
+    "crates/reifydb-system",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
     "pkg/rust/reifydb",
@@ -79,6 +81,7 @@ reifydb-engine = { path = "crates/reifydb-engine", version = "0.0.1" }
 reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
 reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
 reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
+reifydb-system = { path = "crates/reifydb-system", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
 

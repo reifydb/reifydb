@@ -3,7 +3,7 @@
 
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{
-    CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, Change, VersionedCommit, VersionedGet,
+    CdcEvent, CdcGet, CdcRange, CdcScan, CdcQuery, Change, VersionedCommit, VersionedGet,
     VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
@@ -42,7 +42,7 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> {
+pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> {
     storage: VS,
     next_version: Version,
     clock: Arc<MockClock>,
@@ -50,7 +50,7 @@ pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcSto
     deltas: Vec<Delta>,
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<VS> {
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> Runner<VS> {
     fn new(storage: VS, clock: Arc<MockClock>) -> Self {
         Self { storage, next_version: 1, clock, deltas: Vec::new() }
     }
@@ -96,7 +96,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<
     }
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscript::Runner
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> testscript::Runner
     for Runner<VS>
 {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {

@@ -6,7 +6,7 @@ use crate::{Result, Version};
 use std::ops::Bound;
 
 /// Combined trait for all CDC storage operations
-pub trait CdcStorage: CdcGet + CdcRange + CdcScan + CdcCount {}
+pub trait CdcQuery: CdcGet + CdcRange + CdcScan + CdcCount {}
 
 /// Retrieve CDC events for a specific version
 pub trait CdcGet: Send + Sync {

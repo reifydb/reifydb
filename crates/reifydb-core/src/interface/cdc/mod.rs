@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod storage;
-pub use storage::{CdcStorage, CdcGet, CdcRange, CdcScan, CdcCount};
+pub use storage::{CdcQuery, CdcGet, CdcRange, CdcScan, CdcCount};
 
 use crate::row::EncodedRow;
 use crate::{EncodedKey, Version};

@@ -22,3 +22,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
+
+[[example]]
+name = "flow_subsystem_demo"
+path = "examples/flow_subsystem_demo.rs"

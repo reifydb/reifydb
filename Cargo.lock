@@ -1515,6 +1515,7 @@ dependencies = [
  "reifydb-network",
  "reifydb-rql",
  "reifydb-storage",
+ "reifydb-system",
  "reifydb-transaction",
  "tokio",
 ]
@@ -1642,6 +1643,17 @@ dependencies = [
  "reifydb-testing",
  "rusqlite",
  "test_each_file",
+]
+
+[[package]]
+name = "reifydb-system"
+version = "0.0.1"
+dependencies = [
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-storage",
+ "reifydb-transaction",
+ "uuid",
 ]
 
 [[package]]
