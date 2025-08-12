@@ -13,7 +13,8 @@ export default defineConfig({
         ],
         exclude: [
             'node_modules/**',
-            'dist/**'
+            'dist/**',
+            'tests/**/dump/**'
         ],
 
         pool: 'threads',

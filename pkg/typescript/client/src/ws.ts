@@ -7,9 +7,9 @@ import {
     decode,
     Value,
     SchemaNode,
-    InferSchemas
+    InferSchemas,
+    FrameResults
 } from "@reifydb/core";
-import { FrameResults } from "./type-helpers";
 
 import {
     CommandRequest,

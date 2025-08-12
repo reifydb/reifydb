@@ -27,7 +27,7 @@ describe('DateTimeValue', () => {
         });
 
         it('should create instance with nanoseconds as bigint', () => {
-            const datetime = new DateTimeValue(123456789123456789n);
+            const datetime = new DateTimeValue(BigInt(123456789123456789));
             expect(datetime.value).toBeDefined();
         });
 
@@ -299,8 +299,8 @@ describe('DateTimeValue', () => {
             const datetime = DateTimeValue.fromYMDHMSN(2009, 2, 13, 23, 31, 30, 123456789);
             const nanos = datetime.timestampNanos()!;
             // Should be close to expected value (some precision loss due to JS Date)
-            expect(nanos).toBeGreaterThan(1234567890123000000n);
-            expect(nanos).toBeLessThan(1234567890124000000n);
+            expect(nanos).toBeGreaterThan(BigInt(1234567890123000000));
+            expect(nanos).toBeLessThan(BigInt(1234567890124000000));
         });
 
         it('should return undefined for undefined datetime', () => {
