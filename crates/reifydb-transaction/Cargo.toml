@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+test-stress = []
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-storage = { workspace = true }
