@@ -41,7 +41,7 @@ describe('Positional Parameters', () => {
 
     describe('command', () => {
         it('Bool', async () => {
-            // @ts-ignore
+
             const frames = await wsClient.command(
                 'MAP $1 as result',
                 [new BoolValue(true)],

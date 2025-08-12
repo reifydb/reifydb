@@ -9,6 +9,7 @@ import {
     SchemaNode,
     InferSchemas
 } from "@reifydb/core";
+import { FrameResults } from "./type-helpers";
 
 import {
     CommandRequest,
@@ -104,12 +105,11 @@ export class WsClient {
      * @param params - Parameters for the commands (use null or {} if no params)
      * @param schemas - Schema for each statement's result
      */
-    // @ts-ignore
     async command<const S extends readonly SchemaNode[]>(
         statements: string | string[],
         params: any,
         schemas: S
-    ): Promise<InferSchemas<S>> {
+    ): Promise<FrameResults<S>> {
         const id = `req-${this.nextId++}`;
 
         // Normalize statements to array
@@ -138,7 +138,7 @@ export class WsClient {
             return frame.map((row: any) => this.transformResult(row, frameSchema));
         });
 
-        return transformedFrames as InferSchemas<S>;
+        return transformedFrames as FrameResults<S>;
     }
 
 
@@ -148,12 +148,11 @@ export class WsClient {
      * @param params - Parameters for the queries (use null or {} if no params)
      * @param schemas - Schema for each statement's result
      */
-    // @ts-ignore
     async query<const S extends readonly SchemaNode[]>(
         statements: string | string[],
         params: any,
         schemas: S
-    ): Promise<InferSchemas<S>> {
+    ): Promise<FrameResults<S>> {
         const id = `req-${this.nextId++}`;
 
         // Normalize statements to array
@@ -182,7 +181,7 @@ export class WsClient {
             return frame.map((row: any) => this.transformResult(row, frameSchema));
         });
 
-        return transformedFrames as InferSchemas<S>;
+        return transformedFrames as FrameResults<S>;
     }
 
     async send(req: CommandRequest | QueryRequest): Promise<any> {

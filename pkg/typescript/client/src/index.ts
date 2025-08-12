@@ -20,3 +20,4 @@ export class Client {
 
 export {ReifyError, Diagnostic, Span, DiagnosticColumn} from "./types";
 export {WsClient, WsClientOptions} from "./ws";
+export {FrameResults, SingleFrameResult, asFrameResults} from "./type-helpers";

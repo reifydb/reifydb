@@ -70,21 +70,21 @@ export function encodeValue(value: any): TypeValuePair {
     // Handle bigint
     if (typeof value === 'bigint') {
         // Choose appropriate type based on value range
-        if (value >= 0n) {
-            if (value <= 255n) {
+        if (value >= BigInt(0)) {
+            if (value <= BigInt(255)) {
                 return { type: 'Uint1', value: value.toString() };
-            } else if (value <= 65535n) {
+            } else if (value <= BigInt(65535)) {
                 return { type: 'Uint2', value: value.toString() };
-            } else if (value <= 4294967295n) {
+            } else if (value <= BigInt(4294967295)) {
                 return { type: 'Uint4', value: value.toString() };
-            } else if (value <= 18446744073709551615n) {
+            } else if (value <= BigInt('18446744073709551615')) {
                 return { type: 'Uint8', value: value.toString() };
             } else {
                 return { type: 'Uint16', value: value.toString() };
             }
         } else {
             // Negative bigint - use signed types
-            if (value >= -9223372036854775808n) {
+            if (value >= BigInt('-9223372036854775808')) {
                 return { type: 'Int8', value: value.toString() };
             } else {
                 return { type: 'Int16', value: value.toString() };
