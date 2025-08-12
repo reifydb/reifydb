@@ -42,7 +42,7 @@ export type PrimitiveToTS<T extends Type> =
                                                                                 T extends 'Uuid4' ? string :
                                                                                     T extends 'Uuid7' ? string :
                                                                                         T extends 'Undefined' ? undefined :
-                                                                                            T extends 'RowId' ? number :
+                                                                                            T extends 'RowId' ? bigint :
                                                                                                 never;
 
 export type PrimitiveToValue<T extends Type> =

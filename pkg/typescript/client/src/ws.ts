@@ -225,7 +225,13 @@ export class WsClient {
                 if (propertySchema && propertySchema.kind === 'primitive') {
                     // Convert Value objects to primitives for primitive schema properties
                     if (value && typeof value === 'object' && 'value' in value) {
-                        transformedRow[key] = (value as any).value;
+                        const rawValue = (value as any).value;
+                        // Special handling for RowId - ensure it's returned as bigint
+                        if (propertySchema.type === 'RowId' && typeof rawValue === 'number') {
+                            transformedRow[key] = BigInt(rawValue);
+                        } else {
+                            transformedRow[key] = rawValue;
+                        }
                     } else {
                         transformedRow[key] = value;
                     }
@@ -244,7 +250,12 @@ export class WsClient {
         if (resultSchema && resultSchema.kind === 'primitive') {
             // Single primitive value - extract from Value object if needed
             if (row && typeof row === 'object' && 'value' in row) {
-                return row.value;
+                const rawValue = row.value;
+                // Special handling for RowId - ensure it's returned as bigint
+                if (resultSchema.type === 'RowId' && typeof rawValue === 'number') {
+                    return BigInt(rawValue);
+                }
+                return rawValue;
             }
             return row;
         }
