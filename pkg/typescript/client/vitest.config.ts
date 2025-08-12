@@ -14,7 +14,6 @@ export default defineConfig({
         exclude: [
             'node_modules/**',
             'dist/**',
-            'tests/**/dump/**'
         ],
 
         pool: 'threads',
