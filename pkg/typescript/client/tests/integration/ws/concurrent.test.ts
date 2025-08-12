@@ -6,7 +6,8 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient, Int4Value, Utf8Value} from "../../../src";
+import {Client, WsClient} from "../../../src";
+import {Schema} from "@reifydb/core";
 
 describe('Concurrent requests', () => {
     let wsClient: WsClient;
@@ -43,17 +44,20 @@ describe('Concurrent requests', () => {
     describe('command', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.command<[{ result: Int4Value }]>(
+                wsClient.command(
                     'MAP 1 as result;',
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.int4Value()})]
                 ),
-                wsClient.command<[{ a: Int4Value, b: Int4Value }]>(
+                wsClient.command(
                     'MAP { 2 as a, 3 as b };',
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
-                wsClient.command<[{ result: Utf8Value }]>(
+                wsClient.command(
                     "MAP 'ReifyDB' as result;",
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.utf8Value()})]
                 )
             ]);
 
@@ -68,17 +72,20 @@ describe('Concurrent requests', () => {
     describe('query', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.query<[{ result: Int4Value }]>(
+                wsClient.query(
                     'MAP 1 as result;',
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.int4Value()})]
                 ),
-                wsClient.query<[{ a: Int4Value, b: Int4Value }]>(
+                wsClient.query(
                     'MAP { 2 as a, 3 as b };',
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
-                wsClient.query<[{ result: Utf8Value }]>(
+                wsClient.query(
                     "MAP 'ReifyDB' as result;",
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.utf8Value()})]
                 )
             ]);
 
@@ -92,17 +99,20 @@ describe('Concurrent requests', () => {
     describe('command & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.command<[{ result: Int4Value }]>(
+                wsClient.command(
                     'MAP 1 as result;',
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.int4Value()})]
                 ),
-                wsClient.query<[{ a: Int4Value, b: Int4Value }]>(
+                wsClient.query(
                     'MAP { 2 as a, 3 as b };',
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
-                wsClient.command<[{ result: Utf8Value }]>(
+                wsClient.command(
                     "MAP 'ReifyDB' as result;",
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.utf8Value()})]
                 )
             ]);
 

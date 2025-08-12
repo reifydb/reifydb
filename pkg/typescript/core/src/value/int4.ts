@@ -49,6 +49,18 @@ export class Int4Value implements Value {
         return this.value === undefined ? 'undefined' : this.value.toString();
     }
 
+    /**
+     * Compare two Int4 values for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherInt = other as Int4Value;
+        return this.value === otherInt.value;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

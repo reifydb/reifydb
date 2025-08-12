@@ -401,6 +401,26 @@ export class IntervalValue implements Value {
         }
     }
 
+    /**
+     * Compare two intervals for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherInterval = other as IntervalValue;
+        if (this.months === undefined || otherInterval.months === undefined) {
+            return this.months === otherInterval.months && 
+                   this.days === otherInterval.days && 
+                   this.nanos === otherInterval.nanos;
+        }
+        
+        return this.months === otherInterval.months && 
+               this.days === otherInterval.days && 
+               this.nanos === otherInterval.nanos;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

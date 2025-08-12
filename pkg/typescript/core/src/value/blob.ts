@@ -227,17 +227,22 @@ export class BlobValue implements Value {
     /**
      * Compare two blobs for equality
      */
-    equals(other: BlobValue): boolean {
-        if (this.bytes === undefined || other.bytes === undefined) {
-            return this.bytes === other.bytes;
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherBlob = other as BlobValue;
+        if (this.bytes === undefined || otherBlob.bytes === undefined) {
+            return this.bytes === otherBlob.bytes;
         }
 
-        if (this.bytes.length !== other.bytes.length) {
+        if (this.bytes.length !== otherBlob.bytes.length) {
             return false;
         }
 
         for (let i = 0; i < this.bytes.length; i++) {
-            if (this.bytes[i] !== other.bytes[i]) {
+            if (this.bytes[i] !== otherBlob.bytes[i]) {
                 return false;
             }
         }

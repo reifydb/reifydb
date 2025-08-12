@@ -163,8 +163,13 @@ export class Uuid7Value implements Value {
     /**
      * Compare two UUID7 values for equality
      */
-    equals(other: Uuid7Value): boolean {
-        return this.uuid === other.uuid;
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherUuid = other as Uuid7Value;
+        return this.uuid === otherUuid.uuid;
     }
 
     /**

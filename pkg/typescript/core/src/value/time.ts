@@ -230,6 +230,18 @@ export class TimeValue implements Value {
         return nanos;
     }
 
+    /**
+     * Compare two Time values for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherTime = other as TimeValue;
+        return this.value === otherTime.value;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

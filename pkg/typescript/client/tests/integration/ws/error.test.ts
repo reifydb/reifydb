@@ -6,7 +6,8 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, Int1Value, WsClient} from "../../../src";
+import {Client, WsClient} from "../../../src";
+import {Schema} from "@reifydb/core";
 
 
 describe('Error', () => {
@@ -43,9 +44,10 @@ describe('Error', () => {
     describe('command', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.command<[{ result: Int1Value }]>(
+                wsClient.command(
                     "MAP cast(129, int1) as result;",
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
@@ -64,9 +66,10 @@ describe('Error', () => {
     describe('query', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.query<[{ result: Int1Value }]>(
+                wsClient.query(
                     "MAP cast(129, int1) as result;",
-                    LEGACY_SCHEMA
+                    {},
+                    [Schema.object({result: Schema.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',

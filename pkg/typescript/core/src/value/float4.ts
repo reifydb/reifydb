@@ -68,6 +68,24 @@ export class Float4Value implements Value {
         return this.value === undefined ? 'undefined' : this.value.toString();
     }
 
+    /**
+     * Compare two Float4 values for equality with limited precision
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherFloat = other as Float4Value;
+        if (this.value === undefined || otherFloat.value === undefined) {
+            return this.value === otherFloat.value;
+        }
+        
+        // For Float4, use approximate comparison due to limited precision
+        const epsilon = 1e-6; // Float32 has about 7 decimal digits of precision
+        return Math.abs(this.value - otherFloat.value) <= epsilon;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

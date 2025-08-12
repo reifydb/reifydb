@@ -70,7 +70,11 @@ export class UndefinedValue implements Value {
     /**
      * Compare two undefined values (always equal)
      */
-    equals(other: UndefinedValue): boolean {
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
         return true;
     }
 

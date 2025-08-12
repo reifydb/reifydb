@@ -6,7 +6,8 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Client, WsClient, Int4Value, Utf8Value, Schema} from "../../../src";
+import {Client, WsClient} from "../../../src";
+import {Schema} from "@reifydb/core";
 
 
 describe('Statement', () => {
@@ -44,37 +45,41 @@ describe('Statement', () => {
     describe('command', () => {
 
         it('no statements', async () => {
-            const frames = await wsClient.command<[{}]>(
+            const frames = await wsClient.command(
                 '',
-                LEGACY_SCHEMA
+                {},
+                []
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await wsClient.command<[{}]>(
+            const frames = await wsClient.command(
                 ';',
-                LEGACY_SCHEMA
+                {},
+                []
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
 
         it('many empty statement', async () => {
-            const frames = await wsClient.command<[{}]>(
+            const frames = await wsClient.command(
                 ';;;;;',
-                LEGACY_SCHEMA
+                {},
+                []
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await wsClient.command<[
-                { one: Int4Value },
-                { two: Int4Value }
-            ]>(
+            const frames = await wsClient.command(
                 ';MAP 1 as one ;;;MAP 2 as two',
-                LEGACY_SCHEMA // Returns Value objects
+                {},
+                [
+                    Schema.object({one: Schema.int4Value()}),
+                    Schema.object({two: Schema.int4Value()})
+                ]
             );
             expect(frames).toHaveLength(2);
 
@@ -87,9 +92,10 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await wsClient.command<[{ result: Int4Value }]>(
+            const frames = await wsClient.command(
                 'MAP 1 as result;',
-                LEGACY_SCHEMA // Returns Value objects
+                {},
+                [Schema.object({result: Schema.int4Value()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -98,15 +104,16 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await wsClient.command<[
-                { result: Int4Value },
-                { result: Int4Value },
-                { result: Int4Value },
-            ]>(
+            const frames = await wsClient.command(
                 'MAP 1 as result;' +
                 'MAP 2 as result;' +
                 'MAP 3 as result;',
-                LEGACY_SCHEMA
+                {},
+                [
+                    Schema.object({result: Schema.int4Value()}),
+                    Schema.object({result: Schema.int4Value()}),
+                    Schema.object({result: Schema.int4Value()})
+                ]
             );
 
             expect(frames).toHaveLength(3);
@@ -121,15 +128,16 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await wsClient.command<[
-                { result: Int4Value },
-                { a: Int4Value, b: Int4Value },
-                { result: Utf8Value },
-            ]>(
+            const frames = await wsClient.command(
                 'MAP 1 as result;' +
                 'MAP { 2 as a, 3 as b };' +
                 "MAP 'ReifyDB' as result;",
-                LEGACY_SCHEMA
+                {},
+                [
+                    Schema.object({result: Schema.int4Value()}),
+                    Schema.object({a: Schema.int4Value(), b: Schema.int4Value()}),
+                    Schema.object({result: Schema.utf8Value()})
+                ]
             );
 
             expect(frames).toHaveLength(3);
@@ -151,37 +159,41 @@ describe('Statement', () => {
     describe('query', () => {
 
         it('no statements', async () => {
-            const frames = await wsClient.query<[{}]>(
+            const frames = await wsClient.query(
                 '',
-                LEGACY_SCHEMA
+                {},
+                []
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await wsClient.query<[{}]>(
+            const frames = await wsClient.query(
                 ';',
-                LEGACY_SCHEMA
+                {},
+                []
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
 
         it('many empty statement', async () => {
-            const frames = await wsClient.query<[{}]>(
+            const frames = await wsClient.query(
                 ';;;;;',
-                LEGACY_SCHEMA
+                {},
+                []
             );
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await wsClient.query<[
-                { one: Int4Value },
-                { two: Int4Value }
-            ]>(
+            const frames = await wsClient.query(
                 ';MAP 1 as one ;;;MAP 2 as two',
-                LEGACY_SCHEMA
+                {},
+                [
+                    Schema.object({one: Schema.int4Value()}),
+                    Schema.object({two: Schema.int4Value()})
+                ]
             );
             expect(frames).toHaveLength(2);
 
@@ -194,9 +206,10 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await wsClient.query<[{ result: Int4Value }]>(
+            const frames = await wsClient.query(
                 'MAP 1 as result;',
-                LEGACY_SCHEMA
+                {},
+                [Schema.object({result: Schema.int4Value()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -205,15 +218,16 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await wsClient.query<[
-                { result: Int4Value },
-                { result: Int4Value },
-                { result: Int4Value },
-            ]>(
+            const frames = await wsClient.query(
                 'MAP 1 as result;' +
                 'MAP 2 as result;' +
                 'MAP 3 as result;',
-                LEGACY_SCHEMA
+                {},
+                [
+                    Schema.object({result: Schema.int4Value()}),
+                    Schema.object({result: Schema.int4Value()}),
+                    Schema.object({result: Schema.int4Value()})
+                ]
             );
 
             expect(frames).toHaveLength(3);
@@ -228,15 +242,16 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await wsClient.query<[
-                { result: Int4Value },
-                { a: Int4Value, b: Int4Value },
-                { result: Utf8Value },
-            ]>(
+            const frames = await wsClient.query(
                 'MAP 1 as result;' +
                 'MAP { 2 as a, 3 as b } ;' +
                 "MAP 'ReifyDB' as result;",
-                LEGACY_SCHEMA
+                {},
+                [
+                    Schema.object({result: Schema.int4Value()}),
+                    Schema.object({a: Schema.int4Value(), b: Schema.int4Value()}),
+                    Schema.object({result: Schema.utf8Value()})
+                ]
             );
 
             expect(frames).toHaveLength(3);

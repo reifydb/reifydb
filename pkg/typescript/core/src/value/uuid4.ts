@@ -150,8 +150,13 @@ export class Uuid4Value implements Value {
     /**
      * Compare two UUID4 values for equality
      */
-    equals(other: Uuid4Value): boolean {
-        return this.uuid === other.uuid;
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherUuid = other as Uuid4Value;
+        return this.uuid === otherUuid.uuid;
     }
 
     /**

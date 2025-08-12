@@ -49,6 +49,18 @@ export class Uint1Value implements Value {
         return this.value === undefined ? 'undefined' : this.value.toString();
     }
 
+    /**
+     * Compare two Uint1 values for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherUint = other as Uint1Value;
+        return this.value === otherUint.value;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

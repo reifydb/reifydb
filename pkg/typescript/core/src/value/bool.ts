@@ -48,6 +48,18 @@ export class BoolValue implements Value {
         return this.value === undefined ? 'undefined' : this.value.toString();
     }
 
+    /**
+     * Compare two boolean values for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherBool = other as BoolValue;
+        return this.value === otherBool.value;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

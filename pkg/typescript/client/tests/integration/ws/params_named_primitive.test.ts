@@ -4,7 +4,7 @@
  * See license.md file for full license text
  */
 
-import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
+import {afterEach, beforeAll, beforeEach, describe, it} from "vitest";
 import {Client, WsClient} from "../../../src";
 import {waitForDatabase} from "../setup";
 import {Schema} from "@reifydb/core";
@@ -15,7 +15,7 @@ import {
     expectSingleBigIntResult
 } from "./test-helper";
 
-describe('Positional Parameters', () => {
+describe('Named Parameters', () => {
     let wsClient: WsClient;
 
     beforeAll(async () => {
@@ -49,8 +49,8 @@ describe('Positional Parameters', () => {
 
         it('Bool', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [true],
+                'MAP $value as result',
+                { value: true },
                 [Schema.object({result: Schema.boolean()})]
             );
 
@@ -59,8 +59,8 @@ describe('Positional Parameters', () => {
 
         it('Int1', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [42],
+                'MAP $value as result',
+                { value: 42 },
                 [Schema.object({result: Schema.int1()})]
             );
 
@@ -69,8 +69,8 @@ describe('Positional Parameters', () => {
 
         it('Int2', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [1234],
+                'MAP $value as result',
+                { value: 1234 },
                 [Schema.object({result: Schema.int2()})]
             );
 
@@ -79,8 +79,8 @@ describe('Positional Parameters', () => {
 
         it('Int4', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [12345678],
+                'MAP $value as result',
+                { value: 12345678 },
                 [Schema.object({result: Schema.int4()})]
             );
 
@@ -89,8 +89,8 @@ describe('Positional Parameters', () => {
 
         it('Int8', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [BigInt("9223372036854775807")],
+                'MAP $value as result',
+                { value: BigInt("9223372036854775807") },
                 [Schema.object({result: Schema.int8()})]
             );
 
@@ -99,8 +99,8 @@ describe('Positional Parameters', () => {
 
         it('Int16', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [BigInt("170141183460469231731687303715884105727")],
+                'MAP $value as result',
+                { value: BigInt("170141183460469231731687303715884105727") },
                 [Schema.object({result: Schema.int16()})]
             );
 
@@ -109,8 +109,8 @@ describe('Positional Parameters', () => {
 
         it('Uint1', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [255],
+                'MAP $value as result',
+                { value: 255 },
                 [Schema.object({result: Schema.uint1()})]
             );
 
@@ -119,8 +119,8 @@ describe('Positional Parameters', () => {
 
         it('Uint2', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [65535],
+                'MAP $value as result',
+                { value: 65535 },
                 [Schema.object({result: Schema.uint2()})]
             );
 
@@ -129,8 +129,8 @@ describe('Positional Parameters', () => {
 
         it('Uint4', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [4294967295],
+                'MAP $value as result',
+                { value: 4294967295 },
                 [Schema.object({result: Schema.uint4()})]
             );
 
@@ -139,8 +139,8 @@ describe('Positional Parameters', () => {
 
         it('Uint8', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [BigInt("18446744073709551615")],
+                'MAP $value as result',
+                { value: BigInt("18446744073709551615") },
                 [Schema.object({result: Schema.uint8()})]
             );
 
@@ -149,8 +149,8 @@ describe('Positional Parameters', () => {
 
         it('Uint16', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [BigInt("340282366920938463463374607431768211455")],
+                'MAP $value as result',
+                { value: BigInt("340282366920938463463374607431768211455") },
                 [Schema.object({result: Schema.uint16()})]
             );
 
@@ -159,8 +159,8 @@ describe('Positional Parameters', () => {
 
         it('Float4', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [3.14],
+                'MAP $value as result',
+                { value: 3.14 },
                 [Schema.object({result: Schema.float4()})]
             );
 
@@ -169,8 +169,8 @@ describe('Positional Parameters', () => {
 
         it('Float8', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [3.141592653589793],
+                'MAP $value as result',
+                { value: 3.141592653589793 },
                 [Schema.object({result: Schema.float8()})]
             );
 
@@ -179,8 +179,8 @@ describe('Positional Parameters', () => {
 
         it('Utf8', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                ["Hello, World!"],
+                'MAP $value as result',
+                { value: "Hello, World!" },
                 [Schema.object({result: Schema.utf8()})]
             );
 
@@ -190,8 +190,8 @@ describe('Positional Parameters', () => {
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [data],
+                'MAP $value as result',
+                { value: data },
                 [Schema.object({result: Schema.blob()})]
             );
 
@@ -200,8 +200,8 @@ describe('Positional Parameters', () => {
 
         it('RowId', async () => {
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [BigInt("123456789")],
+                'MAP $value as result',
+                { value: BigInt("123456789") },
                 [Schema.object({result: Schema.rowid()})]
             );
 
@@ -211,8 +211,8 @@ describe('Positional Parameters', () => {
         it('Date', async () => {
             const date = new Date('2024-03-15');
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [date],
+                'MAP $value as result',
+                { value: date },
                 [Schema.object({result: Schema.date()})]
             );
 
@@ -222,8 +222,8 @@ describe('Positional Parameters', () => {
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [time],
+                'MAP $value as result',
+                { value: time },
                 [Schema.object({result: Schema.time()})]
             );
 
@@ -233,8 +233,8 @@ describe('Positional Parameters', () => {
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [datetime],
+                'MAP $value as result',
+                { value: datetime },
                 [Schema.object({result: Schema.datetime()})]
             );
 
@@ -244,8 +244,8 @@ describe('Positional Parameters', () => {
         it('Interval', async () => {
             const interval = "P1DT2H30M";
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [interval],
+                'MAP $value as result',
+                { value: interval },
                 [Schema.object({result: Schema.interval()})]
             );
 
@@ -255,8 +255,8 @@ describe('Positional Parameters', () => {
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [uuid],
+                'MAP $value as result',
+                { value: uuid },
                 [Schema.object({result: Schema.uuid4()})]
             );
 
@@ -266,8 +266,8 @@ describe('Positional Parameters', () => {
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
             const frames = await wsClient.command(
-                'MAP $1 as result',
-                [uuid],
+                'MAP $value as result',
+                { value: uuid },
                 [Schema.object({result: Schema.uuid7()})]
             );
 
@@ -280,8 +280,8 @@ describe('Positional Parameters', () => {
 
         it('Bool', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [true],
+                'MAP $value as result',
+                { value: true },
                 [Schema.object({result: Schema.boolean()})]
             );
 
@@ -290,8 +290,8 @@ describe('Positional Parameters', () => {
 
         it('Int1', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [42],
+                'MAP $value as result',
+                { value: 42 },
                 [Schema.object({result: Schema.int1()})]
             );
 
@@ -300,8 +300,8 @@ describe('Positional Parameters', () => {
 
         it('Int2', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [1234],
+                'MAP $value as result',
+                { value: 1234 },
                 [Schema.object({result: Schema.int2()})]
             );
 
@@ -310,8 +310,8 @@ describe('Positional Parameters', () => {
 
         it('Int4', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [12345678],
+                'MAP $value as result',
+                { value: 12345678 },
                 [Schema.object({result: Schema.int4()})]
             );
 
@@ -320,8 +320,8 @@ describe('Positional Parameters', () => {
 
         it('Int8', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [BigInt("9223372036854775807")],
+                'MAP $value as result',
+                { value: BigInt("9223372036854775807") },
                 [Schema.object({result: Schema.int8()})]
             );
 
@@ -330,8 +330,8 @@ describe('Positional Parameters', () => {
 
         it('Int16', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [BigInt("170141183460469231731687303715884105727")],
+                'MAP $value as result',
+                { value: BigInt("170141183460469231731687303715884105727") },
                 [Schema.object({result: Schema.int16()})]
             );
 
@@ -340,8 +340,8 @@ describe('Positional Parameters', () => {
 
         it('Uint1', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [255],
+                'MAP $value as result',
+                { value: 255 },
                 [Schema.object({result: Schema.uint1()})]
             );
 
@@ -350,8 +350,8 @@ describe('Positional Parameters', () => {
 
         it('Uint2', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [65535],
+                'MAP $value as result',
+                { value: 65535 },
                 [Schema.object({result: Schema.uint2()})]
             );
 
@@ -360,8 +360,8 @@ describe('Positional Parameters', () => {
 
         it('Uint4', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [4294967295],
+                'MAP $value as result',
+                { value: 4294967295 },
                 [Schema.object({result: Schema.uint4()})]
             );
 
@@ -370,8 +370,8 @@ describe('Positional Parameters', () => {
 
         it('Uint8', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [BigInt("18446744073709551615")],
+                'MAP $value as result',
+                { value: BigInt("18446744073709551615") },
                 [Schema.object({result: Schema.uint8()})]
             );
 
@@ -380,8 +380,8 @@ describe('Positional Parameters', () => {
 
         it('Uint16', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [BigInt("340282366920938463463374607431768211455")],
+                'MAP $value as result',
+                { value: BigInt("340282366920938463463374607431768211455") },
                 [Schema.object({result: Schema.uint16()})]
             );
 
@@ -390,8 +390,8 @@ describe('Positional Parameters', () => {
 
         it('Float4', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [3.14],
+                'MAP $value as result',
+                { value: 3.14 },
                 [Schema.object({result: Schema.float4()})]
             );
 
@@ -400,8 +400,8 @@ describe('Positional Parameters', () => {
 
         it('Float8', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [3.141592653589793],
+                'MAP $value as result',
+                { value: 3.141592653589793 },
                 [Schema.object({result: Schema.float8()})]
             );
 
@@ -410,8 +410,8 @@ describe('Positional Parameters', () => {
 
         it('Utf8', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                ["Hello, World!"],
+                'MAP $value as result',
+                { value: "Hello, World!" },
                 [Schema.object({result: Schema.utf8()})]
             );
 
@@ -421,8 +421,8 @@ describe('Positional Parameters', () => {
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [data],
+                'MAP $value as result',
+                { value: data },
                 [Schema.object({result: Schema.blob()})]
             );
 
@@ -431,8 +431,8 @@ describe('Positional Parameters', () => {
 
         it('RowId', async () => {
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [BigInt("123456789")],
+                'MAP $value as result',
+                { value: BigInt("123456789") },
                 [Schema.object({result: Schema.rowid()})]
             );
 
@@ -442,8 +442,8 @@ describe('Positional Parameters', () => {
         it('Date', async () => {
             const date = new Date('2024-03-15');
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [date],
+                'MAP $value as result',
+                { value: date },
                 [Schema.object({result: Schema.date()})]
             );
 
@@ -453,8 +453,8 @@ describe('Positional Parameters', () => {
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [time],
+                'MAP $value as result',
+                { value: time },
                 [Schema.object({result: Schema.time()})]
             );
 
@@ -464,8 +464,8 @@ describe('Positional Parameters', () => {
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [datetime],
+                'MAP $value as result',
+                { value: datetime },
                 [Schema.object({result: Schema.datetime()})]
             );
 
@@ -475,8 +475,8 @@ describe('Positional Parameters', () => {
         it('Interval', async () => {
             const interval = "P1DT2H30M";
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [interval],
+                'MAP $value as result',
+                { value: interval },
                 [Schema.object({result: Schema.interval()})]
             );
 
@@ -486,8 +486,8 @@ describe('Positional Parameters', () => {
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [uuid],
+                'MAP $value as result',
+                { value: uuid },
                 [Schema.object({result: Schema.uuid4()})]
             );
 
@@ -497,8 +497,8 @@ describe('Positional Parameters', () => {
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
             const frames = await wsClient.query(
-                'MAP $1 as result',
-                [uuid],
+                'MAP $value as result',
+                { value: uuid },
                 [Schema.object({result: Schema.uuid7()})]
             );
 

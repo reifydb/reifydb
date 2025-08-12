@@ -54,6 +54,18 @@ export class RowIdValue implements Value {
         return this.value === undefined ? 'undefined' : this.value.toString();
     }
 
+    /**
+     * Compare two RowId values for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherRowId = other as RowIdValue;
+        return this.value === otherRowId.value;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

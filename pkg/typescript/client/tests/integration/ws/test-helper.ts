@@ -5,6 +5,7 @@
  */
 
 import { expect } from 'vitest';
+import type {Value} from "@reifydb/core";
 
 /**
  * Validates a single-frame, single-row result with expected value and type
@@ -83,4 +84,21 @@ export function expectSingleBlobResult(
     const result = frames[0][0][fieldName];
     expect(result).toBeInstanceOf(Uint8Array);
     expect(result).toEqual(expectedValue);
+}
+
+/**
+ * Validates a single-frame, single-row result for Value object results
+ * @param frames - The result frames from a query/command
+ * @param expectedValue - The Value object to compare against
+ */
+export function expectSingleValueResult(
+    frames: readonly {result: Value}[][],
+    expectedValue: Value
+): void {
+    expect(frames).toHaveLength(1);
+    expect(frames[0]).toHaveLength(1);
+    
+    const actualValue = frames[0][0].result;
+
+    expect(expectedValue.equals(actualValue)).toBe(true);
 }

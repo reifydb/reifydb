@@ -448,6 +448,26 @@ export class DateTimeValue implements Value {
             date.getUTCDate() === day;
     }
 
+    /**
+     * Compare two datetimes for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherDateTime = other as DateTimeValue;
+        if (this.months === undefined || otherDateTime.months === undefined) {
+            return this.months === otherDateTime.months && 
+                   this.days === otherDateTime.days && 
+                   this.nanos === otherDateTime.nanos;
+        }
+        
+        return this.months === otherDateTime.months && 
+               this.days === otherDateTime.days && 
+               this.nanos === otherDateTime.nanos;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

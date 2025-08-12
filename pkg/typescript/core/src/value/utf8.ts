@@ -38,6 +38,18 @@ export class Utf8Value implements Value {
         return this.value === undefined ? 'undefined' : this.value;
     }
 
+    /**
+     * Compare two Utf8 values for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherUtf8 = other as Utf8Value;
+        return this.value === otherUtf8.value;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

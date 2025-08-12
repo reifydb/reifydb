@@ -27,9 +27,6 @@ export {UndefinedValue} from './undefined';
 export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
-// export {Type, Value, TypeValuePair} from './type';
-
-
 
 export type Type =
     | "Blob"
@@ -51,5 +48,6 @@ export interface TypeValuePair {
 export abstract class Value {
     abstract readonly type: Type;
 
-    abstract encode(): TypeValuePair;
+    public abstract encode(): TypeValuePair;
+    public abstract equals(other: Value): boolean;
 }

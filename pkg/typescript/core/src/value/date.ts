@@ -282,6 +282,22 @@ export class DateValue implements Value {
                date.getUTCDate() === day;
     }
 
+    /**
+     * Compare two dates for equality
+     */
+    equals(other: Value): boolean {
+        if (other.type !== this.type) {
+            return false;
+        }
+        
+        const otherDate = other as DateValue;
+        if (this.months === undefined || otherDate.months === undefined) {
+            return this.months === otherDate.months && this.days === otherDate.days;
+        }
+        
+        return this.months === otherDate.months && this.days === otherDate.days;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,
