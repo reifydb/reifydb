@@ -6,7 +6,7 @@ use reifydb::core::interface::{Params, UnversionedTransaction, VersionedTransact
 use reifydb::core::retry;
 use reifydb::network::grpc::client::GrpcClient;
 use reifydb::network::grpc::server::GrpcConfig;
-use reifydb::{Database, ReifyDB, memory, optimistic};
+use reifydb::{Database, ServerBuilder, memory, optimistic};
 use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -32,7 +32,8 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        let instance = ReifyDB::new_server_with(input)
+        let (versioned, unversioned, hooks) = input;
+        let instance = ServerBuilder::new(versioned, unversioned, hooks)
             .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) })
             .build();
 

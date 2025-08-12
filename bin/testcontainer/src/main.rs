@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::WithHooks;
-use reifydb::network::ws::server::WsConfig;
-use reifydb::ReifyDB;
+use reifydb::server;
 use std::thread;
 use tokio::runtime::Runtime;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
 use tokio::{select, signal};
+use reifydb::network::ws::server::WsConfig;
 
 fn main() {
     let (tx, rx) = oneshot::channel();
@@ -37,8 +37,8 @@ fn main() {
     });
 
     let rt = Runtime::new().unwrap();
-    let mut db = ReifyDB::new_server()
-        .with_websocket(WsConfig::default())
+    let mut db = server::memory_serializable()
+        .with_ws(WsConfig { socket: "0.0.0.0:8090".parse().ok() })
         .on_create(|ctx| {
             ctx.command_as_root("create schema test", ())?;
             ctx.command_as_root("create table test.arith { id: int1, value: int2, num: int2 }", ())?;

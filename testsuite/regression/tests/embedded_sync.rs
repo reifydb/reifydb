@@ -3,7 +3,7 @@
 
 use reifydb::core::hook::Hooks;
 use reifydb::core::interface::{Params, UnversionedTransaction, VersionedTransaction};
-use reifydb::{Database, ReifyDB, SessionSync, memory, optimistic};
+use reifydb::{Database, SyncBuilder, SessionSync, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -25,7 +25,8 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        Self { instance: ReifyDB::new_sync_with(input).build() }
+        let (versioned, unversioned, hooks) = input;
+        Self { instance: SyncBuilder::new(versioned, unversioned, hooks).build() }
     }
 }
 

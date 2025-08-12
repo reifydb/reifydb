@@ -32,7 +32,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
         let inner = DatabaseBuilder::new(engine.clone());
         let runtime_provider = RuntimeProvider::Tokio(
@@ -42,7 +42,7 @@ where
     }
 
     #[cfg(feature = "sub_ws")]
-    pub fn with_websocket(mut self, config: WsConfig) -> Self {
+    pub fn with_ws(mut self, config: WsConfig) -> Self {
         let subsystem = WsSubsystem::new(config, self.engine.clone(), &self.runtime_provider);
         self.inner = self.inner.add_subsystem(subsystem);
         self

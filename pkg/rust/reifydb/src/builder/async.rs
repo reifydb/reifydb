@@ -24,7 +24,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
         let inner = DatabaseBuilder::new(engine.clone());
         Self { inner, engine }
