@@ -12,16 +12,12 @@ use reifydb_core::{Frame, return_hooks};
 use reifydb_engine::Engine;
 
 /// Context provided to on_create hooks
-pub struct OnCreateContext<T>
-where
-    T: Transaction,
+pub struct OnCreateContext<T: Transaction>
 {
     engine: Engine<T>,
 }
 
-impl<'a, T> OnCreateContext<T>
-where
-    T: Transaction,
+impl<'a, T: Transaction> OnCreateContext<T>
 {
     pub fn new(engine: Engine<T>) -> Self {
         Self { engine }
@@ -69,18 +65,16 @@ where
 }
 
 /// Shared callback implementation for OnCreate hook
-pub struct OnCreateCallback<T, F>
+pub struct OnCreateCallback<T: Transaction, F>
 where
-    T: Transaction,
     F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
     pub callback: F,
     pub engine: Engine<T>,
 }
 
-impl<T, F> Callback<OnCreateHook> for OnCreateCallback<T, F>
+impl<T: Transaction, F> Callback<OnCreateHook> for OnCreateCallback<T, F>
 where
-    T: Transaction,
     F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
     fn on(&self, _hook: &OnCreateHook) -> Result<BoxedHookIter, reifydb_core::Error> {

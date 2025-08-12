@@ -12,9 +12,7 @@ use crate::{EncodedKey, EncodedKeyRange};
 
 /// An active query transaction that holds a versioned query transaction
 /// and provides query-only access to unversioned storage.
-pub struct ActiveQueryTransaction<T>
-where
-    T: Transaction,
+pub struct ActiveQueryTransaction<T: Transaction>
 {
     versioned: <T::Versioned as VersionedTransaction>::Query,
     unversioned: T::Unversioned,
@@ -24,9 +22,7 @@ where
 /// and provides query/command access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct ActiveCommandTransaction<T>
-where
-    T: Transaction,
+pub struct ActiveCommandTransaction<T: Transaction>
 {
     versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
     unversioned: T::Unversioned,
@@ -40,9 +36,7 @@ enum TransactionState {
     RolledBack,
 }
 
-impl<T> ActiveQueryTransaction<T>
-where
-    T: Transaction,
+impl<T: Transaction> ActiveQueryTransaction<T>
 {
     /// Creates a new active query transaction
     pub fn new(
@@ -70,9 +64,7 @@ where
     }
 }
 
-impl<T> VersionedQueryTransaction for ActiveQueryTransaction<T>
-where
-    T: Transaction,
+impl<T: Transaction> VersionedQueryTransaction for ActiveQueryTransaction<T>
 {
     #[inline]
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
@@ -115,9 +107,7 @@ where
     }
 }
 
-impl<T> ActiveCommandTransaction<T>
-where
-    T: Transaction,
+impl<T: Transaction> ActiveCommandTransaction<T>
 {
     /// Creates a new active command transaction
     pub fn new(
@@ -229,9 +219,7 @@ where
     }
 }
 
-impl<T> VersionedQueryTransaction for ActiveCommandTransaction<T>
-where
-    T: Transaction,
+impl<T: Transaction> VersionedQueryTransaction for ActiveCommandTransaction<T>
 {
     #[inline]
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
@@ -282,9 +270,7 @@ where
     }
 }
 
-impl<T> VersionedCommandTransaction for ActiveCommandTransaction<T>
-where
-    T: Transaction,
+impl<T: Transaction> VersionedCommandTransaction for ActiveCommandTransaction<T>
 {
     #[inline]
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
@@ -313,9 +299,7 @@ where
     }
 }
 
-impl<T> Drop for ActiveCommandTransaction<T>
-where
-    T: Transaction,
+impl<T: Transaction> Drop for ActiveCommandTransaction<T>
 {
     fn drop(&mut self) {
         if let Some(versioned) = self.versioned.take() {

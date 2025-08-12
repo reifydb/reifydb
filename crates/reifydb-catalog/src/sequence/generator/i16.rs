@@ -3,8 +3,8 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::diagnostic::sequence::sequence_exhausted;
-use reifydb_core::interface::{Transaction, 
-    ActiveCommandTransaction, UnversionedQueryTransaction,
+use reifydb_core::interface::{ 
+    ActiveCommandTransaction, Transaction, UnversionedQueryTransaction,
     UnversionedCommandTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
@@ -66,7 +66,7 @@ impl GeneratorI16 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::generator::i16::{GeneratorI16, LAYOUT};
-    use reifydb_core::interface::{Transaction, 
+    use reifydb_core::interface::{ 
         Unversioned, UnversionedQueryTransaction, UnversionedCommandTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;

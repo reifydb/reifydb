@@ -35,13 +35,9 @@ impl Default for GrpcConfig {
 }
 
 #[derive(Clone)]
-pub struct GrpcServer<T>(Arc<Inner<T>>)
-where
-    T: Transaction;
+pub struct GrpcServer<T: Transaction>(Arc<Inner<T>>);
 
-pub struct Inner<T>
-where
-    T: Transaction,
+pub struct Inner<T: Transaction>
 {
     config: GrpcConfig,
     engine: Engine<T>,
@@ -49,9 +45,7 @@ where
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T> Deref for GrpcServer<T>
-where
-    T: Transaction,
+impl<T: Transaction> Deref for GrpcServer<T>
 {
     type Target = Inner<T>;
 
@@ -60,9 +54,7 @@ where
     }
 }
 
-impl<T> GrpcServer<T>
-where
-    T: Transaction,
+impl<T: Transaction> GrpcServer<T>
 {
     pub fn new(config: GrpcConfig, engine: Engine<T>) -> Self {
         Self(Arc::new(Inner {
@@ -96,9 +88,7 @@ where
 }
 
 // FIXME return result
-pub fn db_service<T>(engine: Engine<T>) -> DbServer<DbService<T>>
-where
-    T: Transaction,
+pub fn db_service<T: Transaction>(engine: Engine<T>) -> DbServer<DbService<T>>
 {
     DbServer::new(DbService::new(engine))
 }

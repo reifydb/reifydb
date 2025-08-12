@@ -48,13 +48,9 @@ impl Default for WsConfig {
 }
 
 #[derive(Clone)]
-pub struct WsServer<T>(Arc<Inner<T>>)
-where
-    T: Transaction;
+pub struct WsServer<T: Transaction>(Arc<Inner<T>>);
 
-pub struct Inner<T>
-where
-    T: Transaction,
+pub struct Inner<T: Transaction>
 {
     config: WsConfig,
     engine: Engine<T>,
@@ -64,9 +60,7 @@ where
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T> Deref for WsServer<T>
-where
-    T: Transaction,
+impl<T: Transaction> Deref for WsServer<T>
 {
     type Target = Inner<T>;
 
@@ -75,9 +69,7 @@ where
     }
 }
 
-impl<T> WsServer<T>
-where
-    T: Transaction,
+impl<T: Transaction> WsServer<T>
 {
     pub fn new(config: WsConfig, engine: Engine<T>) -> Self {
         Self(Arc::new(Inner {

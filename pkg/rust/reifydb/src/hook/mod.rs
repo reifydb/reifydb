@@ -9,9 +9,7 @@ use reifydb_core::hook::lifecycle::OnCreateHook;
 use reifydb_core::interface::{GetHooks, Transaction};
 use reifydb_engine::Engine;
 
-pub trait WithHooks<T>
-where
-    T: Transaction,
+pub trait WithHooks<T: Transaction>
 {
     fn engine(&self) -> &Engine<T>;
 

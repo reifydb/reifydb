@@ -3,9 +3,9 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::diagnostic::sequence::sequence_exhausted;
-use reifydb_core::interface::{Transaction, 
-    ActiveCommandTransaction, UnversionedQueryTransaction,
-    UnversionedCommandTransaction,
+use reifydb_core::interface::{
+    ActiveCommandTransaction, Transaction, UnversionedCommandTransaction,
+    UnversionedQueryTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
@@ -19,8 +19,7 @@ impl GeneratorU8 {
         txn: &mut ActiveCommandTransaction<T>,
         key: &EncodedKey,
     ) -> crate::Result<u8>
-    where
-    {
+where {
         txn.with_unversioned_command(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
@@ -49,8 +48,7 @@ impl GeneratorU8 {
         key: &EncodedKey,
         value: u8,
     ) -> crate::Result<()>
-    where
-    {
+where {
         txn.with_unversioned_command(|tx| {
             let mut row = match tx.get(key)? {
                 Some(unversioned_row) => unversioned_row.row,
@@ -66,8 +64,8 @@ impl GeneratorU8 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::generator::u8::{GeneratorU8, LAYOUT};
-    use reifydb_core::interface::{Transaction, 
-        Unversioned, UnversionedQueryTransaction, UnversionedCommandTransaction,
+    use reifydb_core::interface::{
+        Unversioned, UnversionedCommandTransaction, UnversionedQueryTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::{EncodedKey, Type};

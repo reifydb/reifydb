@@ -9,25 +9,19 @@ use reifydb_core::interface::{
 };
 use reifydb_core::return_hooks;
 
-pub(crate) struct CreateCallback<T>
-where
-    T: Transaction,
+pub(crate) struct CreateCallback<T: Transaction>
 {
     engine: Engine<T>,
 }
 
-impl<T> CreateCallback<T>
-where
-    T: Transaction,
+impl<T: Transaction> CreateCallback<T>
 {
     pub(crate) fn new(engine: Engine<T>) -> Self {
         Self { engine }
     }
 }
 
-impl<T> Callback<OnCreateHook> for CreateCallback<T>
-where
-    T: Transaction,
+impl<T: Transaction> Callback<OnCreateHook> for CreateCallback<T>
 {
     fn on(&self, _hook: &OnCreateHook) -> crate::Result<BoxedHookIter> {
         self.engine.command_as(

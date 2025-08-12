@@ -126,9 +126,7 @@ impl<T: Transaction> Drop for FlowSubsystem<T> {
     }
 }
 
-impl<T> Subsystem for FlowSubsystem<T>
-where
-    T: Transaction + Send + Sync,
+impl<T: Transaction + Send + Sync> Subsystem for FlowSubsystem<T>
 {
     fn name(&self) -> &'static str {
         "Flow"

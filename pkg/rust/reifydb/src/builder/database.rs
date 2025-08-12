@@ -9,18 +9,14 @@ use reifydb_engine::Engine;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub struct DatabaseBuilder<T>
-where
-    T: Transaction,
+pub struct DatabaseBuilder<T: Transaction>
 {
     engine: Engine<T>,
     config: DatabaseConfig,
     subsystems: Vec<Box<dyn Subsystem>>,
 }
 
-impl<T> DatabaseBuilder<T>
-where
-    T: Transaction,
+impl<T: Transaction> DatabaseBuilder<T>
 {
     #[allow(unused_mut)]
     pub fn new(engine: Engine<T>) -> Self {
@@ -85,9 +81,7 @@ where
     }
 }
 
-impl<T> DatabaseBuilder<T>
-where
-    T: Transaction,
+impl<T: Transaction> DatabaseBuilder<T>
 {
     pub fn development_config(self) -> Self {
         self.with_graceful_shutdown_timeout(Duration::from_secs(10))

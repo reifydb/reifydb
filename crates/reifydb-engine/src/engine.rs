@@ -22,22 +22,16 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub struct Engine<T>(Arc<EngineInner<T>>)
-where
-    T: Transaction;
+pub struct Engine<T: Transaction>(Arc<EngineInner<T>>);
 
-impl<T> GetHooks for Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> GetHooks for Engine<T>
 {
     fn get_hooks(&self) -> &Hooks {
         &self.hooks
     }
 }
 
-impl<T> EngineInterface<T> for Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> EngineInterface<T> for Engine<T>
 {
     fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>> {
         Ok(ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone()))
@@ -71,9 +65,7 @@ where
     }
 }
 
-impl<T> ExecuteCommand<T> for Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> ExecuteCommand<T> for Engine<T>
 {
     #[inline]
     fn execute_command<'a>(
@@ -85,9 +77,7 @@ where
     }
 }
 
-impl<T> ExecuteQuery<T> for Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> ExecuteQuery<T> for Engine<T>
 {
     #[inline]
     fn execute_query<'a>(
@@ -99,18 +89,14 @@ where
     }
 }
 
-impl<T> Clone for Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> Clone for Engine<T>
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T> Deref for Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> Deref for Engine<T>
 {
     type Target = EngineInner<T>;
 
@@ -128,9 +114,7 @@ pub struct EngineInner<T: Transaction> {
     _processor: FlowProcessor<T>, // FIXME remove me
 }
 
-impl<T> Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> Engine<T>
 {
     pub fn new(
         versioned: T::Versioned,
@@ -169,16 +153,12 @@ where
 }
 
 #[allow(dead_code)]
-struct FlowPostCommit<T>
-where
-    T: Transaction,
+struct FlowPostCommit<T: Transaction>
 {
     engine: Engine<T>,
 }
 
-impl<T> Callback<PostCommitHook> for FlowPostCommit<T>
-where
-    T: Transaction,
+impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T>
 {
     fn on(&self, hook: &PostCommitHook) -> crate::Result<BoxedHookIter> {
         println!("Transaction version: {}", hook.version);
@@ -265,9 +245,7 @@ where
     }
 }
 
-impl<T> Engine<T>
-where
-    T: Transaction,
+impl<T: Transaction> Engine<T>
 {
     pub fn setup_hooks(&self) -> crate::Result<()> {
         register_system_hooks(&self);

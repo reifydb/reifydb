@@ -61,9 +61,7 @@ impl Default for DatabaseConfig {
     }
 }
 
-pub struct Database<T>
-where
-    T: Transaction,
+pub struct Database<T: Transaction>
 {
     config: DatabaseConfig,
     engine: Engine<T>,
@@ -72,9 +70,7 @@ where
     running: bool,
 }
 
-impl<T> Database<T>
-where
-    T: Transaction,
+impl<T: Transaction> Database<T>
 {
     #[cfg(feature = "sub_flow")]
     pub fn subsystem_flow(&self) -> Option<&FlowSubsystem<T>> {
@@ -92,9 +88,7 @@ where
     }
 }
 
-impl<T> Database<T>
-where
-    T: Transaction,
+impl<T: Transaction> Database<T>
 {
     pub(crate) fn new(
         engine: Engine<T>,
@@ -256,9 +250,7 @@ where
     }
 }
 
-impl<T> Drop for Database<T>
-where
-    T: Transaction,
+impl<T: Transaction> Drop for Database<T>
 {
     fn drop(&mut self) {
         if self.running {

@@ -11,17 +11,13 @@ use reifydb_core::interface::{
     ActiveCommandTransaction, ColumnPolicyKind, Table, TableId, Transaction,
 };
 
-pub fn create_schema<T>(txn: &mut ActiveCommandTransaction<T>, schema: &str) -> Schema
-where
-    T: Transaction,
+pub fn create_schema<T: Transaction>(txn: &mut ActiveCommandTransaction<T>, schema: &str) -> Schema
 {
     Catalog::create_schema(txn, SchemaToCreate { schema_span: None, name: schema.to_string() })
         .unwrap()
 }
 
-pub fn ensure_test_schema<T>(txn: &mut ActiveCommandTransaction<T>) -> Schema
-where
-    T: Transaction,
+pub fn ensure_test_schema<T: Transaction>(txn: &mut ActiveCommandTransaction<T>) -> Schema
 {
     if let Some(result) = Catalog::get_schema_by_name(txn, "test_schema").unwrap() {
         return result;
@@ -29,10 +25,7 @@ where
     create_schema(txn, "test_schema")
 }
 
-pub fn ensure_test_table<T>(txn: &mut ActiveCommandTransaction<T>) -> Table
-where
-    T: Transaction,
-    
+pub fn ensure_test_table<T: Transaction>(txn: &mut ActiveCommandTransaction<T>) -> Table
 {
     ensure_test_schema(txn);
     if let Some(result) = Catalog::get_table_by_name(txn, SchemaId(1), "test_table").unwrap() {
@@ -41,15 +34,12 @@ where
     create_table(txn, "test_schema", "test_table", &[])
 }
 
-pub fn create_table<T>(
+pub fn create_table<T: Transaction>(
     txn: &mut ActiveCommandTransaction<T>,
     schema: &str,
     table: &str,
     columns: &[table::ColumnToCreate],
 ) -> Table
-where
-    T: Transaction,
-    
 {
     Catalog::create_table(
         txn,
@@ -63,15 +53,12 @@ where
     .unwrap()
 }
 
-pub fn create_test_table_column<T>(
+pub fn create_test_table_column<T: Transaction>(
     txn: &mut ActiveCommandTransaction<T>,
     name: &str,
     value: Type,
     policies: Vec<ColumnPolicyKind>,
-) where
-    T: Transaction,
-    
-{
+) {
     ensure_test_table(txn);
 
     let columns = Catalog::list_columns(txn, TableId(1)).unwrap();

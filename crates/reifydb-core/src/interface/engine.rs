@@ -3,9 +3,7 @@ use crate::interface::{
 };
 use crate::result::frame::Frame;
 
-pub trait Engine<T>: GetHooks + Send + Sync + Clone + 'static
-where
-    T: Transaction,
+pub trait Engine<T: Transaction>: GetHooks + Send + Sync + Clone + 'static
 {
     fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>>;
 

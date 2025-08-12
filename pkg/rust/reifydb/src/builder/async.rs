@@ -9,18 +9,14 @@ use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 
 #[cfg(feature = "async")]
-pub struct AsyncBuilder<T>
-where
-    T: Transaction,
+pub struct AsyncBuilder<T: Transaction>
 {
     inner: DatabaseBuilder<T>,
     engine: Engine<T>,
 }
 
 #[cfg(feature = "async")]
-impl<T> AsyncBuilder<T>
-where
-    T: Transaction,
+impl<T: Transaction> AsyncBuilder<T>
 {
     pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
@@ -34,9 +30,7 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<T> WithHooks<T> for AsyncBuilder<T>
-where
-    T: Transaction,
+impl<T: Transaction> WithHooks<T> for AsyncBuilder<T>
 {
     fn engine(&self) -> &Engine<T> {
         &self.engine

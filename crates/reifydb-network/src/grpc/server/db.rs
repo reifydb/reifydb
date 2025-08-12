@@ -19,9 +19,7 @@ use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 use std::collections::HashMap;
 
-pub struct DbService<T>
-where
-    T: Transaction,
+pub struct DbService<T: Transaction>
 {
     pub(crate) engine: Arc<Engine<T>>,
     _phantom: std::marker::PhantomData<T>,
@@ -89,9 +87,7 @@ fn grpc_params_to_core_params(grpc_params: Option<grpc::Params>) -> CoreParams {
     }
 }
 
-impl<T> DbService<T>
-where
-    T: Transaction,
+impl<T: Transaction> DbService<T>
 {
     pub fn new(engine: Engine<T>) -> Self {
         Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
@@ -103,9 +99,7 @@ pub type CommandResultStream =
 pub type QueryResultStream = Pin<Box<dyn Stream<Item = Result<grpc::QueryResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<T> grpc::db_server::Db for DbService<T>
-where
-    T: Transaction,
+impl<T: Transaction> grpc::db_server::Db for DbService<T>
 {
     type CommandStream = CommandResultStream;
 

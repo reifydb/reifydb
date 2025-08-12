@@ -3,9 +3,9 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::diagnostic::sequence::sequence_exhausted;
-use reifydb_core::interface::{Transaction, 
-    ActiveCommandTransaction, UnversionedQueryTransaction,
-    UnversionedCommandTransaction,
+use reifydb_core::interface::{
+    ActiveCommandTransaction, Transaction, UnversionedCommandTransaction,
+    UnversionedQueryTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
@@ -16,11 +16,10 @@ pub(crate) struct GeneratorU32 {}
 
 impl GeneratorU32 {
     pub(crate) fn next<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
-		key: &EncodedKey,
+        txn: &mut ActiveCommandTransaction<T>,
+        key: &EncodedKey,
     ) -> crate::Result<u32>
-    where
-    {
+where {
         txn.with_unversioned_command(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
@@ -45,12 +44,11 @@ impl GeneratorU32 {
     }
 
     pub(crate) fn set<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
-		key: &EncodedKey,
-		value: u32,
+        txn: &mut ActiveCommandTransaction<T>,
+        key: &EncodedKey,
+        value: u32,
     ) -> crate::Result<()>
-    where
-    {
+where {
         txn.with_unversioned_command(|tx| {
             let mut row = match tx.get(key)? {
                 Some(unversioned_row) => unversioned_row.row,
@@ -66,8 +64,8 @@ impl GeneratorU32 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::generator::u32::{GeneratorU32, LAYOUT};
-    use reifydb_core::interface::{Transaction, 
-        Unversioned, UnversionedQueryTransaction, UnversionedCommandTransaction,
+    use reifydb_core::interface::{
+        Unversioned, UnversionedCommandTransaction, UnversionedQueryTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::{EncodedKey, Type};

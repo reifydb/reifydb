@@ -7,17 +7,11 @@ use reifydb_core::hook::Hooks;
 use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 
-pub struct SyncBuilder<T>
-where
-    T: Transaction,
-{
+pub struct SyncBuilder<T: Transaction> {
     inner: DatabaseBuilder<T>,
 }
 
-impl<T> SyncBuilder<T>
-where
-    T: Transaction,
-{
+impl<T: Transaction> SyncBuilder<T> {
     pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
         Self {
             inner: DatabaseBuilder::new(

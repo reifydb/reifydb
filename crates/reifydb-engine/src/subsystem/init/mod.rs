@@ -9,9 +9,7 @@ use crate::subsystem::init::create::CreateCallback;
 mod create;
 pub(crate) mod start;
 
-pub(crate) fn register_system_hooks<T>(engine: &Engine<T>)
-where
-    T: Transaction,
+pub(crate) fn register_system_hooks<T: Transaction>(engine: &Engine<T>)
 {
     let hooks = engine.get_hooks();
 

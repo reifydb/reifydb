@@ -65,7 +65,7 @@ where {
 mod tests {
     use crate::sequence::generator::i8::{GeneratorI8, LAYOUT};
     use reifydb_core::interface::{
-        Transaction, Unversioned, UnversionedCommandTransaction, UnversionedQueryTransaction,
+        Unversioned, UnversionedCommandTransaction, UnversionedQueryTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::{EncodedKey, Type};

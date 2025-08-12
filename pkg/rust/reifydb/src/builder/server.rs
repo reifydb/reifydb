@@ -16,9 +16,7 @@ use reifydb_engine::Engine;
 use reifydb_network::ws::server::WsConfig;
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-pub struct ServerBuilder<T>
-where
-    T: Transaction,
+pub struct ServerBuilder<T: Transaction>
 {
     inner: DatabaseBuilder<T>,
     engine: Engine<T>,
@@ -26,9 +24,7 @@ where
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-impl<T> ServerBuilder<T>
-where
-    T: Transaction,
+impl<T: Transaction> ServerBuilder<T>
 {
     pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
@@ -59,9 +55,7 @@ where
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-impl<T> WithHooks<T> for ServerBuilder<T>
-where
-    T: Transaction,
+impl<T: Transaction> WithHooks<T> for ServerBuilder<T>
 {
     fn engine(&self) -> &Engine<T> {
         &self.engine
