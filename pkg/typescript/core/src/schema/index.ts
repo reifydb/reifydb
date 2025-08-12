@@ -24,17 +24,24 @@ export interface OptionalSchemaNode<T extends SchemaNode = SchemaNode> {
     schema: T;
 }
 
+export interface ValueSchemaNode<T extends string = string> {
+    kind: 'value';
+    type: T;
+}
+
 export type SchemaNode =
     | PrimitiveSchemaNode
     | ObjectSchemaNode
     | ArraySchemaNode
-    | OptionalSchemaNode;
+    | OptionalSchemaNode
+    | ValueSchemaNode;
 
 export type {
     PrimitiveToTS,
     PrimitiveToValue,
     InferSchema,
     InferSchemas
+
 } from './inference';
 
 export {

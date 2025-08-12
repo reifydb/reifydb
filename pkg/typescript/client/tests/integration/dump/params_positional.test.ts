@@ -31,7 +31,7 @@ import {
     Uuid7Value,
     UndefinedValue
 } from "../../../src";
-import { LEGACY_SCHEMA } from "../test-helpers";
+
 
 describe('Positional Parameters', () => {
     let wsClient: WsClient;

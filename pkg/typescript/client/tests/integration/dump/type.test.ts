@@ -8,7 +8,7 @@ import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {BoolValue, Client, Float4Value, Float8Value, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value, Utf8Value, DateValue, DateTimeValue, IntervalValue, TimeValue, Uuid4Value, Uuid7Value} from "../../../src";
 import {WsClient} from "../../../src/ws";
-import { LEGACY_SCHEMA } from "../test-helpers";
+
 
 describe('Websocket Data Type', () => {
     let wsClient: WsClient;

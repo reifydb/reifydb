@@ -19,7 +19,7 @@ import {
     DateTimeValue, 
     UndefinedValue
 } from "../../../src";
-import { LEGACY_SCHEMA } from "../test-helpers";
+
 
 describe('Primitive Parameter Support', () => {
     let wsClient: WsClient;

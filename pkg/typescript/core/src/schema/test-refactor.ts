@@ -12,11 +12,7 @@ const userSchema = Schema.object({
     name: Schema.string(),
     email: Schema.string(),
     isActive: Schema.bool(),
-    age: Schema.optional(Schema.int2()),
-    metadata: Schema.nullable(Schema.object({
-        created: Schema.datetime(),
-        tags: Schema.array(Schema.string())
-    }))
+    age: Schema.optional(Schema.int2())
 });
 
 // Test type inference
@@ -29,10 +25,6 @@ const testUser: User = {
     email: "john@example.com",
     isActive: true,
     age: 30,
-    metadata: {
-        created: new Date(),
-        tags: ["typescript", "reifydb"]
-    }
 };
 
 console.log("Schema Creation Test:");

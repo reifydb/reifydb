@@ -16,7 +16,7 @@ import {
 } from '../value';
 import {
     PrimitiveSchemaNode, ObjectSchemaNode, ArraySchemaNode,
-    OptionalSchemaNode, UndefinedSchemaNode, SchemaNode
+    OptionalSchemaNode, ValueSchemaNode, SchemaNode
 } from '.';
 
 export type PrimitiveToTS<T extends Type> =
@@ -42,7 +42,7 @@ export type PrimitiveToTS<T extends Type> =
                                                                                 T extends 'Uuid4' ? string :
                                                                                     T extends 'Uuid7' ? string :
                                                                                         T extends 'Undefined' ? undefined :
-                                                                                            T extends 'RowId' ? string :
+                                                                                            T extends 'RowId' ? number :
                                                                                                 never;
 
 export type PrimitiveToValue<T extends Type> =
@@ -73,10 +73,10 @@ export type PrimitiveToValue<T extends Type> =
 
 export type InferSchema<S> =
     S extends PrimitiveSchemaNode<infer T> ? T extends Type ? PrimitiveToTS<T> : never :
-        S extends ObjectSchemaNode<infer P> ? { [K in keyof P]: InferSchema<P[K]> } :
-            S extends ArraySchemaNode<infer T> ? InferSchema<T>[] :
-                S extends OptionalSchemaNode<infer T> ? InferSchema<T> | undefined :
-                    S extends UndefinedSchemaNode<infer T> ? InferSchema<T> | undefined :
+        S extends ValueSchemaNode<infer T> ? T extends Type ? PrimitiveToValue<T> : never :
+            S extends ObjectSchemaNode<infer P> ? { [K in keyof P]: InferSchema<P[K]> } :
+                S extends ArraySchemaNode<infer T> ? InferSchema<T>[] :
+                    S extends OptionalSchemaNode<infer T> ? InferSchema<T> | undefined :
                         never;
 
 export type InferSchemas<S extends readonly SchemaNode[]> = {

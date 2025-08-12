@@ -31,7 +31,7 @@ import {
     Uuid4Value,
     Uuid7Value
 } from "../../../src";
-import { LEGACY_SCHEMA } from "../test-helpers";
+
 
 describe('Named Parameters', () => {
     let wsClient: WsClient;

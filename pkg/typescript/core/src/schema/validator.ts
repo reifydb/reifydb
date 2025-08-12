@@ -77,12 +77,5 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
         return validateSchema(schema.schema, value);
     }
 
-    if (schema.kind === 'nullable') {
-        if (value === null) {
-            return true;
-        }
-        return validateSchema(schema.schema, value);
-    }
-
     return false;
 }

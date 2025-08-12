@@ -7,7 +7,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Client, WsClient, Int4Value, Utf8Value, Schema} from "../../../src";
-import { LEGACY_SCHEMA } from "../test-helpers";
+
 
 describe('Statement', () => {
     let wsClient: WsClient;
