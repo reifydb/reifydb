@@ -22,7 +22,7 @@ pub trait VersionedStorage:
     Send
     + Sync
     + Clone
-    + VersionedApply
+    + VersionedCommit
     + VersionedGet
     + VersionedContains
     + VersionedScan
@@ -33,8 +33,8 @@ pub trait VersionedStorage:
 {
 }
 
-pub trait VersionedApply {
-    fn apply(&self, delta: CowVec<Delta>, version: Version) -> crate::Result<()>;
+pub trait VersionedCommit {
+    fn commit(&self, delta: CowVec<Delta>, version: Version) -> crate::Result<()>;
 }
 
 pub trait VersionedGet {
@@ -108,7 +108,7 @@ pub trait UnversionedStorage:
     Send
     + Sync
     + Clone
-    + UnversionedApply
+    + UnversionedCommit
     + UnversionedGet
     + UnversionedContains
     + UnversionedInsert
@@ -121,8 +121,8 @@ pub trait UnversionedStorage:
 {
 }
 
-pub trait UnversionedApply {
-    fn apply(&mut self, delta: CowVec<Delta>) -> crate::Result<()>;
+pub trait UnversionedCommit {
+    fn commit(&mut self, delta: CowVec<Delta>) -> crate::Result<()>;
 }
 
 pub trait UnversionedGet {
@@ -133,15 +133,15 @@ pub trait UnversionedContains {
     fn contains(&self, key: &EncodedKey) -> crate::Result<bool>;
 }
 
-pub trait UnversionedInsert: UnversionedApply {
+pub trait UnversionedInsert: UnversionedCommit {
     fn insert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
-        Self::apply(self, CowVec::new(vec![Delta::Insert { key: key.clone(), row: row.clone() }]))
+        Self::commit(self, CowVec::new(vec![Delta::Insert { key: key.clone(), row: row.clone() }]))
     }
 }
 
-pub trait UnversionedRemove: UnversionedApply {
+pub trait UnversionedRemove: UnversionedCommit {
     fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
-        Self::apply(self, CowVec::new(vec![Delta::Remove { key: key.clone() }]))
+        Self::commit(self, CowVec::new(vec![Delta::Remove { key: key.clone() }]))
     }
 }
 

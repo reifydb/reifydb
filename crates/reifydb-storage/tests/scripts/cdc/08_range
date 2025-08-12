@@ -1,0 +1,120 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test CDC range with different bound types
+
+# Insert events at different versions
+insert 10 A=VersionA
+insert 10 B=VersionB
+insert 10 C=VersionC
+commit
+---
+ok
+
+insert 20 D=VersionD
+insert 20 E=VersionE
+insert 20 F=VersionF
+commit
+---
+ok
+
+insert 30 G=VersionG
+insert 30 H=VersionH
+insert 30 I=VersionI
+commit
+---
+ok
+
+# Test unbounded range (all events)
+cdc_range_unbounded
+---
+CdcEvent { version: 10, seq: 1, ts: 1000, change: Insert { key: "A", after: "VersionA" } }
+CdcEvent { version: 10, seq: 2, ts: 1000, change: Insert { key: "B", after: "VersionB" } }
+CdcEvent { version: 10, seq: 3, ts: 1000, change: Insert { key: "C", after: "VersionC" } }
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }
+CdcEvent { version: 30, seq: 1, ts: 1000, change: Insert { key: "G", after: "VersionG" } }
+CdcEvent { version: 30, seq: 2, ts: 1000, change: Insert { key: "H", after: "VersionH" } }
+CdcEvent { version: 30, seq: 3, ts: 1000, change: Insert { key: "I", after: "VersionI" } }
+
+# Test included..included range [10, 20]
+cdc_range_included 10 20
+---
+CdcEvent { version: 10, seq: 1, ts: 1000, change: Insert { key: "A", after: "VersionA" } }
+CdcEvent { version: 10, seq: 2, ts: 1000, change: Insert { key: "B", after: "VersionB" } }
+CdcEvent { version: 10, seq: 3, ts: 1000, change: Insert { key: "C", after: "VersionC" } }
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }
+
+# Test included..excluded range [10, 20)
+cdc_range_included_excluded 10 20
+---
+CdcEvent { version: 10, seq: 1, ts: 1000, change: Insert { key: "A", after: "VersionA" } }
+CdcEvent { version: 10, seq: 2, ts: 1000, change: Insert { key: "B", after: "VersionB" } }
+CdcEvent { version: 10, seq: 3, ts: 1000, change: Insert { key: "C", after: "VersionC" } }
+
+# Test excluded..included range (10, 20]
+cdc_range_excluded_included 10 20
+---
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }
+
+# Test excluded..excluded range (10, 30)
+cdc_range_excluded_excluded 10 30
+---
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }
+
+# Test unbounded start ..=20
+cdc_range_to_included 20
+---
+CdcEvent { version: 10, seq: 1, ts: 1000, change: Insert { key: "A", after: "VersionA" } }
+CdcEvent { version: 10, seq: 2, ts: 1000, change: Insert { key: "B", after: "VersionB" } }
+CdcEvent { version: 10, seq: 3, ts: 1000, change: Insert { key: "C", after: "VersionC" } }
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }
+
+# Test unbounded start ..<20  
+cdc_range_to_excluded 20
+---
+CdcEvent { version: 10, seq: 1, ts: 1000, change: Insert { key: "A", after: "VersionA" } }
+CdcEvent { version: 10, seq: 2, ts: 1000, change: Insert { key: "B", after: "VersionB" } }
+CdcEvent { version: 10, seq: 3, ts: 1000, change: Insert { key: "C", after: "VersionC" } }
+
+# Test unbounded end 20..
+cdc_range_from_included 20
+---
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }
+CdcEvent { version: 30, seq: 1, ts: 1000, change: Insert { key: "G", after: "VersionG" } }
+CdcEvent { version: 30, seq: 2, ts: 1000, change: Insert { key: "H", after: "VersionH" } }
+CdcEvent { version: 30, seq: 3, ts: 1000, change: Insert { key: "I", after: "VersionI" } }
+
+# Test unbounded end 20>..
+cdc_range_from_excluded 20
+---
+CdcEvent { version: 30, seq: 1, ts: 1000, change: Insert { key: "G", after: "VersionG" } }
+CdcEvent { version: 30, seq: 2, ts: 1000, change: Insert { key: "H", after: "VersionH" } }
+CdcEvent { version: 30, seq: 3, ts: 1000, change: Insert { key: "I", after: "VersionI" } }
+
+# Test empty ranges
+cdc_range_included_excluded 10 10
+---
+ok
+
+cdc_range_excluded_included 20 20
+---
+ok
+
+# Test single value range [20, 20]
+cdc_range_included 20 20
+---
+CdcEvent { version: 20, seq: 1, ts: 1000, change: Insert { key: "D", after: "VersionD" } }
+CdcEvent { version: 20, seq: 2, ts: 1000, change: Insert { key: "E", after: "VersionE" } }
+CdcEvent { version: 20, seq: 3, ts: 1000, change: Insert { key: "F", after: "VersionF" } }

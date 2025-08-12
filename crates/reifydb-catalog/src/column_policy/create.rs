@@ -7,14 +7,14 @@ use crate::column_policy::layout::column_policy;
 use crate::sequence::SystemSequence;
 use reifydb_core::interface::{
     ActiveCommandTransaction, ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind, EncodableKey,
-    UnversionedTransaction, VersionedCommandTransaction, VersionedTransaction,
+    Transaction, VersionedCommandTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::column_policy_already_exists;
 use reifydb_core::return_error;
 
 impl Catalog {
-    pub(crate) fn create_column_policy<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    pub(crate) fn create_column_policy<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         column: ColumnId,
         policy: ColumnPolicyKind,
     ) -> crate::Result<ColumnPolicy> {

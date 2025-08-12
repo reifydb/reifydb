@@ -4,9 +4,7 @@
 use crate::grpc::server::db::DbService;
 use crate::grpc::server::grpc::db_server::DbServer;
 use reifydb_core::Error;
-use reifydb_core::interface::{
-    UnversionedTransaction, VersionedTransaction,
-};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 use std::net::IpAddr::V4;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -37,40 +35,28 @@ impl Default for GrpcConfig {
 }
 
 #[derive(Clone)]
-pub struct GrpcServer<VT, UT>(Arc<Inner<VT, UT>>)
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction;
+pub struct GrpcServer<T: Transaction>(Arc<Inner<T>>);
 
-pub struct Inner<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+pub struct Inner<T: Transaction>
 {
     config: GrpcConfig,
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
     socket_addr: OnceCell<SocketAddr>,
-    _phantom: std::marker::PhantomData<(VT, UT)>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<VT, UT> Deref for GrpcServer<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Deref for GrpcServer<T>
 {
-    type Target = Inner<VT, UT>;
+    type Target = Inner<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VT, UT> GrpcServer<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> GrpcServer<T>
 {
-    pub fn new(config: GrpcConfig, engine: Engine<VT, UT>) -> Self {
+    pub fn new(config: GrpcConfig, engine: Engine<T>) -> Self {
         Self(Arc::new(Inner {
             config,
             engine,
@@ -102,10 +88,7 @@ where
 }
 
 // FIXME return result
-pub fn db_service<VT, UT>(engine: Engine<VT, UT>) -> DbServer<DbService<VT, UT>>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+pub fn db_service<T: Transaction>(engine: Engine<T>) -> DbServer<DbService<T>>
 {
     DbServer::new(DbService::new(engine))
 }

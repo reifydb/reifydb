@@ -10,10 +10,12 @@ mod params;
 mod span;
 mod storage;
 mod transaction;
+mod cdc;
 
 use crate::hook::Hooks;
 pub use auth::*;
 pub use catalog::*;
+pub use cdc::*;
 pub use engine::*;
 pub use execute::*;
 pub use key::*;

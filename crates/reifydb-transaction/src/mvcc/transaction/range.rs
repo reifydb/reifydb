@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::Conflict;
 use crate::mvcc::marker::Marker;
 use core::cmp;
 
@@ -20,7 +19,7 @@ use reifydb_core::EncodedKey;
 use reifydb_core::interface::VersionedStorage;
 use std::collections::btree_map::Range as BTreeMapRange;
 
-pub struct TransactionRange<'a, VS, C>
+pub struct TransactionRange<'a, VS>
 where
     VS: VersionedStorage + 'a,
 {
@@ -29,12 +28,11 @@ where
     next_pending: Option<(&'a EncodedKey, &'a Pending)>,
     next_committed: Option<TransactionValue>,
     last_yielded_key: Option<Either<&'a EncodedKey, TransactionValue>>,
-    marker: Option<Marker<'a, C>>,
+    marker: Option<Marker<'a>>,
 }
 
-impl<'a, VS, C> TransactionRange<'a, VS, C>
+impl<'a, VS> TransactionRange<'a, VS>
 where
-    C: Conflict,
     VS: VersionedStorage + 'a,
 {
     fn advance_pending(&mut self) {
@@ -51,7 +49,7 @@ where
     pub fn new(
         pending: BTreeMapRange<'a, EncodedKey, Pending>,
         committed: VS::RangeIter<'a>,
-        marker: Option<Marker<'a, C>>,
+        marker: Option<Marker<'a>>,
     ) -> Self {
         let mut iterator = TransactionRange {
             pending,
@@ -69,9 +67,8 @@ where
     }
 }
 
-impl<'a, VS, C> Iterator for TransactionRange<'a, VS, C>
+impl<'a, VS> Iterator for TransactionRange<'a, VS>
 where
-    C: Conflict,
     VS: VersionedStorage + 'a,
 {
     type Item = TransactionValue;

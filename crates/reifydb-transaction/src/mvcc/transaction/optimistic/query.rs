@@ -9,8 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::conflict::BTreeConflict;
-use crate::mvcc::pending::BTreePendingWrites;
 use crate::mvcc::transaction::optimistic::Optimistic;
 use crate::mvcc::transaction::query::TransactionManagerQuery;
 use crate::mvcc::transaction::version::StdVersionProvider;
@@ -20,7 +18,7 @@ use reifydb_core::{EncodedKey, EncodedKeyRange, Version};
 
 pub struct QueryTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
     pub(crate) engine: Optimistic<VS, UT>,
-    pub(crate) tm: TransactionManagerQuery<BTreeConflict, StdVersionProvider<UT>, BTreePendingWrites>,
+    pub(crate) tm: TransactionManagerQuery<StdVersionProvider<UT>>,
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> {
@@ -60,10 +58,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> 
         Ok(self.engine.range(range, version)?)
     }
 
-    pub fn range_rev(
-        &self,
-        range: EncodedKeyRange,
-    ) -> crate::Result<VS::RangeIterRev<'_>> {
+    pub fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<VS::RangeIterRev<'_>> {
         let version = self.tm.version();
         Ok(self.engine.range_rev(range, version)?)
     }

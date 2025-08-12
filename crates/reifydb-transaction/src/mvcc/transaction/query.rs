@@ -19,27 +19,23 @@ pub enum TransactionKind {
 }
 
 /// TransactionManagerRx is a read-only transaction manager.
-pub struct TransactionManagerQuery<C, L, P>
+pub struct TransactionManagerQuery<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
-    engine: TransactionManager<C, L, P>,
+    engine: TransactionManager<L>,
     transaction: TransactionKind,
 }
 
-impl<C, L, P> TransactionManagerQuery<C, L, P>
+impl<L> TransactionManagerQuery<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
-    pub fn new_current(engine: TransactionManager<C, L, P>, version: Version) -> Self {
+    pub fn new_current(engine: TransactionManager<L>, version: Version) -> Self {
         Self { engine, transaction: TransactionKind::Current(version) }
     }
 
-    pub fn new_time_travel(engine: TransactionManager<C, L, P>, version: Version) -> Self {
+    pub fn new_time_travel(engine: TransactionManager<L>, version: Version) -> Self {
         Self { engine, transaction: TransactionKind::TimeTravel(version) }
     }
 
@@ -51,11 +47,9 @@ where
     }
 }
 
-impl<C, L, P> Drop for TransactionManagerQuery<C, L, P>
+impl<L> Drop for TransactionManagerQuery<L>
 where
-    C: Conflict,
     L: VersionProvider,
-    P: PendingWrites,
 {
     fn drop(&mut self) {
         // time travel transaction have no effect on mvcc

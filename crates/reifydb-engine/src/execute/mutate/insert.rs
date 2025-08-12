@@ -8,9 +8,8 @@ use reifydb_catalog::{
     Catalog,
     sequence::{ColumnSequence, TableRowSequence},
 };
-use reifydb_core::interface::{
-    ActiveCommandTransaction, EncodableKey, Params, TableRowKey, UnversionedTransaction,
-    VersionedTransaction,
+use reifydb_core::interface::{Transaction, 
+    ActiveCommandTransaction, EncodableKey, Params, TableRowKey,
 };
 use reifydb_core::result::error::diagnostic::catalog::table_not_found;
 use reifydb_core::{
@@ -22,10 +21,10 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::InsertPlan;
 use std::sync::Arc;
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn insert(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         plan: InsertPlan,
         params: Params,
     ) -> crate::Result<Columns> {

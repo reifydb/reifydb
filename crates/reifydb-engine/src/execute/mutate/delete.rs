@@ -5,9 +5,9 @@ use crate::columnar::ColumnData;
 use crate::columnar::Columns;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::{
+use reifydb_core::interface::{Transaction, 
     ActiveCommandTransaction, EncodableKey, EncodableKeyRange, Params, TableRowKey,
-    TableRowKeyRange, UnversionedTransaction, VersionedQueryTransaction, VersionedTransaction,
+    TableRowKeyRange, VersionedQueryTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
@@ -19,10 +19,10 @@ use reifydb_rql::plan::physical::DeletePlan;
 use std::collections::Bound::Included;
 use std::sync::Arc;
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn delete(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         plan: DeletePlan,
         params: Params,
     ) -> crate::Result<Columns> {

@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-    Engine as EngineInterface, Params, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params, Principal, StandardTransaction, UnversionedTransaction, VersionedTransaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
-#[cfg(feature = "embedded_async")]
+#[cfg(feature = "async")]
 use tokio::task::spawn_blocking;
 
 pub struct CommandSession<VT, UT>
@@ -14,7 +14,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) engine: Engine<VT, UT>,
+    pub(crate) engine: Engine<StandardTransaction<VT, UT>>,
     pub(crate) principal: Principal,
 }
 
@@ -23,11 +23,10 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    pub(crate) fn new(engine: Engine<VT, UT>, principal: Principal) -> Self {
+    pub(crate) fn new(engine: Engine<StandardTransaction<VT, UT>>, principal: Principal) -> Self {
         Self { engine, principal }
     }
 
-    #[cfg(feature = "embedded_sync")]
     pub fn query_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -37,7 +36,6 @@ where
         })
     }
 
-    #[cfg(feature = "embedded_sync")]
     pub fn command_sync(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let rql = rql.to_string();
         let params = params.into();
@@ -47,7 +45,7 @@ where
         })
     }
 
-    #[cfg(feature = "embedded_async")]
+    #[cfg(feature = "async")]
     pub async fn command_async(
         &self,
         rql: &str,
@@ -68,7 +66,7 @@ where
         .unwrap()
     }
 
-    #[cfg(feature = "embedded_async")]
+    #[cfg(feature = "async")]
     pub async fn query_async(
         &self,
         rql: &str,

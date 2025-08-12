@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::hook::WithHooks;
-use reifydb::network::ws::server::WsConfig;
-use reifydb::ReifyDB;
+use reifydb::WithHooks;
+use reifydb::server;
 use std::thread;
 use tokio::runtime::Runtime;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
 use tokio::{select, signal};
+use reifydb::network::ws::server::WsConfig;
 
 fn main() {
     let (tx, rx) = oneshot::channel();
@@ -37,8 +37,8 @@ fn main() {
     });
 
     let rt = Runtime::new().unwrap();
-    ReifyDB::server()
-        .with_websocket(WsConfig::default())
+    let mut db = server::memory_serializable()
+        .with_ws(WsConfig { socket: "0.0.0.0:8090".parse().ok() })
         .on_create(|ctx| {
             ctx.command_as_root("create schema test", ())?;
             ctx.command_as_root("create table test.arith { id: int1, value: int2, num: int2 }", ())?;
@@ -55,7 +55,16 @@ fn main() {
             )?;
             Ok(())
         })
-        .build()
-        .serve_blocking(&rt, rx)
-        .unwrap();
+        .build();
+
+    // Start the database
+    db.start().unwrap();
+
+    // Wait for shutdown signal
+    rt.block_on(async {
+        rx.await.unwrap();
+    });
+
+    // Stop the database
+    db.stop().unwrap();
 }

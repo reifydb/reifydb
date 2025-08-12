@@ -3,8 +3,7 @@
 
 use crate::Frame;
 use crate::interface::{
-    ActiveCommandTransaction, ActiveQueryTransaction, Params, Principal, UnversionedTransaction,
-    VersionedTransaction,
+    ActiveCommandTransaction, ActiveQueryTransaction, Params, Principal, Transaction,
 };
 
 #[derive(Debug)]
@@ -21,33 +20,20 @@ pub struct Query<'a> {
     pub principal: &'a Principal,
 }
 
-pub trait Execute<VT, UT>: ExecuteCommand<VT, UT> + ExecuteQuery<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-}
+pub trait Execute<T: Transaction>: ExecuteCommand<T> + ExecuteQuery<T> {}
 
-pub trait ExecuteCommand<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
+pub trait ExecuteCommand<T: Transaction> {
     fn execute_command<'a>(
         &'a self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         cmd: Command<'a>,
     ) -> crate::Result<Vec<Frame>>;
 }
 
-pub trait ExecuteQuery<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
+pub trait ExecuteQuery<T: Transaction> {
     fn execute_query<'a>(
         &'a self,
-        txn: &mut ActiveQueryTransaction<VT, UT>,
+        txn: &mut ActiveQueryTransaction<T>,
         qry: Query<'a>,
     ) -> crate::Result<Vec<Frame>>;
 }

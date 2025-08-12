@@ -4,8 +4,8 @@
 use once_cell::sync::Lazy;
 use reifydb_core::diagnostic::sequence::sequence_exhausted;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, UnversionedQueryTransaction, UnversionedTransaction,
-    UnversionedCommandTransaction, VersionedTransaction,
+    ActiveCommandTransaction, Transaction, UnversionedCommandTransaction,
+    UnversionedQueryTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
@@ -15,14 +15,11 @@ static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Typ
 pub(crate) struct GeneratorI128 {}
 
 impl GeneratorI128 {
-    pub(crate) fn next<VT, UT>(
-		txn: &mut ActiveCommandTransaction<VT, UT>,
-		key: &EncodedKey,
+    pub(crate) fn next<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
+        key: &EncodedKey,
     ) -> crate::Result<i128>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
+where {
         txn.with_unversioned_command(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
                 let mut row = unversioned_row.row;
@@ -46,15 +43,12 @@ impl GeneratorI128 {
         })
     }
 
-    pub(crate) fn set<VT, UT>(
-		txn: &mut ActiveCommandTransaction<VT, UT>,
-		key: &EncodedKey,
-		value: i128,
+    pub(crate) fn set<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
+        key: &EncodedKey,
+        value: i128,
     ) -> crate::Result<()>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
+where {
         txn.with_unversioned_command(|tx| {
             let mut row = match tx.get(key)? {
                 Some(unversioned_row) => unversioned_row.row,
@@ -71,7 +65,7 @@ impl GeneratorI128 {
 mod tests {
     use crate::sequence::generator::i128::{GeneratorI128, LAYOUT};
     use reifydb_core::interface::{
-        Unversioned, UnversionedQueryTransaction, UnversionedCommandTransaction,
+        Unversioned, UnversionedCommandTransaction, UnversionedQueryTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;
     use reifydb_core::{EncodedKey, Type};

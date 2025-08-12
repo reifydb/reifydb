@@ -9,7 +9,7 @@ use crate::table::layout::{table, table_schema};
 use reifydb_core::interface::VersionedCommandTransaction;
 use reifydb_core::interface::{
     ActiveCommandTransaction, ColumnPolicyKind, EncodableKey, Key, SchemaTableKey, Table, TableId,
-    TableKey, UnversionedTransaction, VersionedTransaction,
+    TableKey, Transaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::{OwnedSpan, Type, return_error};
@@ -32,8 +32,8 @@ pub struct TableToCreate {
 }
 
 impl Catalog {
-    pub fn create_table<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    pub fn create_table<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         to_create: TableToCreate,
     ) -> crate::Result<Table> {
         let Some(schema) = Catalog::get_schema_by_name(txn, &to_create.schema)? else {
@@ -53,8 +53,8 @@ impl Catalog {
         Ok(Catalog::get_table(txn, table_id)?.unwrap())
     }
 
-    fn store_table<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    fn store_table<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         table: TableId,
         schema: SchemaId,
         to_create: &TableToCreate,
@@ -69,8 +69,8 @@ impl Catalog {
         Ok(())
     }
 
-    fn link_table_to_schema<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    fn link_table_to_schema<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         schema: SchemaId,
         table: TableId,
         name: &str,
@@ -82,8 +82,8 @@ impl Catalog {
         Ok(())
     }
 
-    fn insert_columns<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    fn insert_columns<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         table: TableId,
         to_create: TableToCreate,
     ) -> crate::Result<()> {

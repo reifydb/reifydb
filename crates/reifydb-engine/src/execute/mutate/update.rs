@@ -6,9 +6,8 @@ use crate::columnar::Columns;
 use crate::execute::mutate::coerce::coerce_value_to_column_type;
 use crate::execute::{Batch, ExecutionContext, Executor, compile};
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::{
-    ActiveCommandTransaction, EncodableKey, Params, TableRowKey, UnversionedTransaction,
-    VersionedTransaction,
+use reifydb_core::interface::{Transaction, 
+    ActiveCommandTransaction, EncodableKey, Params, TableRowKey,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_not_found};
 use reifydb_core::result::error::diagnostic::engine;
@@ -22,10 +21,10 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::UpdatePlan;
 use std::sync::Arc;
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn update(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         plan: UpdatePlan,
         params: Params,
     ) -> crate::Result<Columns> {

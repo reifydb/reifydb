@@ -9,7 +9,7 @@ use crate::ws::{
 };
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Params as CoreParams, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params as CoreParams, Principal, Transaction,
 };
 use reifydb_core::{Error, Value};
 use reifydb_engine::Engine;
@@ -48,42 +48,30 @@ impl Default for WsConfig {
 }
 
 #[derive(Clone)]
-pub struct WsServer<VT, UT>(Arc<Inner<VT, UT>>)
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction;
+pub struct WsServer<T: Transaction>(Arc<Inner<T>>);
 
-pub struct Inner<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+pub struct Inner<T: Transaction>
 {
     config: WsConfig,
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
     shutdown: Arc<Notify>,
     shutdown_complete: AtomicBool,
     socket_addr: OnceCell<SocketAddr>,
-    _phantom: std::marker::PhantomData<(VT, UT)>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<VT, UT> Deref for WsServer<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Deref for WsServer<T>
 {
-    type Target = Inner<VT, UT>;
+    type Target = Inner<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<VT, UT> WsServer<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> WsServer<T>
 {
-    pub fn new(config: WsConfig, engine: Engine<VT, UT>) -> Self {
+    pub fn new(config: WsConfig, engine: Engine<T>) -> Self {
         Self(Arc::new(Inner {
             config,
             engine,
@@ -195,7 +183,7 @@ where
         }
     }
 
-    async fn handle(engine: Engine<VT, UT>, stream: TcpStream, shutdown: Arc<Notify>) {
+    async fn handle(engine: Engine<T>, stream: TcpStream, shutdown: Arc<Notify>) {
         let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
 
         let ws_stream = match accept_async(stream).await {

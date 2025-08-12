@@ -2,10 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
-use reifydb::session::SessionSync;
-use reifydb::variant::embedded_sync::EmbeddedSync;
-use reifydb::{ReifyDB, memory, optimistic};
+use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::{Database, SyncBuilder, SessionSync, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -18,7 +16,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    instance: EmbeddedSync<VT, UT>,
+    instance: Database<StandardTransaction<VT, UT>>,
 }
 
 impl<VT, UT> Runner<VT, UT>
@@ -27,7 +25,8 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        Self { instance: ReifyDB::embedded_sync_with(input).build() }
+        let (versioned, unversioned, hooks) = input;
+        Self { instance: SyncBuilder::new(versioned, unversioned, hooks).build() }
     }
 }
 

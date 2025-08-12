@@ -2,10 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
-use reifydb::session::SessionAsync;
-use reifydb::variant::embedded_async::EmbeddedAsync;
-use reifydb::{ReifyDB, memory, optimistic};
+use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::{AsyncBuilder, Database, SessionAsync, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
 use std::error::Error;
@@ -19,7 +17,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    instance: EmbeddedAsync<VT, UT>,
+    instance: Database<StandardTransaction<VT, UT>>,
     runtime: Runtime,
 }
 
@@ -29,7 +27,11 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        Self { instance: ReifyDB::embedded_async_with(input).build(), runtime: Runtime::new().unwrap() }
+        let (versioned, unversioned, hooks) = input;
+        Self {
+            instance: AsyncBuilder::new(versioned, unversioned, hooks).build(),
+            runtime: Runtime::new().unwrap(),
+        }
     }
 }
 
@@ -47,7 +49,7 @@ where
 
                 println!("command: {rql}");
 
-                let instance = self.instance.clone();
+                let instance = &self.instance;
                 self.runtime.block_on(async {
                     for frame in instance.command_as_root(rql.as_str(), Params::None).await? {
                         writeln!(output, "{}", frame).unwrap();
@@ -61,7 +63,7 @@ where
 
                 println!("query: {rql}");
 
-                let instance = self.instance.clone();
+                let instance = &self.instance;
                 self.runtime.block_on(async {
                     for frame in instance.query_as_root(rql.as_str(), Params::None).await? {
                         writeln!(output, "{}", frame).unwrap();

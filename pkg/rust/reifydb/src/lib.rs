@@ -1,134 +1,70 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+mod api;
+mod builder;
+mod context;
+mod database;
+mod health;
+mod hook;
+mod presets;
+mod session;
+mod subsystem;
 
+pub use api::*;
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
 pub use reifydb_core::{Error, Result};
 pub use reifydb_engine as engine;
-#[cfg(any(feature = "server", feature = "client"))]
+#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
 pub use reifydb_transaction as transaction;
 
-use std::path::Path;
+pub use builder::*;
+#[cfg(feature = "async")]
+pub use context::TokioRuntimeProvider;
+pub use context::{AsyncContext, RuntimeProvider, SystemContext, TokioContext};
+pub use health::{HealthMonitor, HealthStatus};
+pub use hook::{OnCreateContext, WithHooks};
 
-use reifydb_core::hook::Hooks;
-#[cfg(any(feature = "embedded_async", feature = "embedded_sync", feature = "server"))]
-use reifydb_core::interface::VersionedTransaction;
-use reifydb_core::interface::{UnversionedTransaction, VersionedStorage};
-#[cfg(feature = "client")]
-pub use reifydb_network::grpc::client;
-/// The underlying persistence responsible for data access.
-use reifydb_storage::lmdb::Lmdb;
-use reifydb_storage::memory::Memory;
-use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb_transaction::svl::SingleVersionLock;
-#[cfg(feature = "embedded_async")]
-use variant::embedded_async::EmbeddedAsyncBuilder;
-#[cfg(feature = "embedded_sync")]
-use variant::embedded_sync::EmbeddedSyncBuilder;
-#[cfg(feature = "server")]
-use variant::server::ServerBuilder;
+pub use database::{Database, DatabaseConfig};
+#[cfg(feature = "async")]
+pub use session::SessionAsync;
+pub use session::{CommandSession, QuerySession, Session, SessionSync};
+#[cfg(feature = "sub_flow")]
+pub use subsystem::FlowSubsystem;
+#[cfg(feature = "sub_grpc")]
+pub use subsystem::GrpcSubsystem;
+pub use subsystem::Subsystem;
+pub use subsystem::Subsystems;
+#[cfg(feature = "sub_ws")]
+pub use subsystem::WsSubsystem;
 
-pub mod hook;
-#[allow(unused_imports, unused_variables)]
-pub mod session;
-pub mod variant;
+use std::time::Duration;
 
-pub struct ReifyDB {}
+pub use presets::*;
+pub use reifydb_core::hook::Hooks;
+pub use reifydb_core::interface::{StandardTransaction, UnversionedTransaction, VersionedStorage, VersionedTransaction};
+pub use reifydb_storage::lmdb::Lmdb;
+pub use reifydb_storage::memory::Memory;
+pub use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
+pub use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+pub use reifydb_transaction::mvcc::transaction::serializable::Serializable;
+pub use reifydb_transaction::svl::SingleVersionLock;
 
-impl ReifyDB {
-    #[cfg(feature = "embedded_async")]
-    pub fn embedded_async() -> EmbeddedAsyncBuilder<
-        Serializable<Memory, SingleVersionLock<Memory>>,
-        SingleVersionLock<Memory>,
-    > {
-        let (versioned, unversioned, hooks) = serializable(memory());
-        EmbeddedAsyncBuilder::new(versioned, unversioned, hooks)
-    }
+/// Default configuration values
+pub mod defaults {
+    use super::Duration;
 
-    #[cfg(feature = "embedded_async")]
-    pub fn embedded_async_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedAsyncBuilder<VT, UT>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
-        let (versioned, unversioned, hooks) = input;
-        EmbeddedAsyncBuilder::new(versioned, unversioned, hooks)
-    }
+    /// Default graceful shutdown timeout (30 seconds)
+    pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
-    #[cfg(feature = "embedded_sync")]
-    pub fn embedded_sync() -> EmbeddedSyncBuilder<
-        Serializable<Memory, SingleVersionLock<Memory>>,
-        SingleVersionLock<Memory>,
-    > {
-        let (versioned, unversioned, hooks) = serializable(memory());
-        EmbeddedSyncBuilder::new(versioned, unversioned, hooks)
-    }
+    /// Default health check interval (5 seconds)  
+    pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
-    #[cfg(feature = "embedded_sync")]
-    pub fn embedded_sync_with<VT, UT>(input: (VT, UT, Hooks)) -> EmbeddedSyncBuilder<VT, UT>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
-        let (versioned, unversioned, hooks) = input;
-        EmbeddedSyncBuilder::new(versioned, unversioned, hooks)
-    }
-
-    #[cfg(feature = "server")]
-    pub fn server()
-    -> ServerBuilder<Serializable<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>
-    {
-        let (versioned, unversioned, hooks) = serializable(memory());
-        ServerBuilder::new(versioned, unversioned, hooks)
-    }
-
-    #[cfg(feature = "server")]
-    pub fn server_with<VT, UT>(input: (VT, UT, Hooks)) -> ServerBuilder<VT, UT>
-    where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
-    {
-        let (versioned, unversioned, hooks) = input;
-        ServerBuilder::new(versioned, unversioned, hooks)
-    }
+    /// Default maximum startup time (60 seconds)
+    pub const MAX_STARTUP_TIME: Duration = Duration::from_secs(60);
 }
 
-pub fn serializable<VS, UT>(input: (VS, UT, Hooks)) -> (Serializable<VS, UT>, UT, Hooks)
-where
-    VS: VersionedStorage,
-    UT: UnversionedTransaction,
-{
-    (Serializable::new(input.0, input.1.clone(), input.2.clone()), input.1, input.2)
-}
-
-pub fn optimistic<VS, UT>(input: (VS, UT, Hooks)) -> (Optimistic<VS, UT>, UT, Hooks)
-where
-    VS: VersionedStorage,
-    UT: UnversionedTransaction,
-{
-    (Optimistic::new(input.0, input.1.clone(), input.2.clone()), input.1, input.2)
-}
-
-pub fn memory() -> (Memory, SingleVersionLock<Memory>, Hooks) {
-    let hooks = Hooks::new();
-    (Memory::default(), SingleVersionLock::new(Memory::new(), hooks.clone()), hooks)
-}
-
-pub fn lmdb(path: &Path) -> (Lmdb, SingleVersionLock<Lmdb>, Hooks) {
-    let hooks = Hooks::new();
-    let result = Lmdb::new(path);
-    (result.clone(), SingleVersionLock::new(result, hooks.clone()), hooks)
-}
-
-pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, Hooks) {
-    let hooks = Hooks::new();
-    let result = Sqlite::new(config);
-    (result.clone(), SingleVersionLock::new(result, hooks.clone()), hooks)
-}

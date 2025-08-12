@@ -13,7 +13,7 @@ mod execute;
 pub mod flow;
 #[allow(dead_code)]
 mod function;
-mod subsystem;
+pub mod subsystem;
 
 pub use engine::Engine;
 pub use reifydb_core::Result;

@@ -5,17 +5,17 @@ use crate::columnar::Columns;
 use crate::execute::Executor;
 use reifydb_catalog::Catalog;
 use reifydb_catalog::table::TableToCreate;
-use reifydb_core::interface::{
-    ActiveCommandTransaction, UnversionedTransaction, VersionedTransaction,
+use reifydb_core::interface::{Transaction, 
+    ActiveCommandTransaction,
 };
 use reifydb_core::result::error::diagnostic::catalog::{schema_not_found, table_already_exists};
 use reifydb_core::{Value, return_error};
 use reifydb_rql::plan::physical::CreateTablePlan;
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn create_table(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         plan: CreateTablePlan,
     ) -> crate::Result<Columns> {
         let Some(schema) = Catalog::get_schema_by_name(txn, &plan.schema)? else {

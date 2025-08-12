@@ -4,18 +4,17 @@
 use crate::columnar::Columns;
 use crate::execute::Executor;
 use crate::flow::compile::compile_to_flow;
-use reifydb_core::interface::{
-    ActiveCommandTransaction, Command, ExecuteCommand, Params, Principal, UnversionedTransaction,
-    VersionedTransaction,
+use reifydb_core::interface::{Transaction, 
+    ActiveCommandTransaction, Command, ExecuteCommand, Params, Principal,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::logical::compile_logical;
 use reifydb_rql::plan::physical::CreateComputedViewPlan;
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn create_computed_view(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         _plan: CreateComputedViewPlan,
     ) -> crate::Result<Columns> {
         let rql = r#"

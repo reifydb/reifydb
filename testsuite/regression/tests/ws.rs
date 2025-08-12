@@ -2,12 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{UnversionedTransaction, VersionedTransaction, Params};
+use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
-use reifydb::variant::server::Server;
-use reifydb::{ReifyDB, memory, optimistic};
+use reifydb::{Database, ServerBuilder, memory, optimistic};
 use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -23,7 +22,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    instance: Option<Server<VT, UT>>,
+    instance: Option<Database<StandardTransaction<VT, UT>>>,
     client: Option<WsClient>,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
@@ -35,8 +34,9 @@ where
     UT: UnversionedTransaction,
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        let instance = ReifyDB::server_with(input)
-            .with_websocket(WsConfig { socket: Some("[::1]:0".parse().unwrap()) })
+        let (versioned, unversioned, hooks) = input;
+        let instance = ServerBuilder::new(versioned, unversioned, hooks)
+            .with_ws(WsConfig { socket: Some("[::1]:0".parse().unwrap()) })
             .build();
 
         Self { instance: Some(instance), client: None, runtime: None, shutdown: None }
@@ -91,12 +91,10 @@ where
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
         let (shutdown_tx, _) = oneshot::channel();
-        let mut server = self.instance.take().unwrap();
+        let server = self.instance.as_mut().unwrap();
 
-        let _ = server.serve(&runtime);
+        server.start()?;
         let socket_addr = busy_wait(|| server.ws_socket_addr());
-
-        self.instance = Some(server);
         self.client = Some(runtime.block_on(async {
             let client = WsClient::connect(&format!("ws://[::1]:{}", socket_addr.port())).await?;
             client.auth(Some("mysecrettoken".into())).await.unwrap();
@@ -109,7 +107,8 @@ where
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(server) = self.instance.take() {
+        if let Some(mut server) = self.instance.take() {
+            let _ = server.stop();
             drop(server);
         }
 
@@ -129,9 +128,9 @@ where
     }
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as websocket => test_websocket }
+test_each_path! { in "testsuite/regression/tests/scripts" as ws => test_ws }
 
-fn test_websocket(path: &Path) {
+fn test_ws(path: &Path) {
     retry(3, || testscript::run_path(&mut WsRunner::new(optimistic(memory())), path))
         .expect("test failed")
 }

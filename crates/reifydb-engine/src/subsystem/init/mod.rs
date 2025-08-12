@@ -3,16 +3,13 @@
 
 use crate::Engine;
 use crate::subsystem::init::start::StartCallback;
-use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{GetHooks, Transaction};
 use crate::subsystem::init::create::CreateCallback;
 
 mod create;
 pub(crate) mod start;
 
-pub(crate) fn register_system_hooks<VT, UT>(engine: &Engine<VT, UT>)
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+pub(crate) fn register_system_hooks<T: Transaction>(engine: &Engine<T>)
 {
     let hooks = engine.get_hooks();
 

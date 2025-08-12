@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::client::GrpcClient;
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{VersionedTransaction, UnversionedTransaction, Params};
+use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
 use reifydb::core::retry;
+use reifydb::network::grpc::client::GrpcClient;
 use reifydb::network::grpc::server::GrpcConfig;
-use reifydb::variant::server::Server;
-use reifydb::{ReifyDB, memory, optimistic};
+use reifydb::{Database, ServerBuilder, memory, optimistic};
 use reifydb_testing::network::busy_wait;
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -21,9 +20,8 @@ pub struct GrpcRunner<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-
 {
-    instance: Option<Server<VT, UT>>,
+    instance: Option<Database<StandardTransaction<VT, UT>>>,
     client: Option<GrpcClient>,
     runtime: Option<Runtime>,
 }
@@ -32,10 +30,10 @@ impl<VT, UT> GrpcRunner<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-
 {
     pub fn new(input: (VT, UT, Hooks)) -> Self {
-        let instance = ReifyDB::server_with(input)
+        let (versioned, unversioned, hooks) = input;
+        let instance = ServerBuilder::new(versioned, unversioned, hooks)
             .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) })
             .build();
 
@@ -47,7 +45,6 @@ impl<VT, UT> testscript::Runner for GrpcRunner<VT, UT>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
-
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();
@@ -91,11 +88,10 @@ where
 
     fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
         let runtime = Runtime::new()?;
-        let mut server = self.instance.take().unwrap();
-        let _ = server.serve(&runtime);
+        let server = self.instance.as_mut().unwrap();
+        server.start()?;
         let socket_addr = busy_wait(|| server.grpc_socket_addr());
 
-        self.instance = Some(server);
         self.client = Some(GrpcClient { socket_addr });
         self.runtime = Some(runtime);
 
@@ -103,7 +99,8 @@ where
     }
 
     fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(server) = self.instance.take() {
+        if let Some(mut server) = self.instance.take() {
+            let _ = server.stop();
             drop(server);
         }
 

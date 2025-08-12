@@ -14,15 +14,15 @@ use crate::sequence::generator::u64::GeneratorU64;
 use crate::sequence::generator::u128::GeneratorU128;
 use reifydb_core::interface::{
     ActiveCommandTransaction, ColumnId, EncodableKey, TableColumnSequenceKey, TableId,
-    UnversionedTransaction, VersionedTransaction,
+    Transaction,
 };
 use reifydb_core::{Type, Value};
 
 pub struct ColumnSequence {}
 
 impl ColumnSequence {
-    pub fn next_value<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    pub fn next_value<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         table: TableId,
         column: ColumnId,
     ) -> crate::Result<Value> {
@@ -47,8 +47,8 @@ impl ColumnSequence {
         }
     }
 
-    pub fn set_value<VT: VersionedTransaction, UT: UnversionedTransaction>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    pub fn set_value<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         table: TableId,
         column: ColumnId,
         value: Value,

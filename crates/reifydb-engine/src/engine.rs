@@ -13,8 +13,8 @@ use reifydb_core::hook::transaction::PostCommitHook;
 use reifydb_core::hook::{BoxedHookIter, Callback, Hooks};
 use reifydb_core::interface::{
     ActiveCommandTransaction, ActiveQueryTransaction, Command, Engine as EngineInterface,
-    ExecuteCommand, ExecuteQuery, GetHooks, Key, Params, Principal, Query, TableId,
-    UnversionedTransaction, VersionedCommandTransaction, VersionedTransaction,
+    ExecuteCommand, ExecuteQuery, GetHooks, Key, Params, Principal, Query, TableId, Transaction,
+    VersionedTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{Frame, Type, return_hooks};
@@ -22,31 +22,22 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub struct Engine<VT, UT>(Arc<EngineInner<VT, UT>>)
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction;
+pub struct Engine<T: Transaction>(Arc<EngineInner<T>>);
 
-impl<VT, UT> GetHooks for Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> GetHooks for Engine<T>
 {
     fn get_hooks(&self) -> &Hooks {
         &self.hooks
     }
 }
 
-impl<VT, UT> EngineInterface<VT, UT> for Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> EngineInterface<T> for Engine<T>
 {
-    fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<VT, UT>> {
+    fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>> {
         Ok(ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone()))
     }
 
-    fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<VT, UT>> {
+    fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<T>> {
         Ok(ActiveQueryTransaction::new(self.versioned.begin_query()?, self.unversioned.clone()))
     }
 
@@ -74,77 +65,62 @@ where
     }
 }
 
-impl<VT, UT> ExecuteCommand<VT, UT> for Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> ExecuteCommand<T> for Engine<T>
 {
     #[inline]
     fn execute_command<'a>(
         &'a self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         cmd: Command<'a>,
     ) -> crate::Result<Vec<Frame>> {
         self.executor.execute_command(txn, cmd)
     }
 }
 
-impl<VT, UT> ExecuteQuery<VT, UT> for Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> ExecuteQuery<T> for Engine<T>
 {
     #[inline]
     fn execute_query<'a>(
         &'a self,
-        txn: &mut ActiveQueryTransaction<VT, UT>,
+        txn: &mut ActiveQueryTransaction<T>,
         qry: Query<'a>,
     ) -> crate::Result<Vec<Frame>> {
         self.executor.execute_query(txn, qry)
     }
 }
 
-impl<VT, UT> Clone for Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Clone for Engine<T>
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<VT, UT> Deref for Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Deref for Engine<T>
 {
-    type Target = EngineInner<VT, UT>;
+    type Target = EngineInner<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-pub struct EngineInner<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    versioned: VT,
-    unversioned: UT,
+pub struct EngineInner<T: Transaction> {
+    versioned: T::Versioned,
+    unversioned: T::Unversioned,
     hooks: Hooks,
-    executor: Executor<VT, UT>,
+    executor: Executor<T>,
 
-    _processor: FlowProcessor<VT, UT>, // FIXME remove me
+    _processor: FlowProcessor<T>, // FIXME remove me
 }
 
-impl<VT, UT> Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Engine<T>
 {
-    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> crate::Result<Self> {
+    pub fn new(
+        versioned: T::Versioned,
+        unversioned: T::Unversioned,
+        hooks: Hooks,
+    ) -> crate::Result<Self> {
         let result = Self(Arc::new(EngineInner {
             versioned: versioned.clone(),
             unversioned: unversioned.clone(),
@@ -167,28 +143,22 @@ where
         Ok(result)
     }
 
-    pub fn versioned(&self) -> &VT {
+    pub fn versioned(&self) -> &T::Versioned {
         &self.versioned
     }
 
-    pub fn unversioned(&self) -> &UT {
+    pub fn unversioned(&self) -> &T::Unversioned {
         &self.unversioned
     }
 }
 
 #[allow(dead_code)]
-struct FlowPostCommit<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+struct FlowPostCommit<T: Transaction>
 {
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
 }
 
-impl<VT, UT> Callback<PostCommitHook> for FlowPostCommit<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T>
 {
     fn on(&self, hook: &PostCommitHook) -> crate::Result<BoxedHookIter> {
         println!("Transaction version: {}", hook.version);
@@ -275,10 +245,7 @@ where
     }
 }
 
-impl<VT, UT> Engine<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+impl<T: Transaction> Engine<T>
 {
     pub fn setup_hooks(&self) -> crate::Result<()> {
         register_system_hooks(&self);
