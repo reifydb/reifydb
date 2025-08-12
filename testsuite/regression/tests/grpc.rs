@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
 use reifydb::core::retry;
 use reifydb::network::grpc::client::GrpcClient;
 use reifydb::network::grpc::server::GrpcConfig;
@@ -21,7 +21,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    instance: Option<Database<VT, UT>>,
+    instance: Option<Database<StandardTransaction<VT, UT>>>,
     client: Option<GrpcClient>,
     runtime: Option<Runtime>,
 }

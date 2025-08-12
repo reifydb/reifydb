@@ -4,23 +4,21 @@
 use super::DatabaseBuilder;
 use crate::Database;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 
-pub struct SyncBuilder<VT, UT>
+pub struct SyncBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    inner: DatabaseBuilder<VT, UT>,
+    inner: DatabaseBuilder<T>,
 }
 
-impl<VT, UT> SyncBuilder<VT, UT>
+impl<T> SyncBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
         Self {
             inner: DatabaseBuilder::new(
                 Engine::new(versioned, unversioned, hooks.clone()).unwrap(),
@@ -28,7 +26,7 @@ where
         }
     }
 
-    pub fn build(self) -> Database<VT, UT> {
+    pub fn build(self) -> Database<T> {
         self.inner.build()
     }
 }

@@ -8,13 +8,14 @@
 use crate::{
     ServerBuilder, UnversionedMemory, UnversionedSqlite, memory, optimistic, serializable, sqlite,
 };
+use reifydb_core::interface::StandardTransaction;
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
 /// Create a server with in-memory storage and optimistic concurrency control
-pub fn memory_optimistic() -> ServerBuilder<Optimistic<Memory, UnversionedMemory>, UnversionedMemory>
+pub fn memory_optimistic() -> ServerBuilder<StandardTransaction<Optimistic<Memory, UnversionedMemory>, UnversionedMemory>>
 {
     let (versioned, unversioned, hooks) = optimistic(memory());
     ServerBuilder::new(versioned, unversioned, hooks)
@@ -22,7 +23,7 @@ pub fn memory_optimistic() -> ServerBuilder<Optimistic<Memory, UnversionedMemory
 
 /// Create a server with in-memory storage and serializable isolation
 pub fn memory_serializable()
--> ServerBuilder<Serializable<Memory, UnversionedMemory>, UnversionedMemory> {
+-> ServerBuilder<StandardTransaction<Serializable<Memory, UnversionedMemory>, UnversionedMemory>> {
     let (versioned, unversioned, hooks) = serializable(memory());
     ServerBuilder::new(versioned, unversioned, hooks)
 }
@@ -30,7 +31,7 @@ pub fn memory_serializable()
 /// Create a server with SQLite storage and optimistic concurrency control
 pub fn sqlite_optimistic(
     config: SqliteConfig,
-) -> ServerBuilder<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite> {
+) -> ServerBuilder<StandardTransaction<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite>> {
     let (versioned, unversioned, hooks) = optimistic(sqlite(config));
     ServerBuilder::new(versioned, unversioned, hooks)
 }
@@ -38,7 +39,7 @@ pub fn sqlite_optimistic(
 /// Create a server with SQLite storage and serializable isolation
 pub fn sqlite_serializable(
     config: SqliteConfig,
-) -> ServerBuilder<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite> {
+) -> ServerBuilder<StandardTransaction<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite>> {
     let (versioned, unversioned, hooks) = serializable(sqlite(config));
     ServerBuilder::new(versioned, unversioned, hooks)
 }

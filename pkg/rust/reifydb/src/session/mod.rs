@@ -14,7 +14,7 @@ mod query;
 pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::Frame;
-use reifydb_core::interface::{Params, Principal, UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{Params, Principal, StandardTransaction, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
 pub trait Session<VT, UT>
@@ -83,7 +83,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn into_command_session(self, engine: Engine<VT, UT>) -> crate::Result<CommandSession<VT, UT>>;
+    fn into_command_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<CommandSession<VT, UT>>;
 }
 
 pub trait IntoQuerySession<VT, UT>
@@ -91,7 +91,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn into_query_session(self, engine: Engine<VT, UT>) -> crate::Result<QuerySession<VT, UT>>;
+    fn into_query_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<QuerySession<VT, UT>>;
 }
 
 impl<VT, UT> IntoCommandSession<VT, UT> for Principal
@@ -99,7 +99,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn into_command_session(self, engine: Engine<VT, UT>) -> crate::Result<CommandSession<VT, UT>> {
+    fn into_command_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<CommandSession<VT, UT>> {
         Ok(CommandSession::new(engine, self))
     }
 }
@@ -109,7 +109,7 @@ where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
 {
-    fn into_query_session(self, engine: Engine<VT, UT>) -> crate::Result<QuerySession<VT, UT>> {
+    fn into_query_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<QuerySession<VT, UT>> {
         Ok(QuerySession::new(engine, self))
     }
 }

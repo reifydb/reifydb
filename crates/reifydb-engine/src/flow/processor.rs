@@ -7,7 +7,7 @@ use crate::columnar::Columns;
 use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::interface::{
     ActiveCommandTransaction, Column, ColumnId, ColumnIndex, EncodableKey, EncodableKeyRange,
-    SchemaId, Table, TableId, TableRowKey, TableRowKeyRange, UnversionedTransaction,
+    SchemaId, Table, TableId, TableRowKey, TableRowKeyRange, Transaction,
     VersionedCommandTransaction, VersionedQueryTransaction, VersionedTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
@@ -15,16 +15,16 @@ use reifydb_core::{EncodedKeyRange, Type, Value};
 use std::collections::Bound::Included;
 use std::collections::HashMap;
 
-pub struct FlowProcessor<VT: VersionedTransaction, UT: UnversionedTransaction> {
+pub struct FlowProcessor<T: Transaction> {
     flow: Flow,
-    operators: HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static> >,
+    operators: HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static>>,
     contexts: HashMap<NodeId, OperatorContext>,
-    versioned: VT,
-    unversioned: UT,
+    versioned: T::Versioned,
+    unversioned: T::Unversioned,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT> {
-    pub fn new(flow: Flow, versioned: VT, unversioned: UT) -> Self {
+impl<T: Transaction> FlowProcessor<T> {
+    pub fn new(flow: Flow, versioned: T::Versioned, unversioned: T::Unversioned) -> Self {
         Self { flow, operators: HashMap::new(), contexts: HashMap::new(), versioned, unversioned }
     }
 
@@ -70,7 +70,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT>
 
     fn process_change_with_tx(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         node_id: &NodeId,
         change: Change,
     ) -> Result<()> {
@@ -120,12 +120,12 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT>
     pub fn hack(
         &self,
         flow: &Flow,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         node_id: &NodeId,
         change: Change,
     ) -> Result<()> {
-
-        let mut operators :  HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static> > = HashMap::new();
+        let mut operators: HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static>> =
+            HashMap::new();
         let mut contexts: HashMap<NodeId, OperatorContext> = HashMap::new();
 
         // Initialize operators for all nodes
@@ -149,7 +149,6 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT>
                 }
             }
         }
-
 
         let (node_type, output_nodes) = if let Some(node) = flow.get_node(node_id) {
             (node.ty.clone(), node.outputs.clone())
@@ -189,18 +188,16 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT>
         // Propagate to downstream nodes
         for output_id in output_nodes {
             // self.process_change_with_tx(txn, &output_id, output_change.clone())?;
-            self.hack(
-                flow,
-                txn,
-                &output_id,
-                output_change.clone(),
-            )?;
+            self.hack(flow, txn, &output_id, output_change.clone())?;
         }
 
         Ok(())
     }
 
-    fn create_operator(&self, operator_type: &OperatorType) -> Result<Box<dyn Operator + Send + Sync + 'static>> {
+    fn create_operator(
+        &self,
+        operator_type: &OperatorType,
+    ) -> Result<Box<dyn Operator + Send + Sync + 'static>> {
         match operator_type {
             OperatorType::Filter { predicate } => {
                 Ok(Box::new(FilterOperator::new(predicate.clone())))
@@ -216,7 +213,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowProcessor<VT, UT>
 
     fn apply_diff_to_storage_with_tx(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         node_id: &NodeId,
         change: &Change,
     ) -> Result<()> {

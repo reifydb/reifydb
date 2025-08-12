@@ -14,7 +14,7 @@ use reifydb::engine::flow::node::{NodeId, NodeType};
 use reifydb::storage::memory::Memory;
 use reifydb::transaction::mvcc::transaction::optimistic::Optimistic;
 use reifydb::transaction::svl::SingleVersionLock;
-use reifydb::{Database, MemoryDatabaseOptimistic, sync};
+use reifydb::{Database, MemoryDatabaseOptimistic, StandardTransaction, sync};
 use reifydb::{SessionSync, Subsystem};
 use std::collections::Bound::Included;
 
@@ -77,11 +77,11 @@ fn main() {
     )
     .unwrap();
 
-    println!("Basic database operations completed successfully!");
-    rql_to_flow_example(&mut db);
+    // println!("Basic database operations completed successfully!");
+    // rql_to_flow_example(&mut db);
 }
 
-fn rql_to_flow_example(db: &mut DB) {
+fn _rql_to_flow_example(db: &mut DB) {
     // for frame in
     //     db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id }", Params::None).unwrap()
     // {
@@ -183,7 +183,12 @@ fn rql_to_flow_example(db: &mut DB) {
 }
 
 pub fn get_view_data(
-    db: &mut Database<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>,
+    db: &mut Database<
+        StandardTransaction<
+            Optimistic<Memory, SingleVersionLock<Memory>>,
+            SingleVersionLock<Memory>,
+        >,
+    >,
     flow: &Flow,
     view_name: &str,
 ) -> reifydb::Result<Columns> {
@@ -203,7 +208,12 @@ pub fn get_view_data(
 }
 
 fn read_columns_from_storage(
-    db: &mut Database<Optimistic<Memory, SingleVersionLock<Memory>>, SingleVersionLock<Memory>>,
+    db: &mut Database<
+        StandardTransaction<
+            Optimistic<Memory, SingleVersionLock<Memory>>,
+            SingleVersionLock<Memory>,
+        >,
+    >,
     node_id: &NodeId,
 ) -> reifydb::Result<Columns> {
     let range = TableRowKeyRange { table: TableId(node_id.0) };

@@ -8,23 +8,20 @@ use crate::table::TableToCreate;
 use crate::{Catalog, table};
 use reifydb_core::Type;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, ColumnPolicyKind, Table, TableId, UnversionedTransaction,
-    VersionedTransaction,
+    ActiveCommandTransaction, ColumnPolicyKind, Table, TableId, Transaction,
 };
 
-pub fn create_schema<VT, UT>(txn: &mut ActiveCommandTransaction<VT, UT>, schema: &str) -> Schema
+pub fn create_schema<T>(txn: &mut ActiveCommandTransaction<T>, schema: &str) -> Schema
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     Catalog::create_schema(txn, SchemaToCreate { schema_span: None, name: schema.to_string() })
         .unwrap()
 }
 
-pub fn ensure_test_schema<VT, UT>(txn: &mut ActiveCommandTransaction<VT, UT>) -> Schema
+pub fn ensure_test_schema<T>(txn: &mut ActiveCommandTransaction<T>) -> Schema
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     if let Some(result) = Catalog::get_schema_by_name(txn, "test_schema").unwrap() {
         return result;
@@ -32,10 +29,10 @@ where
     create_schema(txn, "test_schema")
 }
 
-pub fn ensure_test_table<VT, UT>(txn: &mut ActiveCommandTransaction<VT, UT>) -> Table
+pub fn ensure_test_table<T>(txn: &mut ActiveCommandTransaction<T>) -> Table
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
+    
 {
     ensure_test_schema(txn);
     if let Some(result) = Catalog::get_table_by_name(txn, SchemaId(1), "test_table").unwrap() {
@@ -44,15 +41,15 @@ where
     create_table(txn, "test_schema", "test_table", &[])
 }
 
-pub fn create_table<VT, UT>(
-    txn: &mut ActiveCommandTransaction<VT, UT>,
+pub fn create_table<T>(
+    txn: &mut ActiveCommandTransaction<T>,
     schema: &str,
     table: &str,
     columns: &[table::ColumnToCreate],
 ) -> Table
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
+    
 {
     Catalog::create_table(
         txn,
@@ -66,14 +63,14 @@ where
     .unwrap()
 }
 
-pub fn create_test_table_column<VT, UT>(
-    txn: &mut ActiveCommandTransaction<VT, UT>,
+pub fn create_test_table_column<T>(
+    txn: &mut ActiveCommandTransaction<T>,
     name: &str,
     value: Type,
     policies: Vec<ColumnPolicyKind>,
 ) where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
+    
 {
     ensure_test_table(txn);
 

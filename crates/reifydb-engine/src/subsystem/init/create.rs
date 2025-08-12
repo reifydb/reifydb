@@ -5,32 +5,29 @@ use crate::Engine;
 use reifydb_core::hook::lifecycle::OnCreateHook;
 use reifydb_core::hook::{BoxedHookIter, Callback};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Principal, Transaction,
 };
 use reifydb_core::return_hooks;
 
-pub(crate) struct CreateCallback<VT, UT>
+pub(crate) struct CreateCallback<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
 }
 
-impl<VT, UT> CreateCallback<VT, UT>
+impl<T> CreateCallback<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub(crate) fn new(engine: Engine<VT, UT>) -> Self {
+    pub(crate) fn new(engine: Engine<T>) -> Self {
         Self { engine }
     }
 }
 
-impl<VT, UT> Callback<OnCreateHook> for CreateCallback<VT, UT>
+impl<T> Callback<OnCreateHook> for CreateCallback<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     fn on(&self, _hook: &OnCreateHook) -> crate::Result<BoxedHookIter> {
         self.engine.command_as(

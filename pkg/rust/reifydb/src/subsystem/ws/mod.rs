@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use super::Subsystem;
 use crate::context::RuntimeProvider;
 use crate::health::HealthStatus;
-use super::Subsystem;
 use reifydb_core::Result;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 use reifydb_network::ws::server::{WsConfig, WsServer};
 use std::any::Any;
@@ -17,9 +17,9 @@ use std::sync::{
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-pub struct WsSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
+pub struct WsSubsystem<T: Transaction> {
     /// The wrapped WsServer
-    server: Option<WsServer<VT, UT>>,
+    server: Option<WsServer<T>>,
     /// Whether the server is running
     running: Arc<AtomicBool>,
     /// Handle to the async task
@@ -30,12 +30,8 @@ pub struct WsSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
     socket_addr: Option<SocketAddr>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> WsSubsystem<VT, UT> {
-    pub fn new(
-        config: WsConfig,
-        engine: Engine<VT, UT>,
-        runtime_provider: &RuntimeProvider,
-    ) -> Self {
+impl<T: Transaction> WsSubsystem<T> {
+    pub fn new(config: WsConfig, engine: Engine<T>, runtime_provider: &RuntimeProvider) -> Self {
         let ws_server = WsServer::new(config, engine);
         Self {
             server: Some(ws_server),
@@ -51,11 +47,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> WsSubsystem<VT, UT> {
     }
 }
 
-impl<VT, UT> Subsystem for WsSubsystem<VT, UT>
-where
-    VT: VersionedTransaction + Send + Sync + 'static,
-    UT: UnversionedTransaction + Send + Sync + 'static,
-{
+impl<T: Transaction> Subsystem for WsSubsystem<T> {
     fn name(&self) -> &'static str {
         "Ws"
     }

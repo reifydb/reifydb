@@ -5,43 +5,40 @@ use super::DatabaseBuilder;
 use crate::Database;
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 
 #[cfg(feature = "async")]
-pub struct AsyncBuilder<VT, UT>
+pub struct AsyncBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    inner: DatabaseBuilder<VT, UT>,
-    engine: Engine<VT, UT>,
+    inner: DatabaseBuilder<T>,
+    engine: Engine<T>,
 }
 
 #[cfg(feature = "async")]
-impl<VT, UT> AsyncBuilder<VT, UT>
+impl<T> AsyncBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
         let inner = DatabaseBuilder::new(engine.clone());
         Self { inner, engine }
     }
 
-    pub fn build(self) -> Database<VT, UT> {
+    pub fn build(self) -> Database<T> {
         self.inner.build()
     }
 }
 
 #[cfg(feature = "async")]
-impl<VT, UT> WithHooks<VT, UT> for AsyncBuilder<VT, UT>
+impl<T> WithHooks<T> for AsyncBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    fn engine(&self) -> &Engine<VT, UT> {
+    fn engine(&self) -> &Engine<T> {
         &self.engine
     }
 }

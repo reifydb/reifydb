@@ -3,9 +3,9 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::diagnostic::sequence::sequence_exhausted;
-use reifydb_core::interface::{
-    ActiveCommandTransaction, UnversionedQueryTransaction, UnversionedTransaction,
-    UnversionedCommandTransaction, VersionedTransaction,
+use reifydb_core::interface::{Transaction, 
+    ActiveCommandTransaction, UnversionedQueryTransaction,
+    UnversionedCommandTransaction,
 };
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_core::{EncodedKey, Type, return_error};
@@ -15,13 +15,11 @@ static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Typ
 pub(crate) struct GeneratorI64 {}
 
 impl GeneratorI64 {
-    pub(crate) fn next<VT, UT>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    pub(crate) fn next<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         key: &EncodedKey,
     ) -> crate::Result<i64>
     where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
     {
         txn.with_unversioned_command(|tx| match tx.get(key)? {
             Some(unversioned_row) => {
@@ -46,14 +44,12 @@ impl GeneratorI64 {
         })
     }
 
-    pub(crate) fn set<VT, UT>(
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+    pub(crate) fn set<T: Transaction>(
+        txn: &mut ActiveCommandTransaction<T>,
         key: &EncodedKey,
         value: i64,
     ) -> crate::Result<()>
     where
-        VT: VersionedTransaction,
-        UT: UnversionedTransaction,
     {
         txn.with_unversioned_command(|tx| {
             let mut row = match tx.get(key)? {
@@ -70,7 +66,7 @@ impl GeneratorI64 {
 #[cfg(test)]
 mod tests {
     use crate::sequence::generator::i64::{GeneratorI64, LAYOUT};
-    use reifydb_core::interface::{
+    use reifydb_core::interface::{Transaction, 
         Unversioned, UnversionedQueryTransaction, UnversionedCommandTransaction,
     };
     use reifydb_core::result::error::diagnostic::sequence::sequence_exhausted;

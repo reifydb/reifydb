@@ -6,26 +6,24 @@
 use reifydb_core::hook::lifecycle::OnCreateHook;
 use reifydb_core::hook::{BoxedHookIter, Callback};
 use reifydb_core::interface::{
-    Engine as _, Params, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as _, Params, Principal, Transaction,
 };
 use reifydb_core::{Frame, return_hooks};
 use reifydb_engine::Engine;
 
 /// Context provided to on_create hooks
-pub struct OnCreateContext<VT, UT>
+pub struct OnCreateContext<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
 }
 
-impl<'a, VT, UT> OnCreateContext<VT, UT>
+impl<'a, T> OnCreateContext<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub fn new(engine: Engine<VT, UT>) -> Self {
+    pub fn new(engine: Engine<T>) -> Self {
         Self { engine }
     }
 
@@ -71,21 +69,19 @@ where
 }
 
 /// Shared callback implementation for OnCreate hook
-pub struct OnCreateCallback<VT, UT, F>
+pub struct OnCreateCallback<T, F>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    F: Fn(&OnCreateContext<VT, UT>) -> crate::Result<()> + Send + Sync + 'static,
+    T: Transaction,
+    F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
     pub callback: F,
-    pub engine: Engine<VT, UT>,
+    pub engine: Engine<T>,
 }
 
-impl<VT, UT, F> Callback<OnCreateHook> for OnCreateCallback<VT, UT, F>
+impl<T, F> Callback<OnCreateHook> for OnCreateCallback<T, F>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    F: Fn(&OnCreateContext<VT, UT>) -> crate::Result<()> + Send + Sync + 'static,
+    T: Transaction,
+    F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
     fn on(&self, _hook: &OnCreateHook) -> Result<BoxedHookIter, reifydb_core::Error> {
         let context = OnCreateContext::new(self.engine.clone());

@@ -6,7 +6,7 @@ use crate::health::HealthStatus;
 use reifydb_core::interface::Engine as _;
 use reifydb_core::{
     Result, Version,
-    interface::{CdcEvent, UnversionedTransaction, VersionedTransaction},
+    interface::{CdcEvent, Transaction},
 };
 use reifydb_engine::Engine;
 use std::any::Any;
@@ -19,17 +19,17 @@ use std::{
     time::Duration,
 };
 
-pub struct FlowSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
-    engine: Engine<VT, UT>,
+pub struct FlowSubsystem<T: Transaction> {
+    engine: Engine<T>,
     poll_interval: Duration,
     running: Arc<AtomicBool>,
     last_seen_version: Arc<AtomicU64>,
     handle: Option<JoinHandle<()>>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystem<VT, UT> {
+impl<T: Transaction> FlowSubsystem<T> {
 
-    pub fn new(engine: Engine<VT, UT>, poll_interval: Duration) -> Self {
+    pub fn new(engine: Engine<T>, poll_interval: Duration) -> Self {
         Self {
             engine,
             poll_interval,
@@ -44,10 +44,10 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystem<VT, UT>
     }
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystem<VT, UT> {
+impl<T: Transaction> FlowSubsystem<T> {
 
     fn poll_and_print_events(
-        engine: &Engine<VT, UT>,
+        engine: &Engine<T>,
         _last_seen_version: &AtomicU64,
     ) -> Result<()> {
         // Begin a query transaction to access CDC events
@@ -120,16 +120,15 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> FlowSubsystem<VT, UT>
     }
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Drop for FlowSubsystem<VT, UT> {
+impl<T: Transaction> Drop for FlowSubsystem<T> {
     fn drop(&mut self) {
         let _ = self.stop();
     }
 }
 
-impl<VT, UT> Subsystem for FlowSubsystem<VT, UT>
+impl<T> Subsystem for FlowSubsystem<T>
 where
-    VT: VersionedTransaction + Send + Sync,
-    UT: UnversionedTransaction + Send + Sync,
+    T: Transaction + Send + Sync,
 {
     fn name(&self) -> &'static str {
         "Flow"

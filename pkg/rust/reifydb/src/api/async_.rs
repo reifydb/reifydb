@@ -12,7 +12,7 @@ use crate::{
     memory, optimistic, serializable, sqlite,
 };
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{StandardTransaction, UnversionedTransaction, VersionedTransaction};
 use reifydb_storage::sqlite::SqliteConfig;
 
 /// Create an async in-memory database with optimistic concurrency control (default)
@@ -40,7 +40,7 @@ pub fn sqlite_serializable(config: SqliteConfig) -> SqliteDatabaseSerializable {
 }
 
 /// Create a custom async database with user-provided transaction implementations
-pub fn custom<VT, UT>(versioned: VT, unversioned: UT) -> Database<VT, UT>
+pub fn custom<VT, UT>(versioned: VT, unversioned: UT) -> Database<StandardTransaction<VT, UT>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -53,7 +53,7 @@ pub fn custom_with_hooks<VT, UT>(
     versioned: VT,
     unversioned: UT,
     hooks: Hooks
-) -> Database<VT, UT>
+) -> Database<StandardTransaction<VT, UT>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,

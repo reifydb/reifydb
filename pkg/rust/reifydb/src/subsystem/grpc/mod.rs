@@ -5,7 +5,7 @@ use crate::context::RuntimeProvider;
 use crate::health::HealthStatus;
 use super::Subsystem;
 use reifydb_core::Result;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use std::any::Any;
@@ -17,9 +17,9 @@ use std::sync::{
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-pub struct GrpcSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
+pub struct GrpcSubsystem<T: Transaction> {
     /// The wrapped GrpcServer
-    server: Option<GrpcServer<VT, UT>>,
+    server: Option<GrpcServer<T>>,
     /// Whether the server is running
     running: Arc<AtomicBool>,
     /// Handle to the async task
@@ -30,10 +30,10 @@ pub struct GrpcSubsystem<VT: VersionedTransaction, UT: UnversionedTransaction> {
     socket_addr: Option<SocketAddr>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystem<VT, UT> {
+impl<T: Transaction> GrpcSubsystem<T> {
     pub fn new(
         config: GrpcConfig,
-        engine: Engine<VT, UT>,
+        engine: Engine<T>,
         runtime_provider: &RuntimeProvider,
     ) -> Self {
         let grpc_server = GrpcServer::new(config, engine);
@@ -51,10 +51,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> GrpcSubsystem<VT, UT>
     }
 }
 
-impl<VT, UT> Subsystem for GrpcSubsystem<VT, UT>
-where
-    VT: VersionedTransaction + Send + Sync + 'static,
-    UT: UnversionedTransaction + Send + Sync + 'static,
+impl<T: Transaction> Subsystem for GrpcSubsystem<T>
 {
     fn name(&self) -> &'static str {
         "Grpc"

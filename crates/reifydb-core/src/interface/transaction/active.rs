@@ -3,8 +3,8 @@
 
 use crate::diagnostic::transaction;
 use crate::interface::{
-    BoxedVersionedIter, UnversionedTransaction, Versioned, VersionedQueryTransaction,
-    VersionedTransaction, VersionedCommandTransaction,
+    BoxedVersionedIter, Transaction, UnversionedTransaction, Versioned,
+    VersionedCommandTransaction, VersionedQueryTransaction, VersionedTransaction,
 };
 use crate::return_error;
 use crate::row::EncodedRow;
@@ -12,26 +12,24 @@ use crate::{EncodedKey, EncodedKeyRange};
 
 /// An active query transaction that holds a versioned query transaction
 /// and provides query-only access to unversioned storage.
-pub struct ActiveQueryTransaction<VT, UT>
+pub struct ActiveQueryTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    versioned: VT::Query,
-    unversioned: UT,
+    versioned: <T::Versioned as VersionedTransaction>::Query,
+    unversioned: T::Unversioned,
 }
 
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct ActiveCommandTransaction<VT, UT>
+pub struct ActiveCommandTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    versioned: Option<VT::Command>,
-    unversioned: UT,
+    versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
+    unversioned: T::Unversioned,
     state: TransactionState,
 }
 
@@ -42,20 +40,22 @@ enum TransactionState {
     RolledBack,
 }
 
-impl<VT, UT> ActiveQueryTransaction<VT, UT>
+impl<T> ActiveQueryTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     /// Creates a new active query transaction
-    pub fn new(versioned: VT::Query, unversioned: UT) -> Self {
+    pub fn new(
+        versioned: <T::Versioned as VersionedTransaction>::Query,
+        unversioned: T::Unversioned,
+    ) -> Self {
         Self { versioned, unversioned }
     }
 
     /// Execute a function with query access to the unversioned transaction.
     pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Query<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut <T::Unversioned as UnversionedTransaction>::Query<'_>) -> crate::Result<R>,
     {
         self.unversioned.with_query(f)
     }
@@ -64,16 +64,15 @@ where
     /// This operates within the same transaction context.
     pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut VT::Query) -> crate::Result<R>,
+        F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Query) -> crate::Result<R>,
     {
         f(&mut self.versioned)
     }
 }
 
-impl<VT, UT> VersionedQueryTransaction for ActiveQueryTransaction<VT, UT>
+impl<T> VersionedQueryTransaction for ActiveQueryTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     #[inline]
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
@@ -116,13 +115,15 @@ where
     }
 }
 
-impl<VT, UT> ActiveCommandTransaction<VT, UT>
+impl<T> ActiveCommandTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     /// Creates a new active command transaction
-    pub fn new(versioned: VT::Command, unversioned: UT) -> Self {
+    pub fn new(
+        versioned: <T::Versioned as VersionedTransaction>::Command,
+        unversioned: T::Unversioned,
+    ) -> Self {
         Self { versioned: Some(versioned), unversioned, state: TransactionState::Active }
     }
 
@@ -142,7 +143,7 @@ where
     /// Execute a function with query access to the unversioned transaction.
     pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Query<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut <T::Unversioned as UnversionedTransaction>::Query<'_>) -> crate::Result<R>,
     {
         self.check_active()?;
         self.unversioned.with_query(f)
@@ -154,7 +155,7 @@ where
     /// The caller should handle transaction rollback if needed.
     pub fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut UT::Command<'_>) -> crate::Result<R>,
+        F: FnOnce(&mut <T::Unversioned as UnversionedTransaction>::Command<'_>) -> crate::Result<R>,
     {
         self.check_active()?;
         self.unversioned.with_command(f)
@@ -164,11 +165,11 @@ where
     /// This operates within the same transaction context.
     pub fn with_versioned_command<F, R>(&mut self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut VT::Command) -> crate::Result<R>,
+        F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Command) -> crate::Result<R>,
     {
         self.check_active()?;
         let result = f(self.versioned.as_mut().unwrap());
-        
+
         // If there was an error, we should rollback the transaction
         if result.is_err() {
             if let Some(versioned) = self.versioned.take() {
@@ -176,7 +177,7 @@ where
                 let _ = versioned.rollback(); // Ignore rollback errors
             }
         }
-        
+
         result
     }
 
@@ -184,12 +185,12 @@ where
     /// This operates within the same transaction context and provides read-only access.
     pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
     where
-        F: FnOnce(&mut VT::Command) -> crate::Result<R>,
-        VT::Command: VersionedQueryTransaction,
+        F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Command) -> crate::Result<R>,
+        <T::Versioned as VersionedTransaction>::Command: VersionedQueryTransaction,
     {
         self.check_active()?;
         let result = f(self.versioned.as_mut().unwrap());
-        
+
         // If there was an error, we should rollback the transaction
         if result.is_err() {
             if let Some(versioned) = self.versioned.take() {
@@ -197,7 +198,7 @@ where
                 let _ = versioned.rollback(); // Ignore rollback errors
             }
         }
-        
+
         result
     }
 
@@ -228,10 +229,9 @@ where
     }
 }
 
-impl<VT, UT> VersionedQueryTransaction for ActiveCommandTransaction<VT, UT>
+impl<T> VersionedQueryTransaction for ActiveCommandTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     #[inline]
     fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
@@ -282,10 +282,9 @@ where
     }
 }
 
-impl<VT, UT> VersionedCommandTransaction for ActiveCommandTransaction<VT, UT>
+impl<T> VersionedCommandTransaction for ActiveCommandTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     #[inline]
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
@@ -314,10 +313,9 @@ where
     }
 }
 
-impl<VT, UT> Drop for ActiveCommandTransaction<VT, UT>
+impl<T> Drop for ActiveCommandTransaction<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     fn drop(&mut self) {
         if let Some(versioned) = self.versioned.take() {

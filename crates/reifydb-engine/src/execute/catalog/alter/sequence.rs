@@ -12,15 +12,15 @@ use reifydb_core::diagnostic::catalog::table_not_found;
 use reifydb_core::diagnostic::query::column_not_found;
 use reifydb_core::diagnostic::sequence::can_not_alter_not_auto_increment;
 use reifydb_core::interface::{
-    ActiveCommandTransaction, Params, UnversionedTransaction, VersionedTransaction,
+    ActiveCommandTransaction, Params, Transaction,
 };
 use reifydb_core::{ColumnDescriptor, Value, return_error};
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn alter_sequence(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         plan: AlterSequencePlan,
     ) -> crate::Result<Columns> {
         let schema_name = match &plan.schema {

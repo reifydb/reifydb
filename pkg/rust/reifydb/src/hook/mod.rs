@@ -6,20 +6,19 @@ mod lifecycle;
 pub use lifecycle::*;
 
 use reifydb_core::hook::lifecycle::OnCreateHook;
-use reifydb_core::interface::{GetHooks, UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{GetHooks, Transaction};
 use reifydb_engine::Engine;
 
-pub trait WithHooks<VT, UT>
+pub trait WithHooks<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    fn engine(&self) -> &Engine<VT, UT>;
+    fn engine(&self) -> &Engine<T>;
 
     fn on_create<F>(self, f: F) -> Self
     where
         Self: Sized,
-        F: Fn(&OnCreateContext<VT, UT>) -> crate::Result<()> + Send + Sync + 'static,
+        F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
     {
         let callback = OnCreateCallback { callback: f, engine: self.engine().clone() };
 

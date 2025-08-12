@@ -4,28 +4,26 @@
 use crate::database::{Database, DatabaseConfig};
 use crate::health::HealthMonitor;
 use crate::{Subsystem, Subsystems};
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub struct DatabaseBuilder<VT, UT>
+pub struct DatabaseBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
     config: DatabaseConfig,
     subsystems: Vec<Box<dyn Subsystem>>,
 }
 
-impl<VT, UT> DatabaseBuilder<VT, UT>
+impl<T> DatabaseBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     #[allow(unused_mut)]
-    pub fn new(engine: Engine<VT, UT>) -> Self {
+    pub fn new(engine: Engine<T>) -> Self {
         let mut result = Self {
             engine: engine.clone(),
             config: DatabaseConfig::default(),
@@ -75,7 +73,7 @@ where
         self.subsystems.len()
     }
 
-    pub fn build(self) -> Database<VT, UT> {
+    pub fn build(self) -> Database<T> {
         let health_monitor = Arc::new(HealthMonitor::new());
 
         let mut subsystem_manager = Subsystems::new(Arc::clone(&health_monitor));
@@ -87,10 +85,9 @@ where
     }
 }
 
-impl<VT, UT> DatabaseBuilder<VT, UT>
+impl<T> DatabaseBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     pub fn development_config(self) -> Self {
         self.with_graceful_shutdown_timeout(Duration::from_secs(10))

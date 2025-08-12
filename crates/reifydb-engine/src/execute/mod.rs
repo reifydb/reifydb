@@ -9,12 +9,15 @@ use query::compile::compile;
 use reifydb_core::Frame;
 use reifydb_core::interface::{
     ActiveCommandTransaction, ActiveQueryTransaction, Command, Execute, ExecuteCommand,
-    ExecuteQuery, Params, Query, Table, UnversionedTransaction, VersionedQueryTransaction,
-    VersionedTransaction,
+    ExecuteQuery, Params, Query, StandardTransaction, Table, Transaction,
+    VersionedQueryTransaction,
 };
 use reifydb_rql::ast;
 use reifydb_rql::plan::physical::PhysicalPlan;
 use reifydb_rql::plan::plan;
+use reifydb_storage::memory::Memory;
+use reifydb_transaction::mvcc::transaction::serializable::Serializable;
+use reifydb_transaction::svl::SingleVersionLock;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -44,12 +47,19 @@ pub(crate) trait ExecutionPlan {
     fn layout(&self) -> Option<ColumnsLayout>;
 }
 
-pub(crate) struct Executor<VT: VersionedTransaction, UT: UnversionedTransaction> {
+pub(crate) struct Executor<T: Transaction> {
     pub functions: Functions,
-    pub _phantom: PhantomData<(VT, UT)>,
+    pub _phantom: PhantomData<T>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl
+    Executor<
+        StandardTransaction<
+            Serializable<Memory, SingleVersionLock<Memory>>,
+            SingleVersionLock<Memory>,
+        >,
+    >
+{
     #[allow(dead_code)]
     pub(crate) fn testing() -> Self {
         Self {
@@ -66,12 +76,10 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
     }
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT>
-    for Executor<VT, UT>
-{
+impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
     fn execute_command<'a>(
         &'a self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         cmd: Command<'a>,
     ) -> reifydb_core::Result<Vec<Frame>> {
         let mut result = vec![];
@@ -88,12 +96,10 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteCommand<VT, UT
     }
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteQuery<VT, UT>
-    for Executor<VT, UT>
-{
+impl<T: Transaction> ExecuteQuery<T> for Executor<T> {
     fn execute_query<'a>(
         &'a self,
-        txn: &mut ActiveQueryTransaction<VT, UT>,
+        txn: &mut ActiveQueryTransaction<T>,
         qry: Query<'a>,
     ) -> reifydb_core::Result<Vec<Frame>> {
         let mut result = vec![];
@@ -110,9 +116,9 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> ExecuteQuery<VT, UT>
     }
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Execute<VT, UT> for Executor<VT, UT> {}
+impl<T: Transaction> Execute<T> for Executor<T> {}
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
+impl<T: Transaction> Executor<T> {
     pub(crate) fn execute_query_plan(
         &self,
         rx: &mut impl VersionedQueryTransaction,
@@ -144,7 +150,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction> Executor<VT, UT> {
 
     pub(crate) fn execute_command_plan(
         &self,
-        txn: &mut ActiveCommandTransaction<VT, UT>,
+        txn: &mut ActiveCommandTransaction<T>,
         plan: PhysicalPlan,
         params: Params,
     ) -> crate::Result<Columns> {

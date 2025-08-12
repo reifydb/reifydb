@@ -46,7 +46,7 @@ use std::time::Duration;
 
 pub use presets::*;
 pub use reifydb_core::hook::Hooks;
-pub use reifydb_core::interface::{UnversionedTransaction, VersionedStorage, VersionedTransaction};
+pub use reifydb_core::interface::{StandardTransaction, UnversionedTransaction, VersionedStorage, VersionedTransaction};
 pub use reifydb_storage::lmdb::Lmdb;
 pub use reifydb_storage::memory::Memory;
 pub use reifydb_storage::sqlite::{Sqlite, SqliteConfig};

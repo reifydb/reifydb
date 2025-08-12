@@ -16,7 +16,7 @@ use crate::session::{
     CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session, SessionSync,
 };
 use reifydb_core::Result;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{Transaction, StandardTransaction, VersionedTransaction, UnversionedTransaction};
 use reifydb_engine::Engine;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use std::net::SocketAddr;
@@ -61,46 +61,43 @@ impl Default for DatabaseConfig {
     }
 }
 
-pub struct Database<VT, UT>
+pub struct Database<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     config: DatabaseConfig,
-    engine: Engine<VT, UT>,
+    engine: Engine<T>,
     subsystems: Subsystems,
     health_monitor: Arc<HealthMonitor>,
     running: bool,
 }
 
-impl<VT, UT> Database<VT, UT>
+impl<T> Database<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     #[cfg(feature = "sub_flow")]
-    pub fn subsystem_flow(&self) -> Option<&FlowSubsystem<VT, UT>> {
-        self.subsystem::<FlowSubsystem<VT, UT>>()
+    pub fn subsystem_flow(&self) -> Option<&FlowSubsystem<T>> {
+        self.subsystem::<FlowSubsystem<T>>()
     }
 
     #[cfg(feature = "sub_grpc")]
-    pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystem<VT, UT>> {
-        self.subsystem::<GrpcSubsystem<VT, UT>>()
+    pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystem<T>> {
+        self.subsystem::<GrpcSubsystem<T>>()
     }
 
     #[cfg(feature = "sub_ws")]
-    pub fn subsystem_ws(&self) -> Option<&WsSubsystem<VT, UT>> {
-        self.subsystem::<WsSubsystem<VT, UT>>()
+    pub fn subsystem_ws(&self) -> Option<&WsSubsystem<T>> {
+        self.subsystem::<WsSubsystem<T>>()
     }
 }
 
-impl<VT, UT> Database<VT, UT>
+impl<T> Database<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     pub(crate) fn new(
-        engine: Engine<VT, UT>,
+        engine: Engine<T>,
         subsystem_manager: Subsystems,
         config: DatabaseConfig,
         health_monitor: Arc<HealthMonitor>,
@@ -108,7 +105,7 @@ where
         Self { engine, subsystems: subsystem_manager, config, health_monitor, running: false }
     }
 
-    pub fn engine(&self) -> &Engine<VT, UT> {
+    pub fn engine(&self) -> &Engine<T> {
         &self.engine
     }
 
@@ -254,15 +251,14 @@ where
         None
     }
 
-    pub fn subsystem<T: 'static>(&self) -> Option<&T> {
-        self.subsystems.get::<T>()
+    pub fn subsystem<S: 'static>(&self) -> Option<&S> {
+        self.subsystems.get::<S>()
     }
 }
 
-impl<VT, UT> Drop for Database<VT, UT>
+impl<T> Drop for Database<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     fn drop(&mut self) {
         if self.running {
@@ -272,7 +268,7 @@ where
     }
 }
 
-impl<VT, UT> Session<VT, UT> for Database<VT, UT>
+impl<VT, UT> Session<VT, UT> for Database<StandardTransaction<VT, UT>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -292,7 +288,7 @@ where
     }
 }
 
-impl<VT, UT> SessionSync<VT, UT> for Database<VT, UT>
+impl<VT, UT> SessionSync<VT, UT> for Database<StandardTransaction<VT, UT>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
@@ -300,7 +296,7 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<VT, UT> SessionAsync<VT, UT> for Database<VT, UT>
+impl<VT, UT> SessionAsync<VT, UT> for Database<StandardTransaction<VT, UT>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,

@@ -11,7 +11,7 @@ use crate::grpc::server::grpc::QueryResult;
 use crate::grpc::server::grpc::{CommandRequest, CommandResult, QueryRequest};
 use crate::grpc::server::{AuthenticatedUser, grpc};
 use reifydb_core::interface::{
-    Engine as EngineInterface, Params as CoreParams, Principal, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params as CoreParams, Principal, Transaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_core::result::error::diagnostic::Diagnostic;
@@ -19,13 +19,12 @@ use reifydb_core::{Type, Value};
 use reifydb_engine::Engine;
 use std::collections::HashMap;
 
-pub struct DbService<VT, UT>
+pub struct DbService<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub(crate) engine: Arc<Engine<VT, UT>>,
-    _phantom: std::marker::PhantomData<(VT, UT)>,
+    pub(crate) engine: Arc<Engine<T>>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
 fn grpc_value_to_core_value(grpc_val: grpc::Value) -> Option<Value> {
@@ -90,12 +89,11 @@ fn grpc_params_to_core_params(grpc_params: Option<grpc::Params>) -> CoreParams {
     }
 }
 
-impl<VT, UT> DbService<VT, UT>
+impl<T> DbService<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub fn new(engine: Engine<VT, UT>) -> Self {
+    pub fn new(engine: Engine<T>) -> Self {
         Self { engine: Arc::new(engine), _phantom: std::marker::PhantomData }
     }
 }
@@ -105,10 +103,9 @@ pub type CommandResultStream =
 pub type QueryResultStream = Pin<Box<dyn Stream<Item = Result<grpc::QueryResult, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl<VT, UT> grpc::db_server::Db for DbService<VT, UT>
+impl<T> grpc::db_server::Db for DbService<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
     type CommandStream = CommandResultStream;
 

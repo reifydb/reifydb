@@ -11,28 +11,26 @@ use crate::WsSubsystem;
 use crate::context::{RuntimeProvider, TokioRuntimeProvider};
 use crate::hook::WithHooks;
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 use reifydb_network::ws::server::WsConfig;
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-pub struct ServerBuilder<VT, UT>
+pub struct ServerBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    inner: DatabaseBuilder<VT, UT>,
-    engine: Engine<VT, UT>,
+    inner: DatabaseBuilder<T>,
+    engine: Engine<T>,
     runtime_provider: RuntimeProvider,
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-impl<VT, UT> ServerBuilder<VT, UT>
+impl<T> ServerBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    pub fn new(versioned: VT, unversioned: UT, hooks: Hooks) -> Self {
+    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
         let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
         let inner = DatabaseBuilder::new(engine.clone());
         let runtime_provider = RuntimeProvider::Tokio(
@@ -55,18 +53,17 @@ where
         self
     }
 
-    pub fn build(self) -> Database<VT, UT> {
+    pub fn build(self) -> Database<T> {
         self.inner.build()
     }
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-impl<VT, UT> WithHooks<VT, UT> for ServerBuilder<VT, UT>
+impl<T> WithHooks<T> for ServerBuilder<T>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
+    T: Transaction,
 {
-    fn engine(&self) -> &Engine<VT, UT> {
+    fn engine(&self) -> &Engine<T> {
         &self.engine
     }
 }
