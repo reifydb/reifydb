@@ -9,66 +9,67 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::transaction::FromRow;
-use crate::{as_key, as_row, from_row};
-use reifydb_transaction::mvcc::transaction::iter::TransactionIter;
-use reifydb_transaction::mvcc::transaction::iter_rev::TransactionIterRev;
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+use reifydb_transaction::mvcc::transaction::{
+	iter::TransactionIter, iter_rev::TransactionIterRev,
+	optimistic::Optimistic,
+};
+
+use crate::{as_key, as_row, from_row, mvcc::transaction::FromRow};
 
 #[test]
 fn test_versions() {
-    let engine = Optimistic::testing();
+	let engine = Optimistic::testing();
 
-    let k0 = as_key!(0);
+	let k0 = as_key!(0);
 
-    for i in 1..10 {
-        let mut txn = engine.begin_command().unwrap();
-        txn.set(&k0, as_row!(i)).unwrap();
-        txn.commit().unwrap();
-        assert_eq!(i + 1, engine.version().unwrap());
-    }
+	for i in 1..10 {
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&k0, as_row!(i)).unwrap();
+		txn.commit().unwrap();
+		assert_eq!(i + 1, engine.version().unwrap());
+	}
 
-    let check_iter = |itr: TransactionIter<'_, _>, i: u64| {
-        let mut count = 0;
-        for sv in itr {
-            assert_eq!(sv.key(), &k0);
-            let value = from_row!(u64, sv.row());
-            assert_eq!(value, i, "{i} {:?}", value);
-            count += 1;
-        }
-        assert_eq!(1, count) // should only loop once.
-    };
+	let check_iter = |itr: TransactionIter<'_, _>, i: u64| {
+		let mut count = 0;
+		for sv in itr {
+			assert_eq!(sv.key(), &k0);
+			let value = from_row!(u64, sv.row());
+			assert_eq!(value, i, "{i} {:?}", value);
+			count += 1;
+		}
+		assert_eq!(1, count) // should only loop once.
+	};
 
-    let check_rev_iter = |itr: TransactionIterRev<'_, _>, i: u64| {
-        let mut count = 0;
-        for sv in itr {
-            let value = from_row!(u64, sv.row());
-            assert_eq!(value, i, "{i} {:?}", value);
-            count += 1;
-        }
-        assert_eq!(1, count) // should only loop once.
-    };
+	let check_rev_iter = |itr: TransactionIterRev<'_, _>, i: u64| {
+		let mut count = 0;
+		for sv in itr {
+			let value = from_row!(u64, sv.row());
+			assert_eq!(value, i, "{i} {:?}", value);
+			count += 1;
+		}
+		assert_eq!(1, count) // should only loop once.
+	};
 
-    for idx in 1..10 {
-        let mut txn = engine.begin_command().unwrap();
-        txn.as_of_version(idx + 1); // Read version at idx.
+	for idx in 1..10 {
+		let mut txn = engine.begin_command().unwrap();
+		txn.as_of_version(idx + 1); // Read version at idx.
 
-        let v = idx;
-        {
-            let sv = txn.get(&k0).unwrap().unwrap();
-            assert_eq!(v, from_row!(u64, *sv.row()));
-        }
+		let v = idx;
+		{
+			let sv = txn.get(&k0).unwrap().unwrap();
+			assert_eq!(v, from_row!(u64, *sv.row()));
+		}
 
-        // Try retrieving the latest version forward and reverse.
-        let itr = txn.scan().unwrap();
-        check_iter(itr, idx);
+		// Try retrieving the latest version forward and reverse.
+		let itr = txn.scan().unwrap();
+		check_iter(itr, idx);
 
-        let itr = txn.scan_rev().unwrap();
-        check_rev_iter(itr, idx);
-    }
+		let itr = txn.scan_rev().unwrap();
+		check_rev_iter(itr, idx);
+	}
 
-    let mut txn = engine.begin_command().unwrap();
-    let sv = txn.get(&k0).unwrap().unwrap();
-    let val = from_row!(u64, *sv.row());
-    assert_eq!(9, val)
+	let mut txn = engine.begin_command().unwrap();
+	let sv = txn.get(&k0).unwrap().unwrap();
+	let val = from_row!(u64, *sv.row());
+	assert_eq!(9, val)
 }

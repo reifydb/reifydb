@@ -1,32 +1,47 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+use reifydb_core::{
+	BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error,
+	result::error::diagnostic::cast,
+	value::{
+		container::StringContainer,
+		temporal::{
+			parse_date, parse_datetime, parse_interval, parse_time,
+		},
+	},
+};
+
 use crate::columnar::ColumnData;
-use reifydb_core::result::error::diagnostic::cast;
-use reifydb_core::value::container::StringContainer;
-use reifydb_core::value::temporal::{parse_date, parse_datetime, parse_interval, parse_time};
-use reifydb_core::{BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error};
 
 pub fn to_temporal(
-    data: &ColumnData,
-    target: Type,
-    span: impl Fn() -> OwnedSpan,
+	data: &ColumnData,
+	target: Type,
+	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
-    if let ColumnData::Utf8(container) = data {
-        match target {
-            Type::Date => to_date(container, span),
-            Type::DateTime => to_datetime(container, span),
-            Type::Time => to_time(container, span),
-            Type::Interval => to_interval(container, span),
-            _ => {
-                let source_type = data.get_type();
-                reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
-            }
-        }
-    } else {
-        let source_type = data.get_type();
-        reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
-    }
+	if let ColumnData::Utf8(container) = data {
+		match target {
+			Type::Date => to_date(container, span),
+			Type::DateTime => to_datetime(container, span),
+			Type::Time => to_time(container, span),
+			Type::Interval => to_interval(container, span),
+			_ => {
+				let source_type = data.get_type();
+				reifydb_core::err!(cast::unsupported_cast(
+					span(),
+					source_type,
+					target
+				))
+			}
+		}
+	} else {
+		let source_type = data.get_type();
+		reifydb_core::err!(cast::unsupported_cast(
+			span(),
+			source_type,
+			target
+		))
+	}
 }
 
 macro_rules! impl_to_temporal {

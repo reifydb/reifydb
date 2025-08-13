@@ -1,43 +1,64 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+use reifydb_core::{
+	BorrowedSpan, OwnedSpan, Type, error,
+	result::error::diagnostic::cast,
+	value::{
+		container::{StringContainer, UuidContainer},
+		uuid::{
+			Uuid4, Uuid7,
+			parse::{parse_uuid4, parse_uuid7},
+		},
+	},
+};
+
 use crate::columnar::ColumnData;
-use reifydb_core::result::error::diagnostic::cast;
-use reifydb_core::value::container::{StringContainer, UuidContainer};
-use reifydb_core::value::uuid::parse::{parse_uuid4, parse_uuid7};
-use reifydb_core::value::uuid::{Uuid4, Uuid7};
-use reifydb_core::{BorrowedSpan, OwnedSpan, Type, error};
 
 pub fn to_uuid(
-    data: &ColumnData,
-    target: Type,
-    span: impl Fn() -> OwnedSpan,
+	data: &ColumnData,
+	target: Type,
+	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
-    match data {
-        ColumnData::Utf8(container) => from_text(container, target, span),
-        ColumnData::Uuid4(container) => from_uuid4(container, target, span),
-        ColumnData::Uuid7(container) => from_uuid7(container, target, span),
-        _ => {
-            let source_type = data.get_type();
-            reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
-        }
-    }
+	match data {
+		ColumnData::Utf8(container) => {
+			from_text(container, target, span)
+		}
+		ColumnData::Uuid4(container) => {
+			from_uuid4(container, target, span)
+		}
+		ColumnData::Uuid7(container) => {
+			from_uuid7(container, target, span)
+		}
+		_ => {
+			let source_type = data.get_type();
+			reifydb_core::err!(cast::unsupported_cast(
+				span(),
+				source_type,
+				target
+			))
+		}
+	}
 }
 
 #[inline]
 fn from_text(
-    container: &StringContainer,
-    target: Type,
-    span: impl Fn() -> OwnedSpan,
+	container: &StringContainer,
+	target: Type,
+	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
-    match target {
-        Type::Uuid4 => to_uuid4(container, span),
-        Type::Uuid7 => to_uuid7(container, span),
-        _ => {
-            let source_type = Type::Utf8;
-            reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
-        }
-    }
+	match target {
+		Type::Uuid4 => to_uuid4(container, span),
+		Type::Uuid7 => to_uuid7(container, span),
+		_ => {
+			let source_type = Type::Utf8;
+			reifydb_core::err!(cast::unsupported_cast(
+				span(),
+				source_type,
+				target
+			))
+		}
+	}
 }
 
 macro_rules! impl_to_uuid {
@@ -81,36 +102,44 @@ impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 
 #[inline]
 fn from_uuid4(
-    container: &UuidContainer<Uuid4>,
-    target: Type,
-    span: impl Fn() -> OwnedSpan,
+	container: &UuidContainer<Uuid4>,
+	target: Type,
+	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
-    match target {
-        Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(
-            container.data().to_vec(),
-            container.bitvec().clone(),
-        ))),
-        _ => {
-            let source_type = Type::Uuid4;
-            reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
-        }
-    }
+	match target {
+		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(
+			container.data().to_vec(),
+			container.bitvec().clone(),
+		))),
+		_ => {
+			let source_type = Type::Uuid4;
+			reifydb_core::err!(cast::unsupported_cast(
+				span(),
+				source_type,
+				target
+			))
+		}
+	}
 }
 
 #[inline]
 fn from_uuid7(
-    container: &UuidContainer<Uuid7>,
-    target: Type,
-    span: impl Fn() -> OwnedSpan,
+	container: &UuidContainer<Uuid7>,
+	target: Type,
+	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
-    match target {
-        Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(
-            container.data().to_vec(),
-            container.bitvec().clone(),
-        ))),
-        _ => {
-            let source_type = Type::Uuid7;
-            reifydb_core::err!(cast::unsupported_cast(span(), source_type, target))
-        }
-    }
+	match target {
+		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(
+			container.data().to_vec(),
+			container.bitvec().clone(),
+		))),
+		_ => {
+			let source_type = Type::Uuid7;
+			reifydb_core::err!(cast::unsupported_cast(
+				span(),
+				source_type,
+				target
+			))
+		}
+	}
 }

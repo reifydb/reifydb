@@ -1,9 +1,9 @@
 pub mod change;
 pub mod compile;
-pub mod processor;
 pub mod flow;
 pub mod graph;
 pub mod node;
 pub mod operators;
+pub mod processor;
 pub mod row;
 pub mod state;

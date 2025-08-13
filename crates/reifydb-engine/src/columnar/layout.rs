@@ -1,50 +1,62 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::Columns;
 use crate::columnar::{
-    Column, ColumnData, ColumnQualified, FullyQualified, TableQualified, Unqualified,
+	Column, ColumnData, ColumnQualified, Columns, FullyQualified,
+	TableQualified, Unqualified,
 };
 
 #[derive(Debug, Clone)]
 pub struct ColumnsLayout {
-    pub columns: Vec<ColumnLayout>,
+	pub columns: Vec<ColumnLayout>,
 }
 
 impl ColumnsLayout {
-    pub fn from_columns(columns: &Columns) -> Self {
-        Self { columns: columns.iter().map(|c| ColumnLayout::from_column(c)).collect() }
-    }
+	pub fn from_columns(columns: &Columns) -> Self {
+		Self {
+			columns: columns
+				.iter()
+				.map(|c| ColumnLayout::from_column(c))
+				.collect(),
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
 pub struct ColumnLayout {
-    pub schema: Option<String>,
-    pub table: Option<String>,
-    pub name: String,
+	pub schema: Option<String>,
+	pub table: Option<String>,
+	pub name: String,
 }
 
 impl ColumnLayout {
-    pub fn from_column(column: &Column) -> Self {
-        Self {
-            schema: column.schema().map(|s| s.to_string()),
-            table: column.table().map(|s| s.to_string()),
-            name: column.name().to_string(),
-        }
-    }
+	pub fn from_column(column: &Column) -> Self {
+		Self {
+			schema: column.schema().map(|s| s.to_string()),
+			table: column.table().map(|s| s.to_string()),
+			name: column.name().to_string(),
+		}
+	}
 }
 
 impl Columns {
-    pub fn apply_layout(&mut self, layout: &ColumnsLayout) {
-        // Check for duplicate column names and qualify them only when needed
-        let layout_with_qualification = self.qualify_duplicates_only(layout);
+	pub fn apply_layout(&mut self, layout: &ColumnsLayout) {
+		// Check for duplicate column names and qualify them only when
+		// needed
+		let layout_with_qualification =
+			self.qualify_duplicates_only(layout);
 
-        for (i, column_layout) in layout_with_qualification.columns.iter().enumerate() {
-            if i < self.len() {
-                let column = &mut self[i];
-                let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
+		for (i, column_layout) in
+			layout_with_qualification.columns.iter().enumerate()
+		{
+			if i < self.len() {
+				let column = &mut self[i];
+				let data = std::mem::replace(
+					column.data_mut(),
+					ColumnData::undefined(0),
+				);
 
-                *column = match (&column_layout.schema, &column_layout.table) {
+				*column = match (&column_layout.schema, &column_layout.table) {
                     (Some(schema), Some(table)) => Column::FullyQualified(FullyQualified {
                         schema: schema.clone(),
                         table: table.clone(),
@@ -71,25 +83,35 @@ impl Columns {
                         data,
                     }),
                 };
-            }
-        }
-    }
+			}
+		}
+	}
 
-    fn qualify_duplicates_only(&self, layout: &ColumnsLayout) -> ColumnsLayout {
-        use std::collections::HashMap;
+	fn qualify_duplicates_only(
+		&self,
+		layout: &ColumnsLayout,
+	) -> ColumnsLayout {
+		use std::collections::HashMap;
 
-        // Group columns by name and check for ambiguity across different table/schema contexts
-        let mut name_groups: HashMap<String, Vec<(Option<String>, Option<String>)>> =
-            HashMap::new();
-        for column_layout in &layout.columns {
-            name_groups
-                .entry(column_layout.name.clone())
-                .or_insert_with(Vec::new)
-                .push((column_layout.schema.clone(), column_layout.table.clone()));
-        }
+		// Group columns by name and check for ambiguity across
+		// different table/schema contexts
+		let mut name_groups: HashMap<
+			String,
+			Vec<(Option<String>, Option<String>)>,
+		> = HashMap::new();
+		for column_layout in &layout.columns {
+			name_groups
+				.entry(column_layout.name.clone())
+				.or_insert_with(Vec::new)
+				.push((
+					column_layout.schema.clone(),
+					column_layout.table.clone(),
+				));
+		}
 
-        // Only qualify columns that appear more than once across different table/schema contexts
-        let qualified_columns: Vec<_> = layout
+		// Only qualify columns that appear more than once across
+		// different table/schema contexts
+		let qualified_columns: Vec<_> = layout
             .columns
             .iter()
             .map(|column_layout| {
@@ -161,6 +183,8 @@ impl Columns {
             })
             .collect();
 
-        ColumnsLayout { columns: qualified_columns }
-    }
+		ColumnsLayout {
+			columns: qualified_columns,
+		}
+	}
 }

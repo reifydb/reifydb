@@ -10,78 +10,116 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::iter::Rev;
-use crossbeam_skiplist::map::Range as MapRange;
-
-use crate::memory::Memory;
-use crate::memory::versioned::VersionedRow;
-use reifydb_core::interface::{
-    Unversioned, UnversionedRangeRev as RangeRevInterface, Versioned, VersionedRangeRev,
-};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::ops::Bound;
 
-impl VersionedRangeRev for Memory {
-    type RangeIterRev<'a>
-        = RangeRev<'a>
-    where
-        Self: 'a;
+use crossbeam_skiplist::map::Range as MapRange;
+use reifydb_core::{
+	EncodedKey, EncodedKeyRange, Result, Version,
+	interface::{
+		Unversioned, UnversionedRangeRev as RangeRevInterface,
+		Versioned, VersionedRangeRev,
+	},
+	row::EncodedRow,
+};
 
-    fn range_rev(
-        &self,
-        range: EncodedKeyRange,
-        version: Version,
-    ) -> Result<Self::RangeIterRev<'_>> {
-        Ok(RangeRev { range: self.versioned.range(range).rev(), version })
-    }
+use crate::memory::{Memory, versioned::VersionedRow};
+
+impl VersionedRangeRev for Memory {
+	type RangeIterRev<'a>
+		= RangeRev<'a>
+	where
+		Self: 'a;
+
+	fn range_rev(
+		&self,
+		range: EncodedKeyRange,
+		version: Version,
+	) -> Result<Self::RangeIterRev<'_>> {
+		Ok(RangeRev {
+			range: self.versioned.range(range).rev(),
+			version,
+		})
+	}
 }
 
 pub struct RangeRev<'a> {
-    pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, VersionedRow>>,
-    pub(crate) version: Version,
+	pub(crate) range: Rev<
+		MapRange<
+			'a,
+			EncodedKey,
+			EncodedKeyRange,
+			EncodedKey,
+			VersionedRow,
+		>,
+	>,
+	pub(crate) version: Version,
 }
 
 impl Iterator for RangeRev<'_> {
-    type Item = Versioned;
+	type Item = Versioned;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.range.next()?;
-            if let Some((version, value)) =
-                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
-                    if item.value().is_some() {
-                        Some((*item.key(), item.value().clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-            {
-                return Some(Versioned { key: item.key().clone(), version, row: value });
-            }
-        }
-    }
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			let item = self.range.next()?;
+			if let Some((version, value)) = item
+				.value()
+				.upper_bound(Bound::Included(&self.version))
+				.and_then(|item| {
+					if item.value().is_some() {
+						Some((
+							*item.key(),
+							item.value()
+								.clone()
+								.unwrap(),
+						))
+					} else {
+						None
+					}
+				}) {
+				return Some(Versioned {
+					key: item.key().clone(),
+					version,
+					row: value,
+				});
+			}
+		}
+	}
 }
 
 impl RangeRevInterface for Memory {
-    type RangeRev<'a>
-        = UnversionedRangeRev<'a>
-    where
-        Self: 'a;
+	type RangeRev<'a>
+		= UnversionedRangeRev<'a>
+	where
+		Self: 'a;
 
-    fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
-        Ok(UnversionedRangeRev { range: self.unversioned.range(range) })
-    }
+	fn range_rev(
+		&self,
+		range: EncodedKeyRange,
+	) -> Result<Self::RangeRev<'_>> {
+		Ok(UnversionedRangeRev {
+			range: self.unversioned.range(range),
+		})
+	}
 }
 
 pub struct UnversionedRangeRev<'a> {
-    pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
+	pub(crate) range: MapRange<
+		'a,
+		EncodedKey,
+		EncodedKeyRange,
+		EncodedKey,
+		EncodedRow,
+	>,
 }
 
 impl Iterator for UnversionedRangeRev<'_> {
-    type Item = Unversioned;
+	type Item = Unversioned;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.range.next_back()?;
-        Some(Unversioned { key: item.key().clone(), row: item.value().clone() })
-    }
+	fn next(&mut self) -> Option<Self::Item> {
+		let item = self.range.next_back()?;
+		Some(Unversioned {
+			key: item.key().clone(),
+			row: item.value().clone(),
+		})
+	}
 }

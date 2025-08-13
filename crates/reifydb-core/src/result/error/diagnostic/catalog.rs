@@ -1,11 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::IntoOwnedSpan;
-use crate::result::error::diagnostic::Diagnostic;
+use crate::{IntoOwnedSpan, result::error::diagnostic::Diagnostic};
 
-pub fn schema_already_exists(span: Option<impl IntoOwnedSpan>, schema: &str) -> Diagnostic {
-    Diagnostic {
+pub fn schema_already_exists(
+	span: Option<impl IntoOwnedSpan>,
+	schema: &str,
+) -> Diagnostic {
+	Diagnostic {
         code: "CA_001".to_string(),
         statement: None,
         message: format!("schema `{}` already exists", schema),
@@ -18,8 +20,11 @@ pub fn schema_already_exists(span: Option<impl IntoOwnedSpan>, schema: &str) -> 
     }
 }
 
-pub fn schema_not_found(span: Option<impl IntoOwnedSpan>, schema: &str) -> Diagnostic {
-    Diagnostic {
+pub fn schema_not_found(
+	span: Option<impl IntoOwnedSpan>,
+	schema: &str,
+) -> Diagnostic {
+	Diagnostic {
         code: "CA_002".to_string(),
         statement: None,
         message: format!("schema `{}` not found", schema),
@@ -33,11 +38,11 @@ pub fn schema_not_found(span: Option<impl IntoOwnedSpan>, schema: &str) -> Diagn
 }
 
 pub fn table_already_exists(
-    span: Option<impl IntoOwnedSpan>,
-    schema: &str,
-    table: &str,
+	span: Option<impl IntoOwnedSpan>,
+	schema: &str,
+	table: &str,
 ) -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "CA_003".to_string(),
         statement: None,
         message: format!("table `{}.{}` already exists", schema, table),
@@ -50,9 +55,13 @@ pub fn table_already_exists(
     }
 }
 
-pub fn table_not_found(span: impl IntoOwnedSpan, schema: &str, table: &str) -> Diagnostic {
-    let owned_span = span.into_span();
-    Diagnostic {
+pub fn table_not_found(
+	span: impl IntoOwnedSpan,
+	schema: &str,
+	table: &str,
+) -> Diagnostic {
+	let owned_span = span.into_span();
+	Diagnostic {
         code: "CA_004".to_string(),
         statement: None,
         message: format!("table `{}.{}` not found", schema, table),
@@ -66,12 +75,12 @@ pub fn table_not_found(span: impl IntoOwnedSpan, schema: &str, table: &str) -> D
 }
 
 pub fn column_already_exists(
-    span: Option<impl IntoOwnedSpan>,
-    schema: &str,
-    table: &str,
-    column: &str,
+	span: Option<impl IntoOwnedSpan>,
+	schema: &str,
+	table: &str,
+	column: &str,
 ) -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "CA_005".to_string(),
         statement: None,
         message: format!("column `{}` already exists in table `{}`.`{}`", column, schema, table),
@@ -85,39 +94,48 @@ pub fn column_already_exists(
 }
 
 pub fn auto_increment_invalid_type(
-    span: Option<impl IntoOwnedSpan>,
-    column: &str,
-    ty: crate::Type,
+	span: Option<impl IntoOwnedSpan>,
+	column: &str,
+	ty: crate::Type,
 ) -> Diagnostic {
-    Diagnostic {
-        code: "CA_006".to_string(),
-        statement: None,
-        message: format!("auto increment is not supported for type `{}`", ty),
-        span: span.map(|s| s.into_span()),
-        label: Some("invalid auto increment usage".to_string()),
-        help: Some(format!("auto increment is only supported for integer types (int1-16, uint1-16), column `{}` has type `{}`", column, ty)),
-        column: None,
-        notes: vec![],
-        cause: None,
-    }
+	Diagnostic {
+		code: "CA_006".to_string(),
+		statement: None,
+		message: format!(
+			"auto increment is not supported for type `{}`",
+			ty
+		),
+		span: span.map(|s| s.into_span()),
+		label: Some("invalid auto increment usage".to_string()),
+		help: Some(format!(
+			"auto increment is only supported for integer types (int1-16, uint1-16), column `{}` has type `{}`",
+			column, ty
+		)),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
 }
 
 pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
-    Diagnostic {
-        code: "CA_008".to_string(),
-        statement: None,
-        message: format!("policy `{policy:?}` already exists for column `{}`", column),
-        span: None,
-        label: Some("duplicate column policy".to_string()),
-        help: Some("remove the existing policy first".to_string()),
-        column: None,
-        notes: vec![],
-        cause: None,
-    }
+	Diagnostic {
+		code: "CA_008".to_string(),
+		statement: None,
+		message: format!(
+			"policy `{policy:?}` already exists for column `{}`",
+			column
+		),
+		span: None,
+		label: Some("duplicate column policy".to_string()),
+		help: Some("remove the existing policy first".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
 }
 
 pub fn index_variable_length_not_supported() -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "CA_009".to_string(),
         statement: None,
         message: "variable-length types (UTF8, BLOB) are not supported in indexes".to_string(),
@@ -130,8 +148,11 @@ pub fn index_variable_length_not_supported() -> Diagnostic {
     }
 }
 
-pub fn index_types_directions_mismatch(types_len: usize, directions_len: usize) -> Diagnostic {
-    Diagnostic {
+pub fn index_types_directions_mismatch(
+	types_len: usize,
+	directions_len: usize,
+) -> Diagnostic {
+	Diagnostic {
         code: "CA_010".to_string(),
         statement: None,
         message: format!(

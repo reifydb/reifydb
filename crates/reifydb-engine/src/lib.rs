@@ -3,8 +3,9 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::Value;
 use std::collections::HashMap;
+
+use reifydb_core::Value;
 
 pub mod columnar;
 mod engine;

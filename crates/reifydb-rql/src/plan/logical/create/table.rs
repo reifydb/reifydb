@@ -1,43 +1,57 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::AstCreateTable;
-use crate::convert_data_type;
-use crate::plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy};
 use reifydb_catalog::table::ColumnToCreate;
-use reifydb_core::OwnedSpan;
-use reifydb_core::interface::ColumnPolicyKind;
+use reifydb_core::{OwnedSpan, interface::ColumnPolicyKind};
+
+use crate::{
+	ast::AstCreateTable,
+	convert_data_type,
+	plan::logical::{
+		Compiler, CreateTableNode, LogicalPlan, convert_policy,
+	},
+};
 
 impl Compiler {
-    pub(crate) fn compile_create_table(ast: AstCreateTable) -> crate::Result<LogicalPlan> {
-        let mut columns: Vec<ColumnToCreate> = vec![];
+	pub(crate) fn compile_create_table(
+		ast: AstCreateTable,
+	) -> crate::Result<LogicalPlan> {
+		let mut columns: Vec<ColumnToCreate> = vec![];
 
-        for col in ast.columns.into_iter() {
-            let column_name = col.name.value().to_string();
-            let ty = convert_data_type(&col.ty)?;
+		for col in ast.columns.into_iter() {
+			let column_name = col.name.value().to_string();
+			let ty = convert_data_type(&col.ty)?;
 
-            let policies = if let Some(policy_block) = &col.policies {
-                policy_block.policies.iter().map(convert_policy).collect::<Vec<ColumnPolicyKind>>()
-            } else {
-                vec![]
-            };
+			let policies = if let Some(policy_block) = &col.policies
+			{
+				policy_block
+					.policies
+					.iter()
+					.map(convert_policy)
+					.collect::<Vec<ColumnPolicyKind>>()
+			} else {
+				vec![]
+			};
 
-            let span = Some(OwnedSpan::merge_all([col.name.span(), col.ty.span()]));
+			let span = Some(OwnedSpan::merge_all([
+				col.name.span(),
+				col.ty.span(),
+			]));
 
-            columns.push(ColumnToCreate {
-                name: column_name,
-                ty,
-                policies,
-                auto_increment: col.auto_increment,
-                span,
-            });
-        }
+			columns.push(ColumnToCreate {
+				name: column_name,
+				ty,
+				policies,
+				auto_increment: col.auto_increment,
+				span,
+			});
+		}
 
-        Ok(LogicalPlan::CreateTable(CreateTableNode {
-            schema: ast.schema.span(),
-            table: ast.table.span(),
-            if_not_exists: false,
-            columns,
-        }))
-    }
+		Ok(LogicalPlan::CreateTable(CreateTableNode {
+			schema: ast.schema.span(),
+			table: ast.table.span(),
+			if_not_exists: false,
+			columns,
+		}))
+	}
 }

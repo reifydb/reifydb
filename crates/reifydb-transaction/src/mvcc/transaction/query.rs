@@ -9,52 +9,64 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mvcc::transaction::version::VersionProvider;
-use crate::mvcc::transaction::*;
 use reifydb_core::Version;
 
+use crate::mvcc::transaction::{version::VersionProvider, *};
+
 pub enum TransactionKind {
-    Current(Version),
-    TimeTravel(Version),
+	Current(Version),
+	TimeTravel(Version),
 }
 
 /// TransactionManagerRx is a read-only transaction manager.
 pub struct TransactionManagerQuery<L>
 where
-    L: VersionProvider,
+	L: VersionProvider,
 {
-    engine: TransactionManager<L>,
-    transaction: TransactionKind,
+	engine: TransactionManager<L>,
+	transaction: TransactionKind,
 }
 
 impl<L> TransactionManagerQuery<L>
 where
-    L: VersionProvider,
+	L: VersionProvider,
 {
-    pub fn new_current(engine: TransactionManager<L>, version: Version) -> Self {
-        Self { engine, transaction: TransactionKind::Current(version) }
-    }
+	pub fn new_current(
+		engine: TransactionManager<L>,
+		version: Version,
+	) -> Self {
+		Self {
+			engine,
+			transaction: TransactionKind::Current(version),
+		}
+	}
 
-    pub fn new_time_travel(engine: TransactionManager<L>, version: Version) -> Self {
-        Self { engine, transaction: TransactionKind::TimeTravel(version) }
-    }
+	pub fn new_time_travel(
+		engine: TransactionManager<L>,
+		version: Version,
+	) -> Self {
+		Self {
+			engine,
+			transaction: TransactionKind::TimeTravel(version),
+		}
+	}
 
-    pub fn version(&self) -> Version {
-        match self.transaction {
-            TransactionKind::Current(version) => version,
-            TransactionKind::TimeTravel(version) => version,
-        }
-    }
+	pub fn version(&self) -> Version {
+		match self.transaction {
+			TransactionKind::Current(version) => version,
+			TransactionKind::TimeTravel(version) => version,
+		}
+	}
 }
 
 impl<L> Drop for TransactionManagerQuery<L>
 where
-    L: VersionProvider,
+	L: VersionProvider,
 {
-    fn drop(&mut self) {
-        // time travel transaction have no effect on mvcc
-        if let TransactionKind::Current(version) = self.transaction {
-            self.engine.inner.done_query(version);
-        }
-    }
+	fn drop(&mut self) {
+		// time travel transaction have no effect on mvcc
+		if let TransactionKind::Current(version) = self.transaction {
+			self.engine.inner.done_query(version);
+		}
+	}
 }

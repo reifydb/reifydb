@@ -1,29 +1,40 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::{Column, ColumnData, ColumnQualified};
-use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::Type::Bool;
-use reifydb_core::result::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types;
-use reifydb_core::value::container::number::NumberContainer;
-use reifydb_core::value::container::string::StringContainer;
-use reifydb_core::value::container::temporal::TemporalContainer;
-use reifydb_core::value::number::Promote;
-use reifydb_core::value::{IsNumber, IsTemporal, temporal};
-use reifydb_core::{OwnedSpan, return_error, value};
-use reifydb_rql::expression::LessThanEqualExpression;
 use std::fmt::Debug;
 
-impl Evaluator {
-    pub(crate) fn less_than_equal(
-        &mut self,
-        lte: &LessThanEqualExpression,
-        ctx: &EvaluationContext,
-    ) -> crate::Result<Column> {
-        let left = self.evaluate(&lte.left, ctx)?;
-        let right = self.evaluate(&lte.right, ctx)?;
+use reifydb_core::{
+	OwnedSpan,
+	Type::Bool,
+	result::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types,
+	return_error, value,
+	value::{
+		IsNumber, IsTemporal,
+		container::{
+			number::NumberContainer, string::StringContainer,
+			temporal::TemporalContainer,
+		},
+		number::Promote,
+		temporal,
+	},
+};
+use reifydb_rql::expression::LessThanEqualExpression;
 
-        match (&left.data(), &right.data()) {
+use crate::{
+	columnar::{Column, ColumnData, ColumnQualified},
+	evaluate::{EvaluationContext, Evaluator},
+};
+
+impl Evaluator {
+	pub(crate) fn less_than_equal(
+		&mut self,
+		lte: &LessThanEqualExpression,
+		ctx: &EvaluationContext,
+	) -> crate::Result<Column> {
+		let left = self.evaluate(&lte.left, ctx)?;
+		let right = self.evaluate(&lte.right, ctx)?;
+
+		match (&left.data(), &right.data()) {
             // Float4
             (ColumnData::Float4(l), ColumnData::Float4(r)) => {
                 Ok(compare_number::<f32, f32>(ctx, l, r, lte.span()))
@@ -490,88 +501,97 @@ impl Evaluator {
                 right.get_type(),
             )),
         }
-    }
+	}
 }
 
 pub fn compare_number<L, R>(
-    ctx: &EvaluationContext,
-    l: &NumberContainer<L>,
-    r: &NumberContainer<R>,
-    span: OwnedSpan,
+	ctx: &EvaluationContext,
+	l: &NumberContainer<L>,
+	r: &NumberContainer<R>,
+	span: OwnedSpan,
 ) -> Column
 where
-    L: Promote<R> + IsNumber + Clone + Debug + Default,
-    R: IsNumber + Copy + Clone + Debug + Default,
-    <L as Promote<R>>::Output: PartialOrd,
+	L: Promote<R> + IsNumber + Clone + Debug + Default,
+	R: IsNumber + Copy + Clone + Debug + Default,
+	<L as Promote<R>>::Output: PartialOrd,
 {
-    debug_assert_eq!(l.len(), r.len());
+	debug_assert_eq!(l.len(), r.len());
 
-    let mut data = ctx.pooled(Bool, l.len());
-    for i in 0..l.len() {
-        match (l.get(i), r.get(i)) {
-            (Some(l), Some(r)) => {
-                data.push(value::number::is_less_than_equal(*l, *r));
-            }
-            _ => data.push_undefined(),
-        }
-    }
+	let mut data = ctx.pooled(Bool, l.len());
+	for i in 0..l.len() {
+		match (l.get(i), r.get(i)) {
+			(Some(l), Some(r)) => {
+				data.push(value::number::is_less_than_equal(
+					*l, *r,
+				));
+			}
+			_ => data.push_undefined(),
+		}
+	}
 
-    Column::ColumnQualified(ColumnQualified { name: span.fragment.into(), data })
+	Column::ColumnQualified(ColumnQualified {
+		name: span.fragment.into(),
+		data,
+	})
 }
 
 fn compare_temporal<T>(
-    l: &TemporalContainer<T>,
-    r: &TemporalContainer<T>,
-    span: OwnedSpan,
+	l: &TemporalContainer<T>,
+	r: &TemporalContainer<T>,
+	span: OwnedSpan,
 ) -> Column
 where
-    T: IsTemporal + Clone + Debug + Default,
+	T: IsTemporal + Clone + Debug + Default,
 {
-    debug_assert_eq!(l.len(), r.len());
+	debug_assert_eq!(l.len(), r.len());
 
-    let mut data = Vec::with_capacity(l.len());
-    let mut bitvec = Vec::with_capacity(l.len());
+	let mut data = Vec::with_capacity(l.len());
+	let mut bitvec = Vec::with_capacity(l.len());
 
-    for i in 0..l.len() {
-        match (l.get(i), r.get(i)) {
-            (Some(l), Some(r)) => {
-                data.push(temporal::is_less_than_equal(*l, *r));
-                bitvec.push(true);
-            }
-            _ => {
-                data.push(false);
-                bitvec.push(false);
-            }
-        }
-    }
+	for i in 0..l.len() {
+		match (l.get(i), r.get(i)) {
+			(Some(l), Some(r)) => {
+				data.push(temporal::is_less_than_equal(*l, *r));
+				bitvec.push(true);
+			}
+			_ => {
+				data.push(false);
+				bitvec.push(false);
+			}
+		}
+	}
 
-    Column::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        data: ColumnData::bool_with_bitvec(data, bitvec),
-    })
+	Column::ColumnQualified(ColumnQualified {
+		name: span.fragment.into(),
+		data: ColumnData::bool_with_bitvec(data, bitvec),
+	})
 }
 
-fn compare_utf8(l: &StringContainer, r: &StringContainer, span: OwnedSpan) -> Column {
-    debug_assert_eq!(l.len(), r.len());
+fn compare_utf8(
+	l: &StringContainer,
+	r: &StringContainer,
+	span: OwnedSpan,
+) -> Column {
+	debug_assert_eq!(l.len(), r.len());
 
-    let mut data = Vec::with_capacity(l.len());
-    let mut bitvec = Vec::with_capacity(l.len());
+	let mut data = Vec::with_capacity(l.len());
+	let mut bitvec = Vec::with_capacity(l.len());
 
-    for i in 0..l.len() {
-        match (l.get(i), r.get(i)) {
-            (Some(l), Some(r)) => {
-                data.push(*l <= *r);
-                bitvec.push(true);
-            }
-            _ => {
-                data.push(false);
-                bitvec.push(false);
-            }
-        }
-    }
+	for i in 0..l.len() {
+		match (l.get(i), r.get(i)) {
+			(Some(l), Some(r)) => {
+				data.push(*l <= *r);
+				bitvec.push(true);
+			}
+			_ => {
+				data.push(false);
+				bitvec.push(false);
+			}
+		}
+	}
 
-    Column::ColumnQualified(ColumnQualified {
-        name: span.fragment.into(),
-        data: ColumnData::bool_with_bitvec(data, bitvec),
-    })
+	Column::ColumnQualified(ColumnQualified {
+		name: span.fragment.into(),
+		data: ColumnData::bool_with_bitvec(data, bitvec),
+	})
 }

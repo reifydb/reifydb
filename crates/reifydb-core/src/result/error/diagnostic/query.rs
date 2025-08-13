@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::IntoOwnedSpan;
-use crate::result::error::diagnostic::Diagnostic;
+use crate::{IntoOwnedSpan, result::error::diagnostic::Diagnostic};
 
 pub fn column_not_found(span: impl IntoOwnedSpan) -> Diagnostic {
-    let owned_span = span.into_span();
-    Diagnostic {
+	let owned_span = span.into_span();
+	Diagnostic {
         code: "QUERY_001".to_string(),
         statement: None,
         message: "column not found".to_string(),

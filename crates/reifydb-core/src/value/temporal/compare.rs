@@ -6,47 +6,47 @@ use crate::value::is::IsTemporal;
 #[inline]
 pub fn is_equal<T>(l: T, r: T) -> bool
 where
-    T: IsTemporal,
+	T: IsTemporal,
 {
-    l == r
+	l == r
 }
 
 #[inline]
 pub fn is_not_equal<T>(l: T, r: T) -> bool
 where
-    T: IsTemporal,
+	T: IsTemporal,
 {
-    l != r
+	l != r
 }
 
 #[inline]
 pub fn is_greater_than<T>(l: T, r: T) -> bool
 where
-    T: IsTemporal,
+	T: IsTemporal,
 {
-    l > r
+	l > r
 }
 
 #[inline]
 pub fn is_greater_than_equal<T>(l: T, r: T) -> bool
 where
-    T: IsTemporal,
+	T: IsTemporal,
 {
-    l >= r
+	l >= r
 }
 
 #[inline]
 pub fn is_less_than<T>(l: T, r: T) -> bool
 where
-    T: IsTemporal,
+	T: IsTemporal,
 {
-    l < r
+	l < r
 }
 
 #[inline]
 pub fn is_less_than_equal<T>(l: T, r: T) -> bool
 where
-    T: IsTemporal,
+	T: IsTemporal,
 {
-    l <= r
+	l <= r
 }

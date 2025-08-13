@@ -28,13 +28,14 @@
 // use std::path::Path;
 // use test_each_file::test_each_path;
 //
-// test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_serializable }
-// test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_serializable }
+// test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc =>
+// test_serializable } test_each_path! { in
+// "crates/transaction/tests/scripts/all" as all => test_serializable }
 //
 // fn test_serializable(path: &Path) {
-//     testscript::run_path(&mut MvccRunner::new(Serializable::new(Memory::new())), path)
-//         .expect("test failed")
-// }
+//     testscript::run_path(&mut
+// MvccRunner::new(Serializable::new(Memory::new())), path)         .expect("
+// test failed") }
 //
 // pub struct MvccRunner {
 //     engine: Serializable<Memory>,
@@ -52,8 +53,8 @@
 //         prefix: &Option<String>,
 //     ) -> Result<&'_ mut Transaction<Memory>, Box<dyn StdError>> {
 //         let name = Self::tx_name(prefix)?;
-//         self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
-//     }
+//         self.transactions.get_mut(name).ok_or(format!("unknown transaction
+// {name}").into())     }
 //
 //     /// Fetches the tx name from a command prefix, or errors.
 //     fn tx_name(prefix: &Option<String>) -> Result<&str, Box<dyn StdError>> {
@@ -61,17 +62,17 @@
 //     }
 //
 //     /// Errors if a tx prefix is given.
-//     fn no_tx(command: &testscript::Command) -> Result<(), Box<dyn StdError>> {
-//         if let Some(name) = &command.prefix {
-//             return Err(format!("can't run {} with tx {name}", command.name).into());
-//         }
+//     fn no_tx(command: &testscript::Command) -> Result<(), Box<dyn StdError>>
+// {         if let Some(name) = &command.prefix {
+//             return Err(format!("can't run {} with tx {name}",
+// command.name).into());         }
 //         Ok(())
 //     }
 // }
 //
 // impl<'a> testscript::Runner for MvccRunner {
-//     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
-//         let mut output = String::new();
+//     fn run(&mut self, command: &testscript::Command) -> Result<String,
+// Box<dyn StdError>> {         let mut output = String::new();
 //         let tags = command.tags.clone();
 //
 //         match command.name.as_str() {
@@ -82,26 +83,27 @@
 //                     return Err(format!("tx {name} already exists").into());
 //                 }
 //                 let mut args = command.consume_args();
-//                 let readonly = match args.next_pos().map(|a| a.value.as_str()) {
-//                     Some("readonly") => true,
+//                 let readonly = match args.next_pos().map(|a|
+// a.value.as_str()) {                     Some("readonly") => true,
 //                     None => false,
-//                     Some(v) => return Err(format!("invalid argument {v}").into()),
-//                 };
+//                     Some(v) => return Err(format!("invalid argument
+// {v}").into()),                 };
 //                 let version = args.lookup_parse("version")?;
 //                 args.reject_rest()?;
 //
 //                 let tx = match readonly {
-//                     true => Transaction::Rx(TransactionRx::new(self.engine.clone(), version)),
-//                     false => Transaction::Tx(TransactionTx::new(self.engine.clone())),
-//                 };
+//                     true =>
+// Transaction::Rx(TransactionRx::new(self.engine.clone(), version)),
+//                     false =>
+// Transaction::Tx(TransactionTx::new(self.engine.clone())),                 };
 //                 self.transactions.insert(name.to_string(), tx);
 //             }
 //
 //             // tx: commit
 //             "commit" => {
 //                 let name = Self::tx_name(&command.prefix)?;
-//                 let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
-//                 command.consume_args().reject_rest()?;
+//                 let t = self.transactions.remove(name).ok_or(format!("unknown
+// tx {name}"))?;                 command.consume_args().reject_rest()?;
 //
 //                 match t {
 //                     Transaction::Rx(_) => {
@@ -150,9 +152,9 @@
 //                     let key = EncodedKey(decode_binary(&arg.value));
 //                     let t = self.get_transaction(&command.prefix)?;
 //                     let value = match t {
-//                         Transaction::Rx(rx) => rx.get(&key).map(|r| r.row().to_vec()),
-//                         Transaction::Tx(tx) => tx.get(&key).unwrap().map(|r| r.row().to_vec()),
-//                     };
+//                         Transaction::Rx(rx) => rx.get(&key).map(|r|
+// r.row().to_vec()),                         Transaction::Tx(tx) =>
+// tx.get(&key).unwrap().map(|r| r.row().to_vec()),                     };
 //                     let fmtkv = format::Raw::key_maybe_row(&key, value);
 //                     writeln!(output, "{fmtkv}")?;
 //                 }
@@ -167,10 +169,10 @@
 //                 let mut tx = TransactionTx::new(self.engine.clone());
 //
 //                 for kv in args.rest_key() {
-//                     let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-//                     let row = EncodedRow(decode_binary(&kv.value));
-//                     if row.is_empty() {
-//                         tx.remove(key).unwrap();
+//                     let key =
+// EncodedKey(decode_binary(kv.key.as_ref().unwrap()));                     let
+// row = EncodedRow(decode_binary(&kv.value));                     if
+// row.is_empty() {                         tx.remove(key).unwrap();
 //                     } else {
 //                         tx.set(key, row).unwrap();
 //                     }
@@ -182,8 +184,8 @@
 //             // tx: rollback
 //             "rollback" => {
 //                 let name = Self::tx_name(&command.prefix)?;
-//                 let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
-//                 command.consume_args().reject_rest()?;
+//                 let t = self.transactions.remove(name).ok_or(format!("unknown
+// tx {name}"))?;                 command.consume_args().reject_rest()?;
 //
 //                 match t {
 //                     Transaction::Rx(_) => {
@@ -211,14 +213,14 @@
 //                     }
 //                     Transaction::Tx(tx) => {
 //                         for item in tx.scan().unwrap().into_iter() {
-//                             kvs.push((item.key().clone(), item.row().to_vec()));
-//                         }
+//                             kvs.push((item.key().clone(),
+// item.row().to_vec()));                         }
 //                     }
 //                 };
 //
 //                 for (key, value) in kvs {
-//                     writeln!(output, "{}", format::Raw::key_row(&key, &value))?;
-//                 }
+//                     writeln!(output, "{}", format::Raw::key_row(&key,
+// &value))?;                 }
 //             }
 //             // range RANGE [reverse=BOOL]
 //             "range" => {
@@ -227,24 +229,24 @@
 //                 let mut args = command.consume_args();
 //                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 //                 let range = EncodedKeyRange::parse(
-//                     args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
-//                 );
+//                     args.next_pos().map(|a|
+// a.value.as_str()).unwrap_or(".."),                 );
 //                 args.reject_rest()?;
 //
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         if !reverse {
-//                             print_rx(&mut output, rx.range(range).into_iter())
-//                         } else {
-//                             print_rx(&mut output, rx.range_rev(range).into_iter())
-//                         }
+//                             print_rx(&mut output,
+// rx.range(range).into_iter())                         } else {
+//                             print_rx(&mut output,
+// rx.range_rev(range).into_iter())                         }
 //                     }
 //                     Transaction::Tx(tx) => {
 //                         if !reverse {
-//                             print_tx(&mut output, tx.range(range).unwrap().into_iter())
-//                         } else {
-//                             print_tx(&mut output, tx.range_rev(range).unwrap().into_iter())
-//                         }
+//                             print_tx(&mut output,
+// tx.range(range).unwrap().into_iter())                         } else {
+//                             print_tx(&mut output,
+// tx.range_rev(range).unwrap().into_iter())                         }
 //                     }
 //                 };
 //             }
@@ -255,23 +257,23 @@
 //                 let mut args = command.consume_args();
 //                 let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 //                 let prefix =
-//                     EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
-//                 args.reject_rest()?;
+//                     EncodedKey(decode_binary(&args.next_pos().ok_or("prefix
+// not given")?.value));                 args.reject_rest()?;
 //
 //                 match t {
 //                     Transaction::Rx(rx) => {
 //                         if !reverse {
-//                             print_rx(&mut output, rx.prefix(&prefix).into_iter())
-//                         } else {
-//                             print_rx(&mut output, rx.prefix_rev(&prefix).into_iter())
-//                         }
+//                             print_rx(&mut output,
+// rx.prefix(&prefix).into_iter())                         } else {
+//                             print_rx(&mut output,
+// rx.prefix_rev(&prefix).into_iter())                         }
 //                     }
 //                     Transaction::Tx(tx) => {
 //                         if !reverse {
-//                             print_tx(&mut output, tx.prefix(&prefix).unwrap().into_iter())
-//                         } else {
-//                             print_tx(&mut output, tx.prefix_rev(&prefix).unwrap().into_iter())
-//                         }
+//                             print_tx(&mut output,
+// tx.prefix(&prefix).unwrap().into_iter())                         } else {
+//                             print_tx(&mut output,
+// tx.prefix_rev(&prefix).unwrap().into_iter())                         }
 //                     }
 //                 };
 //             }
@@ -281,9 +283,9 @@
 //                 let t = self.get_transaction(&command.prefix)?;
 //                 let mut args = command.consume_args();
 //                 for kv in args.rest_key() {
-//                     let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-//                     let row = EncodedRow(decode_binary(&kv.value));
-//                     match t {
+//                     let key =
+// EncodedKey(decode_binary(kv.key.as_ref().unwrap()));                     let
+// row = EncodedRow(decode_binary(&kv.value));                     match t {
 //                         Transaction::Rx(_) => {
 //                             unreachable!("can not call set on rx")
 //                         }
@@ -313,8 +315,8 @@
 //     }
 // }
 //
-// fn print_tx<I: Iterator<Item = TransactionValue>>(output: &mut String, mut iter: I) {
-//     while let Some(tv) = iter.next() {
+// fn print_tx<I: Iterator<Item = TransactionValue>>(output: &mut String, mut
+// iter: I) {     while let Some(tv) = iter.next() {
 //         let fmtkv = format::Raw::key_row(tv.key(), tv.row().as_slice());
 //         writeln!(output, "{fmtkv}").unwrap();
 //     }

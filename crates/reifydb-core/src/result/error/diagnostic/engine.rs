@@ -5,44 +5,44 @@ use crate::result::error::diagnostic::Diagnostic;
 
 /// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {
-    Diagnostic {
-        code: "ENG_001".to_string(),
-        statement: None,
-        message: format!("Frame processing error: {}", message),
-        column: None,
-        span: None,
-        label: None,
-        help: Some("Check frame data and operations".to_string()),
-        notes: vec![],
-        cause: None,
-    }
+	Diagnostic {
+		code: "ENG_001".to_string(),
+		statement: None,
+		message: format!("Frame processing error: {}", message),
+		column: None,
+		span: None,
+		label: None,
+		help: Some("Check frame data and operations".to_string()),
+		notes: vec![],
+		cause: None,
+	}
 }
 
 /// Column policy saturation error - wraps an existing diagnostic
 pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
-    let statement = diagnostic.statement.clone();
-    let message = diagnostic.message.clone();
-    let column = diagnostic.column.clone();
-    let span = diagnostic.span.clone();
-    let label = diagnostic.label.clone();
-    let notes = diagnostic.notes.clone();
+	let statement = diagnostic.statement.clone();
+	let message = diagnostic.message.clone();
+	let column = diagnostic.column.clone();
+	let span = diagnostic.span.clone();
+	let label = diagnostic.label.clone();
+	let notes = diagnostic.notes.clone();
 
-    Diagnostic {
-        code: "ENG_002".to_string(),
-        statement,
-        message: format!("Column policy saturation: {}", message),
-        column,
-        span,
-        label,
-        help: Some("Adjust column policy constraints".to_string()),
-        notes,
-        cause: Some(Box::new(diagnostic)),
-    }
+	Diagnostic {
+		code: "ENG_002".to_string(),
+		statement,
+		message: format!("Column policy saturation: {}", message),
+		column,
+		span,
+		label,
+		help: Some("Adjust column policy constraints".to_string()),
+		notes,
+		cause: Some(Box::new(diagnostic)),
+	}
 }
 
 /// Frame missing required ROW_ID column error
 pub fn missing_row_id_column() -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "ENG_003".to_string(),
         statement: None,
         message: "Frame must have a __ROW__ID__ column for UPDATE operations".to_string(),
@@ -59,7 +59,7 @@ pub fn missing_row_id_column() -> Diagnostic {
 
 /// Invalid or undefined RowId values error
 pub fn invalid_row_id_values() -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "ENG_004".to_string(),
         statement: None,
         message: "All RowId values must be defined for UPDATE operations".to_string(),
@@ -76,7 +76,7 @@ pub fn invalid_row_id_values() -> Diagnostic {
 
 /// Invalid parameter reference error
 pub fn invalid_parameter_reference(span: crate::OwnedSpan) -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "ENG_005".to_string(),
         statement: None,
         message: format!("Invalid parameter reference: {}", span.fragment),
@@ -91,7 +91,7 @@ pub fn invalid_parameter_reference(span: crate::OwnedSpan) -> Diagnostic {
 
 /// Parameter not found error
 pub fn parameter_not_found(span: crate::OwnedSpan) -> Diagnostic {
-    Diagnostic {
+	Diagnostic {
         code: "ENG_006".to_string(),
         statement: None,
         message: format!("Parameter not found: {}", span.fragment),

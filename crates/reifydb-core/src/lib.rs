@@ -16,13 +16,14 @@ pub mod value;
 
 pub use common::*;
 pub use interface::{
-    BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span, SpanColumn, SpanLine,
+	BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span,
+	SpanColumn, SpanLine,
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
 pub use value::{
-    Blob, Date, DateTime, GetType, Interval, IntoValue, OrderedF32, OrderedF64, RowId, Time, Type,
-    Uuid4, Uuid7, Value,
+	Blob, Date, DateTime, GetType, Interval, IntoValue, OrderedF32,
+	OrderedF64, RowId, Time, Type, Uuid4, Uuid7, Value,
 };

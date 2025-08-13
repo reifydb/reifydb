@@ -10,68 +10,90 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::iter::Rev;
-use crossbeam_skiplist::map::Iter as MapIter;
-
-use crate::memory::Memory;
-use crate::memory::versioned::VersionedRow;
-use reifydb_core::interface::{Unversioned, UnversionedScanRev, Versioned, VersionedScanRev};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, Result, Version};
 use std::ops::Bound;
 
-impl VersionedScanRev for Memory {
-    type ScanIterRev<'a> = IterRev<'a>;
+use crossbeam_skiplist::map::Iter as MapIter;
+use reifydb_core::{
+	EncodedKey, Result, Version,
+	interface::{
+		Unversioned, UnversionedScanRev, Versioned, VersionedScanRev,
+	},
+	row::EncodedRow,
+};
 
-    fn scan_rev(&self, version: Version) -> Result<Self::ScanIterRev<'_>> {
-        let iter = self.versioned.iter();
-        Ok(IterRev { iter: iter.rev(), version })
-    }
+use crate::memory::{Memory, versioned::VersionedRow};
+
+impl VersionedScanRev for Memory {
+	type ScanIterRev<'a> = IterRev<'a>;
+
+	fn scan_rev(&self, version: Version) -> Result<Self::ScanIterRev<'_>> {
+		let iter = self.versioned.iter();
+		Ok(IterRev {
+			iter: iter.rev(),
+			version,
+		})
+	}
 }
 
 pub struct IterRev<'a> {
-    pub(crate) iter: Rev<MapIter<'a, EncodedKey, VersionedRow>>,
-    pub(crate) version: Version,
+	pub(crate) iter: Rev<MapIter<'a, EncodedKey, VersionedRow>>,
+	pub(crate) version: Version,
 }
 
 impl Iterator for IterRev<'_> {
-    type Item = Versioned;
+	type Item = Versioned;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.iter.next()?;
-            if let Some((version, value)) =
-                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
-                    if item.value().is_some() {
-                        Some((*item.key(), item.value().clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-            {
-                return Some(Versioned { key: item.key().clone(), row: value, version });
-            }
-        }
-    }
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			let item = self.iter.next()?;
+			if let Some((version, value)) = item
+				.value()
+				.upper_bound(Bound::Included(&self.version))
+				.and_then(|item| {
+					if item.value().is_some() {
+						Some((
+							*item.key(),
+							item.value()
+								.clone()
+								.unwrap(),
+						))
+					} else {
+						None
+					}
+				}) {
+				return Some(Versioned {
+					key: item.key().clone(),
+					row: value,
+					version,
+				});
+			}
+		}
+	}
 }
 
 impl UnversionedScanRev for Memory {
-    type ScanIterRev<'a> = UnversionedIterRev<'a>;
+	type ScanIterRev<'a> = UnversionedIterRev<'a>;
 
-    fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-        let iter = self.unversioned.iter();
-        Ok(UnversionedIterRev { iter })
-    }
+	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
+		let iter = self.unversioned.iter();
+		Ok(UnversionedIterRev {
+			iter,
+		})
+	}
 }
 
 pub struct UnversionedIterRev<'a> {
-    pub(crate) iter: MapIter<'a, EncodedKey, EncodedRow>,
+	pub(crate) iter: MapIter<'a, EncodedKey, EncodedRow>,
 }
 
 impl Iterator for UnversionedIterRev<'_> {
-    type Item = Unversioned;
+	type Item = Unversioned;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.iter.next_back()?;
-        Some(Unversioned { key: item.key().clone(), row: item.value().clone() })
-    }
+	fn next(&mut self) -> Option<Self::Item> {
+		let item = self.iter.next_back()?;
+		Some(Unversioned {
+			key: item.key().clone(),
+			row: item.value().clone(),
+		})
+	}
 }

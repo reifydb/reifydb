@@ -1,43 +1,63 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::Literal::{False, Number, Temporal, Text, True, Undefined};
-use crate::ast::lex::Separator::NewLine;
-use crate::ast::lex::{Keyword, Operator, TokenKind};
-use crate::ast::parse::Parser;
-use crate::ast::{Ast, AstWildcard, AstParameterRef};
-use reifydb_core::diagnostic::ast;
-use reifydb_core::return_error;
+use reifydb_core::{diagnostic::ast, return_error};
+
+use crate::ast::{
+	Ast, AstParameterRef, AstWildcard,
+	lex::{
+		Keyword,
+		Literal::{False, Number, Temporal, Text, True, Undefined},
+		Operator,
+		Separator::NewLine,
+		TokenKind,
+	},
+	parse::Parser,
+};
 
 impl Parser {
-    pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast> {
-        loop {
-            if self.is_eof() {
-                return Ok(Ast::Nop);
-            }
+	pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast> {
+		loop {
+			if self.is_eof() {
+				return Ok(Ast::Nop);
+			}
 
-            let is_new_line = self.current()?.is_separator(NewLine);
-            if !is_new_line {
-                break;
-            }
-            let _ = self.advance()?;
-        }
+			let is_new_line = self.current()?.is_separator(NewLine);
+			if !is_new_line {
+				break;
+			}
+			let _ = self.advance()?;
+		}
 
-        let current = self.current()?;
-        match &current.kind {
-            TokenKind::Operator(operator) => match operator {
-                Operator::Plus | Operator::Minus | Operator::Bang | Operator::Not => {
-                    self.parse_prefix()
-                }
-                Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
-                Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
-                Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
-                Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
-                _ => return_error!(ast::unsupported_token_error(self.advance()?.span)),
-            },
-            TokenKind::Keyword(keyword) => {
-                // Keywords that can start statements at the top level
-                match keyword {
+		let current = self.current()?;
+		match &current.kind {
+			TokenKind::Operator(operator) => match operator {
+				Operator::Plus
+				| Operator::Minus
+				| Operator::Bang
+				| Operator::Not => self.parse_prefix(),
+				Operator::Asterisk => Ok(Ast::Wildcard(
+					AstWildcard(self.advance()?),
+				)),
+				Operator::OpenBracket => {
+					Ok(Ast::List(self.parse_list()?))
+				}
+				Operator::OpenParen => {
+					Ok(Ast::Tuple(self.parse_tuple()?))
+				}
+				Operator::OpenCurly => {
+					Ok(Ast::Inline(self.parse_inline()?))
+				}
+				_ => return_error!(
+					ast::unsupported_token_error(
+						self.advance()?.span
+					)
+				),
+			},
+			TokenKind::Keyword(keyword) => {
+				// Keywords that can start statements at the top
+				// level
+				match keyword {
                     Keyword::From => Ok(Ast::From(self.parse_from()?)),
                     Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
                     Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
@@ -61,37 +81,64 @@ impl Parser {
                         Ok(Ast::Identifier(self.parse_as_identifier()?))
                     }
                 }
-            }
-            _ => match current {
-                _ if current.is_literal(Number) => Ok(Ast::Literal(self.parse_literal_number()?)),
-                _ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal_true()?)),
-                _ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal_false()?)),
-                _ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal_text()?)),
-                _ if current.is_literal(Temporal) => {
-                    Ok(Ast::Literal(self.parse_literal_temporal()?))
-                }
-                _ if current.is_literal(Undefined) => {
-                    Ok(Ast::Literal(self.parse_literal_undefined()?))
-                }
-                _ if current.is_identifier() => {
-                    if self.is_function_call_pattern() {
-                        Ok(Ast::CallFunction(self.parse_function_call()?))
-                    } else {
-                        Ok(Ast::Identifier(self.parse_identifier()?))
-                    }
-                }
-                _ => {
-                    if let TokenKind::Parameter(kind) = current.kind {
-                        let token = self.advance()?;
-                        Ok(Ast::ParameterRef(AstParameterRef {
-                            token,
-                            kind,
-                        }))
-                    } else {
-                        return_error!(ast::unsupported_token_error(self.advance()?.span))
-                    }
-                }
-            },
-        }
-    }
+			}
+			_ => match current {
+				_ if current.is_literal(Number) => {
+					Ok(Ast::Literal(
+						self.parse_literal_number()?,
+					))
+				}
+				_ if current.is_literal(True) => {
+					Ok(Ast::Literal(
+						self.parse_literal_true()?,
+					))
+				}
+				_ if current.is_literal(False) => {
+					Ok(Ast::Literal(
+						self.parse_literal_false()?,
+					))
+				}
+				_ if current.is_literal(Text) => {
+					Ok(Ast::Literal(
+						self.parse_literal_text()?,
+					))
+				}
+				_ if current.is_literal(Temporal) => {
+					Ok(Ast::Literal(
+						self.parse_literal_temporal()?,
+					))
+				}
+				_ if current.is_literal(Undefined) => {
+					Ok(Ast::Literal(
+						self.parse_literal_undefined()?,
+					))
+				}
+				_ if current.is_identifier() => {
+					if self.is_function_call_pattern() {
+						Ok(Ast::CallFunction(self.parse_function_call()?))
+					} else {
+						Ok(Ast::Identifier(
+							self.parse_identifier(
+							)?,
+						))
+					}
+				}
+				_ => {
+					if let TokenKind::Parameter(kind) =
+						current.kind
+					{
+						let token = self.advance()?;
+						Ok(Ast::ParameterRef(
+							AstParameterRef {
+								token,
+								kind,
+							},
+						))
+					} else {
+						return_error!(ast::unsupported_token_error(self.advance()?.span))
+					}
+				}
+			},
+		}
+	}
 }

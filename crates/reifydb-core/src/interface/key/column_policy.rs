@@ -2,118 +2,134 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::{ColumnId, ColumnPolicyId};
-use crate::util::encoding::keycode;
-use crate::{EncodedKey, EncodedKeyRange};
+use crate::{
+	EncodedKey, EncodedKeyRange,
+	interface::catalog::{ColumnId, ColumnPolicyId},
+	util::encoding::keycode,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnPolicyKey {
-    pub column: ColumnId,
-    pub policy: ColumnPolicyId,
+	pub column: ColumnId,
+	pub policy: ColumnPolicyId,
 }
 
 const VERSION: u8 = 1;
 
 impl EncodableKey for ColumnPolicyKey {
-    const KIND: KeyKind = KeyKind::ColumnPolicy;
+	const KIND: KeyKind = KeyKind::ColumnPolicy;
 
-    fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(18);
-        out.extend(&keycode::serialize(&VERSION));
-        out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&keycode::serialize(&self.column));
-        out.extend(&keycode::serialize(&self.policy));
-        EncodedKey::new(out)
-    }
+	fn encode(&self) -> EncodedKey {
+		let mut out = Vec::with_capacity(18);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		out.extend(&keycode::serialize(&self.column));
+		out.extend(&keycode::serialize(&self.policy));
+		EncodedKey::new(out)
+	}
 
-    fn decode(key: &EncodedKey) -> Option<Self> {
-        if key.len() < 2 {
-            return None;
-        }
+	fn decode(key: &EncodedKey) -> Option<Self> {
+		if key.len() < 2 {
+			return None;
+		}
 
-        let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
-        if version != VERSION {
-            return None;
-        }
+		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		if version != VERSION {
+			return None;
+		}
 
-        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
-        if kind != Self::KIND {
-            return None;
-        }
+		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		if kind != Self::KIND {
+			return None;
+		}
 
-        let payload = &key[2..];
-        if payload.len() != 16 {
-            return None;
-        }
+		let payload = &key[2..];
+		if payload.len() != 16 {
+			return None;
+		}
 
-        keycode::deserialize(&payload[..8])
-            .ok()
-            .zip(keycode::deserialize(&payload[8..]).ok())
-            .map(|(column, policy)| Self { column, policy })
-    }
+		keycode::deserialize(&payload[..8])
+			.ok()
+			.zip(keycode::deserialize(&payload[8..]).ok())
+			.map(|(column, policy)| Self {
+				column,
+				policy,
+			})
+	}
 }
 
 impl ColumnPolicyKey {
-    pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
-        EncodedKeyRange::start_end(Some(Self::link_start(column)), Some(Self::link_end(column)))
-    }
+	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
+		EncodedKeyRange::start_end(
+			Some(Self::link_start(column)),
+			Some(Self::link_end(column)),
+		)
+	}
 
-    fn link_start(column: ColumnId) -> EncodedKey {
-        let mut out = Vec::with_capacity(10);
-        out.extend(&keycode::serialize(&VERSION));
-        out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&keycode::serialize(&column));
-        EncodedKey::new(out)
-    }
+	fn link_start(column: ColumnId) -> EncodedKey {
+		let mut out = Vec::with_capacity(10);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		out.extend(&keycode::serialize(&column));
+		EncodedKey::new(out)
+	}
 
-    fn link_end(column: ColumnId) -> EncodedKey {
-        let mut out = Vec::with_capacity(10);
-        out.extend(&keycode::serialize(&VERSION));
-        out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&keycode::serialize(&(*column - 1)));
-        EncodedKey::new(out)
-    }
+	fn link_end(column: ColumnId) -> EncodedKey {
+		let mut out = Vec::with_capacity(10);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		out.extend(&keycode::serialize(&(*column - 1)));
+		EncodedKey::new(out)
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ColumnPolicyKey, EncodableKey};
-    use crate::interface::catalog::ColumnId;
-    use crate::interface::catalog::ColumnPolicyId;
+	use super::{ColumnPolicyKey, EncodableKey};
+	use crate::interface::catalog::{ColumnId, ColumnPolicyId};
 
-    #[test]
-    fn test_encode_decode() {
-        let key = ColumnPolicyKey {
-            column: ColumnId(0xABCD),
-            policy: ColumnPolicyId(0x123456789ABCDEF0),
-        };
-        let encoded = key.encode();
+	#[test]
+	fn test_encode_decode() {
+		let key = ColumnPolicyKey {
+			column: ColumnId(0xABCD),
+			policy: ColumnPolicyId(0x123456789ABCDEF0),
+		};
+		let encoded = key.encode();
 
-        let expected: Vec<u8> = vec![
-            0xFE, // version
-            0xF6, // kind
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43,
-            0x21, 0x0F,
-        ];
+		let expected: Vec<u8> = vec![
+			0xFE, // version
+			0xF6, // kind
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
+			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
+		];
 
-        assert_eq!(encoded.as_slice(), expected);
+		assert_eq!(encoded.as_slice(), expected);
 
-        let key = ColumnPolicyKey::decode(&encoded).unwrap();
-        assert_eq!(key.column, 0xABCD);
-        assert_eq!(key.policy, 0x123456789ABCDEF0);
-    }
+		let key = ColumnPolicyKey::decode(&encoded).unwrap();
+		assert_eq!(key.column, 0xABCD);
+		assert_eq!(key.policy, 0x123456789ABCDEF0);
+	}
 
-    #[test]
-    fn test_order_preserving() {
-        let key1 = ColumnPolicyKey { column: ColumnId(1), policy: ColumnPolicyId(100) };
-        let key2 = ColumnPolicyKey { column: ColumnId(1), policy: ColumnPolicyId(200) };
-        let key3 = ColumnPolicyKey { column: ColumnId(2), policy: ColumnPolicyId(0) };
+	#[test]
+	fn test_order_preserving() {
+		let key1 = ColumnPolicyKey {
+			column: ColumnId(1),
+			policy: ColumnPolicyId(100),
+		};
+		let key2 = ColumnPolicyKey {
+			column: ColumnId(1),
+			policy: ColumnPolicyId(200),
+		};
+		let key3 = ColumnPolicyKey {
+			column: ColumnId(2),
+			policy: ColumnPolicyId(0),
+		};
 
-        let encoded1 = key1.encode();
-        let encoded2 = key2.encode();
-        let encoded3 = key3.encode();
+		let encoded1 = key1.encode();
+		let encoded2 = key2.encode();
+		let encoded3 = key3.encode();
 
-        assert!(encoded3 < encoded2, "ordering not preserved");
-        assert!(encoded2 < encoded1, "ordering not preserved");
-    }
+		assert!(encoded3 < encoded2, "ordering not preserved");
+		assert!(encoded2 < encoded1, "ordering not preserved");
+	}
 }

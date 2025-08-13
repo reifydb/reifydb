@@ -9,74 +9,111 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crossbeam_skiplist::map::Range as MapRange;
-
-use crate::memory::Memory;
-use crate::memory::versioned::VersionedRow;
-use reifydb_core::interface::{
-    Unversioned, UnversionedRange as RangeInterface, Versioned, VersionedRange,
-};
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Result, Version};
 use std::ops::Bound;
 
-impl VersionedRange for Memory {
-    type RangeIter<'a>
-        = Range<'a>
-    where
-        Self: 'a;
+use crossbeam_skiplist::map::Range as MapRange;
+use reifydb_core::{
+	EncodedKey, EncodedKeyRange, Result, Version,
+	interface::{
+		Unversioned, UnversionedRange as RangeInterface, Versioned,
+		VersionedRange,
+	},
+	row::EncodedRow,
+};
 
-    fn range(&self, range: EncodedKeyRange, version: Version) -> Result<Self::RangeIter<'_>> {
-        Ok(Range { range: self.versioned.range(range), version })
-    }
+use crate::memory::{Memory, versioned::VersionedRow};
+
+impl VersionedRange for Memory {
+	type RangeIter<'a>
+		= Range<'a>
+	where
+		Self: 'a;
+
+	fn range(
+		&self,
+		range: EncodedKeyRange,
+		version: Version,
+	) -> Result<Self::RangeIter<'_>> {
+		Ok(Range {
+			range: self.versioned.range(range),
+			version,
+		})
+	}
 }
 
 pub struct Range<'a> {
-    pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, VersionedRow>,
-    pub(crate) version: Version,
+	pub(crate) range: MapRange<
+		'a,
+		EncodedKey,
+		EncodedKeyRange,
+		EncodedKey,
+		VersionedRow,
+	>,
+	pub(crate) version: Version,
 }
 
 impl Iterator for Range<'_> {
-    type Item = Versioned;
+	type Item = Versioned;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let item = self.range.next()?;
-            if let Some((version, value)) =
-                item.value().upper_bound(Bound::Included(&self.version)).and_then(|item| {
-                    if item.value().is_some() {
-                        Some((*item.key(), item.value().clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-            {
-                return Some(Versioned { key: item.key().clone(), version, row: value });
-            }
-        }
-    }
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			let item = self.range.next()?;
+			if let Some((version, value)) = item
+				.value()
+				.upper_bound(Bound::Included(&self.version))
+				.and_then(|item| {
+					if item.value().is_some() {
+						Some((
+							*item.key(),
+							item.value()
+								.clone()
+								.unwrap(),
+						))
+					} else {
+						None
+					}
+				}) {
+				return Some(Versioned {
+					key: item.key().clone(),
+					version,
+					row: value,
+				});
+			}
+		}
+	}
 }
 
 impl RangeInterface for Memory {
-    type Range<'a>
-        = UnversionedRange<'a>
-    where
-        Self: 'a;
+	type Range<'a>
+		= UnversionedRange<'a>
+	where
+		Self: 'a;
 
-    fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
-        Ok(UnversionedRange { range: self.unversioned.range(range) })
-    }
+	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
+		Ok(UnversionedRange {
+			range: self.unversioned.range(range),
+		})
+	}
 }
 
 pub struct UnversionedRange<'a> {
-    pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
+	pub(crate) range: MapRange<
+		'a,
+		EncodedKey,
+		EncodedKeyRange,
+		EncodedKey,
+		EncodedRow,
+	>,
 }
 
 impl Iterator for UnversionedRange<'_> {
-    type Item = Unversioned;
+	type Item = Unversioned;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.range.next()?;
-        Some(Unversioned { key: item.key().clone(), row: item.value().clone() })
-    }
+	fn next(&mut self) -> Option<Self::Item> {
+		let item = self.range.next()?;
+		Some(Unversioned {
+			key: item.key().clone(),
+			row: item.value().clone(),
+		})
+	}
 }

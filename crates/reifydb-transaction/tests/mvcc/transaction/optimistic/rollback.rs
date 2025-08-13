@@ -9,25 +9,26 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{as_key, as_row};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
+
+use crate::{as_key, as_row};
 
 #[test]
 fn test_rollback_same_tx() {
-    let engine = Optimistic::testing();
-    let mut txn = engine.begin_command().unwrap();
-    txn.set(&as_key!(1), as_row!(1)).unwrap();
-    txn.rollback().unwrap();
-    assert!(txn.get(&as_key!(1)).unwrap().is_none());
+	let engine = Optimistic::testing();
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!(1), as_row!(1)).unwrap();
+	txn.rollback().unwrap();
+	assert!(txn.get(&as_key!(1)).unwrap().is_none());
 }
 
 #[test]
 fn test_rollback_different_tx() {
-    let engine = Optimistic::testing();
-    let mut txn = engine.begin_command().unwrap();
-    txn.set(&as_key!(1), as_row!(1)).unwrap();
-    txn.rollback().unwrap();
+	let engine = Optimistic::testing();
+	let mut txn = engine.begin_command().unwrap();
+	txn.set(&as_key!(1), as_row!(1)).unwrap();
+	txn.rollback().unwrap();
 
-    let rx = engine.begin_query().unwrap();
-    assert!(rx.get(&as_key!(1)).unwrap().is_none());
+	let rx = engine.begin_query().unwrap();
+	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }

@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::ops::Bound;
+
 use super::CdcEvent;
 use crate::{Result, Version};
-use std::ops::Bound;
 
 /// Combined trait for all CDC storage operations
 pub trait CdcStorage:

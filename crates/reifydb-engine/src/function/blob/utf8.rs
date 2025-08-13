@@ -1,279 +1,388 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::ColumnData;
-use crate::function::{ScalarFunction, ScalarFunctionContext};
-use reifydb_core::OwnedSpan;
-use reifydb_core::value::Blob;
+use reifydb_core::{OwnedSpan, value::Blob};
+
+use crate::{
+	columnar::ColumnData,
+	function::{ScalarFunction, ScalarFunctionContext},
+};
 
 pub struct BlobUtf8;
 
 impl BlobUtf8 {
-    pub fn new() -> Self {
-        Self
-    }
+	pub fn new() -> Self {
+		Self
+	}
 }
 
 impl ScalarFunction for BlobUtf8 {
-    fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
-        let columns = ctx.columns;
-        let row_count = ctx.row_count;
+	fn scalar(
+		&self,
+		ctx: ScalarFunctionContext,
+	) -> crate::Result<ColumnData> {
+		let columns = ctx.columns;
+		let row_count = ctx.row_count;
 
-        let column = columns.get(0).unwrap();
+		let column = columns.get(0).unwrap();
 
-        match &column.data() {
-            ColumnData::Utf8(container) => {
-                let mut result_data = Vec::with_capacity(container.data().len());
+		match &column.data() {
+			ColumnData::Utf8(container) => {
+				let mut result_data = Vec::with_capacity(
+					container.data().len(),
+				);
 
-                for i in 0..row_count {
-                    if container.is_defined(i) {
-                        let utf8_str = &container[i];
-                        let blob = Blob::from_utf8(OwnedSpan::testing(utf8_str));
-                        result_data.push(blob);
-                    } else {
-                        result_data.push(Blob::empty())
-                    }
-                }
+				for i in 0..row_count {
+					if container.is_defined(i) {
+						let utf8_str = &container[i];
+						let blob = Blob::from_utf8(
+							OwnedSpan::testing(
+								utf8_str,
+							),
+						);
+						result_data.push(blob);
+					} else {
+						result_data.push(Blob::empty())
+					}
+				}
 
-                Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
-            }
-            _ => unimplemented!("BlobUtf8 only supports text input"),
-        }
-    }
+				Ok(ColumnData::blob_with_bitvec(
+					result_data,
+					container.bitvec().clone(),
+				))
+			}
+			_ => unimplemented!(
+				"BlobUtf8 only supports text input"
+			),
+		}
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::columnar::Columns;
-    use crate::columnar::{Column, ColumnQualified};
-    use reifydb_core::value::container::StringContainer;
+	use reifydb_core::value::container::StringContainer;
 
-    #[test]
-    fn test_blob_utf8_simple_ascii() {
-        let function = BlobUtf8::new();
+	use super::*;
+	use crate::columnar::{Column, ColumnQualified, Columns};
 
-        let utf8_data = vec!["Hello!".to_string()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_simple_ascii() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		let utf8_data = vec!["Hello!".to_string()];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(container[0].as_bytes(), "Hello!".as_bytes());
-    }
+		let result = function.scalar(ctx).unwrap();
 
-    #[test]
-    fn test_blob_utf8_empty_string() {
-        let function = BlobUtf8::new();
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(container[0].as_bytes(), "Hello!".as_bytes());
+	}
 
-        let utf8_data = vec!["".to_string()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_empty_string() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		let utf8_data = vec!["".to_string()];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(container[0].as_bytes(), &[] as &[u8]);
-    }
+		let result = function.scalar(ctx).unwrap();
 
-    #[test]
-    fn test_blob_utf8_unicode_characters() {
-        let function = BlobUtf8::new();
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(container[0].as_bytes(), &[] as &[u8]);
+	}
 
-        // Test Unicode characters: emoji, accented chars, etc.
-        let utf8_data = vec!["Hello 🌍! Café naïve".to_string()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_unicode_characters() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		// Test Unicode characters: emoji, accented chars, etc.
+		let utf8_data = vec!["Hello 🌍! Café naïve".to_string()];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(container[0].as_bytes(), "Hello 🌍! Café naïve".as_bytes());
-    }
+		let result = function.scalar(ctx).unwrap();
 
-    #[test]
-    fn test_blob_utf8_multibyte_characters() {
-        let function = BlobUtf8::new();
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(
+			container[0].as_bytes(),
+			"Hello 🌍! Café naïve".as_bytes()
+		);
+	}
 
-        // Test various multibyte UTF-8 characters
-        let utf8_data = vec!["日本語 中文 한국어 العربية".to_string()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_multibyte_characters() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		// Test various multibyte UTF-8 characters
+		let utf8_data = vec!["日本語 中文 한국어 العربية".to_string()];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(container[0].as_bytes(), "日本語 中文 한국어 العربية".as_bytes());
-    }
+		let result = function.scalar(ctx).unwrap();
 
-    #[test]
-    fn test_blob_utf8_special_characters() {
-        let function = BlobUtf8::new();
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(
+			container[0].as_bytes(),
+			"日本語 中文 한국어 العربية".as_bytes()
+		);
+	}
 
-        // Test special characters including newlines, tabs, etc.
-        let utf8_data = vec!["Line1\nLine2\tTabbed\r\nWindows".to_string()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_special_characters() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		// Test special characters including newlines, tabs, etc.
+		let utf8_data =
+			vec!["Line1\nLine2\tTabbed\r\nWindows".to_string()];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(container[0].as_bytes(), "Line1\nLine2\tTabbed\r\nWindows".as_bytes());
-    }
+		let result = function.scalar(ctx).unwrap();
 
-    #[test]
-    fn test_blob_utf8_multiple_rows() {
-        let function = BlobUtf8::new();
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(
+			container[0].as_bytes(),
+			"Line1\nLine2\tTabbed\r\nWindows".as_bytes()
+		);
+	}
 
-        let utf8_data =
-            vec!["First".to_string(), "Second 🚀".to_string(), "Third café".to_string()];
-        let bitvec = vec![true, true, true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 3 };
+	#[test]
+	fn test_blob_utf8_multiple_rows() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		let utf8_data = vec![
+			"First".to_string(),
+			"Second 🚀".to_string(),
+			"Third café".to_string(),
+		];
+		let bitvec = vec![true, true, true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 3,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 3);
-        assert!(container.is_defined(0));
-        assert!(container.is_defined(1));
-        assert!(container.is_defined(2));
+		let result = function.scalar(ctx).unwrap();
 
-        assert_eq!(container[0].as_bytes(), "First".as_bytes());
-        assert_eq!(container[1].as_bytes(), "Second 🚀".as_bytes());
-        assert_eq!(container[2].as_bytes(), "Third café".as_bytes());
-    }
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 3);
+		assert!(container.is_defined(0));
+		assert!(container.is_defined(1));
+		assert!(container.is_defined(2));
 
-    #[test]
-    fn test_blob_utf8_with_null_data() {
-        let function = BlobUtf8::new();
+		assert_eq!(container[0].as_bytes(), "First".as_bytes());
+		assert_eq!(container[1].as_bytes(), "Second 🚀".as_bytes());
+		assert_eq!(container[2].as_bytes(), "Third café".as_bytes());
+	}
 
-        let utf8_data = vec!["First".to_string(), "".to_string(), "Third".to_string()];
-        let bitvec = vec![true, false, true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 3 };
+	#[test]
+	fn test_blob_utf8_with_null_data() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		let utf8_data = vec![
+			"First".to_string(),
+			"".to_string(),
+			"Third".to_string(),
+		];
+		let bitvec = vec![true, false, true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 3,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 3);
-        assert!(container.is_defined(0));
-        assert!(!container.is_defined(1));
-        assert!(container.is_defined(2));
+		let result = function.scalar(ctx).unwrap();
 
-        assert_eq!(container[0].as_bytes(), "First".as_bytes());
-        assert_eq!(container[1].as_bytes(), [].as_slice() as &[u8]);
-        assert_eq!(container[2].as_bytes(), "Third".as_bytes());
-    }
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 3);
+		assert!(container.is_defined(0));
+		assert!(!container.is_defined(1));
+		assert!(container.is_defined(2));
 
-    #[test]
-    fn test_blob_utf8_json_data() {
-        let function = BlobUtf8::new();
+		assert_eq!(container[0].as_bytes(), "First".as_bytes());
+		assert_eq!(container[1].as_bytes(), [].as_slice() as &[u8]);
+		assert_eq!(container[2].as_bytes(), "Third".as_bytes());
+	}
 
-        // Test JSON-like data which is common to store as UTF-8
-        let utf8_data = vec![r#"{"name": "John", "age": 30, "city": "New York"}"#.to_string()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_json_data() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		// Test JSON-like data which is common to store as UTF-8
+		let utf8_data = vec![
+			r#"{"name": "John", "age": 30, "city": "New York"}"#
+				.to_string(),
+		];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(
-            container[0].as_bytes(),
-            r#"{"name": "John", "age": 30, "city": "New York"}"#.as_bytes()
-        );
-    }
+		let result = function.scalar(ctx).unwrap();
 
-    #[test]
-    fn test_blob_utf8_long_string() {
-        let function = BlobUtf8::new();
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(
+			container[0].as_bytes(),
+			r#"{"name": "John", "age": 30, "city": "New York"}"#
+				.as_bytes()
+		);
+	}
 
-        // Test a longer string to verify no issues with size
-        let long_string = "A".repeat(1000);
-        let utf8_data = vec![long_string.clone()];
-        let bitvec = vec![true];
-        let input_column = ColumnQualified {
-            name: "input".to_string(),
-            data: ColumnData::Utf8(StringContainer::new(utf8_data, bitvec.into())),
-        };
-        let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
-        let ctx = ScalarFunctionContext { columns: &columns, row_count: 1 };
+	#[test]
+	fn test_blob_utf8_long_string() {
+		let function = BlobUtf8::new();
 
-        let result = function.scalar(ctx).unwrap();
+		// Test a longer string to verify no issues with size
+		let long_string = "A".repeat(1000);
+		let utf8_data = vec![long_string.clone()];
+		let bitvec = vec![true];
+		let input_column = ColumnQualified {
+			name: "input".to_string(),
+			data: ColumnData::Utf8(StringContainer::new(
+				utf8_data,
+				bitvec.into(),
+			)),
+		};
+		let columns = Columns::new(vec![Column::ColumnQualified(
+			input_column,
+		)]);
+		let ctx = ScalarFunctionContext {
+			columns: &columns,
+			row_count: 1,
+		};
 
-        let ColumnData::Blob(container) = result else {
-            panic!("Expected BLOB column data");
-        };
-        assert_eq!(container.len(), 1);
-        assert!(container.is_defined(0));
-        assert_eq!(container[0].as_bytes(), long_string.as_bytes());
-        assert_eq!(container[0].as_bytes().len(), 1000);
-    }
+		let result = function.scalar(ctx).unwrap();
+
+		let ColumnData::Blob(container) = result else {
+			panic!("Expected BLOB column data");
+		};
+		assert_eq!(container.len(), 1);
+		assert!(container.is_defined(0));
+		assert_eq!(container[0].as_bytes(), long_string.as_bytes());
+		assert_eq!(container[0].as_bytes().len(), 1000);
+	}
 }

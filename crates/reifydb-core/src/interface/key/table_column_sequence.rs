@@ -1,105 +1,121 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::{ColumnId, TableId};
-use crate::interface::key::{EncodableKey, KeyKind};
-use crate::util::encoding::keycode;
-use crate::EncodedKey;
+use crate::{
+	EncodedKey,
+	interface::{
+		ColumnId, TableId,
+		key::{EncodableKey, KeyKind},
+	},
+	util::encoding::keycode,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableColumnSequenceKey {
-    pub table: TableId,
-    pub column: ColumnId,
+	pub table: TableId,
+	pub column: ColumnId,
 }
 
 const VERSION: u8 = 1;
 
 impl EncodableKey for TableColumnSequenceKey {
-    const KIND: KeyKind = KeyKind::TableColumnSequence;
+	const KIND: KeyKind = KeyKind::TableColumnSequence;
 
-    fn encode(&self) -> EncodedKey {
-        let mut out = Vec::with_capacity(18);
-        out.extend(&keycode::serialize(&VERSION));
-        out.extend(&keycode::serialize(&Self::KIND));
-        out.extend(&keycode::serialize(&self.table));
-        out.extend(&keycode::serialize(&self.column));
-        EncodedKey::new(out)
-    }
+	fn encode(&self) -> EncodedKey {
+		let mut out = Vec::with_capacity(18);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		out.extend(&keycode::serialize(&self.table));
+		out.extend(&keycode::serialize(&self.column));
+		EncodedKey::new(out)
+	}
 
-    fn decode(key: &EncodedKey) -> Option<Self> {
-        if key.len() < 2 {
-            return None;
-        }
+	fn decode(key: &EncodedKey) -> Option<Self> {
+		if key.len() < 2 {
+			return None;
+		}
 
-        let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
-        if version != VERSION {
-            return None;
-        }
+		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		if version != VERSION {
+			return None;
+		}
 
-        let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
-        if kind != Self::KIND {
-            return None;
-        }
+		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		if kind != Self::KIND {
+			return None;
+		}
 
-        let payload = &key[2..];
-        if payload.len() != 16 {
-            return None;
-        }
+		let payload = &key[2..];
+		if payload.len() != 16 {
+			return None;
+		}
 
-        let table = keycode::deserialize(&payload[..8]).ok()?;
-        let column = keycode::deserialize(&payload[8..16]).ok()?;
-        Some(Self { table, column })
-    }
+		let table = keycode::deserialize(&payload[..8]).ok()?;
+		let column = keycode::deserialize(&payload[8..16]).ok()?;
+		Some(Self {
+			table,
+			column,
+		})
+	}
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{EncodableKey, TableColumnSequenceKey};
-    use crate::interface::{ColumnId, TableId};
-    use crate::EncodedKey;
+	use super::{EncodableKey, TableColumnSequenceKey};
+	use crate::{
+		EncodedKey,
+		interface::{ColumnId, TableId},
+	};
 
-    #[test]
-    fn test_encode_decode() {
-        let key = TableColumnSequenceKey { 
-            table: TableId(0x1234), 
-            column: ColumnId(0x5678) 
-        };
-        let encoded = key.encode();
-        
-        // Verify the encoded format (keycode serialization uses 0xFE prefix for u8)
-        assert_eq!(encoded[0], 0xFE); // version serialized
-        assert_eq!(encoded[1], 0xF1); // KeyKind::TableColumnSequence serialized
-        
-        // Test decode
-        let decoded = TableColumnSequenceKey::decode(&encoded).unwrap();
-        assert_eq!(decoded.table, TableId(0x1234));
-        assert_eq!(decoded.column, ColumnId(0x5678));
-    }
+	#[test]
+	fn test_encode_decode() {
+		let key = TableColumnSequenceKey {
+			table: TableId(0x1234),
+			column: ColumnId(0x5678),
+		};
+		let encoded = key.encode();
 
-    #[test]
-    fn test_decode_invalid_version() {
-        let mut encoded = vec![0xFF]; // wrong version
-        encoded.push(0x0E); // correct kind
-        encoded.extend(&[0; 16]); // payload
-        
-        let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(encoded));
-        assert!(decoded.is_none());
-    }
+		// Verify the encoded format (keycode serialization uses 0xFE
+		// prefix for u8)
+		assert_eq!(encoded[0], 0xFE); // version serialized
+		assert_eq!(encoded[1], 0xF1); // KeyKind::TableColumnSequence serialized
 
-    #[test]
-    fn test_decode_invalid_kind() {
-        let mut encoded = vec![0x01]; // correct version
-        encoded.push(0xFF); // wrong kind
-        encoded.extend(&[0; 16]); // payload
-        
-        let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(encoded));
-        assert!(decoded.is_none());
-    }
+		// Test decode
+		let decoded = TableColumnSequenceKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.table, TableId(0x1234));
+		assert_eq!(decoded.column, ColumnId(0x5678));
+	}
 
-    #[test]
-    fn test_decode_invalid_length() {
-        let encoded = vec![0x01, 0x0E]; // version and kind only, missing payload
-        let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(encoded));
-        assert!(decoded.is_none());
-    }
+	#[test]
+	fn test_decode_invalid_version() {
+		let mut encoded = vec![0xFF]; // wrong version
+		encoded.push(0x0E); // correct kind
+		encoded.extend(&[0; 16]); // payload
+
+		let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(
+			encoded,
+		));
+		assert!(decoded.is_none());
+	}
+
+	#[test]
+	fn test_decode_invalid_kind() {
+		let mut encoded = vec![0x01]; // correct version
+		encoded.push(0xFF); // wrong kind
+		encoded.extend(&[0; 16]); // payload
+
+		let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(
+			encoded,
+		));
+		assert!(decoded.is_none());
+	}
+
+	#[test]
+	fn test_decode_invalid_length() {
+		let encoded = vec![0x01, 0x0E]; // version and kind only, missing payload
+		let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(
+			encoded,
+		));
+		assert!(decoded.is_none());
+	}
 }

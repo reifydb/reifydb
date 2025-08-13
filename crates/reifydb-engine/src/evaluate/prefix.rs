@@ -1,21 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
-use crate::evaluate::{EvaluationContext, Evaluator, evaluate};
-use reifydb_core::err;
-use reifydb_core::result::error::diagnostic::operator;
+use reifydb_core::{err, result::error::diagnostic::operator};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
-impl Evaluator {
-    pub(crate) fn prefix(
-        &mut self,
-        prefix: &PrefixExpression,
-        ctx: &EvaluationContext,
-    ) -> crate::Result<Column> {
-        let column = evaluate(&prefix.expression, ctx)?;
+use crate::{
+	columnar::{Column, ColumnData, ColumnQualified, TableQualified},
+	evaluate::{EvaluationContext, Evaluator, evaluate},
+};
 
-        match column.data() {
+impl Evaluator {
+	pub(crate) fn prefix(
+		&mut self,
+		prefix: &PrefixExpression,
+		ctx: &EvaluationContext,
+	) -> crate::Result<Column> {
+		let column = evaluate(&prefix.expression, ctx)?;
+
+		match column.data() {
             // EngineColumnData::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
             ColumnData::Bool(container) => match prefix.operator {
                 PrefixOperator::Not(_) => {
@@ -446,5 +448,5 @@ impl Evaluator {
                 )),
             },
         }
-    }
+	}
 }

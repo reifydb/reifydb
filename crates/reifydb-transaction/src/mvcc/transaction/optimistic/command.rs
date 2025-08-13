@@ -9,166 +9,212 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use super::*;
-use crate::mvcc::transaction::TransactionManagerCommand;
-use crate::mvcc::transaction::iter::TransactionIter;
-use crate::mvcc::transaction::iter_rev::TransactionIterRev;
-use crate::mvcc::transaction::range::TransactionRange;
-use crate::mvcc::transaction::range_rev::TransactionRangeRev;
-use crate::mvcc::transaction::version::StdVersionProvider;
-use crate::mvcc::types::TransactionValue;
-use reifydb_core::CowVec;
-use reifydb_core::hook::transaction::{PostCommitHook, PreCommitHook};
-use reifydb_core::row::EncodedRow;
 use std::ops::RangeBounds;
 
-pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
-    engine: Optimistic<VS, UT>,
-    tm: TransactionManagerCommand<StdVersionProvider<UT>>,
+use reifydb_core::{
+	CowVec,
+	hook::transaction::{PostCommitHook, PreCommitHook},
+	row::EncodedRow,
+};
+
+use super::*;
+use crate::mvcc::{
+	transaction::{
+		TransactionManagerCommand, iter::TransactionIter,
+		iter_rev::TransactionIterRev, range::TransactionRange,
+		range_rev::TransactionRangeRev, version::StdVersionProvider,
+	},
+	types::TransactionValue,
+};
+
+pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction>
+{
+	engine: Optimistic<VS, UT>,
+	tm: TransactionManagerCommand<StdVersionProvider<UT>>,
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
-    pub fn new(engine: Optimistic<VS, UT>) -> crate::Result<Self> {
-        let tm = engine.tm.write()?;
-        Ok(Self { engine, tm })
-    }
+impl<VS: VersionedStorage, UT: UnversionedTransaction>
+	CommandTransaction<VS, UT>
+{
+	pub fn new(engine: Optimistic<VS, UT>) -> crate::Result<Self> {
+		let tm = engine.tm.write()?;
+		Ok(Self {
+			engine,
+			tm,
+		})
+	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
-    pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
-        let mut version: Option<Version> = None;
-        let mut deltas = CowVec::with_capacity(8);
+impl<VS: VersionedStorage, UT: UnversionedTransaction>
+	CommandTransaction<VS, UT>
+{
+	pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
+		let mut version: Option<Version> = None;
+		let mut deltas = CowVec::with_capacity(8);
 
-        self.tm.commit(|pending| {
-            for p in pending {
-                if version.is_none() {
-                    version = Some(p.version);
-                }
+		self.tm.commit(|pending| {
+			for p in pending {
+				if version.is_none() {
+					version = Some(p.version);
+				}
 
-                debug_assert_eq!(version.unwrap(), p.version);
-                deltas.push(p.delta);
-            }
+				debug_assert_eq!(version.unwrap(), p.version);
+				deltas.push(p.delta);
+			}
 
-            if let Some(version) = version {
-                self.engine.hooks.trigger(PreCommitHook { deltas: deltas.clone(), version })?;
+			if let Some(version) = version {
+				self.engine.hooks.trigger(PreCommitHook {
+					deltas: deltas.clone(),
+					version,
+				})?;
 
-                self.engine.versioned.commit(deltas.clone(), version)?;
-            }
-            Ok(())
-        })?;
+				self.engine
+					.versioned
+					.commit(deltas.clone(), version)?;
+			}
+			Ok(())
+		})?;
 
-        if let Some(version) = version {
-            self.engine.hooks.trigger(PostCommitHook { deltas, version })?;
-        }
+		if let Some(version) = version {
+			self.engine.hooks.trigger(PostCommitHook {
+				deltas,
+				version,
+			})?;
+		}
 
-        Ok(())
-    }
+		Ok(())
+	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
-    pub fn version(&self) -> Version {
-        self.tm.version()
-    }
+impl<VS: VersionedStorage, UT: UnversionedTransaction>
+	CommandTransaction<VS, UT>
+{
+	pub fn version(&self) -> Version {
+		self.tm.version()
+	}
 
-    pub fn as_of_version(&mut self, version: Version) {
-        self.tm.as_of_version(version);
-    }
+	pub fn as_of_version(&mut self, version: Version) {
+		self.tm.as_of_version(version);
+	}
 
-    pub fn rollback(&mut self) -> Result<(), reifydb_core::Error> {
-        self.tm.rollback()
-    }
+	pub fn rollback(&mut self) -> Result<(), reifydb_core::Error> {
+		self.tm.rollback()
+	}
 
-    pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_core::Error> {
-        let version = self.tm.version();
-        match self.tm.contains_key(key)? {
-            Some(true) => Ok(true),
-            Some(false) => Ok(false),
-            None => self.engine.versioned.contains(key, version),
-        }
-    }
+	pub fn contains_key(
+		&mut self,
+		key: &EncodedKey,
+	) -> Result<bool, reifydb_core::Error> {
+		let version = self.tm.version();
+		match self.tm.contains_key(key)? {
+			Some(true) => Ok(true),
+			Some(false) => Ok(false),
+			None => self.engine.versioned.contains(key, version),
+		}
+	}
 
-    pub fn get(
-        &mut self,
-        key: &EncodedKey,
-    ) -> Result<Option<TransactionValue>, reifydb_core::Error> {
-        let version = self.tm.version();
-        match self.tm.get(key)? {
-            Some(v) => {
-                if v.row().is_some() {
-                    Ok(Some(v.into()))
-                } else {
-                    Ok(None)
-                }
-            }
-            None => Ok(self.engine.versioned.get(key, version)?.map(TransactionValue::from)),
-        }
-    }
+	pub fn get(
+		&mut self,
+		key: &EncodedKey,
+	) -> Result<Option<TransactionValue>, reifydb_core::Error> {
+		let version = self.tm.version();
+		match self.tm.get(key)? {
+			Some(v) => {
+				if v.row().is_some() {
+					Ok(Some(v.into()))
+				} else {
+					Ok(None)
+				}
+			}
+			None => Ok(self
+				.engine
+				.versioned
+				.get(key, version)?
+				.map(TransactionValue::from)),
+		}
+	}
 
-    pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_core::Error> {
-        self.tm.set(key, row)
-    }
+	pub fn set(
+		&mut self,
+		key: &EncodedKey,
+		row: EncodedRow,
+	) -> Result<(), reifydb_core::Error> {
+		self.tm.set(key, row)
+	}
 
-    pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_core::Error> {
-        self.tm.remove(key)
-    }
+	pub fn remove(
+		&mut self,
+		key: &EncodedKey,
+	) -> Result<(), reifydb_core::Error> {
+		self.tm.remove(key)
+	}
 
-    pub fn scan(&mut self) -> Result<TransactionIter<'_, VS>, reifydb_core::Error> {
-        let version = self.tm.version();
-        let (marker, pw) = self.tm.marker_with_pending_writes();
-        let pending = pw.iter();
-        let commited = self.engine.versioned.scan(version)?;
+	pub fn scan(
+		&mut self,
+	) -> Result<TransactionIter<'_, VS>, reifydb_core::Error> {
+		let version = self.tm.version();
+		let (marker, pw) = self.tm.marker_with_pending_writes();
+		let pending = pw.iter();
+		let commited = self.engine.versioned.scan(version)?;
 
-        Ok(TransactionIter::new(pending, commited, Some(marker)))
-    }
+		Ok(TransactionIter::new(pending, commited, Some(marker)))
+	}
 
-    pub fn scan_rev(&mut self) -> Result<TransactionIterRev<'_, VS>, reifydb_core::Error> {
-        let version = self.tm.version();
-        let (marker, pw) = self.tm.marker_with_pending_writes();
-        let pending = pw.iter().rev();
-        let commited = self.engine.versioned.scan_rev(version)?;
+	pub fn scan_rev(
+		&mut self,
+	) -> Result<TransactionIterRev<'_, VS>, reifydb_core::Error> {
+		let version = self.tm.version();
+		let (marker, pw) = self.tm.marker_with_pending_writes();
+		let pending = pw.iter().rev();
+		let commited = self.engine.versioned.scan_rev(version)?;
 
-        Ok(TransactionIterRev::new(pending, commited, Some(marker)))
-    }
+		Ok(TransactionIterRev::new(pending, commited, Some(marker)))
+	}
 
-    pub fn range(
-        &mut self,
-        range: EncodedKeyRange,
-    ) -> Result<TransactionRange<'_, VS>, reifydb_core::Error> {
-        let version = self.tm.version();
-        let (marker, pw) = self.tm.marker_with_pending_writes();
-        let start = range.start_bound();
-        let end = range.end_bound();
-        let pending = pw.range((start, end));
-        let commited = self.engine.versioned.range(range, version)?;
+	pub fn range(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<TransactionRange<'_, VS>, reifydb_core::Error> {
+		let version = self.tm.version();
+		let (marker, pw) = self.tm.marker_with_pending_writes();
+		let start = range.start_bound();
+		let end = range.end_bound();
+		let pending = pw.range((start, end));
+		let commited = self.engine.versioned.range(range, version)?;
 
-        Ok(TransactionRange::new(pending, commited, Some(marker)))
-    }
+		Ok(TransactionRange::new(pending, commited, Some(marker)))
+	}
 
-    pub fn range_rev(
-        &mut self,
-        range: EncodedKeyRange,
-    ) -> Result<TransactionRangeRev<'_, VS>, reifydb_core::Error> {
-        let version = self.tm.version();
-        let (marker, pw) = self.tm.marker_with_pending_writes();
-        let start = range.start_bound();
-        let end = range.end_bound();
-        let pending = pw.range((start, end));
-        let commited = self.engine.versioned.range_rev(range, version)?;
+	pub fn range_rev(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<TransactionRangeRev<'_, VS>, reifydb_core::Error> {
+		let version = self.tm.version();
+		let (marker, pw) = self.tm.marker_with_pending_writes();
+		let start = range.start_bound();
+		let end = range.end_bound();
+		let pending = pw.range((start, end));
+		let commited =
+			self.engine.versioned.range_rev(range, version)?;
 
-        Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
-    }
+		Ok(TransactionRangeRev::new(
+			pending.rev(),
+			commited,
+			Some(marker),
+		))
+	}
 
-    pub fn prefix<'a>(
-        &'a mut self,
-        prefix: &EncodedKey,
-    ) -> Result<TransactionRange<'a, VS>, reifydb_core::Error> {
-        self.range(EncodedKeyRange::prefix(prefix))
-    }
+	pub fn prefix<'a>(
+		&'a mut self,
+		prefix: &EncodedKey,
+	) -> Result<TransactionRange<'a, VS>, reifydb_core::Error> {
+		self.range(EncodedKeyRange::prefix(prefix))
+	}
 
-    pub fn prefix_rev<'a>(
-        &'a mut self,
-        prefix: &EncodedKey,
-    ) -> Result<TransactionRangeRev<'a, VS>, reifydb_core::Error> {
-        self.range_rev(EncodedKeyRange::prefix(prefix))
-    }
+	pub fn prefix_rev<'a>(
+		&'a mut self,
+		prefix: &EncodedKey,
+	) -> Result<TransactionRangeRev<'a, VS>, reifydb_core::Error> {
+		self.range_rev(EncodedKeyRange::prefix(prefix))
+	}
 }

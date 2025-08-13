@@ -1,398 +1,453 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ws::RequestPayload::Auth;
-use crate::ws::{
-    AuthRequest, AuthResponse, CommandRequest, CommandResponse, ErrResponse, QueryRequest,
-    QueryResponse, Request, RequestPayload, ResponsePayload, WebsocketColumn, WebsocketFrame,
-    WsParams,
+use std::{
+	net::{IpAddr::V4, Ipv4Addr, SocketAddr},
+	ops::Deref,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
 };
-use futures_util::{SinkExt, StreamExt};
-use reifydb_core::interface::{
-    Engine as EngineInterface, Params as CoreParams, Principal, Transaction,
-};
-use reifydb_core::{Error, Value};
-use reifydb_engine::Engine;
-use std::net::IpAddr::V4;
-use std::net::{Ipv4Addr, SocketAddr};
-use std::ops::Deref;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Notify, OnceCell};
-use tokio::task::JoinSet;
-use tokio::time::{sleep, timeout};
-use tokio_tungstenite::accept_async;
-use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 
-const DEFAULT_SOCKET: SocketAddr = SocketAddr::new(V4(Ipv4Addr::new(0, 0, 0, 0)), 8090);
+use futures_util::{SinkExt, StreamExt};
+use reifydb_core::{
+	Error, Value,
+	interface::{
+		Engine as EngineInterface, Params as CoreParams, Principal,
+		Transaction,
+	},
+};
+use reifydb_engine::Engine;
+use tokio::{
+	net::{TcpListener, TcpStream},
+	sync::{Notify, OnceCell},
+	task::JoinSet,
+	time::{sleep, timeout},
+};
+use tokio_tungstenite::{
+	accept_async,
+	tungstenite::{Message, Utf8Bytes},
+};
+
+use crate::ws::{
+	AuthRequest, AuthResponse, CommandRequest, CommandResponse,
+	ErrResponse, QueryRequest, QueryResponse, Request, RequestPayload,
+	RequestPayload::Auth, ResponsePayload, WebsocketColumn, WebsocketFrame,
+	WsParams,
+};
+
+const DEFAULT_SOCKET: SocketAddr =
+	SocketAddr::new(V4(Ipv4Addr::new(0, 0, 0, 0)), 8090);
 
 fn ws_params_to_core_params(ws_params: Option<WsParams>) -> CoreParams {
-    match ws_params {
-        Some(WsParams::Positional(values)) => CoreParams::Positional(values),
-        Some(WsParams::Named(map)) => CoreParams::Named(map),
-        None => CoreParams::None,
-    }
+	match ws_params {
+		Some(WsParams::Positional(values)) => {
+			CoreParams::Positional(values)
+		}
+		Some(WsParams::Named(map)) => CoreParams::Named(map),
+		None => CoreParams::None,
+	}
 }
 
 #[derive(Debug)]
 pub struct WsConfig {
-    pub socket: Option<SocketAddr>,
+	pub socket: Option<SocketAddr>,
 }
 
 impl Default for WsConfig {
-    fn default() -> Self {
-        Self { socket: Some(DEFAULT_SOCKET) }
-    }
+	fn default() -> Self {
+		Self {
+			socket: Some(DEFAULT_SOCKET),
+		}
+	}
 }
 
 #[derive(Clone)]
 pub struct WsServer<T: Transaction>(Arc<Inner<T>>);
 
-pub struct Inner<T: Transaction>
-{
-    config: WsConfig,
-    engine: Engine<T>,
-    shutdown: Arc<Notify>,
-    shutdown_complete: AtomicBool,
-    socket_addr: OnceCell<SocketAddr>,
-    _phantom: std::marker::PhantomData<T>,
+pub struct Inner<T: Transaction> {
+	config: WsConfig,
+	engine: Engine<T>,
+	shutdown: Arc<Notify>,
+	shutdown_complete: AtomicBool,
+	socket_addr: OnceCell<SocketAddr>,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Transaction> Deref for WsServer<T>
-{
-    type Target = Inner<T>;
+impl<T: Transaction> Deref for WsServer<T> {
+	type Target = Inner<T>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
 }
 
-impl<T: Transaction> WsServer<T>
-{
-    pub fn new(config: WsConfig, engine: Engine<T>) -> Self {
-        Self(Arc::new(Inner {
-            config,
-            engine,
-            shutdown: Arc::new(Notify::new()),
-            shutdown_complete: AtomicBool::new(false),
-            socket_addr: OnceCell::new(),
-            _phantom: std::marker::PhantomData,
-        }))
-    }
+impl<T: Transaction> WsServer<T> {
+	pub fn new(config: WsConfig, engine: Engine<T>) -> Self {
+		Self(Arc::new(Inner {
+			config,
+			engine,
+			shutdown: Arc::new(Notify::new()),
+			shutdown_complete: AtomicBool::new(false),
+			socket_addr: OnceCell::new(),
+			_phantom: std::marker::PhantomData,
+		}))
+	}
 
-    pub fn socket_addr(&self) -> Option<SocketAddr> {
-        self.socket_addr.get().cloned()
-    }
+	pub fn socket_addr(&self) -> Option<SocketAddr> {
+		self.socket_addr.get().cloned()
+	}
 
-    pub async fn close(&self) -> Result<(), &'static str> {
-        self.shutdown.notify_waiters();
+	pub async fn close(&self) -> Result<(), &'static str> {
+		self.shutdown.notify_waiters();
 
-        let start = std::time::Instant::now();
-        let timeout_duration = Duration::from_secs(10);
+		let start = std::time::Instant::now();
+		let timeout_duration = Duration::from_secs(10);
 
-        while !self.shutdown_complete.load(Ordering::Acquire) {
-            if start.elapsed() >= timeout_duration {
-                println!("WebSocket server shutdown timed out after 10 seconds");
-                return Err("Shutdown timeout");
-            }
+		while !self.shutdown_complete.load(Ordering::Acquire) {
+			if start.elapsed() >= timeout_duration {
+				println!(
+					"WebSocket server shutdown timed out after 10 seconds"
+				);
+				return Err("Shutdown timeout");
+			}
 
-            sleep(Duration::from_millis(50)).await;
-        }
+			sleep(Duration::from_millis(50)).await;
+		}
 
-        println!("ws server stopped");
-        Ok(())
-    }
+		println!("ws server stopped");
+		Ok(())
+	}
 
-    pub async fn serve(self) -> Result<(), Error> {
-        let listener =
-            TcpListener::bind(self.config.socket.unwrap_or(DEFAULT_SOCKET)).await.unwrap();
+	pub async fn serve(self) -> Result<(), Error> {
+		let listener = TcpListener::bind(
+			self.config.socket.unwrap_or(DEFAULT_SOCKET),
+		)
+		.await
+		.unwrap();
 
-        self.socket_addr.set(listener.local_addr().unwrap()).unwrap();
-        println!("ws server listening on {}", listener.local_addr().unwrap());
+		self.socket_addr.set(listener.local_addr().unwrap()).unwrap();
+		println!(
+			"ws server listening on {}",
+			listener.local_addr().unwrap()
+		);
 
-        let mut tasks = JoinSet::new();
+		let mut tasks = JoinSet::new();
 
-        loop {
-            tokio::select! {
-                _ = self.shutdown.notified() => {
-                    println!("Notifying {} active connections to close", tasks.len());
+		loop {
+			tokio::select! {
+			    _ = self.shutdown.notified() => {
+				println!("Notifying {} active connections to close", tasks.len());
 
-                    let graceful_shutdown = timeout(Duration::from_secs(5), async {
-                        while !tasks.is_empty() {
-                            if let Some(result) = tasks.join_next().await {
-                                match result {
-                                    Ok(_) => {},
-                                    Err(e) if e.is_cancelled() => { }// Expected when we abort tasks
-                                    Err(e) => eprintln!("❌ Connection cleanup error: {}", e),
-                                }
-                            }
-                        }
-                    }).await;
+				let graceful_shutdown = timeout(Duration::from_secs(5), async {
+				    while !tasks.is_empty() {
+					if let Some(result) = tasks.join_next().await {
+					    match result {
+						Ok(_) => {},
+						Err(e) if e.is_cancelled() => { }// Expected when we abort tasks
+						Err(e) => eprintln!("❌ Connection cleanup error: {}", e),
+					    }
+					}
+				    }
+				}).await;
 
-                    match graceful_shutdown {
-                        Ok(_) => println!("All connections closed gracefully"),
-                        Err(_) => {
-                            println!("Graceful shutdown timed out, aborting remaining connections");
-                            tasks.abort_all();
+				match graceful_shutdown {
+				    Ok(_) => println!("All connections closed gracefully"),
+				    Err(_) => {
+					println!("Graceful shutdown timed out, aborting remaining connections");
+					tasks.abort_all();
 
-                            // Wait for aborted tasks to clean up
-                            while let Some(result) = tasks.join_next().await {
-                                if let Err(e) = result {
-                                    if !e.is_cancelled() {
-                                        eprintln!("❌ Connection abort error: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                    }
+					// Wait for aborted tasks to clean up
+					while let Some(result) = tasks.join_next().await {
+					    if let Err(e) = result {
+						if !e.is_cancelled() {
+						    eprintln!("❌ Connection abort error: {}", e);
+						}
+					    }
+					}
+				    }
+				}
 
-                     self.shutdown_complete.store(true, Ordering::Release);
-                    return Ok(());
-                }
+				 self.shutdown_complete.store(true, Ordering::Release);
+				return Ok(());
+			    }
 
-                accept = listener.accept() => {
-                    match accept {
-                        Ok((stream, _addr)) => {
-                            let engine = self.engine.clone();
-                            let shutdown = self.shutdown.clone();
+			    accept = listener.accept() => {
+				match accept {
+				    Ok((stream, _addr)) => {
+					let engine = self.engine.clone();
+					let shutdown = self.shutdown.clone();
 
-                            tasks.spawn(async move {
-                                Self::handle(engine, stream, shutdown).await;
-                            });
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Accept error: {e}");
-                            continue;
-                        }
-                    }
-                }
+					tasks.spawn(async move {
+					    Self::handle(engine, stream, shutdown).await;
+					});
+				    }
+				    Err(e) => {
+					eprintln!("❌ Accept error: {e}");
+					continue;
+				    }
+				}
+			    }
 
-                Some(result) = tasks.join_next() => {
-                    match result {
-                        Ok(_) => {
-                            // Connection completed successfully
-                        }
-                        Err(e) => {
-                            eprintln!("❌ Connection task error: {}", e);
-                        }
-                    }
-                }
-            }
-        }
-    }
+			    Some(result) = tasks.join_next() => {
+				match result {
+				    Ok(_) => {
+					// Connection completed successfully
+				    }
+				    Err(e) => {
+					eprintln!("❌ Connection task error: {}", e);
+				    }
+				}
+			    }
+			}
+		}
+	}
 
-    async fn handle(engine: Engine<T>, stream: TcpStream, shutdown: Arc<Notify>) {
-        let peer_addr = stream.peer_addr().unwrap_or_else(|_| "unknown".parse().unwrap());
+	async fn handle(
+		engine: Engine<T>,
+		stream: TcpStream,
+		shutdown: Arc<Notify>,
+	) {
+		let peer_addr = stream
+			.peer_addr()
+			.unwrap_or_else(|_| "unknown".parse().unwrap());
 
-        let ws_stream = match accept_async(stream).await {
-            Ok(ws) => ws,
-            Err(e) => {
-                eprintln!("❌ WebSocket handshake failed for {}: {}", peer_addr, e);
-                return;
-            }
-        };
+		let ws_stream = match accept_async(stream).await {
+			Ok(ws) => ws,
+			Err(e) => {
+				eprintln!(
+					"❌ WebSocket handshake failed for {}: {}",
+					peer_addr, e
+				);
+				return;
+			}
+		};
 
-        let (mut command, mut query) = ws_stream.split();
+		let (mut command, mut query) = ws_stream.split();
 
-        let auth_result = tokio::select! {
-            _ = shutdown.notified() => {
-                println!("🔌 Shutdown signal received during auth for {}", peer_addr);
-                let _ = command.send(Message::Close(None)).await;
-                return;
-            }
-            msg = query.next() => msg
-        };
+		let auth_result = tokio::select! {
+		    _ = shutdown.notified() => {
+			println!("🔌 Shutdown signal received during auth for {}", peer_addr);
+			let _ = command.send(Message::Close(None)).await;
+			return;
+		    }
+		    msg = query.next() => msg
+		};
 
-        let Some(Ok(Message::Text(text))) = auth_result else {
-            eprintln!("❌ No valid first message from {}", peer_addr);
-            return;
-        };
+		let Some(Ok(Message::Text(text))) = auth_result else {
+			eprintln!(
+				"❌ No valid first message from {}",
+				peer_addr
+			);
+			return;
+		};
 
-        match serde_json::from_str::<Request>(&text) {
-            Ok(request) => match request.payload {
-                Auth(AuthRequest { token: Some(token) }) => {
-                    fn validate_token(token: &str) -> bool {
-                        token == "mysecrettoken"
-                    }
+		match serde_json::from_str::<Request>(&text) {
+			Ok(request) => {
+				match request.payload {
+					Auth(AuthRequest {
+						token: Some(token),
+					}) => {
+						fn validate_token(
+							token: &str,
+						) -> bool {
+							token == "mysecrettoken"
+						}
 
-                    if validate_token(&token) {
-                        println!("Authenticated: {} from {}", token, peer_addr);
+						if validate_token(&token) {
+							println!(
+								"Authenticated: {} from {}",
+								token,
+								peer_addr
+							);
 
-                        let response = crate::ws::response::Response {
+							let response = crate::ws::response::Response {
                             id: request.id,
                             payload: ResponsePayload::Auth(AuthResponse {}),
                         };
 
-                        let msg = serde_json::to_string(&response).unwrap();
-                        if command.send(Message::Text(Utf8Bytes::from(msg))).await.is_err() {
+							let msg = serde_json::to_string(&response).unwrap();
+							if command.send(Message::Text(Utf8Bytes::from(msg))).await.is_err() {
                             return;
                         }
 
-                        loop {
-                            tokio::select! {
-                            _ = shutdown.notified() => {
-                                let _ = command.send(Message::Close(None)).await;
-                                break;
-                            }
-                              msg = query.next() => {
-                                    match msg {
-                                        Some(Ok(Message::Text(text))) => {
-                                            match serde_json::from_str::<Request>(&text) {
-                                                Ok(request) => match request.payload {
-                                                      RequestPayload::Command(CommandRequest { statements, params }) => {
-                                                        println!("Command: {}", statements.join(","));
+							loop {
+								tokio::select! {
+								_ = shutdown.notified() => {
+								    let _ = command.send(Message::Close(None)).await;
+								    break;
+								}
+								  msg = query.next() => {
+									match msg {
+									    Some(Ok(Message::Text(text))) => {
+										match serde_json::from_str::<Request>(&text) {
+										    Ok(request) => match request.payload {
+											  RequestPayload::Command(CommandRequest { statements, params }) => {
+											    println!("Command: {}", statements.join(","));
 
-                                                        if let Some(statement) = statements.first() {
-                                                            let params = ws_params_to_core_params(params);
-                                                            match engine.command_as(
-                                                                &Principal::System { id: 1, name: "root".to_string() },
-                                                                statement,
-                                                                params,
-                                                            ) {
-                                                                Ok(result) => {
-                                                                    let response = crate::ws::response::Response {
-                                                                        id: request.id,
-                                                                        payload: ResponsePayload::Command(CommandResponse {
-                                                                            frames: result.into_iter().map(|frame| {
-                                                                                WebsocketFrame {
-                                                                                    name: "GONE".to_string(), //FIXME
-                                                                                    columns: frame.into_iter().map(|c| {
-                                                                                        WebsocketColumn {
-                                                                                            ty: c.get_type(),
-                                                                                            name: c.name.to_string(),
-                                                                                            frame: c.table.as_ref().map(|s| s.to_string()),
-                                                                                            data: c.iter().map(|v| {
-                                                                                                if v == Value::Undefined {
-                                                                                                    "⟪undefined⟫".to_string()
-                                                                                                } else {
-                                                                                                    v.to_string()
-                                                                                                }
-                                                                                            }).collect(),
-                                                                                        }
-                                                                                    }).collect(),
-                                                                                }
-                                                                            }).collect(),
-                                                                        }),
-                                                                    };
+											    if let Some(statement) = statements.first() {
+												let params = ws_params_to_core_params(params);
+												match engine.command_as(
+												    &Principal::System { id: 1, name: "root".to_string() },
+												    statement,
+												    params,
+												) {
+												    Ok(result) => {
+													let response = crate::ws::response::Response {
+													    id: request.id,
+													    payload: ResponsePayload::Command(CommandResponse {
+														frames: result.into_iter().map(|frame| {
+														    WebsocketFrame {
+															name: "GONE".to_string(), //FIXME
+															columns: frame.into_iter().map(|c| {
+															    WebsocketColumn {
+																ty: c.get_type(),
+																name: c.name.to_string(),
+																frame: c.table.as_ref().map(|s| s.to_string()),
+																data: c.iter().map(|v| {
+																    if v == Value::Undefined {
+																	"⟪undefined⟫".to_string()
+																    } else {
+																	v.to_string()
+																    }
+																}).collect(),
+															    }
+															}).collect(),
+														    }
+														}).collect(),
+													    }),
+													};
 
-                                                                    let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
-                                                                }
-                                                                Err(e) => {
-                                                                        let mut diagnostic = e.diagnostic();
-                                                                        diagnostic.set_statement(statement.clone());
+													let msg = serde_json::to_string(&response).unwrap();
+													let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
+												    }
+												    Err(e) => {
+													    let mut diagnostic = e.diagnostic();
+													    diagnostic.set_statement(statement.clone());
 
-                                                                        let response = crate::ws::response::Response {
-                                                                        id: request.id,
-                                                                        payload: ResponsePayload::Err(ErrResponse {
-                                                                            diagnostic
-                                                                        }),
-                                                                    };
+													    let response = crate::ws::response::Response {
+													    id: request.id,
+													    payload: ResponsePayload::Err(ErrResponse {
+														diagnostic
+													    }),
+													};
 
-                                                                    let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
+													let msg = serde_json::to_string(&response).unwrap();
+													let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
 
-                                                                    eprintln!("❌ Query error");
-                                                                }
-                                                            }
-                                                        }
-                                                    }
+													eprintln!("❌ Query error");
+												    }
+												}
+											    }
+											}
 
-                                                    RequestPayload::Query(QueryRequest { statements, params }) => {
-                                                        println!("Query: {}", statements.join(","));
+											RequestPayload::Query(QueryRequest { statements, params }) => {
+											    println!("Query: {}", statements.join(","));
 
-                                                        if let Some(statement) = statements.first() {
-                                                            let params = ws_params_to_core_params(params);
-                                                            match engine.query_as(
-                                                                &Principal::System { id: 1, name: "root".to_string() },
-                                                                statement,
-                                                                params,
-                                                            ) {
-                                                                Ok(result) => {
-                                                                    let response = crate::ws::response::Response {
-                                                                        id: request.id,
-                                                                        payload: ResponsePayload::Query(QueryResponse {
-                                                                            frames: result.into_iter().map(|frame| {
-                                                                                WebsocketFrame {
-                                                                                    name: "GONE".to_string(), // FIXME
-                                                                                    columns: frame.into_iter().map(|c| {
-                                                                                        WebsocketColumn {
-                                                                                            ty: c.get_type(),
-                                                                                            name: c.name.to_string(),
-                                                                                            frame: c.table.as_ref().map(|s| s.to_string()),
-                                                                                            data: c.iter().map(|v| {
-                                                                                                if v == Value::Undefined {
-                                                                                                    "⟪undefined⟫".to_string()
-                                                                                                } else {
-                                                                                                    v.to_string()
-                                                                                                }
-                                                                                            }).collect(),
-                                                                                        }
-                                                                                    }).collect(),
-                                                                                }
-                                                                            }).collect(),
-                                                                        }),
-                                                                    };
+											    if let Some(statement) = statements.first() {
+												let params = ws_params_to_core_params(params);
+												match engine.query_as(
+												    &Principal::System { id: 1, name: "root".to_string() },
+												    statement,
+												    params,
+												) {
+												    Ok(result) => {
+													let response = crate::ws::response::Response {
+													    id: request.id,
+													    payload: ResponsePayload::Query(QueryResponse {
+														frames: result.into_iter().map(|frame| {
+														    WebsocketFrame {
+															name: "GONE".to_string(), // FIXME
+															columns: frame.into_iter().map(|c| {
+															    WebsocketColumn {
+																ty: c.get_type(),
+																name: c.name.to_string(),
+																frame: c.table.as_ref().map(|s| s.to_string()),
+																data: c.iter().map(|v| {
+																    if v == Value::Undefined {
+																	"⟪undefined⟫".to_string()
+																    } else {
+																	v.to_string()
+																    }
+																}).collect(),
+															    }
+															}).collect(),
+														    }
+														}).collect(),
+													    }),
+													};
 
-                                                                    let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
-                                                                }
-                                                              Err(e) => {
-                                                                        let mut diagnostic = e.diagnostic();
-                                                                        diagnostic.set_statement(statement.clone());
+													let msg = serde_json::to_string(&response).unwrap();
+													let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
+												    }
+												  Err(e) => {
+													    let mut diagnostic = e.diagnostic();
+													    diagnostic.set_statement(statement.clone());
 
-                                                                        let response = crate::ws::response::Response {
-                                                                        id: request.id,
-                                                                        payload: ResponsePayload::Err(ErrResponse {
-                                                                            diagnostic
-                                                                        }),
-                                                                    };
+													    let response = crate::ws::response::Response {
+													    id: request.id,
+													    payload: ResponsePayload::Err(ErrResponse {
+														diagnostic
+													    }),
+													};
 
-                                                                    let msg = serde_json::to_string(&response).unwrap();
-                                                                    let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
+													let msg = serde_json::to_string(&response).unwrap();
+													let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
 
-                                                                    eprintln!("❌ Query error");
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    _ => {}
-                                                },
-                                                Err(err) =>{
-                                                    eprintln!("❌ Invalid message: {err} - {text}");
-                                                }
-                                            }
-                                        }
-                                        Some(Ok(Message::Close(_))) => {
-                                            println!("Client closed the connection");
-                                            break;
-                                        }
-                                        Some(Err(e)) => {
-                                            eprintln!("❌ WebSocket error: {}", e);
-                                            break;
-                                        }
-                                        None => {
-                                            println!("Client disconnected");
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        eprintln!("❌ Invalid token from {}: {}", peer_addr, token);
-                        let _ = command.send(Message::Close(None)).await;
-                    }
-                }
-                _ => {
-                    eprintln!("❌ First message must be auth from {}", peer_addr);
-                    let _ = command.send(Message::Close(None)).await;
-                }
-            },
-            Err(_) => todo!(),
-        }
-    }
+													eprintln!("❌ Query error");
+												    }
+												}
+											    }
+											}
+											_ => {}
+										    },
+										    Err(err) =>{
+											eprintln!("❌ Invalid message: {err} - {text}");
+										    }
+										}
+									    }
+									    Some(Ok(Message::Close(_))) => {
+										println!("Client closed the connection");
+										break;
+									    }
+									    Some(Err(e)) => {
+										eprintln!("❌ WebSocket error: {}", e);
+										break;
+									    }
+									    None => {
+										println!("Client disconnected");
+										break;
+									    }
+									    _ => {}
+									}
+								    }
+								}
+							}
+						} else {
+							eprintln!(
+								"❌ Invalid token from {}: {}",
+								peer_addr,
+								token
+							);
+							let _ = command.send(Message::Close(None)).await;
+						}
+					}
+					_ => {
+						eprintln!(
+							"❌ First message must be auth from {}",
+							peer_addr
+						);
+						let _ = command
+							.send(Message::Close(
+								None,
+							))
+							.await;
+					}
+				}
+			}
+			Err(_) => todo!(),
+		}
+	}
 }

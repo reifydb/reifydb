@@ -1,88 +1,126 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{CdcTransaction, StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
-use reifydb::{AsyncBuilder, Database, SessionAsync, memory, optimistic};
-use reifydb_testing::testscript;
-use reifydb_testing::testscript::Command;
-use std::error::Error;
-use std::fmt::Write;
-use std::path::Path;
+use std::{error::Error, fmt::Write, path::Path};
+
+use reifydb::{
+	AsyncBuilder, Database, SessionAsync,
+	core::{
+		hook::Hooks,
+		interface::{
+			CdcTransaction, Params, StandardTransaction,
+			UnversionedTransaction, VersionedTransaction,
+		},
+	},
+	memory, optimistic,
+};
+use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
 pub struct Runner<VT, UT, C>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    C: CdcTransaction,
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
 {
-    instance: Database<StandardTransaction<VT, UT, C>>,
-    runtime: Runtime,
+	instance: Database<StandardTransaction<VT, UT, C>>,
+	runtime: Runtime,
 }
 
 impl<VT, UT, C> Runner<VT, UT, C>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    C: CdcTransaction,
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
 {
-    pub fn new(input: (VT, UT, C, Hooks)) -> Self {
-        let (versioned, unversioned, cdc, hooks) = input;
-        Self {
-            instance: AsyncBuilder::new(versioned, unversioned, cdc, hooks).build(),
-            runtime: Runtime::new().unwrap(),
-        }
-    }
+	pub fn new(input: (VT, UT, C, Hooks)) -> Self {
+		let (versioned, unversioned, cdc, hooks) = input;
+		Self {
+			instance: AsyncBuilder::new(
+				versioned,
+				unversioned,
+				cdc,
+				hooks,
+			)
+			.build(),
+			runtime: Runtime::new().unwrap(),
+		}
+	}
 }
 
 impl<VT, UT, C> testscript::Runner for Runner<VT, UT, C>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    C: CdcTransaction,
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
 {
-    fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
-        let mut output = String::new();
-        match command.name.as_str() {
-            "command" => {
-                let rql =
-                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
+		let mut output = String::new();
+		match command.name.as_str() {
+			"command" => {
+				let rql = command
+					.args
+					.iter()
+					.map(|a| a.value.as_str())
+					.collect::<Vec<_>>()
+					.join(" ");
 
-                println!("command: {rql}");
+				println!("command: {rql}");
 
-                let instance = &self.instance;
-                self.runtime.block_on(async {
-                    for frame in instance.command_as_root(rql.as_str(), Params::None).await? {
-                        writeln!(output, "{}", frame).unwrap();
-                    }
-                    Ok::<(), reifydb::Error>(())
-                })?;
-            }
-            "query" => {
-                let rql =
-                    command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+				let instance = &self.instance;
+				self.runtime.block_on(async {
+					for frame in instance
+						.command_as_root(
+							rql.as_str(),
+							Params::None,
+						)
+						.await?
+					{
+						writeln!(output, "{}", frame)
+							.unwrap();
+					}
+					Ok::<(), reifydb::Error>(())
+				})?;
+			}
+			"query" => {
+				let rql = command
+					.args
+					.iter()
+					.map(|a| a.value.as_str())
+					.collect::<Vec<_>>()
+					.join(" ");
 
-                println!("query: {rql}");
+				println!("query: {rql}");
 
-                let instance = &self.instance;
-                self.runtime.block_on(async {
-                    for frame in instance.query_as_root(rql.as_str(), Params::None).await? {
-                        writeln!(output, "{}", frame).unwrap();
-                    }
-                    Ok::<(), reifydb::Error>(())
-                })?;
-            }
-            name => return Err(format!("invalid command {name}").into()),
-        }
+				let instance = &self.instance;
+				self.runtime.block_on(async {
+					for frame in instance
+						.query_as_root(
+							rql.as_str(),
+							Params::None,
+						)
+						.await?
+					{
+						writeln!(output, "{}", frame)
+							.unwrap();
+					}
+					Ok::<(), reifydb::Error>(())
+				})?;
+			}
+			name => {
+				return Err(format!("invalid command {name}")
+					.into());
+			}
+		}
 
-        Ok(output)
-    }
+		Ok(output)
+	}
 }
 
 test_each_path! { in "testsuite/regression/tests/scripts" as embedded_async => test_embedded_async }
 
 fn test_embedded_async(path: &Path) {
-    testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(optimistic(memory())), path)
+		.expect("test failed")
 }

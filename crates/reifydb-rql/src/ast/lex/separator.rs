@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::lex::{Token, TokenKind, as_span};
-use nom::branch::alt;
-use nom::bytes::tag;
-use nom::combinator::value;
-use nom::{IResult, Input, Parser};
+use nom::{IResult, Input, Parser, branch::alt, bytes::tag, combinator::value};
 use nom_locate::LocatedSpan;
+
+use crate::ast::lex::{Token, TokenKind, as_span};
 
 macro_rules! separator {
     (
@@ -31,52 +29,65 @@ separator! {
     NewLine => "\n"
 }
 
-pub(crate) fn parse_separator(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
-    let start = input;
+pub(crate) fn parse_separator(
+	input: LocatedSpan<&str>,
+) -> IResult<LocatedSpan<&str>, Token> {
+	let start = input;
 
-    let parser = alt((alt((
-        value(Separator::Semicolon, tag(";")),
-        value(Separator::Comma, tag(",")),
-        value(Separator::NewLine, tag("\n")),
-    )),));
+	let parser = alt((alt((
+		value(Separator::Semicolon, tag(";")),
+		value(Separator::Comma, tag(",")),
+		value(Separator::NewLine, tag("\n")),
+	)),));
 
-    parser
-        .map(|sep| Token {
-            kind: TokenKind::Separator(sep),
-            span: as_span(start.take(sep.as_str().len())),
-        })
-        .parse(input)
+	parser.map(|sep| Token {
+		kind: TokenKind::Separator(sep),
+		span: as_span(start.take(sep.as_str().len())),
+	})
+	.parse(input)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::lex::TokenKind;
-    use crate::ast::lex::separator::{Separator, parse_separator};
-    use nom_locate::LocatedSpan;
+	use nom_locate::LocatedSpan;
 
-    #[test]
-    fn test_parse_separator_invalid() {
-        let input = LocatedSpan::new("foobar rest");
-        let result = parse_separator(input);
+	use crate::ast::lex::{
+		TokenKind,
+		separator::{Separator, parse_separator},
+	};
 
-        assert!(result.is_err(), "expected error parsing invalid separator, got: {:?}", result);
-    }
+	#[test]
+	fn test_parse_separator_invalid() {
+		let input = LocatedSpan::new("foobar rest");
+		let result = parse_separator(input);
 
-    fn check_separator(op: Separator, symbol: &str) {
-        let input_str = format!("{symbol} rest");
-        let input = LocatedSpan::new(input_str.as_str());
+		assert!(
+			result.is_err(),
+			"expected error parsing invalid separator, got: {:?}",
+			result
+		);
+	}
 
-        let result = parse_separator(input).unwrap();
-        let (remaining, token) = result;
+	fn check_separator(op: Separator, symbol: &str) {
+		let input_str = format!("{symbol} rest");
+		let input = LocatedSpan::new(input_str.as_str());
 
-        assert_eq!(TokenKind::Separator(op), token.kind, "ty mismatch for symbol: {}", symbol);
-        assert_eq!(token.span.fragment, symbol);
-        assert_eq!(token.span.column, 1);
-        assert_eq!(token.span.line, 1);
-        assert_eq!(*remaining.fragment(), " rest");
-    }
+		let result = parse_separator(input).unwrap();
+		let (remaining, token) = result;
 
-    macro_rules! generate_test {
+		assert_eq!(
+			TokenKind::Separator(op),
+			token.kind,
+			"ty mismatch for symbol: {}",
+			symbol
+		);
+		assert_eq!(token.span.fragment, symbol);
+		assert_eq!(token.span.column, 1);
+		assert_eq!(token.span.line, 1);
+		assert_eq!(*remaining.fragment(), " rest");
+	}
+
+	macro_rules! generate_test {
         ($($name:ident => ($variant:ident, $symbol:literal)),*) => {
             $(
                 #[test]
@@ -87,9 +98,9 @@ mod tests {
         };
     }
 
-    generate_test! {
-        test_separator_semicolon => (Semicolon, ";"),
-        test_separator_comma => (Comma, ","),
-        test_separator_new_line => (NewLine, "\n")
-    }
+	generate_test! {
+	    test_separator_semicolon => (Semicolon, ";"),
+	    test_separator_comma => (Comma, ","),
+	    test_separator_new_line => (NewLine, "\n")
+	}
 }

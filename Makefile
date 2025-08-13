@@ -42,6 +42,7 @@ help:
 	@echo "🏗️  Building:"
 	@echo "  make build         Build release version"
 	@echo "  make clean         Clean all reifydb packages"
+	@echo "  make format        Format all code with rustfmt (nightly)"
 	@echo ""
 	@echo "🐳 Docker:"
 	@echo "  make build-testcontainer   Build test container"
@@ -109,6 +110,20 @@ include mk/test-suites.mk
 build:
 	@echo "🏗️  Building release version..."
 	cargo build --release
+
+.PHONY: format
+format:
+	@echo "🎨 Formatting codebase with rustfmt (nightly)..."
+	@if ! rustup toolchain list | grep -q "nightly"; then \
+		echo "Installing nightly toolchain..."; \
+		rustup toolchain install nightly; \
+	fi
+	@if ! rustup component list --toolchain nightly | grep -q "rustfmt"; then \
+		echo "Installing rustfmt for nightly..."; \
+		rustup component add rustfmt --toolchain nightly; \
+	fi
+	cargo +nightly fmt --all
+	@echo "✅ Code formatting complete!"
 
 .PHONY: coverage
 coverage:

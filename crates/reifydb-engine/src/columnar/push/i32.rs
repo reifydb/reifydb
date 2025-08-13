@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::data::ColumnData;
-use crate::columnar::push::Push;
 use reifydb_core::value::number::{SafeConvert, SafeDemote, SafePromote};
 
+use crate::columnar::{data::ColumnData, push::Push};
+
 impl Push<i32> for ColumnData {
-    fn push(&mut self, value: i32) {
-        match self {
+	fn push(&mut self, value: i32) {
+		match self {
             ColumnData::Float4(container) => {
                 match <i32 as SafeConvert<f32>>::checked_convert(value) {
                     Some(v) => container.push(v),
@@ -85,5 +85,5 @@ impl Push<i32> for ColumnData {
                 );
             }
         }
-    }
+	}
 }

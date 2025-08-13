@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 pub trait SafePromote<T>: Sized {
-    fn checked_promote(self) -> Option<T>;
-    fn saturating_promote(self) -> T;
-    fn wrapping_promote(self) -> T;
+	fn checked_promote(self) -> Option<T>;
+	fn saturating_promote(self) -> T;
+	fn wrapping_promote(self) -> T;
 }
 
 macro_rules! impl_safe_promote {

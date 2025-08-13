@@ -145,8 +145,8 @@
 //!
 //! It may additionally have:
 //!
-//! * [**Arguments:**](Argument) any number of space-separated arguments.
-//!   These have a string [value](Argument::value), and optionally also a string
+//! * [**Arguments:**](Argument) any number of space-separated arguments. These
+//!   have a string [value](Argument::value), and optionally also a string
 //!   [key](Argument::key) as `key=value`. Keys and values can be empty, and
 //!   duplicate keys are allowed by the parser (the runner can handle this as
 //!   desired).
@@ -216,7 +216,8 @@
 //!    multiple lines by ending the line with \.
 //!
 //!    ```text
-//!    > a long command name including key=value, [tags], # a comment and exclamation!
+//!    > a long command name including key=value, [tags], # a comment and
+//!    > exclamation!
 //!    prefix: [tag] ! > a long, failing command with tags and a prefix
 //!    ---
 //!

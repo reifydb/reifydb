@@ -15,20 +15,23 @@ use crate::util::encoding::format::Formatter;
 pub struct Raw;
 
 impl Raw {
-    /// Formats raw bytes as escaped ASCII strings.
-    pub fn bytes(bytes: &[u8]) -> String {
-        let escaped =
-            bytes.iter().copied().flat_map(std::ascii::escape_default).collect::<Vec<_>>();
-        format!("\"{}\"", String::from_utf8_lossy(&escaped))
-    }
+	/// Formats raw bytes as escaped ASCII strings.
+	pub fn bytes(bytes: &[u8]) -> String {
+		let escaped = bytes
+			.iter()
+			.copied()
+			.flat_map(std::ascii::escape_default)
+			.collect::<Vec<_>>();
+		format!("\"{}\"", String::from_utf8_lossy(&escaped))
+	}
 }
 
 impl Formatter for Raw {
-    fn key(key: &[u8]) -> String {
-        Self::bytes(key)
-    }
+	fn key(key: &[u8]) -> String {
+		Self::bytes(key)
+	}
 
-    fn value(_key: &[u8], value: &[u8]) -> String {
-        Self::bytes(value)
-    }
+	fn value(_key: &[u8], value: &[u8]) -> String {
+		Self::bytes(value)
+	}
 }

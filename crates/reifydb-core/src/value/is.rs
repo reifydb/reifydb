@@ -1,13 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::uuid::{Uuid4, Uuid7};
-use crate::{Date, DateTime, GetType, Interval, Time};
 use std::fmt::{Debug, Display};
 
-pub trait IsNumber: Display + Copy + Debug + PartialEq + PartialOrd + GetType {}
-pub trait IsTemporal: Display + Copy + Debug + PartialEq + PartialOrd + GetType {}
-pub trait IsUuid: Display + Copy + Debug + PartialEq + PartialOrd + GetType {}
+use crate::{
+	Date, DateTime, GetType, Interval, Time,
+	value::uuid::{Uuid4, Uuid7},
+};
+
+pub trait IsNumber:
+	Display + Copy + Debug + PartialEq + PartialOrd + GetType
+{
+}
+pub trait IsTemporal:
+	Display + Copy + Debug + PartialEq + PartialOrd + GetType
+{
+}
+pub trait IsUuid:
+	Display + Copy + Debug + PartialEq + PartialOrd + GetType
+{
+}
 
 pub trait IsFloat: IsNumber {}
 

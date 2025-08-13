@@ -1,433 +1,599 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse};
-use crate::ast::lex::ParameterKind;
-use crate::{ast, convert_data_type};
+use crate::{
+	ast,
+	ast::{
+		Ast, AstInfix, AstLiteral, InfixOperator, lex::ParameterKind,
+		parse,
+	},
+	convert_data_type,
+};
 
 mod span;
 
+use std::{
+	fmt,
+	fmt::{Display, Formatter},
+};
+
 use reifydb_core::{OwnedSpan, Type};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression {
-    pub alias: IdentExpression,
-    pub expression: Box<Expression>,
-    pub span: OwnedSpan,
+	pub alias: IdentExpression,
+	pub expression: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl Display for AliasExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.alias, f)
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		Display::fmt(&self.alias, f)
+	}
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
-    AccessTable(AccessTableExpression),
+	AccessTable(AccessTableExpression),
 
-    Alias(AliasExpression),
+	Alias(AliasExpression),
 
+	Cast(CastExpression),
 
-    Cast(CastExpression),
+	Constant(ConstantExpression),
 
-    Constant(ConstantExpression),
+	Column(ColumnExpression),
 
-    Column(ColumnExpression),
+	Add(AddExpression),
 
-    Add(AddExpression),
+	Div(DivExpression),
 
-    Div(DivExpression),
+	Call(CallExpression),
 
-    Call(CallExpression),
+	Rem(RemExpression),
 
-    Rem(RemExpression),
+	Mul(MulExpression),
 
-    Mul(MulExpression),
+	Sub(SubExpression),
 
-    Sub(SubExpression),
+	Tuple(TupleExpression),
 
-    Tuple(TupleExpression),
+	Prefix(PrefixExpression),
 
-    Prefix(PrefixExpression),
+	GreaterThan(GreaterThanExpression),
 
-    GreaterThan(GreaterThanExpression),
+	GreaterThanEqual(GreaterThanEqualExpression),
 
-    GreaterThanEqual(GreaterThanEqualExpression),
+	LessThan(LessThanExpression),
 
-    LessThan(LessThanExpression),
+	LessThanEqual(LessThanEqualExpression),
 
-    LessThanEqual(LessThanEqualExpression),
+	Equal(EqualExpression),
 
-    Equal(EqualExpression),
+	NotEqual(NotEqualExpression),
 
-    NotEqual(NotEqualExpression),
+	Between(BetweenExpression),
 
-    Between(BetweenExpression),
+	And(AndExpression),
 
-    And(AndExpression),
+	Or(OrExpression),
 
-    Or(OrExpression),
+	Xor(XorExpression),
 
-    Xor(XorExpression),
+	Type(DataTypeExpression),
 
-    Type(DataTypeExpression),
-    
-    Parameter(ParameterExpression),
+	Parameter(ParameterExpression),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessTableExpression {
-    pub table: OwnedSpan,
-    pub column: OwnedSpan,
+	pub table: OwnedSpan,
+	pub column: OwnedSpan,
 }
 
 impl AccessTableExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.table.clone(), self.column.clone()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([self.table.clone(), self.column.clone()])
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConstantExpression {
-    Undefined { span: OwnedSpan },
-    Bool { span: OwnedSpan },
-    // any number
-    Number { span: OwnedSpan },
-    // any textual representation can be String, Text, ...
-    Text { span: OwnedSpan },
-    // any temporal representation can be Date, Time, DateTime, ...
-    Temporal { span: OwnedSpan },
+	Undefined {
+		span: OwnedSpan,
+	},
+	Bool {
+		span: OwnedSpan,
+	},
+	// any number
+	Number {
+		span: OwnedSpan,
+	},
+	// any textual representation can be String, Text, ...
+	Text {
+		span: OwnedSpan,
+	},
+	// any temporal representation can be Date, Time, DateTime, ...
+	Temporal {
+		span: OwnedSpan,
+	},
 }
 
 impl Display for ConstantExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ConstantExpression::Undefined { .. } => write!(f, "undefined"),
-            ConstantExpression::Bool { span } => write!(f, "{}", span.fragment),
-            ConstantExpression::Number { span } => write!(f, "{}", span.fragment),
-            ConstantExpression::Text { span } => write!(f, "\"{}\"", span.fragment),
-            ConstantExpression::Temporal { span } => write!(f, "{}", span.fragment),
-        }
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			ConstantExpression::Undefined {
+				..
+			} => write!(f, "undefined"),
+			ConstantExpression::Bool {
+				span,
+			} => write!(f, "{}", span.fragment),
+			ConstantExpression::Number {
+				span,
+			} => write!(f, "{}", span.fragment),
+			ConstantExpression::Text {
+				span,
+			} => write!(f, "\"{}\"", span.fragment),
+			ConstantExpression::Temporal {
+				span,
+			} => write!(f, "{}", span.fragment),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CastExpression {
-    pub span: OwnedSpan,
-    pub expression: Box<Expression>,
-    pub to: DataTypeExpression,
+	pub span: OwnedSpan,
+	pub expression: Box<Expression>,
+	pub to: DataTypeExpression,
 }
 
 impl CastExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.span.clone(), self.expression.span(), self.to.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.span.clone(),
+			self.expression.span(),
+			self.to.span(),
+		])
+	}
 
-    pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
-        move || self.span()
-    }
+	pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
+		move || self.span()
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataTypeExpression {
-    pub span: OwnedSpan,
-    pub ty: Type,
+	pub span: OwnedSpan,
+	pub ty: Type,
 }
 
 impl DataTypeExpression {
-    pub fn span(&self) -> OwnedSpan {
-        self.span.clone()
-    }
+	pub fn span(&self) -> OwnedSpan {
+		self.span.clone()
+	}
 
-    pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
-        move || self.span()
-    }
+	pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
+		move || self.span()
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DivExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MulExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GreaterThanExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl GreaterThanExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GreaterThanEqualExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl GreaterThanEqualExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LessThanExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl LessThanExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LessThanEqualExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl LessThanEqualExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EqualExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl EqualExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotEqualExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl NotEqualExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BetweenExpression {
-    pub value: Box<Expression>,
-    pub lower: Box<Expression>,
-    pub upper: Box<Expression>,
-    pub span: OwnedSpan,
+	pub value: Box<Expression>,
+	pub lower: Box<Expression>,
+	pub upper: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl BetweenExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([
-            self.value.span(),
-            self.span.clone(),
-            self.lower.span(),
-            self.upper.span(),
-        ])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.value.span(),
+			self.span.clone(),
+			self.lower.span(),
+			self.upper.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AndExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl AndExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl OrExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XorExpression {
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
-    pub span: OwnedSpan,
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl XorExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.left.span(), self.span.clone(), self.right.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.left.span(),
+			self.span.clone(),
+			self.right.span(),
+		])
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnExpression(pub OwnedSpan);
 
 impl ColumnExpression {
-    pub fn span(&self) -> OwnedSpan {
-        self.0.clone()
-    }
+	pub fn span(&self) -> OwnedSpan {
+		self.0.clone()
+	}
 }
 
 impl Display for Expression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Expression::AccessTable(AccessTableExpression { table: target, column: property }) => {
-                write!(f, "{}.{}", target.fragment, property.fragment)
-            }
-            Expression::Alias(AliasExpression { alias, expression, .. }) => {
-                write!(f, "{} as {}", expression, alias)
-            }
-            Expression::Cast(CastExpression { expression: expr, .. }) => write!(f, "{}", expr),
-            Expression::Constant(span) => write!(f, "Constant({})", span),
-            Expression::Column(ColumnExpression(span)) => write!(f, "Column({})", span.fragment),
-            Expression::Add(AddExpression { left, right, .. }) => {
-                write!(f, "({} + {})", left, right)
-            }
-            Expression::Div(DivExpression { left, right, .. }) => {
-                write!(f, "({} / {})", left, right)
-            }
-            Expression::Call(call) => write!(f, "{}", call),
-            Expression::Rem(RemExpression { left, right, .. }) => {
-                write!(f, "({} % {})", left, right)
-            }
-            Expression::Mul(MulExpression { left, right, .. }) => {
-                write!(f, "({} * {})", left, right)
-            }
-            Expression::Sub(SubExpression { left, right, .. }) => {
-                write!(f, "({} - {})", left, right)
-            }
-            Expression::Tuple(tuple) => write!(f, "({})", tuple),
-            Expression::Prefix(prefix) => write!(f, "{}", prefix),
-            Expression::GreaterThan(GreaterThanExpression { left, right, .. }) => {
-                write!(f, "({} > {})", left, right)
-            }
-            Expression::GreaterThanEqual(GreaterThanEqualExpression { left, right, .. }) => {
-                write!(f, "({} >= {})", left, right)
-            }
-            Expression::LessThan(LessThanExpression { left, right, .. }) => {
-                write!(f, "({} < {})", left, right)
-            }
-            Expression::LessThanEqual(LessThanEqualExpression { left, right, .. }) => {
-                write!(f, "({} <= {})", left, right)
-            }
-            Expression::Equal(EqualExpression { left, right, .. }) => {
-                write!(f, "({} == {})", left, right)
-            }
-            Expression::NotEqual(NotEqualExpression { left, right, .. }) => {
-                write!(f, "({} != {})", left, right)
-            }
-            Expression::Between(BetweenExpression { value, lower, upper, .. }) => {
-                write!(f, "({} BETWEEN {} AND {})", value, lower, upper)
-            }
-            Expression::And(AndExpression { left, right, .. }) => {
-                write!(f, "({} and {})", left, right)
-            }
-            Expression::Or(OrExpression { left, right, .. }) => {
-                write!(f, "({} or {})", left, right)
-            }
-            Expression::Xor(XorExpression { left, right, .. }) => {
-                write!(f, "({} xor {})", left, right)
-            }
-            Expression::Type(DataTypeExpression { span, .. }) => write!(f, "{}", span.fragment),
-            Expression::Parameter(param) => match param {
-                ParameterExpression::Positional { span, .. } => write!(f, "{}", span.fragment),
-                ParameterExpression::Named { span } => write!(f, "{}", span.fragment),
-            },
-        }
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Expression::AccessTable(AccessTableExpression {
+				table: target,
+				column: property,
+			}) => {
+				write!(
+					f,
+					"{}.{}",
+					target.fragment, property.fragment
+				)
+			}
+			Expression::Alias(AliasExpression {
+				alias,
+				expression,
+				..
+			}) => {
+				write!(f, "{} as {}", expression, alias)
+			}
+			Expression::Cast(CastExpression {
+				expression: expr,
+				..
+			}) => write!(f, "{}", expr),
+			Expression::Constant(span) => {
+				write!(f, "Constant({})", span)
+			}
+			Expression::Column(ColumnExpression(span)) => {
+				write!(f, "Column({})", span.fragment)
+			}
+			Expression::Add(AddExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} + {})", left, right)
+			}
+			Expression::Div(DivExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} / {})", left, right)
+			}
+			Expression::Call(call) => write!(f, "{}", call),
+			Expression::Rem(RemExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} % {})", left, right)
+			}
+			Expression::Mul(MulExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} * {})", left, right)
+			}
+			Expression::Sub(SubExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} - {})", left, right)
+			}
+			Expression::Tuple(tuple) => write!(f, "({})", tuple),
+			Expression::Prefix(prefix) => write!(f, "{}", prefix),
+			Expression::GreaterThan(GreaterThanExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} > {})", left, right)
+			}
+			Expression::GreaterThanEqual(
+				GreaterThanEqualExpression {
+					left,
+					right,
+					..
+				},
+			) => {
+				write!(f, "({} >= {})", left, right)
+			}
+			Expression::LessThan(LessThanExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} < {})", left, right)
+			}
+			Expression::LessThanEqual(
+				LessThanEqualExpression {
+					left,
+					right,
+					..
+				},
+			) => {
+				write!(f, "({} <= {})", left, right)
+			}
+			Expression::Equal(EqualExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} == {})", left, right)
+			}
+			Expression::NotEqual(NotEqualExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} != {})", left, right)
+			}
+			Expression::Between(BetweenExpression {
+				value,
+				lower,
+				upper,
+				..
+			}) => {
+				write!(
+					f,
+					"({} BETWEEN {} AND {})",
+					value, lower, upper
+				)
+			}
+			Expression::And(AndExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} and {})", left, right)
+			}
+			Expression::Or(OrExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} or {})", left, right)
+			}
+			Expression::Xor(XorExpression {
+				left,
+				right,
+				..
+			}) => {
+				write!(f, "({} xor {})", left, right)
+			}
+			Expression::Type(DataTypeExpression {
+				span,
+				..
+			}) => write!(f, "{}", span.fragment),
+			Expression::Parameter(param) => match param {
+				ParameterExpression::Positional {
+					span,
+					..
+				} => write!(f, "{}", span.fragment),
+				ParameterExpression::Named {
+					span,
+				} => write!(f, "{}", span.fragment),
+			},
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallExpression {
-    pub func: IdentExpression,
-    pub args: Vec<Expression>,
-    pub span: OwnedSpan,
+	pub func: IdentExpression,
+	pub args: Vec<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl CallExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan {
-            column: self.func.0.column,
-            line: self.func.0.line,
-            fragment: format!(
-                "{}({})",
-                self.func.0.fragment,
-                self.args
-                    .iter()
-                    .map(|arg| arg.span().fragment.clone())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ),
-        }
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan {
+			column: self.func.0.column,
+			line: self.func.0.line,
+			fragment: format!(
+				"{}({})",
+				self.func.0.fragment,
+				self.args
+					.iter()
+					.map(|arg| arg.span().fragment.clone())
+					.collect::<Vec<_>>()
+					.join(",")
+			),
+		}
+	}
 }
 
 impl Display for CallExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let args = self.args.iter().map(|arg| format!("{}", arg)).collect::<Vec<_>>().join(", ");
-        write!(f, "{}({})", self.func, args)
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let args = self
+			.args
+			.iter()
+			.map(|arg| format!("{}", arg))
+			.collect::<Vec<_>>()
+			.join(", ");
+		write!(f, "{}({})", self.func, args)
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -435,237 +601,291 @@ pub struct IdentExpression(pub OwnedSpan);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParameterExpression {
-    Positional { span: OwnedSpan },
-    Named { span: OwnedSpan },
+	Positional {
+		span: OwnedSpan,
+	},
+	Named {
+		span: OwnedSpan,
+	},
 }
 
 impl ParameterExpression {
-    pub fn position(&self) -> Option<u32> {
-        match self {
-            ParameterExpression::Positional { span } => {
-                span.fragment[1..].parse().ok()
-            }
-            ParameterExpression::Named { .. } => None,
-        }
-    }
-    
-    pub fn name(&self) -> Option<&str> {
-        match self {
-            ParameterExpression::Named { span } => {
-                Some(&span.fragment[1..])
-            }
-            ParameterExpression::Positional { .. } => None,
-        }
-    }
+	pub fn position(&self) -> Option<u32> {
+		match self {
+			ParameterExpression::Positional {
+				span,
+			} => span.fragment[1..].parse().ok(),
+			ParameterExpression::Named {
+				..
+			} => None,
+		}
+	}
+
+	pub fn name(&self) -> Option<&str> {
+		match self {
+			ParameterExpression::Named {
+				span,
+			} => Some(&span.fragment[1..]),
+			ParameterExpression::Positional {
+				..
+			} => None,
+		}
+	}
 }
 
 impl IdentExpression {
-    pub fn name(&self) -> &str {
-        &self.0.fragment
-    }
+	pub fn name(&self) -> &str {
+		&self.0.fragment
+	}
 }
 
 impl Display for IdentExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.fragment)
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		write!(f, "{}", self.0.fragment)
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PrefixOperator {
-    Minus(OwnedSpan),
-    Plus(OwnedSpan),
-    Not(OwnedSpan),
+	Minus(OwnedSpan),
+	Plus(OwnedSpan),
+	Not(OwnedSpan),
 }
 
 impl PrefixOperator {
-    pub fn span(&self) -> OwnedSpan {
-        match self {
-            PrefixOperator::Minus(span) => span.clone(),
-            PrefixOperator::Plus(span) => span.clone(),
-            PrefixOperator::Not(span) => span.clone(),
-        }
-    }
+	pub fn span(&self) -> OwnedSpan {
+		match self {
+			PrefixOperator::Minus(span) => span.clone(),
+			PrefixOperator::Plus(span) => span.clone(),
+			PrefixOperator::Not(span) => span.clone(),
+		}
+	}
 }
 
 impl Display for PrefixOperator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            PrefixOperator::Minus(_) => write!(f, "-"),
-            PrefixOperator::Plus(_) => write!(f, "+"),
-            PrefixOperator::Not(_) => write!(f, "not"),
-        }
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			PrefixOperator::Minus(_) => write!(f, "-"),
+			PrefixOperator::Plus(_) => write!(f, "+"),
+			PrefixOperator::Not(_) => write!(f, "not"),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrefixExpression {
-    pub operator: PrefixOperator,
-    pub expression: Box<Expression>,
-    pub span: OwnedSpan,
+	pub operator: PrefixOperator,
+	pub expression: Box<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl PrefixExpression {
-    pub fn span(&self) -> OwnedSpan {
-        OwnedSpan::merge_all([self.operator.span(), self.expression.span()])
-    }
+	pub fn span(&self) -> OwnedSpan {
+		OwnedSpan::merge_all([
+			self.operator.span(),
+			self.expression.span(),
+		])
+	}
 }
 
 impl Display for PrefixExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "({}{})", self.operator, self.expression)
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		write!(f, "({}{})", self.operator, self.expression)
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TupleExpression {
-    pub expressions: Vec<Expression>,
-    pub span: OwnedSpan,
+	pub expressions: Vec<Expression>,
+	pub span: OwnedSpan,
 }
 
 impl Display for TupleExpression {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let items =
-            self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
-        write!(f, "({})", items)
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let items = self
+			.expressions
+			.iter()
+			.map(|e| format!("{}", e))
+			.collect::<Vec<_>>()
+			.join(", ");
+		write!(f, "({})", items)
+	}
 }
 
 pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
-    let statements = parse(rql)?;
-    if statements.is_empty() {
-        return Ok(vec![]);
-    }
+	let statements = parse(rql)?;
+	if statements.is_empty() {
+		return Ok(vec![]);
+	}
 
-    let mut result = Vec::new();
-    for statement in statements {
-        for ast in statement.0 {
-            result.push(ExpressionCompiler::compile(ast)?);
-        }
-    }
+	let mut result = Vec::new();
+	for statement in statements {
+		for ast in statement.0 {
+			result.push(ExpressionCompiler::compile(ast)?);
+		}
+	}
 
-    Ok(result)
+	Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_function_call_expression_compilation() {
-        let result = parse_expression("func()").unwrap();
-        assert_eq!(result.len(), 1);
+	#[test]
+	fn test_function_call_expression_compilation() {
+		let result = parse_expression("func()").unwrap();
+		assert_eq!(result.len(), 1);
 
-        if let Expression::Call(call) = &result[0] {
-            assert_eq!(call.func.0.fragment, "func");
-            assert_eq!(call.args.len(), 0);
-        } else {
-            panic!("Expected Call expression");
-        }
-    }
+		if let Expression::Call(call) = &result[0] {
+			assert_eq!(call.func.0.fragment, "func");
+			assert_eq!(call.args.len(), 0);
+		} else {
+			panic!("Expected Call expression");
+		}
+	}
 
-    #[test]
-    fn test_namespaced_function_call_expression_compilation() {
-        let result = parse_expression("blob::hex('deadbeef')").unwrap();
-        assert_eq!(result.len(), 1);
+	#[test]
+	fn test_namespaced_function_call_expression_compilation() {
+		let result = parse_expression("blob::hex('deadbeef')").unwrap();
+		assert_eq!(result.len(), 1);
 
-        if let Expression::Call(call) = &result[0] {
-            assert_eq!(call.func.0.fragment, "blob::hex");
-            assert_eq!(call.args.len(), 1);
-        } else {
-            panic!("Expected Call expression");
-        }
-    }
+		if let Expression::Call(call) = &result[0] {
+			assert_eq!(call.func.0.fragment, "blob::hex");
+			assert_eq!(call.args.len(), 1);
+		} else {
+			panic!("Expected Call expression");
+		}
+	}
 
-    #[test]
-    fn test_deeply_nested_function_call_expression_compilation() {
-        let result = parse_expression("ext::crypto::hash::sha256('data')").unwrap();
-        assert_eq!(result.len(), 1);
+	#[test]
+	fn test_deeply_nested_function_call_expression_compilation() {
+		let result =
+			parse_expression("ext::crypto::hash::sha256('data')")
+				.unwrap();
+		assert_eq!(result.len(), 1);
 
-        if let Expression::Call(call) = &result[0] {
-            assert_eq!(call.func.0.fragment, "ext::crypto::hash::sha256");
-            assert_eq!(call.args.len(), 1);
-        } else {
-            panic!("Expected Call expression");
-        }
-    }
+		if let Expression::Call(call) = &result[0] {
+			assert_eq!(
+				call.func.0.fragment,
+				"ext::crypto::hash::sha256"
+			);
+			assert_eq!(call.args.len(), 1);
+		} else {
+			panic!("Expected Call expression");
+		}
+	}
 
-    #[test]
-    fn test_blob_constructor_end_to_end() {
-        // Test all BLOB constructor expressions compile correctly
-        let test_cases = vec![
-            ("blob::hex('deadbeef')", "blob::hex"),
-            ("blob::b64('SGVsbG8=')", "blob::b64"),
-            ("blob::b64url('SGVsbG8')", "blob::b64url"),
-            ("blob::utf8('Hello, World!')", "blob::utf8"),
-        ];
+	#[test]
+	fn test_blob_constructor_end_to_end() {
+		// Test all BLOB constructor expressions compile correctly
+		let test_cases = vec![
+			("blob::hex('deadbeef')", "blob::hex"),
+			("blob::b64('SGVsbG8=')", "blob::b64"),
+			("blob::b64url('SGVsbG8')", "blob::b64url"),
+			("blob::utf8('Hello, World!')", "blob::utf8"),
+		];
 
-        for (input, expected_func_name) in test_cases {
-            let result = parse_expression(input).unwrap();
-            assert_eq!(result.len(), 1, "Failed for input: {}", input);
+		for (input, expected_func_name) in test_cases {
+			let result = parse_expression(input).unwrap();
+			assert_eq!(
+				result.len(),
+				1,
+				"Failed for input: {}",
+				input
+			);
 
-            if let Expression::Call(call) = &result[0] {
-                assert_eq!(
-                    call.func.0.fragment, expected_func_name,
-                    "Function name mismatch for: {}",
-                    input
-                );
-                assert_eq!(call.args.len(), 1, "Argument count mismatch for: {}", input);
+			if let Expression::Call(call) = &result[0] {
+				assert_eq!(
+					call.func.0.fragment,
+					expected_func_name,
+					"Function name mismatch for: {}",
+					input
+				);
+				assert_eq!(
+					call.args.len(),
+					1,
+					"Argument count mismatch for: {}",
+					input
+				);
 
-                // Verify the argument is a text constant
-                if let Expression::Constant(const_expr) = &call.args[0] {
-                    match const_expr {
-                        ConstantExpression::Text { .. } => {
-                            // Expected - this is a text constant
-                        }
-                        _ => panic!("Expected text constant argument for: {}", input),
-                    }
-                } else {
-                    panic!("Expected constant expression argument for: {}", input);
-                }
-            } else {
-                panic!("Expected Call expression for: {}", input);
-            }
-        }
-    }
-    
-    #[test]
-    fn test_equal_operator_alias() {
-        use crate::ast::lex::lex;
-        use crate::ast::parse::parse;
-        
-        // Test that = works as equality operator
-        let test_cases = vec![
-            ("a = b", "a = b"),
-            ("a == b", "a == b"),
-            ("x = 5", "x = 5"),
-            ("x == 5", "x == 5"),
-        ];
-        
-        for (input, _description) in test_cases {
-            let tokens = lex(input).unwrap();
-            let ast = parse(tokens).unwrap();
-            let expr = ast[0].first_unchecked();
-            
-            // Compile the expression
-            let compiled = ExpressionCompiler::compile(expr.clone()).unwrap();
-            
-            // Verify it compiles to an Equal expression
-            if let Expression::Equal(_equal_expr) = compiled {
-                // Both = and == should compile to Equal expression
-                assert!(true, "Successfully compiled {} to Equal expression", input);
-            } else {
-                panic!("Expected Equal expression for: {}", input);
-            }
-        }
-    }
+				// Verify the argument is a text constant
+				if let Expression::Constant(const_expr) =
+					&call.args[0]
+				{
+					match const_expr {
+						ConstantExpression::Text {
+							..
+						} => {
+							// Expected - this is a
+							// text constant
+						}
+						_ => panic!(
+							"Expected text constant argument for: {}",
+							input
+						),
+					}
+				} else {
+					panic!(
+						"Expected constant expression argument for: {}",
+						input
+					);
+				}
+			} else {
+				panic!(
+					"Expected Call expression for: {}",
+					input
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn test_equal_operator_alias() {
+		use crate::ast::{lex::lex, parse::parse};
+
+		// Test that = works as equality operator
+		let test_cases = vec![
+			("a = b", "a = b"),
+			("a == b", "a == b"),
+			("x = 5", "x = 5"),
+			("x == 5", "x == 5"),
+		];
+
+		for (input, _description) in test_cases {
+			let tokens = lex(input).unwrap();
+			let ast = parse(tokens).unwrap();
+			let expr = ast[0].first_unchecked();
+
+			// Compile the expression
+			let compiled =
+				ExpressionCompiler::compile(expr.clone())
+					.unwrap();
+
+			// Verify it compiles to an Equal expression
+			if let Expression::Equal(_equal_expr) = compiled {
+				// Both = and == should compile to Equal
+				// expression
+				assert!(
+					true,
+					"Successfully compiled {} to Equal expression",
+					input
+				);
+			} else {
+				panic!(
+					"Expected Equal expression for: {}",
+					input
+				);
+			}
+		}
+	}
 }
 
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
-    pub fn compile(ast: Ast) -> crate::Result<Expression> {
-        match ast {
+	pub fn compile(ast: Ast) -> crate::Result<Expression> {
+		match ast {
             Ast::Literal(literal) => match literal {
                 AstLiteral::Boolean(_) => {
                     Ok(Expression::Constant(ConstantExpression::Bool { span: literal.span() }))
@@ -780,202 +1000,222 @@ impl ExpressionCompiler {
             }
             ast => unimplemented!("{:?}", ast),
         }
-    }
+	}
 
-    fn infix(ast: AstInfix) -> crate::Result<Expression> {
-        match ast.operator {
-            InfixOperator::AccessTable(_) => {
-                let Ast::Identifier(left) = *ast.left else { unimplemented!() };
-                let Ast::Identifier(right) = *ast.right else { unimplemented!() };
+	fn infix(ast: AstInfix) -> crate::Result<Expression> {
+		match ast.operator {
+			InfixOperator::AccessTable(_) => {
+				let Ast::Identifier(left) = *ast.left else {
+					unimplemented!()
+				};
+				let Ast::Identifier(right) = *ast.right else {
+					unimplemented!()
+				};
 
-                Ok(Expression::AccessTable(AccessTableExpression {
-                    table: left.span(),
-                    column: right.span(),
-                }))
-            }
+				Ok(Expression::AccessTable(
+					AccessTableExpression {
+						table: left.span(),
+						column: right.span(),
+					},
+				))
+			}
 
-            InfixOperator::Add(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
-                Ok(Expression::Add(AddExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::Divide(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
-                Ok(Expression::Div(DivExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::Subtract(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
-                Ok(Expression::Sub(SubExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::Rem(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
-                Ok(Expression::Rem(RemExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::Multiply(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
-                Ok(Expression::Mul(MulExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::Call(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+			InfixOperator::Add(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
+				Ok(Expression::Add(AddExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::Divide(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
+				Ok(Expression::Div(DivExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::Subtract(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
+				Ok(Expression::Sub(SubExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::Rem(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
+				Ok(Expression::Rem(RemExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::Multiply(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
+				Ok(Expression::Mul(MulExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::Call(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                let Expression::Column(ColumnExpression(span)) = left else { panic!() };
-                let Expression::Tuple(tuple) = right else { panic!() };
+				let Expression::Column(ColumnExpression(span)) =
+					left
+				else {
+					panic!()
+				};
+				let Expression::Tuple(tuple) = right else {
+					panic!()
+				};
 
-                Ok(Expression::Call(CallExpression {
-                    func: IdentExpression(span),
-                    args: tuple.expressions,
-                    span: token.span,
-                }))
-            }
-            InfixOperator::GreaterThan(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::Call(CallExpression {
+					func: IdentExpression(span),
+					args: tuple.expressions,
+					span: token.span,
+				}))
+			}
+			InfixOperator::GreaterThan(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::GreaterThan(GreaterThanExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::GreaterThanEqual(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::GreaterThan(
+					GreaterThanExpression {
+						left: Box::new(left),
+						right: Box::new(right),
+						span: token.span,
+					},
+				))
+			}
+			InfixOperator::GreaterThanEqual(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::GreaterThanEqual(GreaterThanEqualExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::LessThan(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::GreaterThanEqual(
+					GreaterThanEqualExpression {
+						left: Box::new(left),
+						right: Box::new(right),
+						span: token.span,
+					},
+				))
+			}
+			InfixOperator::LessThan(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::LessThan(LessThanExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::LessThanEqual(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::LessThan(LessThanExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::LessThanEqual(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::LessThanEqual(LessThanEqualExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::Equal(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::LessThanEqual(
+					LessThanEqualExpression {
+						left: Box::new(left),
+						right: Box::new(right),
+						span: token.span,
+					},
+				))
+			}
+			InfixOperator::Equal(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::Equal(EqualExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::NotEqual(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::Equal(EqualExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::NotEqual(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::NotEqual(NotEqualExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            InfixOperator::As(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+				Ok(Expression::NotEqual(NotEqualExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+			InfixOperator::As(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::Alias(AliasExpression {
-                    alias: IdentExpression(right.span()),
-                    expression: Box::new(left),
-                    span: token.span,
-                }))
-            }
+				Ok(Expression::Alias(AliasExpression {
+					alias: IdentExpression(right.span()),
+					expression: Box::new(left),
+					span: token.span,
+				}))
+			}
 
-            InfixOperator::And(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+			InfixOperator::And(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::And(AndExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
+				Ok(Expression::And(AndExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
 
-            InfixOperator::Or(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+			InfixOperator::Or(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::Or(OrExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
+				Ok(Expression::Or(OrExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
 
-            InfixOperator::Xor(token) => {
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+			InfixOperator::Xor(token) => {
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::Xor(XorExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
+				Ok(Expression::Xor(XorExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
 
-            InfixOperator::Assign(token) => {
-                // Treat = as == for equality comparison in expressions
-                let left = Self::compile(*ast.left)?;
-                let right = Self::compile(*ast.right)?;
+			InfixOperator::Assign(token) => {
+				// Treat = as == for equality comparison in
+				// expressions
+				let left = Self::compile(*ast.left)?;
+				let right = Self::compile(*ast.right)?;
 
-                Ok(Expression::Equal(EqualExpression {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    span: token.span,
-                }))
-            }
-            
-            operator => unimplemented!("not implemented: {operator:?}"),
-            // InfixOperator::Arrow(_) => {}
-            // InfixOperator::AccessPackage(_) => {}
-            // InfixOperator::Subtract(_) => {}
-            // InfixOperator::Multiply(_) => {}
-            // InfixOperator::Divide(_) => {}
-            // InfixOperator::Rem(_) => {}
-            // InfixOperator::TypeAscription(_) => {}
-        }
-    }
+				Ok(Expression::Equal(EqualExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					span: token.span,
+				}))
+			}
+
+			operator => {
+				unimplemented!("not implemented: {operator:?}")
+			} /* InfixOperator::Arrow(_) => {}
+			   * InfixOperator::AccessPackage(_) => {}
+			   * InfixOperator::Subtract(_) => {}
+			   * InfixOperator::Multiply(_) => {}
+			   * InfixOperator::Divide(_) => {}
+			   * InfixOperator::Rem(_) => {}
+			   * InfixOperator::TypeAscription(_) => {} */
+		}
+	}
 }

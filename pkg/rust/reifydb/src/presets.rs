@@ -6,13 +6,16 @@
 //! These type aliases provide non-generic database types that are ready to use
 //! without having to specify the transaction types.
 
+use reifydb_core::interface::{StandardCdcTransaction, StandardTransaction};
+use reifydb_storage::{memory::Memory, sqlite::Sqlite};
+use reifydb_transaction::{
+	mvcc::transaction::{
+		optimistic::Optimistic, serializable::Serializable,
+	},
+	svl::SingleVersionLock,
+};
+
 use crate::Database;
-use reifydb_core::interface::{StandardTransaction, StandardCdcTransaction};
-use reifydb_storage::memory::Memory;
-use reifydb_storage::sqlite::Sqlite;
-use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb_transaction::svl::SingleVersionLock;
 
 pub type UnversionedMemory = SingleVersionLock<Memory>;
 pub type UnversionedSqlite = SingleVersionLock<Sqlite>;
@@ -24,17 +27,37 @@ pub type MemoryCdc = StandardCdcTransaction<Memory>;
 pub type SqliteCdc = StandardCdcTransaction<Sqlite>;
 
 /// In-memory database with serializable isolation
-pub type MemoryDatabaseSerializable =
-    Database<StandardTransaction<Serializable<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc>>;
+pub type MemoryDatabaseSerializable = Database<
+	StandardTransaction<
+		Serializable<Memory, UnversionedMemory>,
+		UnversionedMemory,
+		MemoryCdc,
+	>,
+>;
 
 /// In-memory database with optimistic concurrency control
-pub type MemoryDatabaseOptimistic =
-    Database<StandardTransaction<Optimistic<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc>>;
+pub type MemoryDatabaseOptimistic = Database<
+	StandardTransaction<
+		Optimistic<Memory, UnversionedMemory>,
+		UnversionedMemory,
+		MemoryCdc,
+	>,
+>;
 
 /// SQLite-backed database with serializable isolations
-pub type SqliteDatabaseSerializable =
-    Database<StandardTransaction<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc>>;
+pub type SqliteDatabaseSerializable = Database<
+	StandardTransaction<
+		Serializable<Sqlite, UnversionedSqlite>,
+		UnversionedSqlite,
+		SqliteCdc,
+	>,
+>;
 
 /// SQLite-backed database with optimistic concurrency control
-pub type SqliteDatabaseOptimistic =
-    Database<StandardTransaction<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc>>;
+pub type SqliteDatabaseOptimistic = Database<
+	StandardTransaction<
+		Optimistic<Sqlite, UnversionedSqlite>,
+		UnversionedSqlite,
+		SqliteCdc,
+	>,
+>;

@@ -1,178 +1,221 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::mvcc::transaction::serializable::{QueryTransaction, Serializable, CommandTransaction};
-use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{
-    BoxedVersionedIter, GetHooks, UnversionedTransaction, Versioned, VersionedQueryTransaction,
-    VersionedStorage, VersionedTransaction, VersionedCommandTransaction,
+use reifydb_core::{
+	EncodedKey, EncodedKeyRange, Error,
+	hook::Hooks,
+	interface::{
+		BoxedVersionedIter, GetHooks, UnversionedTransaction,
+		Versioned, VersionedCommandTransaction,
+		VersionedQueryTransaction, VersionedStorage,
+		VersionedTransaction,
+	},
+	row::EncodedRow,
 };
-use reifydb_core::row::EncodedRow;
-use reifydb_core::{EncodedKey, EncodedKeyRange, Error};
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> GetHooks for Serializable<VS, UT> {
-    fn get_hooks(&self) -> &Hooks {
-        &self.hooks
-    }
+use crate::mvcc::transaction::serializable::{
+	CommandTransaction, QueryTransaction, Serializable,
+};
+
+impl<VS: VersionedStorage, UT: UnversionedTransaction> GetHooks
+	for Serializable<VS, UT>
+{
+	fn get_hooks(&self) -> &Hooks {
+		&self.hooks
+	}
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
-    for Serializable<VS, UT>
+	for Serializable<VS, UT>
 {
-    type Query = QueryTransaction<VS, UT>;
-    type Command = CommandTransaction<VS, UT>;
+	type Query = QueryTransaction<VS, UT>;
+	type Command = CommandTransaction<VS, UT>;
 
-    fn begin_query(&self) -> Result<Self::Query, Error> {
-        self.begin_query()
-    }
+	fn begin_query(&self) -> Result<Self::Query, Error> {
+		self.begin_query()
+	}
 
-    fn begin_command(&self) -> Result<Self::Command, Error> {
-        self.begin_command()
-    }
+	fn begin_command(&self) -> Result<Self::Command, Error> {
+		self.begin_command()
+	}
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
-    for QueryTransaction<VS, UT>
+	for QueryTransaction<VS, UT>
 {
-    fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
-        Ok(QueryTransaction::get(self, key)?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        }))
-    }
+	fn get(
+		&mut self,
+		key: &EncodedKey,
+	) -> Result<Option<Versioned>, Error> {
+		Ok(QueryTransaction::get(self, key)?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		}))
+	}
 
-    fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
-        QueryTransaction::contains_key(self, key)
-    }
+	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
+		QueryTransaction::contains_key(self, key)
+	}
 
-    fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
-        let iter = QueryTransaction::scan(self)?;
-        Ok(Box::new(iter.into_iter()))
-    }
+	fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
+		let iter = QueryTransaction::scan(self)?;
+		Ok(Box::new(iter.into_iter()))
+	}
 
-    fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
-        let iter = QueryTransaction::scan_rev(self)?;
-        Ok(Box::new(iter.into_iter()))
-    }
+	fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
+		let iter = QueryTransaction::scan_rev(self)?;
+		Ok(Box::new(iter.into_iter()))
+	}
 
-    fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-        let iter = QueryTransaction::range(self, range)?;
-        Ok(Box::new(iter.into_iter()))
-    }
+	fn range(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = QueryTransaction::range(self, range)?;
+		Ok(Box::new(iter.into_iter()))
+	}
 
-    fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-        let iter = QueryTransaction::range_rev(self, range)?;
-        Ok(Box::new(iter.into_iter()))
-    }
+	fn range_rev(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = QueryTransaction::range_rev(self, range)?;
+		Ok(Box::new(iter.into_iter()))
+	}
 
-    fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-        let iter = QueryTransaction::prefix(self, prefix)?;
-        Ok(Box::new(iter.into_iter()))
-    }
+	fn prefix(
+		&mut self,
+		prefix: &EncodedKey,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = QueryTransaction::prefix(self, prefix)?;
+		Ok(Box::new(iter.into_iter()))
+	}
 
-    fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-        let iter = QueryTransaction::prefix_rev(self, prefix)?;
-        Ok(Box::new(iter.into_iter()))
-    }
+	fn prefix_rev(
+		&mut self,
+		prefix: &EncodedKey,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = QueryTransaction::prefix_rev(self, prefix)?;
+		Ok(Box::new(iter.into_iter()))
+	}
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
-    for CommandTransaction<VS, UT>
+	for CommandTransaction<VS, UT>
 {
-    fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
-        Ok(CommandTransaction::get(self, key)?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        }))
-    }
+	fn get(
+		&mut self,
+		key: &EncodedKey,
+	) -> Result<Option<Versioned>, Error> {
+		Ok(CommandTransaction::get(self, key)?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		}))
+	}
 
-    fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
-        Ok(CommandTransaction::contains_key(self, key)?)
-    }
+	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
+		Ok(CommandTransaction::contains_key(self, key)?)
+	}
 
-    fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
-        let iter = self.scan()?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        });
+	fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
+		let iter = self.scan()?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		});
 
-        Ok(Box::new(iter))
-    }
+		Ok(Box::new(iter))
+	}
 
-    fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
-        let iter = self.scan_rev()?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        });
+	fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
+		let iter = self.scan_rev()?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		});
 
-        Ok(Box::new(iter))
-    }
+		Ok(Box::new(iter))
+	}
 
-    fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-        let iter = self.range(range)?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        });
+	fn range(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = self.range(range)?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		});
 
-        Ok(Box::new(iter))
-    }
+		Ok(Box::new(iter))
+	}
 
-    fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-        let iter = self.range_rev(range)?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        });
+	fn range_rev(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = self.range_rev(range)?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		});
 
-        Ok(Box::new(iter))
-    }
+		Ok(Box::new(iter))
+	}
 
-    fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-        let iter = self.prefix(prefix)?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        });
+	fn prefix(
+		&mut self,
+		prefix: &EncodedKey,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = self.prefix(prefix)?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		});
 
-        Ok(Box::new(iter))
-    }
+		Ok(Box::new(iter))
+	}
 
-    fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-        let iter = self.prefix_rev(prefix)?.map(|tv| Versioned {
-            key: tv.key().clone(),
-            row: tv.row().clone(),
-            version: tv.version(),
-        });
+	fn prefix_rev(
+		&mut self,
+		prefix: &EncodedKey,
+	) -> Result<BoxedVersionedIter, Error> {
+		let iter = self.prefix_rev(prefix)?.map(|tv| Versioned {
+			key: tv.key().clone(),
+			row: tv.row().clone(),
+			version: tv.version(),
+		});
 
-        Ok(Box::new(iter))
-    }
+		Ok(Box::new(iter))
+	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedCommandTransaction
-    for CommandTransaction<VS, UT>
+impl<VS: VersionedStorage, UT: UnversionedTransaction>
+	VersionedCommandTransaction for CommandTransaction<VS, UT>
 {
-    fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
-        CommandTransaction::set(self, key, row)?;
-        Ok(())
-    }
+	fn set(
+		&mut self,
+		key: &EncodedKey,
+		row: EncodedRow,
+	) -> Result<(), Error> {
+		CommandTransaction::set(self, key, row)?;
+		Ok(())
+	}
 
-    fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
-        CommandTransaction::remove(self, key)?;
-        Ok(())
-    }
+	fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
+		CommandTransaction::remove(self, key)?;
+		Ok(())
+	}
 
-    fn commit(mut self) -> Result<(), Error> {
-        CommandTransaction::commit(&mut self)?;
-        Ok(())
-    }
+	fn commit(mut self) -> Result<(), Error> {
+		CommandTransaction::commit(&mut self)?;
+		Ok(())
+	}
 
-    fn rollback(mut self) -> Result<(), Error> {
-        CommandTransaction::rollback(&mut self)?;
-        Ok(())
-    }
+	fn rollback(mut self) -> Result<(), Error> {
+		CommandTransaction::rollback(&mut self)?;
+		Ok(())
+	}
 }

@@ -10,7 +10,7 @@ pub mod retry;
 pub mod wait_group;
 
 pub use bitvec::BitVec;
-pub use clock::{Clock, SystemClock, FixedClock, MockClock};
+pub use clock::{Clock, FixedClock, MockClock, SystemClock};
 pub use cowvec::CowVec;
 pub use either::Either;
 pub use retry::retry;

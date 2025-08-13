@@ -1,64 +1,122 @@
-use crate::columnar::{Column, ColumnData, Unqualified};
-use crate::evaluate::{EvaluationContext, Evaluator};
-use reifydb_core::{error, Value};
-use reifydb_core::result::error::diagnostic::engine;
+use reifydb_core::{Value, error, result::error::diagnostic::engine};
 use reifydb_rql::expression::ParameterExpression;
 
+use crate::{
+	columnar::{Column, ColumnData, Unqualified},
+	evaluate::{EvaluationContext, Evaluator},
+};
+
 impl Evaluator {
-    pub(crate) fn parameter(
-        &mut self,
-        expr: &ParameterExpression,
-        ctx: &EvaluationContext,
-    ) -> crate::Result<Column> {
-        let value = match expr {
-            ParameterExpression::Positional { span } => {
-                let index = span.fragment[1..].parse::<usize>().map_err(|_| {
-                    error!(engine::invalid_parameter_reference(span.clone()))
-                })?;
-                
-                ctx.params.get_positional(index - 1)
-                    .ok_or_else(|| {
-                        error!(engine::parameter_not_found(span.clone()))
-                    })?
-            }
-            ParameterExpression::Named { span } => {
-                let name = &span.fragment[1..];
-                
-                ctx.params.get_named(name)
-                    .ok_or_else(|| {
-                        error!(engine::parameter_not_found(span.clone()))
-                    })?
-            }
-        };
-        
-        let column_data = match value {
-            Value::Bool(b) => ColumnData::bool(vec![*b; ctx.row_count]),
-            Value::Float4(f) => ColumnData::float4(vec![f.value(); ctx.row_count]),
-            Value::Float8(f) => ColumnData::float8(vec![f.value(); ctx.row_count]),
-            Value::Int1(i) => ColumnData::int1(vec![*i; ctx.row_count]),
-            Value::Int2(i) => ColumnData::int2(vec![*i; ctx.row_count]),
-            Value::Int4(i) => ColumnData::int4(vec![*i; ctx.row_count]),
-            Value::Int8(i) => ColumnData::int8(vec![*i; ctx.row_count]),
-            Value::Int16(i) => ColumnData::int16(vec![*i; ctx.row_count]),
-            Value::Uint1(u) => ColumnData::uint1(vec![*u; ctx.row_count]),
-            Value::Uint2(u) => ColumnData::uint2(vec![*u; ctx.row_count]),
-            Value::Uint4(u) => ColumnData::uint4(vec![*u; ctx.row_count]),
-            Value::Uint8(u) => ColumnData::uint8(vec![*u; ctx.row_count]),
-            Value::Uint16(u) => ColumnData::uint16(vec![*u; ctx.row_count]),
-            Value::Utf8(s) => ColumnData::utf8(vec![s.clone(); ctx.row_count]),
-            Value::Date(d) => ColumnData::date(vec![*d; ctx.row_count]),
-            Value::DateTime(dt) => ColumnData::datetime(vec![*dt; ctx.row_count]),
-            Value::Time(t) => ColumnData::time(vec![*t; ctx.row_count]),
-            Value::Interval(i) => ColumnData::interval(vec![*i; ctx.row_count]),
-            Value::Uuid4(u) => ColumnData::uuid4(vec![*u; ctx.row_count]),
-            Value::Uuid7(u) => ColumnData::uuid7(vec![*u; ctx.row_count]),
-            Value::Blob(b) => ColumnData::blob(vec![b.clone(); ctx.row_count]),
-            Value::RowId(id) => ColumnData::row_id(vec![*id; ctx.row_count]),
-            Value::Undefined => ColumnData::undefined(ctx.row_count),
-        };
-        Ok(Column::Unqualified(Unqualified { 
-            name: "parameter".to_string(), 
-            data: column_data 
-        }))
-    }
+	pub(crate) fn parameter(
+		&mut self,
+		expr: &ParameterExpression,
+		ctx: &EvaluationContext,
+	) -> crate::Result<Column> {
+		let value = match expr {
+			ParameterExpression::Positional {
+				span,
+			} => {
+				let index = span.fragment[1..]
+					.parse::<usize>()
+					.map_err(|_| {
+						error!(engine::invalid_parameter_reference(span.clone()))
+					})?;
+
+				ctx.params
+					.get_positional(index - 1)
+					.ok_or_else(|| {
+						error!(engine::parameter_not_found(span.clone()))
+					})?
+			}
+			ParameterExpression::Named {
+				span,
+			} => {
+				let name = &span.fragment[1..];
+
+				ctx.params.get_named(name).ok_or_else(|| {
+					error!(engine::parameter_not_found(
+						span.clone()
+					))
+				})?
+			}
+		};
+
+		let column_data = match value {
+			Value::Bool(b) => {
+				ColumnData::bool(vec![*b; ctx.row_count])
+			}
+			Value::Float4(f) => ColumnData::float4(vec![
+					f.value();
+					ctx.row_count
+				]),
+			Value::Float8(f) => ColumnData::float8(vec![
+					f.value();
+					ctx.row_count
+				]),
+			Value::Int1(i) => {
+				ColumnData::int1(vec![*i; ctx.row_count])
+			}
+			Value::Int2(i) => {
+				ColumnData::int2(vec![*i; ctx.row_count])
+			}
+			Value::Int4(i) => {
+				ColumnData::int4(vec![*i; ctx.row_count])
+			}
+			Value::Int8(i) => {
+				ColumnData::int8(vec![*i; ctx.row_count])
+			}
+			Value::Int16(i) => {
+				ColumnData::int16(vec![*i; ctx.row_count])
+			}
+			Value::Uint1(u) => {
+				ColumnData::uint1(vec![*u; ctx.row_count])
+			}
+			Value::Uint2(u) => {
+				ColumnData::uint2(vec![*u; ctx.row_count])
+			}
+			Value::Uint4(u) => {
+				ColumnData::uint4(vec![*u; ctx.row_count])
+			}
+			Value::Uint8(u) => {
+				ColumnData::uint8(vec![*u; ctx.row_count])
+			}
+			Value::Uint16(u) => {
+				ColumnData::uint16(vec![*u; ctx.row_count])
+			}
+			Value::Utf8(s) => {
+				ColumnData::utf8(vec![s.clone(); ctx.row_count])
+			}
+			Value::Date(d) => {
+				ColumnData::date(vec![*d; ctx.row_count])
+			}
+			Value::DateTime(dt) => {
+				ColumnData::datetime(vec![*dt; ctx.row_count])
+			}
+			Value::Time(t) => {
+				ColumnData::time(vec![*t; ctx.row_count])
+			}
+			Value::Interval(i) => {
+				ColumnData::interval(vec![*i; ctx.row_count])
+			}
+			Value::Uuid4(u) => {
+				ColumnData::uuid4(vec![*u; ctx.row_count])
+			}
+			Value::Uuid7(u) => {
+				ColumnData::uuid7(vec![*u; ctx.row_count])
+			}
+			Value::Blob(b) => {
+				ColumnData::blob(vec![b.clone(); ctx.row_count])
+			}
+			Value::RowId(id) => {
+				ColumnData::row_id(vec![*id; ctx.row_count])
+			}
+			Value::Undefined => {
+				ColumnData::undefined(ctx.row_count)
+			}
+		};
+		Ok(Column::Unqualified(Unqualified {
+			name: "parameter".to_string(),
+			data: column_data,
+		}))
+	}
 }

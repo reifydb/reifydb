@@ -6,7 +6,8 @@ mod get;
 mod range;
 mod scan;
 
-use crate::memory::Memory;
 use reifydb_core::interface::CdcStorage;
+
+use crate::memory::Memory;
 
 impl CdcStorage for Memory {}

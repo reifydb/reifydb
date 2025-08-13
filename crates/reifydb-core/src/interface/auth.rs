@@ -5,13 +5,22 @@ pub type PrincipalId = u64;
 
 #[derive(Debug, Clone)]
 pub enum Principal {
-    Anonymous {},
-    System { id: PrincipalId, name: String },
-    User { id: PrincipalId, name: String },
+	Anonymous {},
+	System {
+		id: PrincipalId,
+		name: String,
+	},
+	User {
+		id: PrincipalId,
+		name: String,
+	},
 }
 
 impl Principal {
-    pub fn root() -> Self {
-        Self::System { id: 0, name: "root".to_string() }
-    }
+	pub fn root() -> Self {
+		Self::System {
+			id: 0,
+			name: "root".to_string(),
+		}
+	}
 }

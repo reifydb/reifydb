@@ -9,8 +9,8 @@ mod layout;
 
 #[derive(Debug, PartialEq)]
 pub struct Schema {
-    pub id: SchemaId,
-    pub name: String,
+	pub id: SchemaId,
+	pub name: String,
 }
 
 pub use reifydb_core::interface::SchemaId;

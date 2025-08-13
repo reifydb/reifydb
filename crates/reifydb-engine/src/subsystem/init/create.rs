@@ -1,32 +1,31 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::Engine;
-use reifydb_core::hook::lifecycle::OnCreateHook;
-use reifydb_core::hook::{BoxedHookIter, Callback};
-use reifydb_core::interface::{
-    Engine as EngineInterface, Principal, Transaction,
+use reifydb_core::{
+	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
+	interface::{Engine as EngineInterface, Principal, Transaction},
+	return_hooks,
 };
-use reifydb_core::return_hooks;
 
-pub(crate) struct CreateCallback<T: Transaction>
-{
-    engine: Engine<T>,
+use crate::Engine;
+
+pub(crate) struct CreateCallback<T: Transaction> {
+	engine: Engine<T>,
 }
 
-impl<T: Transaction> CreateCallback<T>
-{
-    pub(crate) fn new(engine: Engine<T>) -> Self {
-        Self { engine }
-    }
+impl<T: Transaction> CreateCallback<T> {
+	pub(crate) fn new(engine: Engine<T>) -> Self {
+		Self {
+			engine,
+		}
+	}
 }
 
-impl<T: Transaction> Callback<OnCreateHook> for CreateCallback<T>
-{
-    fn on(&self, _hook: &OnCreateHook) -> crate::Result<BoxedHookIter> {
-        self.engine.command_as(
-            &Principal::root(),
-            r#"
+impl<T: Transaction> Callback<OnCreateHook> for CreateCallback<T> {
+	fn on(&self, _hook: &OnCreateHook) -> crate::Result<BoxedHookIter> {
+		self.engine.command_as(
+			&Principal::root(),
+			r#"
 
 create schema reifydb;
 
@@ -36,8 +35,8 @@ create table reifydb.flows{
 };
 
 "#,
-            reifydb_core::interface::Params::None,
-        )?;
-        return_hooks!()
-    }
+			reifydb_core::interface::Params::None,
+		)?;
+		return_hooks!()
+	}
 }
