@@ -17,6 +17,7 @@ mod iter;
 mod iter_rev;
 mod range;
 mod range_rev;
+mod cdc;
 
 #[derive(Clone)]
 pub struct Lmdb(Arc<LmdbInner>);

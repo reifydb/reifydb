@@ -27,7 +27,7 @@ where
     fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Unversioned>> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
-                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
+                Delta::Set { row, .. } | Delta::Update { row, .. } => {
                     Ok(Some(Unversioned { key: key.clone(), row: row.clone() }))
                 }
                 Delta::Remove { .. } => Ok(None),
@@ -40,7 +40,7 @@ where
     fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
-                Delta::Insert { .. } | Delta::Update { .. } => Ok(true),
+                Delta::Set { .. } | Delta::Update { .. } => Ok(true),
                 Delta::Remove { .. } => Ok(false),
             };
         }
@@ -130,7 +130,7 @@ where
         let delta = if self.pending.contains_key(key) {
             Delta::Update { key: key.clone(), row }
         } else {
-            Delta::Insert { key: key.clone(), row }
+            Delta::Set { key: key.clone(), row }
         };
         self.pending.insert(key.clone(), delta);
         Ok(())

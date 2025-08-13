@@ -16,6 +16,7 @@ pub struct ActiveQueryTransaction<T: Transaction>
 {
     versioned: <T::Versioned as VersionedTransaction>::Query,
     unversioned: T::Unversioned,
+    cdc: T::Cdc,
 }
 
 /// An active command transaction that holds a versioned command transaction
@@ -26,6 +27,7 @@ pub struct ActiveCommandTransaction<T: Transaction>
 {
     versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
     unversioned: T::Unversioned,
+    cdc: T::Cdc,
     state: TransactionState,
 }
 
@@ -42,8 +44,9 @@ impl<T: Transaction> ActiveQueryTransaction<T>
     pub fn new(
         versioned: <T::Versioned as VersionedTransaction>::Query,
         unversioned: T::Unversioned,
+        cdc: T::Cdc,
     ) -> Self {
-        Self { versioned, unversioned }
+        Self { versioned, unversioned, cdc }
     }
 
     /// Execute a function with query access to the unversioned transaction.
@@ -61,6 +64,11 @@ impl<T: Transaction> ActiveQueryTransaction<T>
         F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Query) -> crate::Result<R>,
     {
         f(&mut self.versioned)
+    }
+    
+    /// Get access to the CDC transaction interface
+    pub fn cdc(&self) -> &T::Cdc {
+        &self.cdc
     }
 }
 
@@ -113,8 +121,9 @@ impl<T: Transaction> ActiveCommandTransaction<T>
     pub fn new(
         versioned: <T::Versioned as VersionedTransaction>::Command,
         unversioned: T::Unversioned,
+        cdc: T::Cdc,
     ) -> Self {
-        Self { versioned: Some(versioned), unversioned, state: TransactionState::Active }
+        Self { versioned: Some(versioned), unversioned, cdc, state: TransactionState::Active }
     }
 
     /// Check if transaction is still active and return appropriate error if not
@@ -216,6 +225,11 @@ impl<T: Transaction> ActiveCommandTransaction<T>
             // This should never happen due to check_active
             unreachable!("Transaction state inconsistency")
         }
+    }
+    
+    /// Get access to the CDC transaction interface
+    pub fn cdc(&self) -> &T::Cdc {
+        &self.cdc
     }
 }
 

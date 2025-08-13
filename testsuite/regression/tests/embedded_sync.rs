@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::core::interface::{CdcTransaction, StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
 use reifydb::{Database, SyncBuilder, SessionSync, memory, optimistic};
 use reifydb_testing::testscript;
 use reifydb_testing::testscript::Command;
@@ -11,29 +11,32 @@ use std::fmt::Write;
 use std::path::Path;
 use test_each_file::test_each_path;
 
-pub struct Runner<VT, UT>
+pub struct Runner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
-    instance: Database<StandardTransaction<VT, UT>>,
+    instance: Database<StandardTransaction<VT, UT, C>>,
 }
 
-impl<VT, UT> Runner<VT, UT>
+impl<VT, UT, C> Runner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
-    pub fn new(input: (VT, UT, Hooks)) -> Self {
-        let (versioned, unversioned, hooks) = input;
-        Self { instance: SyncBuilder::new(versioned, unversioned, hooks).build() }
+    pub fn new(input: (VT, UT, C, Hooks)) -> Self {
+        let (versioned, unversioned, cdc, hooks) = input;
+        Self { instance: SyncBuilder::new(versioned, unversioned, cdc, hooks).build() }
     }
 }
 
-impl<VT, UT> testscript::Runner for Runner<VT, UT>
+impl<VT, UT, C> testscript::Runner for Runner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

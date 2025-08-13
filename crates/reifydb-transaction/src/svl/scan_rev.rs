@@ -65,7 +65,7 @@ impl Iterator for SvlScanRev {
                             self.last_yielded_key = Some(key.clone());
 
                             match delta {
-                                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
+                                Delta::Set { row, .. } | Delta::Update { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -82,7 +82,7 @@ impl Iterator for SvlScanRev {
                             self.last_yielded_key = Some(key.clone());
 
                             match delta {
-                                Delta::Insert { row, .. } | Delta::Update { row, .. } => {
+                                Delta::Set { row, .. } | Delta::Update { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -111,7 +111,7 @@ impl Iterator for SvlScanRev {
                     self.last_yielded_key = Some(key.clone());
 
                     match delta {
-                        Delta::Insert { row, .. } | Delta::Update { row, .. } => {
+                        Delta::Set { row, .. } | Delta::Update { row, .. } => {
                             return Some(Unversioned { key, row });
                         }
                         Delta::Remove { .. } => {

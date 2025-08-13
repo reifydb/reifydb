@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::columnar::Columns;
 use crate::columnar::layout::ColumnsLayout;
+use crate::columnar::Columns;
 use crate::columnar::{Column, ColumnData, ColumnQualified, TableQualified};
-use crate::function::{Functions, math};
+use crate::function::{math, Functions};
 use query::compile::compile;
-use reifydb_core::Frame;
 use reifydb_core::interface::{
     ActiveCommandTransaction, ActiveQueryTransaction, Command, Execute, ExecuteCommand,
-    ExecuteQuery, Params, Query, StandardTransaction, Table, Transaction,
+    ExecuteQuery, Params, Query, StandardCdcTransaction, StandardTransaction, Table, Transaction,
     VersionedQueryTransaction,
 };
+use reifydb_core::Frame;
 use reifydb_rql::ast;
 use reifydb_rql::plan::physical::PhysicalPlan;
 use reifydb_rql::plan::plan;
@@ -57,6 +57,7 @@ impl
         StandardTransaction<
             Serializable<Memory, SingleVersionLock<Memory>>,
             SingleVersionLock<Memory>,
+            StandardCdcTransaction<Memory>,
         >,
     >
 {

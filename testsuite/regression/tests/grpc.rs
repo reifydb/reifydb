@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::core::interface::{CdcTransaction, StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
 use reifydb::core::retry;
 use reifydb::network::grpc::client::GrpcClient;
 use reifydb::network::grpc::server::GrpcConfig;
@@ -16,24 +16,26 @@ use std::path::Path;
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
-pub struct GrpcRunner<VT, UT>
+pub struct GrpcRunner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
-    instance: Option<Database<StandardTransaction<VT, UT>>>,
+    instance: Option<Database<StandardTransaction<VT, UT, C>>>,
     client: Option<GrpcClient>,
     runtime: Option<Runtime>,
 }
 
-impl<VT, UT> GrpcRunner<VT, UT>
+impl<VT, UT, C> GrpcRunner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
-    pub fn new(input: (VT, UT, Hooks)) -> Self {
-        let (versioned, unversioned, hooks) = input;
-        let instance = ServerBuilder::new(versioned, unversioned, hooks)
+    pub fn new(input: (VT, UT, C, Hooks)) -> Self {
+        let (versioned, unversioned, cdc, hooks) = input;
+        let instance = ServerBuilder::new(versioned, unversioned, cdc, hooks)
             .with_grpc(GrpcConfig { socket: Some("[::1]:0".parse().unwrap()) })
             .build();
 
@@ -41,10 +43,11 @@ where
     }
 }
 
-impl<VT, UT> testscript::Runner for GrpcRunner<VT, UT>
+impl<VT, UT, C> testscript::Runner for GrpcRunner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

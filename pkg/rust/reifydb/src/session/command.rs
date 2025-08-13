@@ -2,28 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-    Engine as EngineInterface, Params, Principal, StandardTransaction, UnversionedTransaction, VersionedTransaction,
+    Engine as EngineInterface, Params, Principal, Transaction,
 };
 use reifydb_core::result::Frame;
 use reifydb_engine::Engine;
 #[cfg(feature = "async")]
 use tokio::task::spawn_blocking;
 
-pub struct CommandSession<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    pub(crate) engine: Engine<StandardTransaction<VT, UT>>,
+pub struct CommandSession<T: Transaction> {
+    pub(crate) engine: Engine<T>,
     pub(crate) principal: Principal,
 }
 
-impl<VT, UT> CommandSession<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    pub(crate) fn new(engine: Engine<StandardTransaction<VT, UT>>, principal: Principal) -> Self {
+impl<T: Transaction> CommandSession<T> {
+    pub(crate) fn new(engine: Engine<T>, principal: Principal) -> Self {
         Self { engine, principal }
     }
 

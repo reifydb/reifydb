@@ -20,14 +20,11 @@ impl VersionedCommit for Memory {
                 Err(_) => return_error!(sequence::transaction_sequence_exhausted()),
             };
 
-            // Get before value for updates and deletes
             let before_value = match &delta {
-                Delta::Insert { .. } => None,
+                Delta::Set { .. } => None,
                 Delta::Update { key, .. } | Delta::Remove { key } => {
-                    // Get the current value before the change
                     self.versioned.get(key).and_then(|entry| {
                         let values = entry.value();
-                        // Get the most recent value from the SkipMap
                         values
                             .back()
                             .map(|e| e.value().clone().unwrap_or_else(|| EncodedRow::deleted()))
@@ -35,9 +32,8 @@ impl VersionedCommit for Memory {
                 }
             };
 
-            // Apply the data change
             match &delta {
-                Delta::Insert { key, row } | Delta::Update { key, row } => {
+                Delta::Set { key, row } | Delta::Update { key, row } => {
                     let item = self.versioned.get_or_insert_with(key.clone(), VersionedRow::new);
                     let val = item.value();
                     val.lock();
@@ -67,7 +63,7 @@ impl UnversionedCommit for Memory {
     fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
         for delta in delta {
             match delta {
-                Delta::Insert { key, row } | Delta::Update { key, row } => {
+                Delta::Set { key, row } | Delta::Update { key, row } => {
                     self.unversioned.insert(key, row);
                 }
                 Delta::Remove { key } => {

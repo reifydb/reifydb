@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb::core::hook::Hooks;
-use reifydb::core::interface::{StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
+use reifydb::core::interface::{CdcTransaction, StandardTransaction, Params, UnversionedTransaction, VersionedTransaction};
 use reifydb::core::{Error as ReifyDBError, retry};
 use reifydb::network::ws::client::WsClient;
 use reifydb::network::ws::server::WsConfig;
@@ -17,25 +17,27 @@ use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
-pub struct WsRunner<VT, UT>
+pub struct WsRunner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
-    instance: Option<Database<StandardTransaction<VT, UT>>>,
+    instance: Option<Database<StandardTransaction<VT, UT, C>>>,
     client: Option<WsClient>,
     runtime: Option<Runtime>,
     shutdown: Option<oneshot::Sender<()>>,
 }
 
-impl<VT, UT> WsRunner<VT, UT>
+impl<VT, UT, C> WsRunner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
-    pub fn new(input: (VT, UT, Hooks)) -> Self {
-        let (versioned, unversioned, hooks) = input;
-        let instance = ServerBuilder::new(versioned, unversioned, hooks)
+    pub fn new(input: (VT, UT, C, Hooks)) -> Self {
+        let (versioned, unversioned, cdc, hooks) = input;
+        let instance = ServerBuilder::new(versioned, unversioned, cdc, hooks)
             .with_ws(WsConfig { socket: Some("[::1]:0".parse().unwrap()) })
             .build();
 
@@ -43,10 +45,11 @@ where
     }
 }
 
-impl<VT, UT> testscript::Runner for WsRunner<VT, UT>
+impl<VT, UT, C> testscript::Runner for WsRunner<VT, UT, C>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
     fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
         let mut output = String::new();

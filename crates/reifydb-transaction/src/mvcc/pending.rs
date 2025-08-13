@@ -178,7 +178,7 @@ mod tests {
     fn create_test_pending(version: Version, key: &str, row_data: &str) -> Pending {
         use reifydb_core::delta::Delta;
         Pending {
-            delta: Delta::Insert { key: create_test_key(key), row: create_test_row(row_data) },
+            delta: Delta::Set { key: create_test_key(key), row: create_test_row(row_data) },
             version,
         }
     }

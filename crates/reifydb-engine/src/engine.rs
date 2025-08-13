@@ -34,11 +34,11 @@ impl<T: Transaction> GetHooks for Engine<T>
 impl<T: Transaction> EngineInterface<T> for Engine<T>
 {
     fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>> {
-        Ok(ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone()))
+        Ok(ActiveCommandTransaction::new(self.versioned.begin_command()?, self.unversioned.clone(), self.cdc.clone()))
     }
 
     fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<T>> {
-        Ok(ActiveQueryTransaction::new(self.versioned.begin_query()?, self.unversioned.clone()))
+        Ok(ActiveQueryTransaction::new(self.versioned.begin_query()?, self.unversioned.clone(), self.cdc.clone()))
     }
 
     fn command_as(
@@ -108,6 +108,7 @@ impl<T: Transaction> Deref for Engine<T>
 pub struct EngineInner<T: Transaction> {
     versioned: T::Versioned,
     unversioned: T::Unversioned,
+    cdc: T::Cdc,
     hooks: Hooks,
     executor: Executor<T>,
 
@@ -119,11 +120,13 @@ impl<T: Transaction> Engine<T>
     pub fn new(
         versioned: T::Versioned,
         unversioned: T::Unversioned,
+        cdc: T::Cdc,
         hooks: Hooks,
     ) -> crate::Result<Self> {
         let result = Self(Arc::new(EngineInner {
             versioned: versioned.clone(),
             unversioned: unversioned.clone(),
+            cdc: cdc.clone(),
             hooks,
             executor: Executor {
                 functions: Functions::builder()
@@ -136,7 +139,7 @@ impl<T: Transaction> Engine<T>
                     .build(),
                 _phantom: PhantomData,
             },
-            _processor: FlowProcessor::new(Flow::default(), versioned, unversioned),
+            _processor: FlowProcessor::new(Flow::default(), versioned, unversioned, cdc),
         }));
 
         result.setup_hooks()?;

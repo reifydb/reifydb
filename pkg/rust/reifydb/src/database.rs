@@ -16,7 +16,7 @@ use crate::session::{
     CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session, SessionSync,
 };
 use reifydb_core::Result;
-use reifydb_core::interface::{Transaction, StandardTransaction, VersionedTransaction, UnversionedTransaction};
+use reifydb_core::interface::{Transaction, StandardTransaction, VersionedTransaction, UnversionedTransaction, CdcTransaction};
 use reifydb_engine::Engine;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use std::net::SocketAddr;
@@ -260,37 +260,40 @@ impl<T: Transaction> Drop for Database<T>
     }
 }
 
-impl<VT, UT> Session<VT, UT> for Database<StandardTransaction<VT, UT>>
+impl<VT, UT, C> Session<StandardTransaction<VT, UT, C>> for Database<StandardTransaction<VT, UT, C>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
     fn command_session(
         &self,
-        session: impl IntoCommandSession<VT, UT>,
-    ) -> Result<CommandSession<VT, UT>> {
+        session: impl IntoCommandSession<StandardTransaction<VT, UT, C>>,
+    ) -> Result<CommandSession<StandardTransaction<VT, UT, C>>> {
         session.into_command_session(self.engine.clone())
     }
 
     fn query_session(
         &self,
-        session: impl IntoQuerySession<VT, UT>,
-    ) -> Result<QuerySession<VT, UT>> {
+        session: impl IntoQuerySession<StandardTransaction<VT, UT, C>>,
+    ) -> Result<QuerySession<StandardTransaction<VT, UT, C>>> {
         session.into_query_session(self.engine.clone())
     }
 }
 
-impl<VT, UT> SessionSync<VT, UT> for Database<StandardTransaction<VT, UT>>
+impl<VT, UT, C> SessionSync<StandardTransaction<VT, UT, C>> for Database<StandardTransaction<VT, UT, C>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
 }
 
 #[cfg(feature = "async")]
-impl<VT, UT> SessionAsync<VT, UT> for Database<StandardTransaction<VT, UT>>
+impl<VT, UT, C> SessionAsync<StandardTransaction<VT, UT, C>> for Database<StandardTransaction<VT, UT, C>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction,
 {
 }

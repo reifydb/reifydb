@@ -7,7 +7,6 @@ mod range;
 mod scan;
 
 use crate::memory::Memory;
-use reifydb_core::interface::CdcQuery;
+use reifydb_core::interface::CdcStorage;
 
-// Memory automatically implements CdcStorage since it implements all required traits
-impl CdcQuery for Memory {}
+impl CdcStorage for Memory {}

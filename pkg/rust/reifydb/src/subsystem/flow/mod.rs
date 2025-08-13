@@ -3,17 +3,17 @@
 
 use super::Subsystem;
 use crate::health::HealthStatus;
-use reifydb_core::interface::Engine as _;
+use reifydb_core::interface::{CdcTransaction, Change, Engine as _};
 use reifydb_core::{
-    Result, Version,
-    interface::{CdcEvent, Transaction},
+    interface::{CdcEvent, Transaction}, Result,
+    Version,
 };
 use reifydb_engine::Engine;
 use std::any::Any;
 use std::{
     sync::{
-        Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -28,7 +28,6 @@ pub struct FlowSubsystem<T: Transaction> {
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
-
     pub fn new(engine: Engine<T>, poll_interval: Duration) -> Self {
         Self {
             engine,
@@ -45,52 +44,41 @@ impl<T: Transaction> FlowSubsystem<T> {
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
+    fn poll_and_print_events(engine: &Engine<T>, last_seen_version: &AtomicU64) -> Result<()> {
+        let query_txn = engine.begin_query()?;
 
-    fn poll_and_print_events(
-        engine: &Engine<T>,
-        _last_seen_version: &AtomicU64,
-    ) -> Result<()> {
-        // Begin a query transaction to access CDC events
-        let _query_txn = engine.begin_query()?;
+        let events: Vec<CdcEvent> = query_txn.cdc().scan()?.collect();
 
-        // Use the versioned query transaction to scan CDC events
-        // let events: Vec<CdcEvent> =
-        //     query_txn.with_versioned_query(|versioned| Ok(CdcScan::scan(versioned)?.collect()))?;
-        //
-        // let current_last_seen = last_seen_version.load(Ordering::Relaxed);
-        // let mut new_events_found = false;
-        // let mut max_version_seen = current_last_seen;
-        //
-        // // Filter and print only new events (versions higher than last seen)
-        // for event in events {
-        //     if event.version > current_last_seen {
-        //         Self::print_cdc_event(&event);
-        //         max_version_seen = max_version_seen.max(event.version);
-        //         new_events_found = true;
-        //     }
-        // }
-        //
-        // // Update the last seen version if we found new events
-        // if new_events_found {
-        //     last_seen_version.store(max_version_seen, Ordering::Relaxed);
-        //     println!("[FlowSubsystem] Updated last seen version to {}", max_version_seen);
-        // }
+        let current_last_seen = last_seen_version.load(Ordering::Relaxed);
+        let mut new_events_found = false;
+        let mut max_version_seen = current_last_seen;
 
-        // For now, just return Ok without implementing full CDC event polling
-        // This prevents panic while flow subsystem functionality is being developed
+        for event in events {
+            if event.version > current_last_seen {
+                Self::print_cdc_event(&event);
+                max_version_seen = max_version_seen.max(event.version);
+                new_events_found = true;
+            }
+        }
+
+        if new_events_found {
+            last_seen_version.store(max_version_seen, Ordering::Relaxed);
+            println!("[FlowSubsystem] Updated last seen version to {}", max_version_seen);
+        }
+
         Ok(())
     }
 
-    fn _print_cdc_event(event: &CdcEvent) {
+    fn print_cdc_event(event: &CdcEvent) {
         let change_description = match &event.change {
-            reifydb_core::interface::Change::Insert { key, after } => {
+            Change::Insert { key, after } => {
                 format!(
                     "INSERT key={:?} value={:?}",
                     String::from_utf8_lossy(&key.0),
                     String::from_utf8_lossy(&after.0)
                 )
             }
-            reifydb_core::interface::Change::Update { key, before, after } => {
+            Change::Update { key, before, after } => {
                 let before_str = if before.is_deleted() {
                     "<deleted>".to_string()
                 } else {
@@ -103,7 +91,7 @@ impl<T: Transaction> FlowSubsystem<T> {
                     String::from_utf8_lossy(&after.0)
                 )
             }
-            reifydb_core::interface::Change::Delete { key, before } => {
+            Change::Delete { key, before } => {
                 let before_str = if before.is_deleted() {
                     "<deleted>".to_string()
                 } else {
@@ -126,8 +114,7 @@ impl<T: Transaction> Drop for FlowSubsystem<T> {
     }
 }
 
-impl<T: Transaction + Send + Sync> Subsystem for FlowSubsystem<T>
-{
+impl<T: Transaction + Send + Sync> Subsystem for FlowSubsystem<T> {
     fn name(&self) -> &'static str {
         "Flow"
     }

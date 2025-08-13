@@ -13,31 +13,20 @@ mod query;
 
 pub use command::CommandSession;
 pub use query::QuerySession;
+use reifydb_core::interface::{Params, Principal, Transaction};
 use reifydb_core::Frame;
-use reifydb_core::interface::{Params, Principal, StandardTransaction, UnversionedTransaction, VersionedTransaction};
 use reifydb_engine::Engine;
 
-pub trait Session<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
+pub trait Session<T: Transaction> {
     fn command_session(
         &self,
-        session: impl IntoCommandSession<VT, UT>,
-    ) -> crate::Result<CommandSession<VT, UT>>;
+        session: impl IntoCommandSession<T>,
+    ) -> crate::Result<CommandSession<T>>;
 
-    fn query_session(
-        &self,
-        session: impl IntoQuerySession<VT, UT>,
-    ) -> crate::Result<QuerySession<VT, UT>>;
+    fn query_session(&self, session: impl IntoQuerySession<T>) -> crate::Result<QuerySession<T>>;
 }
 
-pub trait SessionSync<VT, UT>: Session<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
+pub trait SessionSync<T: Transaction>: Session<T> {
     fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
         let session = self.command_session(Principal::root())?;
         session.command_sync(rql, params)
@@ -50,11 +39,7 @@ where
 }
 
 #[cfg(feature = "async")]
-pub trait SessionAsync<VT, UT>: Session<VT, UT> + Sync
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
+pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
     fn command_as_root(
         &self,
         rql: &str,
@@ -78,38 +63,22 @@ where
     }
 }
 
-pub trait IntoCommandSession<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    fn into_command_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<CommandSession<VT, UT>>;
+pub trait IntoCommandSession<T: Transaction> {
+    fn into_command_session(self, engine: Engine<T>) -> crate::Result<CommandSession<T>>;
 }
 
-pub trait IntoQuerySession<VT, UT>
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    fn into_query_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<QuerySession<VT, UT>>;
+pub trait IntoQuerySession<T: Transaction> {
+    fn into_query_session(self, engine: Engine<T>) -> crate::Result<QuerySession<T>>;
 }
 
-impl<VT, UT> IntoCommandSession<VT, UT> for Principal
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    fn into_command_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<CommandSession<VT, UT>> {
+impl<T: Transaction> IntoCommandSession<T> for Principal {
+    fn into_command_session(self, engine: Engine<T>) -> crate::Result<CommandSession<T>> {
         Ok(CommandSession::new(engine, self))
     }
 }
 
-impl<VT, UT> IntoQuerySession<VT, UT> for Principal
-where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-{
-    fn into_query_session(self, engine: Engine<StandardTransaction<VT, UT>>) -> crate::Result<QuerySession<VT, UT>> {
+impl<T: Transaction> IntoQuerySession<T> for Principal {
+    fn into_query_session(self, engine: Engine<T>) -> crate::Result<QuerySession<T>> {
         Ok(QuerySession::new(engine, self))
     }
 }

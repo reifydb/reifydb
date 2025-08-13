@@ -21,11 +21,12 @@ pub struct FlowProcessor<T: Transaction> {
     contexts: HashMap<NodeId, OperatorContext>,
     versioned: T::Versioned,
     unversioned: T::Unversioned,
+    cdc: T::Cdc,
 }
 
 impl<T: Transaction> FlowProcessor<T> {
-    pub fn new(flow: Flow, versioned: T::Versioned, unversioned: T::Unversioned) -> Self {
-        Self { flow, operators: HashMap::new(), contexts: HashMap::new(), versioned, unversioned }
+    pub fn new(flow: Flow, versioned: T::Versioned, unversioned: T::Unversioned, cdc: T::Cdc) -> Self {
+        Self { flow, operators: HashMap::new(), contexts: HashMap::new(), versioned, unversioned, cdc }
     }
 
     pub fn initialize(&mut self) -> Result<()> {
@@ -60,6 +61,7 @@ impl<T: Transaction> FlowProcessor<T> {
         let mut txn = ActiveCommandTransaction::new(
             self.versioned.begin_command()?,
             self.unversioned.clone(),
+            self.cdc.clone(),
         );
 
         self.process_change_with_tx(&mut txn, node_id, change)?;

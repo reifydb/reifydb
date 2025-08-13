@@ -6,57 +6,73 @@
 #![cfg(feature = "async")]
 
 use crate::{
-    Database, AsyncBuilder,
-    MemoryDatabaseOptimistic, MemoryDatabaseSerializable,
-    SqliteDatabaseOptimistic, SqliteDatabaseSerializable,
     memory, optimistic, serializable, sqlite,
+    AsyncBuilder, Database, MemoryDatabaseOptimistic, MemoryDatabaseSerializable, SqliteDatabaseOptimistic, SqliteDatabaseSerializable,
 };
 use reifydb_core::hook::Hooks;
-use reifydb_core::interface::{StandardTransaction, UnversionedTransaction, VersionedTransaction};
+use reifydb_core::interface::{
+    CdcTransaction, StandardTransaction, UnversionedTransaction,
+    VersionedTransaction,
+};
 use reifydb_storage::sqlite::SqliteConfig;
 
 /// Create an async in-memory database with optimistic concurrency control (default)
 pub fn memory_optimistic() -> MemoryDatabaseOptimistic {
-    let (versioned, unversioned, hooks) = optimistic(memory());
-    AsyncBuilder::new(versioned, unversioned, hooks).build()
+    let (storage, unversioned, cdc, hooks) = memory();
+    let (versioned, _, _, _) =
+        optimistic((storage.clone(), unversioned.clone(), cdc.clone(), hooks.clone()));
+    AsyncBuilder::new(versioned, unversioned, cdc, hooks).build()
 }
 
 /// Create an async in-memory database with serializable isolation
 pub fn memory_serializable() -> MemoryDatabaseSerializable {
-    let (versioned, unversioned, hooks) = serializable(memory());
-    AsyncBuilder::new(versioned, unversioned, hooks).build()
+    let (storage, unversioned, cdc, hooks) = memory();
+    let (versioned, _, _, _) =
+        serializable((storage.clone(), unversioned.clone(), cdc.clone(), hooks.clone()));
+    AsyncBuilder::new(versioned, unversioned, cdc, hooks).build()
 }
 
 /// Create an async SQLite-backed database with optimistic concurrency control
 pub fn sqlite_optimistic(config: SqliteConfig) -> SqliteDatabaseOptimistic {
-    let (versioned, unversioned, hooks) = optimistic(sqlite(config));
-    AsyncBuilder::new(versioned, unversioned, hooks).build()
+    let (storage, unversioned, cdc, hooks) = sqlite(config);
+    let (versioned, _, _, _) =
+        optimistic((storage.clone(), unversioned.clone(), cdc.clone(), hooks.clone()));
+    AsyncBuilder::new(versioned, unversioned, cdc, hooks).build()
 }
 
 /// Create an async SQLite-backed database with serializable isolation
 pub fn sqlite_serializable(config: SqliteConfig) -> SqliteDatabaseSerializable {
-    let (versioned, unversioned, hooks) = serializable(sqlite(config));
-    AsyncBuilder::new(versioned, unversioned, hooks).build()
+    let (storage, unversioned, cdc, hooks) = sqlite(config);
+    let (versioned, _, _, _) =
+        serializable((storage.clone(), unversioned.clone(), cdc.clone(), hooks.clone()));
+    AsyncBuilder::new(versioned, unversioned, cdc, hooks).build()
 }
 
 /// Create a custom async database with user-provided transaction implementations
-pub fn custom<VT, UT>(versioned: VT, unversioned: UT) -> Database<StandardTransaction<VT, UT>>
+pub fn custom<VT, UT, C>(
+    versioned: VT,
+    unversioned: UT,
+    cdc: C,
+) -> Database<StandardTransaction<VT, UT, C>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction + Clone + 'static,
 {
-    AsyncBuilder::new(versioned, unversioned, Hooks::new()).build()
+    AsyncBuilder::new(versioned, unversioned, cdc, Hooks::new()).build()
 }
 
 /// Create a custom async database with user-provided transaction implementations and hooks
-pub fn custom_with_hooks<VT, UT>(
+pub fn custom_with_hooks<VT, UT, C>(
     versioned: VT,
     unversioned: UT,
-    hooks: Hooks
-) -> Database<StandardTransaction<VT, UT>>
+    cdc: C,
+    hooks: Hooks,
+) -> Database<StandardTransaction<VT, UT, C>>
 where
     VT: VersionedTransaction,
     UT: UnversionedTransaction,
+    C: CdcTransaction + Clone + 'static,
 {
-    AsyncBuilder::new(versioned, unversioned, hooks).build()
+    AsyncBuilder::new(versioned, unversioned, cdc, hooks).build()
 }
