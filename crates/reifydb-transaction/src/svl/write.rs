@@ -7,7 +7,7 @@ use crate::svl::range_rev::SvlRangeRev;
 use crate::svl::scan::SvlScan;
 use crate::svl::scan_rev::SvlScanRev;
 use reifydb_core::interface::{
-    BoxedUnversionedIter, UnversionedQueryTransaction, UnversionedCommandTransaction,
+    BoxedUnversionedIter, UnversionedCommandTransaction, UnversionedQueryTransaction,
 };
 use std::collections::HashMap;
 use std::mem::take;
@@ -27,7 +27,7 @@ where
     fn get(&mut self, key: &EncodedKey) -> reifydb_core::Result<Option<Unversioned>> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
-                Delta::Set { row, .. } | Delta::Update { row, .. } => {
+                Delta::Set { row, .. } => {
                     Ok(Some(Unversioned { key: key.clone(), row: row.clone() }))
                 }
                 Delta::Remove { .. } => Ok(None),
@@ -40,7 +40,7 @@ where
     fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
         if let Some(delta) = self.pending.get(key) {
             return match delta {
-                Delta::Set { .. } | Delta::Update { .. } => Ok(true),
+                Delta::Set { .. } => Ok(true),
                 Delta::Remove { .. } => Ok(false),
             };
         }
@@ -127,11 +127,7 @@ where
     US: UnversionedStorage,
 {
     fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
-        let delta = if self.pending.contains_key(key) {
-            Delta::Update { key: key.clone(), row }
-        } else {
-            Delta::Set { key: key.clone(), row }
-        };
+        let delta = Delta::Set { key: key.clone(), row };
         self.pending.insert(key.clone(), delta);
         Ok(())
     }

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::EncodedKey;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::Unversioned;
+use reifydb_core::EncodedKey;
 use std::cmp;
 
 /// Iterator for full scan in an SVL WriteTransaction with owned values.
@@ -64,7 +64,7 @@ impl Iterator for SvlScan {
                             self.last_yielded_key = Some(key.clone());
 
                             match delta {
-                                Delta::Set { row, .. } | Delta::Update { row, .. } => {
+                                Delta::Set { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -81,7 +81,7 @@ impl Iterator for SvlScan {
                             self.last_yielded_key = Some(key.clone());
 
                             match delta {
-                                Delta::Set { row, .. } | Delta::Update { row, .. } => {
+                                Delta::Set { row, .. } => {
                                     return Some(Unversioned { key, row });
                                 }
                                 Delta::Remove { .. } => {
@@ -110,7 +110,7 @@ impl Iterator for SvlScan {
                     self.last_yielded_key = Some(key.clone());
 
                     match delta {
-                        Delta::Set { row, .. } | Delta::Update { row, .. } => {
+                        Delta::Set { row, .. } => {
                             return Some(Unversioned { key, row });
                         }
                         Delta::Remove { .. } => {

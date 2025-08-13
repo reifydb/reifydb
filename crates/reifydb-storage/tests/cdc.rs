@@ -117,7 +117,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                 let row = EncodedRow(decode_binary(&kv.value));
                 args.reject_rest()?;
 
-                self.storage.commit(async_cow_vec![(Delta::Update { key, row })], version)?;
+                self.storage.commit(async_cow_vec![(Delta::Set { key, row })], version)?;
                 writeln!(output, "ok")?;
             }
 
@@ -158,7 +158,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscr
                 // Update next_version to match the given version
                 self.next_version = version;
                 // Buffer the delta
-                self.deltas.push(Delta::Update { key, row });
+                self.deltas.push(Delta::Set { key, row });
             }
 
             // delete VERSION KEY
