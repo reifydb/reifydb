@@ -7,12 +7,9 @@
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
     "test": "pnpm test:unit && pnpm test:integration",
-    "test:unit": "vitest run --config vitest.config.ts",
-    "test:unit:watch": "vitest --config vitest.config.ts",
-    "test:unit:coverage": "vitest run --coverage --config vitest.config.ts",
-    "test:integration": "vitest run --config vitest.config.ts",
-    "test:integration:watch": "vitest --config vitest.config.ts",
-    "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:watch": "vitest --config vitest.integration.config.ts",
+    "test:integration:coverage": "vitest run --coverage --config vitest.integration.config.ts",
     "test:coverage": "pnpm test:unit:coverage && pnpm test:integration:coverage",
     "pretest:integration": "pnpm build"
   },
