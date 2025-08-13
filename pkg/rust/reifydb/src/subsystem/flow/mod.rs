@@ -3,6 +3,7 @@
 
 use std::{
 	any::Any,
+	ops::Bound,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -36,7 +37,7 @@ impl<T: Transaction> FlowSubsystem<T> {
 			engine,
 			poll_interval,
 			running: Arc::new(AtomicBool::new(false)),
-			last_seen_version: Arc::new(AtomicU64::new(0)),
+			last_seen_version: Arc::new(AtomicU64::new(1)),
 			handle: None,
 		}
 	}
@@ -53,30 +54,40 @@ impl<T: Transaction> FlowSubsystem<T> {
 	) -> Result<()> {
 		let query_txn = engine.begin_query()?;
 
-		let events: Vec<CdcEvent> = query_txn.cdc().scan()?.collect();
-
 		let current_last_seen =
 			last_seen_version.load(Ordering::Relaxed);
-		let mut new_events_found = false;
+
+		let events: Vec<CdcEvent> = query_txn
+			.cdc()
+			.range(
+				Bound::Excluded(current_last_seen),
+				Bound::Included(current_last_seen + 1),
+			)?
+			.collect();
+
+		if !events.is_empty() {
+			last_seen_version.store(
+				current_last_seen + 1,
+				Ordering::Relaxed,
+			);
+		}
+
+		// let mut new_events_found = false;
 		let mut max_version_seen = current_last_seen;
 
 		for event in events {
-			if event.version > current_last_seen {
-				Self::print_cdc_event(&event);
-				max_version_seen =
-					max_version_seen.max(event.version);
-				new_events_found = true;
-			}
+			// if event.version > current_last_seen {
+			Self::print_cdc_event(&event);
+			max_version_seen = max_version_seen.max(event.version);
+			// new_events_found = true;
+			// }
 		}
 
-		if new_events_found {
-			last_seen_version
-				.store(max_version_seen, Ordering::Relaxed);
-			println!(
-				"[FlowSubsystem] Updated last seen version to {}",
-				max_version_seen
-			);
-		}
+		dbg!(last_seen_version.load(Ordering::Relaxed));
+
+		// if new_events_found {
+
+		// }
 
 		Ok(())
 	}
