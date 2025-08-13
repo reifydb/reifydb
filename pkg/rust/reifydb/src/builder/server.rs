@@ -26,8 +26,8 @@ pub struct ServerBuilder<T: Transaction>
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 impl<T: Transaction> ServerBuilder<T>
 {
-    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
-        let engine = Engine::new(versioned, unversioned, hooks.clone()).unwrap();
+    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, cdc: T::Cdc, hooks: Hooks) -> Self {
+        let engine = Engine::new(versioned, unversioned, cdc, hooks.clone()).unwrap();
         let inner = DatabaseBuilder::new(engine.clone());
         let runtime_provider = RuntimeProvider::Tokio(
             TokioRuntimeProvider::new().expect("Failed to create Tokio runtime for server"),

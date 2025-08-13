@@ -4,10 +4,10 @@
 pub(crate) mod codec;
 mod layout;
 
-use reifydb_core::Version;
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{CdcEvent, Change};
 use reifydb_core::row::EncodedRow;
+use reifydb_core::Version;
 
 /// Generate a CDC event from a Delta change
 pub(crate) fn generate_cdc_event(
@@ -18,7 +18,7 @@ pub(crate) fn generate_cdc_event(
     before_value: Option<EncodedRow>,
 ) -> CdcEvent {
     let change = match delta {
-        Delta::Insert { key, row } => Change::Insert { key: key.clone(), after: row.clone() },
+        Delta::Set { key, row } => Change::Insert { key: key.clone(), after: row.clone() },
         Delta::Update { key, row } => Change::Update {
             key: key.clone(),
             before: before_value.unwrap_or_else(|| EncodedRow::deleted()),

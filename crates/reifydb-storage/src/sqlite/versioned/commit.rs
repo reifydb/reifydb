@@ -32,7 +32,7 @@ impl VersionedCommit for Sqlite {
             
             // Get before value for updates and deletes
             let before_value = match &delta {
-                Delta::Insert { .. } => None,
+                Delta::Set { .. } => None,
                 Delta::Update { key, .. } | Delta::Remove { key } => {
                     let table = table_name(&key);
                     fetch_before_value(&tx, &key, table).ok().flatten()
@@ -41,7 +41,7 @@ impl VersionedCommit for Sqlite {
 
             // Apply the data change
             match &delta {
-                Delta::Insert { key, row } | Delta::Update { key, row } => {
+                Delta::Set { key, row } | Delta::Update { key, row } => {
                     let table = table_name(&key);
 
                     if table != "versioned" {

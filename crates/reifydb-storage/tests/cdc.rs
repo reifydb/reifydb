@@ -3,7 +3,7 @@
 
 use reifydb_core::delta::Delta;
 use reifydb_core::interface::{
-    CdcEvent, CdcGet, CdcRange, CdcScan, CdcQuery, Change, VersionedCommit, VersionedGet,
+    CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, Change, VersionedCommit, VersionedGet,
     VersionedStorage,
 };
 use reifydb_core::row::EncodedRow;
@@ -42,7 +42,7 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> {
+pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> {
     storage: VS,
     next_version: Version,
     clock: Arc<MockClock>,
@@ -50,7 +50,7 @@ pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQue
     deltas: Vec<Delta>,
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> Runner<VS> {
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<VS> {
     fn new(storage: VS, clock: Arc<MockClock>) -> Self {
         Self { storage, next_version: 1, clock, deltas: Vec::new() }
     }
@@ -96,7 +96,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> Runner<VS
     }
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> testscript::Runner
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscript::Runner
     for Runner<VS>
 {
     fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
@@ -138,7 +138,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> testscrip
                 // Update next_version to match the given version
                 self.next_version = version;
                 // Buffer the delta
-                self.deltas.push(Delta::Insert { key, row });
+                self.deltas.push(Delta::Set { key, row });
             }
 
             // update VERSION KEY=VALUE
@@ -516,7 +516,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcQuery> testscrip
                 for i in 0..count {
                     let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
                     let row = EncodedRow(CowVec::new(i.to_string().into_bytes()));
-                    deltas.push(Delta::Insert { key, row });
+                    deltas.push(Delta::Set { key, row });
                 }
 
                 self.storage.commit(CowVec::new(deltas), version)?;

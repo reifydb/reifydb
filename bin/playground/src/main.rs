@@ -11,10 +11,7 @@ use reifydb::core::{EncodedKeyRange, Frame, Type};
 use reifydb::engine::columnar::Columns;
 use reifydb::engine::flow::flow::Flow;
 use reifydb::engine::flow::node::{NodeId, NodeType};
-use reifydb::storage::memory::Memory;
-use reifydb::transaction::mvcc::transaction::optimistic::Optimistic;
-use reifydb::transaction::svl::SingleVersionLock;
-use reifydb::{Database, MemoryDatabaseOptimistic, StandardTransaction, sync};
+use reifydb::{sync, MemoryDatabaseOptimistic};
 use reifydb::{SessionSync, Subsystem};
 use std::collections::Bound::Included;
 
@@ -76,6 +73,10 @@ fn main() {
         Params::None,
     )
     .unwrap();
+
+    loop {
+
+    }
 
     // println!("Basic database operations completed successfully!");
     // rql_to_flow_example(&mut db);
@@ -182,16 +183,7 @@ fn _rql_to_flow_example(db: &mut DB) {
     println!("{}", frame);
 }
 
-pub fn get_view_data(
-    db: &mut Database<
-        StandardTransaction<
-            Optimistic<Memory, SingleVersionLock<Memory>>,
-            SingleVersionLock<Memory>,
-        >,
-    >,
-    flow: &Flow,
-    view_name: &str,
-) -> reifydb::Result<Columns> {
+pub fn get_view_data(db: &mut DB, flow: &Flow, view_name: &str) -> reifydb::Result<Columns> {
     // Find view node and read from versioned storage
     for node_id in flow.get_all_nodes() {
         if let Some(node) = flow.get_node(&node_id) {
@@ -207,15 +199,7 @@ pub fn get_view_data(
     panic!("View {} not found", view_name);
 }
 
-fn read_columns_from_storage(
-    db: &mut Database<
-        StandardTransaction<
-            Optimistic<Memory, SingleVersionLock<Memory>>,
-            SingleVersionLock<Memory>,
-        >,
-    >,
-    node_id: &NodeId,
-) -> reifydb::Result<Columns> {
+fn read_columns_from_storage(db: &mut DB, node_id: &NodeId) -> reifydb::Result<Columns> {
     let range = TableRowKeyRange { table: TableId(node_id.0) };
     let versioned_data = db
         .engine()

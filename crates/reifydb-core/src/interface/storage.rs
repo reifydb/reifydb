@@ -135,7 +135,7 @@ pub trait UnversionedContains {
 
 pub trait UnversionedInsert: UnversionedCommit {
     fn insert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
-        Self::commit(self, CowVec::new(vec![Delta::Insert { key: key.clone(), row: row.clone() }]))
+        Self::commit(self, CowVec::new(vec![Delta::Set { key: key.clone(), row: row.clone() }]))
     }
 }
 

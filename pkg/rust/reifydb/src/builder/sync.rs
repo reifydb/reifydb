@@ -12,10 +12,10 @@ pub struct SyncBuilder<T: Transaction> {
 }
 
 impl<T: Transaction> SyncBuilder<T> {
-    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, hooks: Hooks) -> Self {
+    pub fn new(versioned: T::Versioned, unversioned: T::Unversioned, cdc: T::Cdc, hooks: Hooks) -> Self {
         Self {
             inner: DatabaseBuilder::new(
-                Engine::new(versioned, unversioned, hooks.clone()).unwrap(),
+                Engine::new(versioned, unversioned, cdc, hooks.clone()).unwrap(),
             ),
         }
     }

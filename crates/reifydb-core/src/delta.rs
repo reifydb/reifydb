@@ -6,7 +6,7 @@ use std::cmp;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
-    Insert { key: EncodedKey, row: EncodedRow },
+    Set { key: EncodedKey, row: EncodedRow },
     Update { key: EncodedKey, row: EncodedRow },
     Remove { key: EncodedKey },
 }
@@ -27,7 +27,7 @@ impl Delta {
     /// Returns the key
     pub fn key(&self) -> &EncodedKey {
         match self {
-            Self::Insert { key, .. } | Self::Update { key, .. } => key,
+            Self::Set { key, .. } | Self::Update { key, .. } => key,
             Self::Remove { key } => key,
         }
     }
@@ -35,7 +35,7 @@ impl Delta {
     /// Returns the row, if None, it means the entry is marked as remove.
     pub fn row(&self) -> Option<&EncodedRow> {
         match self {
-            Self::Insert { row, .. } | Self::Update { row, .. } => Some(row),
+            Self::Set { row, .. } | Self::Update { row, .. } => Some(row),
             Self::Remove { .. } => None,
         }
     }
@@ -44,8 +44,8 @@ impl Delta {
 impl Clone for Delta {
     fn clone(&self) -> Self {
         match self {
-            Self::Insert { key, row: value } => {
-                Self::Insert { key: key.clone(), row: value.clone() }
+            Self::Set { key, row: value } => {
+                Self::Set { key: key.clone(), row: value.clone() }
             }
             Self::Update { key, row: value } => {
                 Self::Update { key: key.clone(), row: value.clone() }
