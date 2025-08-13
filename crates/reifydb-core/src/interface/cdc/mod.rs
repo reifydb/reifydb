@@ -12,7 +12,7 @@ use crate::{EncodedKey, Version, row::EncodedRow};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ConsumerId(pub u64);
+pub struct ConsumerId(pub(crate) u64);
 
 impl ConsumerId {
 	pub const FLOW_CONSUMER: ConsumerId = ConsumerId(1);

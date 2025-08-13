@@ -4,15 +4,15 @@
 use std::{
 	ops::Bound,
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{self, JoinHandle, sleep},
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
 use reifydb_core::{
-	Result, Version,
+	EncodedKey, Result, Version,
 	interface::{
 		ActiveCommandTransaction, CdcConsume, CdcConsumer, CdcEvent,
 		CdcTransaction, ConsumerId, Engine as EngineInterface, Key,
@@ -25,222 +25,194 @@ use reifydb_core::{
 };
 use reifydb_engine::Engine;
 
-/// Poll-based CDC consumer implementation
 pub struct PollConsumer<T: Transaction, F: CdcConsume<T>> {
-	id: ConsumerId,
 	engine: Option<Engine<T>>,
-	poll_interval: Duration,
-	running: Option<AtomicBool>,
-	handle: Arc<Mutex<Option<JoinHandle<()>>>>,
-	consume: Option<Box<F>>,
+	processor: Option<Box<F>>,
+	state: Arc<ConsumerState>,
+	worker: Option<JoinHandle<()>>,
+}
+
+struct ConsumerState {
+	id: ConsumerId,
+	interval: Duration,
+	consumer_key: EncodedKey,
+	running: AtomicBool,
 }
 
 impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
-	/// Creates a new poll-based consumer with a processing function
 	pub fn new(
 		id: ConsumerId,
-		engine: Engine<T>,
 		poll_interval: Duration,
+		engine: Engine<T>,
 		consume: F,
 	) -> Self {
 		Self {
-			id,
 			engine: Some(engine),
-			poll_interval,
-			running: Some(AtomicBool::new(false)),
-			handle: Arc::new(Mutex::new(None)),
-			consume: Some(Box::new(consume)),
+			processor: Some(Box::new(consume)),
+			state: Arc::new(ConsumerState {
+				id,
+				interval: poll_interval,
+				consumer_key: CdcConsumerKey {
+					consumer: id,
+				}
+				.encode(),
+				running: AtomicBool::new(false),
+			}),
+			worker: None,
 		}
 	}
 
-	/// Internal consume method that processes events
-	fn consume_events(
-		id: ConsumerId,
+	fn process_batch(
+		state: &ConsumerState,
 		engine: &Engine<T>,
-		process_fn: &F,
+		processor: &F,
 	) -> Result<()> {
-		let mut txn = engine.begin_command()?;
+		let mut transaction = engine.begin_command()?;
 
-		let last_version = Self::read_last_version_for(id, &mut txn)?;
-
-		let events: Vec<CdcEvent> = txn
-			.cdc()
-			.range(
-				Bound::Excluded(last_version),
-				Bound::Included(last_version + 1),
-			)?
-			.collect();
+		let checkpoint = fetch_checkpoint(
+			&mut transaction,
+			&state.consumer_key,
+		)?;
+		let events = fetch_events_since(&mut transaction, checkpoint)?;
 
 		if events.is_empty() {
-			txn.rollback()?;
-			return Ok(());
+			return transaction.rollback();
 		}
 
-		// if only a consumer update we ignore that
-		if events.len() == 1 {
-			match Key::decode(events.first().unwrap().key())
-				.unwrap()
-			{
-				Key::CdcConsumer(_) => {
-					txn.rollback()?;
-					return Ok(());
-				}
-				_ => {}
-			}
-		}
+		let latest_version = events
+			.iter()
+			.map(|event| event.version)
+			.max()
+			.unwrap_or(checkpoint);
 
-		let events = events
+		let table_events = events
 			.into_iter()
-			.filter(|e| match Key::decode(e.key()).unwrap() {
-				Key::TableRow(_) => true,
-				_ => false,
+			.filter(|event| {
+				matches!(
+					Key::decode(event.key()),
+					Some(Key::TableRow(_))
+				)
 			})
 			.collect::<Vec<_>>();
 
-		if events.is_empty() {
-			// no interesting events
-			Self::update_last_version_for(
-				id,
-				&mut txn,
-				last_version + 1,
-			)?;
-			txn.commit()?;
-			return Ok(());
+		if !table_events.is_empty() {
+			processor.consume(&mut transaction, table_events)?;
 		}
 
-		process_fn.consume(&mut txn, events)?;
-
-		Self::update_last_version_for(id, &mut txn, last_version + 1)?;
-		txn.commit()?;
-		Ok(())
+		persist_checkpoint(
+			&mut transaction,
+			&state.consumer_key,
+			latest_version,
+		)?;
+		transaction.commit()
 	}
 
-	/// Reads the last consumed version from storage for a given consumer
-	fn read_last_version_for(
-		id: ConsumerId,
-		txn: &mut ActiveCommandTransaction<T>,
-	) -> Result<Version> {
-		let key = CdcConsumerKey {
-			consumer: id,
-		};
+	fn polling_loop(
+		engine: Engine<T>,
+		processor: Box<F>,
+		state: Arc<ConsumerState>,
+	) {
+		println!(
+			"[Consumer {:?}] Started polling with interval {:?}",
+			state.id, state.interval
+		);
 
-		let encoded_key = key.encode();
-
-		// Try to get the stored version
-		let stored = txn.get(&encoded_key)?;
-
-		match stored {
-			Some(versioned) => {
-				// Decode the stored version (assuming it's
-				// stored as u64 bytes)
-				if versioned.row.len() >= 8 {
-					let mut bytes = [0u8; 8];
-					bytes.copy_from_slice(
-						&versioned.row[0..8],
-					);
-					Ok(u64::from_be_bytes(bytes))
-				} else {
-					Ok(1)
-				}
+		while state.running.load(Ordering::Acquire) {
+			if let Err(error) =
+				Self::process_batch(&state, &engine, &processor)
+			{
+				eprintln!(
+					"[Consumer {:?}] Error processing events: {}",
+					state.id, error
+				);
 			}
-			None => Ok(1),
+
+			thread::sleep(state.interval);
 		}
-	}
 
-	/// Updates the last consumed version in storage for a given consumer
-	fn update_last_version_for(
-		id: ConsumerId,
-		txn: &mut ActiveCommandTransaction<T>,
-		version: Version,
-	) -> Result<()> {
-		let key = CdcConsumerKey {
-			consumer: id,
-		};
-
-		let encoded_key = key.encode();
-		let encoded_version = version.to_be_bytes().to_vec();
-
-		txn.set(&encoded_key, EncodedRow(CowVec::new(encoded_version)))
+		println!("[Consumer {:?}] Stopped", state.id);
 	}
 }
 
 impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 	for PollConsumer<T, F>
 {
-	fn id(&self) -> ConsumerId {
-		self.id
-	}
-
 	fn start(&mut self) -> Result<()> {
-		let running = self
-			.running
-			.take()
-			.expect("start() can only be called once");
+		assert!(
+			self.worker.is_none(),
+			"start() can only be called once"
+		);
 
-		if running.load(Ordering::Relaxed) {
-			self.running = Some(running); // Put it back if already running
-			return Ok(()); // Already running
+		if self.state.running.swap(true, Ordering::AcqRel) {
+			return Ok(());
 		}
-		running.store(true, Ordering::Relaxed);
 
-		let id = self.id;
-		let poll_interval = self.poll_interval;
-		let engine = self
-			.engine
+		let engine =
+			self.engine.take().expect("engine already consumed");
+		let processor = self
+			.processor
 			.take()
-			.expect("start() can only be called once");
-		let consume = self
-			.consume
-			.take()
-			.expect("start() can only be called once");
+			.expect("processor already consumed");
+		let state = Arc::clone(&self.state);
 
-		let handle = thread::spawn(move || {
-			println!(
-				"[Consumer {:?}] Started polling with interval {:?}",
-				id, poll_interval
-			);
+		self.worker = Some(thread::spawn(move || {
+			Self::polling_loop(engine, processor, state);
+		}));
 
-			while running.load(Ordering::Relaxed) {
-				if let Err(e) = Self::consume_events(
-					id, &engine, &consume,
-				) {
-					eprintln!(
-						"[Consumer {:?}] Error processing events: {}",
-						id, e
-					);
-				}
-
-				sleep(poll_interval);
-			}
-
-			println!("[Consumer {:?}] Stopped", id);
-		});
-
-		*self.handle.lock().unwrap() = Some(handle);
 		Ok(())
 	}
 
 	fn stop(&mut self) -> Result<()> {
-		if let Some(ref running) = self.running {
-			if !running.load(Ordering::Relaxed) {
-				return Ok(()); // Already stopped
-			}
-			running.store(false, Ordering::Relaxed);
-		} else {
-			return Ok(()); // Already consumed by start()
+		if !self.state.running.swap(false, Ordering::AcqRel) {
+			return Ok(());
 		}
 
-		if let Some(handle) = self.handle.lock().unwrap().take() {
-			handle.join().expect("Failed to join consumer thread");
+		if let Some(worker) = self.worker.take() {
+			worker.join().expect("Failed to join consumer thread");
 		}
 
 		Ok(())
 	}
 
 	fn is_running(&self) -> bool {
-		self.running
-			.as_ref()
-			.map(|r| r.load(Ordering::Relaxed))
-			.unwrap_or(false)
+		self.state.running.load(Ordering::Acquire)
 	}
+}
+
+fn fetch_checkpoint<T: Transaction>(
+	transaction: &mut ActiveCommandTransaction<T>,
+	consumer_key: &EncodedKey,
+) -> Result<Version> {
+	transaction
+		.get(consumer_key)?
+		.and_then(|record| {
+			if record.row.len() >= 8 {
+				let mut buffer = [0u8; 8];
+				buffer.copy_from_slice(&record.row[0..8]);
+				Some(u64::from_be_bytes(buffer))
+			} else {
+				None
+			}
+		})
+		.map(Ok)
+		.unwrap_or(Ok(1))
+}
+
+fn persist_checkpoint<T: Transaction>(
+	transaction: &mut ActiveCommandTransaction<T>,
+	consumer_key: &EncodedKey,
+	version: Version,
+) -> Result<()> {
+	let version_bytes = version.to_be_bytes().to_vec();
+	transaction.set(consumer_key, EncodedRow(CowVec::new(version_bytes)))
+}
+
+fn fetch_events_since<T: Transaction>(
+	transaction: &mut ActiveCommandTransaction<T>,
+	since_version: Version,
+) -> Result<Vec<CdcEvent>> {
+	Ok(transaction
+		.cdc()
+		.range(Bound::Excluded(since_version), Bound::Unbounded)?
+		.collect())
 }

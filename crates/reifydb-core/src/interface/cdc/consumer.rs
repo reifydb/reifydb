@@ -3,9 +3,7 @@
 
 use crate::{
 	Result,
-	interface::{
-		ActiveCommandTransaction, CdcEvent, ConsumerId, Transaction,
-	},
+	interface::{ActiveCommandTransaction, CdcEvent, Transaction},
 };
 
 /// Trait for CDC event processing functions
@@ -19,9 +17,6 @@ pub trait CdcConsume<T: Transaction>: Send + Sync + 'static {
 
 /// Trait for CDC event stream consumers
 pub trait CdcConsumer: Send + Sync {
-	/// Returns the unique identifier for this consumer
-	fn id(&self) -> ConsumerId;
-
 	/// Starts the consumer
 	fn start(&mut self) -> Result<()>;
 

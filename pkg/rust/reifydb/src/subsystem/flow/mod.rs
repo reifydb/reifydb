@@ -15,7 +15,6 @@ use reifydb_engine::Engine;
 use super::{Subsystem, cdc::PollConsumer};
 use crate::health::HealthStatus;
 
-// Simple wrapper struct that implements CdcConsumerFn
 #[derive(Clone)]
 struct FlowConsumer;
 
@@ -95,15 +94,13 @@ pub struct FlowSubsystem<T: Transaction> {
 
 impl<T: Transaction> FlowSubsystem<T> {
 	pub fn new(engine: Engine<T>) -> Self {
-		let consumer = PollConsumer::new(
-			ConsumerId::FLOW_CONSUMER,
-			engine,
-			Duration::from_millis(3),
-			FlowConsumer,
-		);
-
 		Self {
-			consumer,
+			consumer: PollConsumer::new(
+				ConsumerId::FLOW_CONSUMER,
+				Duration::from_millis(1),
+				engine,
+				FlowConsumer,
+			),
 		}
 	}
 }
