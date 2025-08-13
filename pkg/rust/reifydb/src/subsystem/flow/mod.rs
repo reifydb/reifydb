@@ -1,100 +1,32 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	any::Any,
-	ops::Bound,
-	sync::{
-		Arc,
-		atomic::{AtomicBool, AtomicU64, Ordering},
-	},
-	thread::{self, JoinHandle},
-	time::Duration,
-};
+use std::{any::Any, time::Duration};
 
 use reifydb_core::{
-	Result, Version,
+	Result,
 	interface::{
-		CdcEvent, CdcTransaction, Change, Engine as _, Transaction,
+		ActiveCommandTransaction, CdcConsume, CdcConsumer, CdcEvent,
+		Change, ConsumerId, Transaction,
 	},
 };
 use reifydb_engine::Engine;
 
-use super::Subsystem;
+use super::{Subsystem, cdc::PollConsumer};
 use crate::health::HealthStatus;
 
-pub struct FlowSubsystem<T: Transaction> {
-	engine: Engine<T>,
-	poll_interval: Duration,
-	running: Arc<AtomicBool>,
-	last_seen_version: Arc<AtomicU64>,
-	handle: Option<JoinHandle<()>>,
-}
+// Simple wrapper struct that implements CdcConsumerFn
+#[derive(Clone)]
+struct FlowConsumer;
 
-impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(engine: Engine<T>, poll_interval: Duration) -> Self {
-		Self {
-			engine,
-			poll_interval,
-			running: Arc::new(AtomicBool::new(false)),
-			last_seen_version: Arc::new(AtomicU64::new(1)),
-			handle: None,
-		}
-	}
-
-	pub fn last_seen_version(&self) -> Version {
-		self.last_seen_version.load(Ordering::Relaxed)
-	}
-}
-
-impl<T: Transaction> FlowSubsystem<T> {
-	fn poll_and_print_events(
-		engine: &Engine<T>,
-		last_seen_version: &AtomicU64,
+impl<T: Transaction> CdcConsume<T> for FlowConsumer {
+	fn consume(
+		&self,
+		_txn: &mut ActiveCommandTransaction<T>,
+		events: Vec<CdcEvent>,
 	) -> Result<()> {
-		let query_txn = engine.begin_query()?;
-
-		let current_last_seen =
-			last_seen_version.load(Ordering::Relaxed);
-
-		let events: Vec<CdcEvent> = query_txn
-			.cdc()
-			.range(
-				Bound::Excluded(current_last_seen),
-				Bound::Included(current_last_seen + 1),
-			)?
-			.collect();
-
-		if !events.is_empty() {
-			last_seen_version.store(
-				current_last_seen + 1,
-				Ordering::Relaxed,
-			);
-		}
-
-		// let mut new_events_found = false;
-		let mut max_version_seen = current_last_seen;
-
 		for event in events {
-			// if event.version > current_last_seen {
-			Self::print_cdc_event(&event);
-			max_version_seen = max_version_seen.max(event.version);
-			// new_events_found = true;
-			// }
-		}
-
-		dbg!(last_seen_version.load(Ordering::Relaxed));
-
-		// if new_events_found {
-
-		// }
-
-		Ok(())
-	}
-
-	fn print_cdc_event(event: &CdcEvent) {
-		let change_description =
-			match &event.change {
+			let change_description = match &event.change {
 				Change::Insert {
 					key,
 					after,
@@ -145,19 +77,40 @@ impl<T: Transaction> FlowSubsystem<T> {
 				}
 			};
 
-		println!(
-			"[CDC] v{} seq{} ts{} | {}",
-			event.version,
-			event.sequence,
-			event.timestamp,
-			change_description
+			println!(
+				"[CDC] v{} seq{} ts{} | {}",
+				event.version,
+				event.sequence,
+				event.timestamp,
+				change_description
+			);
+		}
+		Ok(())
+	}
+}
+
+pub struct FlowSubsystem<T: Transaction> {
+	consumer: PollConsumer<T, FlowConsumer>,
+}
+
+impl<T: Transaction> FlowSubsystem<T> {
+	pub fn new(engine: Engine<T>) -> Self {
+		let consumer = PollConsumer::new(
+			ConsumerId::FLOW_CONSUMER,
+			engine,
+			Duration::from_millis(3),
+			FlowConsumer,
 		);
+
+		Self {
+			consumer,
+		}
 	}
 }
 
 impl<T: Transaction> Drop for FlowSubsystem<T> {
 	fn drop(&mut self) {
-		let _ = self.stop();
+		let _ = self.consumer.stop();
 	}
 }
 
@@ -167,61 +120,15 @@ impl<T: Transaction + Send + Sync> Subsystem for FlowSubsystem<T> {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::Relaxed) {
-			return Ok(()); // Already running
-		}
-
-		self.running.store(true, Ordering::Relaxed);
-
-		let engine = self.engine.clone();
-		let poll_interval = self.poll_interval;
-		let running = Arc::clone(&self.running);
-		let last_seen_version = Arc::clone(&self.last_seen_version);
-
-		let handle = thread::spawn(move || {
-			println!(
-				"[FlowSubsystem] Started CDC event polling with interval {:?}",
-				poll_interval
-			);
-
-			while running.load(Ordering::Relaxed) {
-				if let Err(e) = Self::poll_and_print_events(
-					&engine,
-					&last_seen_version,
-				) {
-					eprintln!(
-						"[FlowSubsystem] Error polling CDC events: {}",
-						e
-					);
-				}
-
-				thread::sleep(poll_interval);
-			}
-
-			println!("[FlowSubsystem] Stopped CDC event polling");
-		});
-
-		self.handle = Some(handle);
-		Ok(())
+		self.consumer.start()
 	}
 
 	fn stop(&mut self) -> Result<()> {
-		if !self.running.load(Ordering::Relaxed) {
-			return Ok(()); // Already stopped
-		}
-
-		self.running.store(false, Ordering::Relaxed);
-
-		if let Some(handle) = self.handle.take() {
-			handle.join()
-				.expect("Failed to join flow subsystem thread");
-		}
-
-		Ok(())
+		self.consumer.stop()
 	}
 
 	fn is_running(&self) -> bool {
-		self.running.load(Ordering::Relaxed)
+		self.consumer.is_running()
 	}
 
 	fn health_status(&self) -> HealthStatus {

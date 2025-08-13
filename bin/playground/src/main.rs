@@ -6,7 +6,7 @@
 use std::collections::Bound::Included;
 
 use reifydb::{
-	MemoryDatabaseOptimistic, SessionSync, Subsystem,
+	MemoryDatabaseOptimistic, SessionSync,
 	core::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
@@ -26,34 +26,20 @@ use reifydb::{
 };
 
 pub type DB = MemoryDatabaseOptimistic;
+// pub type DB = SqliteDatabaseOptimistic;
 
 fn main() {
 	let mut db: DB = sync::memory_optimistic();
-	{
-		// let x = db.
-		// subsystem::<FlowSubsystemAdapter<Optimistic<Memory,
-		// SingleVersionLock<Memory>>, SingleVersionLock<Memory>>>();
-		let x = db.subsystem_flow();
+	// let mut db: DB =
+	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
-		dbg!(x.unwrap().name());
-		dbg!(x.unwrap().is_running());
-	}
-	// Start the database
-	db.start().unwrap();
-
-	{
-		let x = db.subsystem_flow();
-		dbg!(x.unwrap().name());
-		dbg!(x.unwrap().is_running());
-	}
-
-	// let session = db.command_session(Principal::root()).unwrap();
+	db.start();
 
 	db.command_as_root(
 		r#"
-        create schema test;
-        create table test.users { name: utf8, age: int1 };
-    "#,
+	    create schema test;
+	    create table test.users { name: utf8, age: int1 };
+	"#,
 		Params::None,
 	)
 	.unwrap();

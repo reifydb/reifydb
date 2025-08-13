@@ -6,7 +6,7 @@ mod catalog;
 mod cdc;
 mod engine;
 mod execute;
-mod key;
+pub mod key;
 mod params;
 mod span;
 mod storage;

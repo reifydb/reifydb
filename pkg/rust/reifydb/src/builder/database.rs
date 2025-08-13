@@ -29,11 +29,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 
 		#[cfg(feature = "sub_flow")]
 		{
-			use std::time::Duration;
-			let flow_subsystem = crate::FlowSubsystem::new(
-				engine,
-				Duration::from_millis(100),
-			);
+			let flow_subsystem = crate::FlowSubsystem::new(engine);
 			result = result.add_subsystem(flow_subsystem);
 		}
 

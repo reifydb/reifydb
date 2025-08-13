@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use cdc::CdcEventKey;
+pub use cdc_consumer::CdcConsumerKey;
+pub use cdc_event::CdcEventKey;
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use kind::KeyKind;
@@ -20,7 +21,8 @@ pub use transaction_version::TransactionVersionKey;
 
 use crate::{EncodedKey, EncodedKeyRange, util::encoding::keycode};
 
-mod cdc;
+mod cdc_consumer;
+mod cdc_event;
 mod column;
 mod column_policy;
 mod kind;
@@ -39,6 +41,7 @@ mod transaction_version;
 
 #[derive(Debug)]
 pub enum Key {
+	CdcConsumer(CdcConsumerKey),
 	CdcEvent(CdcEventKey),
 	Column(ColumnKey),
 	ColumnPolicy(ColumnPolicyKey),
@@ -59,6 +62,7 @@ pub enum Key {
 impl Key {
 	pub fn encode(&self) -> EncodedKey {
 		match &self {
+			Key::CdcConsumer(key) => key.encode(),
 			Key::CdcEvent(key) => key.encode(),
 			Key::Column(key) => key.encode(),
 			Key::ColumnPolicy(key) => key.encode(),
@@ -108,6 +112,8 @@ impl Key {
 
 		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
 		match kind {
+			KeyKind::CdcConsumer => CdcConsumerKey::decode(&key)
+				.map(Self::CdcConsumer),
 			KeyKind::CdcEvent => {
 				CdcEventKey::decode(&key).map(Self::CdcEvent)
 			}

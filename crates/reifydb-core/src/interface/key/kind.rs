@@ -22,6 +22,7 @@ pub enum KeyKind {
 	TableIndexEntry = 0x0D,
 	TableColumnSequence = 0x0E,
 	CdcEvent = 0x0F,
+	CdcConsumer = 0x10,
 }
 
 impl From<KeyKind> for u8 {
@@ -49,6 +50,7 @@ impl TryFrom<u8> for KeyKind {
 			0x0D => Ok(Self::TableIndexEntry),
 			0x0E => Ok(Self::TableColumnSequence),
 			0x0F => Ok(Self::CdcEvent),
+			0x10 => Ok(Self::CdcConsumer),
 			_ => Err(serde::de::Error::custom(format!(
 				"Invalid KeyKind value: {value:#04x}"
 			))),

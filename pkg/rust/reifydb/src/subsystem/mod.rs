@@ -15,6 +15,7 @@ use crate::health::HealthStatus;
 
 mod subsystems;
 
+mod cdc;
 #[cfg(feature = "sub_flow")]
 mod flow;
 #[cfg(feature = "sub_grpc")]
