@@ -74,9 +74,28 @@ fn main() {
     )
     .unwrap();
 
-    loop {
-
+    for frame in db.query_as_root(r#"FROM test.users"#, Params::None).unwrap() {
+        println!("{}", frame);
     }
+
+    db.command_as_root(
+        r#"
+    from test.users
+    filter { name = "bob" }
+    map { name: "bob", age: 21}
+    update test.users;
+
+    "#,
+        Params::None,
+    )
+    .unwrap();
+
+
+    for frame in db.query_as_root(r#"FROM test.users"#, Params::None).unwrap() {
+        println!("{}", frame);
+    }
+
+    loop {}
 
     // println!("Basic database operations completed successfully!");
     // rql_to_flow_example(&mut db);

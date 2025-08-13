@@ -58,7 +58,7 @@ ok
 
 cdc_get 6 1
 ---
-CdcEvent { version: 6, seq: 1, ts: 1000, change: Update { key: "b", before: "<deleted>", after: "10" } }
+CdcEvent { version: 6, seq: 1, ts: 1000, change: Insert { key: "b", after: "10" } }
 
 # Test multiple keys with different histories
 insert 7 x=100

@@ -15,7 +15,7 @@ use reifydb_core::row::EncodedRow;
 use reifydb_core::util::encoding::binary::decode_binary;
 use reifydb_core::util::encoding::format;
 use reifydb_core::util::encoding::format::Formatter;
-use reifydb_core::{EncodedKey, EncodedKeyRange, async_cow_vec};
+use reifydb_core::{async_cow_vec, EncodedKey, EncodedKeyRange};
 use reifydb_storage::memory::Memory;
 use reifydb_storage::sqlite::{Sqlite, SqliteConfig};
 use reifydb_testing::tempdir::temp_dir;
@@ -128,7 +128,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
                 let version = args.lookup_parse("version")?.unwrap_or(0u64);
                 args.reject_rest()?;
 
-                self.storage.commit(async_cow_vec![(Delta::Update { key, row })], version)?
+                self.storage.commit(async_cow_vec![(Delta::Set { key, row })], version)?
             }
 
             // remove KEY [version=VERSION]
