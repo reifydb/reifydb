@@ -3,11 +3,8 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::collections::HashMap;
-
-use reifydb_core::Value;
-
-pub mod columnar;
+pub use columnar::{GroupByView, GroupKey};
+pub use reifydb_core::value::columnar;
 mod engine;
 mod evaluate;
 mod execute;
@@ -18,6 +15,3 @@ pub mod subsystem;
 
 pub use engine::Engine;
 pub use reifydb_core::Result;
-
-pub type GroupKey = Vec<Value>;
-pub type GroupByView = HashMap<GroupKey, Vec<usize>>;

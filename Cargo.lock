@@ -1550,6 +1550,7 @@ dependencies = [
  "bincode 2.0.1",
  "chrono",
  "hex",
+ "once_cell",
  "regex",
  "serde",
  "serde_bytes",

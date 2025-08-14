@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod blob;
 pub mod boolean;
+pub mod columnar;
 pub mod container;
 mod date;
 mod datetime;
