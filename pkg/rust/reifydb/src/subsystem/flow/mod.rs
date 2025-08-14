@@ -96,7 +96,7 @@ impl<T: Transaction> FlowSubsystem<T> {
 	pub fn new(engine: Engine<T>) -> Self {
 		Self {
 			consumer: PollConsumer::new(
-				ConsumerId::FLOW_CONSUMER,
+				ConsumerId::flow_consumer(),
 				Duration::from_millis(1),
 				engine,
 				FlowConsumer,

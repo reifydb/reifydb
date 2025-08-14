@@ -14,8 +14,8 @@ use std::{
 use reifydb_core::Result;
 
 use crate::{
-	Subsystem,
 	health::{HealthMonitor, HealthStatus},
+	subsystem::Subsystem,
 };
 
 pub struct Subsystems {
@@ -49,10 +49,6 @@ impl Subsystems {
 
 	pub fn subsystem_count(&self) -> usize {
 		self.subsystems.len()
-	}
-
-	pub fn is_running(&self) -> bool {
-		self.running.load(Ordering::Relaxed)
 	}
 
 	pub fn start_all(&mut self, startup_timeout: Duration) -> Result<()> {

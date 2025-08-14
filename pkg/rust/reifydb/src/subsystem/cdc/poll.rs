@@ -50,7 +50,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 			engine: Some(engine),
 			processor: Some(Box::new(consume)),
 			state: Arc::new(ConsumerState {
-				id,
+				id: id.clone(),
 				interval: poll_interval,
 				consumer_key: CdcConsumerKey {
 					consumer: id,

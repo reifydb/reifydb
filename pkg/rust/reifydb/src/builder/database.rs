@@ -6,10 +6,12 @@ use std::{sync::Arc, time::Duration};
 use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
 
+#[cfg(feature = "sub_flow")]
+use crate::subsystem::FlowSubsystem;
 use crate::{
-	Subsystem, Subsystems,
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
+	subsystem::{Subsystem, Subsystems},
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
@@ -29,7 +31,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 
 		#[cfg(feature = "sub_flow")]
 		{
-			let flow_subsystem = crate::FlowSubsystem::new(engine);
+			let flow_subsystem = FlowSubsystem::new(engine);
 			result = result.add_subsystem(flow_subsystem);
 		}
 
@@ -82,15 +84,15 @@ impl<T: Transaction> DatabaseBuilder<T> {
 	pub fn build(self) -> Database<T> {
 		let health_monitor = Arc::new(HealthMonitor::new());
 
-		let mut subsystem_manager =
+		let mut subsystems =
 			Subsystems::new(Arc::clone(&health_monitor));
 		for subsystem in self.subsystems {
-			subsystem_manager.add_subsystem(subsystem);
+			subsystems.add_subsystem(subsystem);
 		}
 
 		Database::new(
 			self.engine,
-			subsystem_manager,
+			subsystems,
 			self.config,
 			health_monitor,
 		)

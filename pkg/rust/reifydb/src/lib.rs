@@ -9,7 +9,7 @@ mod health;
 mod hook;
 mod presets;
 mod session;
-mod subsystem;
+pub mod subsystem;
 
 use std::time::Duration;
 
@@ -52,13 +52,6 @@ pub use reifydb_transaction::{
 #[cfg(feature = "async")]
 pub use session::SessionAsync;
 pub use session::{CommandSession, QuerySession, Session, SessionSync};
-#[cfg(feature = "sub_flow")]
-pub use subsystem::FlowSubsystem;
-#[cfg(feature = "sub_grpc")]
-pub use subsystem::GrpcSubsystem;
-#[cfg(feature = "sub_ws")]
-pub use subsystem::WsSubsystem;
-pub use subsystem::{Subsystem, Subsystems};
 
 /// Default configuration values
 pub mod defaults {

@@ -13,21 +13,20 @@ use reifydb_core::Result;
 
 use crate::health::HealthStatus;
 
-mod subsystems;
-
-mod cdc;
+pub mod cdc;
 #[cfg(feature = "sub_flow")]
-mod flow;
+pub mod flow;
 #[cfg(feature = "sub_grpc")]
-mod grpc;
+pub mod grpc;
+mod subsystems;
 #[cfg(feature = "sub_ws")]
-mod ws;
+pub mod ws;
 
 #[cfg(feature = "sub_flow")]
 pub use flow::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
 pub use grpc::GrpcSubsystem;
-pub use subsystems::Subsystems;
+pub(crate) use subsystems::Subsystems;
 #[cfg(feature = "sub_ws")]
 pub use ws::WsSubsystem;
 

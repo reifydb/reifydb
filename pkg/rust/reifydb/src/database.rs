@@ -14,16 +14,15 @@ use reifydb_core::{
 };
 use reifydb_engine::Engine;
 
-#[cfg(feature = "sub_flow")]
-use crate::FlowSubsystem;
-#[cfg(feature = "sub_grpc")]
-use crate::GrpcSubsystem;
-#[cfg(feature = "sub_ws")]
-use crate::WsSubsystem;
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
+#[cfg(feature = "sub_flow")]
+use crate::subsystem::FlowSubsystem;
+#[cfg(feature = "sub_grpc")]
+use crate::subsystem::GrpcSubsystem;
+#[cfg(feature = "sub_ws")]
+use crate::subsystem::WsSubsystem;
 use crate::{
-	Subsystems,
 	defaults::{
 		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
 		MAX_STARTUP_TIME,
@@ -33,6 +32,7 @@ use crate::{
 		CommandSession, IntoCommandSession, IntoQuerySession,
 		QuerySession, Session, SessionSync,
 	},
+	subsystem::Subsystems,
 };
 
 #[derive(Debug, Clone)]

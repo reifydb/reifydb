@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use keycode::{deserialize, serialize};
+
 use super::{EncodableKey, KeyKind};
 use crate::{EncodedKey, interface::cdc::ConsumerId, util::encoding::keycode};
 
@@ -15,10 +17,10 @@ impl EncodableKey for CdcConsumerKey {
 	const KIND: KeyKind = KeyKind::CdcConsumer;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION_BYTE));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.consumer.0));
+		let mut out = Vec::new();
+		out.extend(&serialize(&VERSION_BYTE));
+		out.extend(&serialize(&Self::KIND));
+		out.extend(&serialize(&self.consumer.0));
 		EncodedKey::new(out)
 	}
 
@@ -26,22 +28,21 @@ impl EncodableKey for CdcConsumerKey {
 	where
 		Self: Sized,
 	{
-		if key.len() < 10 {
+		if key.len() < 2 {
 			return None;
 		}
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version: u8 = deserialize(&key[0..1]).ok()?;
 		if version != VERSION_BYTE {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = deserialize(&key[1..2]).ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let consumer_id: u64 =
-			keycode::deserialize(&key[2..10]).ok()?;
+		let consumer_id: String = deserialize(&key[2..]).ok()?;
 
 		Some(Self {
 			consumer: ConsumerId(consumer_id),
@@ -57,13 +58,13 @@ mod tests {
 	#[test]
 	fn test_encode_decode_cdc_consumer() {
 		let key = CdcConsumerKey {
-			consumer: ConsumerId(42),
+			consumer: ConsumerId::new("test-consumer"),
 		};
 
 		let encoded = key.encode();
 		let decoded = CdcConsumerKey::decode(&encoded)
 			.expect("Failed to decode key");
 
-		assert_eq!(decoded.consumer, ConsumerId(42));
+		assert_eq!(decoded.consumer, ConsumerId::new("test-consumer"));
 	}
 }

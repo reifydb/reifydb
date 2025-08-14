@@ -33,7 +33,7 @@ fn main() {
 	// let mut db: DB =
 	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
-	db.start();
+	db.start().unwrap();
 
 	db.command_as_root(
 		r#"

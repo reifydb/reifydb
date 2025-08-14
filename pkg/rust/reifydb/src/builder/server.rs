@@ -6,12 +6,12 @@ use reifydb_engine::Engine;
 use reifydb_network::ws::server::WsConfig;
 
 use super::DatabaseBuilder;
-#[cfg(feature = "sub_grpc")]
-use crate::GrpcSubsystem;
-#[cfg(feature = "sub_ws")]
-use crate::WsSubsystem;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use crate::context::{RuntimeProvider, TokioRuntimeProvider};
+#[cfg(feature = "sub_grpc")]
+use crate::subsystem::GrpcSubsystem;
+#[cfg(feature = "sub_ws")]
+use crate::subsystem::WsSubsystem;
 use crate::{Database, hook::WithHooks};
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]

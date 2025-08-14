@@ -11,11 +11,19 @@ pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStorage};
 use crate::{EncodedKey, Version, row::EncodedRow};
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ConsumerId(pub(crate) u64);
+#[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct ConsumerId(pub(crate) String);
 
 impl ConsumerId {
-	pub const FLOW_CONSUMER: ConsumerId = ConsumerId(1);
+	pub fn new(id: impl Into<String>) -> Self {
+		let id = id.into();
+		assert_ne!(id, "__FLOW_CONSUMER");
+		Self(id)
+	}
+
+	pub fn flow_consumer() -> Self {
+		Self("__FLOW_CONSUMER".to_string())
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
