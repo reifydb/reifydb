@@ -1576,6 +1576,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-flow"
+version = "0.0.1"
+dependencies = [
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-rql",
+ "reifydb-storage",
+ "reifydb-testing",
+ "reifydb-transaction",
+ "serde",
+ "test_each_file",
+]
+
+[[package]]
 name = "reifydb-network"
 version = "0.0.1"
 dependencies = [
