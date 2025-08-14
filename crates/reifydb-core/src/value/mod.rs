@@ -25,10 +25,12 @@ pub mod temporal;
 mod time;
 mod r#type;
 pub mod uuid;
+pub mod identity;
 
 pub use blob::Blob;
 pub use date::Date;
 pub use datetime::DateTime;
+pub use identity::IdentityId;
 pub use interval::Interval;
 pub use into::IntoValue;
 pub use is::*;
