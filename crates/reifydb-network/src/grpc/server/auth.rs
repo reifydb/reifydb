@@ -16,12 +16,12 @@ impl Interceptor for AuthInterceptor {
 		let metadata = req.metadata();
 		let token = extract_token(metadata)?;
 
-		let principal =
-			decode_token_to_principal(&token).map_err(|_| {
+		let identity =
+			decode_token_to_identity(&token).map_err(|_| {
 				Status::unauthenticated("Invalid token")
 			})?;
 
-		req.extensions_mut().insert(principal);
+		req.extensions_mut().insert(identity);
 
 		Ok(req)
 	}
@@ -38,7 +38,7 @@ fn extract_token(metadata: &MetadataMap) -> Result<String, Status> {
 }
 
 // Dummy parser — replace with JWT decoding
-fn decode_token_to_principal(_token: &str) -> Result<AuthenticatedUser, ()> {
+fn decode_token_to_identity(_token: &str) -> Result<AuthenticatedUser, ()> {
 	// Ok(AuthenticatedUser { user_id: token.to_string(), roles:
 	// vec!["user".into()] })
 	Ok(AuthenticatedUser {})

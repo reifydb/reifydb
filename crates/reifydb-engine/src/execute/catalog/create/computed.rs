@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ActiveCommandTransaction, Command, ExecuteCommand, Params, Principal,
+	ActiveCommandTransaction, Command, ExecuteCommand, Params, Identity,
 	Transaction,
 };
 use reifydb_rql::{
@@ -78,7 +78,7 @@ impl<T: Transaction> Executor<T> {
 			Command {
 				rql: rql.as_str(),
 				params: Params::default(),
-				principal: &Principal::root(),
+				identity: &Identity::root(),
 			},
 		)?;
 

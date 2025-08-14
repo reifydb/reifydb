@@ -1,7 +1,7 @@
 use crate::{
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, GetHooks,
-		Params, Principal, Transaction,
+		Params, Identity, Transaction,
 	},
 	result::frame::Frame,
 };
@@ -15,14 +15,14 @@ pub trait Engine<T: Transaction>:
 
 	fn command_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>>;
 
 	fn query_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>>;

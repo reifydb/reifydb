@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, Command,
 		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		GetHooks, Key, Params, Principal, Query, TableId, Transaction,
+		GetHooks, Key, Params, Identity, Query, TableId, Transaction,
 		VersionedTransaction,
 	},
 	return_hooks,
@@ -56,7 +56,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 
 	fn command_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -66,7 +66,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 			Command {
 				rql,
 				params,
-				principal,
+				identity,
 			},
 		)?;
 		txn.commit()?;
@@ -75,7 +75,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 
 	fn query_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -85,7 +85,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 			Query {
 				rql,
 				params,
-				principal,
+				identity,
 			},
 		)?;
 		Ok(result)
@@ -247,7 +247,7 @@ impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
 					let frame = self
 						.engine
 						.query_as(
-							&Principal::root(),
+							&Identity::root(),
 							"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
 							Params::None,
 						)

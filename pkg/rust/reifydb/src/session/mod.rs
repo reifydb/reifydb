@@ -15,7 +15,7 @@ pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
-	interface::{Params, Principal, Transaction},
+	interface::{Params, Identity, Transaction},
 };
 use reifydb_engine::Engine;
 
@@ -37,7 +37,7 @@ pub trait SessionSync<T: Transaction>: Session<T> {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> crate::Result<Vec<Frame>> {
-		let session = self.command_session(Principal::root())?;
+		let session = self.command_session(Identity::root())?;
 		session.command_sync(rql, params)
 	}
 
@@ -46,7 +46,7 @@ pub trait SessionSync<T: Transaction>: Session<T> {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> crate::Result<Vec<Frame>> {
-		let session = self.query_session(Principal::root())?;
+		let session = self.query_session(Identity::root())?;
 		session.query_sync(rql, params)
 	}
 }
@@ -59,7 +59,7 @@ pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
 		params: impl Into<Params> + Send,
 	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
 		async {
-			let session = self.command_session(Principal::root())?;
+			let session = self.command_session(Identity::root())?;
 			session.command_async(rql, params).await
 		}
 	}
@@ -70,7 +70,7 @@ pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
 		params: impl Into<Params> + Send,
 	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
 		async {
-			let session = self.query_session(Principal::root())?;
+			let session = self.query_session(Identity::root())?;
 			session.query_async(rql, params).await
 		}
 	}
@@ -90,7 +90,7 @@ pub trait IntoQuerySession<T: Transaction> {
 	) -> crate::Result<QuerySession<T>>;
 }
 
-impl<T: Transaction> IntoCommandSession<T> for Principal {
+impl<T: Transaction> IntoCommandSession<T> for Identity {
 	fn into_command_session(
 		self,
 		engine: Engine<T>,
@@ -99,7 +99,7 @@ impl<T: Transaction> IntoCommandSession<T> for Principal {
 	}
 }
 
-impl<T: Transaction> IntoQuerySession<T> for Principal {
+impl<T: Transaction> IntoQuerySession<T> for Identity {
 	fn into_query_session(
 		self,
 		engine: Engine<T>,

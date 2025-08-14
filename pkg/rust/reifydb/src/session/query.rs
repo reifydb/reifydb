@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		Engine as EngineInterface, Params, Principal, Transaction,
+		Engine as EngineInterface, Params, Identity, Transaction,
 	},
 	result::Frame,
 };
@@ -14,14 +14,14 @@ use tokio::task::spawn_blocking;
 /// Session for executing read-only database queries
 pub struct QuerySession<T: Transaction> {
 	pub(crate) engine: Engine<T>,
-	pub(crate) principal: Principal,
+	pub(crate) identity: Identity,
 }
 
 impl<T: Transaction> QuerySession<T> {
-	pub(crate) fn new(engine: Engine<T>, principal: Principal) -> Self {
+	pub(crate) fn new(engine: Engine<T>, identity: Identity) -> Self {
 		Self {
 			engine,
-			principal,
+			identity,
 		}
 	}
 
@@ -33,7 +33,7 @@ impl<T: Transaction> QuerySession<T> {
 	) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();
-		self.engine.query_as(&self.principal, &rql, params).map_err(
+		self.engine.query_as(&self.identity, &rql, params).map_err(
 			|mut err| {
 				err.set_statement(rql);
 				err
@@ -51,10 +51,10 @@ impl<T: Transaction> QuerySession<T> {
 		let rql = rql.to_string();
 		let params = params.into();
 
-		let principal = self.principal.clone();
+		let identity = self.identity.clone();
 		let engine = self.engine.clone();
 		spawn_blocking(move || {
-			engine.query_as(&principal, &rql, params).map_err(
+			engine.query_as(&identity, &rql, params).map_err(
 				|mut err| {
 					err.set_statement(rql.to_string());
 					err

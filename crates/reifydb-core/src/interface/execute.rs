@@ -5,7 +5,7 @@ use crate::{
 	Frame,
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, Params,
-		Principal, Transaction,
+		Identity, Transaction,
 	},
 };
 
@@ -13,14 +13,14 @@ use crate::{
 pub struct Command<'a> {
 	pub rql: &'a str,
 	pub params: Params,
-	pub principal: &'a Principal,
+	pub identity: &'a Identity,
 }
 
 #[derive(Debug)]
 pub struct Query<'a> {
 	pub rql: &'a str,
 	pub params: Params,
-	pub principal: &'a Principal,
+	pub identity: &'a Identity,
 }
 
 pub trait Execute<T: Transaction>: ExecuteCommand<T> + ExecuteQuery<T> {}
