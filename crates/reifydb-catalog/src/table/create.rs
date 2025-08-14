@@ -160,7 +160,7 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{
-		SchemaTableKey, VersionedQueryTransaction,
+		SchemaTableKey, TableId, VersionedQueryTransaction,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
@@ -187,8 +187,8 @@ mod tests {
 		// First creation should succeed
 		let result = Catalog::create_table(&mut txn, to_create.clone())
 			.unwrap();
-		assert_eq!(result.id, 1);
-		assert_eq!(result.schema, 1);
+		assert_eq!(result.id, TableId(1025));
+		assert_eq!(result.schema, SchemaId(1025));
 		assert_eq!(result.name, "test_table");
 
 		// Creating the same table again with `if_not_exists = false`
@@ -201,7 +201,7 @@ mod tests {
 	#[test]
 	fn test_table_linked_to_schema() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
+		let schema = ensure_test_schema(&mut txn);
 
 		let to_create = TableToCreate {
 			schema: "test_schema".to_string(),
@@ -222,7 +222,7 @@ mod tests {
 		Catalog::create_table(&mut txn, to_create).unwrap();
 
 		let links = txn
-			.range(SchemaTableKey::full_scan(SchemaId(1)))
+			.range(SchemaTableKey::full_scan(schema.id))
 			.unwrap()
 			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
@@ -231,7 +231,7 @@ mod tests {
 		let row = &link.row;
 		assert_eq!(
 			table_schema::LAYOUT.get_u64(row, table_schema::ID),
-			1
+			1025
 		);
 		assert_eq!(
 			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),
@@ -242,7 +242,7 @@ mod tests {
 		let row = &link.row;
 		assert_eq!(
 			table_schema::LAYOUT.get_u64(row, table_schema::ID),
-			2
+			1026
 		);
 		assert_eq!(
 			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),

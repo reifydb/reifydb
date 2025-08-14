@@ -12,7 +12,7 @@ use reifydb_core::{
 use crate::{
 	Catalog,
 	column::{ColumnIndex, ColumnToCreate},
-	schema::{Schema, SchemaId, SchemaToCreate},
+	schema::{Schema, SchemaToCreate},
 	table,
 	table::TableToCreate,
 };
@@ -45,9 +45,9 @@ pub fn ensure_test_schema<T: Transaction>(
 pub fn ensure_test_table<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
 ) -> Table {
-	ensure_test_schema(txn);
+	let schema = ensure_test_schema(txn);
 	if let Some(result) =
-		Catalog::get_table_by_name(txn, SchemaId(1), "test_table")
+		Catalog::get_table_by_name(txn, schema.id, "test_table")
 			.unwrap()
 	{
 		return result;
@@ -89,7 +89,7 @@ pub fn create_test_table_column<T: Transaction>(
 		ColumnToCreate {
 			span: None,
 			schema_name: "test_schema",
-			table: TableId(1),
+			table: TableId(1025),
 			table_name: "test_table",
 			column: name.to_string(),
 			value,

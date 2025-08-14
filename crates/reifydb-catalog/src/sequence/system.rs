@@ -56,7 +56,7 @@ impl SystemSequence {
 	pub(crate) fn next_schema_id<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 	) -> crate::Result<SchemaId> {
-		GeneratorU64::next(txn, &SCHEMA_KEY).map(SchemaId)
+		GeneratorU64::next(txn, &SCHEMA_KEY, Some(1025)).map(SchemaId)
 	}
 }
 
@@ -64,7 +64,7 @@ impl SystemSequence {
 	pub(crate) fn next_table_id<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 	) -> crate::Result<TableId> {
-		GeneratorU64::next(txn, &TABLE_KEY).map(TableId)
+		GeneratorU64::next(txn, &TABLE_KEY, Some(1025)).map(TableId)
 	}
 }
 
@@ -72,7 +72,7 @@ impl SystemSequence {
 	pub(crate) fn next_column_id<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 	) -> crate::Result<ColumnId> {
-		GeneratorU64::next(txn, &COLUMN_KEY).map(ColumnId)
+		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ColumnId)
 	}
 }
 
@@ -80,6 +80,7 @@ impl SystemSequence {
 	pub(crate) fn next_column_policy_id<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 	) -> crate::Result<ColumnPolicyId> {
-		GeneratorU64::next(txn, &COLUMN_POLICY_KEY).map(ColumnPolicyId)
+		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, None)
+			.map(ColumnPolicyId)
 	}
 }

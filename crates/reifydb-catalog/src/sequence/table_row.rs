@@ -21,6 +21,7 @@ impl TableRowSequence {
 				table,
 			}
 			.encode(),
+			None,
 		)
 		.map(RowId)
 	}

@@ -53,8 +53,8 @@ macro_rules! test_with_pools {
 		#[test]
 		fn $name() {
 			let _pools =
-						$crate::value::columnar::pool::testing::TestPools::new(
-						);
+										$crate::value::columnar::pool::testing::TestPools::new(
+										);
 			$body
 		}
 	};
