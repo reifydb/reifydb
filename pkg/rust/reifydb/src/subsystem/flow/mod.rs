@@ -6,8 +6,8 @@ use std::{any::Any, time::Duration};
 use reifydb_core::{
 	Result,
 	interface::{
-		ActiveCommandTransaction, CdcConsume, CdcConsumer, CdcEvent,
-		Change, ConsumerId, Transaction,
+		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
+		CdcEvent, ConsumerId, Transaction,
 	},
 };
 use reifydb_engine::Engine;
@@ -26,7 +26,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 	) -> Result<()> {
 		for event in events {
 			let change_description = match &event.change {
-				Change::Insert {
+				CdcChange::Insert {
 					key,
 					after,
 				} => {
@@ -38,7 +38,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 						)
 					)
 				}
-				Change::Update {
+				CdcChange::Update {
 					key,
 					before,
 					after,
@@ -58,7 +58,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 						)
 					)
 				}
-				Change::Delete {
+				CdcChange::Delete {
 					key,
 					before,
 				} => {

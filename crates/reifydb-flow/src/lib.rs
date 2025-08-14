@@ -5,3 +5,8 @@
 
 #[allow(dead_code)]
 mod core;
+#[allow(dead_code)]
+mod operator;
+mod process;
+
+pub use reifydb_core::Result;

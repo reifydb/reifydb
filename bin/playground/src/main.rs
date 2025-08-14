@@ -45,18 +45,17 @@ fn main() {
 	.unwrap();
 
 	// Skip computed view for now since flow subsystem has unimplemented
-	// parts session
-	//     .command_sync(
-	//         r#"
-	// create computed view test.adults { name: utf8, age: int1 }  with {
-	//     from test.users
-	//     filter { age > 18  }
-	//     map { name, age }
-	// }
-	// "#,
-	//         Params::None,
-	//     )
-	//     .unwrap();
+	db.command_as_root(
+		r#"
+	create computed view test.adults { name: utf8, age: int1 }  with {
+	    from test.users
+	    filter { age > 18  }
+	    map { name, age }
+	}
+	"#,
+		Params::None,
+	)
+	.unwrap();
 
 	db.command_as_root(
 		r#"

@@ -48,7 +48,7 @@ impl<T: Transaction> FlowProcessor<T> {
 	}
 
 	pub fn initialize(&mut self) -> Result<()> {
-		// Initialize operators for all nodes
+		// Initialize operator for all nodes
 		let node_ids: Vec<NodeId> = self.flow.get_all_nodes().collect();
 
 		for node_id in node_ids {
@@ -148,7 +148,7 @@ impl<T: Transaction> FlowProcessor<T> {
 						);
 					};
 
-					// Stateful operators need to persist
+					// Stateful operator need to persist
 					// their internal state
 					if operator.is_stateful() {
 						self.apply_diff_to_storage_with_tx(txn, node_id, &transformed_diff)?;
@@ -193,7 +193,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		let mut contexts: HashMap<NodeId, OperatorContext> =
 			HashMap::new();
 
-		// Initialize operators for all nodes
+		// Initialize operator for all nodes
 		let node_ids: Vec<NodeId> = flow.get_all_nodes().collect();
 
 		for node_id in node_ids {
@@ -265,7 +265,7 @@ impl<T: Transaction> FlowProcessor<T> {
 						);
 					};
 
-					// Stateful operators need to persist
+					// Stateful operator need to persist
 					// their internal state
 					if operator.is_stateful() {
 						self.apply_diff_to_storage_with_tx(txn, node_id, &transformed_diff)?;

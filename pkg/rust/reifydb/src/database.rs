@@ -3,7 +3,7 @@
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use std::net::SocketAddr;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	Result,
@@ -27,7 +27,7 @@ use crate::{
 		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
 		MAX_STARTUP_TIME,
 	},
-	health::{HealthMonitor, HealthStatus},
+	health::{ComponentHealth, HealthMonitor, HealthStatus},
 	session::{
 		CommandSession, IntoCommandSession, IntoQuerySession,
 		QuerySession, Session, SessionSync,
@@ -245,8 +245,7 @@ impl<T: Transaction> Database<T> {
 
 	pub fn get_all_component_health(
 		&self,
-	) -> std::collections::HashMap<String, crate::health::ComponentHealth>
-	{
+	) -> HashMap<String, ComponentHealth> {
 		self.health_monitor.get_all_health()
 	}
 

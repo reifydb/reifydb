@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Blob, CowVec, EncodedKey,
-	interface::{CdcEvent, Change},
+	interface::{CdcChange, CdcEvent},
 	row::EncodedRow,
 };
 
@@ -25,7 +25,7 @@ pub(crate) fn encode_cdc_event(
 
 	// Encode change type and variable-length fields
 	match &event.change {
-		Change::Insert {
+		CdcChange::Insert {
 			key,
 			after,
 		} => {
@@ -47,7 +47,7 @@ pub(crate) fn encode_cdc_event(
 				&Blob::from_slice(after.as_slice()),
 			);
 		}
-		Change::Update {
+		CdcChange::Update {
 			key,
 			before,
 			after,
@@ -73,7 +73,7 @@ pub(crate) fn encode_cdc_event(
 				&Blob::from_slice(after.as_slice()),
 			);
 		}
-		Change::Delete {
+		CdcChange::Delete {
 			key,
 			before,
 		} => {
@@ -120,7 +120,7 @@ pub(crate) fn decode_cdc_event(
 			let after = EncodedRow(CowVec::new(
 				after_blob.as_bytes().to_vec(),
 			));
-			Change::Insert {
+			CdcChange::Insert {
 				key,
 				after,
 			}
@@ -136,7 +136,7 @@ pub(crate) fn decode_cdc_event(
 			let after = EncodedRow(CowVec::new(
 				after_blob.as_bytes().to_vec(),
 			));
-			Change::Update {
+			CdcChange::Update {
 				key,
 				before,
 				after,
@@ -148,7 +148,7 @@ pub(crate) fn decode_cdc_event(
 			let before = EncodedRow(CowVec::new(
 				before_blob.as_bytes().to_vec(),
 			));
-			Change::Delete {
+			CdcChange::Delete {
 				key,
 				before,
 			}
@@ -160,7 +160,7 @@ pub(crate) fn decode_cdc_event(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{CdcEvent, Change};
+	use reifydb_core::interface::{CdcChange, CdcEvent};
 
 	use super::*;
 
@@ -168,7 +168,7 @@ mod tests {
 	fn test_encode_decode_insert() {
 		let key = EncodedKey::new(vec![1, 2, 3]);
 		let after = EncodedRow(CowVec::new(vec![4, 5, 6]));
-		let change = Change::Insert {
+		let change = CdcChange::Insert {
 			key: key.clone(),
 			after: after.clone(),
 		};
@@ -182,7 +182,7 @@ mod tests {
 		assert_eq!(decoded.timestamp, 1234567890);
 
 		match decoded.change {
-			Change::Insert {
+			CdcChange::Insert {
 				key: k,
 				after: a,
 			} => {
@@ -198,7 +198,7 @@ mod tests {
 		let key = EncodedKey::new(vec![1, 2, 3]);
 		let before = EncodedRow(CowVec::new(vec![4, 5, 6]));
 		let after = EncodedRow(CowVec::new(vec![7, 8, 9]));
-		let change = Change::Update {
+		let change = CdcChange::Update {
 			key: key.clone(),
 			before: before.clone(),
 			after: after.clone(),
@@ -213,7 +213,7 @@ mod tests {
 		assert_eq!(decoded.timestamp, 1234567890);
 
 		match decoded.change {
-			Change::Update {
+			CdcChange::Update {
 				key: k,
 				before: b,
 				after: a,
@@ -230,7 +230,7 @@ mod tests {
 	fn test_encode_decode_delete() {
 		let key = EncodedKey::new(vec![1, 2, 3]);
 		let before = EncodedRow(CowVec::new(vec![4, 5, 6]));
-		let change = Change::Delete {
+		let change = CdcChange::Delete {
 			key: key.clone(),
 			before: before.clone(),
 		};
@@ -244,7 +244,7 @@ mod tests {
 		assert_eq!(decoded.timestamp, 1234567890);
 
 		match decoded.change {
-			Change::Delete {
+			CdcChange::Delete {
 				key: k,
 				before: b,
 			} => {

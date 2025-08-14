@@ -81,7 +81,7 @@ impl FilterOperator {
 	fn filter(&self, columns: &Columns) -> crate::Result<Columns> {
 		let row_count = columns.row_count();
 
-		// TODO: Flow operators need access to params through
+		// TODO: Flow operator need access to params through
 		// OperatorContext
 		let empty_params = Params::None;
 		let eval_ctx = EvaluationContext {

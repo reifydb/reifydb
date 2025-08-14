@@ -79,7 +79,7 @@ impl MapOperator {
 		let row_count = columns.row_count();
 
 		// Create evaluation context from input columns
-		// TODO: Flow operators need access to params through
+		// TODO: Flow operator need access to params through
 		// OperatorContext
 		let empty_params = Params::None;
 		let eval_ctx = EvaluationContext {

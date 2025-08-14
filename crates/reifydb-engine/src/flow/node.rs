@@ -60,7 +60,7 @@ impl OperatorType {
 	/// be persisted across incremental updates
 	pub fn is_stateful(&self) -> bool {
 		match self {
-			// Stateless operators - pure transformations
+			// Stateless operator - pure transformations
 			OperatorType::Filter {
 				..
 			} => false,
@@ -69,7 +69,7 @@ impl OperatorType {
 			} => false,
 			OperatorType::Union => false,
 
-			// Stateful operators - need persistent state for
+			// Stateful operator - need persistent state for
 			// incremental updates
 			OperatorType::Join {
 				..

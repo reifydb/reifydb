@@ -12,11 +12,11 @@ pub fn not_can_not_applied_to_number(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on numeric type".to_string()),
-        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operators or casting to boolean first".to_string()),
+        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operator or casting to boolean first".to_string()),
         notes: vec![
             "NOT is a logical operator that inverts boolean values (true becomes false, false becomes true)".to_string(),
             "For numeric negation, use the minus (-) operator instead".to_string(),
-            "To convert numbers to boolean, use comparison operators like: value != 0".to_string()
+            "To convert numbers to boolean, use comparison operator like: value != 0".to_string()
         ],
         cause: None,
     }
@@ -31,10 +31,10 @@ pub fn not_can_not_applied_to_text(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on text type".to_string()),
-        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "NOT is a logical operator that inverts boolean values (true becomes false, false becomes true)".to_string(),
-            "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
+            "To convert text to boolean, use comparison operator like: text != '...'".to_string(),
             "For string operations, use appropriate string functions instead".to_string()
         ],
         cause: None,
@@ -50,10 +50,10 @@ pub fn not_can_not_applied_to_temporal(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on temporal type".to_string()),
-        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "NOT is a logical operator that inverts boolean values (true becomes false, false becomes true)".to_string(),
-            "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
+            "To convert temporal values to boolean, use comparison operator like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
         cause: None,
@@ -69,10 +69,10 @@ pub fn not_can_not_applied_to_uuid(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on UUID type".to_string()),
-        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The NOT operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "NOT is a logical operator that inverts boolean values (true becomes false, false becomes true)".to_string(),
-            "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
+            "To convert UUIDs to boolean, use comparison operator like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
         cause: None,
@@ -88,10 +88,10 @@ pub fn and_can_not_applied_to_number(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on numeric type".to_string()),
-        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "AND is a logical operator that combines boolean values".to_string(),
-            "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
+            "To convert numbers to boolean, use comparison operator like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise AND (&) operator instead".to_string()
         ],
         cause: None,
@@ -107,10 +107,10 @@ pub fn and_can_not_applied_to_text(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on text type".to_string()),
-        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "AND is a logical operator that combines boolean values".to_string(),
-            "To convert text to boolean, use comparison operators like: text != ''".to_string(),
+            "To convert text to boolean, use comparison operator like: text != ''".to_string(),
             "For text concatenation, use the string concatenation operator (||) instead".to_string()
         ],
         cause: None,
@@ -126,10 +126,10 @@ pub fn and_can_not_applied_to_temporal(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on temporal type".to_string()),
-        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "AND is a logical operator that combines boolean values".to_string(),
-            "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
+            "To convert temporal values to boolean, use comparison operator like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
         cause: None,
@@ -145,10 +145,10 @@ pub fn and_can_not_applied_to_uuid(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on UUID type".to_string()),
-        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The AND operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "AND is a logical operator that combines boolean values".to_string(),
-            "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
+            "To convert UUIDs to boolean, use comparison operator like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
         cause: None,
@@ -164,10 +164,10 @@ pub fn or_can_not_applied_to_number(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on numeric type".to_string()),
-        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "OR is a logical operator that combines boolean values".to_string(),
-            "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
+            "To convert numbers to boolean, use comparison operator like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise OR (|) operator instead".to_string()
         ],
         cause: None,
@@ -183,10 +183,10 @@ pub fn or_can_not_applied_to_text(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on text type".to_string()),
-        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "OR is a logical operator that combines boolean values".to_string(),
-            "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
+            "To convert text to boolean, use comparison operator like: text != '...'".to_string(),
             "For text concatenation, use the string concatenation operator (+) instead".to_string()
         ],
         cause: None,
@@ -202,10 +202,10 @@ pub fn or_can_not_applied_to_temporal(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on temporal type".to_string()),
-        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "OR is a logical operator that combines boolean values".to_string(),
-            "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
+            "To convert temporal values to boolean, use comparison operator like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
         cause: None,
@@ -221,10 +221,10 @@ pub fn or_can_not_applied_to_uuid(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on UUID type".to_string()),
-        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The OR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "OR is a logical operator that combines boolean values".to_string(),
-            "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
+            "To convert UUIDs to boolean, use comparison operator like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
         cause: None,
@@ -240,10 +240,10 @@ pub fn xor_can_not_applied_to_number(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on numeric type".to_string()),
-        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "XOR is a logical operator that performs exclusive or on boolean values".to_string(),
-            "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
+            "To convert numbers to boolean, use comparison operator like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise XOR (^) operator instead".to_string()
         ],
         cause: None,
@@ -259,10 +259,10 @@ pub fn xor_can_not_applied_to_text(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on text type".to_string()),
-        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "XOR is a logical operator that performs exclusive or on boolean values".to_string(),
-            "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
+            "To convert text to boolean, use comparison operator like: text != '...'".to_string(),
             "XOR returns true when exactly one operand is true".to_string()
         ],
         cause: None,
@@ -278,10 +278,10 @@ pub fn xor_can_not_applied_to_temporal(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on temporal type".to_string()),
-        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "XOR is a logical operator that performs exclusive or on boolean values".to_string(),
-            "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
+            "To convert temporal values to boolean, use comparison operator like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
         cause: None,
@@ -297,10 +297,10 @@ pub fn xor_can_not_applied_to_uuid(span: impl IntoOwnedSpan) -> Diagnostic {
         column: None,
         span: Some(owned_span),
         label: Some("logical operator on UUID type".to_string()),
-        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operators first".to_string()),
+        help: Some("The XOR operator can only be applied to boolean values. Consider using comparison operator first".to_string()),
         notes: vec![
             "XOR is a logical operator that performs exclusive or on boolean values".to_string(),
-            "To convert UUIDs to boolean, use comparison operators like: uuid == '...' ".to_string(),
+            "To convert UUIDs to boolean, use comparison operator like: uuid == '...' ".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
         cause: None,
