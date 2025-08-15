@@ -83,7 +83,7 @@ macro_rules! impl_to_uuid {
                             *diagnostic_span = proper_span.clone();
                         }
 
-                        e.0.update_spans(&proper_span);
+                        e.with_span(&proper_span);
                         error!(cast::invalid_uuid(proper_span, $target_type, e.0))
                     })?;
 
