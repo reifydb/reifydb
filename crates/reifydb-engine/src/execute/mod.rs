@@ -281,7 +281,7 @@ impl<T: Transaction> Executor<T> {
                         .into_iter()
                         .map(|layout| match layout.table {
                             Some(table) => Column::TableQualified(TableQualified {
-                                table,
+								table: table,
                                 name: layout.name,
                                 data: ColumnData::undefined(0),
                             }),

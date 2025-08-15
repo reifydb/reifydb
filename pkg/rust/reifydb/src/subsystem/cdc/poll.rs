@@ -213,6 +213,9 @@ fn fetch_events_since<T: Transaction>(
 ) -> Result<Vec<CdcEvent>> {
 	Ok(transaction
 		.cdc()
-		.range(Bound::Excluded(since_version), Bound::Unbounded)?
+		.range(
+			Bound::Excluded(since_version),
+			Bound::Included(since_version + 1),
+		)?
 		.collect())
 }

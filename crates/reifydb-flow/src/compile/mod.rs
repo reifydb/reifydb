@@ -13,7 +13,10 @@ mod sources;
 use std::collections::HashMap;
 
 use reifydb_core::{
-	interface::{SchemaId, TableDef, TableId},
+	interface::{
+		ActiveCommandTransaction, SchemaId, TableId, Transaction,
+		ViewDef,
+	},
 	result::error::diagnostic::flow::flow_error,
 };
 use reifydb_rql::plan::logical::{CreateComputedViewNode, LogicalPlan};
@@ -41,9 +44,11 @@ impl FlowCompiler {
 	}
 
 	/// Compiles a vector of logical plans into a single FlowGraph
-	pub fn compile(
+	pub fn compile<T: Transaction>(
 		&mut self,
+		txn: &mut ActiveCommandTransaction<T>,
 		plans: Vec<LogicalPlan>,
+		view: &ViewDef,
 	) -> crate::Result<Flow> {
 		let mut result = Flow::new();
 
@@ -51,8 +56,12 @@ impl FlowCompiler {
 		let mut last_node_id: Option<NodeId> = None;
 
 		for (index, plan) in plans.into_iter().enumerate() {
-			let node_id =
-				self.compile_plan(&mut result, plan, index)?;
+			let node_id = self.compile_plan(
+				txn,
+				&mut result,
+				plan,
+				index,
+			)?;
 			// Connect nodes in sequence (for simple linear plans)
 			if let Some(prev_id) = last_node_id {
 				result.add_edge(&prev_id, &node_id)?;
@@ -60,21 +69,29 @@ impl FlowCompiler {
 			last_node_id = Some(node_id);
 		}
 
+		let result_node = result.add_node(NodeType::SinkView {
+			name: view.name.clone(),
+			view: view.id,
+		});
+		result.add_edge(&last_node_id.unwrap(), &result_node)?;
+
 		Ok(result)
 	}
 
 	/// Compiles a single logical plan node into the FlowGraph
-	fn compile_plan(
+	fn compile_plan<T: Transaction>(
 		&mut self,
+		txn: &mut ActiveCommandTransaction<T>,
 		flow_graph: &mut Flow,
 		plan: LogicalPlan,
 		index: usize,
 	) -> crate::Result<NodeId> {
 		let node_id = match plan {
 			// Data Sources -> Source Nodes
-			LogicalPlan::TableScan(table_scan) => {
-				self.compile_table_scan(flow_graph, table_scan)?
-			}
+			LogicalPlan::TableScan(table_scan) => self
+				.compile_table_scan(
+					txn, flow_graph, table_scan,
+				)?,
 			LogicalPlan::InlineData(inline_data) => self
 				.compile_inline_data(flow_graph, inline_data)?,
 
@@ -112,11 +129,13 @@ impl FlowCompiler {
 			}
 
 			// CREATE COMPUTED VIEW can be compiled to dataflow
-			LogicalPlan::CreateComputedView(computed_view) => self
-				.compile_create_computed_view(
-					flow_graph,
-					computed_view,
-				)?,
+			// LogicalPlan::CreateComputedView(computed_view) =>
+			// self 	.compile_create_computed_view(
+			// 		txn,
+			// 		flow_graph,
+			// 		computed_view,
+			// 	)?,
+			LogicalPlan::CreateComputedView(_) => unreachable!(),
 
 			// Mutate operations are handled by transaction layer
 			LogicalPlan::Insert(_)
@@ -152,65 +171,71 @@ impl FlowCompiler {
 
 	/// Compiles a CREATE COMPUTED VIEW logical plan into a FlowGraph with a
 	/// Sink node
-	fn compile_create_computed_view(
+	fn compile_create_computed_view<T: Transaction>(
 		&mut self,
+		txn: &mut ActiveCommandTransaction<T>,
 		flow_graph: &mut Flow,
 		computed_view: CreateComputedViewNode,
 	) -> crate::Result<NodeId> {
-		// If there's no WITH clause, this is just a view definition
-		// without a query
-		let query_plans = match computed_view.with {
-			Some(plans) => plans,
-			None => {
-				return Err(reifydb_core::Error(flow_error(
-                    "CREATE COMPUTED VIEW requires a WITH clause containing the query definition"
-                        .to_string(),
-                )));
-			}
-		};
-
-		// Compile the query plans to build the dataflow graph
-		let mut last_node_id: Option<NodeId> = None;
-
-		for (index, plan) in query_plans.into_iter().enumerate() {
-			let node_id =
-				self.compile_plan(flow_graph, plan, index)?;
-
-			// Connect nodes in sequence (for simple linear plans)
-			if let Some(prev_id) = last_node_id {
-				flow_graph.add_edge(&prev_id, &node_id)?;
-			}
-
-			last_node_id = Some(node_id);
-		}
-
-		// Create the computed view as a Sink node at the end
-		let view_name = computed_view.view.fragment.clone();
-		let view_table = TableDef {
-			id: self.next_table_id(),
-			schema: SchemaId(1), /* TODO: Parse schema from
-			                      * computed_view.schema */
-			name: view_name.clone(),
-			columns: vec![], /* TODO: Create columns from
-			                  * computed_view.columns */
-		};
-
-		let sink_node_id = flow_graph.add_node(NodeType::Sink {
-			name: view_name,
-			table: view_table,
-		});
-
-		// Connect the last query node to the sink
-		if let Some(last_id) = last_node_id {
-			flow_graph.add_edge(&last_id, &sink_node_id)?;
-		}
-
-		Ok(sink_node_id)
+		// // If there's no WITH clause, this is just a view definition
+		// // without a query
+		// let query_plans = match computed_view.with {
+		// 	Some(plans) => plans,
+		// 	None => {
+		// 		return Err(reifydb_core::Error(flow_error(
+		//             "CREATE COMPUTED VIEW requires a WITH clause
+		// containing the query definition"                 
+		// .to_string(),         )));
+		// 	}
+		// };
+		//
+		// // Compile the query plans to build the dataflow graph
+		// let mut last_node_id: Option<NodeId> = None;
+		//
+		// for (index, plan) in query_plans.into_iter().enumerate() {
+		// 	let node_id =
+		// 		self.compile_plan(txn, flow_graph, plan, index)?;
+		//
+		// 	// Connect nodes in sequence (for simple linear plans)
+		// 	if let Some(prev_id) = last_node_id {
+		// 		flow_graph.add_edge(&prev_id, &node_id)?;
+		// 	}
+		//
+		// 	last_node_id = Some(node_id);
+		// }
+		//
+		// // Create the computed view as a Sink node at the end
+		// let view_name = computed_view.view.fragment.clone();
+		// // let view_table = TableDef {
+		// // 	id: self.next_table_id(),
+		// // 	schema: SchemaId(1), /* TODO: Parse schema from
+		// // 	                      * computed_view.schema */
+		// // 	name: view_name.clone(),
+		// // 	columns: vec![], /* TODO: Create columns from
+		// // 	                  * computed_view.columns */
+		// // };
+		//
+		// let sink_node_id = flow_graph.add_node(NodeType::SinkView {
+		// 	name: view_name,
+		// 	view: ,
+		// });
+		//
+		// // Connect the last query node to the sink
+		// if let Some(last_id) = last_node_id {
+		// 	flow_graph.add_edge(&last_id, &sink_node_id)?;
+		// }
+		//
+		// Ok(sink_node_id)
+		unreachable!()
 	}
 }
 
 /// Public API for compiling logical plans to FlowGraphs
-pub fn compile_flow(plans: Vec<LogicalPlan>) -> crate::Result<Flow> {
+pub fn compile_flow<T: Transaction>(
+	txn: &mut ActiveCommandTransaction<T>,
+	plans: Vec<LogicalPlan>,
+	view: &ViewDef,
+) -> crate::Result<Flow> {
 	let mut compiler = FlowCompiler::new();
-	compiler.compile(plans)
+	compiler.compile(txn, plans, view)
 }

@@ -6,7 +6,7 @@ use reifydb_core::{
 	Value,
 	interface::{
 		ActiveCommandTransaction, Command, ExecuteCommand, Identity,
-		Params, Transaction,
+		Params, Transaction, ViewDef,
 	},
 	result::error::diagnostic::catalog::{
 		schema_not_found, view_already_exists,
@@ -64,7 +64,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		Catalog::create_view(
+		let result = Catalog::create_view(
 			txn,
 			ViewToCreate {
 				span: Some(plan.view.clone()),
@@ -74,7 +74,7 @@ impl<T: Transaction> Executor<T> {
 			},
 		)?;
 
-		// self.compile_flow(txn)?;
+		self.compile_flow(txn, &result)?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.to_string())),
@@ -86,13 +86,20 @@ impl<T: Transaction> Executor<T> {
 	fn compile_flow(
 		&self,
 		txn: &mut ActiveCommandTransaction<T>,
+		view: &ViewDef,
 	) -> crate::Result<()> {
+		// 	let rql = r#"
+		// create computed view test.adults { name: utf8, age: int1 }
+		// with {     from test.users
+		//     filter { age > 18  }
+		//     map { name, age }
+		// }"#;
+
 		let rql = r#"
-    create computed view test.adults { name: utf8, age: int1 }  with {
         from test.users
         filter { age > 18  }
         map { name, age }
-    }"#;
+    "#;
 
 		let ast_statements = match ast::parse(rql) {
 			Ok(statements) => statements,
@@ -116,7 +123,7 @@ impl<T: Transaction> Executor<T> {
 		};
 
 		// Compile logical plans to FlowGraph
-		let flow = compile_flow(logical_plans).unwrap();
+		let flow = compile_flow(txn, logical_plans, view).unwrap();
 		// dbg!(&flow);
 
 		// txn.command_as_root(

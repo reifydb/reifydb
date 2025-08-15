@@ -120,7 +120,7 @@ impl ExecutionPlan for ScanColumnsNode {
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::empty_from_table(&self.table);
+		let mut columns = Columns::from_table_def(&self.table);
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 		// Add the RowId column to the columns if requested

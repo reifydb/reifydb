@@ -1,6 +1,9 @@
 use std::fmt;
 
-use reifydb_core::{JoinType, SortKey, interface::TableDef};
+use reifydb_core::{
+	JoinType, SortKey,
+	interface::{TableId, ViewId},
+};
 use reifydb_rql::expression::Expression;
 use serde::{Deserialize, Serialize};
 
@@ -15,16 +18,16 @@ impl fmt::Display for NodeId {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeType {
-	Source {
+	SourceTable {
 		name: String,
-		table: TableDef,
+		table: TableId,
 	},
 	Operator {
 		operator: OperatorType,
 	},
-	Sink {
+	SinkView {
 		name: String,
-		table: TableDef,
+		view: ViewId,
 	},
 }
 

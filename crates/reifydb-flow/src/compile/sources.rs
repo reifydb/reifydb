@@ -3,7 +3,10 @@
 
 //! Compilation of data source logical plans to FlowGraph nodes
 
-use reifydb_core::interface::{SchemaId, TableDef};
+use reifydb_catalog::Catalog;
+use reifydb_core::interface::{
+	ActiveCommandTransaction, SchemaId, TableDef, Transaction,
+};
 use reifydb_rql::plan::logical::{InlineDataNode, TableScanNode};
 
 use super::FlowCompiler;
@@ -11,34 +14,51 @@ use crate::{Flow, NodeId, NodeType, Result};
 
 impl FlowCompiler {
 	/// Compiles a TableScan logical plan into a Source node
-	pub(super) fn compile_table_scan(
+	pub(super) fn compile_table_scan<T: Transaction>(
 		&mut self,
+		txn: &mut ActiveCommandTransaction<T>,
 		flow_graph: &mut Flow,
 		table_scan: TableScanNode,
 	) -> Result<NodeId> {
 		// Extract schema and table information
-		let schema_id = if let Some(_schema_span) = table_scan.schema {
-			// TODO: Resolve schema name to SchemaId through catalog
-			SchemaId(1) // Placeholder
-		} else {
-			self.schema_context.unwrap_or(SchemaId(1))
-		};
+		// let schema_id = if let Some(_schema_span) = table_scan.schema
+		// { 	// TODO: Resolve schema name to SchemaId through catalog
+		// 	SchemaId(1) // Placeholder
+		// } else {
+		// 	self.schema_context.unwrap_or(SchemaId(1))
+		// };
 
 		let table_name = table_scan.table.fragment;
-		let table_id = self.next_table_id();
+		// let table_id = self.next_table_id();
 
 		// Create table metadata
-		let table = TableDef {
-			id: table_id,
-			schema: schema_id,
-			name: table_name.clone(),
-			columns: vec![], // TODO: Resolve columns from catalog
-		};
+		// let table = TableDef {
+		// 	id: table_id,
+		// 	schema: schema_id,
+		// 	name: table_name.clone(),
+		// 	columns: vec![], // TODO: Resolve columns from catalog
+		// };
+
+		let schema_name = table_scan.schema.unwrap().fragment;
+
+		let table = txn
+			.with_versioned_query(|rx| {
+				let schema = Catalog::get_schema_by_name(
+					rx,
+					&schema_name,
+				)?
+				.unwrap();
+
+				Catalog::get_table_by_name(
+					rx, schema.id, "users",
+				)
+			})?
+			.unwrap();
 
 		// Create Source node
-		let node_id = flow_graph.add_node(NodeType::Source {
+		let node_id = flow_graph.add_node(NodeType::SourceTable {
 			name: table_name,
-			table,
+			table: table.id,
 		});
 
 		Ok(node_id)
@@ -67,15 +87,16 @@ impl FlowCompiler {
 		// Note: The actual inline data will need to be stored and
 		// emitted by the source This would require extending the
 		// Source node type to handle static data
-		let node_id = flow_graph.add_node(NodeType::Source {
-			name: format!("inline_data_{}", table_id.0),
-			table,
-		});
+		// let node_id = flow_graph.add_node(NodeType::SourceTable {
+		// 	name: format!("inline_data_{}", table_id.0),
+		// 	table,
+		// });
 
 		// TODO: Store the inline data rows for later emission
 		// This might require extending NodeType::Source with optional
 		// static data
 
-		Ok(node_id)
+		// Ok(node_id)
+		unimplemented!()
 	}
 }
