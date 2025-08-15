@@ -25,12 +25,10 @@ impl Compiler {
 			});
 		}
 
-		// Compile the WITH clause if present
 		let with = if let Some(with_statement) = ast.with {
-			let compiled_plans = Self::compile(with_statement)?;
-			Some(compiled_plans)
+			Self::compile(with_statement)?
 		} else {
-			None
+			vec![]
 		};
 
 		Ok(LogicalPlan::CreateComputedView(CreateComputedViewNode {

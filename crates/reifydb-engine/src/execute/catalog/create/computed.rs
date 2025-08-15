@@ -16,7 +16,10 @@ use reifydb_core::{
 use reifydb_flow::compile_flow;
 use reifydb_rql::{
 	ast,
-	plan::{logical::compile_logical, physical::CreateComputedViewPlan},
+	plan::{
+		logical::compile_logical,
+		physical::{CreateComputedViewPlan, PhysicalPlan},
+	},
 };
 
 use crate::{columnar::Columns, execute::Executor};
@@ -64,7 +67,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		let _result = Catalog::create_view(
+		let result = Catalog::create_view(
 			txn,
 			ViewToCreate {
 				span: Some(plan.view.clone()),
@@ -74,7 +77,7 @@ impl<T: Transaction> Executor<T> {
 			},
 		)?;
 
-		// self.compile_flow(txn, &_result)?;
+		self.create_flow(txn, &result, plan.with)?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.to_string())),
@@ -83,11 +86,16 @@ impl<T: Transaction> Executor<T> {
 		]))
 	}
 
-	fn compile_flow(
+	fn create_flow(
 		&self,
 		txn: &mut ActiveCommandTransaction<T>,
 		view: &ViewDef,
+		plan: Option<Box<PhysicalPlan>>,
 	) -> crate::Result<()> {
+		let Some(_plan) = plan else {
+			return Ok(());
+		};
+
 		// 	let rql = r#"
 		// create computed view test.adults { name: utf8, age: int1 }
 		// with {     from test.users
@@ -181,6 +189,7 @@ mod tests {
 			view: OwnedSpan::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
+			with: None,
 		};
 
 		// First creation should succeed
@@ -246,6 +255,7 @@ mod tests {
 			view: OwnedSpan::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
+			with: None,
 		};
 
 		let result = Executor::testing()
@@ -270,6 +280,7 @@ mod tests {
 			view: OwnedSpan::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
+			with: None,
 		};
 
 		let result = Executor::testing()
@@ -299,6 +310,7 @@ mod tests {
 			view: OwnedSpan::testing("my_view"),
 			if_not_exists: false,
 			columns: vec![],
+			with: None,
 		};
 
 		let err = Executor::testing()

@@ -110,20 +110,20 @@ fn main() {
 }
 
 fn rql_to_flow_example(db: &mut DB) {
-	let frame = db
-		.query_as_root(
-			"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
-			Params::None,
-		)
-		.unwrap()
-		.pop()
-		.unwrap();
-
-	let value = frame[0].get_value(0);
-	// dbg!(&value.to_string());
-
-	let flow: Flow =
-		serde_json::from_str(value.to_string().as_str()).unwrap();
+	// let frame = db
+	// 	.query_as_root(
+	// 		"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
+	// 		Params::None,
+	// 	)
+	// 	.unwrap()
+	// 	.pop()
+	// 	.unwrap();
+	//
+	// let value = frame[0].get_value(0);
+	// // dbg!(&value.to_string());
+	//
+	// let flow: Flow =
+	// 	serde_json::from_str(value.to_string().as_str()).unwrap();
 
 	// // // Now let's execute the FlowGraph with real data
 	// println!("\n--- Executing FlowGraph with Sample Data ---");
@@ -190,7 +190,8 @@ fn rql_to_flow_example(db: &mut DB) {
 
 	// Query the computed view results
 	println!("\n--- Computed View Results ---");
-	let results = get_view_data(db, &flow, "adults").unwrap();
+	// let results = get_view_data(db, &flow, "adults").unwrap();
+	let results = read_columns_from_storage(db, &NodeId(1025)).unwrap();
 	// let results = reifydb
 	//     .query_as_root(
 	//         r#"

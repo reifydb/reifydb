@@ -4,7 +4,7 @@
 use std::{any::Any, time::Duration};
 
 use reifydb_core::{
-	Result, Type,
+	Result, Type, Value,
 	interface::{
 		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
 		CdcEvent, ColumnIndex, ConsumerId, Engine, Identity, Key,
@@ -64,6 +64,10 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 				.unwrap();
 
 			let value = frame[0].get_value(0);
+
+			if matches!(value, Value::Undefined) {
+				continue;
+			}
 
 			// dbg!(&value.to_string());
 
@@ -166,9 +170,9 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// self.consumer.start()
-		println!("FLOW SUBSYSTEM DISABLED FOR NOW");
-		Ok(())
+		self.consumer.start()
+		// println!("FLOW SUBSYSTEM DISABLED FOR NOW");
+		// Ok(())
 	}
 
 	fn stop(&mut self) -> Result<()> {

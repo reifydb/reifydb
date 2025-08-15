@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use PhysicalPlan::CreateComputedView;
 use reifydb_core::interface::VersionedQueryTransaction;
 
 use crate::plan::{
@@ -10,15 +11,16 @@ use crate::plan::{
 
 impl Compiler {
 	pub(crate) fn compile_create_computed(
-		_rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl VersionedQueryTransaction,
 		create: CreateComputedViewNode,
 	) -> crate::Result<PhysicalPlan> {
 		// FIXME validate with catalog
-		Ok(PhysicalPlan::CreateComputedView(CreateComputedViewPlan {
+		Ok(CreateComputedView(CreateComputedViewPlan {
 			schema: create.schema,
 			view: create.view,
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
+			with: Self::compile(rx, create.with)?.map(Box::new),
 		}))
 	}
 }

@@ -258,6 +258,7 @@ pub struct CreateComputedViewPlan {
 	pub view: OwnedSpan,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub with: Option<Box<PhysicalPlan>>,
 }
 
 #[derive(Debug, Clone)]

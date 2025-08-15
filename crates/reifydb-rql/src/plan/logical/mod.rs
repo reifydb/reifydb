@@ -107,7 +107,7 @@ pub struct CreateComputedViewNode {
 	pub view: OwnedSpan,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Option<Vec<LogicalPlan>>,
+	pub with: Vec<LogicalPlan>,
 }
 
 #[derive(Debug)]
