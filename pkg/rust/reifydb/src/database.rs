@@ -5,15 +5,18 @@
 use std::net::SocketAddr;
 use std::{sync::Arc, time::Duration};
 
+use reifydb_core::hook::lifecycle::OnStartHook;
+use reifydb_core::interface::GetHooks;
 use reifydb_core::{
-	Result,
 	interface::{
 		CdcTransaction, StandardTransaction, Transaction,
 		UnversionedTransaction, VersionedTransaction,
 	},
+	Result,
 };
 use reifydb_engine::Engine;
 
+use crate::boot::Bootloader;
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
 #[cfg(feature = "sub_flow")]
@@ -82,6 +85,7 @@ impl Default for DatabaseConfig {
 pub struct Database<T: Transaction> {
 	config: DatabaseConfig,
 	engine: Engine<T>,
+	bootloader: Bootloader<T>,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
@@ -112,7 +116,8 @@ impl<T: Transaction> Database<T> {
 		health_monitor: Arc<HealthMonitor>,
 	) -> Self {
 		Self {
-			engine,
+			engine: engine.clone(),
+			bootloader: Bootloader::new(engine),
 			subsystems: subsystem_manager,
 			config,
 			health_monitor,
@@ -141,6 +146,8 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already running
 		}
 
+		self.bootloader.load()?;
+
 		println!(
 			"[Database] Starting system with {} subsystems",
 			self.subsystem_count()
@@ -153,6 +160,8 @@ impl<T: Transaction> Database<T> {
 			                        * if constructed */
 			true,
 		);
+
+		self.engine.get_hooks().trigger(OnStartHook {})?;
 
 		// Start all subsystems
 		match self.subsystems.start_all(self.config.max_startup_time) {

@@ -3,7 +3,7 @@
 
 //! Compilation of data source logical plans to FlowGraph nodes
 
-use reifydb_core::interface::{SchemaId, Table};
+use reifydb_core::interface::{SchemaId, TableDef};
 use reifydb_rql::plan::logical::{InlineDataNode, TableScanNode};
 
 use super::FlowCompiler;
@@ -34,7 +34,7 @@ impl FlowCompiler {
 		let table_id = self.next_table_id();
 
 		// Create table metadata
-		let table = Table {
+		let table = TableDef {
 			id: table_id,
 			schema: schema_id,
 			name: table_name.clone(),
@@ -61,7 +61,7 @@ impl FlowCompiler {
 		let schema_id = self.schema_context.unwrap_or(SchemaId(1));
 
 		// Create table metadata for inline data
-		let table = Table {
+		let table = TableDef {
 			id: table_id,
 			schema: schema_id,
 			name: format!("inline_data_{}", table_id.0),

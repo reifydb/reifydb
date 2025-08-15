@@ -1,0 +1,36 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+mod create;
+mod start;
+
+use reifydb_core::interface::GetHooks;
+use reifydb_core::interface::Transaction;
+use reifydb_engine::Engine;
+
+use crate::boot::create::CreateCallback;
+use crate::boot::start::StartCallback;
+
+pub struct Bootloader<T: Transaction> {
+	engine: Engine<T>,
+}
+
+impl<T: Transaction> Bootloader<T> {
+	pub fn new(engine: Engine<T>) -> Self {
+		Self {
+			engine: engine.clone(),
+		}
+	}
+}
+
+impl<T: Transaction> Bootloader<T> {
+	pub fn load(&self) -> crate::Result<()> {
+		let engine = self.engine.clone();
+		let hooks = engine.get_hooks();
+
+		hooks.register(StartCallback::new(engine.unversioned_owned()));
+		hooks.register(CreateCallback::new(engine.clone()));
+
+		Ok(())
+	}
+}

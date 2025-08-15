@@ -17,8 +17,8 @@ use reifydb_core::{
 use crate::{
 	Catalog,
 	column::{
-		Column, ColumnIndex,
-		layout::{column, table_column},
+        ColumnDef, ColumnIndex,
+        layout::{column, table_column},
 	},
 	sequence::SystemSequence,
 };
@@ -41,7 +41,7 @@ impl Catalog {
 		txn: &mut ActiveCommandTransaction<T>,
 		table: TableId,
 		column_to_create: ColumnToCreate,
-	) -> crate::Result<Column> {
+	) -> crate::Result<ColumnDef> {
 		// FIXME policies
 		if let Some(column) = Catalog::get_column_by_name(
 			txn,
@@ -134,7 +134,7 @@ impl Catalog {
 			Catalog::create_column_policy(txn, id, policy)?;
 		}
 
-		Ok(Column {
+		Ok(ColumnDef {
 			id,
 			name: column_to_create.column,
 			ty: column_to_create.value,

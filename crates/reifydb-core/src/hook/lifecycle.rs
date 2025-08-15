@@ -4,9 +4,9 @@
 use crate::impl_hook;
 
 /// Invoked during application startup before database initialization
-pub struct OnInitHook {}
+pub struct OnStartHook {}
 
-impl_hook!(OnInitHook);
+impl_hook!(OnStartHook);
 
 /// Invoked once during database creation to setup the internal database system
 pub struct OnCreateHook {}

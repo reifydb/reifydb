@@ -12,8 +12,8 @@ use reifydb_core::{
 use crate::{
 	Catalog,
 	column::{
-		Column, ColumnId, ColumnIndex,
-		layout::{column, table_column},
+        ColumnDef, ColumnId, ColumnIndex,
+        layout::{column, table_column},
 	},
 };
 
@@ -21,7 +21,7 @@ impl Catalog {
 	pub fn get_column(
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
-	) -> crate::Result<Option<Column>> {
+	) -> crate::Result<Option<ColumnDef>> {
 		match rx.get(&ColumnKey {
 			column,
 		}
@@ -52,7 +52,7 @@ impl Catalog {
 				let policies =
 					Catalog::list_column_policies(rx, id)?;
 
-				Ok(Some(Column {
+				Ok(Some(ColumnDef {
 					id,
 					name,
 					ty: value,
@@ -68,7 +68,7 @@ impl Catalog {
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
 		column_name: &str,
-	) -> crate::Result<Option<Column>> {
+	) -> crate::Result<Option<ColumnDef>> {
 		let maybe_id = rx
 			.range(TableColumnKey::full_scan(table))?
 			.find_map(|versioned| {

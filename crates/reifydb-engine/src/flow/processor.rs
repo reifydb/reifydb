@@ -4,8 +4,8 @@ use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::{
 	EncodedKeyRange, Type, Value,
 	interface::{
-		ActiveCommandTransaction, Column, ColumnId, ColumnIndex,
-		EncodableKey, EncodableKeyRange, SchemaId, Table, TableId,
+		ActiveCommandTransaction, ColumnDef, ColumnId, ColumnIndex,
+		EncodableKey, EncodableKeyRange, SchemaId, TableDef, TableId,
 		TableRowKey, TableRowKeyRange, Transaction,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		VersionedTransaction,
@@ -329,12 +329,12 @@ impl<T: Transaction> FlowProcessor<T> {
 	) -> Result<()> {
 		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-		let table = Table {
+		let table = TableDef {
 			id: TableId(node_id.0),
 			schema: SchemaId(0),
 			name: "view".to_string(),
 			columns: vec![
-				Column {
+                ColumnDef {
 					id: ColumnId(0),
 					name: "name".to_string(),
 					ty: Type::Utf8,
@@ -342,7 +342,7 @@ impl<T: Transaction> FlowProcessor<T> {
 					index: ColumnIndex(0),
 					auto_increment: false,
 				},
-				Column {
+                ColumnDef {
 					id: ColumnId(1),
 					name: "age".to_string(),
 					ty: Type::Int1,
@@ -521,12 +521,12 @@ impl<T: Transaction> FlowProcessor<T> {
 
 		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-		let table = Table {
+		let table = TableDef {
 			id: TableId(node_id.0),
 			schema: SchemaId(0),
 			name: "view".to_string(),
 			columns: vec![
-				Column {
+                ColumnDef {
 					id: ColumnId(0),
 					name: "name".to_string(),
 					ty: Type::Utf8,
@@ -534,7 +534,7 @@ impl<T: Transaction> FlowProcessor<T> {
 					index: ColumnIndex(0),
 					auto_increment: false,
 				},
-				Column {
+                ColumnDef {
 					id: ColumnId(1),
 					name: "age".to_string(),
 					ty: Type::Int1,

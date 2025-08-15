@@ -126,13 +126,13 @@ impl Default for Flow {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{SchemaId, Table, TableId};
+	use reifydb_core::interface::{SchemaId, TableDef, TableId};
 
 	use super::*;
 	use crate::flow::node::OperatorType;
 
-	fn create_test_table(id: u64, name: &str) -> Table {
-		Table {
+	fn create_test_table(id: u64, name: &str) -> TableDef {
+		TableDef {
 			id: TableId(id),
 			schema: SchemaId(1),
 			name: name.to_string(),

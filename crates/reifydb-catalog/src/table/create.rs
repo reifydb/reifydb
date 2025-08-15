@@ -1,25 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::{
+	column::ColumnIndex,
+	sequence::SystemSequence,
+	table::layout::{table, table_schema},
+	Catalog,
+};
+use reifydb_core::interface::SchemaId;
 use reifydb_core::{
-	OwnedSpan, Type,
 	interface::{
 		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey, Key,
-		SchemaTableKey, Table, TableId, TableKey, Transaction,
+		SchemaTableKey, TableDef, TableId, TableKey, Transaction,
 		VersionedCommandTransaction,
-	},
-	result::error::diagnostic::catalog::{
+	}, result::error::diagnostic::catalog::{
 		schema_not_found, table_already_exists,
 	},
 	return_error,
-};
-
-use crate::{
-	Catalog,
-	column::ColumnIndex,
-	schema::SchemaId,
-	sequence::SystemSequence,
-	table::layout::{table, table_schema},
+	OwnedSpan,
+	Type,
 };
 
 #[derive(Debug, Clone)]
@@ -43,7 +42,7 @@ impl Catalog {
 	pub fn create_table<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 		to_create: TableToCreate,
-	) -> crate::Result<Table> {
+	) -> crate::Result<TableDef> {
 		let Some(schema) =
 			Catalog::get_schema_by_name(txn, &to_create.schema)?
 		else {
@@ -160,15 +159,14 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{
-		SchemaTableKey, VersionedQueryTransaction,
+		SchemaId, SchemaTableKey, VersionedQueryTransaction,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog,
-		schema::SchemaId,
-		table::{TableToCreate, layout::table_schema},
+		table::{layout::table_schema, TableToCreate},
 		test_utils::ensure_test_schema,
+		Catalog,
 	};
 
 	#[test]

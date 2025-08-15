@@ -1,17 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{sync::Arc, time::Duration};
-
 use reifydb_core::interface::Transaction;
 use reifydb_engine::Engine;
+use std::{sync::Arc, time::Duration};
 
 #[cfg(feature = "sub_flow")]
 use crate::subsystem::FlowSubsystem;
 use crate::{
-	database::{Database, DatabaseConfig},
-	health::HealthMonitor,
-	subsystem::{Subsystem, Subsystems},
+    database::{Database, DatabaseConfig},
+    health::HealthMonitor,
+    subsystem::{Subsystem, Subsystems},
 };
 
 pub struct DatabaseBuilder<T: Transaction> {

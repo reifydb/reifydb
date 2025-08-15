@@ -2,12 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
+	hook::{lifecycle::OnCreateHook, BoxedHookIter, Callback},
 	interface::{Engine as EngineInterface, Identity, Transaction},
 	return_hooks,
 };
-
-use crate::Engine;
+use reifydb_engine::Engine;
 
 pub(crate) struct CreateCallback<T: Transaction> {
 	engine: Engine<T>,
