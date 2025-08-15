@@ -24,7 +24,7 @@ mod parameter;
 mod prefix;
 mod tuple;
 
-pub(crate) struct Evaluator {
+pub struct Evaluator {
 	functions: Functions,
 }
 

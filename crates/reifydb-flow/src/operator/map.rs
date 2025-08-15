@@ -1,5 +1,6 @@
 use reifydb_core::{
-	interface::expression::Expression, value::columnar::Columns,
+	interface::{Evaluate, expression::Expression},
+	value::columnar::Columns,
 };
 
 use crate::{
@@ -19,10 +20,10 @@ impl MapOperator {
 	}
 }
 
-impl Operator for MapOperator {
+impl<E: Evaluate> Operator<E> for MapOperator {
 	fn apply(
 		&self,
-		_ctx: &OperatorContext,
+		_ctx: &OperatorContext<E>,
 		change: Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();

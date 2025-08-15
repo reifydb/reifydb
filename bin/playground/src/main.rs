@@ -55,7 +55,7 @@ fn main() {
 	db.command_as_root(
 		r#"
     from [
-        { name: "bob", age: 16 },
+        { name: "bob", age: 17 },
         { name: "lucy", age: 20 },
         { name: "juciy", age: 19 },
     ]

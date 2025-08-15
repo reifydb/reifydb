@@ -5,10 +5,11 @@ use reifydb_core::{
 	EncodedKeyRange, Type, Value,
 	interface::{
 		ActiveCommandTransaction, ColumnIndex, EncodableKey,
-		EncodableKeyRange, SchemaId, TableColumnDef, TableColumnId,
-		TableDef, TableId, Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction, VersionedTransaction, ViewColumnDef,
-		ViewColumnId, ViewDef, ViewId, ViewRowKey, ViewRowKeyRange,
+		EncodableKeyRange, Evaluate, SchemaId, TableColumnDef,
+		TableColumnId, TableDef, TableId, Transaction,
+		VersionedCommandTransaction, VersionedQueryTransaction,
+		VersionedTransaction, ViewColumnDef, ViewColumnId, ViewDef,
+		ViewId, ViewRowKey, ViewRowKeyRange,
 	},
 	row::EncodedRowLayout,
 	value::columnar::Columns,
@@ -19,29 +20,31 @@ use crate::{
 	operator::{FilterOperator, MapOperator, Operator, OperatorContext},
 };
 
-pub struct LegacyFlowProcessor<T: Transaction> {
+pub struct LegacyFlowProcessor<T: Transaction, E: Evaluate> {
 	flow: Flow,
-	operators: HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static>>,
-	contexts: HashMap<NodeId, OperatorContext>,
+	operators:
+		HashMap<NodeId, Box<dyn Operator<E> + Send + Sync + 'static>>,
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
+	evaluator: E,
 }
 
-impl<T: Transaction> LegacyFlowProcessor<T> {
+impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 	pub fn new(
 		flow: Flow,
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
+		evaluator: E,
 	) -> Self {
 		Self {
 			flow,
 			operators: HashMap::new(),
-			contexts: HashMap::new(),
 			versioned,
 			unversioned,
 			cdc,
+			evaluator,
 		}
 	}
 
@@ -69,10 +72,12 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 							node_id.clone(),
 							op,
 						);
-						self.contexts.insert(
-							node_id.clone(),
-							OperatorContext::new(),
-						);
+						// self.contexts.insert(
+						// 	node_id.clone(),
+						// 	OperatorContext::new(
+						// 		&self.evaluator,
+						// 	),
+						// );
 					}
 					NodeType::SinkView {
 						..
@@ -133,12 +138,17 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 				// Process through operator
 				let transformed_diff = if let (
 					Some(op),
-					Some(context),
+					// Some(context),
 				) = (
 					self.operators.get(node_id),
-					self.contexts.get(node_id),
+					// self.contexts.get(node_id),
 				) {
-					op.apply(context, change)?
+					op.apply(
+						&OperatorContext::new(
+							&self.evaluator,
+						),
+						change,
+					)?
 				} else {
 					panic!("Operator or context not found");
 				};
@@ -182,9 +192,9 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 	) -> crate::Result<()> {
 		let mut operators: HashMap<
 			NodeId,
-			Box<dyn Operator + Send + Sync + 'static>,
+			Box<dyn Operator<E> + Send + Sync + 'static>,
 		> = HashMap::new();
-		let mut contexts: HashMap<NodeId, OperatorContext> =
+		let mut contexts: HashMap<NodeId, OperatorContext<E>> =
 			HashMap::new();
 
 		// Initialize operator for all nodes
@@ -212,7 +222,9 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 						);
 						contexts.insert(
 							node_id.clone(),
-							OperatorContext::new(),
+							OperatorContext::new(
+								&self.evaluator,
+							),
 						);
 					}
 					NodeType::SinkView {
@@ -292,7 +304,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 	fn create_operator(
 		&self,
 		operator_type: &OperatorType,
-	) -> crate::Result<Box<dyn Operator + Send + Sync + 'static>> {
+	) -> crate::Result<Box<dyn Operator<E> + Send + Sync + 'static>> {
 		match operator_type {
 			OperatorType::Filter {
 				predicate,

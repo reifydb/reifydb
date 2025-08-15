@@ -14,7 +14,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{Evaluator, StandardEngine};
 use reifydb_flow::{
 	Change, Diff, Flow, NodeId, legacy_processor::LegacyFlowProcessor,
 };
@@ -78,12 +78,13 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 
 			// dbg!(&flow);
 
-			let lp: LegacyFlowProcessor<T> =
+			let lp: LegacyFlowProcessor<T, Evaluator> =
 				LegacyFlowProcessor::new(
 					flow.clone(),
 					self.engine.versioned_owned(),
 					self.engine.unversioned_owned(),
 					self.engine.cdc_owned(),
+					Evaluator::default(),
 				);
 
 			let node_id = NodeId(1026);
