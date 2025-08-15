@@ -8,7 +8,9 @@ use uuid::Uuid;
 use crate::{
 	Type,
 	row::{EncodedRow, EncodedRowLayout},
-	value::{Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
+	value::{
+		Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7,
+	},
 };
 
 impl EncodedRowLayout {
@@ -513,7 +515,10 @@ mod tests {
 	use crate::{
 		Type,
 		row::EncodedRowLayout,
-		value::{Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
+		value::{
+			Blob, Date, DateTime, IdentityId, Interval, Time,
+			Uuid4, Uuid7,
+		},
 	};
 
 	#[test]

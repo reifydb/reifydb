@@ -3,7 +3,10 @@
 
 use crate::{
 	Date, DateTime, Interval, Time, Type,
-	value::{identity::IdentityId, uuid::{Uuid4, Uuid7}},
+	value::{
+		identity::IdentityId,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 
 pub trait GetType {

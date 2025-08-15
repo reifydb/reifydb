@@ -184,7 +184,7 @@ impl FlowCompiler {
 		// 	None => {
 		// 		return Err(reifydb_core::Error(flow_error(
 		//             "CREATE COMPUTED VIEW requires a WITH clause
-		// containing the query definition"                 
+		// containing the query definition"
 		// .to_string(),         )));
 		// 	}
 		// };

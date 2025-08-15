@@ -35,7 +35,7 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
-	AccessTable(AccessTableExpression),
+	AccessTable(AccessSourceExpression),
 
 	Alias(AliasExpression),
 
@@ -87,14 +87,14 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccessTableExpression {
-	pub table: OwnedSpan,
+pub struct AccessSourceExpression {
+	pub source: OwnedSpan,
 	pub column: OwnedSpan,
 }
 
-impl AccessTableExpression {
+impl AccessSourceExpression {
 	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([self.table.clone(), self.column.clone()])
+		OwnedSpan::merge_all([self.source.clone(), self.column.clone()])
 	}
 }
 
@@ -398,8 +398,8 @@ impl ColumnExpression {
 impl Display for Expression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Expression::AccessTable(AccessTableExpression {
-				table: target,
+			Expression::AccessTable(AccessSourceExpression {
+				source: target,
 				column: property,
 			}) => {
 				write!(
@@ -1013,8 +1013,8 @@ impl ExpressionCompiler {
 				};
 
 				Ok(Expression::AccessTable(
-					AccessTableExpression {
-						table: left.span(),
+					AccessSourceExpression {
+						source: left.span(),
 						column: right.span(),
 					},
 				))

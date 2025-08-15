@@ -1337,7 +1337,7 @@ mod tests {
 
 			let uuid1 = Uuid4::generate();
 			let uuid2 = Uuid4::generate();
-			
+
 			layout.set_uuid4(&mut key1, 0, uuid1.clone());
 			layout.set_uuid4(&mut key2, 0, uuid2.clone());
 
@@ -1349,9 +1349,15 @@ mod tests {
 			let offset = layout.fields[0].offset;
 			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
 			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
-			
-			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
-			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
+
+			assert_eq!(
+				&key1[offset..offset + 16],
+				&uuid1_bytes[..]
+			);
+			assert_eq!(
+				&key2[offset..offset + 16],
+				&uuid2_bytes[..]
+			);
 		}
 
 		#[test]
@@ -1372,8 +1378,11 @@ mod tests {
 			for b in expected_bytes.iter_mut() {
 				*b = !*b;
 			}
-			
-			assert_eq!(&key[offset..offset + 16], &expected_bytes[..]);
+
+			assert_eq!(
+				&key[offset..offset + 16],
+				&expected_bytes[..]
+			);
 		}
 	}
 
@@ -1393,9 +1402,11 @@ mod tests {
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			std::thread::sleep(std::time::Duration::from_millis(
+				10,
+			));
 			let uuid2 = Uuid7::generate();
-			
+
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
 			layout.set_uuid7(&mut key2, 0, uuid2.clone());
 
@@ -1407,11 +1418,18 @@ mod tests {
 			let offset = layout.fields[0].offset;
 			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
 			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
-			
-			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
-			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
 
-			// UUID7 has timestamp prefix, so later should be greater
+			assert_eq!(
+				&key1[offset..offset + 16],
+				&uuid1_bytes[..]
+			);
+			assert_eq!(
+				&key2[offset..offset + 16],
+				&uuid2_bytes[..]
+			);
+
+			// UUID7 has timestamp prefix, so later should be
+			// greater
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
@@ -1427,9 +1445,11 @@ mod tests {
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			std::thread::sleep(std::time::Duration::from_millis(
+				10,
+			));
 			let uuid2 = Uuid7::generate();
-			
+
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
 			layout.set_uuid7(&mut key2, 0, uuid2.clone());
 
@@ -1443,9 +1463,15 @@ mod tests {
 			for b in expected_bytes2.iter_mut() {
 				*b = !*b;
 			}
-			
-			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
-			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
+
+			assert_eq!(
+				&key1[offset..offset + 16],
+				&expected_bytes1[..]
+			);
+			assert_eq!(
+				&key2[offset..offset + 16],
+				&expected_bytes2[..]
+			);
 
 			// Verify ordering (reversed due to DESC)
 			assert!(key1.as_slice() > key2.as_slice());
@@ -1467,10 +1493,13 @@ mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate();
-			// Sleep a bit to ensure different timestamps (IdentityId wraps Uuid7)
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			// Sleep a bit to ensure different timestamps
+			// (IdentityId wraps Uuid7)
+			std::thread::sleep(std::time::Duration::from_millis(
+				10,
+			));
 			let id2 = IdentityId::generate();
-			
+
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
 
@@ -1484,11 +1513,12 @@ mod tests {
 			let uuid7_2: crate::value::Uuid7 = id2.into();
 			let id1_bytes: Vec<u8> = uuid7_1.as_bytes().to_vec();
 			let id2_bytes: Vec<u8> = uuid7_2.as_bytes().to_vec();
-			
+
 			assert_eq!(&key1[offset..offset + 16], &id1_bytes[..]);
 			assert_eq!(&key2[offset..offset + 16], &id2_bytes[..]);
 
-			// IdentityId wraps Uuid7 which has timestamp prefix, so later should be greater
+			// IdentityId wraps Uuid7 which has timestamp prefix, so
+			// later should be greater
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
@@ -1504,9 +1534,11 @@ mod tests {
 
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			std::thread::sleep(std::time::Duration::from_millis(
+				10,
+			));
 			let id2 = IdentityId::generate();
-			
+
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
 
@@ -1522,9 +1554,15 @@ mod tests {
 			for b in expected_bytes2.iter_mut() {
 				*b = !*b;
 			}
-			
-			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
-			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
+
+			assert_eq!(
+				&key1[offset..offset + 16],
+				&expected_bytes1[..]
+			);
+			assert_eq!(
+				&key2[offset..offset + 16],
+				&expected_bytes2[..]
+			);
 
 			// Verify ordering (reversed due to DESC)
 			assert!(key1.as_slice() > key2.as_slice());

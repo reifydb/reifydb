@@ -17,9 +17,9 @@ use crate::{
 	value::{
 		Uuid4, Uuid7,
 		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-			RowIdContainer, StringContainer, TemporalContainer,
-			UndefinedContainer, UuidContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer,
+			NumberContainer, RowIdContainer, StringContainer,
+			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 	},
 };
@@ -257,7 +257,9 @@ impl ColumnData {
 				Self::interval_with_capacity(capacity)
 			}
 			Type::RowId => Self::row_id_with_capacity(capacity),
-			Type::IdentityId => Self::identity_id_with_capacity(capacity),
+			Type::IdentityId => {
+				Self::identity_id_with_capacity(capacity)
+			}
 			Type::Uuid4 => Self::uuid4_with_capacity(capacity),
 			Type::Uuid7 => Self::uuid7_with_capacity(capacity),
 			Type::Blob => Self::blob_with_capacity(capacity),
@@ -321,7 +323,9 @@ impl ColumnData {
 			ColumnData::Time(container) => container.capacity(),
 			ColumnData::Interval(container) => container.capacity(),
 			ColumnData::RowId(container) => container.capacity(),
-			ColumnData::IdentityId(container) => container.capacity(),
+			ColumnData::IdentityId(container) => {
+				container.capacity()
+			}
 			ColumnData::Uuid4(container) => container.capacity(),
 			ColumnData::Uuid7(container) => container.capacity(),
 			ColumnData::Blob(container) => container.capacity(),

@@ -12,7 +12,7 @@ use crate::{
 	Type, Value,
 	interface::{TableDef, ViewDef},
 	value::columnar::{
-		Column, ColumnData, ColumnQualified, TableQualified,
+		Column, ColumnData, ColumnQualified, SourceQualified,
 	},
 };
 
@@ -246,8 +246,8 @@ impl Columns {
 						ColumnData::undefined(0)
 					}
 				};
-				Column::TableQualified(TableQualified {
-					table: table.name.clone(),
+				Column::SourceQualified(SourceQualified {
+					source: table.name.clone(),
 					name,
 					data,
 				})
@@ -322,8 +322,8 @@ impl Columns {
 						ColumnData::undefined(0)
 					}
 				};
-				Column::TableQualified(TableQualified {
-					table: view.name.clone(),
+				Column::SourceQualified(SourceQualified {
+					source: view.name.clone(),
 					name,
 					data,
 				})

@@ -48,7 +48,7 @@ impl InlineDataNode {
 			.iter()
 			.map(|col| ColumnLayout {
 				schema: None,
-				table: None,
+				source: None,
 				name: col.name.clone(),
 			})
 			.collect();

@@ -208,8 +208,8 @@ fn rql_to_flow_example(db: &mut DB) {
 
 pub fn get_view_data(
 	db: &mut DB,
-	flow: &Flow,
-	view_name: &str,
+	_flow: &Flow,
+	_view_name: &str,
 ) -> reifydb::Result<Columns> {
 	// Find view node and read from versioned storage
 	// for node_id in flow.get_all_nodes() {

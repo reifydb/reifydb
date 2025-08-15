@@ -24,7 +24,7 @@ use reifydb_transaction::{
 
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, TableQualified,
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
 	function::{Functions, math},
@@ -279,9 +279,9 @@ impl<T: Transaction> Executor<T> {
                         .unwrap_or(ColumnsLayout { columns: vec![] })
                         .columns
                         .into_iter()
-                        .map(|layout| match layout.table {
-                            Some(table) => Column::TableQualified(TableQualified {
-								table: table,
+                        .map(|layout| match layout.source {
+                            Some(source) => Column::SourceQualified(SourceQualified {
+								source: source,
                                 name: layout.name,
                                 data: ColumnData::undefined(0),
                             }),

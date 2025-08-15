@@ -4,7 +4,7 @@
 use std::{any::Any, time::Duration};
 
 use reifydb_core::{
-	Frame, Result, Type,
+	Result, Type,
 	interface::{
 		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
 		CdcEvent, ColumnIndex, ConsumerId, Engine, Identity, Key,
@@ -64,6 +64,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 				.unwrap();
 
 			let value = frame[0].get_value(0);
+
 			// dbg!(&value.to_string());
 
 			let flow: Flow = serde_json::from_str(
@@ -165,7 +166,9 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		self.consumer.start()
+		// self.consumer.start()
+		println!("FLOW SUBSYSTEM DISABLED FOR NOW");
+		Ok(())
 	}
 
 	fn stop(&mut self) -> Result<()> {

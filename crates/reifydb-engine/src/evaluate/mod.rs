@@ -5,7 +5,7 @@ pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
 use reifydb_rql::expression::Expression;
 
 use crate::{
-	columnar::{Column, ColumnQualified, TableQualified},
+	columnar::{Column, ColumnQualified, SourceQualified},
 	function::{Functions, blob, math},
 };
 
@@ -125,11 +125,13 @@ pub fn evaluate(
 			expr.lazy_span(),
 		)?;
 		column = match column.table() {
-			Some(table) => Column::TableQualified(TableQualified {
-				table: table.to_string(),
-				name: column.name().to_string(),
-				data,
-			}),
+			Some(source) => {
+				Column::SourceQualified(SourceQualified {
+					source: source.to_string(),
+					name: column.name().to_string(),
+					data,
+				})
+			}
 			None => Column::ColumnQualified(ColumnQualified {
 				name: column.name().to_string(),
 				data,

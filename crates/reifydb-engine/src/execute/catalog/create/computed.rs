@@ -64,7 +64,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		let result = Catalog::create_view(
+		let _result = Catalog::create_view(
 			txn,
 			ViewToCreate {
 				span: Some(plan.view.clone()),
@@ -74,7 +74,7 @@ impl<T: Transaction> Executor<T> {
 			},
 		)?;
 
-		self.compile_flow(txn, &result)?;
+		// self.compile_flow(txn, &_result)?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.to_string())),

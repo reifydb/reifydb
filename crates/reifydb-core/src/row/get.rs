@@ -6,7 +6,9 @@ use uuid::Uuid;
 use crate::{
 	Type,
 	row::{EncodedRow, EncodedRowLayout},
-	value::{Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
+	value::{
+		Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7,
+	},
 };
 
 impl EncodedRowLayout {
@@ -289,7 +291,11 @@ impl EncodedRowLayout {
 		}
 	}
 
-	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
+	pub fn get_identity_id(
+		&self,
+		row: &EncodedRow,
+		index: usize,
+	) -> IdentityId {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::IdentityId);
@@ -311,7 +317,10 @@ mod tests {
 	use crate::{
 		Type,
 		row::EncodedRowLayout,
-		value::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
+		value::{
+			Date, DateTime, IdentityId, Interval, Time, Uuid4,
+			Uuid7,
+		},
 	};
 
 	#[test]
