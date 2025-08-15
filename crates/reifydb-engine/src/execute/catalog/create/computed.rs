@@ -14,13 +14,7 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_flow::compile_flow;
-use reifydb_rql::{
-	ast,
-	plan::{
-		logical::compile_logical,
-		physical::{CreateComputedViewPlan, PhysicalPlan},
-	},
-};
+use reifydb_rql::plan::physical::{CreateComputedViewPlan, PhysicalPlan};
 
 use crate::{columnar::Columns, execute::Executor};
 
@@ -92,59 +86,11 @@ impl<T: Transaction> Executor<T> {
 		view: &ViewDef,
 		plan: Option<Box<PhysicalPlan>>,
 	) -> crate::Result<()> {
-		let Some(_plan) = plan else {
+		let Some(plan) = plan else {
 			return Ok(());
 		};
 
-		// 	let rql = r#"
-		// create computed view test.adults { name: utf8, age: int1 }
-		// with {     from test.users
-		//     filter { age > 18  }
-		//     map { name, age }
-		// }"#;
-
-		let rql = r#"
-        from test.users
-        filter { age > 18  }
-        map { name, age }
-    "#;
-
-		let ast_statements = match ast::parse(rql) {
-			Ok(statements) => statements,
-			Err(e) => {
-				panic!("RQL parsing failed: {}", e);
-			}
-		};
-
-		println!("AST statements: {} nodes", ast_statements.len());
-
-		let logical_plans = match compile_logical(
-			ast_statements.into_iter().next().unwrap(),
-		) {
-			Ok(plans) => plans,
-			Err(e) => {
-				panic!(
-					"Logical plan compilation failed: {}",
-					e
-				);
-			}
-		};
-
-		// Compile logical plans to FlowGraph
-		let flow = compile_flow(txn, logical_plans, view).unwrap();
-		// dbg!(&flow);
-
-		// txn.command_as_root(
-		//     r#"
-		//     from[{data: blob::utf8('$REPLACE')}]
-		//     insert reifydb.flows
-		// "#
-		//     .replace("$REPLACE",
-		// serde_json::to_string(&flow).unwrap().as_str())
-		//     .as_str(),
-		//     Params::None,
-		// )
-		// .unwrap();
+		let flow = compile_flow(txn, *plan, view).unwrap();
 
 		let rql = r#"
                  from[{data: blob::utf8('$REPLACE')}]

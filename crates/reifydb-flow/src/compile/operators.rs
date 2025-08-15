@@ -3,145 +3,153 @@
 
 //! Compilation of operator logical plans to FlowGraph nodes
 
-use reifydb_core::JoinType;
-use reifydb_rql::plan::logical::{
-	AggregateNode, FilterNode, JoinInnerNode, JoinLeftNode, MapNode,
-	OrderNode, TakeNode,
-};
+use reifydb_core::SortKey;
+use reifydb_rql::expression::Expression;
 
 use super::FlowCompiler;
-use crate::{Flow, NodeId, NodeType, OperatorType, Result};
+use crate::{NodeId, NodeType};
 
 impl FlowCompiler {
-	/// Compiles a Filter logical plan into a Filter operator
-	pub(super) fn compile_filter(
+	pub(crate) fn compile_filter(
 		&mut self,
-		flow_graph: &mut Flow,
-		filter: FilterNode,
-	) -> Result<NodeId> {
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::Filter {
-				predicate: filter.condition,
+		conditions: Vec<Expression>,
+		input_node: NodeId,
+	) -> crate::Result<NodeId> {
+		// Create the filter node
+		let filter_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::Filter {
+				predicate: conditions
+					.into_iter()
+					.next()
+					.unwrap(), // Simplified - combine conditions
 			},
 		});
 
-		Ok(node_id)
+		// Connect input to filter
+		self.flow.add_edge(&input_node, &filter_node)?;
+
+		Ok(filter_node)
 	}
 
-	/// Compiles a Map logical plan into a Map operator
-	pub(super) fn compile_map(
+	pub(crate) fn compile_map(
 		&mut self,
-		flow_graph: &mut Flow,
-		map: MapNode,
-	) -> Result<NodeId> {
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::Map {
-				expressions: map.map,
+		expressions: Vec<Expression>,
+		input_node: Option<NodeId>,
+	) -> crate::Result<NodeId> {
+		// Create the map node
+		let map_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::Map {
+				expressions,
 			},
 		});
 
-		Ok(node_id)
+		// Connect input to map if present
+		if let Some(input) = input_node {
+			self.flow.add_edge(&input, &map_node)?;
+		}
+
+		Ok(map_node)
 	}
 
-	/// Compiles an Aggregate logical plan into an Aggregate operator
-	pub(super) fn compile_aggregate(
+	pub(crate) fn compile_aggregate(
 		&mut self,
-		flow_graph: &mut Flow,
-		aggregate: AggregateNode,
-	) -> Result<NodeId> {
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::Aggregate {
-				by: aggregate.by,
-				map: aggregate.map,
+		by: Vec<Expression>,
+		map: Vec<Expression>,
+		input_node: NodeId,
+	) -> crate::Result<NodeId> {
+		// Create the aggregate node
+		let agg_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::Aggregate {
+				by,
+				map,
 			},
 		});
 
-		Ok(node_id)
+		// Connect input to aggregate
+		self.flow.add_edge(&input_node, &agg_node)?;
+
+		Ok(agg_node)
 	}
 
-	/// Compiles a JoinInner logical plan into a Join operator
-	pub(super) fn compile_join_inner(
+	pub(crate) fn compile_take(
 		&mut self,
-		flow_graph: &mut Flow,
-		join: JoinInnerNode,
-	) -> Result<NodeId> {
-		// For joins, we need to handle multiple inputs
-		// This is a simplified implementation - proper join compilation
-		// requires handling the subplans in join.with and connecting
-		// them properly
-
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::Join {
-				join_type: JoinType::Inner,
-				left: join.on.clone(), /* Simplified - need
-				                        * proper key
-				                        * extraction */
-				right: join.on, /* Simplified - need proper
-				                 * key extraction */
+		limit: usize,
+		input_node: NodeId,
+	) -> crate::Result<NodeId> {
+		// Create the take node using TopK operator
+		let take_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::TopK {
+				k: limit,
+				sort: vec![], // No sorting, just limit
 			},
 		});
 
-		// TODO: Compile and connect the subplans in join.with
-		// This requires more sophisticated graph building logic
+		// Connect input to take
+		self.flow.add_edge(&input_node, &take_node)?;
 
-		Ok(node_id)
+		Ok(take_node)
 	}
 
-	/// Compiles a JoinLeft logical plan into a Join operator
-	pub(super) fn compile_join_left(
+	pub(crate) fn compile_sort(
 		&mut self,
-		flow_graph: &mut Flow,
-		join: JoinLeftNode,
-	) -> Result<NodeId> {
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::Join {
-				join_type: JoinType::Left,
-				left: join.on.clone(), /* Simplified - need
-				                        * proper key
-				                        * extraction */
-				right: join.on, /* Simplified - need proper
-				                 * key extraction */
-			},
-		});
-
-		// TODO: Compile and connect the subplans in join.with
-
-		Ok(node_id)
-	}
-
-	/// Compiles a Take logical plan into a TopK operator
-	pub(super) fn compile_take(
-		&mut self,
-		flow_graph: &mut Flow,
-		take: TakeNode,
-	) -> Result<NodeId> {
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::TopK {
-				k: take.take,
-				sort: vec![], /* No sorting specified, just
-				               * limit */
-			},
-		});
-
-		Ok(node_id)
-	}
-
-	/// Compiles an Order logical plan into a TopK operator with sorting
-	pub(super) fn compile_order(
-		&mut self,
-		flow_graph: &mut Flow,
-		order: OrderNode,
-	) -> Result<NodeId> {
-		// Order without limit becomes a TopK with a very large K
-		// In practice, this might need special handling or a dedicated
-		// Sort operator
-		let node_id = flow_graph.add_node(NodeType::Operator {
-			operator: OperatorType::TopK {
+		by: Vec<SortKey>,
+		input_node: NodeId,
+	) -> crate::Result<NodeId> {
+		// Create the sort node using TopK operator with large k
+		let sort_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::TopK {
 				k: usize::MAX, // Sort all results
-				sort: order.by,
+				sort: by,
 			},
 		});
 
-		Ok(node_id)
+		// Connect input to sort
+		self.flow.add_edge(&input_node, &sort_node)?;
+
+		Ok(sort_node)
+	}
+
+	pub(crate) fn compile_join_inner(
+		&mut self,
+		on: Vec<Expression>,
+		left_node: NodeId,
+		right_node: NodeId,
+	) -> crate::Result<NodeId> {
+		// Create the join node
+		let join_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::Join {
+				join_type: reifydb_core::JoinType::Inner,
+				left: on.clone(),
+				right: on,
+			},
+		});
+
+		// Connect both inputs to join
+		self.flow.add_edge(&left_node, &join_node)?;
+		self.flow.add_edge(&right_node, &join_node)?;
+
+		Ok(join_node)
+	}
+
+	pub(crate) fn compile_join_left(
+		&mut self,
+		on: Vec<Expression>,
+		left_node: NodeId,
+		right_node: NodeId,
+	) -> crate::Result<NodeId> {
+		// Create the join node
+		let join_node = self.flow.add_node(NodeType::Operator {
+			operator: crate::OperatorType::Join {
+				join_type: reifydb_core::JoinType::Left,
+				left: on.clone(),
+				right: on,
+			},
+		});
+
+		// Connect both inputs to join
+		self.flow.add_edge(&left_node, &join_node)?;
+		self.flow.add_edge(&right_node, &join_node)?;
+
+		Ok(join_node)
 	}
 }

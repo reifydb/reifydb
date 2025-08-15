@@ -66,17 +66,17 @@ fn main() {
 	)
 	.unwrap();
 
-	// db.command_as_root(
-	// 	r#"
-	// from [
-	//     { name: "dim", age: 40 },
-	// ]
-	// insert test.users;
-	//
-	// "#,
-	// 	Params::None,
-	// )
-	// 	.unwrap();
+	db.command_as_root(
+		r#"
+	from [
+	    { name: "dim", age: 40 },
+	]
+	insert test.users;
+
+	"#,
+		Params::None,
+	)
+	.unwrap();
 
 	for frame in
 		db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
