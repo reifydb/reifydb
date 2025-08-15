@@ -131,6 +131,10 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'RowId'};
     }
 
+    static identityid(): PrimitiveSchemaNode<'IdentityId'> {
+        return {kind: 'primitive', type: 'IdentityId'};
+    }
+
     static object<P extends Record<string, SchemaNode>>(properties: P): ObjectSchemaNode<P> {
         return {kind: 'object', properties};
     }
@@ -237,6 +241,10 @@ export class SchemaBuilder {
 
     static rowIdValue(): ValueSchemaNode<'RowId'> {
         return {kind: 'value', type: 'RowId'};
+    }
+
+    static identityIdValue(): ValueSchemaNode<'IdentityId'> {
+        return {kind: 'value', type: 'IdentityId'};
     }
 }
 

@@ -3,7 +3,7 @@
 
 use crate::{
 	Date, DateTime, Interval, Time, Type,
-	value::uuid::{Uuid4, Uuid7},
+	value::{identity::IdentityId, uuid::{Uuid4, Uuid7}},
 };
 
 pub trait GetType {
@@ -121,6 +121,12 @@ impl GetType for Interval {
 impl GetType for Uuid4 {
 	fn get_type() -> Type {
 		Type::Uuid4
+	}
+}
+
+impl GetType for IdentityId {
+	fn get_type() -> Type {
+		Type::IdentityId
 	}
 }
 

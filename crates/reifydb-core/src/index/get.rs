@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
 	SortDirection, Type,
 	index::{EncodedIndexKey, EncodedIndexLayout},
-	value::{Date, DateTime, Interval, Time, Uuid4, Uuid7},
+	value::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 };
 
 impl EncodedIndexLayout {
@@ -520,6 +520,30 @@ impl EncodedIndexLayout {
 
 		let uuid = Uuid::from_bytes(bytes);
 		Uuid7::from(uuid)
+	}
+
+	pub fn get_identity_id(&self, key: &EncodedIndexKey, index: usize) -> IdentityId {
+		let field = &self.fields[index];
+		debug_assert_eq!(field.value, Type::IdentityId);
+
+		let mut bytes = [0u8; 16];
+		unsafe {
+			std::ptr::copy_nonoverlapping(
+				key.as_ptr().add(field.offset),
+				bytes.as_mut_ptr(),
+				16,
+			);
+		}
+
+		if field.direction == SortDirection::Desc {
+			for b in bytes.iter_mut() {
+				*b = !*b;
+			}
+		}
+
+		let uuid = Uuid::from_bytes(bytes);
+		let uuid7 = Uuid7::from(uuid);
+		IdentityId::from(uuid7)
 	}
 }
 
@@ -1054,6 +1078,78 @@ mod tests {
 			assert_eq!(layout.get_row_id(&key1, 0), 1);
 			assert_eq!(layout.get_row_id(&key2, 0), 1000);
 			assert_eq!(layout.get_row_id(&key3, 0), u64::MAX);
+		}
+	}
+
+	mod identity_id {
+		use super::*;
+		use crate::value::IdentityId;
+
+		#[test]
+		fn test_asc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::IdentityId],
+				&[SortDirection::Asc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let id1 = IdentityId::generate();
+			// Sleep to ensure different timestamps
+			std::thread::sleep(std::time::Duration::from_millis(10));
+			let id2 = IdentityId::generate();
+
+			layout.set_identity_id(&mut key1, 0, id1.clone());
+			layout.set_identity_id(&mut key2, 0, id2.clone());
+
+			// Should be ordered by timestamp
+			assert!(key1.as_slice() < key2.as_slice());
+			// Should decode back to original values
+			assert_eq!(layout.get_identity_id(&key1, 0), id1);
+			assert_eq!(layout.get_identity_id(&key2, 0), id2);
+		}
+
+		#[test]
+		fn test_desc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::IdentityId],
+				&[SortDirection::Desc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let id1 = IdentityId::generate();
+			// Sleep to ensure different timestamps
+			std::thread::sleep(std::time::Duration::from_millis(10));
+			let id2 = IdentityId::generate();
+
+			layout.set_identity_id(&mut key1, 0, id1.clone());
+			layout.set_identity_id(&mut key2, 0, id2.clone());
+
+			// Should be reverse ordered for DESC
+			assert!(key1.as_slice() > key2.as_slice());
+			// Should decode back to original values
+			assert_eq!(layout.get_identity_id(&key1, 0), id1);
+			assert_eq!(layout.get_identity_id(&key2, 0), id2);
+		}
+
+		#[test]
+		fn test_roundtrip() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::IdentityId],
+				&[SortDirection::Asc],
+			)
+			.unwrap();
+			
+			let id = IdentityId::generate();
+			let mut key = layout.allocate_key();
+			
+			// Set and get should preserve the value
+			layout.set_identity_id(&mut key, 0, id.clone());
+			let retrieved = layout.get_identity_id(&key, 0);
+			assert_eq!(retrieved, id);
 		}
 	}
 

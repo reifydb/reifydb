@@ -611,6 +611,27 @@ fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
 				bitvec.into(),
 			))
 		}
+		Type::IdentityId => {
+			let values: Vec<reifydb_core::value::IdentityId> =
+				data.into_iter()
+					.map(|s| {
+						if s == "⟪undefined⟫" {
+							reifydb_core::value::IdentityId::from(
+								reifydb_core::value::uuid::Uuid7::from(Uuid::nil())
+							)
+						} else {
+							let uuid7 = reifydb_core::value::uuid::Uuid7::from(
+								Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
+							);
+							reifydb_core::value::IdentityId::from(uuid7)
+						}
+					})
+					.collect();
+			FrameColumnData::IdentityId(reifydb_core::value::container::IdentityIdContainer::new(
+				values,
+				bitvec.into(),
+			))
+		}
 		Type::Blob => {
 			let values: Vec<Blob> = data
 				.into_iter()

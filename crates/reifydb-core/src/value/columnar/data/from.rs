@@ -43,6 +43,9 @@ impl ColumnData {
 			Value::RowId(v) => {
 				ColumnData::row_id(vec![v; row_count])
 			}
+			Value::IdentityId(v) => {
+				ColumnData::identity_id(vec![v; row_count])
+			}
 			Value::Uuid4(v) => {
 				ColumnData::uuid4(vec![v; row_count])
 			}

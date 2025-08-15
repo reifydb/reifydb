@@ -66,6 +66,9 @@ impl ColumnData {
 			ColumnData::RowId(container) => {
 				container.reorder(indices)
 			}
+			ColumnData::IdentityId(container) => {
+				container.reorder(indices)
+			}
 			ColumnData::Uuid4(container) => {
 				container.reorder(indices)
 			}
@@ -149,5 +152,22 @@ mod tests {
 
 		col.reorder(&[1, 0]);
 		assert_eq!(col.len(), 2);
+	}
+
+	#[test]
+	fn test_reorder_identity_id() {
+		use crate::value::identity::IdentityId;
+		
+		let id1 = IdentityId::generate();
+		let id2 = IdentityId::generate();
+		let id3 = IdentityId::generate();
+		
+		let mut col = ColumnData::identity_id([id1, id2, id3]);
+		col.reorder(&[2, 0, 1]);
+
+		assert_eq!(col.len(), 3);
+		assert_eq!(col.get_value(0), Value::IdentityId(id3));
+		assert_eq!(col.get_value(1), Value::IdentityId(id1));
+		assert_eq!(col.get_value(2), Value::IdentityId(id2));
 	}
 }

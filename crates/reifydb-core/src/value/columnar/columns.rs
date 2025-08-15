@@ -91,6 +91,7 @@ impl Columns {
 					ColumnData::interval([v.clone()])
 				}
 				Value::RowId(v) => ColumnData::row_id([v]),
+				Value::IdentityId(v) => ColumnData::identity_id([v]),
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),
 				Value::Blob(v) => ColumnData::blob([v.clone()]),
@@ -228,6 +229,9 @@ impl Columns {
 					}
 					Type::RowId => {
 						ColumnData::row_id(vec![])
+					}
+					Type::IdentityId => {
+						ColumnData::identity_id(vec![])
 					}
 					Type::Uuid4 => {
 						ColumnData::uuid4(vec![])

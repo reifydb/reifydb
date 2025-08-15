@@ -12,7 +12,7 @@ import {
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     Float4Value, Float8Value, Utf8Value, BlobValue, RowIdValue,
     DateValue, TimeValue, DateTimeValue, IntervalValue,
-    Uuid4Value, Uuid7Value, UndefinedValue,
+    Uuid4Value, Uuid7Value, UndefinedValue, IdentityIdValue,
     Schema
 } from "@reifydb/core";
 import { expectSingleValueResult } from "./test-helper";
@@ -274,6 +274,17 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
         }, 1000);
 
+        it('IdentityId', async () => {
+            const identityId = "018fad5d-f37a-7c94-a716-446655440001";
+            const frames = await wsClient.command(
+                'MAP $1 as result',
+                [new IdentityIdValue(identityId)],
+                [Schema.object({result: Schema.identityIdValue()})]
+            );
+
+            expectSingleValueResult(frames, new IdentityIdValue(identityId));
+        }, 1000);
+
         it('Undefined', async () => {
             const frames = await wsClient.command(
                 'MAP $1 as result',
@@ -510,6 +521,17 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
+        }, 1000);
+
+        it('IdentityId', async () => {
+            const identityId = "018fad5d-f37a-7c94-a716-446655440001";
+            const frames = await wsClient.query(
+                'MAP $1 as result',
+                [new IdentityIdValue(identityId)],
+                [Schema.object({result: Schema.identityIdValue()})]
+            );
+
+            expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
         it('Undefined', async () => {

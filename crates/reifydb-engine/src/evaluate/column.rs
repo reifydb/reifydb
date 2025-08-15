@@ -4,7 +4,7 @@
 use reifydb_core::{
 	Date, DateTime, Interval, RowId, Time, Value, error,
 	result::error::diagnostic::query::column_not_found,
-	value::{Blob, Uuid4, Uuid7},
+	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 use reifydb_rql::expression::ColumnExpression;
 
@@ -586,6 +586,35 @@ impl Evaluator {
 				}
 				Ok(col.with_new_data(
 					ColumnData::row_id_with_bitvec(
+						data, bitvec,
+					),
+				))
+			}
+			Value::IdentityId(_) => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::IdentityId(i) => {
+							data.push(i.clone());
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(
+								IdentityId::default(
+								),
+							);
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(
+					ColumnData::identity_id_with_bitvec(
 						data, bitvec,
 					),
 				))

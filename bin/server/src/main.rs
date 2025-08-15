@@ -3,11 +3,11 @@
 
 use std::thread;
 
-use reifydb::{WithHooks, network::ws::server::WsConfig, server};
+use reifydb::{network::ws::server::WsConfig, server, WithHooks};
 use tokio::{
 	runtime::Runtime,
 	select, signal,
-	signal::unix::{SignalKind, signal},
+	signal::unix::{signal, SignalKind},
 	sync::oneshot,
 };
 
@@ -29,12 +29,12 @@ fn main() {
 
 			select! {
 			    _ = tokio_signal => {
-				println!("Shutting down...");
-				tx.send(()).unwrap();
+					println!("Shutting down...");
+					tx.send(()).unwrap();
 			    }
 			    _ = sigterm.recv() => {
-				println!("Received SIGTERM. Cleaning up resources...");
-				tx.send(()).unwrap();
+					println!("Received SIGTERM. Cleaning up resources...");
+					tx.send(()).unwrap();
 			    }
 			}
 		});

@@ -425,6 +425,12 @@ impl Evaluator {
                 }
                 _ => unimplemented!(),
             },
+            ColumnData::IdentityId(_) => match prefix.operator {
+                PrefixOperator::Not(_) => {
+                    err!(operator::not_can_not_applied_to_uuid(prefix.span()))
+                }
+                _ => unimplemented!(),
+            },
             ColumnData::Uuid4(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.span()))
