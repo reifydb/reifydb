@@ -9,4 +9,8 @@ mod core;
 mod operator;
 mod process;
 
+pub use core::*;
+
+pub mod legacy_processor; // FIXME remove that
+
 pub use reifydb_core::Result;

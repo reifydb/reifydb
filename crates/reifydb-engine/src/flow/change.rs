@@ -7,14 +7,14 @@ use crate::columnar::Columns;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Diff {
 	Insert {
-		columns: Columns,
+		after: Columns,
 	},
 	Update {
-		old: Columns,
-		new: Columns,
+		before: Columns,
+		after: Columns,
 	},
 	Remove {
-		columns: Columns,
+		before: Columns,
 	},
 }
 

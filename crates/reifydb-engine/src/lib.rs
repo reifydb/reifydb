@@ -12,5 +12,5 @@ pub mod flow;
 #[allow(dead_code)]
 mod function;
 
-pub use engine::Engine;
+pub use engine::StandardEngine;
 pub use reifydb_core::Result;

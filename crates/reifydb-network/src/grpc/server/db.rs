@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	result::{Frame, error::diagnostic::Diagnostic},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use tokio::task::spawn_blocking;
 use tokio_stream::{Stream, once};
 use tonic::{Request, Response, Status};
@@ -22,7 +22,7 @@ use crate::grpc::server::{
 };
 
 pub struct DbService<T: Transaction> {
-	pub(crate) engine: Arc<Engine<T>>,
+	pub(crate) engine: Arc<StandardEngine<T>>,
 	_phantom: std::marker::PhantomData<T>,
 }
 
@@ -113,7 +113,7 @@ fn grpc_params_to_core_params(grpc_params: Option<grpc::Params>) -> CoreParams {
 }
 
 impl<T: Transaction> DbService<T> {
-	pub fn new(engine: Engine<T>) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
 		Self {
 			engine: Arc::new(engine),
 			_phantom: std::marker::PhantomData,

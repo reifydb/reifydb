@@ -8,10 +8,10 @@ use reifydb_core::{
 	hook::lifecycle::OnCreateHook,
 	interface::{GetHooks, Transaction},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 pub trait WithHooks<T: Transaction> {
-	fn engine(&self) -> &Engine<T>;
+	fn engine(&self) -> &StandardEngine<T>;
 
 	fn on_create<F>(self, f: F) -> Self
 	where

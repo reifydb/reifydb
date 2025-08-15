@@ -31,15 +31,15 @@ use crate::{
 	function::{Functions, math},
 };
 
-pub struct Engine<T: Transaction>(Arc<EngineInner<T>>);
+pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
-impl<T: Transaction> GetHooks for Engine<T> {
+impl<T: Transaction> GetHooks for StandardEngine<T> {
 	fn get_hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }
 
-impl<T: Transaction> EngineInterface<T> for Engine<T> {
+impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>> {
 		Ok(ActiveCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -94,7 +94,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<T> for Engine<T> {
+impl<T: Transaction> ExecuteCommand<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_command<'a>(
 		&'a self,
@@ -105,7 +105,7 @@ impl<T: Transaction> ExecuteCommand<T> for Engine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<T> for Engine<T> {
+impl<T: Transaction> ExecuteQuery<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_query<'a>(
 		&'a self,
@@ -116,13 +116,13 @@ impl<T: Transaction> ExecuteQuery<T> for Engine<T> {
 	}
 }
 
-impl<T: Transaction> Clone for Engine<T> {
+impl<T: Transaction> Clone for StandardEngine<T> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-impl<T: Transaction> Deref for Engine<T> {
+impl<T: Transaction> Deref for StandardEngine<T> {
 	type Target = EngineInner<T>;
 
 	fn deref(&self) -> &Self::Target {
@@ -140,7 +140,7 @@ pub struct EngineInner<T: Transaction> {
 	_processor: FlowProcessor<T>, // FIXME remove me
 }
 
-impl<T: Transaction> Engine<T> {
+impl<T: Transaction> StandardEngine<T> {
 	pub fn new(
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
@@ -213,6 +213,16 @@ impl<T: Transaction> Engine<T> {
 	}
 
 	#[inline]
+	pub fn cdc(&self) -> &T::Cdc {
+		&self.cdc
+	}
+
+	#[inline]
+	pub fn cdc_owned(&self) -> T::Cdc {
+		self.cdc.clone()
+	}
+
+	#[inline]
 	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
 		self.hooks.trigger(hook)
 	}
@@ -220,7 +230,7 @@ impl<T: Transaction> Engine<T> {
 
 #[allow(dead_code)]
 struct FlowPostCommit<T: Transaction> {
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 }
 
 impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
@@ -303,7 +313,7 @@ impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
                             &mut txn,
                             &source_node_id,
                             Change {
-                                diffs: vec![Diff::Insert { columns }],
+                                diffs: vec![Diff::Insert { after: columns }],
                                 metadata: Default::default(),
                             },
                         )

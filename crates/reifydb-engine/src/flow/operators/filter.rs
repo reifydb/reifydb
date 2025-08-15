@@ -33,41 +33,40 @@ impl Operator for FilterOperator {
 		for diff in change.diffs {
 			match diff {
 				Diff::Insert {
-					columns,
+					after: columns,
 				} => {
 					let filtered_columns =
 						self.filter(&columns)?;
 					if !filtered_columns.is_empty() {
 						output.push(Diff::Insert {
-							columns:
-								filtered_columns,
+							after: filtered_columns,
 						});
 					}
 				}
 				Diff::Update {
-					old,
-					new,
+					before: old,
+					after: new,
 				} => {
 					let filtered_new = self.filter(&new)?;
 					if !filtered_new.is_empty() {
 						output.push(Diff::Update {
-							old,
-							new: filtered_new,
+							before: old,
+							after: filtered_new,
 						});
 					} else {
 						// If new doesn't pass filter,
 						// emit remove of old
 						output.push(Diff::Remove {
-							columns: old,
+							before: old,
 						});
 					}
 				}
 				Diff::Remove {
-					columns,
+					before: columns,
 				} => {
 					// Always pass through removes
 					output.push(Diff::Remove {
-						columns,
+						before: columns,
 					});
 				}
 			}

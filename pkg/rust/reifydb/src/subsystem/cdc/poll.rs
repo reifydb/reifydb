@@ -23,10 +23,10 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::CowVec,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 pub struct PollConsumer<T: Transaction, F: CdcConsume<T>> {
-	engine: Option<Engine<T>>,
+	engine: Option<StandardEngine<T>>,
 	processor: Option<Box<F>>,
 	state: Arc<ConsumerState>,
 	worker: Option<JoinHandle<()>>,
@@ -43,7 +43,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 	pub fn new(
 		id: ConsumerId,
 		poll_interval: Duration,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		consume: F,
 	) -> Self {
 		Self {
@@ -64,7 +64,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 
 	fn process_batch(
 		state: &ConsumerState,
-		engine: &Engine<T>,
+		engine: &StandardEngine<T>,
 		processor: &F,
 	) -> Result<()> {
 		let mut transaction = engine.begin_command()?;
@@ -108,7 +108,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 	}
 
 	fn polling_loop(
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		processor: Box<F>,
 		state: Arc<ConsumerState>,
 	) {

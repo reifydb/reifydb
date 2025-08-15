@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_core::interface::Transaction;
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 #[cfg(feature = "sub_flow")]
 use crate::subsystem::FlowSubsystem;
@@ -15,14 +15,14 @@ use crate::{
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 	config: DatabaseConfig,
 	subsystems: Vec<Box<dyn Subsystem>>,
 }
 
 impl<T: Transaction> DatabaseBuilder<T> {
 	#[allow(unused_mut)]
-	pub fn new(engine: Engine<T>) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
 		let mut result = Self {
 			engine: engine.clone(),
 			config: DatabaseConfig::default(),

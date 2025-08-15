@@ -3,7 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::collections::Bound::Included;
+use std::{collections::Bound::Included, thread, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, SessionSync,
@@ -77,17 +77,17 @@ fn main() {
 		println!("{}", frame);
 	}
 
-	db.command_as_root(
-		r#"
-    from test.users
-    filter { name = "bob" }
-    map { name: "bob", age: 21}
-    update test.users;
-
-    "#,
-		Params::None,
-	)
-	.unwrap();
+	// db.command_as_root(
+	// 	r#"
+	// from test.users
+	// filter { name = "bob" }
+	// map { name: "bob", age: 21}
+	// update test.users;
+	//
+	// "#,
+	// 	Params::None,
+	// )
+	// .unwrap();
 
 	for frame in
 		db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
@@ -95,19 +95,14 @@ fn main() {
 		println!("{}", frame);
 	}
 
-	loop {}
+	// loop {}
+	thread::sleep(Duration::from_secs(2));
 
 	// println!("Basic database operations completed successfully!");
-	// rql_to_flow_example(&mut db);
+	rql_to_flow_example(&mut db);
 }
 
-fn _rql_to_flow_example(db: &mut DB) {
-	// for frame in
-	//     db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id
-	// }", Params::None).unwrap() {
-	//     println!("{}", frame);
-	// }
-	//
+fn rql_to_flow_example(db: &mut DB) {
 	let frame = db
 		.query_as_root(
 			"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",

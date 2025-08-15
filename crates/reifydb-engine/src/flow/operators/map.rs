@@ -33,34 +33,34 @@ impl Operator for MapOperator {
 		for diff in change.diffs {
 			match diff {
 				Diff::Insert {
-					columns,
+					after: columns,
 				} => {
 					let projected_columns =
 						self.project(&columns)?;
 					output.push(Diff::Insert {
-						columns: projected_columns,
+						after: projected_columns,
 					});
 				}
 				Diff::Update {
-					old,
-					new,
+					before: old,
+					after: new,
 				} => {
 					let projected_columns =
 						self.project(&new)?;
 					output.push(Diff::Update {
-						old,
-						new: projected_columns,
+						before: old,
+						after: projected_columns,
 					});
 				}
 				Diff::Remove {
-					columns,
+					before: columns,
 				} => {
 					// For removes, we might need to project
 					// to maintain schema consistency
 					let projected_columns =
 						self.project(&columns)?;
 					output.push(Diff::Remove {
-						columns: projected_columns,
+						before: projected_columns,
 					});
 				}
 			}

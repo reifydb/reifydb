@@ -11,17 +11,15 @@ use reifydb_core::{
 		VersionedTransaction,
 	},
 	row::EncodedRowLayout,
+	value::columnar::Columns,
 };
 
-use super::{
-	change::{Change, Diff},
-	flow::Flow,
-	node::{NodeId, NodeType, OperatorType},
-	operators::{FilterOperator, MapOperator, Operator, OperatorContext},
+use crate::{
+	core::{Change, Diff, Flow, NodeId, NodeType, OperatorType},
+	operator::{FilterOperator, MapOperator, Operator, OperatorContext},
 };
-use crate::{Result, columnar::Columns};
 
-pub struct FlowProcessor<T: Transaction> {
+pub struct LegacyFlowProcessor<T: Transaction> {
 	flow: Flow,
 	operators: HashMap<NodeId, Box<dyn Operator + Send + Sync + 'static>>,
 	contexts: HashMap<NodeId, OperatorContext>,
@@ -30,7 +28,7 @@ pub struct FlowProcessor<T: Transaction> {
 	cdc: T::Cdc,
 }
 
-impl<T: Transaction> FlowProcessor<T> {
+impl<T: Transaction> LegacyFlowProcessor<T> {
 	pub fn new(
 		flow: Flow,
 		versioned: T::Versioned,
@@ -47,7 +45,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		}
 	}
 
-	pub fn initialize(&mut self) -> Result<()> {
+	pub fn initialize(&mut self) -> crate::Result<()> {
 		// Initialize operator for all nodes
 		let node_ids: Vec<NodeId> = self.flow.get_all_nodes().collect();
 
@@ -93,7 +91,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		&self,
 		node_id: &NodeId,
 		change: Change,
-	) -> Result<()> {
+	) -> crate::Result<()> {
 		// let mut tx = ;
 
 		let mut txn = ActiveCommandTransaction::new(
@@ -113,7 +111,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		txn: &mut ActiveCommandTransaction<T>,
 		node_id: &NodeId,
 		change: Change,
-	) -> Result<()> {
+	) -> crate::Result<()> {
 		let (node_type, output_nodes) =
 			if let Some(node) = self.flow.get_node(node_id) {
 				(node.ty.clone(), node.outputs.clone())
@@ -185,7 +183,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		txn: &mut ActiveCommandTransaction<T>,
 		node_id: &NodeId,
 		change: Change,
-	) -> Result<()> {
+	) -> crate::Result<()> {
 		let mut operators: HashMap<
 			NodeId,
 			Box<dyn Operator + Send + Sync + 'static>,
@@ -302,7 +300,7 @@ impl<T: Transaction> FlowProcessor<T> {
 	fn create_operator(
 		&self,
 		operator_type: &OperatorType,
-	) -> Result<Box<dyn Operator + Send + Sync + 'static>> {
+	) -> crate::Result<Box<dyn Operator + Send + Sync + 'static>> {
 		match operator_type {
 			OperatorType::Filter {
 				predicate,
@@ -326,7 +324,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		txn: &mut ActiveCommandTransaction<T>,
 		node_id: &NodeId,
 		change: &Change,
-	) -> Result<()> {
+	) -> crate::Result<()> {
 		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
 		let table = TableDef {
@@ -358,7 +356,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		for diff in &change.diffs {
 			match diff {
 				Diff::Insert {
-					after: columns,
+					after,
 				} => {
 					// Convert columns to row deltas
 					// let columns_deltas =
@@ -366,7 +364,7 @@ impl<T: Transaction> FlowProcessor<T> {
 					// node_id)?;
 					// deltas.extend(columns_deltas);
 
-					let row_count = columns.row_count();
+					let row_count = after.row_count();
 
 					for row_idx in 0..row_count {
 						// if !mask.get(row_idx) {
@@ -385,7 +383,7 @@ impl<T: Transaction> FlowProcessor<T> {
 								.enumerate()
 						{
 							let value = if let Some(input_column) =
-                                columns.iter().find(|col| col.name() == table_column.name)
+                                after.iter().find(|col| col.name() == table_column.name)
                             {
                                 input_column.data().get_value(row_idx)
                             } else {
@@ -480,7 +478,7 @@ impl<T: Transaction> FlowProcessor<T> {
 		Ok(())
 	}
 
-	pub fn get_view_data(&self, view_name: &str) -> Result<Columns> {
+	pub fn get_view_data(&self, view_name: &str) -> crate::Result<Columns> {
 		// Find view node and read from versioned storage
 		for node_id in self.flow.get_all_nodes() {
 			if let Some(node) = self.flow.get_node(&node_id) {
@@ -504,7 +502,7 @@ impl<T: Transaction> FlowProcessor<T> {
 	fn read_columns_from_storage(
 		&self,
 		node_id: &NodeId,
-	) -> Result<Columns> {
+	) -> crate::Result<Columns> {
 		// Start a read transaction
 		let mut rx = self.versioned.begin_query()?;
 

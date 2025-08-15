@@ -13,7 +13,7 @@ use reifydb_core::{
 		UnversionedTransaction, VersionedTransaction,
 	},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
@@ -83,7 +83,7 @@ impl Default for DatabaseConfig {
 
 pub struct Database<T: Transaction> {
 	config: DatabaseConfig,
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 	bootloader: Bootloader<T>,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
@@ -109,7 +109,7 @@ impl<T: Transaction> Database<T> {
 
 impl<T: Transaction> Database<T> {
 	pub(crate) fn new(
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
@@ -124,7 +124,7 @@ impl<T: Transaction> Database<T> {
 		}
 	}
 
-	pub fn engine(&self) -> &Engine<T> {
+	pub fn engine(&self) -> &StandardEngine<T> {
 		&self.engine
 	}
 

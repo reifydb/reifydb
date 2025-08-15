@@ -5,18 +5,21 @@ use reifydb_core::{
 	interface::{Engine as EngineInterface, Identity, Params, Transaction},
 	result::Frame,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 #[cfg(feature = "async")]
 use tokio::task::spawn_blocking;
 
 /// Session for executing read-only database queries
 pub struct QuerySession<T: Transaction> {
-	pub(crate) engine: Engine<T>,
+	pub(crate) engine: StandardEngine<T>,
 	pub(crate) identity: Identity,
 }
 
 impl<T: Transaction> QuerySession<T> {
-	pub(crate) fn new(engine: Engine<T>, identity: Identity) -> Self {
+	pub(crate) fn new(
+		engine: StandardEngine<T>,
+		identity: Identity,
+	) -> Self {
 		Self {
 			engine,
 			identity,
