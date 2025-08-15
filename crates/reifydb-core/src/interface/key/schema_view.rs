@@ -4,27 +4,27 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{ColumnId, ColumnPolicyId},
+	interface::catalog::{SchemaId, ViewId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ColumnPolicyKey {
-	pub column: ColumnId,
-	pub policy: ColumnPolicyId,
+pub struct SchemaViewKey {
+	pub schema: SchemaId,
+	pub view: ViewId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for ColumnPolicyKey {
-	const KIND: KeyKind = KeyKind::ColumnPolicy;
+impl EncodableKey for SchemaViewKey {
+	const KIND: KeyKind = KeyKind::SchemaView;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(18);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.column));
-		out.extend(&keycode::serialize(&self.policy));
+		out.extend(&keycode::serialize(&self.schema));
+		out.extend(&keycode::serialize(&self.view));
 		EncodedKey::new(out)
 	}
 
@@ -51,78 +51,78 @@ impl EncodableKey for ColumnPolicyKey {
 		keycode::deserialize(&payload[..8])
 			.ok()
 			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(column, policy)| Self {
-				column,
-				policy,
+			.map(|(schema, view)| Self {
+				schema,
+				view,
 			})
 	}
 }
 
-impl ColumnPolicyKey {
-	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
+impl SchemaViewKey {
+	pub fn full_scan(schema_id: SchemaId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::link_start(column)),
-			Some(Self::link_end(column)),
+			Some(Self::link_start(schema_id)),
+			Some(Self::link_end(schema_id)),
 		)
 	}
 
-	fn link_start(column: ColumnId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+	fn link_start(schema_id: SchemaId) -> EncodedKey {
+		let mut out = Vec::with_capacity(6);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&column));
+		out.extend(&keycode::serialize(&schema_id));
 		EncodedKey::new(out)
 	}
 
-	fn link_end(column: ColumnId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+	fn link_end(schema_id: SchemaId) -> EncodedKey {
+		let mut out = Vec::with_capacity(6);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*column - 1)));
+		out.extend(&keycode::serialize(&(*schema_id - 1)));
 		EncodedKey::new(out)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{ColumnPolicyKey, EncodableKey};
-	use crate::interface::catalog::{ColumnId, ColumnPolicyId};
+	use super::{EncodableKey, SchemaViewKey};
+	use crate::interface::catalog::{SchemaId, ViewId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = ColumnPolicyKey {
-			column: ColumnId(0xABCD),
-			policy: ColumnPolicyId(0x123456789ABCDEF0),
+		let key = SchemaViewKey {
+			schema: SchemaId(0xABCD),
+			view: ViewId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
 		let expected: Vec<u8> = vec![
 			0xFE, // version
-			0xF6, // kind
+			0xED, // kind
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
 			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = ColumnPolicyKey::decode(&encoded).unwrap();
-		assert_eq!(key.column, 0xABCD);
-		assert_eq!(key.policy, 0x123456789ABCDEF0);
+		let key = SchemaViewKey::decode(&encoded).unwrap();
+		assert_eq!(key.schema, 0xABCD);
+		assert_eq!(key.view, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = ColumnPolicyKey {
-			column: ColumnId(1),
-			policy: ColumnPolicyId(100),
+		let key1 = SchemaViewKey {
+			schema: SchemaId(1),
+			view: ViewId(100),
 		};
-		let key2 = ColumnPolicyKey {
-			column: ColumnId(1),
-			policy: ColumnPolicyId(200),
+		let key2 = SchemaViewKey {
+			schema: SchemaId(1),
+			view: ViewId(200),
 		};
-		let key3 = ColumnPolicyKey {
-			column: ColumnId(2),
-			policy: ColumnPolicyId(0),
+		let key3 = SchemaViewKey {
+			schema: SchemaId(2),
+			view: ViewId(0),
 		};
 
 		let encoded1 = key1.encode();

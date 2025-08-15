@@ -1,4 +1,4 @@
-use reifydb_core::{interface::Params, value::columnar::Columns};
+use reifydb_core::value::columnar::Columns;
 use reifydb_rql::expression::Expression;
 
 use crate::{

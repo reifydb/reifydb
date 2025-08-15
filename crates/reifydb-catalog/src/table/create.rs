@@ -16,13 +16,13 @@ use reifydb_core::{
 
 use crate::{
 	Catalog,
-	column::ColumnIndex,
 	sequence::SystemSequence,
 	table::layout::{table, table_schema},
+	table_column::ColumnIndex,
 };
 
 #[derive(Debug, Clone)]
-pub struct ColumnToCreate {
+pub struct TableColumnToCreate {
 	pub name: String,
 	pub ty: Type,
 	pub policies: Vec<ColumnPolicyKind>,
@@ -35,7 +35,7 @@ pub struct TableToCreate {
 	pub span: Option<OwnedSpan>,
 	pub table: String,
 	pub schema: String,
-	pub columns: Vec<ColumnToCreate>,
+	pub columns: Vec<TableColumnToCreate>,
 }
 
 impl Catalog {
@@ -132,10 +132,10 @@ impl Catalog {
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
-			Catalog::create_column(
+			Catalog::create_table_column(
 				txn,
 				table,
-				crate::column::ColumnToCreate {
+				crate::table_column::TableColumnToCreate {
 					span: column_to_create.span.clone(),
 					schema_name: &to_create.schema,
 					table,

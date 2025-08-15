@@ -4,25 +4,25 @@
 use reifydb_core::{
 	Type,
 	interface::{
-		ColumnKey, EncodableKey, TableColumnKey, TableId,
+		EncodableKey, TableColumnKey, TableColumnsKey, TableId,
 		VersionedQueryTransaction,
 	},
 };
 
 use crate::{
 	Catalog,
-	column::{
+	table_column::{
 		ColumnDef, ColumnId, ColumnIndex,
 		layout::{column, table_column},
 	},
 };
 
 impl Catalog {
-	pub fn get_column(
+	pub fn get_table_column(
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Option<ColumnDef>> {
-		match rx.get(&ColumnKey {
+		match rx.get(&TableColumnsKey {
 			column,
 		}
 		.encode())?
@@ -50,7 +50,9 @@ impl Catalog {
 					.get_bool(&row, column::AUTO_INCREMENT);
 
 				let policies =
-					Catalog::list_column_policies(rx, id)?;
+					Catalog::list_table_column_policies(
+						rx, id,
+					)?;
 
 				Ok(Some(ColumnDef {
 					id,
@@ -64,7 +66,7 @@ impl Catalog {
 		}
 	}
 
-	pub fn get_column_by_name(
+	pub fn get_table_column_by_name(
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
 		column_name: &str,
@@ -89,7 +91,7 @@ impl Catalog {
 			});
 
 		if let Some(id) = maybe_id {
-			Catalog::get_column(rx, id)
+			Catalog::get_table_column(rx, id)
 		} else {
 			Ok(None)
 		}
@@ -103,7 +105,7 @@ mod tests {
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
-			Catalog, column::ColumnId,
+			Catalog, table_column::ColumnId,
 			test_utils::create_test_table_column,
 		};
 
@@ -129,9 +131,12 @@ mod tests {
 				vec![],
 			);
 
-			let result = Catalog::get_column(&mut txn, ColumnId(2))
-				.unwrap()
-				.unwrap();
+			let result = Catalog::get_table_column(
+				&mut txn,
+				ColumnId(2),
+			)
+			.unwrap()
+			.unwrap();
 
 			assert_eq!(result.id, 2);
 			assert_eq!(result.name, "col_2");
@@ -161,8 +166,11 @@ mod tests {
 				vec![],
 			);
 
-			let result = Catalog::get_column(&mut txn, ColumnId(4))
-				.unwrap();
+			let result = Catalog::get_table_column(
+				&mut txn,
+				ColumnId(4),
+			)
+			.unwrap();
 			assert!(result.is_none());
 		}
 	}
@@ -195,7 +203,7 @@ mod tests {
 				vec![],
 			);
 
-			let result = Catalog::get_column_by_name(
+			let result = Catalog::get_table_column_by_name(
 				&mut txn,
 				TableId(1),
 				"col_3",
@@ -219,7 +227,7 @@ mod tests {
 				vec![],
 			);
 
-			let result = Catalog::get_column_by_name(
+			let result = Catalog::get_table_column_by_name(
 				&mut txn,
 				TableId(1),
 				"not_found",

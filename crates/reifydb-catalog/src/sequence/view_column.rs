@@ -4,8 +4,8 @@
 use reifydb_core::{
 	Type, Value,
 	interface::{
-		ActiveCommandTransaction, ColumnId, EncodableKey,
-		TableColumnSequenceKey, TableId, Transaction,
+		ActiveCommandTransaction, EncodableKey, Transaction,
+		ViewColumnId, ViewColumnSequenceKey, ViewId,
 	},
 };
 
@@ -19,17 +19,17 @@ use crate::{
 	},
 };
 
-pub struct ColumnSequence {}
+pub struct ViewColumnSequence {}
 
-impl ColumnSequence {
+impl ViewColumnSequence {
 	pub fn next_value<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
-		table: TableId,
-		column: ColumnId,
+		view: ViewId,
+		column: ViewColumnId,
 	) -> crate::Result<Value> {
-		if let Some(column) = Catalog::get_column(txn, column)? {
-			let key = TableColumnSequenceKey {
-				table,
+		if let Some(column) = Catalog::get_view_column(txn, column)? {
+			let key = ViewColumnSequenceKey {
+				view,
 				column: column.id,
 			}
 			.encode();
@@ -74,34 +74,30 @@ impl ColumnSequence {
 
 	pub fn set_value<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
-		table: TableId,
-		column: ColumnId,
+		view: ViewId,
+		column: ViewColumnId,
 		value: Value,
 	) -> crate::Result<()> {
-		let Some(table) = Catalog::get_table(txn, table)? else {
-			// return_error!(table_not_found(plan.table.clone(),
-			// &schema.name, &plan.table.as_ref(),));
+		let Some(view) = Catalog::get_view(txn, view)? else {
+			// return_error!(view_not_found(plan.view.clone(),
+			// &schema.name, &plan.view.as_ref(),));
 			unimplemented!()
 		};
 
-		let Some(column) = Catalog::get_column(txn, column)? else {
+		let Some(column) = Catalog::get_view_column(txn, column)?
+		else {
 			// return_error!(column_not_found(plan.column.clone()));
 			unimplemented!()
 		};
 
-		if !column.auto_increment {
-			// return_error!(can_not_alter_not_auto_increment(plan.
-			// column, column.ty));
-			unimplemented!()
-		}
-
 		debug_assert!(value.get_type() == column.ty);
 
-		let key = TableColumnSequenceKey {
-			table: table.id,
+		let key = ViewColumnSequenceKey {
+			view: view.id,
 			column: column.id,
 		}
 		.encode();
+
 		match value {
 			Value::Int1(v) => GeneratorI8::set(txn, &key, v),
 			Value::Int2(v) => GeneratorI16::set(txn, &key, v),

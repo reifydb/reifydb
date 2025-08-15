@@ -10,8 +10,8 @@ use reifydb::{
 	core::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
-			ColumnId, ColumnIndex, EncodableKeyRange, Params,
-			SchemaId, TableDef, TableId, TableRowKeyRange,
+			ColumnIndex, EncodableKeyRange, Params, SchemaId,
+			TableColumnId, TableDef, TableId, TableRowKeyRange,
 		},
 		row::EncodedRowLayout,
 	},
@@ -103,7 +103,7 @@ fn main() {
 	}
 
 	// loop {}
-	thread::sleep(Duration::from_millis(100));
+	thread::sleep(Duration::from_millis(2));
 
 	// println!("Basic database operations completed successfully!");
 	rql_to_flow_example(&mut db);
@@ -258,16 +258,16 @@ fn read_columns_from_storage(
 		schema: SchemaId(0),
 		name: "view".to_string(),
 		columns: vec![
-			reifydb::core::interface::ColumnDef {
-				id: ColumnId(0),
+			reifydb::core::interface::TableColumnDef {
+				id: TableColumnId(0),
 				name: "name".to_string(),
 				ty: Type::Utf8,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
 			},
-			reifydb::core::interface::ColumnDef {
-				id: ColumnId(1),
+			reifydb::core::interface::TableColumnDef {
+				id: TableColumnId(1),
 				name: "age".to_string(),
 				ty: Type::Int1,
 				policies: vec![],

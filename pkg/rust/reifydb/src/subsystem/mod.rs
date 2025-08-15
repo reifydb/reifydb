@@ -15,6 +15,7 @@ use crate::health::HealthStatus;
 
 pub mod cdc;
 #[cfg(feature = "sub_flow")]
+#[allow(dead_code, unused_imports, unused_variables)] // FIXME remove me
 pub mod flow;
 #[cfg(feature = "sub_grpc")]
 pub mod grpc;

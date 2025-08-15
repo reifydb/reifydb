@@ -5,12 +5,9 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use super::{
-	ColumnId,
-	policy::{
-		ColumnPolicy, ColumnPolicyKind, ColumnSaturationPolicy,
-		DEFAULT_COLUMN_SATURATION_POLICY,
-	},
+use super::policy::{
+	ColumnPolicyKind, ColumnSaturationPolicy,
+	DEFAULT_COLUMN_SATURATION_POLICY,
 };
 use crate::Type;
 
@@ -92,16 +89,6 @@ impl<'a> ColumnDescriptor<'a> {
 			})
 			.unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
 	}
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ColumnDef {
-	pub id: ColumnId,
-	pub name: String,
-	pub ty: Type,
-	pub policies: Vec<ColumnPolicy>,
-	pub index: ColumnIndex,
-	pub auto_increment: bool,
 }
 
 #[repr(transparent)]

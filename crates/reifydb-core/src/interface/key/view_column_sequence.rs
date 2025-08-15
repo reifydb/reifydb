@@ -4,28 +4,28 @@
 use crate::{
 	EncodedKey,
 	interface::{
-		TableColumnId, TableId,
+		ViewColumnId, ViewId,
 		key::{EncodableKey, KeyKind},
 	},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TableColumnSequenceKey {
-	pub table: TableId,
-	pub column: TableColumnId,
+pub struct ViewColumnSequenceKey {
+	pub view: ViewId,
+	pub column: ViewColumnId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for TableColumnSequenceKey {
-	const KIND: KeyKind = KeyKind::TableColumnSequence;
+impl EncodableKey for ViewColumnSequenceKey {
+	const KIND: KeyKind = KeyKind::ViewColumnSequence;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(18);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
+		out.extend(&keycode::serialize(&self.view));
 		out.extend(&keycode::serialize(&self.column));
 		EncodedKey::new(out)
 	}
@@ -50,10 +50,10 @@ impl EncodableKey for TableColumnSequenceKey {
 			return None;
 		}
 
-		let table = keycode::deserialize(&payload[..8]).ok()?;
+		let view = keycode::deserialize(&payload[..8]).ok()?;
 		let column = keycode::deserialize(&payload[8..16]).ok()?;
 		Some(Self {
-			table,
+			view,
 			column,
 		})
 	}
@@ -61,27 +61,27 @@ impl EncodableKey for TableColumnSequenceKey {
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, TableColumnSequenceKey};
+	use super::{EncodableKey, ViewColumnSequenceKey};
 	use crate::{
 		EncodedKey,
-		interface::{TableColumnId, TableId},
+		interface::{ViewColumnId, ViewId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = TableColumnSequenceKey {
-			table: TableId(0x1234),
-			column: TableColumnId(0x5678),
+		let key = ViewColumnSequenceKey {
+			view: ViewId(0x1234),
+			column: ViewColumnId(0x5678),
 		};
 		let encoded = key.encode();
 
 		assert_eq!(encoded[0], 0xFE); // version serialized
-		assert_eq!(encoded[1], 0xF1); // KeyKind::TableColumnSequence serialized
+		assert_eq!(encoded[1], 0xEA); // KeyKind::ViewColumnSequence serialized
 
 		// Test decode
-		let decoded = TableColumnSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.table, TableId(0x1234));
-		assert_eq!(decoded.column, TableColumnId(0x5678));
+		let decoded = ViewColumnSequenceKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.view, ViewId(0x1234));
+		assert_eq!(decoded.column, ViewColumnId(0x5678));
 	}
 
 	#[test]
@@ -90,7 +90,7 @@ mod tests {
 		encoded.push(0x0E); // correct kind
 		encoded.extend(&[0; 16]); // payload
 
-		let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(
+		let decoded = ViewColumnSequenceKey::decode(&EncodedKey::new(
 			encoded,
 		));
 		assert!(decoded.is_none());
@@ -102,7 +102,7 @@ mod tests {
 		encoded.push(0xFF); // wrong kind
 		encoded.extend(&[0; 16]); // payload
 
-		let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(
+		let decoded = ViewColumnSequenceKey::decode(&EncodedKey::new(
 			encoded,
 		));
 		assert!(decoded.is_none());
@@ -111,7 +111,7 @@ mod tests {
 	#[test]
 	fn test_decode_invalid_length() {
 		let encoded = vec![0x01, 0x0E]; // version and kind only, missing payload
-		let decoded = TableColumnSequenceKey::decode(&EncodedKey::new(
+		let decoded = ViewColumnSequenceKey::decode(&EncodedKey::new(
 			encoded,
 		));
 		assert!(decoded.is_none());

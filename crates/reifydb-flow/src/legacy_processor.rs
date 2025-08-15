@@ -4,9 +4,9 @@ use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::{
 	EncodedKeyRange, Type, Value,
 	interface::{
-		ActiveCommandTransaction, ColumnDef, ColumnId, ColumnIndex,
-		EncodableKey, EncodableKeyRange, SchemaId, TableDef, TableId,
-		TableRowKey, TableRowKeyRange, Transaction,
+		ActiveCommandTransaction, ColumnIndex, EncodableKey,
+		EncodableKeyRange, SchemaId, TableColumnDef, TableColumnId,
+		TableDef, TableId, TableRowKey, TableRowKeyRange, Transaction,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		VersionedTransaction,
 	},
@@ -332,16 +332,16 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 			schema: SchemaId(0),
 			name: "view".to_string(),
 			columns: vec![
-				ColumnDef {
-					id: ColumnId(0),
+				TableColumnDef {
+					id: TableColumnId(0),
 					name: "name".to_string(),
 					ty: Type::Utf8,
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
 				},
-				ColumnDef {
-					id: ColumnId(1),
+				TableColumnDef {
+					id: TableColumnId(1),
 					name: "age".to_string(),
 					ty: Type::Int1,
 					policies: vec![],
@@ -521,16 +521,16 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 			schema: SchemaId(0),
 			name: "view".to_string(),
 			columns: vec![
-				ColumnDef {
-					id: ColumnId(0),
+				TableColumnDef {
+					id: TableColumnId(0),
 					name: "name".to_string(),
 					ty: Type::Utf8,
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
 				},
-				ColumnDef {
-					id: ColumnId(1),
+				TableColumnDef {
+					id: TableColumnId(1),
 					name: "age".to_string(),
 					ty: Type::Int1,
 					policies: vec![],

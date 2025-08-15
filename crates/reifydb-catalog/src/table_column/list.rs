@@ -7,11 +7,11 @@ use reifydb_core::interface::{
 
 use crate::{
 	Catalog,
-	column::{ColumnDef, ColumnId, layout::table_column},
+	table_column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl Catalog {
-	pub fn list_columns(
+	pub fn list_table_columns(
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -29,7 +29,7 @@ impl Catalog {
 				.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(Catalog::get_column(rx, id)?.unwrap());
+			result.push(Catalog::get_table_column(rx, id)?.unwrap());
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -45,7 +45,7 @@ mod tests {
 
 	use crate::{
 		Catalog,
-		column::{ColumnIndex, ColumnToCreate},
+		table_column::{ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
 	};
 
@@ -55,10 +55,10 @@ mod tests {
 		ensure_test_table(&mut txn);
 
 		// Create columns out of order
-		Catalog::create_column(
+		Catalog::create_table_column(
 			&mut txn,
 			TableId(1),
-			ColumnToCreate {
+			TableColumnToCreate {
 				span: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -73,10 +73,10 @@ mod tests {
 		)
 		.unwrap();
 
-		Catalog::create_column(
+		Catalog::create_table_column(
 			&mut txn,
 			TableId(1),
-			ColumnToCreate {
+			TableColumnToCreate {
 				span: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -91,8 +91,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns =
-			Catalog::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = Catalog::list_table_columns(&mut txn, TableId(1))
+			.unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -109,16 +109,16 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
-		let columns =
-			Catalog::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = Catalog::list_table_columns(&mut txn, TableId(1))
+			.unwrap();
 		assert!(columns.is_empty());
 	}
 
 	#[test]
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
-		let columns =
-			Catalog::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = Catalog::list_table_columns(&mut txn, TableId(1))
+			.unwrap();
 		assert!(columns.is_empty());
 	}
 }

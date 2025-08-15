@@ -2,18 +2,21 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind,
+	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, TableColumnPolicyKey,
 	VersionedQueryTransaction,
 };
 
-use crate::{Catalog, column::ColumnId, column_policy::layout::column_policy};
+use crate::{
+	Catalog, table_column::ColumnId,
+	table_column_policy::layout::column_policy,
+};
 
 impl Catalog {
-	pub fn list_column_policies(
+	pub fn list_table_column_policies(
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
+		Ok(rx.range(TableColumnPolicyKey::full_scan(column))?
 			.map(|versioned| {
 				let row = versioned.row;
 				let id = ColumnPolicyId(
@@ -64,7 +67,7 @@ mod tests {
 
 	use crate::{
 		Catalog,
-		column::{ColumnId, ColumnIndex, ColumnToCreate},
+		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
 	};
 
@@ -73,10 +76,10 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		Catalog::create_column(
+		Catalog::create_table_column(
 			&mut txn,
 			TableId(1),
-			ColumnToCreate {
+			TableColumnToCreate {
 				span: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -91,13 +94,14 @@ mod tests {
 		)
 		.unwrap();
 
-		let column = Catalog::get_column(&mut txn, ColumnId(1))
+		let column = Catalog::get_table_column(&mut txn, ColumnId(1))
 			.unwrap()
 			.unwrap();
 
-		let policies =
-			Catalog::list_column_policies(&mut txn, column.id)
-				.unwrap();
+		let policies = Catalog::list_table_column_policies(
+			&mut txn, column.id,
+		)
+		.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);
 		assert!(matches!(

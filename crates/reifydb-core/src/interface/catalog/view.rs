@@ -5,25 +5,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Type,
-	interface::{
-		ColumnIndex, ColumnPolicy, SchemaId, TableColumnId, TableId,
-	},
+	interface::{ColumnIndex, SchemaId, ViewColumnId, ViewId},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TableColumnDef {
-	pub id: TableColumnId,
+pub struct ViewColumnDef {
+	pub id: ViewColumnId,
 	pub name: String,
 	pub ty: Type,
-	pub policies: Vec<ColumnPolicy>,
 	pub index: ColumnIndex,
-	pub auto_increment: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TableDef {
-	pub id: TableId,
+pub struct ViewDef {
+	pub id: ViewId,
 	pub schema: SchemaId,
 	pub name: String,
-	pub columns: Vec<TableColumnDef>,
+	pub columns: Vec<ViewColumnDef>,
 }

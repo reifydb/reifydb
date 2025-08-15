@@ -2,34 +2,31 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
-	Versioned, VersionedQueryTransaction,
+	EncodableKey, SchemaId, SchemaViewKey, Versioned,
+	VersionedQueryTransaction, ViewDef, ViewId, ViewKey,
 };
 
 use crate::{
 	Catalog,
-	table::layout::{table, table_schema},
+	view::layout::{view, view_schema},
 };
 
 impl Catalog {
-	pub fn get_table_by_name(
+	pub fn get_view_by_name(
 		rx: &mut impl VersionedQueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<TableDef>> {
+	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let Some(table) = rx
-			.range(SchemaTableKey::full_scan(schema))?
+		let Some(view) = rx
+			.range(SchemaViewKey::full_scan(schema))?
 			.find_map(|versioned: Versioned| {
 				let row = &versioned.row;
-				let table_name = table_schema::LAYOUT
-					.get_utf8(row, table_schema::NAME);
-				if name == table_name {
-					Some(TableId(table_schema::LAYOUT
-						.get_u64(
-							row,
-							table_schema::ID,
-						)))
+				let view_name = view_schema::LAYOUT
+					.get_utf8(row, view_schema::NAME);
+				if name == view_name {
+					Some(ViewId(view_schema::LAYOUT
+						.get_u64(row, view_schema::ID)))
 				} else {
 					None
 				}
@@ -38,35 +35,35 @@ impl Catalog {
 			return Ok(None);
 		};
 
-		Catalog::get_table(rx, table)
+		Catalog::get_view(rx, view)
 	}
 
-	pub fn get_table(
+	pub fn get_view(
 		rx: &mut impl VersionedQueryTransaction,
-		table: TableId,
-	) -> crate::Result<Option<TableDef>> {
-		match rx.get(&TableKey {
-			table,
+		view: ViewId,
+	) -> crate::Result<Option<ViewDef>> {
+		match rx.get(&ViewKey {
+			view,
 		}
 		.encode())?
 		{
 			Some(versioned) => {
 				let row = versioned.row;
 				let id =
-					TableId(table::LAYOUT
-						.get_u64(&row, table::ID));
+					ViewId(view::LAYOUT
+						.get_u64(&row, view::ID));
 				let schema = SchemaId(
-					table::LAYOUT
-						.get_u64(&row, table::SCHEMA),
+					view::LAYOUT
+						.get_u64(&row, view::SCHEMA),
 				);
-				let name = table::LAYOUT
-					.get_utf8(&row, table::NAME)
+				let name = view::LAYOUT
+					.get_utf8(&row, view::NAME)
 					.to_string();
-				Ok(Some(TableDef {
+				Ok(Some(ViewDef {
 					id,
 					name,
 					schema,
-					columns: Catalog::list_table_columns(
+					columns: Catalog::list_view_columns(
 						rx, id,
 					)?,
 				}))
@@ -78,14 +75,14 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	mod get_table_by_name {
-		use reifydb_core::interface::{SchemaId, TableId};
+	mod get_view_by_name {
+		use reifydb_core::interface::{SchemaId, ViewId};
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
 			Catalog,
 			test_utils::{
-				create_schema, create_table, ensure_test_schema,
+				create_schema, create_view, ensure_test_schema,
 			},
 		};
 
@@ -97,60 +94,60 @@ mod tests {
 			create_schema(&mut txn, "schema_two");
 			create_schema(&mut txn, "schema_three");
 
-			create_table(&mut txn, "schema_one", "table_one", &[]);
-			create_table(&mut txn, "schema_two", "table_two", &[]);
-			create_table(
+			create_view(&mut txn, "schema_one", "view_one", &[]);
+			create_view(&mut txn, "schema_two", "view_two", &[]);
+			create_view(
 				&mut txn,
 				"schema_three",
-				"table_three",
+				"view_three",
 				&[],
 			);
 
-			let result = Catalog::get_table_by_name(
+			let result = Catalog::get_view_by_name(
 				&mut txn,
 				SchemaId(1027),
-				"table_two",
+				"view_two",
 			)
 			.unwrap()
 			.unwrap();
-			assert_eq!(result.id, TableId(1026));
+			assert_eq!(result.id, ViewId(1026));
 			assert_eq!(result.schema, SchemaId(1027));
-			assert_eq!(result.name, "table_two");
+			assert_eq!(result.name, "view_two");
 		}
 
 		#[test]
 		fn test_empty() {
 			let mut txn = create_test_command_transaction();
-			let result = Catalog::get_table_by_name(
+			let result = Catalog::get_view_by_name(
 				&mut txn,
 				SchemaId(1025),
-				"some_table",
+				"some_view",
 			)
 			.unwrap();
 			assert!(result.is_none());
 		}
 
 		#[test]
-		fn test_not_found_different_table() {
+		fn test_not_found_different_view() {
 			let mut txn = create_test_command_transaction();
 			ensure_test_schema(&mut txn);
 			create_schema(&mut txn, "schema_one");
 			create_schema(&mut txn, "schema_two");
 			create_schema(&mut txn, "schema_three");
 
-			create_table(&mut txn, "schema_one", "table_one", &[]);
-			create_table(&mut txn, "schema_two", "table_two", &[]);
-			create_table(
+			create_view(&mut txn, "schema_one", "view_one", &[]);
+			create_view(&mut txn, "schema_two", "view_two", &[]);
+			create_view(
 				&mut txn,
 				"schema_three",
-				"table_three",
+				"view_three",
 				&[],
 			);
 
-			let result = Catalog::get_table_by_name(
+			let result = Catalog::get_view_by_name(
 				&mut txn,
 				SchemaId(1025),
-				"table_four_two",
+				"view_four_two",
 			)
 			.unwrap();
 			assert!(result.is_none());
@@ -164,33 +161,33 @@ mod tests {
 			create_schema(&mut txn, "schema_two");
 			create_schema(&mut txn, "schema_three");
 
-			create_table(&mut txn, "schema_one", "table_one", &[]);
-			create_table(&mut txn, "schema_two", "table_two", &[]);
-			create_table(
+			create_view(&mut txn, "schema_one", "view_one", &[]);
+			create_view(&mut txn, "schema_two", "view_two", &[]);
+			create_view(
 				&mut txn,
 				"schema_three",
-				"table_three",
+				"view_three",
 				&[],
 			);
 
-			let result = Catalog::get_table_by_name(
+			let result = Catalog::get_view_by_name(
 				&mut txn,
 				SchemaId(2),
-				"table_two",
+				"view_two",
 			)
 			.unwrap();
 			assert!(result.is_none());
 		}
 	}
 
-	mod get_table {
-		use reifydb_core::interface::{SchemaId, TableId};
+	mod get_view {
+		use reifydb_core::interface::{SchemaId, ViewId};
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
 			Catalog,
 			test_utils::{
-				create_schema, create_table, ensure_test_schema,
+				create_schema, create_view, ensure_test_schema,
 			},
 		};
 
@@ -202,22 +199,21 @@ mod tests {
 			create_schema(&mut txn, "schema_two");
 			create_schema(&mut txn, "schema_three");
 
-			create_table(&mut txn, "schema_one", "table_one", &[]);
-			create_table(&mut txn, "schema_two", "table_two", &[]);
-			create_table(
+			create_view(&mut txn, "schema_one", "view_one", &[]);
+			create_view(&mut txn, "schema_two", "view_two", &[]);
+			create_view(
 				&mut txn,
 				"schema_three",
-				"table_three",
+				"view_three",
 				&[],
 			);
 
-			let result =
-				Catalog::get_table(&mut txn, TableId(1026))
-					.unwrap()
-					.unwrap();
-			assert_eq!(result.id, TableId(1026));
+			let result = Catalog::get_view(&mut txn, ViewId(1026))
+				.unwrap()
+				.unwrap();
+			assert_eq!(result.id, ViewId(1026));
 			assert_eq!(result.schema, SchemaId(1027));
-			assert_eq!(result.name, "table_two");
+			assert_eq!(result.name, "view_two");
 		}
 
 		#[test]
@@ -228,16 +224,16 @@ mod tests {
 			create_schema(&mut txn, "schema_two");
 			create_schema(&mut txn, "schema_three");
 
-			create_table(&mut txn, "schema_one", "table_one", &[]);
-			create_table(&mut txn, "schema_two", "table_two", &[]);
-			create_table(
+			create_view(&mut txn, "schema_one", "view_one", &[]);
+			create_view(&mut txn, "schema_two", "view_two", &[]);
+			create_view(
 				&mut txn,
 				"schema_three",
-				"table_three",
+				"view_three",
 				&[],
 			);
 
-			let result = Catalog::get_table(&mut txn, TableId(42))
+			let result = Catalog::get_view(&mut txn, ViewId(42))
 				.unwrap();
 			assert!(result.is_none());
 		}

@@ -5,8 +5,10 @@ pub use column::*;
 pub use id::*;
 pub use policy::*;
 pub use table::*;
+pub use view::*;
 
 mod column;
 mod id;
 mod policy;
 mod table;
+mod view;

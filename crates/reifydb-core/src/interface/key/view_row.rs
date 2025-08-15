@@ -5,31 +5,28 @@ use std::collections::Bound;
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{
-		EncodableKeyRange,
-		catalog::{IndexId, TableId},
-	},
+	EncodedKey, EncodedKeyRange, RowId,
+	interface::{EncodableKeyRange, catalog::ViewId},
 	util::encoding::keycode,
 };
 
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableIndexKey {
-	pub table: TableId,
-	pub index: IndexId,
+pub struct ViewRowKey {
+	pub view: ViewId,
+	pub row: RowId,
 }
 
-impl EncodableKey for TableIndexKey {
-	const KIND: KeyKind = KeyKind::TableIndex;
+impl EncodableKey for ViewRowKey {
+	const KIND: KeyKind = KeyKind::ViewRow;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(18);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
-		out.extend(&keycode::serialize(&self.index));
+		out.extend(&keycode::serialize(&self.view));
+		out.extend(&keycode::serialize(&self.row));
 
 		EncodedKey::new(out)
 	}
@@ -57,19 +54,19 @@ impl EncodableKey for TableIndexKey {
 		keycode::deserialize(&payload[..8])
 			.ok()
 			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(table, index)| Self {
-				table,
-				index,
+			.map(|(view, row)| Self {
+				view,
+				row,
 			})
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableIndexKeyRange {
-	pub table: TableId,
+pub struct ViewRowKeyRange {
+	pub view: ViewId,
 }
 
-impl TableIndexKeyRange {
+impl ViewRowKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		if key.len() < 2 {
 			return None;
@@ -90,22 +87,21 @@ impl TableIndexKeyRange {
 			return None;
 		}
 
-		let table: TableId =
-			keycode::deserialize(&payload[..8]).ok()?;
-		Some(TableIndexKeyRange {
-			table,
+		let view: ViewId = keycode::deserialize(&payload[..8]).ok()?;
+		Some(ViewRowKeyRange {
+			view,
 		})
 	}
 }
 
-impl EncodableKeyRange for TableIndexKeyRange {
-	const KIND: KeyKind = KeyKind::TableIndex;
+impl EncodableKeyRange for ViewRowKeyRange {
+	const KIND: KeyKind = KeyKind::ViewRow;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
+		out.extend(&keycode::serialize(&self.view));
 		Some(EncodedKey::new(out))
 	}
 
@@ -113,7 +109,7 @@ impl EncodableKeyRange for TableIndexKeyRange {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*self.table - 1)));
+		out.extend(&keycode::serialize(&(*self.view - 1)));
 		Some(EncodedKey::new(out))
 	}
 
@@ -139,71 +135,71 @@ impl EncodableKeyRange for TableIndexKeyRange {
 	}
 }
 
-impl TableIndexKey {
-	pub fn full_scan(table: TableId) -> EncodedKeyRange {
+impl ViewRowKey {
+	pub fn full_scan(view: ViewId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::table_start(table)),
-			Some(Self::table_end(table)),
+			Some(Self::view_start(view)),
+			Some(Self::view_end(view)),
 		)
 	}
 
-	pub fn table_start(table: TableId) -> EncodedKey {
+	pub fn view_start(view: ViewId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&table));
+		out.extend(&keycode::serialize(&view));
 		EncodedKey::new(out)
 	}
 
-	pub fn table_end(table: TableId) -> EncodedKey {
+	pub fn view_end(view: ViewId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*table - 1)));
+		out.extend(&keycode::serialize(&(*view - 1)));
 		EncodedKey::new(out)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, TableIndexKey};
-	use crate::interface::catalog::{IndexId, TableId};
+	use super::{EncodableKey, ViewRowKey};
+	use crate::{RowId, interface::catalog::ViewId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = TableIndexKey {
-			table: TableId(0xABCD),
-			index: IndexId(0x123456789ABCDEF0),
+		let key = ViewRowKey {
+			view: ViewId(0xABCD),
+			row: RowId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
 		let expected: Vec<u8> = vec![
 			0xFE, // version
-			0xF3, // kind
+			0xE7, // kind
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
 			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = TableIndexKey::decode(&encoded).unwrap();
-		assert_eq!(key.table, 0xABCD);
-		assert_eq!(key.index, 0x123456789ABCDEF0);
+		let key = ViewRowKey::decode(&encoded).unwrap();
+		assert_eq!(key.view, 0xABCD);
+		assert_eq!(key.row, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = TableIndexKey {
-			table: TableId(1),
-			index: IndexId(100),
+		let key1 = ViewRowKey {
+			view: ViewId(1),
+			row: RowId(100),
 		};
-		let key2 = TableIndexKey {
-			table: TableId(1),
-			index: IndexId(200),
+		let key2 = ViewRowKey {
+			view: ViewId(1),
+			row: RowId(200),
 		};
-		let key3 = TableIndexKey {
-			table: TableId(2),
-			index: IndexId(0),
+		let key3 = ViewRowKey {
+			view: ViewId(2),
+			row: RowId(0),
 		};
 
 		let encoded1 = key1.encode();

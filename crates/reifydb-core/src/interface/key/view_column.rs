@@ -4,26 +4,26 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{TableColumnId, TableId},
+	interface::catalog::{ViewColumnId, ViewId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableColumnKey {
-	pub table: TableId,
-	pub column: TableColumnId,
+pub struct ViewColumnKey {
+	pub view: ViewId,
+	pub column: ViewColumnId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for TableColumnKey {
-	const KIND: KeyKind = KeyKind::TableColumn;
+impl EncodableKey for ViewColumnKey {
+	const KIND: KeyKind = KeyKind::ViewColumn;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(18);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
+		out.extend(&keycode::serialize(&self.view));
 		out.extend(&keycode::serialize(&self.column));
 		EncodedKey::new(out)
 	}
@@ -51,81 +51,78 @@ impl EncodableKey for TableColumnKey {
 		keycode::deserialize(&payload[..8])
 			.ok()
 			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(table, column)| Self {
-				table,
+			.map(|(view, column)| Self {
+				view,
 				column,
 			})
 	}
 }
 
-impl TableColumnKey {
-	pub fn full_scan(table: TableId) -> EncodedKeyRange {
+impl ViewColumnKey {
+	pub fn full_scan(view: ViewId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::start(table)),
-			Some(Self::end(table)),
+			Some(Self::start(view)),
+			Some(Self::end(view)),
 		)
 	}
 
-	fn start(table: TableId) -> EncodedKey {
+	fn start(view: ViewId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&table));
+		out.extend(&keycode::serialize(&view));
 		EncodedKey::new(out)
 	}
 
-	fn end(table: TableId) -> EncodedKey {
+	fn end(view: ViewId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*table - 1)));
+		out.extend(&keycode::serialize(&(*view - 1)));
 		EncodedKey::new(out)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::EncodableKey;
-	use crate::interface::{
-		TableColumnKey,
-		catalog::{TableColumnId, TableId},
-	};
+	use super::{EncodableKey, ViewColumnKey};
+	use crate::interface::catalog::{ViewColumnId, ViewId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = TableColumnKey {
-			table: TableId(0xABCD),
-			column: TableColumnId(0x123456789ABCDEF0),
+		let key = ViewColumnKey {
+			view: ViewId(0xABCD),
+			column: ViewColumnId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
 		let expected: Vec<u8> = vec![
 			0xFE, // version
-			0xF8, // kind
+			0xEB, // kind
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
 			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = TableColumnKey::decode(&encoded).unwrap();
-		assert_eq!(key.table, 0xABCD);
+		let key = ViewColumnKey::decode(&encoded).unwrap();
+		assert_eq!(key.view, 0xABCD);
 		assert_eq!(key.column, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = TableColumnKey {
-			table: TableId(1),
-			column: TableColumnId(100),
+		let key1 = ViewColumnKey {
+			view: ViewId(1),
+			column: ViewColumnId(100),
 		};
-		let key2 = TableColumnKey {
-			table: TableId(1),
-			column: TableColumnId(200),
+		let key2 = ViewColumnKey {
+			view: ViewId(1),
+			column: ViewColumnId(200),
 		};
-		let key3 = TableColumnKey {
-			table: TableId(2),
-			column: TableColumnId(0),
+		let key3 = ViewColumnKey {
+			view: ViewId(2),
+			column: ViewColumnId(0),
 		};
 
 		let encoded1 = key1.encode();

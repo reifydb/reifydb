@@ -186,7 +186,7 @@ impl<T: Transaction> Executor<T> {
 	) -> crate::Result<Columns> {
 		match plan {
 			PhysicalPlan::AlterSequence(plan) => {
-				self.alter_sequence(txn, plan)
+				self.alter_table_sequence(txn, plan)
 			}
 			PhysicalPlan::CreateComputedView(plan) => {
 				self.create_computed_view(txn, plan)
