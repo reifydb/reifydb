@@ -4,7 +4,7 @@
 mod alter;
 mod create;
 
-use reifydb_catalog::table::ColumnToCreate;
+use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	JoinType, OwnedSpan, SortKey, interface::VersionedQueryTransaction,
 };
@@ -257,7 +257,7 @@ pub struct CreateComputedViewPlan {
 	pub schema: OwnedSpan,
 	pub view: OwnedSpan,
 	pub if_not_exists: bool,
-	pub columns: Vec<ColumnToCreate>,
+	pub columns: Vec<ViewColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
@@ -271,7 +271,7 @@ pub struct CreateTablePlan {
 	pub schema: OwnedSpan,
 	pub table: OwnedSpan,
 	pub if_not_exists: bool,
-	pub columns: Vec<ColumnToCreate>,
+	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]

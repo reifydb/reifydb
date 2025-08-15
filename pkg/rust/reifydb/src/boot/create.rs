@@ -2,18 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	hook::{lifecycle::OnCreateHook, BoxedHookIter, Callback},
-	interface::{Engine as EngineInterface, Identity, Transaction},
+	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
+	interface::{Engine as EngineInterface, Identity, Params, Transaction},
 	return_hooks,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 pub(crate) struct CreateCallback<T: Transaction> {
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 }
 
 impl<T: Transaction> CreateCallback<T> {
-	pub(crate) fn new(engine: Engine<T>) -> Self {
+	pub(crate) fn new(engine: StandardEngine<T>) -> Self {
 		Self {
 			engine,
 		}
@@ -34,8 +34,9 @@ create table reifydb.flows{
 };
 
 "#,
-			reifydb_core::interface::Params::None,
+			Params::None,
 		)?;
+
 		return_hooks!()
 	}
 }

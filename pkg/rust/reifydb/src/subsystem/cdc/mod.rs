@@ -3,4 +3,4 @@
 
 pub mod poll;
 
-pub use poll::PollConsumer;
+pub use poll::{PollConsumer, PollConsumerConfig};

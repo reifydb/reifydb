@@ -7,7 +7,7 @@ mod layout;
 use reifydb_core::{
 	Version,
 	delta::Delta,
-	interface::{CdcEvent, Change},
+	interface::{CdcChange, CdcEvent},
 	row::EncodedRow,
 };
 
@@ -25,13 +25,13 @@ pub(crate) fn generate_cdc_event(
 			row,
 		} => {
 			if let Some(before) = before_value {
-				Change::Update {
+				CdcChange::Update {
 					key,
 					before,
 					after: row,
 				}
 			} else {
-				Change::Insert {
+				CdcChange::Insert {
 					key,
 					after: row,
 				}
@@ -40,7 +40,7 @@ pub(crate) fn generate_cdc_event(
 
 		Delta::Remove {
 			key,
-		} => Change::Delete {
+		} => CdcChange::Delete {
 			key,
 			before: before_value
 				.unwrap_or_else(|| EncodedRow::deleted()),

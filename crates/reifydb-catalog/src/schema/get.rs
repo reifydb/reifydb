@@ -9,8 +9,8 @@ use reifydb_core::{
 };
 
 use crate::{
-    Catalog,
-    schema::{SchemaDef, SchemaId, layout::schema},
+	Catalog,
+	schema::{SchemaDef, SchemaId, layout::schema},
 };
 
 impl Catalog {
@@ -61,7 +61,9 @@ mod tests {
 	mod get_schema_by_name {
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
-		use crate::{Catalog, test_utils::create_schema};
+		use crate::{
+			Catalog, schema::SchemaId, test_utils::create_schema,
+		};
 
 		#[test]
 		fn test_ok() {
@@ -75,7 +77,7 @@ mod tests {
 			.unwrap()
 			.unwrap();
 
-			assert_eq!(schema.id, 1);
+			assert_eq!(schema.id, SchemaId(1025));
 			assert_eq!(schema.name, "test_schema");
 		}
 
@@ -119,10 +121,11 @@ mod tests {
 			create_schema(&mut txn, "schema_two");
 			create_schema(&mut txn, "schema_three");
 
-			let result = Catalog::get_schema(&mut txn, SchemaId(2))
-				.unwrap()
-				.unwrap();
-			assert_eq!(result.id, 2);
+			let result =
+				Catalog::get_schema(&mut txn, SchemaId(1026))
+					.unwrap()
+					.unwrap();
+			assert_eq!(result.id, SchemaId(1026));
 			assert_eq!(result.name, "schema_two");
 		}
 

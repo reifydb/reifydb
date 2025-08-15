@@ -3,20 +3,18 @@
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use std::net::SocketAddr;
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use reifydb_core::hook::lifecycle::OnStartHook;
-use reifydb_core::interface::GetHooks;
 use reifydb_core::{
+	Result,
+	hook::lifecycle::OnStartHook,
 	interface::{
-		CdcTransaction, StandardTransaction, Transaction,
+		CdcTransaction, GetHooks, StandardTransaction, Transaction,
 		UnversionedTransaction, VersionedTransaction,
 	},
-	Result,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
-use crate::boot::Bootloader;
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
 #[cfg(feature = "sub_flow")]
@@ -26,11 +24,12 @@ use crate::subsystem::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
 use crate::subsystem::WsSubsystem;
 use crate::{
+	boot::Bootloader,
 	defaults::{
 		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
 		MAX_STARTUP_TIME,
 	},
-	health::{HealthMonitor, HealthStatus},
+	health::{ComponentHealth, HealthMonitor, HealthStatus},
 	session::{
 		CommandSession, IntoCommandSession, IntoQuerySession,
 		QuerySession, Session, SessionSync,
@@ -84,7 +83,7 @@ impl Default for DatabaseConfig {
 
 pub struct Database<T: Transaction> {
 	config: DatabaseConfig,
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 	bootloader: Bootloader<T>,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
@@ -110,7 +109,7 @@ impl<T: Transaction> Database<T> {
 
 impl<T: Transaction> Database<T> {
 	pub(crate) fn new(
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
@@ -125,7 +124,7 @@ impl<T: Transaction> Database<T> {
 		}
 	}
 
-	pub fn engine(&self) -> &Engine<T> {
+	pub fn engine(&self) -> &StandardEngine<T> {
 		&self.engine
 	}
 
@@ -254,8 +253,7 @@ impl<T: Transaction> Database<T> {
 
 	pub fn get_all_component_health(
 		&self,
-	) -> std::collections::HashMap<String, crate::health::ComponentHealth>
-	{
+	) -> HashMap<String, ComponentHealth> {
 		self.health_monitor.get_all_health()
 	}
 

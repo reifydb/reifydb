@@ -11,7 +11,7 @@ use std::{
 };
 
 use Key::TableRow;
-use reifydb::subsystem::cdc::PollConsumer;
+use reifydb::subsystem::cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	EncodedKey, Result, RowId,
 	diagnostic::Diagnostic,
@@ -26,7 +26,7 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::{CowVec, MockClock},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
@@ -38,9 +38,9 @@ fn test_consumer_lifecycle() {
 	let consumer = TestConsumer::new();
 	let consumer_id = ConsumerId::flow_consumer();
 
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(100));
 	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(100),
+		config,
 		engine,
 		consumer,
 	);
@@ -72,9 +72,9 @@ fn test_event_processing() {
 
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
 	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
+		config,
 		engine.clone(),
 		consumer,
 	);
@@ -112,9 +112,9 @@ fn test_checkpoint_persistence() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
+	let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50));
 	let mut test_instance = PollConsumer::new(
-		consumer_id.clone(),
-		Duration::from_millis(50),
+		config,
 		engine.clone(),
 		consumer,
 	);
@@ -135,9 +135,9 @@ fn test_checkpoint_persistence() {
 
 	let consumer2 = TestConsumer::new();
 	let consumer2_clone = consumer2.clone();
+	let config2 = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50));
 	let mut test_instance2 = PollConsumer::new(
-		consumer_id.clone(),
-		Duration::from_millis(50),
+		config2,
 		engine.clone(),
 		consumer2,
 	);
@@ -184,9 +184,9 @@ fn test_error_handling() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
 	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
+		config,
 		engine.clone(),
 		consumer,
 	);
@@ -234,9 +234,9 @@ fn test_empty_events_handling() {
 	let consumer_clone = consumer.clone();
 	let consumer_id = ConsumerId::flow_consumer();
 
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
 	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
+		config,
 		engine.clone(),
 		consumer,
 	);
@@ -284,16 +284,16 @@ fn test_multiple_consumers() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
+	let config1 = PollConsumerConfig::new(consumer_id1.clone(), Duration::from_millis(50));
 	let mut test_instance1 = PollConsumer::new(
-		consumer_id1.clone(),
-		Duration::from_millis(50),
+		config1,
 		engine.clone(),
 		consumer1,
 	);
 
+	let config2 = PollConsumerConfig::new(consumer_id2.clone(), Duration::from_millis(75));
 	let mut test_instance2 = PollConsumer::new(
-		consumer_id2.clone(),
-		Duration::from_millis(75),
+		config2,
 		engine.clone(),
 		consumer2,
 	);
@@ -404,9 +404,9 @@ fn test_non_table_events_filtered() {
 
 	txn.commit().expect("Failed to commit transaction");
 
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
 	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
+		config,
 		engine,
 		consumer,
 	);
@@ -433,9 +433,9 @@ fn test_rapid_start_stop() {
 	let consumer_id = ConsumerId::flow_consumer();
 
 	for _ in 0..5 {
+		let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(100));
 		let mut test_instance = PollConsumer::new(
-			consumer_id.clone(),
-			Duration::from_millis(100),
+			config,
 			engine.clone(),
 			consumer.clone(),
 		);
@@ -456,7 +456,7 @@ type TestTransaction = StandardTransaction<
 	StandardCdcTransaction<Memory>,
 >;
 
-fn create_test_engine() -> Engine<TestTransaction> {
+fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let clock = Arc::new(MockClock::new(1000));
 	let memory = Memory::with_clock(Box::new(clock.clone()));
 	let hooks = Hooks::new();
@@ -465,7 +465,7 @@ fn create_test_engine() -> Engine<TestTransaction> {
 	let versioned =
 		Serializable::new(memory, unversioned.clone(), hooks.clone());
 
-	Engine::new(versioned, unversioned, cdc, hooks)
+	StandardEngine::new(versioned, unversioned, cdc, hooks)
 		.expect("Failed to create engine")
 }
 
@@ -535,7 +535,7 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 }
 
 fn insert_test_events(
-	engine: &Engine<TestTransaction>,
+	engine: &StandardEngine<TestTransaction>,
 	count: usize,
 ) -> Result<()> {
 	for i in 0..count {

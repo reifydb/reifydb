@@ -4,19 +4,17 @@
 mod create;
 mod start;
 
-use reifydb_core::interface::GetHooks;
-use reifydb_core::interface::Transaction;
-use reifydb_engine::Engine;
+use reifydb_core::interface::{GetHooks, Transaction};
+use reifydb_engine::StandardEngine;
 
-use crate::boot::create::CreateCallback;
-use crate::boot::start::StartCallback;
+use crate::boot::{create::CreateCallback, start::StartCallback};
 
 pub struct Bootloader<T: Transaction> {
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 }
 
 impl<T: Transaction> Bootloader<T> {
-	pub fn new(engine: Engine<T>) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
 		Self {
 			engine: engine.clone(),
 		}

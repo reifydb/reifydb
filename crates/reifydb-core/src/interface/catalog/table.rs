@@ -3,12 +3,27 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, SchemaId, TableId};
+use crate::{
+	Type,
+	interface::{
+		ColumnIndex, ColumnPolicy, SchemaId, TableColumnId, TableId,
+	},
+};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableColumnDef {
+	pub id: TableColumnId,
+	pub name: String,
+	pub ty: Type,
+	pub policies: Vec<ColumnPolicy>,
+	pub index: ColumnIndex,
+	pub auto_increment: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableDef {
 	pub id: TableId,
 	pub schema: SchemaId,
 	pub name: String,
-	pub columns: Vec<ColumnDef>,
+	pub columns: Vec<TableColumnDef>,
 }

@@ -27,7 +27,7 @@ impl ConsumerId {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Change {
+pub enum CdcChange {
 	Insert {
 		key: EncodedKey,
 		after: EncodedRow,
@@ -48,7 +48,7 @@ pub struct CdcEvent {
 	pub version: Version,
 	pub sequence: u16,
 	pub timestamp: u64,
-	pub change: Change,
+	pub change: CdcChange,
 }
 
 impl CdcEvent {
@@ -56,7 +56,7 @@ impl CdcEvent {
 		version: Version,
 		sequence: u16,
 		timestamp: u64,
-		change: Change,
+		change: CdcChange,
 	) -> Self {
 		Self {
 			version,
@@ -67,15 +67,15 @@ impl CdcEvent {
 	}
 	pub fn key(&self) -> &EncodedKey {
 		match &self.change {
-			Change::Insert {
+			CdcChange::Insert {
 				key,
 				..
 			} => key,
-			Change::Update {
+			CdcChange::Update {
 				key,
 				..
 			} => key,
-			Change::Delete {
+			CdcChange::Delete {
 				key,
 				..
 			} => key,

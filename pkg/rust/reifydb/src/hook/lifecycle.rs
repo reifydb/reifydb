@@ -4,20 +4,20 @@
 //! Lifecycle hook contexts and implementations
 
 use reifydb_core::{
-	hook::{lifecycle::OnCreateHook, BoxedHookIter, Callback},
+	Frame,
+	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
 	interface::{Engine as _, Identity, Params, Transaction},
 	return_hooks,
-	Frame,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 /// Context provided to on_create hooks
 pub struct OnCreateContext<T: Transaction> {
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 }
 
 impl<'a, T: Transaction> OnCreateContext<T> {
-	pub fn new(engine: Engine<T>) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
 		Self {
 			engine,
 		}
@@ -73,7 +73,7 @@ where
 	F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
 	pub callback: F,
-	pub engine: Engine<T>,
+	pub engine: StandardEngine<T>,
 }
 
 impl<T: Transaction, F> Callback<OnCreateHook> for OnCreateCallback<T, F>

@@ -43,7 +43,7 @@ impl Evaluator {
 		if !matches!(ge_result.data(), ColumnData::Bool(_))
 			|| !matches!(le_result.data(), ColumnData::Bool(_))
 		{
-			// This should not happen if the comparison operators
+			// This should not happen if the comparison operator
 			// work correctly, but we handle it as a safety
 			// measure
 			let value = self.evaluate(&expr.value, ctx)?;

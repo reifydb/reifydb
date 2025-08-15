@@ -15,9 +15,9 @@ pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
-	interface::{Params, Identity, Transaction},
+	interface::{Identity, Params, Transaction},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 
 pub trait Session<T: Transaction> {
 	fn command_session(
@@ -79,21 +79,21 @@ pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
 pub trait IntoCommandSession<T: Transaction> {
 	fn into_command_session(
 		self,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 	) -> crate::Result<CommandSession<T>>;
 }
 
 pub trait IntoQuerySession<T: Transaction> {
 	fn into_query_session(
 		self,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 	) -> crate::Result<QuerySession<T>>;
 }
 
 impl<T: Transaction> IntoCommandSession<T> for Identity {
 	fn into_command_session(
 		self,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 	) -> crate::Result<CommandSession<T>> {
 		Ok(CommandSession::new(engine, self))
 	}
@@ -102,7 +102,7 @@ impl<T: Transaction> IntoCommandSession<T> for Identity {
 impl<T: Transaction> IntoQuerySession<T> for Identity {
 	fn into_query_session(
 		self,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 	) -> crate::Result<QuerySession<T>> {
 		Ok(QuerySession::new(engine, self))
 	}

@@ -1,0 +1,255 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use reifydb_core::{
+	OwnedSpan, Type,
+	interface::{
+		ActiveCommandTransaction, EncodableKey, Key, SchemaId,
+		SchemaViewKey, Transaction, VersionedCommandTransaction,
+		ViewDef, ViewId, ViewKey,
+	},
+	result::error::diagnostic::catalog::{
+		schema_not_found, view_already_exists,
+	},
+	return_error,
+};
+
+use crate::{
+	Catalog,
+	sequence::SystemSequence,
+	view::layout::{view, view_schema},
+	view_column::ColumnIndex,
+};
+
+#[derive(Debug, Clone)]
+pub struct ViewColumnToCreate {
+	pub name: String,
+	pub ty: Type,
+	pub span: Option<OwnedSpan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ViewToCreate {
+	pub span: Option<OwnedSpan>,
+	pub view: String,
+	pub schema: String,
+	pub columns: Vec<ViewColumnToCreate>,
+}
+
+impl Catalog {
+	pub fn create_view<T: Transaction>(
+		txn: &mut ActiveCommandTransaction<T>,
+		to_create: ViewToCreate,
+	) -> crate::Result<ViewDef> {
+		let Some(schema) =
+			Catalog::get_schema_by_name(txn, &to_create.schema)?
+		else {
+			return_error!(schema_not_found(
+				to_create.span,
+				&to_create.schema
+			));
+		};
+
+		if let Some(view) = Catalog::get_view_by_name(
+			txn,
+			schema.id,
+			&to_create.view,
+		)? {
+			return_error!(view_already_exists(
+				to_create.span,
+				&schema.name,
+				&view.name
+			));
+		}
+
+		let view_id = SystemSequence::next_view_id(txn)?;
+		Self::store_view(txn, view_id, schema.id, &to_create)?;
+		Self::link_view_to_schema(
+			txn,
+			schema.id,
+			view_id,
+			&to_create.view,
+		)?;
+
+		Catalog::insert_columns_for_view(txn, view_id, to_create)?;
+
+		Ok(Catalog::get_view(txn, view_id)?.unwrap())
+	}
+
+	fn store_view<T: Transaction>(
+		txn: &mut ActiveCommandTransaction<T>,
+		view: ViewId,
+		schema: SchemaId,
+		to_create: &ViewToCreate,
+	) -> crate::Result<()> {
+		let mut row = view::LAYOUT.allocate_row();
+		view::LAYOUT.set_u64(&mut row, view::ID, view);
+		view::LAYOUT.set_u64(&mut row, view::SCHEMA, schema);
+		view::LAYOUT.set_utf8(&mut row, view::NAME, &to_create.view);
+
+		txn.set(
+			&ViewKey {
+				view,
+			}
+			.encode(),
+			row,
+		)?;
+
+		Ok(())
+	}
+
+	fn link_view_to_schema<T: Transaction>(
+		txn: &mut ActiveCommandTransaction<T>,
+		schema: SchemaId,
+		view: ViewId,
+		name: &str,
+	) -> crate::Result<()> {
+		let mut row = view_schema::LAYOUT.allocate_row();
+		view_schema::LAYOUT.set_u64(&mut row, view_schema::ID, view);
+		view_schema::LAYOUT.set_utf8(&mut row, view_schema::NAME, name);
+		txn.set(
+			&Key::SchemaView(SchemaViewKey {
+				schema,
+				view,
+			})
+			.encode(),
+			row,
+		)?;
+		Ok(())
+	}
+
+	fn insert_columns_for_view<T: Transaction>(
+		txn: &mut ActiveCommandTransaction<T>,
+		view: ViewId,
+		to_create: ViewToCreate,
+	) -> crate::Result<()> {
+		for (idx, column_to_create) in
+			to_create.columns.into_iter().enumerate()
+		{
+			Catalog::create_view_column(
+				txn,
+				view,
+				crate::view_column::ViewColumnToCreate {
+					span: column_to_create.span.clone(),
+					schema_name: &to_create.schema,
+					view,
+					view_name: &to_create.view,
+					column: column_to_create.name,
+					value: column_to_create.ty,
+					if_not_exists: false,
+					index: ColumnIndex(idx as u16),
+				},
+			)?;
+		}
+		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::interface::{
+		SchemaId, SchemaViewKey, VersionedQueryTransaction, ViewId,
+	};
+	use reifydb_transaction::test_utils::create_test_command_transaction;
+
+	use crate::{
+		Catalog,
+		test_utils::ensure_test_schema,
+		view::{ViewToCreate, layout::view_schema},
+	};
+
+	#[test]
+	fn test_create_view() {
+		let mut txn = create_test_command_transaction();
+
+		ensure_test_schema(&mut txn);
+
+		let to_create = ViewToCreate {
+			schema: "test_schema".to_string(),
+			view: "test_view".to_string(),
+			columns: vec![],
+			span: None,
+		};
+
+		// First creation should succeed
+		let result = Catalog::create_view(&mut txn, to_create.clone())
+			.unwrap();
+		assert_eq!(result.id, ViewId(1025));
+		assert_eq!(result.schema, SchemaId(1025));
+		assert_eq!(result.name, "test_view");
+
+		// Creating the same view again with `if_not_exists = false`
+		// should return error
+		let err =
+			Catalog::create_view(&mut txn, to_create).unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_003");
+	}
+
+	#[test]
+	fn test_view_linked_to_schema() {
+		let mut txn = create_test_command_transaction();
+		let schema = ensure_test_schema(&mut txn);
+
+		let to_create = ViewToCreate {
+			schema: "test_schema".to_string(),
+			view: "test_view".to_string(),
+			columns: vec![],
+			span: None,
+		};
+
+		Catalog::create_view(&mut txn, to_create).unwrap();
+
+		let to_create = ViewToCreate {
+			schema: "test_schema".to_string(),
+			view: "another_view".to_string(),
+			columns: vec![],
+			span: None,
+		};
+
+		Catalog::create_view(&mut txn, to_create).unwrap();
+
+		let links = txn
+			.range(SchemaViewKey::full_scan(schema.id))
+			.unwrap()
+			.collect::<Vec<_>>();
+		assert_eq!(links.len(), 2);
+
+		let link = &links[1];
+		let row = &link.row;
+		assert_eq!(
+			view_schema::LAYOUT.get_u64(row, view_schema::ID),
+			1025
+		);
+		assert_eq!(
+			view_schema::LAYOUT.get_utf8(row, view_schema::NAME),
+			"test_view"
+		);
+
+		let link = &links[0];
+		let row = &link.row;
+		assert_eq!(
+			view_schema::LAYOUT.get_u64(row, view_schema::ID),
+			1026
+		);
+		assert_eq!(
+			view_schema::LAYOUT.get_utf8(row, view_schema::NAME),
+			"another_view"
+		);
+	}
+
+	#[test]
+	fn test_create_view_missing_schema() {
+		let mut txn = create_test_command_transaction();
+
+		let to_create = ViewToCreate {
+			schema: "missing_schema".to_string(),
+			view: "my_view".to_string(),
+			columns: vec![],
+			span: None,
+		};
+
+		let err =
+			Catalog::create_view(&mut txn, to_create).unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_002");
+	}
+}

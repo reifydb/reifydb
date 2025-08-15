@@ -11,9 +11,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ColumnId(pub u64);
+pub struct TableColumnId(pub u64);
 
-impl Deref for ColumnId {
+impl Deref for TableColumnId {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -21,19 +21,19 @@ impl Deref for ColumnId {
 	}
 }
 
-impl PartialEq<u64> for ColumnId {
+impl PartialEq<u64> for TableColumnId {
 	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl From<ColumnId> for u64 {
-	fn from(value: ColumnId) -> Self {
+impl From<TableColumnId> for u64 {
+	fn from(value: TableColumnId) -> Self {
 		value.0
 	}
 }
 
-impl Serialize for ColumnId {
+impl Serialize for TableColumnId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -42,15 +42,15 @@ impl Serialize for ColumnId {
 	}
 }
 
-impl<'de> Deserialize<'de> for ColumnId {
-	fn deserialize<D>(deserializer: D) -> Result<ColumnId, D::Error>
+impl<'de> Deserialize<'de> for TableColumnId {
+	fn deserialize<D>(deserializer: D) -> Result<TableColumnId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U64Visitor;
 
 		impl Visitor<'_> for U64Visitor {
-			type Value = ColumnId;
+			type Value = TableColumnId;
 
 			fn expecting(
 				&self,
@@ -63,7 +63,69 @@ impl<'de> Deserialize<'de> for ColumnId {
 				self,
 				value: u64,
 			) -> Result<Self::Value, E> {
-				Ok(ColumnId(value))
+				Ok(TableColumnId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct ViewColumnId(pub u64);
+
+impl Deref for ViewColumnId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for ViewColumnId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<ViewColumnId> for u64 {
+	fn from(value: ViewColumnId) -> Self {
+		value.0
+	}
+}
+
+impl Serialize for ViewColumnId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for ViewColumnId {
+	fn deserialize<D>(deserializer: D) -> Result<ViewColumnId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = ViewColumnId;
+
+			fn expecting(
+				&self,
+				formatter: &mut fmt::Formatter,
+			) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(
+				self,
+				value: u64,
+			) -> Result<Self::Value, E> {
+				Ok(ViewColumnId(value))
 			}
 		}
 
@@ -318,6 +380,74 @@ impl<'de> Deserialize<'de> for TableId {
 				value: u64,
 			) -> Result<Self::Value, E> {
 				Ok(TableId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct ViewId(pub u64);
+
+impl Display for ViewId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for ViewId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for ViewId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<ViewId> for u64 {
+	fn from(value: ViewId) -> Self {
+		value.0
+	}
+}
+
+impl Serialize for ViewId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for ViewId {
+	fn deserialize<D>(deserializer: D) -> Result<ViewId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = ViewId;
+
+			fn expecting(
+				&self,
+				formatter: &mut fmt::Formatter,
+			) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(
+				self,
+				value: u64,
+			) -> Result<Self::Value, E> {
+				Ok(ViewId(value))
 			}
 		}
 

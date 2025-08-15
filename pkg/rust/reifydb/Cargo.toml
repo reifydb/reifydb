@@ -10,11 +10,13 @@ repository.workspace = true
 reifydb-auth = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-flow = { workspace = true, optional = true }
 reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 crossbeam-channel = { workspace = true }
 
@@ -23,7 +25,7 @@ default = []
 async = ["dep:tokio"]
 
 # Subsystem features
-sub_flow = []
+sub_flow = ["dep:reifydb-flow"]
 sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server"]
 sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server"]
 

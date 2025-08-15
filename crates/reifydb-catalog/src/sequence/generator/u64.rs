@@ -22,6 +22,7 @@ impl GeneratorU64 {
 	pub(crate) fn next<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 		key: &EncodedKey,
+		default: Option<u64>,
 	) -> crate::Result<u64>
 where {
 		txn.with_unversioned_command(|tx| match tx.get(key)? {
@@ -42,10 +43,11 @@ where {
 				Ok(next_value)
 			}
 			None => {
+				let result = default.unwrap_or(1u64);
 				let mut new_row = LAYOUT.allocate_row();
-				LAYOUT.set_u64(&mut new_row, 0, 1u64);
+				LAYOUT.set_u64(&mut new_row, 0, result);
 				tx.set(key, new_row)?;
-				Ok(1)
+				Ok(result)
 			}
 		})
 	}
@@ -89,6 +91,7 @@ mod tests {
 			let got = GeneratorU64::next(
 				&mut txn,
 				&EncodedKey::new("sequence"),
+				None,
 			)
 			.unwrap();
 			assert_eq!(got, expected);
@@ -127,8 +130,30 @@ mod tests {
 		let err = GeneratorU64::next(
 			&mut txn,
 			&EncodedKey::new("sequence"),
+			None,
 		)
 		.unwrap_err();
 		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Uint8));
+	}
+
+	#[test]
+	fn test_default() {
+		let mut txn = create_test_command_transaction();
+
+		let got = GeneratorU64::next(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(100u64),
+		)
+		.unwrap();
+		assert_eq!(got, 100);
+
+		let got = GeneratorU64::next(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(999u64),
+		)
+		.unwrap();
+		assert_eq!(got, 101);
 	}
 }

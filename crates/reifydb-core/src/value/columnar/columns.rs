@@ -9,9 +9,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Type, Value,
-    interface::TableDef,
-    value::columnar::{
+	Type, Value,
+	interface::TableDef,
+	value::columnar::{
 		Column, ColumnData, ColumnQualified, TableQualified,
 	},
 };

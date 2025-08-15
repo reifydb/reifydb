@@ -4,102 +4,148 @@
 use std::{any::Any, time::Duration};
 
 use reifydb_core::{
-	Result,
+	Frame, Result, Type,
 	interface::{
-		ActiveCommandTransaction, CdcConsume, CdcConsumer, CdcEvent,
-		Change, ConsumerId, Transaction,
+		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
+		CdcEvent, ConsumerId, Identity, Key, Params, SchemaId,
+		TableDef, TableId, TableRowKey, Transaction,
 	},
+	row::EncodedRowLayout,
+	value::columnar::Columns,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
+use reifydb_flow::{
+	Change, Diff, Flow, NodeId, legacy_processor::LegacyFlowProcessor,
+};
 
-use super::{Subsystem, cdc::PollConsumer};
+use super::{Subsystem, cdc::{PollConsumer, PollConsumerConfig}};
 use crate::health::HealthStatus;
 
 #[derive(Clone)]
-struct FlowConsumer;
+struct FlowConsumer<T: Transaction> {
+	engine: StandardEngine<T>,
+}
 
-impl<T: Transaction> CdcConsume<T> for FlowConsumer {
+impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(
 		&self,
-		_txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut ActiveCommandTransaction<T>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		for event in events {
-			let change_description = match &event.change {
-				Change::Insert {
-					key,
-					after,
-				} => {
-					format!(
-						"INSERT key={:?} value={:?}",
-						String::from_utf8_lossy(&key.0),
-						String::from_utf8_lossy(
-							&after.0
-						)
-					)
-				}
-				Change::Update {
-					key,
-					before,
-					after,
-				} => {
-					let before_str =
-						if before.is_deleted() {
-							"<deleted>".to_string()
-						} else {
-							format!("{:?}", String::from_utf8_lossy(&before.0))
-						};
-					format!(
-						"UPDATE key={:?} before={} after={:?}",
-						String::from_utf8_lossy(&key.0),
-						before_str,
-						String::from_utf8_lossy(
-							&after.0
-						)
-					)
-				}
-				Change::Delete {
-					key,
-					before,
-				} => {
-					let before_str =
-						if before.is_deleted() {
-							"<deleted>".to_string()
-						} else {
-							format!("{:?}", String::from_utf8_lossy(&before.0))
-						};
-					format!(
-						"DELETE key={:?} before={}",
-						String::from_utf8_lossy(&key.0),
-						before_str
-					)
-				}
-			};
+			let key = Key::decode(event.key()).unwrap();
 
-			println!(
-				"[CDC] v{} seq{} ts{} | {}",
-				event.version,
-				event.sequence,
-				event.timestamp,
-				change_description
-			);
+			// match key {
+			// 	Key::TableRow(TableRowKey {
+			// 		table,
+			// 		row,
+			// 	}) => {
+			// 		if table != 1026 {
+			// 			continue;
+			// 		}
+			// 	}
+			// 	_ => continue,
+			// }
+			//
+			// // find all flows which needs to be updated with that
+			// // event
+			//
+			// let frame = self
+			// 	.engine
+			// 	.query_as(
+			// 		&Identity::root(),
+			// 		"FROM reifydb.flows filter { id == 1 } map {
+			// cast(data, utf8) }", 		Params::None,
+			// 	)
+			// 	.unwrap()
+			// 	.pop()
+			// 	.unwrap();
+			//
+			// let value = frame[0].get_value(0);
+			// // dbg!(&value.to_string());
+			//
+			// let flow: Flow = serde_json::from_str(
+			// 	value.to_string().as_str(),
+			// )
+			// .unwrap();
+			//
+			// // dbg!(&flow);
+			//
+			// let lp: LegacyFlowProcessor<T> =
+			// 	LegacyFlowProcessor::new(
+			// 		flow.clone(),
+			// 		self.engine.versioned_owned(),
+			// 		self.engine.unversioned_owned(),
+			// 		self.engine.cdc_owned(),
+			// 	);
+			//
+			// let node_id = NodeId(1026);
+			//
+			// let layout = EncodedRowLayout::new(&[
+			// 	Type::Utf8,
+			// 	Type::Int1,
+			// ]);
+			//
+			// let table = TableDef {
+			// 	id: TableId(node_id.0),
+			// 	schema: SchemaId(0),
+			// 	name: "table".to_string(), // FIXME
+			// 	columns: vec![
+			// 		TableColumnDef {
+			// 			id: TableColumnId(0),
+			// 			name: "name".to_string(),
+			// 			ty: Type::Utf8,
+			// 			policies: vec![],
+			// 			index: ColumnIndex(0),
+			// 			auto_increment: false,
+			// 		},
+			// 		TableColumnDef {
+			// 			id: TableColumnId(1),
+			// 			name: "age".to_string(),
+			// 			ty: Type::Int1,
+			// 			policies: vec![],
+			// 			index: ColumnIndex(1),
+			// 			auto_increment: false,
+			// 		},
+			// 	],
+			// };
+			//
+			// let mut columns = Columns::empty_from_table(&table);
+			//
+			// let row = match event.change {
+			// 	CdcChange::Insert {
+			// 		after,
+			// 		..
+			// 	} => after,
+			// 	_ => unimplemented!(),
+			// };
+			//
+			// columns.append_rows(&layout, [row]).unwrap();
+			//
+			// let change = Change::new(vec![Diff::Insert {
+			// 	after: columns,
+			// }]);
+			//
+			// lp.hack(&flow, txn, &NodeId(1), change).unwrap();
 		}
 		Ok(())
 	}
 }
 
 pub struct FlowSubsystem<T: Transaction> {
-	consumer: PollConsumer<T, FlowConsumer>,
+	consumer: PollConsumer<T, FlowConsumer<T>>,
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(engine: Engine<T>) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
+		let config = PollConsumerConfig::new(ConsumerId::flow_consumer(), Duration::from_millis(1));
 		Self {
 			consumer: PollConsumer::new(
-				ConsumerId::flow_consumer(),
-				Duration::from_millis(1),
-				engine,
-				FlowConsumer,
+				config,
+				engine.clone(),
+				FlowConsumer {
+					engine: engine.clone(),
+				},
 			),
 		}
 	}

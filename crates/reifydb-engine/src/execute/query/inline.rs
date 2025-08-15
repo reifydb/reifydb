@@ -4,8 +4,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-    ColumnDescriptor, Value,
-    interface::{TableDef, VersionedQueryTransaction},
+	ColumnDescriptor, Value,
+	interface::{TableDef, VersionedQueryTransaction},
 };
 use reifydb_rql::expression::AliasExpression;
 

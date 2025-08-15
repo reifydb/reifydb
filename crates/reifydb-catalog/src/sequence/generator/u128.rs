@@ -22,6 +22,7 @@ impl GeneratorU128 {
 	pub(crate) fn next<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 		key: &EncodedKey,
+		default: Option<u128>,
 	) -> crate::Result<u128>
 where {
 		txn.with_unversioned_command(|tx| match tx.get(key)? {
@@ -42,10 +43,11 @@ where {
 				Ok(next_value)
 			}
 			None => {
+				let result = default.unwrap_or(1u128);
 				let mut new_row = LAYOUT.allocate_row();
-				LAYOUT.set_u128(&mut new_row, 0, 1u128);
+				LAYOUT.set_u128(&mut new_row, 0, result);
 				tx.set(key, new_row)?;
-				Ok(1)
+				Ok(result)
 			}
 		})
 	}
@@ -89,6 +91,7 @@ mod tests {
 			let got = GeneratorU128::next(
 				&mut txn,
 				&EncodedKey::new("sequence"),
+				None,
 			)
 			.unwrap();
 			assert_eq!(got, expected);
@@ -127,8 +130,30 @@ mod tests {
 		let err = GeneratorU128::next(
 			&mut txn,
 			&EncodedKey::new("sequence"),
+			None,
 		)
 		.unwrap_err();
 		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Uint16));
+	}
+
+	#[test]
+	fn test_default() {
+		let mut txn = create_test_command_transaction();
+
+		let got = GeneratorU128::next(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(100u128),
+		)
+		.unwrap();
+		assert_eq!(got, 100);
+
+		let got = GeneratorU128::next(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(999u128),
+		)
+		.unwrap();
+		assert_eq!(got, 101);
 	}
 }

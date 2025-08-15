@@ -5,12 +5,14 @@
 
 pub use reifydb_core::Result;
 
-pub mod column;
-pub mod column_policy;
 pub mod row;
 pub mod schema;
 pub mod sequence;
 pub mod table;
+pub mod table_column;
+pub mod table_column_policy;
 pub mod test_utils;
+pub mod view;
+pub mod view_column;
 
 pub struct Catalog {}

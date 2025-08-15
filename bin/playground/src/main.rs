@@ -3,25 +3,20 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::collections::Bound::Included;
+use std::{collections::Bound::Included, thread, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, SessionSync,
 	core::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
-			ColumnId, ColumnIndex, EncodableKeyRange, Params,
-			SchemaId, TableDef, TableId, TableRowKeyRange,
+			ColumnIndex, EncodableKeyRange, Params, SchemaId,
+			TableColumnId, TableDef, TableId, TableRowKeyRange,
 		},
 		row::EncodedRowLayout,
 	},
-	engine::{
-		columnar::Columns,
-		flow::{
-			flow::Flow,
-			node::{NodeId, NodeType},
-		},
-	},
+	engine::columnar::Columns,
+	flow::{Flow, NodeId, NodeType},
 	sync,
 };
 
@@ -32,7 +27,6 @@ fn main() {
 	let mut db: DB = sync::memory_optimistic();
 	// let mut db: DB =
 	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
-
 
 	db.start().unwrap();
 
@@ -46,18 +40,17 @@ fn main() {
 	.unwrap();
 
 	// Skip computed view for now since flow subsystem has unimplemented
-	// parts session
-	//     .command_sync(
-	//         r#"
-	// create computed view test.adults { name: utf8, age: int1 }  with {
-	//     from test.users
-	//     filter { age > 18  }
-	//     map { name, age }
-	// }
-	// "#,
-	//         Params::None,
-	//     )
-	//     .unwrap();
+	db.command_as_root(
+		r#"
+	create computed view test.adults { name: utf8, age: int1 }  with {
+	    from test.users
+	    filter { age > 18  }
+	    map { name, age }
+	}
+	"#,
+		Params::None,
+	)
+	.unwrap();
 
 	db.command_as_root(
 		r#"
@@ -73,23 +66,17 @@ fn main() {
 	)
 	.unwrap();
 
-	for frame in
-		db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
-	{
-		println!("{}", frame);
-	}
-
-	db.command_as_root(
-		r#"
-    from test.users
-    filter { name = "bob" }
-    map { name: "bob", age: 21}
-    update test.users;
-
-    "#,
-		Params::None,
-	)
-	.unwrap();
+	// db.command_as_root(
+	// 	r#"
+	// from [
+	//     { name: "dim", age: 40 },
+	// ]
+	// insert test.users;
+	//
+	// "#,
+	// 	Params::None,
+	// )
+	// 	.unwrap();
 
 	for frame in
 		db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
@@ -97,19 +84,32 @@ fn main() {
 		println!("{}", frame);
 	}
 
-	loop {}
+	// db.command_as_root(
+	// 	r#"
+	// from test.users
+	// filter { name = "bob" }
+	// map { name: "bob", age: 21}
+	// update test.users;
+	//
+	// "#,
+	// 	Params::None,
+	// )
+	// .unwrap();
+
+	for frame in
+		db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
+	{
+		println!("{}", frame);
+	}
+
+	// loop {}
+	thread::sleep(Duration::from_millis(2));
 
 	// println!("Basic database operations completed successfully!");
-	// rql_to_flow_example(&mut db);
+	rql_to_flow_example(&mut db);
 }
 
-fn _rql_to_flow_example(db: &mut DB) {
-	// for frame in
-	//     db.query_as_root("FROM reifydb.flows filter { id == 1 } map { id
-	// }", Params::None).unwrap() {
-	//     println!("{}", frame);
-	// }
-	//
+fn rql_to_flow_example(db: &mut DB) {
 	let frame = db
 		.query_as_root(
 			"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
@@ -258,16 +258,16 @@ fn read_columns_from_storage(
 		schema: SchemaId(0),
 		name: "view".to_string(),
 		columns: vec![
-			reifydb::core::interface::ColumnDef {
-				id: ColumnId(0),
+			reifydb::core::interface::TableColumnDef {
+				id: TableColumnId(0),
 				name: "name".to_string(),
 				ty: Type::Utf8,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
 			},
-			reifydb::core::interface::ColumnDef {
-				id: ColumnId(1),
+			reifydb::core::interface::TableColumnDef {
+				id: TableColumnId(1),
 				name: "age".to_string(),
 				ty: Type::Int1,
 				policies: vec![],

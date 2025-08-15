@@ -7,8 +7,8 @@ use reifydb_core::interface::{
 };
 
 use crate::{
-	table::layout::{table, table_schema},
 	Catalog,
+	table::layout::{table, table_schema},
 };
 
 impl Catalog {
@@ -66,7 +66,9 @@ impl Catalog {
 					id,
 					name,
 					schema,
-					columns: Catalog::list_columns(rx, id)?,
+					columns: Catalog::list_table_columns(
+						rx, id,
+					)?,
 				}))
 			}
 			None => Ok(None),
@@ -77,14 +79,14 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
 	mod get_table_by_name {
-		use reifydb_core::interface::SchemaId;
+		use reifydb_core::interface::{SchemaId, TableId};
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
+			Catalog,
 			test_utils::{
 				create_schema, create_table, ensure_test_schema,
 			},
-			Catalog,
 		};
 
 		#[test]
@@ -106,13 +108,13 @@ mod tests {
 
 			let result = Catalog::get_table_by_name(
 				&mut txn,
-				SchemaId(3),
+				SchemaId(1027),
 				"table_two",
 			)
 			.unwrap()
 			.unwrap();
-			assert_eq!(result.id, 2);
-			assert_eq!(result.schema, 3);
+			assert_eq!(result.id, TableId(1026));
+			assert_eq!(result.schema, SchemaId(1027));
 			assert_eq!(result.name, "table_two");
 		}
 
@@ -121,7 +123,7 @@ mod tests {
 			let mut txn = create_test_command_transaction();
 			let result = Catalog::get_table_by_name(
 				&mut txn,
-				SchemaId(1),
+				SchemaId(1025),
 				"some_table",
 			)
 			.unwrap();
@@ -147,7 +149,7 @@ mod tests {
 
 			let result = Catalog::get_table_by_name(
 				&mut txn,
-				SchemaId(1),
+				SchemaId(1025),
 				"table_four_two",
 			)
 			.unwrap();
@@ -182,14 +184,14 @@ mod tests {
 	}
 
 	mod get_table {
-		use reifydb_core::interface::TableId;
+		use reifydb_core::interface::{SchemaId, TableId};
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
+			Catalog,
 			test_utils::{
 				create_schema, create_table, ensure_test_schema,
 			},
-			Catalog,
 		};
 
 		#[test]
@@ -209,11 +211,12 @@ mod tests {
 				&[],
 			);
 
-			let result = Catalog::get_table(&mut txn, TableId(2))
-				.unwrap()
-				.unwrap();
-			assert_eq!(result.id, 2);
-			assert_eq!(result.schema, 3);
+			let result =
+				Catalog::get_table(&mut txn, TableId(1026))
+					.unwrap()
+					.unwrap();
+			assert_eq!(result.id, TableId(1026));
+			assert_eq!(result.schema, SchemaId(1027));
 			assert_eq!(result.name, "table_two");
 		}
 
