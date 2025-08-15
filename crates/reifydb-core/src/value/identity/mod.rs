@@ -7,9 +7,6 @@ use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::value::uuid::Uuid7;
 
-/// Standard column name for IdentityId columns
-pub static IDENTITY_ID_COLUMN_NAME: &str = "__IDENTITY__ID__";
-
 /// An identity identifier - a unique UUID v7 for an identity
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
@@ -178,5 +175,4 @@ mod tests {
 		let id2 = IdentityId::from(uuid);
 		assert_eq!(id1, id2);
 	}
-
 }

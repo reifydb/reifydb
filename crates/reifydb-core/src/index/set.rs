@@ -663,8 +663,8 @@ impl EncodedIndexLayout {
 		debug_assert_eq!(field.value, Type::IdentityId);
 		key.set_valid(index, true);
 
-		let uuid7: Uuid7 = value.into();
-		let uuid: Uuid = uuid7.into();
+		// Direct conversion from inner Uuid7 to Uuid
+		let uuid: Uuid = value.0.into();
 		let uuid_bytes = uuid.as_bytes();
 		let mut bytes = [0u8; 16];
 		bytes.copy_from_slice(uuid_bytes);

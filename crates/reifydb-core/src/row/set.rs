@@ -483,9 +483,8 @@ impl EncodedRowLayout {
 		debug_assert_eq!(field.value, Type::IdentityId);
 		row.set_valid(index, true);
 		unsafe {
-			// IdentityId wraps Uuid7 which is 16 bytes
-			let uuid7: Uuid7 = value.into();
-			let uuid: Uuid = uuid7.into();
+			// Direct conversion from inner Uuid7 to Uuid
+			let uuid: Uuid = value.0.into();
 			let bytes = uuid.as_bytes();
 			ptr::copy_nonoverlapping(
 				bytes.as_ptr(),
