@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_core::{Result, interface::Transaction};
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::{WsConfig, WsServer};
 use tokio::{sync::oneshot, task::JoinHandle};
 
@@ -34,7 +34,7 @@ pub struct WsSubsystem<T: Transaction> {
 impl<T: Transaction> WsSubsystem<T> {
 	pub fn new(
 		config: WsConfig,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		runtime_provider: &RuntimeProvider,
 	) -> Self {
 		let ws_server = WsServer::new(config, engine);

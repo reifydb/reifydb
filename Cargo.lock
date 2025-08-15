@@ -1505,10 +1505,12 @@ dependencies = [
  "reifydb-auth",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-flow",
  "reifydb-network",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-transaction",
+ "serde_json",
  "tokio",
 ]
 
@@ -1566,6 +1568,7 @@ dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
+ "reifydb-flow",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-testing",

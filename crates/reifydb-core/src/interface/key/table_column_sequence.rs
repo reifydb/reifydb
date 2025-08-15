@@ -4,7 +4,7 @@
 use crate::{
 	EncodedKey,
 	interface::{
-		ColumnId, TableId,
+		TableColumnId, TableId,
 		key::{EncodableKey, KeyKind},
 	},
 	util::encoding::keycode,
@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableColumnSequenceKey {
 	pub table: TableId,
-	pub column: ColumnId,
+	pub column: TableColumnId,
 }
 
 const VERSION: u8 = 1;
@@ -64,26 +64,24 @@ mod tests {
 	use super::{EncodableKey, TableColumnSequenceKey};
 	use crate::{
 		EncodedKey,
-		interface::{ColumnId, TableId},
+		interface::{TableColumnId, TableId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = TableColumnSequenceKey {
 			table: TableId(0x1234),
-			column: ColumnId(0x5678),
+			column: TableColumnId(0x5678),
 		};
 		let encoded = key.encode();
 
-		// Verify the encoded format (keycode serialization uses 0xFE
-		// prefix for u8)
 		assert_eq!(encoded[0], 0xFE); // version serialized
 		assert_eq!(encoded[1], 0xF1); // KeyKind::TableColumnSequence serialized
 
 		// Test decode
 		let decoded = TableColumnSequenceKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.table, TableId(0x1234));
-		assert_eq!(decoded.column, ColumnId(0x5678));
+		assert_eq!(decoded.column, TableColumnId(0x5678));
 	}
 
 	#[test]

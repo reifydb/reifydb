@@ -22,6 +22,7 @@ impl GeneratorI8 {
 	pub(crate) fn next<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 		key: &EncodedKey,
+		default: Option<i8>,
 	) -> crate::Result<i8>
 where {
 		txn.with_unversioned_command(|tx| match tx.get(key)? {
@@ -42,10 +43,11 @@ where {
 				Ok(next_value)
 			}
 			None => {
+				let result = default.unwrap_or(1i8);
 				let mut new_row = LAYOUT.allocate_row();
-				LAYOUT.set_i8(&mut new_row, 0, 1i8);
+				LAYOUT.set_i8(&mut new_row, 0, result);
 				tx.set(key, new_row)?;
-				Ok(1)
+				Ok(result)
 			}
 		})
 	}
@@ -89,6 +91,7 @@ mod tests {
 			let got = GeneratorI8::next(
 				&mut txn,
 				&EncodedKey::new("sequence"),
+				None,
 			)
 			.unwrap();
 			assert_eq!(got, expected);
@@ -127,8 +130,30 @@ mod tests {
 		let err = GeneratorI8::next(
 			&mut txn,
 			&EncodedKey::new("sequence"),
+			None,
 		)
 		.unwrap_err();
 		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int1));
+	}
+
+	#[test]
+	fn test_default() {
+		let mut txn = create_test_command_transaction();
+
+		let got = GeneratorI8::next(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(10i8),
+		)
+		.unwrap();
+		assert_eq!(got, 10);
+
+		let got = GeneratorI8::next(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(99i8),
+		)
+		.unwrap();
+		assert_eq!(got, 11);
 	}
 }

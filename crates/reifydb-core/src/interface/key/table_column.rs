@@ -4,14 +4,14 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{ColumnId, TableId},
+	interface::catalog::{TableColumnId, TableId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TableColumnKey {
 	pub table: TableId,
-	pub column: ColumnId,
+	pub column: TableColumnId,
 }
 
 const VERSION: u8 = 1;
@@ -61,12 +61,12 @@ impl EncodableKey for TableColumnKey {
 impl TableColumnKey {
 	pub fn full_scan(table: TableId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::link_start(table)),
-			Some(Self::link_end(table)),
+			Some(Self::start(table)),
+			Some(Self::end(table)),
 		)
 	}
 
-	fn link_start(table: TableId) -> EncodedKey {
+	fn start(table: TableId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
@@ -74,7 +74,7 @@ impl TableColumnKey {
 		EncodedKey::new(out)
 	}
 
-	fn link_end(table: TableId) -> EncodedKey {
+	fn end(table: TableId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
@@ -85,14 +85,17 @@ impl TableColumnKey {
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, TableColumnKey};
-	use crate::interface::catalog::{ColumnId, TableId};
+	use super::EncodableKey;
+	use crate::interface::{
+		TableColumnKey,
+		catalog::{TableColumnId, TableId},
+	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = TableColumnKey {
 			table: TableId(0xABCD),
-			column: ColumnId(0x123456789ABCDEF0),
+			column: TableColumnId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
@@ -114,15 +117,15 @@ mod tests {
 	fn test_order_preserving() {
 		let key1 = TableColumnKey {
 			table: TableId(1),
-			column: ColumnId(100),
+			column: TableColumnId(100),
 		};
 		let key2 = TableColumnKey {
 			table: TableId(1),
-			column: ColumnId(200),
+			column: TableColumnId(200),
 		};
 		let key3 = TableColumnKey {
 			table: TableId(2),
-			column: ColumnId(0),
+			column: TableColumnId(0),
 		};
 
 		let encoded1 = key1.encode();

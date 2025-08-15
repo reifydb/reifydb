@@ -6,13 +6,13 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use reifydb_core::{
 	Type, Value,
 	interface::{
-		Engine as EngineInterface, Params as CoreParams, Identity,
+		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
 	},
 	result::{Frame, error::diagnostic::Diagnostic},
 	value::IdentityId,
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use tokio::task::spawn_blocking;
 use tokio_stream::{Stream, once};
 use tonic::{Request, Response, Status};
@@ -23,7 +23,7 @@ use crate::grpc::server::{
 };
 
 pub struct DbService<T: Transaction> {
-	pub(crate) engine: Arc<Engine<T>>,
+	pub(crate) engine: Arc<StandardEngine<T>>,
 	_phantom: std::marker::PhantomData<T>,
 }
 
@@ -81,13 +81,18 @@ fn grpc_value_to_core_value(grpc_val: grpc::Value) -> Option<Value> {
 			.ok()
 			.filter(|u| u.get_version_num() == 7)
 			.map(|u| Value::Uuid7(reifydb_core::Uuid7::from(u))),
-		GrpcType::IdentityIdValue(bytes) => uuid::Uuid::from_slice(&bytes)
-			.ok()
-			.filter(|u| u.get_version_num() == 7)
-			.map(|u| {
-				let uuid7 = reifydb_core::Uuid7::from(u);
-				Value::IdentityId(IdentityId::from(uuid7))
-			}),
+		GrpcType::IdentityIdValue(bytes) => {
+			uuid::Uuid::from_slice(&bytes)
+				.ok()
+				.filter(|u| u.get_version_num() == 7)
+				.map(|u| {
+					let uuid7 =
+						reifydb_core::Uuid7::from(u);
+					Value::IdentityId(IdentityId::from(
+						uuid7,
+					))
+				})
+		}
 		GrpcType::BlobValue(bytes) => {
 			Some(Value::Blob(reifydb_core::Blob::new(bytes)))
 		}
@@ -121,7 +126,7 @@ fn grpc_params_to_core_params(grpc_params: Option<grpc::Params>) -> CoreParams {
 }
 
 impl<T: Transaction> DbService<T> {
-	pub fn new(engine: Engine<T>) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
 		Self {
 			engine: Arc::new(engine),
 			_phantom: std::marker::PhantomData,

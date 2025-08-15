@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::{
 	Catalog,
-	sequence::{ColumnSequence, TableRowSequence},
+	sequence::{TableColumnSequence, TableRowSequence},
 };
 use reifydb_core::{
 	ColumnDescriptor, IntoOwnedSpan, Type, Value,
@@ -110,7 +110,7 @@ impl<T: Transaction> Executor<T> {
 							value,
 							Value::Undefined
 						) {
-						value = ColumnSequence::next_value(txn, table.id, table_column.id)?;
+						value = TableColumnSequence::next_value(txn, table.id, table_column.id)?;
 					}
 
 					let policies: Vec<ColumnPolicyKind> =

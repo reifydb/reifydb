@@ -9,7 +9,7 @@ use reifydb_core::{
 	CowVec, EncodedKey, Version, async_cow_vec,
 	delta::Delta,
 	interface::{
-		CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, Change,
+		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
 		VersionedCommit, VersionedGet, VersionedStorage,
 	},
 	row::EncodedRow,
@@ -80,7 +80,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 		};
 
 		let change_str = match &event.change {
-			Change::Insert {
+			CdcChange::Insert {
 				key,
 				after,
 			} => {
@@ -90,7 +90,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					format_value(after)
 				)
 			}
-			Change::Update {
+			CdcChange::Update {
 				key,
 				before,
 				after,
@@ -102,7 +102,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					format_value(after)
 				)
 			}
-			Change::Delete {
+			CdcChange::Delete {
 				key,
 				before,
 			} => {

@@ -1,7 +1,7 @@
 use crate::{
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, GetHooks,
-		Params, Identity, Transaction,
+		Identity, Params, Transaction,
 	},
 	result::frame::Frame,
 };

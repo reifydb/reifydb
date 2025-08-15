@@ -2,19 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	OwnedSpan,
 	interface::{
 		ActiveCommandTransaction, EncodableKey, SchemaKey, Transaction,
 		VersionedCommandTransaction,
 	},
 	result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
-	OwnedSpan,
 };
 
 use crate::{
-	schema::{layout::schema, SchemaDef},
-	sequence::SystemSequence,
 	Catalog,
+	schema::{SchemaDef, layout::schema},
+	sequence::SystemSequence,
 };
 
 #[derive(Debug, Clone)]
@@ -61,9 +61,10 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::interface::SchemaId;
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{schema::create::SchemaToCreate, Catalog};
+	use crate::{Catalog, schema::create::SchemaToCreate};
 
 	#[test]
 	fn test_create_schema() {
@@ -78,7 +79,7 @@ mod tests {
 		let result =
 			Catalog::create_schema(&mut txn, to_create.clone())
 				.unwrap();
-		assert_eq!(result.id, 1);
+		assert_eq!(result.id, SchemaId(1025));
 		assert_eq!(result.name, "test_schema");
 
 		// Creating the same schema again with `if_not_exists = false`

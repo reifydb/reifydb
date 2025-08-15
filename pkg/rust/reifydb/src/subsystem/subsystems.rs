@@ -46,11 +46,11 @@ impl Subsystems {
 
 		// Get the TypeId of the concrete type
 		let type_id = (*subsystem).as_any().type_id();
-		
+
 		// Store the index for fast lookup
 		let index = self.subsystems.len();
 		self.index.insert(type_id, index);
-		
+
 		// Add to the ordered list
 		self.subsystems.push(subsystem);
 	}
@@ -87,10 +87,7 @@ impl Subsystems {
 			}
 
 			let name = subsystem.name().to_string();
-			println!(
-				"[Subsystem] Starting subsystem: {}",
-				name
-			);
+			println!("[Subsystem] Starting subsystem: {}", name);
 
 			match subsystem.start() {
 				Ok(()) => {
@@ -168,10 +165,7 @@ impl Subsystems {
 			}
 
 			let name = subsystem.name().to_string();
-			println!(
-				"[Subsystem] Stopping subsystem: {}",
-				name
-			);
+			println!("[Subsystem] Stopping subsystem: {}", name);
 
 			match subsystem.stop() {
 				Ok(()) => {

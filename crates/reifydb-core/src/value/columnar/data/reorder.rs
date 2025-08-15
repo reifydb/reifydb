@@ -157,11 +157,11 @@ mod tests {
 	#[test]
 	fn test_reorder_identity_id() {
 		use crate::value::identity::IdentityId;
-		
+
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
 		let id3 = IdentityId::generate();
-		
+
 		let mut col = ColumnData::identity_id([id1, id2, id3]);
 		col.reorder(&[2, 0, 1]);
 

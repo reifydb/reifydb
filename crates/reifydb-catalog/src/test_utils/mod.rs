@@ -1,20 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-    column::{ColumnIndex, ColumnToCreate},
-    schema::{SchemaDef, SchemaToCreate},
-    table,
-    table::TableToCreate,
-    Catalog,
-};
-use reifydb_core::interface::SchemaId;
 use reifydb_core::{
-    interface::{
-        ActiveCommandTransaction, ColumnPolicyKind, TableDef, TableId,
-        Transaction,
-    },
-    Type,
+	Type,
+	interface::{
+		ActiveCommandTransaction, ColumnPolicyKind, TableDef, TableId,
+		Transaction, ViewDef,
+	},
+};
+
+use crate::{
+	Catalog,
+	schema::{SchemaDef, SchemaToCreate},
+	table,
+	table::TableToCreate,
+	table_column::{ColumnIndex, TableColumnToCreate},
+	view,
+	view::ViewToCreate,
 };
 
 pub fn create_schema<T: Transaction>(
@@ -45,9 +47,9 @@ pub fn ensure_test_schema<T: Transaction>(
 pub fn ensure_test_table<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
 ) -> TableDef {
-	ensure_test_schema(txn);
+	let schema = ensure_test_schema(txn);
 	if let Some(result) =
-		Catalog::get_table_by_name(txn, SchemaId(1), "test_table")
+		Catalog::get_table_by_name(txn, schema.id, "test_table")
 			.unwrap()
 	{
 		return result;
@@ -59,7 +61,7 @@ pub fn create_table<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
 	schema: &str,
 	table: &str,
-	columns: &[table::ColumnToCreate],
+	columns: &[table::TableColumnToCreate],
 ) -> TableDef {
 	Catalog::create_table(
 		txn,
@@ -81,15 +83,15 @@ pub fn create_test_table_column<T: Transaction>(
 ) {
 	ensure_test_table(txn);
 
-	let columns = Catalog::list_columns(txn, TableId(1)).unwrap();
+	let columns = Catalog::list_table_columns(txn, TableId(1)).unwrap();
 
-	Catalog::create_column(
+	Catalog::create_table_column(
 		txn,
 		TableId(1),
-		ColumnToCreate {
+		TableColumnToCreate {
 			span: None,
 			schema_name: "test_schema",
-			table: TableId(1),
+			table: TableId(1025),
 			table_name: "test_table",
 			column: name.to_string(),
 			value,
@@ -100,4 +102,22 @@ pub fn create_test_table_column<T: Transaction>(
 		},
 	)
 	.unwrap();
+}
+
+pub fn create_view<T: Transaction>(
+	txn: &mut ActiveCommandTransaction<T>,
+	schema: &str,
+	view: &str,
+	columns: &[view::ViewColumnToCreate],
+) -> ViewDef {
+	Catalog::create_view(
+		txn,
+		ViewToCreate {
+			span: None,
+			schema: schema.to_string(),
+			view: view.to_string(),
+			columns: columns.to_vec(),
+		},
+	)
+	.unwrap()
 }

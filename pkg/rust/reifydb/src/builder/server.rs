@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{hook::Hooks, interface::Transaction};
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::WsConfig;
 
 use super::DatabaseBuilder;
@@ -17,7 +17,7 @@ use crate::{Database, hook::WithHooks};
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub struct ServerBuilder<T: Transaction> {
 	inner: DatabaseBuilder<T>,
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 	runtime_provider: RuntimeProvider,
 }
 
@@ -29,9 +29,13 @@ impl<T: Transaction> ServerBuilder<T> {
 		cdc: T::Cdc,
 		hooks: Hooks,
 	) -> Self {
-		let engine =
-			Engine::new(versioned, unversioned, cdc, hooks.clone())
-				.unwrap();
+		let engine = StandardEngine::new(
+			versioned,
+			unversioned,
+			cdc,
+			hooks.clone(),
+		)
+		.unwrap();
 		let inner = DatabaseBuilder::new(engine.clone());
 		let runtime_provider = RuntimeProvider::Tokio(
 			TokioRuntimeProvider::new().expect(
@@ -77,7 +81,7 @@ impl<T: Transaction> ServerBuilder<T> {
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 impl<T: Transaction> WithHooks<T> for ServerBuilder<T> {
-	fn engine(&self) -> &Engine<T> {
+	fn engine(&self) -> &StandardEngine<T> {
 		&self.engine
 	}
 }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::table::ColumnToCreate;
+use reifydb_catalog::table::TableColumnToCreate;
 use reifydb_core::{OwnedSpan, interface::ColumnPolicyKind};
 
 use crate::{
@@ -16,7 +16,7 @@ impl Compiler {
 	pub(crate) fn compile_create_table(
 		ast: AstCreateTable,
 	) -> crate::Result<LogicalPlan> {
-		let mut columns: Vec<ColumnToCreate> = vec![];
+		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.value().to_string();
@@ -38,7 +38,7 @@ impl Compiler {
 				col.ty.span(),
 			]));
 
-			columns.push(ColumnToCreate {
+			columns.push(TableColumnToCreate {
 				name: column_name,
 				ty,
 				policies,

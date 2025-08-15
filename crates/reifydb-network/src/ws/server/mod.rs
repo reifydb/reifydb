@@ -15,11 +15,11 @@ use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
 	Error, Value,
 	interface::{
-		Engine as EngineInterface, Params as CoreParams, Identity,
+		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
 	},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use tokio::{
 	net::{TcpListener, TcpStream},
 	sync::{Notify, OnceCell},
@@ -69,7 +69,7 @@ pub struct WsServer<T: Transaction>(Arc<Inner<T>>);
 
 pub struct Inner<T: Transaction> {
 	config: WsConfig,
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 	shutdown: Arc<Notify>,
 	shutdown_complete: AtomicBool,
 	socket_addr: OnceCell<SocketAddr>,
@@ -85,7 +85,7 @@ impl<T: Transaction> Deref for WsServer<T> {
 }
 
 impl<T: Transaction> WsServer<T> {
-	pub fn new(config: WsConfig, engine: Engine<T>) -> Self {
+	pub fn new(config: WsConfig, engine: StandardEngine<T>) -> Self {
 		Self(Arc::new(Inner {
 			config,
 			engine,
@@ -206,7 +206,7 @@ impl<T: Transaction> WsServer<T> {
 	}
 
 	async fn handle(
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		stream: TcpStream,
 		shutdown: Arc<Notify>,
 	) {

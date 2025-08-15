@@ -7,7 +7,7 @@ use reifydb_core::{JoinType, Value, interface::VersionedQueryTransaction};
 
 use crate::{
 	columnar::{
-		Column, ColumnQualified, Columns, TableQualified,
+		Column, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
@@ -204,15 +204,15 @@ impl ExecutionPlan for NaturalJoinNode {
 		for (i, col_meta) in column_metadata.iter().enumerate() {
 			let old_column = &columns[i];
 			columns[i] = match col_meta.table() {
-				Some(table) => {
-					Column::TableQualified(TableQualified {
-						table: table.to_string(),
+				Some(source) => Column::SourceQualified(
+					SourceQualified {
+						source: source.to_string(),
 						name: col_meta
 							.name()
 							.to_string(),
 						data: old_column.data().clone(),
-					})
-				}
+					},
+				),
 				None => Column::ColumnQualified(
 					ColumnQualified {
 						name: col_meta

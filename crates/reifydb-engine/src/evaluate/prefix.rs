@@ -5,7 +5,7 @@ use reifydb_core::{err, result::error::diagnostic::operator};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 
 use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, TableQualified},
+	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
 	evaluate::{EvaluationContext, Evaluator, evaluate},
 };
 
@@ -30,8 +30,8 @@ impl Evaluator {
                         }
                     }
                     Ok(match column.table() {
-                        Some(table) => Column::TableQualified(TableQualified {
-                            table: table.to_string(),
+                        Some(table) => Column::SourceQualified(SourceQualified {
+                            source: table.to_string(),
                             name: column.name().to_string(),
                             data: ColumnData::bool_with_bitvec(result, container.bitvec()),
                         }),
@@ -64,8 +64,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::float4_with_bitvec(result, container.bitvec()),
                     }),
@@ -94,8 +94,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::float8_with_bitvec(result, container.bitvec()),
                     }),
@@ -124,8 +124,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
@@ -154,8 +154,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
@@ -184,8 +184,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
@@ -214,8 +214,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
@@ -244,8 +244,8 @@ impl Evaluator {
                     }
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),
@@ -278,8 +278,8 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int1_with_bitvec(result, container.bitvec()),
                     }),
@@ -303,8 +303,8 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int2_with_bitvec(result, container.bitvec()),
                     }),
@@ -328,8 +328,8 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int4_with_bitvec(result, container.bitvec()),
                     }),
@@ -353,8 +353,8 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int8_with_bitvec(result, container.bitvec()),
                     }),
@@ -377,8 +377,8 @@ impl Evaluator {
                     });
                 }
                 Ok(match column.table() {
-                    Some(table) => Column::TableQualified(TableQualified {
-                        table: table.to_string(),
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
                         name: column.name().to_string(),
                         data: ColumnData::int16_with_bitvec(result, container.bitvec()),
                     }),

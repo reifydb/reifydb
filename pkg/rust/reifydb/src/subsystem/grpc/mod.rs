@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_core::{Result, interface::Transaction};
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use tokio::{sync::oneshot, task::JoinHandle};
 
@@ -34,7 +34,7 @@ pub struct GrpcSubsystem<T: Transaction> {
 impl<T: Transaction> GrpcSubsystem<T> {
 	pub fn new(
 		config: GrpcConfig,
-		engine: Engine<T>,
+		engine: StandardEngine<T>,
 		runtime_provider: &RuntimeProvider,
 	) -> Self {
 		let grpc_server = GrpcServer::new(config, engine);

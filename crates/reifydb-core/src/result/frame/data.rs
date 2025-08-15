@@ -7,9 +7,9 @@ use crate::{
 	Date, DateTime, Interval, Time, Type, Value,
 	value::{
 		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-			RowIdContainer, StringContainer, TemporalContainer,
-			UndefinedContainer, UuidContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer,
+			NumberContainer, RowIdContainer, StringContainer,
+			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 		uuid::{Uuid4, Uuid7},
 	},
@@ -217,7 +217,9 @@ impl FrameColumnData {
 			FrameColumnData::Time(container) => container.len(),
 			FrameColumnData::Interval(container) => container.len(),
 			FrameColumnData::RowId(container) => container.len(),
-			FrameColumnData::IdentityId(container) => container.len(),
+			FrameColumnData::IdentityId(container) => {
+				container.len()
+			}
 			FrameColumnData::Uuid4(container) => container.len(),
 			FrameColumnData::Uuid7(container) => container.len(),
 			FrameColumnData::Blob(container) => container.len(),

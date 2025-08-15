@@ -4,7 +4,7 @@
 use reifydb_rql::expression::AliasExpression;
 
 use crate::{
-	columnar::{Column, ColumnQualified, TableQualified},
+	columnar::{Column, ColumnQualified, SourceQualified},
 	evaluate::{EvaluationContext, Evaluator},
 };
 
@@ -26,11 +26,13 @@ impl Evaluator {
 			}));
 
 		Ok(match columns {
-			Some(table) => Column::TableQualified(TableQualified {
-				table,
-				name: alias_name.clone(),
-				data: evaluated.data().clone(),
-			}),
+			Some(source) => {
+				Column::SourceQualified(SourceQualified {
+					source,
+					name: alias_name.clone(),
+					data: evaluated.data().clone(),
+				})
+			}
 			None => Column::ColumnQualified(ColumnQualified {
 				name: alias_name.clone(),
 				data: evaluated.data().clone(),

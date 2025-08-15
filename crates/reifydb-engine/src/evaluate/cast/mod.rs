@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_rql::expression::{CastExpression, Expression};
 
 use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, TableQualified},
+	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
 	evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote},
 };
 
@@ -56,16 +56,20 @@ impl Evaluator {
 				})?;
 
 				Ok(match column.table() {
-					Some(table) => Column::TableQualified(
-						TableQualified {
-							table: table
-								.to_string(),
-							name: column
-								.name()
-								.to_string(),
-							data: casted,
-						},
-					),
+					Some(source) => {
+						Column::SourceQualified(
+							SourceQualified {
+								source: source
+									.to_string(
+									),
+								name: column
+									.name()
+									.to_string(
+									),
+								data: casted,
+							},
+						)
+					}
 					None => Column::ColumnQualified(
 						ColumnQualified {
 							name: column

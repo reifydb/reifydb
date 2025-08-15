@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use catalog::schema_not_found;
-use reifydb_catalog::{Catalog, sequence::ColumnSequence};
+use reifydb_catalog::{Catalog, sequence::TableColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor, Value,
 	diagnostic::{
@@ -21,7 +21,7 @@ use crate::{
 };
 
 impl<T: Transaction> Executor<T> {
-	pub(crate) fn alter_sequence(
+	pub(crate) fn alter_table_sequence(
 		&self,
 		txn: &mut ActiveCommandTransaction<T>,
 		plan: AlterSequencePlan,
@@ -53,7 +53,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		};
 
-		let Some(column) = Catalog::get_column_by_name(
+		let Some(column) = Catalog::get_table_column_by_name(
 			txn,
 			table.id,
 			plan.column.as_ref(),
@@ -93,7 +93,7 @@ impl<T: Transaction> Executor<T> {
 		debug_assert_eq!(data.len(), 1);
 
 		let value = data.get_value(0);
-		ColumnSequence::set_value(
+		TableColumnSequence::set_value(
 			txn,
 			table.id,
 			column.id,
@@ -115,7 +115,7 @@ mod tests {
 	use Expression::Constant;
 	use reifydb_catalog::{
 		Catalog,
-		table::{ColumnToCreate, TableToCreate},
+		table::{TableColumnToCreate, TableToCreate},
 		test_utils::ensure_test_schema,
 	};
 	use reifydb_core::{OwnedSpan, Type, Value, interface::Params};
@@ -140,14 +140,14 @@ mod tests {
 				schema: "test_schema".to_string(),
 				table: "users".to_string(),
 				columns: vec![
-					ColumnToCreate {
+					TableColumnToCreate {
 						span: None,
 						name: "id".to_string(),
 						ty: Type::Int4,
 						policies: vec![],
 						auto_increment: true,
 					},
-					ColumnToCreate {
+					TableColumnToCreate {
 						span: None,
 						name: "name".to_string(),
 						ty: Type::Utf8,
@@ -198,7 +198,7 @@ mod tests {
 				span: None,
 				schema: "test_schema".to_string(),
 				table: "items".to_string(),
-				columns: vec![ColumnToCreate {
+				columns: vec![TableColumnToCreate {
 					span: None,
 					name: "id".to_string(),
 					ty: Type::Int4,
@@ -292,7 +292,7 @@ mod tests {
 				span: None,
 				schema: "test_schema".to_string(),
 				table: "posts".to_string(),
-				columns: vec![ColumnToCreate {
+				columns: vec![TableColumnToCreate {
 					span: None,
 					name: "id".to_string(),
 					ty: Type::Int4,

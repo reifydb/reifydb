@@ -110,9 +110,10 @@ impl Evaluator {
 			Value::RowId(id) => {
 				ColumnData::row_id(vec![*id; ctx.row_count])
 			}
-			Value::IdentityId(id) => {
-				ColumnData::identity_id(vec![*id; ctx.row_count])
-			}
+			Value::IdentityId(id) => ColumnData::identity_id(vec![
+					*id;
+					ctx.row_count
+				]),
 			Value::Undefined => {
 				ColumnData::undefined(ctx.row_count)
 			}

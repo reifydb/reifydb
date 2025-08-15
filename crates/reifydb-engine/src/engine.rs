@@ -3,40 +3,31 @@
 
 use std::{marker::PhantomData, ops::Deref, sync::Arc};
 
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, Columns},
-	execute::Executor,
-	flow::{
-		change::{Change, Diff},
-		flow::Flow,
-		node::NodeType,
-		processor::FlowProcessor,
-	},
-	function::{math, Functions},
-};
-use reifydb_core::hook::Hook;
 use reifydb_core::{
-	hook::{transaction::PostCommitHook, BoxedHookIter, Callback, Hooks}, interface::{
+	Frame,
+	hook::{Hook, Hooks},
+	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, Command,
 		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		GetHooks, Identity, Key, Params, Query, TableId, Transaction,
+		GetHooks, Identity, Params, Query, Transaction,
 		VersionedTransaction,
 	},
-	return_hooks,
-	row::EncodedRowLayout,
-	Frame,
-	Type,
 };
 
-pub struct Engine<T: Transaction>(Arc<EngineInner<T>>);
+use crate::{
+	execute::Executor,
+	function::{Functions, math},
+};
 
-impl<T: Transaction> GetHooks for Engine<T> {
+pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
+
+impl<T: Transaction> GetHooks for StandardEngine<T> {
 	fn get_hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }
 
-impl<T: Transaction> EngineInterface<T> for Engine<T> {
+impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>> {
 		Ok(ActiveCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -91,7 +82,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<T> for Engine<T> {
+impl<T: Transaction> ExecuteCommand<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_command<'a>(
 		&'a self,
@@ -102,7 +93,7 @@ impl<T: Transaction> ExecuteCommand<T> for Engine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<T> for Engine<T> {
+impl<T: Transaction> ExecuteQuery<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_query<'a>(
 		&'a self,
@@ -113,13 +104,13 @@ impl<T: Transaction> ExecuteQuery<T> for Engine<T> {
 	}
 }
 
-impl<T: Transaction> Clone for Engine<T> {
+impl<T: Transaction> Clone for StandardEngine<T> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-impl<T: Transaction> Deref for Engine<T> {
+impl<T: Transaction> Deref for StandardEngine<T> {
 	type Target = EngineInner<T>;
 
 	fn deref(&self) -> &Self::Target {
@@ -133,11 +124,9 @@ pub struct EngineInner<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	executor: Executor<T>,
-
-	_processor: FlowProcessor<T>, // FIXME remove me
 }
 
-impl<T: Transaction> Engine<T> {
+impl<T: Transaction> StandardEngine<T> {
 	pub fn new(
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
@@ -178,12 +167,6 @@ impl<T: Transaction> Engine<T> {
 					.build(),
 				_phantom: PhantomData,
 			},
-			_processor: FlowProcessor::new(
-				Flow::default(),
-				versioned,
-				unversioned,
-				cdc,
-			),
 		}));
 
 		Ok(result)
@@ -210,109 +193,17 @@ impl<T: Transaction> Engine<T> {
 	}
 
 	#[inline]
+	pub fn cdc(&self) -> &T::Cdc {
+		&self.cdc
+	}
+
+	#[inline]
+	pub fn cdc_owned(&self) -> T::Cdc {
+		self.cdc.clone()
+	}
+
+	#[inline]
 	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
 		self.hooks.trigger(hook)
-	}
-}
-
-#[allow(dead_code)]
-struct FlowPostCommit<T: Transaction> {
-	engine: Engine<T>,
-}
-
-impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
-	fn on(&self, hook: &PostCommitHook) -> crate::Result<BoxedHookIter> {
-		println!("Transaction version: {}", hook.version);
-
-		for delta in hook.deltas.iter() {
-			match Key::decode(delta.key()).unwrap() {
-				Key::TableRow(key) => {
-					if key.table == TableId(3) {
-						continue;
-					}
-
-					// dbg!(key.table);
-					let layout = EncodedRowLayout::new(&[
-						Type::Utf8,
-						Type::Int1,
-					]);
-					let row = delta.row().unwrap();
-
-					let name = layout.get_utf8(&row, 0);
-					let age = layout.get_i8(&row, 1);
-
-					println!("{name}: {age}");
-
-					let columns = Columns::new(vec![
-                        Column::ColumnQualified(ColumnQualified {
-                            name: "name".to_string(),
-                            data: ColumnData::utf8([name.to_string()]),
-                        }),
-                        Column::ColumnQualified(ColumnQualified {
-                            name: "age".to_string(),
-                            data: ColumnData::int1([age]),
-                        }),
-                    ]);
-
-					let mut txn = self
-						.engine
-						.begin_command()
-						.unwrap();
-
-					let frame = self
-						.engine
-						.query_as(
-							&Identity::root(),
-							"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
-							Params::None,
-						)
-						.unwrap()
-						.pop()
-						.unwrap();
-
-					let value = frame[0].get_value(0);
-					// dbg!(&value.to_string());
-
-					let flow: Flow = serde_json::from_str(
-						value.to_string().as_str(),
-					)
-					.unwrap();
-					// dbg!(&flow);
-
-					// Find the source node (users table)
-					let source_node_id =
-						flow.get_all_nodes()
-							.find(|node_id| {
-								if let Some(node) = flow.get_node(node_id) {
-                                matches!(node.ty, NodeType::Source { .. })
-                            } else {
-                                false
-                            }
-							})
-							.expect(
-								"Should have a source node",
-							);
-
-					self.engine
-                        ._processor
-                        .hack(
-                            &flow,
-                            &mut txn,
-                            &source_node_id,
-                            Change {
-                                diffs: vec![Diff::Insert { columns }],
-                                metadata: Default::default(),
-                            },
-                        )
-                        .unwrap();
-
-					txn.commit().unwrap();
-
-					// dbg!(&columns);
-				}
-				_ => {}
-			};
-		}
-		return_hooks!()
 	}
 }

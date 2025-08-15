@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::{Error, interface::Transaction};
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use tokio::{net::TcpListener, sync::OnceCell};
 use tonic::service::InterceptorLayer;
 
@@ -42,7 +42,7 @@ pub struct GrpcServer<T: Transaction>(Arc<Inner<T>>);
 
 pub struct Inner<T: Transaction> {
 	config: GrpcConfig,
-	engine: Engine<T>,
+	engine: StandardEngine<T>,
 	socket_addr: OnceCell<SocketAddr>,
 	_phantom: std::marker::PhantomData<T>,
 }
@@ -56,7 +56,7 @@ impl<T: Transaction> Deref for GrpcServer<T> {
 }
 
 impl<T: Transaction> GrpcServer<T> {
-	pub fn new(config: GrpcConfig, engine: Engine<T>) -> Self {
+	pub fn new(config: GrpcConfig, engine: StandardEngine<T>) -> Self {
 		Self(Arc::new(Inner {
 			config,
 			engine,
@@ -93,7 +93,9 @@ impl<T: Transaction> GrpcServer<T> {
 }
 
 // FIXME return result
-pub fn db_service<T: Transaction>(engine: Engine<T>) -> DbServer<DbService<T>> {
+pub fn db_service<T: Transaction>(
+	engine: StandardEngine<T>,
+) -> DbServer<DbService<T>> {
 	DbServer::new(DbService::new(engine))
 }
 

@@ -15,7 +15,9 @@ use reifydb_core::{
 	},
 };
 #[cfg(test)]
-use reifydb_core::{Date, DateTime, Interval, Time, Uuid4, Uuid7, value::IdentityId};
+use reifydb_core::{
+	Date, DateTime, Interval, Time, Uuid4, Uuid7, value::IdentityId,
+};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
@@ -94,80 +96,83 @@ fn parse_typed_value(
 	// If parsing fails, return Value::Undefined
 	let span = BorrowedSpan::new(str_val);
 
-	let parsed_value = match value_type {
-		Type::Bool => parse_bool(span)
-			.map(Value::Bool)
-			.unwrap_or(Value::Undefined),
-		Type::Float4 => parse_float::<f32>(span)
-			.ok()
-			.and_then(|f| OrderedF32::try_from(f).ok())
-			.map(Value::Float4)
-			.unwrap_or(Value::Undefined),
-		Type::Float8 => parse_float::<f64>(span)
-			.ok()
-			.and_then(|f| OrderedF64::try_from(f).ok())
-			.map(Value::Float8)
-			.unwrap_or(Value::Undefined),
-		Type::Int1 => parse_int::<i8>(span)
-			.map(Value::Int1)
-			.unwrap_or(Value::Undefined),
-		Type::Int2 => parse_int::<i16>(span)
-			.map(Value::Int2)
-			.unwrap_or(Value::Undefined),
-		Type::Int4 => parse_int::<i32>(span)
-			.map(Value::Int4)
-			.unwrap_or(Value::Undefined),
-		Type::Int8 => parse_int::<i64>(span)
-			.map(Value::Int8)
-			.unwrap_or(Value::Undefined),
-		Type::Int16 => parse_int::<i128>(span)
-			.map(Value::Int16)
-			.unwrap_or(Value::Undefined),
-		Type::Utf8 => Value::Utf8(str_val.to_string()),
-		Type::Uint1 => parse_uint::<u8>(span)
-			.map(Value::Uint1)
-			.unwrap_or(Value::Undefined),
-		Type::Uint2 => parse_uint::<u16>(span)
-			.map(Value::Uint2)
-			.unwrap_or(Value::Undefined),
-		Type::Uint4 => parse_uint::<u32>(span)
-			.map(Value::Uint4)
-			.unwrap_or(Value::Undefined),
-		Type::Uint8 => parse_uint::<u64>(span)
-			.map(Value::Uint8)
-			.unwrap_or(Value::Undefined),
-		Type::Uint16 => parse_uint::<u128>(span)
-			.map(Value::Uint16)
-			.unwrap_or(Value::Undefined),
-		Type::Date => parse_date(span)
-			.map(Value::Date)
-			.unwrap_or(Value::Undefined),
-		Type::DateTime => parse_datetime(span)
-			.map(Value::DateTime)
-			.unwrap_or(Value::Undefined),
-		Type::Time => parse_time(span)
-			.map(Value::Time)
-			.unwrap_or(Value::Undefined),
-		Type::Interval => parse_interval(span)
-			.map(Value::Interval)
-			.unwrap_or(Value::Undefined),
-		Type::RowId => parse_uint::<u64>(span)
-			.map(|id| Value::RowId(RowId::from(id)))
-			.unwrap_or(Value::Undefined),
-		Type::Uuid4 => parse_uuid4(span)
-			.map(Value::Uuid4)
-			.unwrap_or(Value::Undefined),
-		Type::Uuid7 => parse_uuid7(span)
-			.map(Value::Uuid7)
-			.unwrap_or(Value::Undefined),
-		Type::IdentityId => parse_uuid7(span)
-			.map(|uuid7| Value::IdentityId(reifydb_core::value::IdentityId::from(uuid7)))
-			.unwrap_or(Value::Undefined),
-		Type::Blob => Blob::from_hex(span)
-			.map(Value::Blob)
-			.unwrap_or(Value::Undefined),
-		Type::Undefined => Value::Undefined,
-	};
+	let parsed_value =
+		match value_type {
+			Type::Bool => parse_bool(span)
+				.map(Value::Bool)
+				.unwrap_or(Value::Undefined),
+			Type::Float4 => parse_float::<f32>(span)
+				.ok()
+				.and_then(|f| OrderedF32::try_from(f).ok())
+				.map(Value::Float4)
+				.unwrap_or(Value::Undefined),
+			Type::Float8 => parse_float::<f64>(span)
+				.ok()
+				.and_then(|f| OrderedF64::try_from(f).ok())
+				.map(Value::Float8)
+				.unwrap_or(Value::Undefined),
+			Type::Int1 => parse_int::<i8>(span)
+				.map(Value::Int1)
+				.unwrap_or(Value::Undefined),
+			Type::Int2 => parse_int::<i16>(span)
+				.map(Value::Int2)
+				.unwrap_or(Value::Undefined),
+			Type::Int4 => parse_int::<i32>(span)
+				.map(Value::Int4)
+				.unwrap_or(Value::Undefined),
+			Type::Int8 => parse_int::<i64>(span)
+				.map(Value::Int8)
+				.unwrap_or(Value::Undefined),
+			Type::Int16 => parse_int::<i128>(span)
+				.map(Value::Int16)
+				.unwrap_or(Value::Undefined),
+			Type::Utf8 => Value::Utf8(str_val.to_string()),
+			Type::Uint1 => parse_uint::<u8>(span)
+				.map(Value::Uint1)
+				.unwrap_or(Value::Undefined),
+			Type::Uint2 => parse_uint::<u16>(span)
+				.map(Value::Uint2)
+				.unwrap_or(Value::Undefined),
+			Type::Uint4 => parse_uint::<u32>(span)
+				.map(Value::Uint4)
+				.unwrap_or(Value::Undefined),
+			Type::Uint8 => parse_uint::<u64>(span)
+				.map(Value::Uint8)
+				.unwrap_or(Value::Undefined),
+			Type::Uint16 => parse_uint::<u128>(span)
+				.map(Value::Uint16)
+				.unwrap_or(Value::Undefined),
+			Type::Date => parse_date(span)
+				.map(Value::Date)
+				.unwrap_or(Value::Undefined),
+			Type::DateTime => parse_datetime(span)
+				.map(Value::DateTime)
+				.unwrap_or(Value::Undefined),
+			Type::Time => parse_time(span)
+				.map(Value::Time)
+				.unwrap_or(Value::Undefined),
+			Type::Interval => parse_interval(span)
+				.map(Value::Interval)
+				.unwrap_or(Value::Undefined),
+			Type::RowId => parse_uint::<u64>(span)
+				.map(|id| Value::RowId(RowId::from(id)))
+				.unwrap_or(Value::Undefined),
+			Type::Uuid4 => parse_uuid4(span)
+				.map(Value::Uuid4)
+				.unwrap_or(Value::Undefined),
+			Type::Uuid7 => parse_uuid7(span)
+				.map(Value::Uuid7)
+				.unwrap_or(Value::Undefined),
+			Type::IdentityId => parse_uuid7(span)
+				.map(|uuid7| {
+					Value::IdentityId(reifydb_core::value::IdentityId::from(uuid7))
+				})
+				.unwrap_or(Value::Undefined),
+			Type::Blob => Blob::from_hex(span)
+				.map(Value::Blob)
+				.unwrap_or(Value::Undefined),
+			Type::Undefined => Value::Undefined,
+		};
 
 	Ok(parsed_value)
 }

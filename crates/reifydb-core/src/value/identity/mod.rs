@@ -3,7 +3,7 @@
 
 use std::{fmt, ops::Deref};
 
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use crate::value::uuid::Uuid7;
 

@@ -5,4 +5,4 @@ mod create;
 mod get;
 mod layout;
 
-pub use create::{ColumnToCreate, TableToCreate};
+pub use create::{TableColumnToCreate, TableToCreate};

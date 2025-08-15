@@ -55,6 +55,24 @@ pub fn table_already_exists(
     }
 }
 
+pub fn view_already_exists(
+	span: Option<impl IntoOwnedSpan>,
+	schema: &str,
+	view: &str,
+) -> Diagnostic {
+	Diagnostic {
+        code: "CA_003".to_string(),
+        statement: None,
+        message: format!("view `{}.{}` already exists", schema, view),
+        span: span.map(|s| s.into_span()),
+        label: Some("duplicate view definition".to_string()),
+        help: Some("choose a different name, drop the existing view or create view in a different schema".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}
+
 pub fn table_not_found(
 	span: impl IntoOwnedSpan,
 	schema: &str,
@@ -74,7 +92,7 @@ pub fn table_not_found(
     }
 }
 
-pub fn column_already_exists(
+pub fn table_column_already_exists(
 	span: Option<impl IntoOwnedSpan>,
 	schema: &str,
 	table: &str,
@@ -84,6 +102,44 @@ pub fn column_already_exists(
         code: "CA_005".to_string(),
         statement: None,
         message: format!("column `{}` already exists in table `{}`.`{}`", column, schema, table),
+        span: span.map(|s| s.into_span()),
+        label: Some("duplicate column definition".to_string()),
+        help: Some("choose a different column name or drop the existing one first".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}
+
+pub fn view_not_found(
+	span: impl IntoOwnedSpan,
+	schema: &str,
+	view: &str,
+) -> Diagnostic {
+	let owned_span = span.into_span();
+	Diagnostic {
+        code: "CA_004".to_string(),
+        statement: None,
+        message: format!("view `{}.{}` not found", schema, view),
+        span: Some(owned_span),
+        label: Some("unknown view reference".to_string()),
+        help: Some("ensure the view exists or create it first using `CREATE VIEW`".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None,
+    }
+}
+
+pub fn view_column_already_exists(
+	span: Option<impl IntoOwnedSpan>,
+	schema: &str,
+	view: &str,
+	column: &str,
+) -> Diagnostic {
+	Diagnostic {
+        code: "CA_005".to_string(),
+        statement: None,
+        message: format!("column `{}` already exists in view `{}`.`{}`", column, schema, view),
         span: span.map(|s| s.into_span()),
         label: Some("duplicate column definition".to_string()),
         help: Some("choose a different column name or drop the existing one first".to_string()),
@@ -117,7 +173,10 @@ pub fn auto_increment_invalid_type(
 	}
 }
 
-pub fn column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
+pub fn table_column_policy_already_exists(
+	policy: &str,
+	column: &str,
+) -> Diagnostic {
 	Diagnostic {
 		code: "CA_008".to_string(),
 		statement: None,

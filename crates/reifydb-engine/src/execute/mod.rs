@@ -7,10 +7,10 @@ use query::compile::compile;
 use reifydb_core::{
 	Frame,
 	interface::{
-        ActiveCommandTransaction, ActiveQueryTransaction, Command,
-        Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-        StandardCdcTransaction, StandardTransaction, TableDef,
-        Transaction, VersionedQueryTransaction,
+		ActiveCommandTransaction, ActiveQueryTransaction, Command,
+		Execute, ExecuteCommand, ExecuteQuery, Params, Query,
+		StandardCdcTransaction, StandardTransaction, TableDef,
+		Transaction, VersionedQueryTransaction,
 	},
 };
 use reifydb_rql::{
@@ -24,7 +24,7 @@ use reifydb_transaction::{
 
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, TableQualified,
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
 	function::{Functions, math},
@@ -186,7 +186,7 @@ impl<T: Transaction> Executor<T> {
 	) -> crate::Result<Columns> {
 		match plan {
 			PhysicalPlan::AlterSequence(plan) => {
-				self.alter_sequence(txn, plan)
+				self.alter_table_sequence(txn, plan)
 			}
 			PhysicalPlan::CreateComputedView(plan) => {
 				self.create_computed_view(txn, plan)
@@ -279,9 +279,9 @@ impl<T: Transaction> Executor<T> {
                         .unwrap_or(ColumnsLayout { columns: vec![] })
                         .columns
                         .into_iter()
-                        .map(|layout| match layout.table {
-                            Some(table) => Column::TableQualified(TableQualified {
-                                table,
+                        .map(|layout| match layout.source {
+                            Some(source) => Column::SourceQualified(SourceQualified {
+								source: source,
                                 name: layout.name,
                                 data: ColumnData::undefined(0),
                             }),

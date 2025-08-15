@@ -1,28 +1,28 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	column::ColumnIndex,
-	sequence::SystemSequence,
-	table::layout::{table, table_schema},
-	Catalog,
-};
-use reifydb_core::interface::SchemaId;
 use reifydb_core::{
+	OwnedSpan, Type,
 	interface::{
 		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey, Key,
-		SchemaTableKey, TableDef, TableId, TableKey, Transaction,
-		VersionedCommandTransaction,
-	}, result::error::diagnostic::catalog::{
+		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
+		Transaction, VersionedCommandTransaction,
+	},
+	result::error::diagnostic::catalog::{
 		schema_not_found, table_already_exists,
 	},
 	return_error,
-	OwnedSpan,
-	Type,
+};
+
+use crate::{
+	Catalog,
+	sequence::SystemSequence,
+	table::layout::{table, table_schema},
+	table_column::ColumnIndex,
 };
 
 #[derive(Debug, Clone)]
-pub struct ColumnToCreate {
+pub struct TableColumnToCreate {
 	pub name: String,
 	pub ty: Type,
 	pub policies: Vec<ColumnPolicyKind>,
@@ -35,7 +35,7 @@ pub struct TableToCreate {
 	pub span: Option<OwnedSpan>,
 	pub table: String,
 	pub schema: String,
-	pub columns: Vec<ColumnToCreate>,
+	pub columns: Vec<TableColumnToCreate>,
 }
 
 impl Catalog {
@@ -132,10 +132,10 @@ impl Catalog {
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
-			Catalog::create_column(
+			Catalog::create_table_column(
 				txn,
 				table,
-				crate::column::ColumnToCreate {
+				crate::table_column::TableColumnToCreate {
 					span: column_to_create.span.clone(),
 					schema_name: &to_create.schema,
 					table,
@@ -159,14 +159,14 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{
-		SchemaId, SchemaTableKey, VersionedQueryTransaction,
+		SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		table::{layout::table_schema, TableToCreate},
-		test_utils::ensure_test_schema,
 		Catalog,
+		table::{TableToCreate, layout::table_schema},
+		test_utils::ensure_test_schema,
 	};
 
 	#[test]
@@ -185,8 +185,8 @@ mod tests {
 		// First creation should succeed
 		let result = Catalog::create_table(&mut txn, to_create.clone())
 			.unwrap();
-		assert_eq!(result.id, 1);
-		assert_eq!(result.schema, 1);
+		assert_eq!(result.id, TableId(1025));
+		assert_eq!(result.schema, SchemaId(1025));
 		assert_eq!(result.name, "test_table");
 
 		// Creating the same table again with `if_not_exists = false`
@@ -199,7 +199,7 @@ mod tests {
 	#[test]
 	fn test_table_linked_to_schema() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
+		let schema = ensure_test_schema(&mut txn);
 
 		let to_create = TableToCreate {
 			schema: "test_schema".to_string(),
@@ -220,7 +220,7 @@ mod tests {
 		Catalog::create_table(&mut txn, to_create).unwrap();
 
 		let links = txn
-			.range(SchemaTableKey::full_scan(SchemaId(1)))
+			.range(SchemaTableKey::full_scan(schema.id))
 			.unwrap()
 			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
@@ -229,7 +229,7 @@ mod tests {
 		let row = &link.row;
 		assert_eq!(
 			table_schema::LAYOUT.get_u64(row, table_schema::ID),
-			1
+			1025
 		);
 		assert_eq!(
 			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),
@@ -240,7 +240,7 @@ mod tests {
 		let row = &link.row;
 		assert_eq!(
 			table_schema::LAYOUT.get_u64(row, table_schema::ID),
-			2
+			1026
 		);
 		assert_eq!(
 			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),

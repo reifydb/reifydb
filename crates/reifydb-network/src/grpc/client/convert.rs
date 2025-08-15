@@ -14,9 +14,9 @@ use reifydb_core::{
 	value::{
 		Blob, IdentityId, Value,
 		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-			RowIdContainer, StringContainer, TemporalContainer,
-			UndefinedContainer, UuidContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer,
+			NumberContainer, RowIdContainer, StringContainer,
+			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 		uuid::{Uuid4, Uuid7},
 	},
@@ -682,9 +682,9 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 						}
 					}
 				}
-				FrameColumnData::IdentityId(IdentityIdContainer::new(
-					data, bitvec,
-				))
+				FrameColumnData::IdentityId(
+					IdentityIdContainer::new(data, bitvec),
+				)
 			}
 
 			Type::Blob => {
@@ -840,7 +840,9 @@ fn core_value_to_grpc_value(value: &Value) -> grpc::Value {
 		Value::IdentityId(id) => {
 			let uuid7: Uuid7 = (*id).into();
 			let std_uuid: uuid::Uuid = uuid7.into();
-			Some(GrpcType::IdentityIdValue(std_uuid.as_bytes().to_vec()))
+			Some(GrpcType::IdentityIdValue(
+				std_uuid.as_bytes().to_vec(),
+			))
 		}
 		Value::Blob(b) => Some(GrpcType::BlobValue(b.to_vec())),
 	};

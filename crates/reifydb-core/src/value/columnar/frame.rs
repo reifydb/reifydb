@@ -90,13 +90,13 @@ impl From<Column> for FrameColumn {
 		match value {
 			Column::FullyQualified(col) => FrameColumn {
 				schema: Some(col.schema),
-				table: Some(col.table),
+				table: Some(col.source),
 				name: col.name,
 				data: col.data.into(),
 			},
-			Column::TableQualified(col) => FrameColumn {
+			Column::SourceQualified(col) => FrameColumn {
 				schema: None,
-				table: Some(col.table),
+				table: Some(col.source),
 				name: col.name,
 				data: col.data.into(),
 			},

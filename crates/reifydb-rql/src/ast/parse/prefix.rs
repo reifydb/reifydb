@@ -15,13 +15,13 @@ impl Parser {
 		let operator = self.parse_prefix_operator()?;
 
 		// NOT operator should have lower precedence than comparison
-		// operators to allow expressions like "not price == 150" to
+		// operator to allow expressions like "not price == 150" to
 		// parse as "not (price == 150)"
 		let precedence = match operator {
 			AstPrefixOperator::Not(_) => Precedence::Assignment, /* Much lower than comparisons */
 			_ => Precedence::Prefix,                             /* Keep existing high
 			                                                       * precedence for +/-
-			                                                       * operators */
+			                                                       * operator */
 		};
 
 		let expr = self.parse_node(precedence)?;

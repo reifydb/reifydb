@@ -4,8 +4,8 @@
 use crate::{
 	Frame,
 	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, Params,
-		Identity, Transaction,
+		ActiveCommandTransaction, ActiveQueryTransaction, Identity,
+		Params, Transaction,
 	},
 };
 

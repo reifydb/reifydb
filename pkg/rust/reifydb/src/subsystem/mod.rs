@@ -15,6 +15,7 @@ use crate::health::HealthStatus;
 
 pub mod cdc;
 #[cfg(feature = "sub_flow")]
+#[allow(dead_code, unused_imports, unused_variables)] // FIXME remove me
 pub mod flow;
 #[cfg(feature = "sub_grpc")]
 pub mod grpc;
@@ -22,7 +23,6 @@ mod subsystems;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
 
-pub use crate::boot::Bootloader;
 #[cfg(feature = "sub_flow")]
 pub use flow::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
@@ -30,6 +30,8 @@ pub use grpc::GrpcSubsystem;
 pub(crate) use subsystems::Subsystems;
 #[cfg(feature = "sub_ws")]
 pub use ws::WsSubsystem;
+
+pub use crate::boot::Bootloader;
 
 /// Uniform interface that all subsystems must implement
 ///

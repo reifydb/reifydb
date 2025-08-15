@@ -26,7 +26,7 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::{CowVec, MockClock},
 };
-use reifydb_engine::Engine;
+use reifydb_engine::StandardEngine;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
@@ -456,7 +456,7 @@ type TestTransaction = StandardTransaction<
 	StandardCdcTransaction<Memory>,
 >;
 
-fn create_test_engine() -> Engine<TestTransaction> {
+fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let clock = Arc::new(MockClock::new(1000));
 	let memory = Memory::with_clock(Box::new(clock.clone()));
 	let hooks = Hooks::new();
@@ -465,7 +465,7 @@ fn create_test_engine() -> Engine<TestTransaction> {
 	let versioned =
 		Serializable::new(memory, unversioned.clone(), hooks.clone());
 
-	Engine::new(versioned, unversioned, cdc, hooks)
+	StandardEngine::new(versioned, unversioned, cdc, hooks)
 		.expect("Failed to create engine")
 }
 
@@ -535,7 +535,7 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 }
 
 fn insert_test_events(
-	engine: &Engine<TestTransaction>,
+	engine: &StandardEngine<TestTransaction>,
 	count: usize,
 ) -> Result<()> {
 	for i in 0..count {

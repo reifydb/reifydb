@@ -75,9 +75,10 @@ impl ColumnData {
 			(ColumnData::RowId(l), ColumnData::RowId(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::IdentityId(l), ColumnData::IdentityId(r)) => {
-				l.extend(&r)?
-			}
+			(
+				ColumnData::IdentityId(l),
+				ColumnData::IdentityId(r),
+			) => l.extend(&r)?,
 			(ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => {
 				l.extend(&r)?
 			}
