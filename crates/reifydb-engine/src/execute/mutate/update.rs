@@ -267,6 +267,11 @@ impl<T: Transaction> Executor<T> {
 								table_idx, v,
 							),
 						Value::RowId(_v) => {}
+						Value::IdentityId(v) => layout
+							.set_identity_id(
+								&mut row,
+								table_idx, v,
+							),
 						Value::Uuid4(v) => layout
 							.set_uuid4(
 								&mut row,

@@ -10,6 +10,7 @@ use reifydb_core::{
 		Transaction,
 	},
 	result::{Frame, error::diagnostic::Diagnostic},
+	value::IdentityId,
 };
 use reifydb_engine::StandardEngine;
 use tokio::task::spawn_blocking;
@@ -80,6 +81,13 @@ fn grpc_value_to_core_value(grpc_val: grpc::Value) -> Option<Value> {
 			.ok()
 			.filter(|u| u.get_version_num() == 7)
 			.map(|u| Value::Uuid7(reifydb_core::Uuid7::from(u))),
+		GrpcType::IdentityIdValue(bytes) => uuid::Uuid::from_slice(&bytes)
+			.ok()
+			.filter(|u| u.get_version_num() == 7)
+			.map(|u| {
+				let uuid7 = reifydb_core::Uuid7::from(u);
+				Value::IdentityId(IdentityId::from(uuid7))
+			}),
 		GrpcType::BlobValue(bytes) => {
 			Some(Value::Blob(reifydb_core::Blob::new(bytes)))
 		}
@@ -319,6 +327,10 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                             Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
                             Value::Uuid4(uuid) => GrpcType::Uuid4Value(uuid.as_bytes().to_vec()),
                             Value::Uuid7(uuid) => GrpcType::Uuid7Value(uuid.as_bytes().to_vec()),
+                            Value::IdentityId(id) => {
+                                let uuid7: reifydb_core::Uuid7 = id.into();
+                                GrpcType::IdentityIdValue(uuid7.as_bytes().to_vec())
+                            },
                             Value::Blob(blob) => GrpcType::BlobValue(blob.as_bytes().to_vec()),
                         };
                         GrpcValue { r#type: Some(data_type) }

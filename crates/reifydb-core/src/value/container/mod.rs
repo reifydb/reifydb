@@ -3,6 +3,7 @@
 
 pub mod blob;
 pub mod bool;
+pub mod identity_id;
 pub mod number;
 pub mod row_id;
 pub mod string;
@@ -12,6 +13,7 @@ pub mod uuid;
 
 pub use blob::*;
 pub use bool::*;
+pub use identity_id::*;
 pub use number::*;
 pub use row_id::*;
 pub use string::*;

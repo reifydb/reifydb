@@ -91,6 +91,7 @@ message Value {
     bytes uuid4_value = 21;
     bytes uuid7_value = 22;
     bytes blob_value = 23;
+    bytes identity_id_value = 24;
   }
 }
 
@@ -177,4 +178,5 @@ enum Type {
   UUID4 = 0x14;
   UUID7 = 0x15;
   BLOB = 0x16;
+  IDENTITY_ID = 0x17;
 }

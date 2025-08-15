@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
 	Type,
 	row::{EncodedRow, EncodedRowLayout},
-	value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7},
+	value::{Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 };
 
 impl EncodedRowLayout {
@@ -288,6 +288,21 @@ impl EncodedRowLayout {
 			Uuid7::from(Uuid::from_bytes(bytes))
 		}
 	}
+
+	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
+		let field = &self.fields[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.value, Type::IdentityId);
+		unsafe {
+			// IdentityId wraps Uuid7 which is 16 bytes
+			let bytes: [u8; 16] = std::ptr::read_unaligned(
+				row.as_ptr().add(field.offset)
+					as *const [u8; 16],
+			);
+			let uuid7 = Uuid7::from(Uuid::from_bytes(bytes));
+			IdentityId::from(uuid7)
+		}
+	}
 }
 
 #[cfg(test)]
@@ -296,7 +311,7 @@ mod tests {
 	use crate::{
 		Type,
 		row::EncodedRowLayout,
-		value::{Date, DateTime, Interval, Time, Uuid4, Uuid7},
+		value::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 	};
 
 	#[test]
@@ -669,6 +684,16 @@ mod tests {
 		let uuid = Uuid7::generate();
 		layout.set_uuid7(&mut row, 0, uuid.clone());
 		assert_eq!(layout.get_uuid7(&row, 0), uuid);
+	}
+
+	#[test]
+	fn test_identity_id() {
+		let layout = EncodedRowLayout::new(&[Type::IdentityId]);
+		let mut row = layout.allocate_row();
+
+		let id = IdentityId::generate();
+		layout.set_identity_id(&mut row, 0, id.clone());
+		assert_eq!(layout.get_identity_id(&row, 0), id);
 	}
 
 	#[test]

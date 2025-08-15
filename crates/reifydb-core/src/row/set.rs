@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
 	Type,
 	row::{EncodedRow, EncodedRowLayout},
-	value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7},
+	value::{Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 };
 
 impl EncodedRowLayout {
@@ -472,6 +472,28 @@ impl EncodedRowLayout {
 		}
 	}
 
+	pub fn set_identity_id(
+		&self,
+		row: &mut EncodedRow,
+		index: usize,
+		value: IdentityId,
+	) {
+		let field = &self.fields[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.value, Type::IdentityId);
+		row.set_valid(index, true);
+		unsafe {
+			// Direct conversion from inner Uuid7 to Uuid
+			let uuid: Uuid = value.0.into();
+			let bytes = uuid.as_bytes();
+			ptr::copy_nonoverlapping(
+				bytes.as_ptr(),
+				row.make_mut().as_mut_ptr().add(field.offset),
+				16,
+			);
+		}
+	}
+
 	pub fn set_undefined(&self, row: &mut EncodedRow, index: usize) {
 		debug_assert!(row.len() >= self.total_static_size());
 		let field = &self.fields[index];
@@ -491,7 +513,7 @@ mod tests {
 	use crate::{
 		Type,
 		row::EncodedRowLayout,
-		value::{Blob, Date, DateTime, Interval, Time, Uuid4, Uuid7},
+		value::{Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 	};
 
 	#[test]
@@ -1153,6 +1175,18 @@ mod tests {
 
 		assert!(row.is_defined(0));
 		assert_eq!(layout.get_uuid7(&row, 0), uuid);
+	}
+
+	#[test]
+	fn test_identity_id_set_and_get() {
+		let layout = EncodedRowLayout::new(&[Type::IdentityId]);
+		let mut row = layout.allocate_row();
+
+		let id = IdentityId::generate();
+		layout.set_identity_id(&mut row, 0, id.clone());
+
+		assert!(row.is_defined(0));
+		assert_eq!(layout.get_identity_id(&row, 0), id);
 	}
 
 	#[test]

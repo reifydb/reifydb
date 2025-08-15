@@ -12,9 +12,9 @@ use reifydb_core::{
 		error::diagnostic::{Diagnostic, DiagnosticColumn},
 	},
 	value::{
-		Blob, Value,
+		Blob, IdentityId, Value,
 		container::{
-			BlobContainer, BoolContainer, NumberContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
 			RowIdContainer, StringContainer, TemporalContainer,
 			UndefinedContainer, UuidContainer,
 		},
@@ -647,6 +647,46 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 				))
 			}
 
+			Type::IdentityId => {
+				let mut data =
+					Vec::with_capacity(grpc_col.data.len());
+				let mut bitvec = BitVec::with_capacity(
+					grpc_col.data.len(),
+				);
+				for v in grpc_col.data {
+					match v.r#type {
+						Some(GrpcType::IdentityIdValue(
+							bytes,
+						)) => {
+							if let Ok(uuid_bytes) =
+								bytes.try_into()
+							{
+								let uuid7 = Uuid7::from(Uuid::from_bytes(uuid_bytes));
+								data.push(IdentityId::from(uuid7));
+								bitvec.push(
+									true,
+								);
+							} else {
+								data.push(IdentityId::default());
+								bitvec.push(
+									false,
+								);
+							}
+						}
+						_ => {
+							data.push(
+								IdentityId::default(
+								),
+							);
+							bitvec.push(false);
+						}
+					}
+				}
+				FrameColumnData::IdentityId(IdentityIdContainer::new(
+					data, bitvec,
+				))
+			}
+
 			Type::Blob => {
 				let mut data =
 					Vec::with_capacity(grpc_col.data.len());
@@ -796,6 +836,11 @@ fn core_value_to_grpc_value(value: &Value) -> grpc::Value {
 		Value::Uuid7(u) => {
 			let std_uuid: uuid::Uuid = (*u).into();
 			Some(GrpcType::Uuid7Value(std_uuid.as_bytes().to_vec()))
+		}
+		Value::IdentityId(id) => {
+			let uuid7: Uuid7 = (*id).into();
+			let std_uuid: uuid::Uuid = uuid7.into();
+			Some(GrpcType::IdentityIdValue(std_uuid.as_bytes().to_vec()))
 		}
 		Value::Blob(b) => Some(GrpcType::BlobValue(b.to_vec())),
 	};

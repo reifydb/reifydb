@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	RowId, Type, Value,
-	row::{EncodedRow, EncodedRowLayout},
-	value::{
-		OrderedF32, OrderedF64,
-		uuid::{Uuid4, Uuid7},
-	},
+    row::{EncodedRow, EncodedRowLayout}, value::{
+        uuid::{Uuid4, Uuid7}, IdentityId,
+        OrderedF32,
+        OrderedF64,
+    }, RowId,
+    Type,
+    Value,
 };
 
 impl EncodedRowLayout {
@@ -223,6 +224,9 @@ impl EncodedRowLayout {
 			Type::RowId => Value::RowId(RowId::new(
 				self.get_u64(row, index),
 			)),
+			Type::IdentityId => Value::IdentityId(IdentityId::from(
+				Uuid7::from(self.get_uuid7(row, index)),
+			)),
 			Type::Uuid4 => Value::Uuid4(Uuid4::from(
 				self.get_uuid4(row, index),
 			)),
@@ -238,17 +242,17 @@ impl EncodedRowLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use crate::{
-		Type, Value,
-		row::EncodedRowLayout,
-		value::{
-			Blob, Date, DateTime, Interval, OrderedF32, OrderedF64,
-			Time,
-			uuid::{Uuid4, Uuid7},
-		},
-	};
+    use crate::{
+        row::EncodedRowLayout, value::{
+            uuid::{Uuid4, Uuid7}, Blob, Date, DateTime, Interval, OrderedF32,
+            OrderedF64,
+            Time,
+        },
+        Type,
+        Value,
+    };
 
-	#[test]
+    #[test]
 	fn test_set_value_utf8_with_dynamic_content() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Utf8,

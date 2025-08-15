@@ -7,10 +7,11 @@ use crate::{
 		Blob, Uuid4, Uuid7,
 		columnar::ColumnData,
 		container::{
-			BlobContainer, BoolContainer, NumberContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
 			RowIdContainer, StringContainer, TemporalContainer,
 			UndefinedContainer, UuidContainer,
 		},
+		identity::IdentityId,
 	},
 };
 
@@ -432,6 +433,25 @@ impl ColumnData {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		ColumnData::RowId(RowIdContainer::new(data, bitvec))
+	}
+
+	pub fn identity_id(identity_ids: impl IntoIterator<Item = IdentityId>) -> Self {
+		let data = identity_ids.into_iter().collect::<Vec<_>>();
+		ColumnData::IdentityId(IdentityIdContainer::from_vec(data))
+	}
+
+	pub fn identity_id_with_capacity(capacity: usize) -> Self {
+		ColumnData::IdentityId(IdentityIdContainer::with_capacity(capacity))
+	}
+
+	pub fn identity_id_with_bitvec(
+		identity_ids: impl IntoIterator<Item = IdentityId>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		let data = identity_ids.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		ColumnData::IdentityId(IdentityIdContainer::new(data, bitvec))
 	}
 
 	pub fn undefined(len: usize) -> Self {

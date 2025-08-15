@@ -75,6 +75,9 @@ impl ColumnData {
 			(ColumnData::RowId(l), ColumnData::RowId(r)) => {
 				l.extend(&r)?
 			}
+			(ColumnData::IdentityId(l), ColumnData::IdentityId(r)) => {
+				l.extend(&r)?
+			}
 			(ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => {
 				l.extend(&r)?
 			}
@@ -329,6 +332,11 @@ impl ColumnData {
                             "Cannot extend RowId column from Undefined".to_string()
                         ));
 					}
+					ColumnData::IdentityId(_) => {
+						return_error!(engine::frame_error(
+                            "Cannot extend IdentityId column from Undefined".to_string()
+                        ));
+					}
 					ColumnData::Undefined(_) => {}
 				}
 			}
@@ -392,6 +400,9 @@ impl ColumnData {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::RowId(l) => {
+						l.extend_from_undefined(r_len)
+					}
+					ColumnData::IdentityId(l) => {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::Uuid4(l) => {
