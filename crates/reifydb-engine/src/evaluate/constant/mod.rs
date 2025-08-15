@@ -28,9 +28,9 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn constant(
-		&mut self,
-		expr: &ConstantExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &ConstantExpression,
 	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		Ok(Column::ColumnQualified(ColumnQualified {
@@ -40,10 +40,10 @@ impl Evaluator {
 	}
 
 	pub(crate) fn constant_of(
-		&mut self,
+		&self,
+		ctx: &EvaluationContext,
 		expr: &ConstantExpression,
 		target: Type,
-		ctx: &EvaluationContext,
 	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		let data = Self::constant_value(&expr, row_count)?;

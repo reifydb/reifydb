@@ -147,8 +147,8 @@ impl InlineDataNode {
 					};
 
 					let evaluated = evaluate(
-						&alias_expr.expression,
 						&ctx,
+						&alias_expr.expression,
 					)?;
 
 					// Take the first value from the
@@ -250,8 +250,8 @@ impl InlineDataNode {
 					};
 
 					column_data.extend(evaluate(
-						&alias_expr.expression,
 						&ctx,
+						&alias_expr.expression,
 					)?
 					.data()
 					.clone())?;

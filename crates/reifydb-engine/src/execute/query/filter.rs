@@ -62,7 +62,7 @@ impl ExecutionPlan for FilterNode {
 				};
 
 				// Evaluate the filter expression
-				let result = evaluate(filter_expr, &eval_ctx)?;
+				let result = evaluate(&eval_ctx, filter_expr)?;
 
 				// Create filter mask from result
 				let filter_mask =

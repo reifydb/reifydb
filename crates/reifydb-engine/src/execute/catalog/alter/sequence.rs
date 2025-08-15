@@ -71,7 +71,6 @@ impl<T: Transaction> Executor<T> {
 		// ExecutionContext is available
 		let empty_params = Params::None;
 		let value = evaluate(
-			&plan.value,
 			&EvaluationContext {
 				target_column: Some(ColumnDescriptor {
 					schema: None,
@@ -86,6 +85,7 @@ impl<T: Transaction> Executor<T> {
 				take: None,
 				params: &empty_params,
 			},
+			&plan.value,
 		)?;
 
 		let data = value.data();

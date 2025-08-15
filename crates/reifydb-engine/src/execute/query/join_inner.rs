@@ -130,7 +130,7 @@ impl ExecutionPlan for InnerJoinNode {
 					true,
 					|acc, cond| {
 						let col = evaluate(
-							cond, &eval_ctx,
+							&eval_ctx, cond,
 						)
 						.unwrap();
 						matches!(

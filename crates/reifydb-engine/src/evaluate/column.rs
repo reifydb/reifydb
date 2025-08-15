@@ -15,9 +15,9 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn column(
-		&mut self,
-		column: &ColumnExpression,
+		&self,
 		ctx: &EvaluationContext,
+		column: &ColumnExpression,
 	) -> crate::Result<Column> {
 		let name = column.0.fragment.to_string();
 
@@ -63,7 +63,7 @@ impl Evaluator {
 	}
 
 	fn extract_column_data(
-		&mut self,
+		&self,
 		col: &Column,
 		ctx: &EvaluationContext,
 	) -> crate::Result<Column> {

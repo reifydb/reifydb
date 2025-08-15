@@ -23,9 +23,9 @@ use crate::{
 };
 
 pub fn to_number(
+	ctx: impl Promote + Demote + Convert,
 	data: &ColumnData,
 	target: Type,
-	ctx: impl Promote + Demote + Convert,
 	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {

@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::evaluate::expression::Expression;
 pub(crate) use reifydb_core::interface::{
 	Convert, Demote, EvaluationContext, Promote,
 };
+use reifydb_core::interface::{Evaluate, evaluate::expression::Expression};
 
 use crate::{
 	columnar::{Column, ColumnQualified, SourceQualified},
@@ -55,46 +55,46 @@ impl Default for Evaluator {
 	}
 }
 
-impl Evaluator {
-	pub(crate) fn evaluate(
-		&mut self,
-		expr: &Expression,
+impl Evaluate for Evaluator {
+	fn evaluate(
+		&self,
 		ctx: &EvaluationContext,
-	) -> crate::Result<Column> {
+		expr: &Expression,
+	) -> reifydb_core::Result<Column> {
 		match expr {
 			Expression::AccessSource(expr) => {
-				self.access(expr, ctx)
+				self.access(ctx, expr)
 			}
-			Expression::Alias(expr) => self.alias(expr, ctx),
-			Expression::Add(expr) => self.add(expr, ctx),
-			Expression::Div(expr) => self.div(expr, ctx),
-			Expression::Call(expr) => self.call(expr, ctx),
-			Expression::Cast(expr) => self.cast(expr, ctx),
-			Expression::Column(expr) => self.column(expr, ctx),
-			Expression::Constant(expr) => self.constant(expr, ctx),
+			Expression::Alias(expr) => self.alias(ctx, expr),
+			Expression::Add(expr) => self.add(ctx, expr),
+			Expression::Div(expr) => self.div(ctx, expr),
+			Expression::Call(expr) => self.call(ctx, expr),
+			Expression::Cast(expr) => self.cast(ctx, expr),
+			Expression::Column(expr) => self.column(ctx, expr),
+			Expression::Constant(expr) => self.constant(ctx, expr),
 			Expression::GreaterThan(expr) => {
-				self.greater_than(expr, ctx)
+				self.greater_than(ctx, expr)
 			}
 			Expression::GreaterThanEqual(expr) => {
-				self.greater_than_equal(expr, ctx)
+				self.greater_than_equal(ctx, expr)
 			}
-			Expression::LessThan(expr) => self.less_than(expr, ctx),
+			Expression::LessThan(expr) => self.less_than(ctx, expr),
 			Expression::LessThanEqual(expr) => {
-				self.less_than_equal(expr, ctx)
+				self.less_than_equal(ctx, expr)
 			}
-			Expression::Equal(expr) => self.equal(expr, ctx),
-			Expression::NotEqual(expr) => self.not_equal(expr, ctx),
-			Expression::Between(expr) => self.between(expr, ctx),
-			Expression::And(expr) => self.and(expr, ctx),
-			Expression::Or(expr) => self.or(expr, ctx),
-			Expression::Xor(expr) => self.xor(expr, ctx),
-			Expression::Rem(expr) => self.rem(expr, ctx),
-			Expression::Mul(expr) => self.mul(expr, ctx),
-			Expression::Prefix(expr) => self.prefix(expr, ctx),
-			Expression::Sub(expr) => self.sub(expr, ctx),
-			Expression::Tuple(expr) => self.tuple(expr, ctx),
+			Expression::Equal(expr) => self.equal(ctx, expr),
+			Expression::NotEqual(expr) => self.not_equal(ctx, expr),
+			Expression::Between(expr) => self.between(ctx, expr),
+			Expression::And(expr) => self.and(ctx, expr),
+			Expression::Or(expr) => self.or(ctx, expr),
+			Expression::Xor(expr) => self.xor(ctx, expr),
+			Expression::Rem(expr) => self.rem(ctx, expr),
+			Expression::Mul(expr) => self.mul(ctx, expr),
+			Expression::Prefix(expr) => self.prefix(ctx, expr),
+			Expression::Sub(expr) => self.sub(ctx, expr),
+			Expression::Tuple(expr) => self.tuple(ctx, expr),
 			Expression::Parameter(expr) => {
-				self.parameter(expr, ctx)
+				self.parameter(ctx, expr)
 			}
 			expr => unimplemented!("{expr:?}"),
 		}
@@ -102,10 +102,10 @@ impl Evaluator {
 }
 
 pub fn evaluate(
-	expr: &Expression,
 	ctx: &EvaluationContext,
+	expr: &Expression,
 ) -> crate::Result<Column> {
-	let mut evaluator = Evaluator {
+	let evaluator = Evaluator {
 		functions: Functions::builder()
 			.register_scalar("abs", math::scalar::Abs::new)
 			.register_scalar("avg", math::scalar::Avg::new)
@@ -120,11 +120,11 @@ pub fn evaluate(
 	// column type
 	if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type)
 	{
-		let mut column = evaluator.evaluate(expr, ctx)?;
+		let mut column = evaluator.evaluate(ctx, expr)?;
 		let data = cast::cast_column_data(
+			ctx,
 			&column.data(),
 			ty,
-			ctx,
 			expr.lazy_span(),
 		)?;
 		column = match column.table() {
@@ -142,6 +142,6 @@ pub fn evaluate(
 		};
 		Ok(column)
 	} else {
-		evaluator.evaluate(expr, ctx)
+		evaluator.evaluate(ctx, expr)
 	}
 }

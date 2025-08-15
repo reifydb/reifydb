@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	error,
-	interface::evaluate::expression::{CallExpression, Expression},
+	interface::{
+		Evaluate,
+		evaluate::expression::{CallExpression, Expression},
+	},
 	result::error::diagnostic::function,
 };
 
@@ -15,11 +18,11 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn call(
-		&mut self,
-		call: &CallExpression,
+		&self,
 		ctx: &EvaluationContext,
+		call: &CallExpression,
 	) -> crate::Result<Column> {
-		let arguments = self.evaluate_arguments(&call.args, ctx)?;
+		let arguments = self.evaluate_arguments(ctx, &call.args)?;
 		let function = &call.func.0.fragment;
 
 		let functor = self
@@ -40,15 +43,15 @@ impl Evaluator {
 	}
 
 	fn evaluate_arguments<'a>(
-		&mut self,
-		expressions: &Vec<Expression>,
+		&self,
 		ctx: &EvaluationContext,
+		expressions: &Vec<Expression>,
 	) -> crate::Result<Columns> {
 		let mut result: Vec<Column> =
 			Vec::with_capacity(expressions.len());
 
 		for expression in expressions {
-			result.push(self.evaluate(&expression, ctx)?)
+			result.push(self.evaluate(ctx, expression)?)
 		}
 
 		Ok(Columns::new(result))

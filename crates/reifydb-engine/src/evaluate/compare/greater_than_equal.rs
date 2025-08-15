@@ -6,7 +6,9 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedSpan,
 	Type::Bool,
-	interface::evaluate::expression::GreaterThanEqualExpression,
+	interface::{
+		Evaluate, evaluate::expression::GreaterThanEqualExpression,
+	},
 	result::error::diagnostic::operator::greater_than_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -27,12 +29,12 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn greater_than_equal(
-		&mut self,
-		gte: &GreaterThanEqualExpression,
+		&self,
 		ctx: &EvaluationContext,
+		gte: &GreaterThanEqualExpression,
 	) -> crate::Result<Column> {
-		let left = self.evaluate(&gte.left, ctx)?;
-		let right = self.evaluate(&gte.right, ctx)?;
+		let left = self.evaluate(ctx, &gte.left)?;
+		let right = self.evaluate(ctx, &gte.right)?;
 
 		match (&left.data(), &right.data()) {
             // Float4

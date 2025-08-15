@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use Type::Bool;
 use reifydb_core::{
 	OwnedSpan, Type,
-	interface::evaluate::expression::EqualExpression,
+	interface::{Evaluate, evaluate::expression::EqualExpression},
 	result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -28,12 +28,12 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn equal(
-		&mut self,
-		eq: &EqualExpression,
+		&self,
 		ctx: &EvaluationContext,
+		eq: &EqualExpression,
 	) -> crate::Result<Column> {
-		let left = self.evaluate(&eq.left, ctx)?;
-		let right = self.evaluate(&eq.right, ctx)?;
+		let left = self.evaluate(ctx, &eq.left)?;
+		let right = self.evaluate(ctx, &eq.right)?;
 
 		match (&left.data(), &right.data()) {
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => {

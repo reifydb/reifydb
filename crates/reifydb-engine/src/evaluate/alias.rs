@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::evaluate::expression::AliasExpression;
+use reifydb_core::interface::{
+	Evaluate, evaluate::expression::AliasExpression,
+};
 
 use crate::{
 	columnar::{Column, ColumnQualified, SourceQualified},
@@ -10,11 +12,11 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn alias(
-		&mut self,
-		expr: &AliasExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &AliasExpression,
 	) -> crate::Result<Column> {
-		let evaluated = self.evaluate(&expr.expression, ctx)?;
+		let evaluated = self.evaluate(ctx, &expr.expression)?;
 		let alias_name = &expr.alias.0.fragment;
 
 		let columns: Option<String> = ctx

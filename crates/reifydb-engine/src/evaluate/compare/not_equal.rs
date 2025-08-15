@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedSpan,
 	Type::Bool,
-	interface::evaluate::expression::NotEqualExpression,
+	interface::{Evaluate, evaluate::expression::NotEqualExpression},
 	result::error::diagnostic::operator::not_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -27,12 +27,12 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn not_equal(
-		&mut self,
-		ne: &NotEqualExpression,
+		&self,
 		ctx: &EvaluationContext,
+		ne: &NotEqualExpression,
 	) -> crate::Result<Column> {
-		let left = self.evaluate(&ne.left, ctx)?;
-		let right = self.evaluate(&ne.right, ctx)?;
+		let left = self.evaluate(ctx, &ne.left)?;
+		let right = self.evaluate(ctx, &ne.right)?;
 
 		match (&left.data(), &right.data()) {
             (ColumnData::Bool(l), ColumnData::Bool(r)) => Ok(compare_bool(ctx, l, r, ne.span())),

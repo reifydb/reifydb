@@ -38,8 +38,6 @@ pub(crate) fn coerce_value_to_column_type(
 	let column_policies = column.policies.clone();
 
 	let coerced_column = cast_column_data(
-		&temp_column_data,
-		target,
 		&EvaluationContext {
 			target_column: Some(column),
 			column_policies,
@@ -48,6 +46,8 @@ pub(crate) fn coerce_value_to_column_type(
 			take: None,
 			params: &ctx.params,
 		},
+		&temp_column_data,
+		target,
 		|| BorrowedSpan::new(&value_str).to_owned(),
 	)?;
 

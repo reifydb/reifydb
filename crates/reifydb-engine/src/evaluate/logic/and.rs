@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::evaluate::expression::AndExpression,
+	interface::{Evaluate, evaluate::expression::AndExpression},
 	result::error::diagnostic::operator::{
 		and_can_not_applied_to_number, and_can_not_applied_to_temporal,
 		and_can_not_applied_to_text, and_can_not_applied_to_uuid,
@@ -17,12 +17,12 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn and(
-		&mut self,
-		expr: &AndExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &AndExpression,
 	) -> crate::Result<Column> {
-		let left = self.evaluate(&expr.left, ctx)?;
-		let right = self.evaluate(&expr.right, ctx)?;
+		let left = self.evaluate(ctx, &expr.left)?;
+		let right = self.evaluate(ctx, &expr.right)?;
 
 		match (&left.data(), &right.data()) {
 			(

@@ -16,8 +16,9 @@ use crate::{
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		DEFAULT_COLUMN_SATURATION_POLICY, Params,
+		expression::Expression,
 	},
-	value::columnar::{ColumnData, Columns},
+	value::columnar::{Column, ColumnData, Columns},
 };
 
 #[derive(Debug)]
@@ -60,4 +61,12 @@ impl<'a> EvaluationContext<'a> {
 	pub fn pooled(&self, target: Type, capacity: usize) -> ColumnData {
 		ColumnData::with_capacity(target, capacity)
 	}
+}
+
+pub trait Evaluate {
+	fn evaluate(
+		&self,
+		ctx: &EvaluationContext,
+		expr: &Expression,
+	) -> crate::Result<Column>;
 }

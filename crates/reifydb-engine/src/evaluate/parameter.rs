@@ -10,9 +10,9 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn parameter(
-		&mut self,
-		expr: &ParameterExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &ParameterExpression,
 	) -> crate::Result<Column> {
 		let value = match expr {
 			ParameterExpression::Positional {

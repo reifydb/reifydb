@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	GetType, OwnedSpan, Type,
-	interface::evaluate::expression::AddExpression,
+	interface::{Evaluate, evaluate::expression::AddExpression},
 	result::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
@@ -22,12 +22,12 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn add(
-		&mut self,
-		add: &AddExpression,
+		&self,
 		ctx: &EvaluationContext,
+		add: &AddExpression,
 	) -> crate::Result<Column> {
-		let left = self.evaluate(&add.left, ctx)?;
-		let right = self.evaluate(&add.right, ctx)?;
+		let left = self.evaluate(ctx, &add.left)?;
+		let right = self.evaluate(ctx, &add.right)?;
 		let target = Type::promote(left.get_type(), right.get_type());
 
 		match (&left.data(), &right.data()) {

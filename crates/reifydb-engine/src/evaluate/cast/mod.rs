@@ -12,20 +12,23 @@ use std::ops::Deref;
 
 use reifydb_core::{
 	OwnedSpan, Type, err, error,
-	interface::expression::{CastExpression, Expression},
+	interface::{
+		Evaluate,
+		expression::{CastExpression, Expression},
+	},
 	result::error::diagnostic::cast,
 };
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote},
+	evaluate::{EvaluationContext, Evaluator},
 };
 
 impl Evaluator {
 	pub(crate) fn cast(
-		&mut self,
-		cast: &CastExpression,
+		&self,
 		ctx: &EvaluationContext,
+		cast: &CastExpression,
 	) -> crate::Result<Column> {
 		let cast_span = cast.lazy_span();
 
@@ -37,15 +40,15 @@ impl Evaluator {
 			// data directly which means there is no reason to
 			// further adjust the column
 			Expression::Constant(expr) => {
-				self.constant_of(expr, cast.to.ty, ctx)
+				self.constant_of(ctx, expr, cast.to.ty)
 			}
 			expr => {
-				let column = self.evaluate(expr, ctx)?;
+				let column = self.evaluate(ctx, expr)?;
 
 				let casted = cast_column_data(
+					ctx,
 					&column.data(),
 					cast.to.ty,
-					ctx,
 					cast.expression.lazy_span(),
 				)
 				.map_err(|e| {
@@ -86,9 +89,9 @@ impl Evaluator {
 }
 
 pub fn cast_column_data(
+	ctx: &EvaluationContext,
 	data: &ColumnData,
 	target: Type,
-	ctx: impl Promote + Demote + Convert,
 	span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
@@ -103,7 +106,7 @@ pub fn cast_column_data(
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
 		(_, target) if target.is_number() => {
-			number::to_number(data, target, ctx, span)
+			number::to_number(ctx, data, target, span)
 		}
 		(_, target) if target.is_blob() => blob::to_blob(data, span),
 		(_, target) if target.is_bool() => {
@@ -148,8 +151,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_integer() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -160,7 +164,6 @@ mod tests {
 					ty: Type::Int4,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -169,8 +172,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_integer() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
             &Cast(CastExpression {
                 span: OwnedSpan::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
@@ -180,7 +184,6 @@ mod tests {
                 })),
                 to: TypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
             }),
-            &ctx,
         )
         .unwrap();
 
@@ -189,8 +192,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_min() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
             &Cast(CastExpression {
                 span: OwnedSpan::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
@@ -200,7 +204,6 @@ mod tests {
                 })),
                 to: TypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int1 },
             }),
-            &ctx,
         )
         .unwrap();
 
@@ -209,8 +212,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_float_8() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -221,7 +225,6 @@ mod tests {
 					ty: Type::Float8,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -230,8 +233,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_float_4() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -242,7 +246,6 @@ mod tests {
 					ty: Type::Float4,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -251,8 +254,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_float_4() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -263,7 +267,6 @@ mod tests {
 					ty: Type::Float4,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -272,8 +275,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_float_8() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(Number {
@@ -284,7 +288,6 @@ mod tests {
 					ty: Type::Float8,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -293,8 +296,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_string_to_bool() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(
@@ -307,7 +311,6 @@ mod tests {
 					ty: Type::Bool,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -316,8 +319,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_string_neg_one_to_bool_should_fail() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(
@@ -330,7 +334,6 @@ mod tests {
 					ty: Type::Bool,
 				},
 			}),
-			&ctx,
 		);
 
 		assert!(result.is_err());
@@ -347,8 +350,9 @@ mod tests {
 
 	#[test]
 	fn test_cast_bool_to_date_should_fail() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
 				span: OwnedSpan::testing_empty(),
 				expression: Box::new(Constant(
@@ -363,7 +367,6 @@ mod tests {
 					ty: Type::Date,
 				},
 			}),
-			&ctx,
 		);
 
 		assert!(result.is_err());

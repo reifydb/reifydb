@@ -2,9 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::evaluate::expression::{
-		BetweenExpression, GreaterThanEqualExpression,
-		LessThanEqualExpression,
+	interface::{
+		Evaluate,
+		evaluate::expression::{
+			BetweenExpression, GreaterThanEqualExpression,
+			LessThanEqualExpression,
+		},
 	},
 	result::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types,
 	return_error,
@@ -17,9 +20,9 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn between(
-		&mut self,
-		expr: &BetweenExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &BetweenExpression,
 	) -> crate::Result<Column> {
 		// Create temporary expressions for the comparisons
 		let greater_equal_expr = GreaterThanEqualExpression {
@@ -36,8 +39,8 @@ impl Evaluator {
 
 		// Evaluate both comparisons
 		let ge_result =
-			self.greater_than_equal(&greater_equal_expr, ctx)?;
-		let le_result = self.less_than_equal(&less_equal_expr, ctx)?;
+			self.greater_than_equal(ctx, &greater_equal_expr)?;
+		let le_result = self.less_than_equal(ctx, &less_equal_expr)?;
 
 		// Check that both results are boolean (they should be if the
 		// comparison succeeded)
@@ -47,8 +50,8 @@ impl Evaluator {
 			// This should not happen if the comparison operator
 			// work correctly, but we handle it as a safety
 			// measure
-			let value = self.evaluate(&expr.value, ctx)?;
-			let lower = self.evaluate(&expr.lower, ctx)?;
+			let value = self.evaluate(ctx, &expr.value)?;
+			let lower = self.evaluate(ctx, &expr.lower)?;
 			return_error!(
 				between_cannot_be_applied_to_incompatible_types(
 					expr.span(),

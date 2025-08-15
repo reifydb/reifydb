@@ -119,13 +119,13 @@ impl ExecutionPlan for MapNode {
 
 			for expr in &self.expressions {
 				let column = evaluate(
-					expr,
 					&self.create_evaluation_context(
 						expr,
 						ctx,
 						columns.clone(),
 						row_count,
 					),
+					expr,
 				)?;
 
 				new_columns.push(column);
@@ -178,7 +178,6 @@ impl ExecutionPlan for MapWithoutInputNode {
 
 		for expr in self.expressions.iter() {
 			let column = evaluate(
-				&expr,
 				&EvaluationContext {
 					target_column: None,
 					column_policies: Vec::new(),
@@ -187,6 +186,7 @@ impl ExecutionPlan for MapWithoutInputNode {
 					take: None,
 					params: &ctx.params,
 				},
+				&expr,
 			)?;
 
 			columns.push(column);

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	OwnedSpan,
 	interface::{
-		EvaluationContext,
+		Evaluate, EvaluationContext,
 		evaluate::expression::{
 			AccessSourceExpression, ColumnExpression, Expression,
 		},
@@ -18,15 +18,16 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn access(
-		&mut self,
-		expr: &AccessSourceExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &AccessSourceExpression,
 	) -> crate::Result<Column> {
 		let source = expr.source.fragment.clone();
 		let column = expr.column.fragment.clone();
 
 		let data = self
 			.evaluate(
+				ctx,
 				&Expression::Column(ColumnExpression(
 					OwnedSpan {
 						column: expr.source.column,
@@ -37,7 +38,6 @@ impl Evaluator {
 						),
 					},
 				)),
-				&ctx,
 			)?
 			.data()
 			.clone();

@@ -14,11 +14,11 @@ use crate::{
 
 impl Evaluator {
 	pub(crate) fn prefix(
-		&mut self,
-		prefix: &PrefixExpression,
+		&self,
 		ctx: &EvaluationContext,
+		prefix: &PrefixExpression,
 	) -> crate::Result<Column> {
-		let column = evaluate(&prefix.expression, ctx)?;
+		let column = evaluate(ctx, &prefix.expression)?;
 
 		match column.data() {
             // EngineColumnData::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
