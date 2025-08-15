@@ -274,6 +274,17 @@ describe('Named Parameters', () => {
             expectSingleResult(frames, uuid, 'string');
         }, 1000);
 
+        it('IdentityId', async () => {
+            const identityId = "018fad5d-f37a-7c94-a716-446655440001";
+            const frames = await wsClient.command(
+                'MAP $value as result',
+                { value: identityId },
+                [Schema.object({result: Schema.identityid()})]
+            );
+
+            expectSingleResult(frames, identityId, 'string');
+        }, 1000);
+
     });
 
     describe('query', () => {
@@ -503,6 +514,17 @@ describe('Named Parameters', () => {
             );
 
             expectSingleResult(frames, uuid, 'string');
+        }, 1000);
+
+        it('IdentityId', async () => {
+            const identityId = "018fad5d-f37a-7c94-a716-446655440001";
+            const frames = await wsClient.query(
+                'MAP $value as result',
+                { value: identityId },
+                [Schema.object({result: Schema.identityid()})]
+            );
+
+            expectSingleResult(frames, identityId, 'string');
         }, 1000);
 
     });

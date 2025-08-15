@@ -138,6 +138,10 @@ impl Columns {
                         vec![Default::default(); size],
                         BitVec::repeat(size, false),
                     ),
+                    Type::IdentityId => ColumnData::identity_id_with_bitvec(
+                        vec![Default::default(); size],
+                        BitVec::repeat(size, false),
+                    ),
                     Type::Uuid4 => ColumnData::uuid4_with_bitvec(
                         vec![Uuid4::from(uuid::Uuid::nil()); size],
                         BitVec::repeat(size, false),

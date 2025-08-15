@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	Blob, Date, DateTime, Interval, OrderedF32, OrderedF64, RowId, Time,
-	Uuid4, Uuid7, Value, util::CowVec,
+	util::CowVec, Blob, Date, DateTime, IdentityId, Interval, OrderedF32,
+	OrderedF64, RowId, Time, Uuid4, Uuid7, Value,
 };
 
 pub trait IntoValue {
@@ -170,6 +170,12 @@ impl IntoValue for RowId {
 	}
 }
 
+impl IntoValue for IdentityId {
+	fn into_value(self) -> Value {
+		Value::IdentityId(self)
+	}
+}
+
 impl<T: IntoValue> IntoValue for Option<T> {
 	fn into_value(self) -> Value {
 		match self {
@@ -215,8 +221,8 @@ mod tests {
 	use std::f64::consts::PI;
 
 	use crate::{
-		Blob, CowVec,
-		value::{IntoValue, OrderedF32, OrderedF64, Value},
+		value::{IntoValue, OrderedF32, OrderedF64, Value}, Blob,
+		CowVec,
 	};
 
 	#[test]

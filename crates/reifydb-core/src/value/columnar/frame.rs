@@ -66,6 +66,9 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::RowId(container) => {
 				FrameColumnData::RowId(container)
 			}
+			ColumnData::IdentityId(container) => {
+				FrameColumnData::IdentityId(container)
+			}
 			ColumnData::Uuid4(container) => {
 				FrameColumnData::Uuid4(container)
 			}

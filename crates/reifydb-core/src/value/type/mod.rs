@@ -67,6 +67,8 @@ pub enum Type {
 	Interval,
 	/// A row identifier (8-byte unsigned integer)
 	RowId,
+	/// An identity identifier (UUID v7)
+	IdentityId,
 	/// A UUID version 4 (random)
 	Uuid4,
 	/// A UUID version 7 (timestamp-based)
@@ -163,6 +165,7 @@ impl Type {
 			Type::Time => 0x11,
 			Type::Interval => 0x12,
 			Type::RowId => 0x13,
+			Type::IdentityId => 0x17,
 			Type::Uuid4 => 0x14,
 			Type::Uuid7 => 0x15,
 			Type::Blob => 0x16,
@@ -197,6 +200,7 @@ impl Type {
 			0x14 => Type::Uuid4,
 			0x15 => Type::Uuid7,
 			0x16 => Type::Blob,
+			0x17 => Type::IdentityId,
 			_ => unreachable!(),
 		}
 	}
@@ -225,6 +229,7 @@ impl Type {
 			Type::Interval => 16, // months: i32 + days: i32 +
 			// nanos: i64
 			Type::RowId => 8,
+			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
 			Type::Blob => 8, // offset: u32 + length: u32
@@ -253,6 +258,7 @@ impl Type {
 			Type::Time => 8,
 			Type::Interval => 8,
 			Type::RowId => 8,
+			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
 			Type::Blob => 4, // u32 alignment
@@ -283,6 +289,7 @@ impl Display for Type {
 			Type::Time => f.write_str("Time"),
 			Type::Interval => f.write_str("Interval"),
 			Type::RowId => f.write_str("RowId"),
+			Type::IdentityId => f.write_str("IdentityId"),
 			Type::Uuid4 => f.write_str("Uuid4"),
 			Type::Uuid7 => f.write_str("Uuid7"),
 			Type::Blob => f.write_str("Blob"),
@@ -314,6 +321,7 @@ impl From<&Value> for Type {
 			Value::Time(_) => Type::Time,
 			Value::Interval(_) => Type::Interval,
 			Value::RowId(_) => Type::RowId,
+			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,
@@ -345,6 +353,7 @@ impl FromStr for Type {
 			"TIME" => Ok(Type::Time),
 			"INTERVAL" => Ok(Type::Interval),
 			"ROWID" => Ok(Type::RowId),
+			"IDENTITYID" | "IDENTITY_ID" => Ok(Type::IdentityId),
 			"UUID4" => Ok(Type::Uuid4),
 			"UUID7" => Ok(Type::Uuid7),
 			"BLOB" => Ok(Type::Blob),

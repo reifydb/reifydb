@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
 	SortDirection, Type,
 	index::{EncodedIndexKey, EncodedIndexLayout},
-	value::{Date, DateTime, Interval, Time, Uuid4, Uuid7},
+	value::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 };
 
 impl EncodedIndexLayout {
@@ -634,6 +634,37 @@ impl EncodedIndexLayout {
 		key.set_valid(index, true);
 
 		let uuid: Uuid = value.into();
+		let uuid_bytes = uuid.as_bytes();
+		let mut bytes = [0u8; 16];
+		bytes.copy_from_slice(uuid_bytes);
+
+		if field.direction == SortDirection::Desc {
+			for b in bytes.iter_mut() {
+				*b = !*b;
+			}
+		}
+
+		unsafe {
+			ptr::copy_nonoverlapping(
+				bytes.as_ptr(),
+				key.make_mut().as_mut_ptr().add(field.offset),
+				16,
+			);
+		}
+	}
+
+	pub fn set_identity_id(
+		&self,
+		key: &mut EncodedIndexKey,
+		index: usize,
+		value: IdentityId,
+	) {
+		let field = &self.fields[index];
+		debug_assert_eq!(field.value, Type::IdentityId);
+		key.set_valid(index, true);
+
+		let uuid7: Uuid7 = value.into();
+		let uuid: Uuid = uuid7.into();
 		let uuid_bytes = uuid.as_bytes();
 		let mut bytes = [0u8; 16];
 		bytes.copy_from_slice(uuid_bytes);
@@ -1287,6 +1318,216 @@ mod tests {
 			let offset2 = layout.fields[1].offset;
 			let expected_u64 = 200u64.to_be_bytes();
 			assert_eq!(&key[offset2..offset2 + 8], expected_u64);
+		}
+	}
+
+	mod uuid4 {
+		use super::*;
+		use crate::value::Uuid4;
+
+		#[test]
+		fn test_asc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::Uuid4],
+				&[SortDirection::Asc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let uuid1 = Uuid4::generate();
+			let uuid2 = Uuid4::generate();
+			
+			layout.set_uuid4(&mut key1, 0, uuid1.clone());
+			layout.set_uuid4(&mut key2, 0, uuid2.clone());
+
+			// Check bitvec shows field is set
+			assert!(key1.is_defined(0));
+			assert!(key2.is_defined(0));
+
+			// Check values are stored correctly (16 bytes)
+			let offset = layout.fields[0].offset;
+			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
+			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
+			
+			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
+			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
+		}
+
+		#[test]
+		fn test_desc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::Uuid4],
+				&[SortDirection::Desc],
+			)
+			.unwrap();
+			let mut key = layout.allocate_key();
+
+			let uuid = Uuid4::generate();
+			layout.set_uuid4(&mut key, 0, uuid.clone());
+
+			// Check value is inverted for DESC
+			let offset = layout.fields[0].offset;
+			let mut expected_bytes = uuid.as_bytes().to_vec();
+			for b in expected_bytes.iter_mut() {
+				*b = !*b;
+			}
+			
+			assert_eq!(&key[offset..offset + 16], &expected_bytes[..]);
+		}
+	}
+
+	mod uuid7 {
+		use super::*;
+		use crate::value::Uuid7;
+
+		#[test]
+		fn test_asc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::Uuid7],
+				&[SortDirection::Asc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let uuid1 = Uuid7::generate();
+			// Sleep a bit to ensure different timestamps
+			std::thread::sleep(std::time::Duration::from_millis(10));
+			let uuid2 = Uuid7::generate();
+			
+			layout.set_uuid7(&mut key1, 0, uuid1.clone());
+			layout.set_uuid7(&mut key2, 0, uuid2.clone());
+
+			// Check bitvec shows field is set
+			assert!(key1.is_defined(0));
+			assert!(key2.is_defined(0));
+
+			// Check values are stored correctly (16 bytes)
+			let offset = layout.fields[0].offset;
+			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
+			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
+			
+			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
+			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
+
+			// UUID7 has timestamp prefix, so later should be greater
+			assert!(key1.as_slice() < key2.as_slice());
+		}
+
+		#[test]
+		fn test_desc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::Uuid7],
+				&[SortDirection::Desc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let uuid1 = Uuid7::generate();
+			// Sleep a bit to ensure different timestamps
+			std::thread::sleep(std::time::Duration::from_millis(10));
+			let uuid2 = Uuid7::generate();
+			
+			layout.set_uuid7(&mut key1, 0, uuid1.clone());
+			layout.set_uuid7(&mut key2, 0, uuid2.clone());
+
+			// Check values are inverted for DESC
+			let offset = layout.fields[0].offset;
+			let mut expected_bytes1 = uuid1.as_bytes().to_vec();
+			let mut expected_bytes2 = uuid2.as_bytes().to_vec();
+			for b in expected_bytes1.iter_mut() {
+				*b = !*b;
+			}
+			for b in expected_bytes2.iter_mut() {
+				*b = !*b;
+			}
+			
+			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
+			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
+
+			// Verify ordering (reversed due to DESC)
+			assert!(key1.as_slice() > key2.as_slice());
+		}
+	}
+
+	mod identity_id {
+		use super::*;
+		use crate::value::IdentityId;
+
+		#[test]
+		fn test_asc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::IdentityId],
+				&[SortDirection::Asc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let id1 = IdentityId::generate();
+			// Sleep a bit to ensure different timestamps (IdentityId wraps Uuid7)
+			std::thread::sleep(std::time::Duration::from_millis(10));
+			let id2 = IdentityId::generate();
+			
+			layout.set_identity_id(&mut key1, 0, id1.clone());
+			layout.set_identity_id(&mut key2, 0, id2.clone());
+
+			// Check bitvec shows field is set
+			assert!(key1.is_defined(0));
+			assert!(key2.is_defined(0));
+
+			// Check values are stored correctly (16 bytes)
+			let offset = layout.fields[0].offset;
+			let uuid7_1: crate::value::Uuid7 = id1.into();
+			let uuid7_2: crate::value::Uuid7 = id2.into();
+			let id1_bytes: Vec<u8> = uuid7_1.as_bytes().to_vec();
+			let id2_bytes: Vec<u8> = uuid7_2.as_bytes().to_vec();
+			
+			assert_eq!(&key1[offset..offset + 16], &id1_bytes[..]);
+			assert_eq!(&key2[offset..offset + 16], &id2_bytes[..]);
+
+			// IdentityId wraps Uuid7 which has timestamp prefix, so later should be greater
+			assert!(key1.as_slice() < key2.as_slice());
+		}
+
+		#[test]
+		fn test_desc() {
+			let layout = EncodedIndexLayout::new(
+				&[Type::IdentityId],
+				&[SortDirection::Desc],
+			)
+			.unwrap();
+			let mut key1 = layout.allocate_key();
+			let mut key2 = layout.allocate_key();
+
+			let id1 = IdentityId::generate();
+			// Sleep a bit to ensure different timestamps
+			std::thread::sleep(std::time::Duration::from_millis(10));
+			let id2 = IdentityId::generate();
+			
+			layout.set_identity_id(&mut key1, 0, id1.clone());
+			layout.set_identity_id(&mut key2, 0, id2.clone());
+
+			// Check values are inverted for DESC
+			let offset = layout.fields[0].offset;
+			let uuid7_1: crate::value::Uuid7 = id1.into();
+			let uuid7_2: crate::value::Uuid7 = id2.into();
+			let mut expected_bytes1 = uuid7_1.as_bytes().to_vec();
+			let mut expected_bytes2 = uuid7_2.as_bytes().to_vec();
+			for b in expected_bytes1.iter_mut() {
+				*b = !*b;
+			}
+			for b in expected_bytes2.iter_mut() {
+				*b = !*b;
+			}
+			
+			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
+			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
+
+			// Verify ordering (reversed due to DESC)
+			assert!(key1.as_slice() > key2.as_slice());
 		}
 	}
 

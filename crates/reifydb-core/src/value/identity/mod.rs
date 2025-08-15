@@ -146,3 +146,37 @@ impl<'de> Deserialize<'de> for IdentityId {
 		deserializer.deserialize_any(Uuid7Visitor)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_identity_id_creation() {
+		let id = IdentityId::generate();
+		assert_ne!(id, IdentityId::default());
+	}
+
+	#[test]
+	fn test_identity_id_from_uuid7() {
+		let uuid = Uuid7::generate();
+		let id = IdentityId::from(uuid);
+		assert_eq!(id.value(), uuid);
+	}
+
+	#[test]
+	fn test_identity_id_display() {
+		let id = IdentityId::generate();
+		let display = format!("{}", id);
+		assert!(!display.is_empty());
+	}
+
+	#[test]
+	fn test_identity_id_equality() {
+		let uuid = Uuid7::generate();
+		let id1 = IdentityId::from(uuid);
+		let id2 = IdentityId::from(uuid);
+		assert_eq!(id1, id2);
+	}
+
+}

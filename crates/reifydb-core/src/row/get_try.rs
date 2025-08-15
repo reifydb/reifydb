@@ -4,7 +4,7 @@
 use crate::{
 	Date, DateTime, Interval, Time,
 	row::{EncodedRow, EncodedRowLayout},
-	value::{Uuid4, Uuid7},
+	value::{IdentityId, Uuid4, Uuid7},
 };
 
 impl EncodedRowLayout {
@@ -239,6 +239,18 @@ impl EncodedRowLayout {
 			None
 		}
 	}
+
+	pub fn try_get_identity_id(
+		&self,
+		row: &EncodedRow,
+		index: usize,
+	) -> Option<IdentityId> {
+		if row.is_defined(index) {
+			Some(self.get_identity_id(row, index))
+		} else {
+			None
+		}
+	}
 }
 
 #[cfg(test)]
@@ -247,7 +259,7 @@ mod tests {
 	use crate::{
 		Date, DateTime, Interval, Time, Type,
 		row::EncodedRowLayout,
-		value::{Uuid4, Uuid7},
+		value::{IdentityId, Uuid4, Uuid7},
 	};
 
 	#[test]
@@ -812,6 +824,18 @@ mod tests {
 		let uuid = Uuid7::generate();
 		layout.set_uuid7(&mut row, 0, uuid.clone());
 		assert_eq!(layout.try_get_uuid7(&row, 0), Some(uuid));
+	}
+
+	#[test]
+	fn test_try_get_identity_id() {
+		let layout = EncodedRowLayout::new(&[Type::IdentityId]);
+		let mut row = layout.allocate_row();
+
+		assert_eq!(layout.try_get_identity_id(&row, 0), None);
+
+		let id = IdentityId::generate();
+		layout.set_identity_id(&mut row, 0, id.clone());
+		assert_eq!(layout.try_get_identity_id(&row, 0), Some(id));
 	}
 
 	#[test]

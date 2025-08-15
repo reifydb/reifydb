@@ -27,6 +27,7 @@ export {UndefinedValue} from './undefined';
 export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
+export {IdentityIdValue} from './identityid';
 
 export type Type =
     | "Blob"
@@ -38,7 +39,8 @@ export type Type =
     | "Date" | "DateTime" | "Time" | "Interval"
     | "Uuid4" | "Uuid7"
     | "Undefined"
-    | "RowId";
+    | "RowId"
+    | "IdentityId";
 
 export interface TypeValuePair {
     type: Type;

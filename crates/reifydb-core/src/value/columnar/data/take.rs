@@ -66,6 +66,9 @@ impl ColumnData {
 			ColumnData::RowId(container) => {
 				ColumnData::RowId(container.take(num))
 			}
+			ColumnData::IdentityId(container) => {
+				ColumnData::IdentityId(container.take(num))
+			}
 			ColumnData::Uuid4(container) => {
 				ColumnData::Uuid4(container.take(num))
 			}

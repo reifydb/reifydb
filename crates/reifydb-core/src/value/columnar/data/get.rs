@@ -63,6 +63,9 @@ impl ColumnData {
 			ColumnData::RowId(container) => {
 				container.get_value(index)
 			}
+			ColumnData::IdentityId(container) => {
+				container.get_value(index)
+			}
 			ColumnData::Uuid4(container) => {
 				container.get_value(index)
 			}

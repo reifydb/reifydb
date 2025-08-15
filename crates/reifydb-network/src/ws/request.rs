@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 #[cfg(test)]
-use reifydb_core::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+use reifydb_core::{Date, DateTime, Interval, Time, Uuid4, Uuid7, value::IdentityId};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
@@ -159,6 +159,9 @@ fn parse_typed_value(
 			.unwrap_or(Value::Undefined),
 		Type::Uuid7 => parse_uuid7(span)
 			.map(Value::Uuid7)
+			.unwrap_or(Value::Undefined),
+		Type::IdentityId => parse_uuid7(span)
+			.map(|uuid7| Value::IdentityId(reifydb_core::value::IdentityId::from(uuid7)))
 			.unwrap_or(Value::Undefined),
 		Type::Blob => Blob::from_hex(span)
 			.map(Value::Blob)
@@ -357,6 +360,11 @@ mod tests {
 						) => (), // UUIDs will be
 						// different
 						(
+							Value::IdentityId(_),
+							Value::IdentityId(_),
+						) => (), // IdentityIds will be
+						// different
+						(
 							Value::DateTime(_),
 							Value::DateTime(_),
 						) => (), // DateTimes may be
@@ -381,6 +389,11 @@ mod tests {
 							Value::Uuid7(_),
 							Value::Uuid7(_),
 						) => (), // UUIDs will be
+						// different
+						(
+							Value::IdentityId(_),
+							Value::IdentityId(_),
+						) => (), // IdentityIds will be
 						// different
 						(
 							Value::DateTime(_),
@@ -598,6 +611,14 @@ mod tests {
 	fn test_uuid7() {
 		let params = WsParams::Positional(vec![Value::Uuid7(
 			Uuid7::generate(),
+		)]);
+		roundtrip(params);
+	}
+
+	#[test]
+	fn test_identity_id() {
+		let params = WsParams::Positional(vec![Value::IdentityId(
+			IdentityId::generate(),
 		)]);
 		roundtrip(params);
 	}

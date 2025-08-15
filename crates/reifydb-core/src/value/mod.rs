@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	cmp::Ordering,
-	fmt::{Display, Formatter},
+    cmp::Ordering,
+    fmt::{Display, Formatter},
 };
 
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub mod temporal;
 mod time;
 mod r#type;
 pub mod uuid;
-pub mod identity;
+mod identity;
 
 pub use blob::Blob;
 pub use date::Date;
@@ -36,9 +36,9 @@ pub use into::IntoValue;
 pub use is::*;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
+pub use r#type::{GetType, Type};
 pub use row_id::RowId;
 pub use time::Time;
-pub use r#type::{GetType, Type};
 pub use uuid::{Uuid4, Uuid7};
 
 /// A RQL value, represented as a native Rust type.
@@ -84,6 +84,8 @@ pub enum Value {
 	Interval(Interval),
 	/// A row identifier (8-byte unsigned integer)
 	RowId(RowId),
+	/// An identity identifier (UUID v7)
+	IdentityId(IdentityId),
 	/// A UUID version 4 (random)
 	Uuid4(Uuid4),
 	/// A UUID version 7 (timestamp-based)
@@ -137,6 +139,7 @@ impl PartialOrd for Value {
 				l.partial_cmp(r)
 			}
 			(Value::RowId(l), Value::RowId(r)) => l.partial_cmp(r),
+			(Value::IdentityId(l), Value::IdentityId(r)) => l.partial_cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
@@ -167,6 +170,7 @@ impl Ord for Value {
 			(Value::Time(l), Value::Time(r)) => l.cmp(r),
 			(Value::Interval(l), Value::Interval(r)) => l.cmp(r),
 			(Value::RowId(l), Value::RowId(r)) => l.cmp(r),
+			(Value::IdentityId(l), Value::IdentityId(r)) => l.cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
@@ -198,6 +202,7 @@ impl Display for Value {
 			Value::Time(value) => Display::fmt(value, f),
 			Value::Interval(value) => Display::fmt(value, f),
 			Value::RowId(value) => Display::fmt(value, f),
+			Value::IdentityId(value) => Display::fmt(value, f),
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
 			Value::Blob(value) => Display::fmt(value, f),
@@ -229,6 +234,7 @@ impl Value {
 			Value::Time(_) => Type::Time,
 			Value::Interval(_) => Type::Interval,
 			Value::RowId(_) => Type::RowId,
+			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,

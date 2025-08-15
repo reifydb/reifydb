@@ -22,8 +22,8 @@ pub use interface::{
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
-pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
+pub use util::{retry, BitVec, CowVec, Either, WaitGroup};
 pub use value::{
-	Blob, Date, DateTime, GetType, Interval, IntoValue, OrderedF32,
-	OrderedF64, RowId, Time, Type, Uuid4, Uuid7, Value,
+	Blob, Date, DateTime, GetType, IdentityId, Interval, IntoValue,
+	OrderedF32, OrderedF64, RowId, Time, Type, Uuid4, Uuid7, Value,
 };

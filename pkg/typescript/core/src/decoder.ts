@@ -8,7 +8,7 @@ import {
     BlobValue, BoolValue, DateValue, DateTimeValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
     RowIdValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
-    Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value,
+    Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
     Value, TypeValuePair
 } from './value';
 
@@ -61,6 +61,8 @@ export function decode(pair: TypeValuePair): Value {
             return Uuid4Value.parse(pair.value);
         case "Uuid7":
             return Uuid7Value.parse(pair.value);
+        case "IdentityId":
+            return IdentityIdValue.parse(pair.value);
         default:
             throw new Error(`Unsupported type: ${pair.type}`);
     }

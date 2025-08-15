@@ -11,7 +11,7 @@ import {
     IntervalValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     RowIdValue, UndefinedValue, Utf8Value,
-    Uuid4Value, Uuid7Value,
+    Uuid4Value, Uuid7Value, IdentityIdValue,
     Type
 } from '../value';
 import {
@@ -43,7 +43,8 @@ export type PrimitiveToTS<T extends Type> =
                                                                                     T extends 'Uuid7' ? string :
                                                                                         T extends 'Undefined' ? undefined :
                                                                                             T extends 'RowId' ? bigint :
-                                                                                                never;
+                                                                                                T extends 'IdentityId' ? string :
+                                                                                                    never;
 
 export type PrimitiveToValue<T extends Type> =
     T extends 'Blob' ? BlobValue :
@@ -69,7 +70,8 @@ export type PrimitiveToValue<T extends Type> =
                                                                                     T extends 'Uuid7' ? Uuid7Value :
                                                                                         T extends 'Undefined' ? UndefinedValue :
                                                                                             T extends 'RowId' ? RowIdValue :
-                                                                                                never;
+                                                                                                T extends 'IdentityId' ? IdentityIdValue :
+                                                                                                    never;
 
 export type InferSchema<S> =
     S extends PrimitiveSchemaNode<infer T> ? T extends Type ? PrimitiveToTS<T> : never :

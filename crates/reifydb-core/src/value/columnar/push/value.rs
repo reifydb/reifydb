@@ -443,6 +443,28 @@ impl ColumnData {
 				}
 				_ => unimplemented!(),
 			},
+			Value::IdentityId(id) => match self {
+				ColumnData::IdentityId(container) => {
+					container.push(id)
+				}
+				ColumnData::Undefined(container) => {
+					let mut new_container =
+						ColumnData::identity_id(vec![]);
+					if let ColumnData::IdentityId(
+						new_container,
+					) = &mut new_container
+					{
+						for _ in 0..container.len() {
+							new_container
+								.push_undefined(
+								);
+						}
+						new_container.push(id);
+					}
+					*self = new_container;
+				}
+				_ => unimplemented!(),
+			},
 			Value::Blob(v) => match self {
 				ColumnData::Blob(container) => {
 					container.push(v)
@@ -474,7 +496,7 @@ mod tests {
 	use uuid::Uuid;
 
 	use crate::{
-		Date, DateTime, Interval, OrderedF32, OrderedF64, RowId, Time,
+		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64, RowId, Time,
 		Value,
 		value::{
 			columnar::data::ColumnData,
@@ -1191,6 +1213,49 @@ mod tests {
 		assert_eq!(
 			container.data().as_slice(),
 			&[RowId::default(), row_id]
+		);
+		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
+	}
+
+	#[test]
+	fn test_identity_id() {
+		let id1 = IdentityId::generate();
+		let id2 = IdentityId::generate();
+		let mut col = ColumnData::identity_id(vec![id1]);
+		col.push_value(Value::IdentityId(id2));
+		let ColumnData::IdentityId(container) = col else {
+			panic!("Expected IdentityId");
+		};
+		assert_eq!(container.data().as_slice(), &[id1, id2]);
+		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
+	}
+
+	#[test]
+	fn test_undefined_identity_id() {
+		let id1 = IdentityId::generate();
+		let mut col = ColumnData::identity_id(vec![id1]);
+		col.push_value(Value::Undefined);
+		let ColumnData::IdentityId(container) = col else {
+			panic!("Expected IdentityId");
+		};
+		assert_eq!(
+			container.data().as_slice(),
+			&[id1, IdentityId::default()]
+		);
+		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
+	}
+
+	#[test]
+	fn test_push_value_to_undefined_identity_id() {
+		let id = IdentityId::generate();
+		let mut col = ColumnData::undefined(1);
+		col.push_value(Value::IdentityId(id));
+		let ColumnData::IdentityId(container) = col else {
+			panic!("Expected IdentityId");
+		};
+		assert_eq!(
+			container.data().as_slice(),
+			&[IdentityId::default(), id]
 		);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
