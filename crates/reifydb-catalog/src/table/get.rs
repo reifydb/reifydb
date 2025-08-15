@@ -2,13 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, SchemaTableKey, Table, TableId, TableKey, Versioned,
-	VersionedQueryTransaction,
+	EncodableKey, SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
+	Versioned, VersionedQueryTransaction,
 };
 
 use crate::{
 	Catalog,
-	schema::SchemaId,
 	table::layout::{table, table_schema},
 };
 
@@ -17,7 +16,7 @@ impl Catalog {
 		rx: &mut impl VersionedQueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<Table>> {
+	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
 		let Some(table) = rx
 			.range(SchemaTableKey::full_scan(schema))?
@@ -45,7 +44,7 @@ impl Catalog {
 	pub fn get_table(
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
-	) -> crate::Result<Option<Table>> {
+	) -> crate::Result<Option<TableDef>> {
 		match rx.get(&TableKey {
 			table,
 		}
@@ -63,7 +62,7 @@ impl Catalog {
 				let name = table::LAYOUT
 					.get_utf8(&row, table::NAME)
 					.to_string();
-				Ok(Some(Table {
+				Ok(Some(TableDef {
 					id,
 					name,
 					schema,
@@ -78,12 +77,11 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
 	mod get_table_by_name {
-		use reifydb_core::interface::TableId;
+		use reifydb_core::interface::{SchemaId, TableId};
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
 			Catalog,
-			schema::SchemaId,
 			test_utils::{
 				create_schema, create_table, ensure_test_schema,
 			},
@@ -184,12 +182,11 @@ mod tests {
 	}
 
 	mod get_table {
-		use reifydb_core::interface::TableId;
+		use reifydb_core::interface::{SchemaId, TableId};
 		use reifydb_transaction::test_utils::create_test_command_transaction;
 
 		use crate::{
 			Catalog,
-			schema::SchemaId,
 			test_utils::{
 				create_schema, create_table, ensure_test_schema,
 			},

@@ -12,7 +12,7 @@ extern crate serde_json;
 use pyo3::prelude::*;
 use pythonize::pythonize;
 use rdb::{
-	Principal, ReifyDB, reifydb_engine::execute::ExecutionResult,
+	Identity, ReifyDB, reifydb_engine::execute::ExecutionResult,
 	store::Memory,
 };
 use reifydb::variant::Embedded;
@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 #[pyclass(name = "Embedded")]
 pub struct PyEmbedded {
 	embedded: Embedded<Memory, ::reifydb_engine<Memory>>,
-	root: Principal,
+	root: Identity,
 }
 
 #[pymethods]

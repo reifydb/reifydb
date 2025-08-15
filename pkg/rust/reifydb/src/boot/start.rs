@@ -5,7 +5,7 @@ use reifydb_core::{
 	Type,
 	hook::{
 		BoxedHookIter, Callback,
-		lifecycle::{OnCreateHook, OnInitHook},
+		lifecycle::{OnCreateHook, OnStartHook},
 	},
 	interface::{
 		EncodableKey, SystemVersion, SystemVersionKey,
@@ -36,11 +36,11 @@ where
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-impl<UT> Callback<OnInitHook> for StartCallback<UT>
+impl<UT> Callback<OnStartHook> for StartCallback<UT>
 where
 	UT: UnversionedTransaction,
 {
-	fn on(&self, _hook: &OnInitHook) -> crate::Result<BoxedHookIter> {
+	fn on(&self, _hook: &OnStartHook) -> crate::Result<BoxedHookIter> {
 		let layout = EncodedRowLayout::new(&[Type::Uint1]);
 		let key = SystemVersionKey {
 			version: SystemVersion::Storage,

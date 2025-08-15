@@ -11,7 +11,7 @@ use reifydb::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
 			ColumnId, ColumnIndex, EncodableKeyRange, Params,
-			SchemaId, Table, TableId, TableRowKeyRange,
+			SchemaId, TableDef, TableId, TableRowKeyRange,
 		},
 		row::EncodedRowLayout,
 	},
@@ -251,12 +251,12 @@ fn read_columns_from_storage(
 
 	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-	let table = Table {
+	let table = TableDef {
 		id: TableId(node_id.0),
 		schema: SchemaId(0),
 		name: "view".to_string(),
 		columns: vec![
-			reifydb::core::interface::Column {
+			reifydb::core::interface::ColumnDef {
 				id: ColumnId(0),
 				name: "name".to_string(),
 				ty: Type::Utf8,
@@ -264,7 +264,7 @@ fn read_columns_from_storage(
 				index: ColumnIndex(0),
 				auto_increment: false,
 			},
-			reifydb::core::interface::Column {
+			reifydb::core::interface::ColumnDef {
 				id: ColumnId(1),
 				name: "age".to_string(),
 				ty: Type::Int1,

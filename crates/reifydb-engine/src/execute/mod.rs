@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, Command,
 		Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		StandardCdcTransaction, StandardTransaction, Table,
+		StandardCdcTransaction, StandardTransaction, TableDef,
 		Transaction, VersionedQueryTransaction,
 	},
 };
@@ -36,7 +36,7 @@ mod query;
 
 pub struct ExecutionContext {
 	pub functions: Functions,
-	pub table: Option<Table>,
+	pub table: Option<TableDef>,
 	pub batch_size: usize,
 	pub preserve_row_ids: bool,
 	pub params: Params,

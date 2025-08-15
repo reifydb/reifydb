@@ -6,7 +6,7 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use reifydb_core::{
 	Type, Value,
 	interface::{
-		Engine as EngineInterface, Params as CoreParams, Principal,
+		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
 	},
 	result::{Frame, error::diagnostic::Diagnostic},
@@ -155,7 +155,7 @@ impl<T: Transaction> grpc::db_server::Db for DbService<T> {
 		let engine = self.engine.clone();
 
 		spawn_blocking(move || {
-            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &rql, params)
+            match engine.command_as(&Identity::System { id: 1, name: "root".to_string() }, &rql, params)
             {
                 Ok(frames) => {
                     let mut responses: Vec<Result<CommandResult, Status>> = vec![];
@@ -213,7 +213,7 @@ impl<T: Transaction> grpc::db_server::Db for DbService<T> {
 		let engine = self.engine.clone();
 
 		spawn_blocking(move || {
-            match engine.command_as(&Principal::System { id: 1, name: "root".to_string() }, &rql, params)
+            match engine.command_as(&Identity::System { id: 1, name: "root".to_string() }, &rql, params)
             {
                 Ok(frames) => {
                     let mut responses: Vec<Result<QueryResult, Status>> = vec![];

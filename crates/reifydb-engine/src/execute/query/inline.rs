@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	ColumnDescriptor, Value,
-	interface::{Table, VersionedQueryTransaction},
+	interface::{TableDef, VersionedQueryTransaction},
 };
 use reifydb_rql::expression::AliasExpression;
 
@@ -42,7 +42,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn create_columns_layout_from_table(table: &Table) -> ColumnsLayout {
+	fn create_columns_layout_from_table(table: &TableDef) -> ColumnsLayout {
 		let columns = table
 			.columns
 			.iter()

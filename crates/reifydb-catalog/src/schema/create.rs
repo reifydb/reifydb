@@ -13,7 +13,7 @@ use reifydb_core::{
 
 use crate::{
 	Catalog,
-	schema::{Schema, layout::schema},
+	schema::{SchemaDef, layout::schema},
 	sequence::SystemSequence,
 };
 
@@ -27,7 +27,7 @@ impl Catalog {
 	pub fn create_schema<T: Transaction>(
 		txn: &mut ActiveCommandTransaction<T>,
 		to_create: SchemaToCreate,
-	) -> crate::Result<Schema> {
+	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =
 			Catalog::get_schema_by_name(txn, &to_create.name)?
 		{

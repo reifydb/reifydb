@@ -3,11 +3,10 @@
 
 use reifydb_core::{
 	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
-	interface::{Engine as EngineInterface, Principal, Transaction},
+	interface::{Engine as EngineInterface, Identity, Transaction},
 	return_hooks,
 };
-
-use crate::Engine;
+use reifydb_engine::Engine;
 
 pub(crate) struct CreateCallback<T: Transaction> {
 	engine: Engine<T>,
@@ -24,7 +23,7 @@ impl<T: Transaction> CreateCallback<T> {
 impl<T: Transaction> Callback<OnCreateHook> for CreateCallback<T> {
 	fn on(&self, _hook: &OnCreateHook) -> crate::Result<BoxedHookIter> {
 		self.engine.command_as(
-			&Principal::root(),
+			&Identity::root(),
 			r#"
 
 create schema reifydb;

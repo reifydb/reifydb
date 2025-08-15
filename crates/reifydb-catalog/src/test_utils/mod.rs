@@ -4,7 +4,7 @@
 use reifydb_core::{
 	Type,
 	interface::{
-		ActiveCommandTransaction, ColumnPolicyKind, Table, TableId,
+		ActiveCommandTransaction, ColumnPolicyKind, TableDef, TableId,
 		Transaction,
 	},
 };
@@ -12,7 +12,7 @@ use reifydb_core::{
 use crate::{
 	Catalog,
 	column::{ColumnIndex, ColumnToCreate},
-	schema::{Schema, SchemaToCreate},
+	schema::{SchemaDef, SchemaToCreate},
 	table,
 	table::TableToCreate,
 };
@@ -20,7 +20,7 @@ use crate::{
 pub fn create_schema<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
 	schema: &str,
-) -> Schema {
+) -> SchemaDef {
 	Catalog::create_schema(
 		txn,
 		SchemaToCreate {
@@ -33,7 +33,7 @@ pub fn create_schema<T: Transaction>(
 
 pub fn ensure_test_schema<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
-) -> Schema {
+) -> SchemaDef {
 	if let Some(result) =
 		Catalog::get_schema_by_name(txn, "test_schema").unwrap()
 	{
@@ -44,7 +44,7 @@ pub fn ensure_test_schema<T: Transaction>(
 
 pub fn ensure_test_table<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
-) -> Table {
+) -> TableDef {
 	let schema = ensure_test_schema(txn);
 	if let Some(result) =
 		Catalog::get_table_by_name(txn, schema.id, "test_table")
@@ -60,7 +60,7 @@ pub fn create_table<T: Transaction>(
 	schema: &str,
 	table: &str,
 	columns: &[table::ColumnToCreate],
-) -> Table {
+) -> TableDef {
 	Catalog::create_table(
 		txn,
 		TableToCreate {

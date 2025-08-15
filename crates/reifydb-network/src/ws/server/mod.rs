@@ -15,7 +15,7 @@ use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
 	Error, Value,
 	interface::{
-		Engine as EngineInterface, Params as CoreParams, Principal,
+		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
 	},
 };
@@ -290,7 +290,7 @@ impl<T: Transaction> WsServer<T> {
 											    if let Some(statement) = statements.first() {
 												let params = ws_params_to_core_params(params);
 												match engine.command_as(
-												    &Principal::System { id: 1, name: "root".to_string() },
+												    &Identity::System { id: 1, name: "root".to_string() },
 												    statement,
 												    params,
 												) {
@@ -349,7 +349,7 @@ impl<T: Transaction> WsServer<T> {
 											    if let Some(statement) = statements.first() {
 												let params = ws_params_to_core_params(params);
 												match engine.query_as(
-												    &Principal::System { id: 1, name: "root".to_string() },
+												    &Identity::System { id: 1, name: "root".to_string() },
 												    statement,
 												    params,
 												) {

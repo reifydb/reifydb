@@ -13,7 +13,7 @@ mod sources;
 use std::collections::HashMap;
 
 use reifydb_core::{
-	interface::{SchemaId, Table, TableId},
+	interface::{SchemaId, TableDef, TableId},
 	result::error::diagnostic::flow::flow_error,
 };
 use reifydb_rql::plan::logical::{CreateComputedViewNode, LogicalPlan};
@@ -189,7 +189,7 @@ impl FlowCompiler {
 
 		// Create the computed view as a Sink node at the end
 		let view_name = computed_view.view.fragment.clone();
-		let view_table = Table {
+		let view_table = TableDef {
 			id: self.next_table_id(),
 			schema: SchemaId(1), /* TODO: Parse schema from
 			                      * computed_view.schema */

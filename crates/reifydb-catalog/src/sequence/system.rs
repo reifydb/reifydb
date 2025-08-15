@@ -6,15 +6,13 @@ pub use reifydb_core::interface::SystemSequenceId;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		ActiveCommandTransaction, ColumnPolicyId, EncodableKey,
-		SystemSequenceKey, TableId, Transaction,
+		ActiveCommandTransaction, ColumnId, ColumnPolicyId,
+		EncodableKey, SchemaId, SystemSequenceKey, TableId,
+		Transaction,
 	},
 };
 
-use crate::{
-	column::ColumnId, schema::SchemaId,
-	sequence::generator::u64::GeneratorU64,
-};
+use crate::sequence::generator::u64::GeneratorU64;
 
 pub(crate) const SCHEMA_SEQUENCE_ID: SystemSequenceId = SystemSequenceId(1);
 pub(crate) const TABLE_SEQUENCE_ID: SystemSequenceId = SystemSequenceId(2);

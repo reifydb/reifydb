@@ -9,7 +9,7 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, Table, TableRowKey,
+		EncodableKey, EncodableKeyRange, TableDef, TableRowKey,
 		TableRowKeyRange, VersionedQueryTransaction,
 	},
 	row::EncodedRowLayout,
@@ -25,7 +25,7 @@ use crate::{
 };
 
 pub(crate) struct ScanColumnsNode {
-	table: Table,
+	table: TableDef,
 	context: Arc<ExecutionContext>,
 	layout: ColumnsLayout,
 	row_layout: EncodedRowLayout,
@@ -35,7 +35,7 @@ pub(crate) struct ScanColumnsNode {
 
 impl ScanColumnsNode {
 	pub fn new(
-		table: Table,
+		table: TableDef,
 		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
 		let data =

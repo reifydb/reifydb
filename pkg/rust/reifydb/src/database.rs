@@ -7,8 +7,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	Result,
+	hook::lifecycle::OnStartHook,
 	interface::{
-		CdcTransaction, StandardTransaction, Transaction,
+		CdcTransaction, GetHooks, StandardTransaction, Transaction,
 		UnversionedTransaction, VersionedTransaction,
 	},
 };
@@ -23,6 +24,7 @@ use crate::subsystem::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
 use crate::subsystem::WsSubsystem;
 use crate::{
+	boot::Bootloader,
 	defaults::{
 		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
 		MAX_STARTUP_TIME,
@@ -82,6 +84,7 @@ impl Default for DatabaseConfig {
 pub struct Database<T: Transaction> {
 	config: DatabaseConfig,
 	engine: Engine<T>,
+	bootloader: Bootloader<T>,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
@@ -112,7 +115,8 @@ impl<T: Transaction> Database<T> {
 		health_monitor: Arc<HealthMonitor>,
 	) -> Self {
 		Self {
-			engine,
+			engine: engine.clone(),
+			bootloader: Bootloader::new(engine),
 			subsystems: subsystem_manager,
 			config,
 			health_monitor,
@@ -141,6 +145,8 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already running
 		}
 
+		self.bootloader.load()?;
+
 		println!(
 			"[Database] Starting system with {} subsystems",
 			self.subsystem_count()
@@ -153,6 +159,8 @@ impl<T: Transaction> Database<T> {
 			                        * if constructed */
 			true,
 		);
+
+		self.engine.get_hooks().trigger(OnStartHook {})?;
 
 		// Start all subsystems
 		match self.subsystems.start_all(self.config.max_startup_time) {

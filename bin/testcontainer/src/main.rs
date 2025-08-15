@@ -46,6 +46,8 @@ fn main() {
 			socket: "0.0.0.0:8090".parse().ok(),
 		})
 		.on_create(|ctx| {
+			println!("on create");
+
 			ctx.command_as_root("create schema test", ())?;
 			ctx.command_as_root(
 				"create table test.arith { id: int1, value: int2, num: int2 }",

@@ -7,14 +7,14 @@ use reifydb_core::interface::{
 
 use crate::{
 	Catalog,
-	column::{Column, ColumnId, layout::table_column},
+	column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl Catalog {
 	pub fn list_columns(
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
-	) -> crate::Result<Vec<Column>> {
+	) -> crate::Result<Vec<ColumnDef>> {
 		let mut result = vec![];
 
 		let ids =

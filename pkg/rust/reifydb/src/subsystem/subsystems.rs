@@ -19,7 +19,8 @@ use crate::{
 };
 
 pub struct Subsystems {
-	subsystems: HashMap<TypeId, Box<dyn Subsystem>>,
+	subsystems: Vec<Box<dyn Subsystem>>,
+	index: HashMap<TypeId, usize>,
 	running: Arc<AtomicBool>,
 	health_monitor: Arc<HealthMonitor>,
 }
@@ -27,7 +28,8 @@ pub struct Subsystems {
 impl Subsystems {
 	pub fn new(health_monitor: Arc<HealthMonitor>) -> Self {
 		Self {
-			subsystems: HashMap::new(),
+			subsystems: Vec::new(),
+			index: HashMap::new(),
 			running: Arc::new(AtomicBool::new(false)),
 			health_monitor,
 		}
@@ -44,7 +46,13 @@ impl Subsystems {
 
 		// Get the TypeId of the concrete type
 		let type_id = (*subsystem).as_any().type_id();
-		self.subsystems.insert(type_id, subsystem);
+
+		// Store the index for fast lookup
+		let index = self.subsystems.len();
+		self.index.insert(type_id, index);
+
+		// Add to the ordered list
+		self.subsystems.push(subsystem);
 	}
 
 	pub fn subsystem_count(&self) -> usize {
@@ -57,18 +65,18 @@ impl Subsystems {
 		}
 
 		println!(
-			"[SubsystemManager] Starting {} subsystems...",
+			"[Subsystem] Starting {} subsystems...",
 			self.subsystems.len()
 		);
 
 		let start_time = std::time::Instant::now();
 		let mut started_subsystems = Vec::new();
 
-		for (_type_id, subsystem) in &mut self.subsystems {
+		for subsystem in &mut self.subsystems {
 			// Check timeout
 			if start_time.elapsed() > startup_timeout {
 				eprintln!(
-					"[SubsystemManager] Startup timeout exceeded"
+					"[Subsystem] Startup timeout exceeded"
 				);
 				// Rollback: stop all previously started
 				// subsystems
@@ -79,10 +87,7 @@ impl Subsystems {
 			}
 
 			let name = subsystem.name().to_string();
-			println!(
-				"[SubsystemManager] Starting subsystem: {}",
-				name
-			);
+			println!("[Subsystem] Starting subsystem: {}", name);
 
 			match subsystem.start() {
 				Ok(()) => {
@@ -97,13 +102,13 @@ impl Subsystems {
 						);
 					started_subsystems.push(name.clone());
 					println!(
-						"[SubsystemManager] Successfully started: {}",
+						"[Subsystem] Successfully started: {}",
 						name
 					);
 				}
 				Err(e) => {
 					eprintln!(
-						"[SubsystemManager] Failed to start subsystem '{}': {}",
+						"[Subsystem] Failed to start subsystem '{}': {}",
 						name, e
 					);
 					// Update health monitoring with failure
@@ -130,7 +135,7 @@ impl Subsystems {
 
 		self.running.store(true, Ordering::Relaxed);
 		println!(
-			"[SubsystemManager] All {} subsystems started successfully",
+			"[Subsystem] All {} subsystems started successfully",
 			started_subsystems.len()
 		);
 		Ok(())
@@ -142,28 +147,25 @@ impl Subsystems {
 		}
 
 		println!(
-			"[SubsystemManager] Stopping {} subsystems...",
+			"[Subsystem] Stopping {} subsystems...",
 			self.subsystems.len()
 		);
 
 		let start_time = std::time::Instant::now();
 		let mut errors = Vec::new();
 
-		// Stop all subsystems (HashMap doesn't guarantee order)
-		for (_type_id, subsystem) in &mut self.subsystems {
+		// Stop all subsystems in reverse order
+		for subsystem in self.subsystems.iter_mut().rev() {
 			// Check timeout
 			if start_time.elapsed() > shutdown_timeout {
 				eprintln!(
-					"[SubsystemManager] Shutdown timeout exceeded"
+					"[Subsystem] Shutdown timeout exceeded"
 				);
 				break;
 			}
 
 			let name = subsystem.name().to_string();
-			println!(
-				"[SubsystemManager] Stopping subsystem: {}",
-				name
-			);
+			println!("[Subsystem] Stopping subsystem: {}", name);
 
 			match subsystem.stop() {
 				Ok(()) => {
@@ -177,13 +179,13 @@ impl Subsystems {
 							subsystem.is_running(),
 						);
 					println!(
-						"[SubsystemManager] Successfully stopped: {}",
+						"[Subsystem] Successfully stopped: {}",
 						name
 					);
 				}
 				Err(e) => {
 					eprintln!(
-						"[SubsystemManager] Error stopping subsystem '{}': {}",
+						"[Subsystem] Error stopping subsystem '{}': {}",
 						name, e
 					);
 					// Update health monitoring with failure
@@ -207,7 +209,7 @@ impl Subsystems {
 
 		if errors.is_empty() {
 			println!(
-				"[SubsystemManager] All subsystems stopped successfully"
+				"[Subsystem] All subsystems stopped successfully"
 			);
 			Ok(())
 		} else {
@@ -216,13 +218,13 @@ impl Subsystems {
 				errors.len(),
 				errors
 			);
-			eprintln!("[SubsystemManager] {}", error_msg);
+			eprintln!("[Subsystem] {}", error_msg);
 			panic!("Errors occurred during shutdown: {:?}", errors)
 		}
 	}
 
 	pub fn update_health_monitoring(&mut self) {
-		for (_type_id, subsystem) in &self.subsystems {
+		for subsystem in &self.subsystems {
 			self.health_monitor.update_component_health(
 				subsystem.name().to_string(),
 				subsystem.health_status(),
@@ -234,15 +236,14 @@ impl Subsystems {
 	pub fn get_subsystem_names(&self) -> Vec<String> {
 		self.subsystems
 			.iter()
-			.map(|(_type_id, subsystem)| {
-				subsystem.name().to_string()
-			})
+			.map(|subsystem| subsystem.name().to_string())
 			.collect()
 	}
 
 	pub fn get<T: 'static>(&self) -> Option<&T> {
 		let type_id = TypeId::of::<T>();
-		self.subsystems.get(&type_id)?.as_any().downcast_ref::<T>()
+		let index = *self.index.get(&type_id)?;
+		self.subsystems.get(index)?.as_any().downcast_ref::<T>()
 	}
 
 	fn stop_started_subsystems(
@@ -254,11 +255,11 @@ impl Subsystems {
 		// Stop the started subsystems in reverse order
 		for name in started_names.iter().rev() {
 			// Find and stop the subsystem by name
-			for (_type_id, subsystem) in &mut self.subsystems {
+			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
 					if let Err(e) = subsystem.stop() {
 						eprintln!(
-							"[SubsystemManager] Error stopping '{}' during rollback: {}",
+							"[Subsystem] Error stopping '{}' during rollback: {}",
 							name, e
 						);
 						errors.push((name.clone(), e));

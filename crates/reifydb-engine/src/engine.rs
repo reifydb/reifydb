@@ -5,11 +5,14 @@ use std::{marker::PhantomData, ops::Deref, sync::Arc};
 
 use reifydb_core::{
 	Frame, Type,
-	hook::{BoxedHookIter, Callback, Hooks, transaction::PostCommitHook},
+	hook::{
+		BoxedHookIter, Callback, Hook, Hooks,
+		transaction::PostCommitHook,
+	},
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, Command,
 		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		GetHooks, Key, Params, Principal, Query, TableId, Transaction,
+		GetHooks, Identity, Key, Params, Query, TableId, Transaction,
 		VersionedTransaction,
 	},
 	return_hooks,
@@ -26,7 +29,6 @@ use crate::{
 		processor::FlowProcessor,
 	},
 	function::{Functions, math},
-	subsystem::init::register_system_hooks,
 };
 
 pub struct Engine<T: Transaction>(Arc<EngineInner<T>>);
@@ -56,7 +58,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 
 	fn command_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -66,7 +68,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 			Command {
 				rql,
 				params,
-				principal,
+				identity,
 			},
 		)?;
 		txn.commit()?;
@@ -75,7 +77,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 
 	fn query_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -85,7 +87,7 @@ impl<T: Transaction> EngineInterface<T> for Engine<T> {
 			Query {
 				rql,
 				params,
-				principal,
+				identity,
 			},
 		)?;
 		Ok(result)
@@ -187,16 +189,32 @@ impl<T: Transaction> Engine<T> {
 			),
 		}));
 
-		result.setup_hooks()?;
 		Ok(result)
 	}
 
+	#[inline]
 	pub fn versioned(&self) -> &T::Versioned {
 		&self.versioned
 	}
 
+	#[inline]
+	pub fn versioned_owned(&self) -> T::Versioned {
+		self.versioned.clone()
+	}
+
+	#[inline]
 	pub fn unversioned(&self) -> &T::Unversioned {
 		&self.unversioned
+	}
+
+	#[inline]
+	pub fn unversioned_owned(&self) -> T::Unversioned {
+		self.unversioned.clone()
+	}
+
+	#[inline]
+	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
+		self.hooks.trigger(hook)
 	}
 }
 
@@ -247,7 +265,7 @@ impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
 					let frame = self
 						.engine
 						.query_as(
-							&Principal::root(),
+							&Identity::root(),
 							"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
 							Params::None,
 						)
@@ -299,15 +317,5 @@ impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
 			};
 		}
 		return_hooks!()
-	}
-}
-
-impl<T: Transaction> Engine<T> {
-	pub fn setup_hooks(&self) -> crate::Result<()> {
-		register_system_hooks(&self);
-
-		// self.hooks.register(FlowPostCommit { engine: self.clone() });
-
-		Ok(())
 	}
 }

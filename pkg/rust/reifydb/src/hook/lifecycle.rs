@@ -6,7 +6,7 @@
 use reifydb_core::{
 	Frame,
 	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
-	interface::{Engine as _, Params, Principal, Transaction},
+	interface::{Engine as _, Identity, Params, Transaction},
 	return_hooks,
 };
 use reifydb_engine::Engine;
@@ -23,14 +23,14 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		}
 	}
 
-	/// Execute a transactional command as the specified principal
+	/// Execute a transactional command as the specified identity
 	pub fn command_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
 	) -> Result<Vec<Frame>, reifydb_core::Error> {
-		self.engine.command_as(principal, rql, params.into())
+		self.engine.command_as(identity, rql, params.into())
 	}
 
 	/// Execute a transactional command as root user
@@ -39,21 +39,21 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> Result<Vec<Frame>, reifydb_core::Error> {
-		let principal = Principal::System {
+		let identity = Identity::System {
 			id: 0,
 			name: "root".to_string(),
 		};
-		self.engine.command_as(&principal, rql, params.into())
+		self.engine.command_as(&identity, rql, params.into())
 	}
 
-	/// Execute a read-only query as the specified principal
+	/// Execute a read-only query as the specified identity
 	pub fn query_as(
 		&self,
-		principal: &Principal,
+		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
 	) -> Result<Vec<Frame>, reifydb_core::Error> {
-		self.engine.query_as(principal, rql, params.into())
+		self.engine.query_as(identity, rql, params.into())
 	}
 
 	/// Execute a read-only query as root user
@@ -62,8 +62,8 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> Result<Vec<Frame>, reifydb_core::Error> {
-		let principal = Principal::root();
-		self.engine.query_as(&principal, rql, params.into())
+		let identity = Identity::root();
+		self.engine.query_as(&identity, rql, params.into())
 	}
 }
 

@@ -95,7 +95,7 @@ impl<'a> ColumnDescriptor<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Column {
+pub struct ColumnDef {
 	pub id: ColumnId,
 	pub name: String,
 	pub ty: Type,
