@@ -4,30 +4,18 @@
 use std::{marker::PhantomData, ops::Deref, sync::Arc};
 
 use reifydb_core::{
-	Frame, Type,
-	hook::{
-		BoxedHookIter, Callback, Hook, Hooks,
-		transaction::PostCommitHook,
-	},
+	Frame,
+	hook::{Hook, Hooks},
 	interface::{
 		ActiveCommandTransaction, ActiveQueryTransaction, Command,
 		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		GetHooks, Identity, Key, Params, Query, TableId, Transaction,
+		GetHooks, Identity, Params, Query, Transaction,
 		VersionedTransaction,
 	},
-	return_hooks,
-	row::EncodedRowLayout,
 };
 
 use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, Columns},
 	execute::Executor,
-	flow::{
-		change::{Change, Diff},
-		flow::Flow,
-		node::NodeType,
-		processor::FlowProcessor,
-	},
 	function::{Functions, math},
 };
 
@@ -136,8 +124,6 @@ pub struct EngineInner<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	executor: Executor<T>,
-
-	_processor: FlowProcessor<T>, // FIXME remove me
 }
 
 impl<T: Transaction> StandardEngine<T> {
@@ -181,12 +167,6 @@ impl<T: Transaction> StandardEngine<T> {
 					.build(),
 				_phantom: PhantomData,
 			},
-			_processor: FlowProcessor::new(
-				Flow::default(),
-				versioned,
-				unversioned,
-				cdc,
-			),
 		}));
 
 		Ok(result)
@@ -225,107 +205,5 @@ impl<T: Transaction> StandardEngine<T> {
 	#[inline]
 	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
 		self.hooks.trigger(hook)
-	}
-}
-
-#[allow(dead_code)]
-struct FlowPostCommit<T: Transaction> {
-	engine: StandardEngine<T>,
-}
-
-impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
-	fn on(&self, hook: &PostCommitHook) -> crate::Result<BoxedHookIter> {
-		println!("Transaction version: {}", hook.version);
-
-		for delta in hook.deltas.iter() {
-			match Key::decode(delta.key()).unwrap() {
-				Key::TableRow(key) => {
-					if key.table == TableId(3) {
-						continue;
-					}
-
-					// dbg!(key.table);
-					let layout = EncodedRowLayout::new(&[
-						Type::Utf8,
-						Type::Int1,
-					]);
-					let row = delta.row().unwrap();
-
-					let name = layout.get_utf8(&row, 0);
-					let age = layout.get_i8(&row, 1);
-
-					println!("{name}: {age}");
-
-					let columns = Columns::new(vec![
-                        Column::ColumnQualified(ColumnQualified {
-                            name: "name".to_string(),
-                            data: ColumnData::utf8([name.to_string()]),
-                        }),
-                        Column::ColumnQualified(ColumnQualified {
-                            name: "age".to_string(),
-                            data: ColumnData::int1([age]),
-                        }),
-                    ]);
-
-					let mut txn = self
-						.engine
-						.begin_command()
-						.unwrap();
-
-					let frame = self
-						.engine
-						.query_as(
-							&Identity::root(),
-							"FROM reifydb.flows filter { id == 1 } map { cast(data, utf8) }",
-							Params::None,
-						)
-						.unwrap()
-						.pop()
-						.unwrap();
-
-					let value = frame[0].get_value(0);
-					// dbg!(&value.to_string());
-
-					let flow: Flow = serde_json::from_str(
-						value.to_string().as_str(),
-					)
-					.unwrap();
-					// dbg!(&flow);
-
-					// Find the source node (users table)
-					let source_node_id =
-						flow.get_all_nodes()
-							.find(|node_id| {
-								if let Some(node) = flow.get_node(node_id) {
-                                matches!(node.ty, NodeType::Source { .. })
-                            } else {
-                                false
-                            }
-							})
-							.expect(
-								"Should have a source node",
-							);
-
-					self.engine
-                        ._processor
-                        .hack(
-                            &flow,
-                            &mut txn,
-                            &source_node_id,
-                            Change {
-                                diffs: vec![Diff::Insert { after: columns }],
-                                metadata: Default::default(),
-                            },
-                        )
-                        .unwrap();
-
-					txn.commit().unwrap();
-
-					// dbg!(&columns);
-				}
-				_ => {}
-			};
-		}
-		return_hooks!()
 	}
 }

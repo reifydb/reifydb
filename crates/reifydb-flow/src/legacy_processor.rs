@@ -351,8 +351,6 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 			],
 		};
 
-		dbg!(&change);
-
 		for diff in &change.diffs {
 			match diff {
 				Diff::Insert {

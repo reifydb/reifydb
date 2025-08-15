@@ -34,6 +34,8 @@ pub use reifydb_core::{
 	},
 };
 pub use reifydb_engine as engine;
+#[cfg(feature = "sub_flow")]
+pub use reifydb_flow as flow;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;

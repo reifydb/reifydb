@@ -7,13 +7,7 @@ use reifydb_core::interface::{SchemaId, TableDef};
 use reifydb_rql::plan::logical::{InlineDataNode, TableScanNode};
 
 use super::FlowCompiler;
-use crate::{
-	Result,
-	flow::{
-		flow::Flow,
-		node::{NodeId, NodeType},
-	},
-};
+use crate::{Flow, NodeId, NodeType, Result};
 
 impl FlowCompiler {
 	/// Compiles a TableScan logical plan into a Source node

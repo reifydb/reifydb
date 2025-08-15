@@ -5,14 +5,13 @@ use reifydb_core::interface::{
 	ActiveCommandTransaction, Command, ExecuteCommand, Identity, Params,
 	Transaction,
 };
+use reifydb_flow::compile_flow;
 use reifydb_rql::{
 	ast,
 	plan::{logical::compile_logical, physical::CreateComputedViewPlan},
 };
 
-use crate::{
-	columnar::Columns, execute::Executor, flow::compile::compile_to_flow,
-};
+use crate::{columnar::Columns, execute::Executor};
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_computed_view(
@@ -49,7 +48,7 @@ impl<T: Transaction> Executor<T> {
 		};
 
 		// Compile logical plans to FlowGraph
-		let flow = compile_to_flow(logical_plans).unwrap();
+		let flow = compile_flow(logical_plans).unwrap();
 		// dbg!(&flow);
 
 		// txn.command_as_root(

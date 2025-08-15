@@ -10,13 +10,7 @@ use reifydb_rql::plan::logical::{
 };
 
 use super::FlowCompiler;
-use crate::{
-	Result,
-	flow::{
-		flow::Flow,
-		node::{NodeId, NodeType, OperatorType},
-	},
-};
+use crate::{Flow, NodeId, NodeType, OperatorType, Result};
 
 impl FlowCompiler {
 	/// Compiles a Filter logical plan into a Filter operator

@@ -15,13 +15,8 @@ use reifydb::{
 		},
 		row::EncodedRowLayout,
 	},
-	engine::{
-		columnar::Columns,
-		flow::{
-			flow::Flow,
-			node::{NodeId, NodeType},
-		},
-	},
+	engine::columnar::Columns,
+	flow::{Flow, NodeId, NodeType},
 	sync,
 };
 
@@ -71,6 +66,18 @@ fn main() {
 	)
 	.unwrap();
 
+	// db.command_as_root(
+	// 	r#"
+	// from [
+	//     { name: "dim", age: 40 },
+	// ]
+	// insert test.users;
+	//
+	// "#,
+	// 	Params::None,
+	// )
+	// 	.unwrap();
+
 	for frame in
 		db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
 	{
@@ -96,7 +103,7 @@ fn main() {
 	}
 
 	// loop {}
-	thread::sleep(Duration::from_secs(2));
+	thread::sleep(Duration::from_millis(100));
 
 	// println!("Basic database operations completed successfully!");
 	rql_to_flow_example(&mut db);

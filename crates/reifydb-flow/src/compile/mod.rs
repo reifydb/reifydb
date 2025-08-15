@@ -18,13 +18,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::logical::{CreateComputedViewNode, LogicalPlan};
 
-use crate::{
-	Result,
-	flow::{
-		flow::Flow,
-		node::{NodeId, NodeType},
-	},
-};
+use crate::{Flow, NodeId, NodeType};
 
 /// Compiler for converting RQL logical plans into executable FlowGraphs
 pub struct FlowCompiler {
@@ -47,7 +41,10 @@ impl FlowCompiler {
 	}
 
 	/// Compiles a vector of logical plans into a single FlowGraph
-	pub fn compile(&mut self, plans: Vec<LogicalPlan>) -> Result<Flow> {
+	pub fn compile(
+		&mut self,
+		plans: Vec<LogicalPlan>,
+	) -> crate::Result<Flow> {
 		let mut result = Flow::new();
 
 		// Process logical plans in order, building the dataflow graph
@@ -72,7 +69,7 @@ impl FlowCompiler {
 		flow_graph: &mut Flow,
 		plan: LogicalPlan,
 		index: usize,
-	) -> Result<NodeId> {
+	) -> crate::Result<NodeId> {
 		let node_id = match plan {
 			// Data Sources -> Source Nodes
 			LogicalPlan::TableScan(table_scan) => {
@@ -159,7 +156,7 @@ impl FlowCompiler {
 		&mut self,
 		flow_graph: &mut Flow,
 		computed_view: CreateComputedViewNode,
-	) -> Result<NodeId> {
+	) -> crate::Result<NodeId> {
 		// If there's no WITH clause, this is just a view definition
 		// without a query
 		let query_plans = match computed_view.with {
@@ -213,7 +210,7 @@ impl FlowCompiler {
 }
 
 /// Public API for compiling logical plans to FlowGraphs
-pub fn compile_to_flow(plans: Vec<LogicalPlan>) -> Result<Flow> {
+pub fn compile_flow(plans: Vec<LogicalPlan>) -> crate::Result<Flow> {
 	let mut compiler = FlowCompiler::new();
 	compiler.compile(plans)
 }

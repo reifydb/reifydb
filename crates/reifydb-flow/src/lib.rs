@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+mod compile;
 #[allow(dead_code)]
 mod core;
 #[allow(dead_code)]
@@ -10,6 +11,8 @@ mod operator;
 mod process;
 
 pub use core::*;
+
+pub use compile::compile_flow;
 
 pub mod legacy_processor; // FIXME remove that
 

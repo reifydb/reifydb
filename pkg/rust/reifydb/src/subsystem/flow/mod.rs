@@ -4,7 +4,7 @@
 use std::{any::Any, time::Duration};
 
 use reifydb_core::{
-	Result, Type,
+	Frame, Result, Type,
 	interface::{
 		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
 		CdcEvent, ColumnId, ColumnIndex, ConsumerId, Engine as _,

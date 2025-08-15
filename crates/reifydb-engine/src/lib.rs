@@ -8,7 +8,6 @@ pub use reifydb_core::value::columnar;
 mod engine;
 mod evaluate;
 mod execute;
-pub mod flow;
 #[allow(dead_code)]
 mod function;
 
