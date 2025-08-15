@@ -104,7 +104,7 @@ impl<T: Transaction> Subsystem for WsSubsystem<T> {
 				addr_task.abort(); // Clean up address polling task
 
 				if let Err(e) = serve_result {
-					eprintln!(
+					println!(
 						"[WsSubsystem] WebSocket server error: {}",
 						e
 					);
@@ -143,7 +143,7 @@ impl<T: Transaction> Subsystem for WsSubsystem<T> {
 			let server_close = server.close();
 			self.runtime_provider.block_on(async {
 				if let Err(e) = server_close.await {
-					eprintln!(
+					println!(
 						"[WsSubsystem] Error during WebSocket server shutdown: {}",
 						e
 					);

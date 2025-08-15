@@ -187,7 +187,7 @@ mod tests {
 		let tc = closer.clone();
 		std::thread::spawn(move || {
 			if let Err(err) = tc.listen().recv() {
-				eprintln!("err: {}", err);
+				println!("err: {}", err);
 			}
 			tc.done();
 		});

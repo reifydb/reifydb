@@ -28,6 +28,10 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			subsystems: Vec::new(),
 		};
 
+		// Add worker pool subsystem first so other subsystems can use it
+		let worker_pool = crate::subsystem::WorkerPoolSubsystem::new();
+		result = result.add_subsystem(worker_pool);
+
 		#[cfg(feature = "sub_flow")]
 		{
 			let flow_subsystem = FlowSubsystem::new(engine);

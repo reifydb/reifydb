@@ -1502,6 +1502,7 @@ dependencies = [
 name = "reifydb"
 version = "0.0.1"
 dependencies = [
+ "crossbeam-channel",
  "reifydb-auth",
  "reifydb-core",
  "reifydb-engine",

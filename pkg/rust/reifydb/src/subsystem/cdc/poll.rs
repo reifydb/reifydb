@@ -121,7 +121,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 			if let Err(error) =
 				Self::process_batch(&state, &engine, &processor)
 			{
-				eprintln!(
+				println!(
 					"[Consumer {:?}] Error processing events: {}",
 					state.id, error
 				);

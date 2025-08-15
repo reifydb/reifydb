@@ -147,7 +147,7 @@ impl<T: Transaction> WsServer<T> {
 					    match result {
 						Ok(_) => {},
 						Err(e) if e.is_cancelled() => { }// Expected when we abort tasks
-						Err(e) => eprintln!("❌ Connection cleanup error: {}", e),
+						Err(e) => println!("❌ Connection cleanup error: {}", e),
 					    }
 					}
 				    }
@@ -163,7 +163,7 @@ impl<T: Transaction> WsServer<T> {
 					while let Some(result) = tasks.join_next().await {
 					    if let Err(e) = result {
 						if !e.is_cancelled() {
-						    eprintln!("❌ Connection abort error: {}", e);
+						    println!("❌ Connection abort error: {}", e);
 						}
 					    }
 					}
@@ -185,7 +185,7 @@ impl<T: Transaction> WsServer<T> {
 					});
 				    }
 				    Err(e) => {
-					eprintln!("❌ Accept error: {e}");
+					println!("❌ Accept error: {e}");
 					continue;
 				    }
 				}
@@ -197,7 +197,7 @@ impl<T: Transaction> WsServer<T> {
 					// Connection completed successfully
 				    }
 				    Err(e) => {
-					eprintln!("❌ Connection task error: {}", e);
+					println!("❌ Connection task error: {}", e);
 				    }
 				}
 			    }
@@ -217,7 +217,7 @@ impl<T: Transaction> WsServer<T> {
 		let ws_stream = match accept_async(stream).await {
 			Ok(ws) => ws,
 			Err(e) => {
-				eprintln!(
+				println!(
 					"❌ WebSocket handshake failed for {}: {}",
 					peer_addr, e
 				);
@@ -237,7 +237,7 @@ impl<T: Transaction> WsServer<T> {
 		};
 
 		let Some(Ok(Message::Text(text))) = auth_result else {
-			eprintln!(
+			println!(
 				"❌ No valid first message from {}",
 				peer_addr
 			);
@@ -337,7 +337,7 @@ impl<T: Transaction> WsServer<T> {
 													let msg = serde_json::to_string(&response).unwrap();
 													let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
 
-													eprintln!("❌ Query error");
+													println!("❌ Query error");
 												    }
 												}
 											    }
@@ -396,7 +396,7 @@ impl<T: Transaction> WsServer<T> {
 													let msg = serde_json::to_string(&response).unwrap();
 													let _ = command.send(Message::Text(Utf8Bytes::from(msg))).await;
 
-													eprintln!("❌ Query error");
+													println!("❌ Query error");
 												    }
 												}
 											    }
@@ -404,7 +404,7 @@ impl<T: Transaction> WsServer<T> {
 											_ => {}
 										    },
 										    Err(err) =>{
-											eprintln!("❌ Invalid message: {err} - {text}");
+											println!("❌ Invalid message: {err} - {text}");
 										    }
 										}
 									    }
@@ -413,7 +413,7 @@ impl<T: Transaction> WsServer<T> {
 										break;
 									    }
 									    Some(Err(e)) => {
-										eprintln!("❌ WebSocket error: {}", e);
+										println!("❌ WebSocket error: {}", e);
 										break;
 									    }
 									    None => {
@@ -426,7 +426,7 @@ impl<T: Transaction> WsServer<T> {
 								}
 							}
 						} else {
-							eprintln!(
+							println!(
 								"❌ Invalid token from {}: {}",
 								peer_addr,
 								token
@@ -435,7 +435,7 @@ impl<T: Transaction> WsServer<T> {
 						}
 					}
 					_ => {
-						eprintln!(
+						println!(
 							"❌ First message must be auth from {}",
 							peer_addr
 						);

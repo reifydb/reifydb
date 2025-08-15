@@ -21,6 +21,7 @@ pub mod grpc;
 mod subsystems;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
+pub mod worker_pool;
 
 pub use crate::boot::Bootloader;
 #[cfg(feature = "sub_flow")]
@@ -30,6 +31,7 @@ pub use grpc::GrpcSubsystem;
 pub(crate) use subsystems::Subsystems;
 #[cfg(feature = "sub_ws")]
 pub use ws::WsSubsystem;
+pub use worker_pool::WorkerPoolSubsystem;
 
 /// Uniform interface that all subsystems must implement
 ///
