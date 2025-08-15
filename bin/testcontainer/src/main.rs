@@ -3,11 +3,11 @@
 
 use std::thread;
 
-use reifydb::{WithHooks, network::ws::server::WsConfig, server};
+use reifydb::{network::ws::server::WsConfig, server, WithHooks};
 use tokio::{
 	runtime::Runtime,
 	select, signal,
-	signal::unix::{SignalKind, signal},
+	signal::unix::{signal, SignalKind},
 	sync::oneshot,
 };
 
@@ -46,6 +46,8 @@ fn main() {
 			socket: "0.0.0.0:8090".parse().ok(),
 		})
 		.on_create(|ctx| {
+			println!("on create");
+
 			ctx.command_as_root("create schema test", ())?;
 			ctx.command_as_root(
 				"create table test.arith { id: int1, value: int2, num: int2 }",

@@ -3,19 +3,6 @@
 
 use std::{marker::PhantomData, ops::Deref, sync::Arc};
 
-use reifydb_core::{
-	Frame, Type,
-	hook::{BoxedHookIter, Callback, Hooks, transaction::PostCommitHook},
-	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, Command,
-		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		GetHooks, Key, Params, Identity, Query, TableId, Transaction,
-		VersionedTransaction,
-	},
-	return_hooks,
-	row::EncodedRowLayout,
-};
-
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, Columns},
 	execute::Executor,
@@ -25,8 +12,20 @@ use crate::{
 		node::NodeType,
 		processor::FlowProcessor,
 	},
-	function::{Functions, math},
-	subsystem::init::register_system_hooks,
+	function::{math, Functions},
+};
+use reifydb_core::hook::Hook;
+use reifydb_core::{
+	hook::{transaction::PostCommitHook, BoxedHookIter, Callback, Hooks}, interface::{
+		ActiveCommandTransaction, ActiveQueryTransaction, Command,
+		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
+		GetHooks, Identity, Key, Params, Query, TableId, Transaction,
+		VersionedTransaction,
+	},
+	return_hooks,
+	row::EncodedRowLayout,
+	Frame,
+	Type,
 };
 
 pub struct Engine<T: Transaction>(Arc<EngineInner<T>>);
@@ -187,16 +186,32 @@ impl<T: Transaction> Engine<T> {
 			),
 		}));
 
-		result.setup_hooks()?;
 		Ok(result)
 	}
 
+	#[inline]
 	pub fn versioned(&self) -> &T::Versioned {
 		&self.versioned
 	}
 
+	#[inline]
+	pub fn versioned_owned(&self) -> T::Versioned {
+		self.versioned.clone()
+	}
+
+	#[inline]
 	pub fn unversioned(&self) -> &T::Unversioned {
 		&self.unversioned
+	}
+
+	#[inline]
+	pub fn unversioned_owned(&self) -> T::Unversioned {
+		self.unversioned.clone()
+	}
+
+	#[inline]
+	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
+		self.hooks.trigger(hook)
 	}
 }
 
@@ -299,15 +314,5 @@ impl<T: Transaction> Callback<PostCommitHook> for FlowPostCommit<T> {
 			};
 		}
 		return_hooks!()
-	}
-}
-
-impl<T: Transaction> Engine<T> {
-	pub fn setup_hooks(&self) -> crate::Result<()> {
-		register_system_hooks(&self);
-
-		// self.hooks.register(FlowPostCommit { engine: self.clone() });
-
-		Ok(())
 	}
 }

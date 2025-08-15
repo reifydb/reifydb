@@ -3,7 +3,7 @@
 
 //! Subsystem management and implementations
 //!
-//! This module defines the core Subsystem trait, SubsystemManager for lifecycle
+//! This module defines the core Subsystem trait, Subsystem for lifecycle
 //! management, and provides concrete implementations for various subsystem
 //! types like Flow, gRPC, and WebSocket servers.
 
@@ -22,6 +22,7 @@ mod subsystems;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
 
+pub use crate::boot::Bootloader;
 #[cfg(feature = "sub_flow")]
 pub use flow::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]

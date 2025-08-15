@@ -7,10 +7,10 @@ use query::compile::compile;
 use reifydb_core::{
 	Frame,
 	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, Command,
-		Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		StandardCdcTransaction, StandardTransaction, Table,
-		Transaction, VersionedQueryTransaction,
+        ActiveCommandTransaction, ActiveQueryTransaction, Command,
+        Execute, ExecuteCommand, ExecuteQuery, Params, Query,
+        StandardCdcTransaction, StandardTransaction, TableDef,
+        Transaction, VersionedQueryTransaction,
 	},
 };
 use reifydb_rql::{
@@ -36,7 +36,7 @@ mod query;
 
 pub struct ExecutionContext {
 	pub functions: Functions,
-	pub table: Option<Table>,
+	pub table: Option<TableDef>,
 	pub batch_size: usize,
 	pub preserve_row_ids: bool,
 	pub params: Params,

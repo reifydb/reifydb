@@ -9,15 +9,15 @@ use reifydb_core::{
 };
 
 use crate::{
-	Catalog,
-	schema::{Schema, SchemaId, layout::schema},
+    Catalog,
+    schema::{SchemaDef, SchemaId, layout::schema},
 };
 
 impl Catalog {
 	pub fn get_schema_by_name(
 		rx: &mut impl VersionedQueryTransaction,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<Schema>> {
+	) -> crate::Result<Option<SchemaDef>> {
 		let name = name.as_ref();
 		Ok(rx.range(SchemaKey::full_scan())?.find_map(|versioned| {
 			let row: &EncodedRow = &versioned.row;
@@ -34,7 +34,7 @@ impl Catalog {
 	pub fn get_schema(
 		rx: &mut impl VersionedQueryTransaction,
 		schema: SchemaId,
-	) -> crate::Result<Option<Schema>> {
+	) -> crate::Result<Option<SchemaDef>> {
 		Ok(rx.get(&SchemaKey {
 			schema,
 		}
@@ -42,13 +42,13 @@ impl Catalog {
 			.map(Self::convert_schema))
 	}
 
-	fn convert_schema(versioned: Versioned) -> Schema {
+	fn convert_schema(versioned: Versioned) -> SchemaDef {
 		let row = versioned.row;
 		let id = SchemaId(schema::LAYOUT.get_u64(&row, schema::ID));
 		let name =
 			schema::LAYOUT.get_utf8(&row, schema::NAME).to_string();
 
-		Schema {
+		SchemaDef {
 			id,
 			name,
 		}

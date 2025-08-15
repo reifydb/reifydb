@@ -9,9 +9,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Type, Value,
-	interface::Table,
-	value::columnar::{
+    Type, Value,
+    interface::TableDef,
+    value::columnar::{
 		Column, ColumnData, ColumnQualified, TableQualified,
 	},
 };
@@ -178,7 +178,7 @@ impl Columns {
 		Self(vec![])
 	}
 
-	pub fn empty_from_table(table: &Table) -> Self {
+	pub fn empty_from_table(table: &TableDef) -> Self {
 		let columns: Vec<Column> = table
 			.columns
 			.iter()
