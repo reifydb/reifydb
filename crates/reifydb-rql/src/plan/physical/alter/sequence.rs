@@ -26,11 +26,13 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::interface::evaluate::expression::{
+		ConstantExpression, Expression,
+	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
 		ast::{lex::lex, parse::parse},
-		expression::{ConstantExpression, Expression},
 		plan::{
 			logical::compile_logical,
 			physical::{PhysicalPlan, compile_physical},

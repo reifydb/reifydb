@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	GetType, IntoOwnedSpan,
-	interface::ColumnSaturationPolicy,
+use crate::{
+	Error, GetType, IntoOwnedSpan,
+	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::number_out_of_range,
 	return_error,
 	value::{
@@ -15,10 +15,8 @@ use reifydb_core::{
 	},
 };
 
-use crate::evaluate::EvaluationContext;
-
 impl EvaluationContext<'_> {
-	pub(crate) fn add<L, R>(
+	pub fn add<L, R>(
 		&self,
 		l: L,
 		r: R,
@@ -43,7 +41,7 @@ impl EvaluationContext<'_> {
 
 				lp.checked_add(rp)
 					.ok_or_else(|| {
-						reifydb_core::error::Error(number_out_of_range(
+						Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
@@ -67,7 +65,7 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub(crate) fn sub<L, R>(
+	pub fn sub<L, R>(
 		&self,
 		l: L,
 		r: R,
@@ -92,7 +90,7 @@ impl EvaluationContext<'_> {
 
 				lp.checked_sub(rp)
 					.ok_or_else(|| {
-						reifydb_core::error::Error(number_out_of_range(
+						Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
@@ -116,7 +114,7 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub(crate) fn mul<L, R>(
+	pub fn mul<L, R>(
 		&self,
 		l: L,
 		r: R,
@@ -141,7 +139,7 @@ impl EvaluationContext<'_> {
 
 				lp.checked_mul(rp)
 					.ok_or_else(|| {
-						reifydb_core::error::Error(number_out_of_range(
+						Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
@@ -165,7 +163,7 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub(crate) fn div<L, R>(
+	pub fn div<L, R>(
 		&self,
 		l: L,
 		r: R,
@@ -190,7 +188,7 @@ impl EvaluationContext<'_> {
 
 				lp.checked_div(rp)
 					.ok_or_else(|| {
-						reifydb_core::error::Error(number_out_of_range(
+						Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
@@ -214,7 +212,7 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub(crate) fn remainder<L, R>(
+	pub fn remainder<L, R>(
 		&self,
 		l: L,
 		r: R,
@@ -239,7 +237,7 @@ impl EvaluationContext<'_> {
 
 				lp.checked_rem(rp)
 					.ok_or_else(|| {
-						reifydb_core::error::Error(number_out_of_range(
+						Error(number_out_of_range(
                             span.into_span(),
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
@@ -264,9 +262,7 @@ impl EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::OwnedSpan;
-
-	use crate::evaluate::EvaluationContext;
+	use crate::{OwnedSpan, interface::evaluate::EvaluationContext};
 
 	#[test]
 	fn test_add() {

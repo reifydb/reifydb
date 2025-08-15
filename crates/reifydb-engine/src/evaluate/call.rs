@@ -1,8 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{error, result::error::diagnostic::function};
-use reifydb_rql::expression::{CallExpression, Expression};
+use reifydb_core::{
+	error,
+	interface::evaluate::expression::{CallExpression, Expression},
+	result::error::diagnostic::function,
+};
 
 use crate::{
 	columnar::{Column, ColumnQualified, Columns},

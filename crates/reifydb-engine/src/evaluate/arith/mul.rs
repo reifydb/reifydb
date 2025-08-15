@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	GetType, OwnedSpan, Type,
+	interface::evaluate::expression::MulExpression,
 	result::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
@@ -13,7 +14,6 @@ use reifydb_core::{
 		number::{Promote, SafeMul},
 	},
 };
-use reifydb_rql::expression::MulExpression;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},

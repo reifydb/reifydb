@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	GetType, OwnedSpan, Type,
+	interface::evaluate::expression::DivExpression,
 	result::error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
@@ -13,7 +14,6 @@ use reifydb_core::{
 		number::{Promote, SafeDiv},
 	},
 };
-use reifydb_rql::expression::DivExpression;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},

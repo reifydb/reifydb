@@ -3,8 +3,7 @@
 
 //! Compilation of operator logical plans to FlowGraph nodes
 
-use reifydb_core::SortKey;
-use reifydb_rql::expression::Expression;
+use reifydb_core::{SortKey, interface::expression::Expression};
 
 use super::FlowCompiler;
 use crate::{NodeId, NodeType};

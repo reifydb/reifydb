@@ -1,13 +1,12 @@
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later, see license.md file.
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	GetType, IntoOwnedSpan, error, interface::ColumnSaturationPolicy,
+use crate::{
+	GetType, IntoOwnedSpan, error,
+	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::number_out_of_range,
 	value::number::SafePromote,
 };
-
-use crate::evaluate::EvaluationContext;
 
 pub trait Promote {
 	fn promote<From, To>(
@@ -67,17 +66,14 @@ impl Promote for &EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		ColumnDescriptor, OwnedSpan, Type,
+	use crate::{
+		ColumnDescriptor, GetType, OwnedSpan, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
+			evaluate::{EvaluationContext, Promote},
 		},
 		value::number::SafePromote,
-	};
-
-	use crate::evaluate::{
-		EvaluationContext, Promote, context::promote::GetType,
 	};
 
 	#[test]

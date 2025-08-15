@@ -6,8 +6,12 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{OwnedSpan, Value, interface::VersionedQueryTransaction};
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	OwnedSpan, Value,
+	interface::{
+		VersionedQueryTransaction, evaluate::expression::Expression,
+	},
+};
 
 use crate::{
 	columnar::{

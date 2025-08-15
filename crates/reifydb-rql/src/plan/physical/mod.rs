@@ -6,13 +6,14 @@ mod create;
 
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	JoinType, OwnedSpan, SortKey, interface::VersionedQueryTransaction,
+	JoinType, OwnedSpan, SortKey,
+	interface::{
+		VersionedQueryTransaction,
+		evaluate::expression::{AliasExpression, Expression},
+	},
 };
 
-use crate::{
-	expression::{AliasExpression, Expression},
-	plan::{logical::LogicalPlan, physical::PhysicalPlan::TableScan},
-};
+use crate::plan::{logical::LogicalPlan, physical::PhysicalPlan::TableScan};
 
 struct Compiler {}
 

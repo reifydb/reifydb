@@ -2,9 +2,8 @@ use std::fmt;
 
 use reifydb_core::{
 	JoinType, SortKey,
-	interface::{TableId, ViewId},
+	interface::{TableId, ViewId, expression::Expression},
 };
-use reifydb_rql::expression::Expression;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

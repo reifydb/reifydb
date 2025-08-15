@@ -1,5 +1,7 @@
-use reifydb_core::{Value, error, result::error::diagnostic::engine};
-use reifydb_rql::expression::ParameterExpression;
+use reifydb_core::{
+	Value, error, interface::evaluate::expression::ParameterExpression,
+	result::error::diagnostic::engine,
+};
 
 use crate::{
 	columnar::{Column, ColumnData, Unqualified},

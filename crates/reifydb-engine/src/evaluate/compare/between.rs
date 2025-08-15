@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	interface::evaluate::expression::{
+		BetweenExpression, GreaterThanEqualExpression,
+		LessThanEqualExpression,
+	},
 	result::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types,
 	return_error,
-};
-use reifydb_rql::expression::{
-	BetweenExpression, GreaterThanEqualExpression, LessThanEqualExpression,
 };
 
 use crate::{

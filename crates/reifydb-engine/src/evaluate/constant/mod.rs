@@ -9,6 +9,7 @@ mod uuid;
 use number::NumberParser;
 use reifydb_core::{
 	Type,
+	interface::evaluate::expression::ConstantExpression,
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -17,7 +18,6 @@ use reifydb_core::{
 		number::{parse_float, parse_int, parse_uint},
 	},
 };
-use reifydb_rql::expression::ConstantExpression;
 use temporal::TemporalParser;
 use text::TextParser;
 

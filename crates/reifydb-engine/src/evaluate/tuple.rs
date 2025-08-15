@@ -1,4 +1,4 @@
-use reifydb_rql::expression::TupleExpression;
+use reifydb_core::interface::evaluate::expression::TupleExpression;
 
 use crate::{
 	columnar::Column,

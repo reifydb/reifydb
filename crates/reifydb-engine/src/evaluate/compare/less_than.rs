@@ -6,6 +6,7 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedSpan,
 	Type::Bool,
+	interface::evaluate::expression::LessThanExpression,
 	result::error::diagnostic::operator::less_than_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -18,7 +19,6 @@ use reifydb_core::{
 		temporal,
 	},
 };
-use reifydb_rql::expression::LessThanExpression;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},

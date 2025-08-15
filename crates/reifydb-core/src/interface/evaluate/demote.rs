@@ -1,13 +1,12 @@
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later, see license.md file.
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	GetType, IntoOwnedSpan, error, interface::ColumnSaturationPolicy,
+use crate::{
+	GetType, IntoOwnedSpan, error,
+	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::number_out_of_range,
 	value::number::SafeDemote,
 };
-
-use crate::evaluate::EvaluationContext;
 
 pub trait Demote {
 	fn demote<From, To>(
@@ -67,16 +66,15 @@ impl Demote for &EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
+	use crate::{
 		ColumnDescriptor, GetType, OwnedSpan, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
+			evaluate::{Demote, EvaluationContext},
 		},
 		value::number::SafeDemote,
 	};
-
-	use crate::evaluate::{Demote, EvaluationContext};
 
 	#[test]
 	fn test_demote_ok() {

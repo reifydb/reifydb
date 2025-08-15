@@ -1,5 +1,6 @@
-use reifydb_core::value::columnar::Columns;
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	interface::expression::Expression, value::columnar::Columns,
+};
 
 use crate::{
 	core::{Change, Diff},

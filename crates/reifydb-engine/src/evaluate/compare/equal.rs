@@ -6,6 +6,7 @@ use std::fmt::Debug;
 use Type::Bool;
 use reifydb_core::{
 	OwnedSpan, Type,
+	interface::evaluate::expression::EqualExpression,
 	result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -18,7 +19,6 @@ use reifydb_core::{
 		temporal,
 	},
 };
-use reifydb_rql::expression::EqualExpression;
 use value::number;
 
 use crate::{

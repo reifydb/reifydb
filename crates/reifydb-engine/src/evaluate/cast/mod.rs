@@ -11,9 +11,10 @@ pub mod uuid;
 use std::ops::Deref;
 
 use reifydb_core::{
-	OwnedSpan, Type, err, error, result::error::diagnostic::cast,
+	OwnedSpan, Type, err, error,
+	interface::expression::{CastExpression, Expression},
+	result::error::diagnostic::cast,
 };
-use reifydb_rql::expression::{CastExpression, Expression};
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
@@ -132,10 +133,12 @@ pub fn cast_column_data(
 mod tests {
 	use ConstantExpression::Number;
 	use Expression::{Cast, Constant};
-	use reifydb_core::{OwnedSpan, Type};
-	use reifydb_rql::expression::{
-		CastExpression, ConstantExpression, DataTypeExpression,
-		Expression::Prefix, PrefixExpression, PrefixOperator,
+	use reifydb_core::{
+		OwnedSpan, Type,
+		interface::expression::{
+			CastExpression, ConstantExpression, Expression::Prefix,
+			PrefixExpression, PrefixOperator, TypeExpression,
+		},
 	};
 
 	use crate::{
@@ -152,7 +155,7 @@ mod tests {
 				expression: Box::new(Constant(Number {
 					span: OwnedSpan::testing("42"),
 				})),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Int4,
 				},
@@ -175,7 +178,7 @@ mod tests {
                     expression: Box::new(Constant(Number { span: OwnedSpan::testing("42") })),
                     span: OwnedSpan::testing_empty(),
                 })),
-                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
+                to: TypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
             }),
             &ctx,
         )
@@ -195,7 +198,7 @@ mod tests {
                     expression: Box::new(Constant(Number { span: OwnedSpan::testing("128") })),
                     span: OwnedSpan::testing_empty(),
                 })),
-                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int1 },
+                to: TypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int1 },
             }),
             &ctx,
         )
@@ -213,7 +216,7 @@ mod tests {
 				expression: Box::new(Constant(Number {
 					span: OwnedSpan::testing("4.2"),
 				})),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Float8,
 				},
@@ -234,7 +237,7 @@ mod tests {
 				expression: Box::new(Constant(Number {
 					span: OwnedSpan::testing("4.2"),
 				})),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Float4,
 				},
@@ -255,7 +258,7 @@ mod tests {
 				expression: Box::new(Constant(Number {
 					span: OwnedSpan::testing("-1.1"),
 				})),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Float4,
 				},
@@ -276,7 +279,7 @@ mod tests {
 				expression: Box::new(Constant(Number {
 					span: OwnedSpan::testing("-1.1"),
 				})),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Float8,
 				},
@@ -299,7 +302,7 @@ mod tests {
 						span: OwnedSpan::testing("0"),
 					},
 				)),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Bool,
 				},
@@ -322,7 +325,7 @@ mod tests {
 						span: OwnedSpan::testing("-1"),
 					},
 				)),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Bool,
 				},
@@ -355,7 +358,7 @@ mod tests {
 						),
 					},
 				)),
-				to: DataTypeExpression {
+				to: TypeExpression {
 					span: OwnedSpan::testing_empty(),
 					ty: Type::Date,
 				},

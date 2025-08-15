@@ -9,13 +9,13 @@ mod query;
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	IndexType, JoinType, OwnedSpan, SortDirection, SortKey,
-	interface::{ColumnPolicyKind, ColumnSaturationPolicy},
+	interface::{
+		ColumnPolicyKind, ColumnSaturationPolicy,
+		expression::{AliasExpression, Expression},
+	},
 };
 
-use crate::{
-	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
-	expression::{AliasExpression, Expression},
-};
+use crate::ast::{Ast, AstPolicy, AstPolicyKind, AstStatement};
 
 struct Compiler {}
 

@@ -5,9 +5,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	ColumnDescriptor, Value,
-	interface::{TableDef, VersionedQueryTransaction},
+	interface::{
+		TableDef, VersionedQueryTransaction,
+		evaluate::expression::AliasExpression,
+	},
 };
-use reifydb_rql::expression::AliasExpression;
 
 use crate::{
 	columnar::{

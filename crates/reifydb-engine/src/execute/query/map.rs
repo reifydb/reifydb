@@ -2,10 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	ColumnDescriptor, interface::VersionedQueryTransaction,
+	ColumnDescriptor,
+	interface::{
+		VersionedQueryTransaction, evaluate::expression::Expression,
+	},
 	value::row_id::ROW_ID_COLUMN_NAME,
 };
-use reifydb_rql::expression::Expression;
 
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},

@@ -1,16 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
+use crate::{
 	GetType, IntoOwnedSpan, error,
-	interface::ColumnSaturationPolicy,
+	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::{
 		integer_precision_loss, number_out_of_range,
 	},
 	value::number::SafeConvert,
 };
-
-use crate::evaluate::EvaluationContext;
 
 pub trait Convert {
 	fn convert<From, To>(

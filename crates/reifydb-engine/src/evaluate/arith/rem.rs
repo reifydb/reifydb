@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	GetType, OwnedSpan, Type,
+	interface::evaluate::expression::RemExpression,
 	result::error::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
@@ -13,7 +14,6 @@ use reifydb_core::{
 		number::{Promote, SafeRemainder},
 	},
 };
-use reifydb_rql::expression::RemExpression;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},

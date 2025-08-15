@@ -1,5 +1,7 @@
-use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_rql::expression::{ConstantExpression, Expression};
+use reifydb_core::{
+	interface::evaluate::expression::{ConstantExpression, Expression},
+	value::row_id::ROW_ID_COLUMN_NAME,
+};
 
 use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
 
@@ -39,7 +41,7 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 			source: None,
 			name: col_expr.0.fragment.clone(),
 		},
-		Expression::AccessTable(access_expr) => ColumnLayout {
+		Expression::AccessSource(access_expr) => ColumnLayout {
 			schema: None,
 			source: Some(access_expr.source.fragment.clone()),
 			name: access_expr.column.fragment.clone(),
@@ -110,7 +112,7 @@ fn simplified_name(expr: &Expression) -> String {
 				..
 			} => "undefined".to_string(),
 		},
-		Expression::AccessTable(access_expr) => {
+		Expression::AccessSource(access_expr) => {
 			format!(
 				"{}.{}",
 				access_expr.source.fragment,

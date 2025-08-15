@@ -1,8 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub(crate) use context::{Convert, Demote, EvaluationContext, Promote};
-use reifydb_rql::expression::Expression;
+use reifydb_core::interface::evaluate::expression::Expression;
+pub(crate) use reifydb_core::interface::{
+	Convert, Demote, EvaluationContext, Promote,
+};
 
 use crate::{
 	columnar::{Column, ColumnQualified, SourceQualified},
@@ -17,7 +19,6 @@ pub(crate) mod cast;
 mod column;
 mod compare;
 pub(crate) mod constant;
-mod context;
 mod logic;
 mod parameter;
 mod prefix;
@@ -61,7 +62,9 @@ impl Evaluator {
 		ctx: &EvaluationContext,
 	) -> crate::Result<Column> {
 		match expr {
-			Expression::AccessTable(expr) => self.access(expr, ctx),
+			Expression::AccessSource(expr) => {
+				self.access(expr, ctx)
+			}
 			Expression::Alias(expr) => self.alias(expr, ctx),
 			Expression::Add(expr) => self.add(expr, ctx),
 			Expression::Div(expr) => self.div(expr, ctx),

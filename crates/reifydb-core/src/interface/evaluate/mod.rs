@@ -1,37 +1,36 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod arith;
+mod convert;
+mod demote;
+pub mod expression;
+mod promote;
+
 pub use convert::Convert;
 pub use demote::Demote;
 pub use promote::Promote;
 
-mod arith;
-mod convert;
-mod demote;
-mod promote;
-
-use reifydb_core::{
+use crate::{
 	ColumnDescriptor, Type,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		DEFAULT_COLUMN_SATURATION_POLICY, Params,
 	},
+	value::columnar::{ColumnData, Columns},
 };
 
-use crate::columnar::{ColumnData, Columns};
-
 #[derive(Debug)]
-pub(crate) struct EvaluationContext<'a> {
-	pub(crate) target_column: Option<ColumnDescriptor<'a>>,
-	pub(crate) column_policies: Vec<ColumnPolicyKind>,
-	pub(crate) columns: Columns,
-	pub(crate) row_count: usize,
-	pub(crate) take: Option<usize>,
-	pub(crate) params: &'a Params,
+pub struct EvaluationContext<'a> {
+	pub target_column: Option<ColumnDescriptor<'a>>,
+	pub column_policies: Vec<ColumnPolicyKind>,
+	pub columns: Columns,
+	pub row_count: usize,
+	pub take: Option<usize>,
+	pub params: &'a Params,
 }
 
 impl<'a> EvaluationContext<'a> {
-	#[cfg(test)]
 	pub fn testing() -> Self {
 		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> =

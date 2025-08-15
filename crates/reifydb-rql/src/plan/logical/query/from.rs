@@ -1,11 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{err, result::error::diagnostic::Diagnostic};
+use reifydb_core::{
+	err,
+	interface::evaluate::expression::{AliasExpression, IdentExpression},
+	result::error::diagnostic::Diagnostic,
+};
 
 use crate::{
 	ast::{Ast, AstFrom},
-	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
+	expression::ExpressionCompiler,
 	plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode},
 };
 
@@ -74,11 +78,12 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{
-		ast::{lex::lex, parse::parse},
-		expression::{ConstantExpression, Expression},
+	use reifydb_core::interface::evaluate::expression::{
+		ConstantExpression, Expression,
 	};
+
+	use super::*;
+	use crate::ast::{lex::lex, parse::parse};
 
 	#[test]
 	fn test_compile_static_single_row() {
