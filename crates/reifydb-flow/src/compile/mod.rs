@@ -120,6 +120,13 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 				TableScanCompiler::from(table_scan)
 					.compile(self)
 			}
+			PhysicalPlan::ViewScan(_view_scan) => {
+				// TODO: Implement ViewScanCompiler
+				// For now, return a placeholder
+				unimplemented!(
+					"ViewScan compilation not yet implemented"
+				)
+			}
 			PhysicalPlan::InlineData(inline_data) => {
 				InlineDataCompiler::from(inline_data)
 					.compile(self)

@@ -169,7 +169,8 @@ impl<T: Transaction> Executor<T> {
 			| PhysicalPlan::Delete(_)
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
-			| PhysicalPlan::TableScan(_) => self.query(rx, plan, params),
+			| PhysicalPlan::TableScan(_)
+			| PhysicalPlan::ViewScan(_) => self.query(rx, plan, params),
 
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::CreateComputedView(_)
@@ -216,7 +217,8 @@ impl<T: Transaction> Executor<T> {
 			| PhysicalPlan::Sort(_)
 			| PhysicalPlan::Map(_)
 			| PhysicalPlan::InlineData(_)
-			| PhysicalPlan::TableScan(_) => self.query(txn, plan, params),
+			| PhysicalPlan::TableScan(_)
+			| PhysicalPlan::ViewScan(_) => self.query(txn, plan, params),
 		}
 	}
 

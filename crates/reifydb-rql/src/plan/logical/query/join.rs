@@ -8,7 +8,7 @@ use crate::{
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, LogicalPlan::TableScan, TableScanNode,
+		LogicalPlan, LogicalPlan::SourceScan, SourceScanNode,
 	},
 };
 
@@ -22,7 +22,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedSpan::testing("default"), table: identifier.span() })]
+						vec![SourceScan(SourceScanNode { schema: OwnedSpan::testing("default"), source: identifier.span() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -41,10 +41,14 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![TableScan(TableScanNode {
-							schema: schema.span(),
-							table: table.span(),
-						})]
+						vec![SourceScan(
+							SourceScanNode {
+								schema: schema
+									.span(),
+								source: table
+									.span(),
+							},
+						)]
 					}
 					_ => unimplemented!(),
 				};
@@ -63,7 +67,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedSpan::testing("default"), table: identifier.span() })]
+						vec![SourceScan(SourceScanNode { schema: OwnedSpan::testing("default"), source: identifier.span() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -82,10 +86,14 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![TableScan(TableScanNode {
-							schema: schema.span(),
-							table: table.span(),
-						})]
+						vec![SourceScan(
+							SourceScanNode {
+								schema: schema
+									.span(),
+								source: table
+									.span(),
+							},
+						)]
 					}
 					_ => unimplemented!(),
 				};
@@ -104,7 +112,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedSpan::testing("default"), table: identifier.span() })]
+						vec![SourceScan(SourceScanNode { schema: OwnedSpan::testing("default"), source: identifier.span() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -123,10 +131,14 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![TableScan(TableScanNode {
-							schema: schema.span(),
-							table: table.span(),
-						})]
+						vec![SourceScan(
+							SourceScanNode {
+								schema: schema
+									.span(),
+								source: table
+									.span(),
+							},
+						)]
 					}
 					_ => unimplemented!(),
 				};

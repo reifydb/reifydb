@@ -12,7 +12,7 @@ ok
 
 # Create computed view with filter and map
 command "
-create computed view test.basic { name: utf8, age: int1, score: int2 } with {
+create computed view test.basic { name: utf8, age: int1 } with {
     from test.users
 };"
 ---
@@ -23,7 +23,7 @@ command "
 from [
     { name: \"bob\", age: 17 },
     { name: \"lucy\", age: 20 },
-    { name: \"juicy\", age: 19 }
+    { name: \"juciy\", age: 19 }
 ]
 insert test.users;"
 ---
@@ -39,18 +39,30 @@ insert test.users;"
 ok
 
 # Query the source table - should show all users
-query from test.users
+query 'FROM test.users'
 ---
 +---------+-------+
 |  name   |  age  |
 +---------+-------+
 |   dim   |  40   |
-|  juicy  |  19   |
+|  juciy  |  19   |
 |  lucy   |  20   |
 |   bob   |  17   |
 +---------+-------+
 
+# Wait for flow processor to complete processing
+wait 100
+---
+ok
+
 # Query the computed view
-# query 'from test.basic'
-# ---
-# Ok
+query 'FROM test.basic'
+---
++---------+-------+
+|  name   |  age  |
++---------+-------+
+|   dim   |  40   |
+|   bob   |  17   |
+|  lucy   |  20   |
+|  juciy  |  19   |
++---------+-------+

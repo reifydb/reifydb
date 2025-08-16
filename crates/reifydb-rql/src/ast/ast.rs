@@ -666,12 +666,12 @@ pub struct AstFilter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstFrom {
-	Table {
+	Source {
 		token: Token,
 		schema: Option<AstIdentifier>,
-		table: AstIdentifier,
+		source: AstIdentifier,
 	},
-	Static {
+	Inline {
 		token: Token,
 		list: AstList,
 	},
@@ -687,11 +687,11 @@ pub struct AstAggregate {
 impl AstFrom {
 	pub fn token(&self) -> &Token {
 		match self {
-			AstFrom::Table {
+			AstFrom::Source {
 				token,
 				..
 			} => token,
-			AstFrom::Static {
+			AstFrom::Inline {
 				token,
 				..
 			} => token,

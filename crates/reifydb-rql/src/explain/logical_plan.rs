@@ -8,7 +8,7 @@ use crate::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, FilterNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, MapNode, OrderNode, TableScanNode, TakeNode,
+		LogicalPlan, MapNode, OrderNode, SourceScanNode, TakeNode,
 		compile_logical,
 	},
 };
@@ -351,9 +351,9 @@ fn render_logical_plan_inner(
 				);
 			}
 		}
-		LogicalPlan::TableScan(TableScanNode {
+		LogicalPlan::SourceScan(SourceScanNode {
 			schema,
-			table,
+			source: table,
 		}) => {
 			let name = format!(
 				"{}.{}",

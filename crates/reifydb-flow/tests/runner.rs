@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{error::Error as StdError, fmt::Write};
+use std::{error::Error as StdError, fmt::Write, thread, time::Duration};
 
 use reifydb::{MemoryDatabaseOptimistic, SessionSync, sync};
 use reifydb_core::{Frame, interface::Params};
@@ -72,6 +72,18 @@ impl testscript::Runner for FlowTestRunner {
 						self.format_frame(&frame)
 					)?;
 				}
+			}
+
+			"wait" => {
+				if command.args.is_empty() {
+					return Err("wait command requires milliseconds argument".into());
+				}
+				let ms: u64 =
+					command.args[0].value.parse().map_err(
+						|_| "wait argument must be a valid number of milliseconds",
+					)?;
+				thread::sleep(Duration::from_millis(ms));
+				writeln!(output, "ok")?;
 			}
 
 			name => {

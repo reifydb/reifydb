@@ -98,7 +98,7 @@ pub enum LogicalPlan {
 	Order(OrderNode),
 	Map(MapNode),
 	InlineData(InlineDataNode),
-	TableScan(TableScanNode),
+	SourceScan(SourceScanNode),
 }
 
 #[derive(Debug)]
@@ -223,9 +223,9 @@ pub struct InlineDataNode {
 }
 
 #[derive(Debug)]
-pub struct TableScanNode {
+pub struct SourceScanNode {
 	pub schema: OwnedSpan,
-	pub table: OwnedSpan,
+	pub source: OwnedSpan,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

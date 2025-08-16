@@ -24,7 +24,7 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct ScanColumnsNode {
+pub(crate) struct TableScanNode {
 	table: TableDef,
 	context: Arc<ExecutionContext>,
 	layout: ColumnsLayout,
@@ -33,7 +33,7 @@ pub(crate) struct ScanColumnsNode {
 	exhausted: bool,
 }
 
-impl ScanColumnsNode {
+impl TableScanNode {
 	pub fn new(
 		table: TableDef,
 		context: Arc<ExecutionContext>,
@@ -65,7 +65,7 @@ impl ScanColumnsNode {
 	}
 }
 
-impl ExecutionPlan for ScanColumnsNode {
+impl ExecutionPlan for TableScanNode {
 	fn next(
 		&mut self,
 		ctx: &ExecutionContext,

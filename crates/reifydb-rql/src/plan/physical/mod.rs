@@ -11,14 +11,17 @@ use reifydb_catalog::{
 use reifydb_core::{
 	JoinType, OwnedSpan, SortKey,
 	interface::{
-		VersionedQueryTransaction,
+		TableDef, VersionedQueryTransaction, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::schema_not_found,
 	return_error,
 };
 
-use crate::plan::{logical::LogicalPlan, physical::PhysicalPlan::TableScan};
+use crate::plan::{
+	logical::LogicalPlan,
+	physical::PhysicalPlan::{TableScan, ViewScan},
+};
 
 struct Compiler {}
 
@@ -199,7 +202,7 @@ impl Compiler {
 					));
 				}
 
-				LogicalPlan::TableScan(scan) => {
+				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) =
 						Catalog::get_schema_by_name(
 							rx,
@@ -218,10 +221,34 @@ impl Compiler {
 						);
 					};
 
-					stack.push(TableScan(TableScanNode {
-						schema,
-						table: scan.table,
-					}));
+					// Check if it's a table or view
+					if let Some(table) =
+						Catalog::get_table_by_name(
+							rx,
+							schema.id,
+							&scan.source.fragment,
+						)? {
+						stack.push(TableScan(
+							TableScanNode {
+								schema,
+								table,
+							},
+						));
+					} else if let Some(view) =
+						Catalog::get_view_by_name(
+							rx,
+							schema.id,
+							&scan.source.fragment,
+						)? {
+						stack.push(ViewScan(
+							ViewScanNode {
+								schema,
+								view,
+							},
+						));
+					} else {
+						unimplemented!()
+					}
 				}
 
 				LogicalPlan::Take(take) => {
@@ -274,6 +301,7 @@ pub enum PhysicalPlan {
 	Map(MapNode),
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
+	ViewScan(ViewScanNode),
 }
 
 #[derive(Debug, Clone)]
@@ -382,7 +410,13 @@ pub struct InlineDataNode {
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
 	pub schema: SchemaDef,
-	pub table: OwnedSpan,
+	pub table: TableDef,
+}
+
+#[derive(Debug, Clone)]
+pub struct ViewScanNode {
+	pub schema: SchemaDef,
+	pub view: ViewDef,
 }
 
 #[derive(Debug, Clone)]
