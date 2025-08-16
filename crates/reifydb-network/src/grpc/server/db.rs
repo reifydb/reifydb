@@ -255,15 +255,18 @@ impl<T: Transaction> grpc::db_server::Db for DbService<T> {
 }
 
 fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
+	// Extract span before moving other fields
+	let span = diagnostic.span().map(|s| grpc::Span {
+		offset: s.column.0,
+		line: s.line.0,
+		fragment: s.fragment,
+	});
+	
 	grpc::Diagnostic {
 		code: diagnostic.code.to_string(),
 		statement: diagnostic.statement,
 		message: diagnostic.message,
-		span: diagnostic.span.map(|s| grpc::Span {
-			offset: s.column.0,
-			line: s.line.0,
-			fragment: s.fragment,
-		}),
+		span,
 		label: diagnostic.label,
 		help: diagnostic.help,
 		notes: diagnostic.notes,

@@ -189,6 +189,7 @@ mod tests {
 	use std::sync::{Arc, Mutex};
 
 	use crate::{
+		DiagnosticOrigin,
 		hook::{BoxedHookIter, Callback, Hook, Hooks},
 		result::error::diagnostic::Diagnostic,
 		return_error,
@@ -280,7 +281,7 @@ mod tests {
 				statement: None,
 				message: "".to_string(),
 				column: None,
-				span: None,
+				origin: DiagnosticOrigin::None,
 				label: None,
 				help: None,
 				notes: vec![],

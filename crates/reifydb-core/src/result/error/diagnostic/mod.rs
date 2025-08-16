@@ -5,7 +5,8 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{OwnedSpan, Type};
+use self::origin::{DiagnosticOrigin, OwnedSpan};
+use crate::{diagnostic_origin, Type};
 
 pub mod ast;
 pub mod auth;
@@ -20,6 +21,7 @@ pub mod function;
 pub mod network;
 pub mod number;
 pub mod operator;
+pub mod origin;
 pub mod query;
 pub mod render;
 pub mod sequence;
@@ -29,14 +31,14 @@ pub mod transaction;
 mod util;
 pub mod uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
 	pub code: String,
 	pub statement: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
 
-	pub span: Option<OwnedSpan>,
+	pub origin: DiagnosticOrigin,
 	pub label: Option<String>,
 	pub help: Option<String>,
 	pub notes: Vec<String>,
@@ -47,6 +49,22 @@ pub struct Diagnostic {
 pub struct DiagnosticColumn {
 	pub name: String,
 	pub ty: Type,
+}
+
+impl Default for Diagnostic {
+	fn default() -> Self {
+		Self {
+			code: String::new(),
+			statement: None,
+			message: String::new(),
+			column: None,
+			origin: DiagnosticOrigin::None,
+			label: None,
+			help: None,
+			notes: Vec::new(),
+			cause: None,
+		}
+	}
 }
 
 impl Display for Diagnostic {
@@ -72,14 +90,42 @@ impl Diagnostic {
 		}
 	}
 
+	/// Set or update the origin for this diagnostic and all nested
+	/// diagnostics recursively
+	pub fn with_origin(&mut self, new_origin: DiagnosticOrigin) {
+		// Always update the origin, not just when it's None
+		// This is needed for cast errors that need to update the span
+		self.origin = new_origin.clone();
+		
+		if let Some(ref mut cause) = self.cause {
+			cause.with_origin(new_origin);
+		}
+	}
+
+	/// Compatibility method - converts span to DiagnosticOrigin
 	/// Set or update the span for this diagnostic and all nested
 	/// diagnostics recursively
 	pub fn with_span(&mut self, new_span: &OwnedSpan) {
-		if self.span.is_none() {
-			self.span = Some(new_span.clone());
-		}
-		if let Some(ref mut cause) = self.cause {
-			cause.with_span(new_span);
+		// Use the macro to capture location where with_span was called
+		self.with_origin(
+			diagnostic_origin!(statement: new_span.clone()),
+		);
+	}
+
+	/// Get the span if this is a Statement origin (for backward compatibility)
+	pub fn span(&self) -> Option<OwnedSpan> {
+		match &self.origin {
+			DiagnosticOrigin::Statement {
+				line,
+				column,
+				fragment,
+				..
+			} => Some(OwnedSpan {
+				line: *line,
+				column: *column,
+				fragment: fragment.clone(),
+			}),
+			_ => None,
 		}
 	}
 }

@@ -9,7 +9,6 @@ pub mod evaluate;
 mod execute;
 pub mod key;
 mod params;
-mod span;
 mod storage;
 mod transaction;
 
@@ -21,7 +20,6 @@ pub use evaluate::*;
 pub use execute::*;
 pub use key::*;
 pub use params::*;
-pub use span::*;
 pub use storage::*;
 pub use transaction::*;
 

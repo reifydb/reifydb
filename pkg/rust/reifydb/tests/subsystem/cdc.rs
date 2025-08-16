@@ -519,7 +519,7 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 				statement: None,
 				message: "Test failure".to_string(),
 				column: None,
-				span: None,
+				origin: reifydb_core::DiagnosticOrigin::None,
 				label: None,
 				help: None,
 				notes: vec![],

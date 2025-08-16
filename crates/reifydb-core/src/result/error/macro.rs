@@ -139,11 +139,12 @@ mod tests {
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::Error(_)));
 
-		// Test that the diagnostic has the span set
+		// Test that the diagnostic has the origin set (via span)
 		let diagnostic = err.diagnostic();
-		assert!(diagnostic.span.is_some());
-		assert_eq!(diagnostic.span.as_ref().unwrap().line.0, 42);
-		assert_eq!(diagnostic.span.as_ref().unwrap().column.0, 10);
+		let span = diagnostic.span();
+		assert!(span.is_some());
+		assert_eq!(span.as_ref().unwrap().line.0, 42);
+		assert_eq!(span.as_ref().unwrap().column.0, 10);
 	}
 
 	#[test]
@@ -162,13 +163,14 @@ mod tests {
 
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
-			assert!(diagnostic.span.is_some());
+			let span = diagnostic.span();
+			assert!(span.is_some());
 			assert_eq!(
-				diagnostic.span.as_ref().unwrap().line.0,
+				span.as_ref().unwrap().line.0,
 				100
 			);
 			assert_eq!(
-				diagnostic.span.as_ref().unwrap().column.0,
+				span.as_ref().unwrap().column.0,
 				25
 			);
 		}
@@ -191,13 +193,14 @@ mod tests {
 
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
-			assert!(diagnostic.span.is_some());
+			let span = diagnostic.span();
+			assert!(span.is_some());
 			assert_eq!(
-				diagnostic.span.as_ref().unwrap().line.0,
+				span.as_ref().unwrap().line.0,
 				200
 			);
 			assert_eq!(
-				diagnostic.span.as_ref().unwrap().column.0,
+				span.as_ref().unwrap().column.0,
 				50
 			);
 		}
@@ -215,7 +218,8 @@ mod tests {
 
 		let err = error!(sequence_exhausted(Type::Uint8), get_span);
 		let diagnostic = err.diagnostic();
-		assert!(diagnostic.span.is_some());
-		assert_eq!(diagnostic.span.as_ref().unwrap().line.0, 300);
+		let span = diagnostic.span();
+		assert!(span.is_some());
+		assert_eq!(span.as_ref().unwrap().line.0, 300);
 	}
 }

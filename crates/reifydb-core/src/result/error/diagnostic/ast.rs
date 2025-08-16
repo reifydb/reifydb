@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{IntoOwnedSpan, result::error::diagnostic::Diagnostic};
+use crate::{
+	result::error::diagnostic::Diagnostic, DiagnosticOrigin,
+	IntoDiagnosticOrigin,
+};
 
 /// Generic lexer error with custom message
 pub fn lex_error(message: String) -> Diagnostic {
@@ -10,7 +13,7 @@ pub fn lex_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("Lexer error: {}", message),
 		column: None,
-		span: None,
+		origin: DiagnosticOrigin::None,
 		label: None,
 		help: Some("Check syntax and token format".to_string()),
 		notes: vec![],
@@ -25,7 +28,7 @@ pub fn unexpected_eof_error() -> Diagnostic {
 		statement: None,
 		message: "Unexpected end of file".to_string(),
 		column: None,
-		span: None,
+		origin: DiagnosticOrigin::None,
 		label: None,
 		help: Some("Complete the statement".to_string()),
 		notes: vec![],
@@ -34,16 +37,19 @@ pub fn unexpected_eof_error() -> Diagnostic {
 }
 
 /// Error for when we expect an identifier token specifically  
-pub fn expected_identifier_error(span: impl IntoOwnedSpan) -> Diagnostic {
-	let span = span.into_span();
-	let label = Some(format!("found `{}`", &span.fragment));
+pub fn expected_identifier_error(
+	origin: impl IntoDiagnosticOrigin,
+) -> Diagnostic {
+	let origin = origin.into_origin();
+	let fragment = origin.fragment().unwrap_or("");
+	let label = Some(format!("found `{}`", fragment));
 
 	Diagnostic {
 		code: "AST_003".to_string(),
 		statement: None,
 		message: "unexpected token: expected `identifier`".to_string(),
 		column: None,
-		span: Some(span.clone()),
+		origin,
 		label,
 		help: Some("expected token of type `identifier`".to_string()),
 		notes: vec![],
@@ -52,17 +58,18 @@ pub fn expected_identifier_error(span: impl IntoOwnedSpan) -> Diagnostic {
 }
 
 /// Error for invalid policy tokens
-pub fn invalid_policy_error(span: impl IntoOwnedSpan) -> Diagnostic {
-	let span = span.into_span();
-	let message = format!("Invalid policy token: {}", span.fragment);
-	let label = Some(format!("found `{}`", span.fragment));
+pub fn invalid_policy_error(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
+	let origin = origin.into_origin();
+	let fragment = origin.fragment().unwrap_or("");
+	let message = format!("Invalid policy token: {}", fragment);
+	let label = Some(format!("found `{}`", fragment));
 
 	Diagnostic {
 		code: "AST_004".to_string(),
 		statement: None,
 		message,
 		column: None,
-		span: Some(span.clone()),
+		origin,
 		label,
 		help: Some("Expected a valid policy identifier".to_string()),
 		notes: vec![],
@@ -73,20 +80,21 @@ pub fn invalid_policy_error(span: impl IntoOwnedSpan) -> Diagnostic {
 /// Error for unexpected tokens
 pub fn unexpected_token_error(
 	expected: &str,
-	span: impl IntoOwnedSpan,
+	origin: impl IntoDiagnosticOrigin,
 ) -> Diagnostic {
-	let span = span.into_span();
+	let origin = origin.into_origin();
+	let fragment = origin.fragment().unwrap_or("");
 	let message = format!(
 		"Unexpected token: expected {}, got {}",
-		expected, span.fragment
+		expected, fragment
 	);
-	let label = Some(format!("found `{}`", span.fragment));
+	let label = Some(format!("found `{}`", fragment));
 	Diagnostic {
 		code: "AST_005".to_string(),
 		statement: None,
 		message,
 		column: None,
-		span: Some(span.clone()),
+		origin,
 		label,
 		help: Some(format!("Use {} instead", expected)),
 		notes: vec![],
@@ -95,17 +103,20 @@ pub fn unexpected_token_error(
 }
 
 /// Error for unsupported tokens
-pub fn unsupported_token_error(span: impl IntoOwnedSpan) -> Diagnostic {
-	let span = span.into_span();
-	let message = format!("Unsupported token: {}", span.fragment);
-	let label = Some(format!("found `{}`", span.fragment));
+pub fn unsupported_token_error(
+	origin: impl IntoDiagnosticOrigin,
+) -> Diagnostic {
+	let origin = origin.into_origin();
+	let fragment = origin.fragment().unwrap_or("");
+	let message = format!("Unsupported token: {}", fragment);
+	let label = Some(format!("found `{}`", fragment));
 
 	Diagnostic {
 		code: "AST_006".to_string(),
 		statement: None,
 		message,
 		column: None,
-		span: Some(span.clone()),
+		origin,
 		label,
 		help: Some("This token is not supported in this context"
 			.to_string()),
@@ -116,10 +127,10 @@ pub fn unsupported_token_error(span: impl IntoOwnedSpan) -> Diagnostic {
 
 /// Multiple expressions require curly braces
 pub fn multiple_expressions_without_braces(
-	span: impl IntoOwnedSpan,
+	origin: impl IntoDiagnosticOrigin,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
-	let keyword = owned_span.fragment.clone();
+	let origin = origin.into_origin();
+	let keyword = origin.fragment().unwrap_or("").to_string();
 	Diagnostic {
 		code: "AST_007".to_string(),
 		statement: None,
@@ -127,7 +138,7 @@ pub fn multiple_expressions_without_braces(
 			"multiple expressions in `{}` require curly braces",
 			&keyword
 		),
-		span: Some(owned_span),
+		origin,
 		label: Some("missing `{ … }` around expressions".to_string()),
 		help: Some(format!(
 			"wrap the expressions in curly braces:\n    {} {{ expr1, expr2, … }}",
@@ -140,14 +151,14 @@ pub fn multiple_expressions_without_braces(
 }
 
 /// Type not found error
-pub fn unrecognized_type(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
-	let type_name = owned_span.fragment.clone();
+pub fn unrecognized_type(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
+	let origin = origin.into_origin();
+	let type_name = origin.fragment().unwrap_or("").to_string();
 	Diagnostic {
 		code: "AST_008".to_string(),
 		statement: None,
 		message: format!("cannot find type `{}`", &type_name),
-		span: Some(owned_span),
+		origin,
 		label: Some("type not found".to_string()),
 		help: None,
 		column: None,

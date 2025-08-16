@@ -75,15 +75,14 @@ macro_rules! impl_to_uuid {
                     let temp_span = BorrowedSpan::new(val.as_str());
 
                     let parsed = $parse_fn(temp_span).map_err(|mut e| {
-                        // Only create proper span on error
+                        // Get the original span for error reporting
                         let proper_span = span();
-
-                        // Update the diagnostic span
-                        if let Some(ref mut diagnostic_span) = e.0.span {
-                            *diagnostic_span = proper_span.clone();
-                        }
-
-                        e.with_span(&proper_span);
+                        
+                        // Replace the error's origin with the proper SQL span
+                        // This ensures the error shows "at col" not the actual value
+                        e.0.with_span(&proper_span);
+                        
+                        // Wrap in cast error with the original span
                         error!(cast::invalid_uuid(proper_span, $target_type, e.0))
                     })?;
 

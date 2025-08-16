@@ -16,8 +16,14 @@ pub mod value;
 
 pub use common::*;
 pub use interface::{
-	BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span,
-	SpanColumn, SpanLine,
+	ColumnDescriptor,
+};
+// Re-export span/origin types from new location
+pub use result::error::diagnostic::origin::{
+	BorrowedSpan, IntoOwnedSpan, OwnedSpan, Span,
+	SpanColumn, SpanLine, DiagnosticOrigin, IntoDiagnosticOrigin,
+	// Also export new names for gradual migration
+	OwnedStatementOrigin, BorrowedStatementOrigin,
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
