@@ -310,9 +310,9 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 	) -> crate::Result<Box<dyn Operator<E> + Send + Sync + 'static>> {
 		match operator_type {
 			OperatorType::Filter {
-				predicate,
+				conditions,
 			} => Ok(Box::new(FilterOperator::new(
-				predicate.clone(),
+				conditions.clone(),
 			))),
 			OperatorType::Map {
 				expressions,

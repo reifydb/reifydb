@@ -12,13 +12,13 @@ use crate::{
 };
 
 pub struct FilterOperator {
-	predicate: Expression,
+	conditions: Vec<Expression>,
 }
 
 impl FilterOperator {
-	pub fn new(predicate: Expression) -> Self {
+	pub fn new(conditions: Vec<Expression>) -> Self {
 		Self {
-			predicate,
+			conditions,
 		}
 	}
 }
@@ -87,6 +87,7 @@ impl FilterOperator {
 		let row_count = columns.row_count();
 
 		let empty_params = Params::None;
+
 		let eval_ctx = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
@@ -96,27 +97,41 @@ impl FilterOperator {
 			params: &empty_params,
 		};
 
-		// Evaluate predicate to get boolean column
-		let result_column = ctx.evaluate(&eval_ctx, &self.predicate)?;
-		let mut columns = columns.clone();
+		// Start with all bits set to true
+		let mut final_bv = BitVec::repeat(row_count, true);
 
-		let mut bv = BitVec::repeat(row_count, true);
+		// Evaluate each condition and AND them together
+		for condition in &self.conditions {
+			let result_column =
+				ctx.evaluate(&eval_ctx, condition)?;
 
-		match result_column.data() {
-			ColumnData::Bool(container) => {
-				for (idx, val) in
-					container.data().iter().enumerate()
-				{
-					debug_assert!(
-						container.is_defined(idx)
-					);
-					bv.set(idx, val);
+			match result_column.data() {
+				ColumnData::Bool(container) => {
+					for (idx, val) in container
+						.data()
+						.iter()
+						.enumerate()
+					{
+						debug_assert!(
+							container.is_defined(
+								idx
+							)
+						);
+						// AND the current condition
+						// with the accumulated result
+						if !val {
+							final_bv.set(
+								idx, false,
+							);
+						}
+					}
 				}
+				_ => unreachable!(),
 			}
-			_ => unreachable!(),
 		}
 
-		columns.filter(&bv)?;
+		let mut columns = columns.clone();
+		columns.filter(&final_bv)?;
 
 		Ok(columns)
 	}

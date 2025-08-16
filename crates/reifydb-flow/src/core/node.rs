@@ -24,7 +24,7 @@ pub enum FlowNodeType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperatorType {
 	Filter {
-		predicate: Expression,
+		conditions: Vec<Expression>,
 	},
 	Map {
 		expressions: Vec<Expression>,
@@ -39,12 +39,14 @@ pub enum OperatorType {
 		map: Vec<Expression>,
 	},
 	Union,
-	TopK {
-		k: usize,
-		sort: Vec<SortKey>,
+	Sort {
+		by: Vec<SortKey>,
+	},
+	Take {
+		limit: usize,
 	},
 	Distinct {
-		expressions: Option<Vec<Expression>>,
+		expressions: Vec<Expression>,
 	},
 }
 
@@ -62,20 +64,21 @@ impl OperatorType {
 			} => false,
 			OperatorType::Union => false,
 
-			// Stateful operator - need persistent state for
-			// incremental updates
 			OperatorType::Join {
 				..
-			} => true, // Hash tables for both sides
+			} => true,
 			OperatorType::Aggregate {
 				..
-			} => true, // Running aggregation state
-			OperatorType::TopK {
+			} => true,
+			OperatorType::Take {
 				..
-			} => true, // Sorted buffer of top K elements
+			} => true,
+			OperatorType::Sort {
+				..
+			} => true,
 			OperatorType::Distinct {
 				..
-			} => true, // Set of seen data
+			} => true,
 		}
 	}
 }

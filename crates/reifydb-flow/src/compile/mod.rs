@@ -1,211 +1,172 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Compilation module for converting RQL logical plans into FlowGraphs
+//! Compilation module for converting RQL plans into Flows
 //!
-//! This module bridges the gap between ReifyDB's SQL query processing and the
+//! This module bridges the gap between ReifyDB's RQL query processing and the
 //! streaming dataflow engine, enabling automatic incremental computation for
-//! SQL queries.
+//! RQL queries.
 
-mod operators;
-mod sources;
+mod builder;
+mod operator;
+mod source;
+
+use std::mem::take;
 
 use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_node_id};
-use reifydb_core::{
-	interface::{
-		ActiveCommandTransaction, FlowNodeId, Transaction, ViewDef,
+use reifydb_core::interface::{
+	ActiveCommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
+};
+use reifydb_rql::plan::physical::PhysicalPlan;
+
+use crate::{
+	Flow, FlowEdge, FlowNode, FlowNodeType,
+	compile::{
+		operator::{
+			aggregate::AggregateCompiler, filter::FilterCompiler,
+			join::JoinCompiler, map::MapCompiler,
+			sort::SortCompiler, take::TakeCompiler,
+		},
+		source::{
+			inline_data::InlineDataCompiler,
+			table_scan::TableScanCompiler,
+		},
 	},
-	result::error::diagnostic::flow::flow_error,
-};
-use reifydb_rql::plan::physical::{
-	AggregateNode, FilterNode, JoinInnerNode, JoinLeftNode, MapNode,
-	PhysicalPlan, SortNode, TakeNode,
 };
 
-use crate::{Flow, FlowEdge, FlowNode, FlowNodeType};
-
-/// Public API for compiling logical plans to FlowGraphs
+/// Public API for compiling logical plans to Flows
 pub fn compile_flow<T: Transaction>(
 	txn: &mut ActiveCommandTransaction<T>,
 	plan: PhysicalPlan,
 	sink: &ViewDef,
 ) -> crate::Result<Flow> {
-	let mut compiler = FlowCompiler::new();
-	compiler.compile(txn, plan, sink)
+	let mut compiler = FlowCompiler::new(txn);
+	compiler.compile(plan, sink)
 }
 
 /// Compiler for converting RQL plans into executable Flows
-pub(crate) struct FlowCompiler {
+pub(crate) struct FlowCompiler<'a, T: Transaction> {
 	/// The flow graph being built
 	flow: Flow,
+	/// Transaction for accessing catalog and sequences
+	txn: &'a mut ActiveCommandTransaction<T>,
 }
 
-impl FlowCompiler {
+impl<'a, T: Transaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
-	pub fn new() -> Self {
+	pub fn new(txn: &'a mut ActiveCommandTransaction<T>) -> Self {
 		Self {
 			flow: Flow::new(),
+			txn,
 		}
+	}
+
+	/// Gets the next available node ID
+	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
+		next_flow_node_id(self.txn)
+	}
+
+	/// Gets the next available edge ID
+	fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
+		next_flow_edge_id(self.txn)
+	}
+
+	/// Adds an edge between two nodes
+	fn add_edge(
+		&mut self,
+		from: &FlowNodeId,
+		to: &FlowNodeId,
+	) -> crate::Result<()> {
+		let edge_id = self.next_edge_id()?;
+		self.flow.add_edge(FlowEdge::new(edge_id, from, to))
+	}
+
+	/// Adds a node to the flow graph
+	fn add_node(
+		&mut self,
+		node_type: FlowNodeType,
+	) -> crate::Result<FlowNodeId> {
+		let node_id = self.next_node_id()?;
+		let flow_node_id =
+			self.flow.add_node(FlowNode::new(node_id, node_type));
+		Ok(flow_node_id)
 	}
 
 	/// Compiles a physical plan into a FlowGraph
-	pub(crate) fn compile<T: Transaction>(
+	pub(crate) fn compile(
 		&mut self,
-		txn: &mut ActiveCommandTransaction<T>,
 		plan: PhysicalPlan,
 		sink: &ViewDef,
 	) -> crate::Result<Flow> {
-		// Reset the flow for this compilation
-		self.flow = Flow::new();
+		let root_node_id = self.compile_plan(plan)?;
 
-		// Compile the physical plan tree into the dataflow graph
-		let root_node_id = self.compile_plan(txn, plan)?;
+		let result_node = self.add_node(FlowNodeType::SinkView {
+			name: sink.name.clone(),
+			view: sink.id,
+		})?;
 
-		// Create the sink node for the view
-		let result_node = self.flow.add_node(FlowNode::new(
-			next_flow_node_id(txn)?,
-			FlowNodeType::SinkView {
-				name: sink.name.clone(),
-				view: sink.id,
-			},
-		));
-		self.flow.add_edge(FlowEdge::new(
-			next_flow_edge_id(txn)?,
-			&root_node_id,
-			&result_node,
-		))?;
+		self.add_edge(&root_node_id, &result_node)?;
 
-		// Return the flow, replacing it with a new one
-		let result = self.flow.clone();
-		self.flow = Flow::new();
-		Ok(result)
+		Ok(take(&mut self.flow))
 	}
 
 	/// Compiles a physical plan node into the FlowGraph
-	fn compile_plan<T: Transaction>(
+	pub(crate) fn compile_plan(
 		&mut self,
-		txn: &mut ActiveCommandTransaction<T>,
 		plan: PhysicalPlan,
 	) -> crate::Result<FlowNodeId> {
 		match plan {
-			// Leaf nodes (data sources)
 			PhysicalPlan::TableScan(table_scan) => {
-				self.compile_table_scan(txn, table_scan)
+				TableScanCompiler::from(table_scan)
+					.compile(self)
 			}
 			PhysicalPlan::InlineData(inline_data) => {
-				self.compile_inline_data(inline_data)
+				InlineDataCompiler::from(inline_data)
+					.compile(self)
 			}
-
-			// Unary operators (single input)
 			PhysicalPlan::Filter(filter) => {
-				let FilterNode {
-					input,
-					conditions,
-				} = filter;
-				let input_node =
-					self.compile_plan(txn, *input)?;
-				self.compile_filter(txn, conditions, input_node)
+				FilterCompiler::from(filter).compile(self)
 			}
 			PhysicalPlan::Map(map) => {
-				let MapNode {
-					input,
-					map: expressions,
-				} = map;
-				let input_node = if let Some(input) = input {
-					Some(self.compile_plan(txn, *input)?)
-				} else {
-					None
-				};
-				self.compile_map(txn, expressions, input_node)
+				MapCompiler::from(map).compile(self)
 			}
 			PhysicalPlan::Aggregate(aggregate) => {
-				let AggregateNode {
-					input,
-					by,
-					map,
-				} = aggregate;
-				let input_node =
-					self.compile_plan(txn, *input)?;
-				self.compile_aggregate(txn, by, map, input_node)
+				AggregateCompiler::from(aggregate).compile(self)
 			}
 			PhysicalPlan::Take(take) => {
-				let TakeNode {
-					input,
-					take: limit,
-				} = take;
-				let input_node =
-					self.compile_plan(txn, *input)?;
-				self.compile_take(txn, limit, input_node)
+				TakeCompiler::from(take).compile(self)
 			}
 			PhysicalPlan::Sort(sort) => {
-				let SortNode {
-					input,
-					by,
-				} = sort;
-				let input_node =
-					self.compile_plan(txn, *input)?;
-				self.compile_sort(txn, by, input_node)
+				SortCompiler::from(sort).compile(self)
 			}
-
-			// Binary operators (two inputs)
 			PhysicalPlan::JoinInner(join) => {
-				let JoinInnerNode {
-					left,
-					right,
-					on,
-				} = join;
-				let left_node =
-					self.compile_plan(txn, *left)?;
-				let right_node =
-					self.compile_plan(txn, *right)?;
-				self.compile_join_inner(
-					txn, on, left_node, right_node,
-				)
+				JoinCompiler::from(join).compile(self)
 			}
 			PhysicalPlan::JoinLeft(join) => {
-				let JoinLeftNode {
-					left,
-					right,
-					on,
-				} = join;
-				let left_node =
-					self.compile_plan(txn, *left)?;
-				let right_node =
-					self.compile_plan(txn, *right)?;
-				self.compile_join_left(
-					txn, on, left_node, right_node,
-				)
+				JoinCompiler::from(join).compile(self)
 			}
 			PhysicalPlan::JoinNatural(_) => {
-				return Err(reifydb_core::Error(flow_error(
-					"Natural joins not yet implemented in dataflow".to_string(),
-				)));
+				unimplemented!()
 			}
 
-			// DDL operations
 			PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_)
-			| PhysicalPlan::AlterSequence(_) => {
-				return Err(reifydb_core::Error(flow_error(
-					"DDL operations cannot be compiled to dataflow".to_string(),
-				)));
-			}
-
-			// Computed view is handled specially
-			PhysicalPlan::CreateComputedView(_) => {
-				return Err(reifydb_core::Error(flow_error(
-					"CREATE COMPUTED VIEW should be handled at a higher level".to_string(),
-				)));
-			}
-
-			// DML operations
-			PhysicalPlan::Insert(_)
+			| PhysicalPlan::AlterSequence(_)
+			| PhysicalPlan::CreateComputedView(_)
+			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::Delete(_) => {
-				return Err(reifydb_core::Error(flow_error(
-					"DML operations cannot be compiled to dataflow".to_string(),
-				)));
+				unreachable!()
 			}
 		}
 	}
+}
+
+/// Trait for compiling operator from physical plans to flow nodes
+pub(crate) trait CompileOperator<T: Transaction> {
+	/// Compiles this operator into a flow node
+	fn compile(
+		self,
+		compiler: &mut FlowCompiler<T>,
+	) -> reifydb_core::Result<FlowNodeId>;
 }

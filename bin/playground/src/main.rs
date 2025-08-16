@@ -45,7 +45,7 @@ fn main() {
 		r#"
 	create computed view test.adults { name: utf8, age: int1 }  with {
 	    from test.users
-	    filter { age > 18  }
+	    filter { age > 30  }
 	    map { name, age }
 	}
 	"#,
