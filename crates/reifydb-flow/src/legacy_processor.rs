@@ -5,11 +5,11 @@ use reifydb_core::{
 	EncodedKeyRange, Type, Value,
 	interface::{
 		ActiveCommandTransaction, ColumnIndex, EncodableKey,
-		EncodableKeyRange, Evaluate, FlowNodeId, SchemaId,
-		TableColumnDef, TableColumnId, TableDef, TableId, Transaction,
-		VersionedCommandTransaction, VersionedQueryTransaction,
-		VersionedTransaction, ViewColumnDef, ViewColumnId, ViewDef,
-		ViewId, ViewRowKey, ViewRowKeyRange,
+		EncodableKeyRange, Evaluate, FlowNodeId, GetEncodedRowLayout,
+		SchemaId, TableColumnDef, TableColumnId, TableDef, TableId,
+		Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction, VersionedTransaction, ViewColumnDef,
+		ViewColumnId, ViewDef, ViewId, ViewRowKey, ViewRowKeyRange,
 	},
 	row::EncodedRowLayout,
 	value::columnar::Columns,
@@ -332,8 +332,6 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
-		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
-
 		let view = ViewDef {
 			id: ViewId(view_id.0),
 			schema: SchemaId(0),
@@ -351,8 +349,16 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 					ty: Type::Int1,
 					index: ColumnIndex(1),
 				},
+				ViewColumnDef {
+					id: ViewColumnId(2),
+					name: "score".to_string(),
+					ty: Type::Int2,
+					index: ColumnIndex(2),
+				},
 			],
 		};
+
+		let layout = view.get_layout();
 
 		for diff in &change.diffs {
 			match diff {

@@ -1,5 +1,7 @@
 use reifydb_core::{
-	interface::{Evaluate, expression::Expression},
+	interface::{
+		Evaluate, EvaluationContext, Params, expression::Expression,
+	},
 	value::columnar::Columns,
 };
 
@@ -23,7 +25,7 @@ impl MapOperator {
 impl<E: Evaluate> Operator<E> for MapOperator {
 	fn apply(
 		&self,
-		_ctx: &OperatorContext<E>,
+		ctx: &OperatorContext<E>,
 		change: Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();
@@ -34,7 +36,7 @@ impl<E: Evaluate> Operator<E> for MapOperator {
 					after,
 				} => {
 					let projected_columns =
-						self.project(&after)?;
+						self.project(ctx, &after)?;
 					output.push(Diff::Insert {
 						after: projected_columns,
 					});
@@ -44,7 +46,7 @@ impl<E: Evaluate> Operator<E> for MapOperator {
 					after,
 				} => {
 					let projected_columns =
-						self.project(&after)?;
+						self.project(ctx, &after)?;
 					output.push(Diff::Update {
 						before,
 						after: projected_columns,
@@ -56,7 +58,7 @@ impl<E: Evaluate> Operator<E> for MapOperator {
 					// For removes, we might need to project
 					// to maintain schema consistency
 					let projected_columns =
-						self.project(&before)?;
+						self.project(ctx, &before)?;
 					output.push(Diff::Remove {
 						before: projected_columns,
 					});
@@ -69,36 +71,33 @@ impl<E: Evaluate> Operator<E> for MapOperator {
 }
 
 impl MapOperator {
-	fn project(&self, columns: &Columns) -> crate::Result<Columns> {
-		// if columns.is_empty() {
-		// 	return Ok(columns.clone());
-		// }
-		//
-		// let row_count = columns.row_count();
-		//
-		// // Create evaluation context from input columns
-		// // TODO: Flow operator need access to params through
-		// // OperatorContext
-		// let empty_params = Params::None;
-		// let eval_ctx = EvaluationContext {
-		// 	target_column: None,
-		// 	column_policies: Vec::new(),
-		// 	columns: columns.clone(),
-		// 	row_count,
-		// 	take: None,
-		// 	params: &empty_params,
-		// };
-		//
-		// // Evaluate each expression to get projected columns
-		// let mut projected_columns = Vec::new();
-		// for expr in &self.expressions {
-		// 	let column = evaluate(expr, &eval_ctx)?;
-		// 	projected_columns.push(column);
-		// }
-		//
-		// // Build new columns from projected columns
-		// Ok(Columns::new(projected_columns))
+	fn project<E: Evaluate>(
+		&self,
+		ctx: &OperatorContext<E>,
+		columns: &Columns,
+	) -> crate::Result<Columns> {
+		if columns.is_empty() {
+			return Ok(columns.clone());
+		}
 
-		Ok(columns.clone()) // FIXME remove NOP
+		let row_count = columns.row_count();
+
+		let empty_params = Params::None;
+		let eval_ctx = EvaluationContext {
+			target_column: None,
+			column_policies: Vec::new(),
+			columns: columns.clone(),
+			row_count,
+			take: None,
+			params: &empty_params,
+		};
+
+		let mut projected_columns = Vec::new();
+		for expr in &self.expressions {
+			let column = ctx.evaluate(&eval_ctx, expr)?;
+			projected_columns.push(column);
+		}
+
+		Ok(Columns::new(projected_columns))
 	}
 }

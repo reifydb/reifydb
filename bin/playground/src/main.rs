@@ -10,11 +10,10 @@ use reifydb::{
 	core::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
-			ColumnIndex, EncodableKeyRange, FlowNodeId, Params,
-			SchemaId, ViewColumnId, ViewDef, ViewId,
-			ViewRowKeyRange,
+			ColumnIndex, EncodableKeyRange, FlowNodeId,
+			GetEncodedRowLayout, Params, SchemaId, ViewColumnDef,
+			ViewColumnId, ViewDef, ViewId, ViewRowKeyRange,
 		},
-		row::EncodedRowLayout,
 	},
 	engine::columnar::Columns,
 	flow::Flow,
@@ -34,7 +33,7 @@ fn main() {
 	db.command_as_root(
 		r#"
 	    create schema test;
-	    create table test.users { name: utf8, age: int1 };
+	    create table test.users { name: utf8, age: int1};
 	"#,
 		Params::None,
 	)
@@ -43,11 +42,11 @@ fn main() {
 	// Skip computed view for now since flow subsystem has unimplemented
 	db.command_as_root(
 		r#"
-	create computed view test.adults { name: utf8, age: int1 }  with {
+	create computed view test.adults { name: utf8, age: int1, score: int2 }  with {
 	    from test.users
 	    filter { age >= 18  }
 	    filter { age <= 20  }
-	    map { name, age }
+	    map { name, age, score: age * age }
 	}
 	"#,
 		Params::None,
@@ -256,27 +255,33 @@ fn read_columns_from_storage(
 		)
 		.unwrap();
 
-	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
-
 	let view = ViewDef {
 		id: ViewId(node_id.0),
 		schema: SchemaId(0),
 		name: "view".to_string(),
 		columns: vec![
-			reifydb::core::interface::ViewColumnDef {
+			ViewColumnDef {
 				id: ViewColumnId(0),
 				name: "name".to_string(),
 				ty: Type::Utf8,
 				index: ColumnIndex(0),
 			},
-			reifydb::core::interface::ViewColumnDef {
+			ViewColumnDef {
 				id: ViewColumnId(1),
 				name: "age".to_string(),
 				ty: Type::Int1,
 				index: ColumnIndex(1),
 			},
+			ViewColumnDef {
+				id: ViewColumnId(2),
+				name: "score".to_string(),
+				ty: Type::Int2,
+				index: ColumnIndex(2),
+			},
 		],
 	};
+
+	let layout = view.get_layout();
 
 	let mut columns = Columns::from_view_def(&view);
 	let mut iter = versioned_data.into_iter();
