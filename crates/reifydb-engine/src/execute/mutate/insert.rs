@@ -40,9 +40,9 @@ impl<T: Transaction> Executor<T> {
 			.map(|s| s.fragment.as_str())
 			.unwrap(); // FIXME
 
-		let schema =
-			Catalog::get_schema_by_name(txn, schema_name)?.unwrap();
-		let Some(table) = Catalog::get_table_by_name(
+		let schema = Catalog::find_schema_by_name(txn, schema_name)?
+			.unwrap();
+		let Some(table) = Catalog::find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table.fragment,

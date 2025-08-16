@@ -38,7 +38,7 @@ impl Catalog {
 		view: ViewId,
 		column_to_create: ViewColumnToCreate,
 	) -> crate::Result<ColumnDef> {
-		if let Some(column) = Catalog::get_view_column_by_name(
+		if let Some(column) = Catalog::find_view_column_by_name(
 			txn,
 			view,
 			&column_to_create.column,

@@ -29,7 +29,7 @@ impl Catalog {
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =
-			Catalog::get_schema_by_name(txn, &to_create.name)?
+			Catalog::find_schema_by_name(txn, &to_create.name)?
 		{
 			return_error!(schema_already_exists(
 				to_create.schema_span,
@@ -55,7 +55,7 @@ impl Catalog {
 			row,
 		)?;
 
-		Ok(Catalog::get_schema(txn, schema_id)?.unwrap())
+		Ok(Catalog::get_schema(txn, schema_id)?)
 	}
 }
 

@@ -22,7 +22,7 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut ActiveCommandTransaction<T>,
 		plan: CreateComputedViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(view) = Catalog::get_view_by_name(
+		if let Some(view) = Catalog::find_view_by_name(
 			txn,
 			plan.schema.id,
 			&plan.view,

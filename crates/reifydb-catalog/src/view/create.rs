@@ -42,7 +42,7 @@ impl Catalog {
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		let Some(schema) =
-			Catalog::get_schema_by_name(txn, &to_create.schema)?
+			Catalog::find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
 				to_create.span,
@@ -50,7 +50,7 @@ impl Catalog {
 			));
 		};
 
-		if let Some(view) = Catalog::get_view_by_name(
+		if let Some(view) = Catalog::find_view_by_name(
 			txn,
 			schema.id,
 			&to_create.view,
@@ -73,7 +73,7 @@ impl Catalog {
 
 		Catalog::insert_columns_for_view(txn, view_id, to_create)?;
 
-		Ok(Catalog::get_view(txn, view_id)?.unwrap())
+		Ok(Catalog::get_view(txn, view_id)?)
 	}
 
 	fn store_view<T: Transaction>(

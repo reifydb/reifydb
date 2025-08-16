@@ -204,7 +204,7 @@ impl Compiler {
 
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) =
-						Catalog::get_schema_by_name(
+						Catalog::find_schema_by_name(
 							rx,
 							&scan.schema.fragment,
 						)?
@@ -221,9 +221,8 @@ impl Compiler {
 						);
 					};
 
-					// Check if it's a table or view
 					if let Some(table) =
-						Catalog::get_table_by_name(
+						Catalog::find_table_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment,
@@ -235,7 +234,7 @@ impl Compiler {
 							},
 						));
 					} else if let Some(view) =
-						Catalog::get_view_by_name(
+						Catalog::find_view_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment,

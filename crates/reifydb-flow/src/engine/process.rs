@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use FlowNodeType::SourceTable;
-use reifydb_catalog::sequence::ViewRowSequence;
+use reifydb_catalog::{Catalog, sequence::ViewRowSequence};
 use reifydb_core::{
 	Type, Value,
 	interface::{
@@ -128,6 +128,8 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
+		Catalog::get_view(txn, view_id)?;
+
 		// TODO: This is a simplified version - in production we'd get
 		// the actual view definition from the catalog
 		let view = ViewDef {

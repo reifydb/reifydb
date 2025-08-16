@@ -44,7 +44,7 @@ impl Catalog {
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
-			Catalog::get_schema_by_name(txn, &to_create.schema)?
+			Catalog::find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
 				to_create.span,
@@ -52,7 +52,7 @@ impl Catalog {
 			));
 		};
 
-		if let Some(table) = Catalog::get_table_by_name(
+		if let Some(table) = Catalog::find_table_by_name(
 			txn,
 			schema.id,
 			&to_create.table,
@@ -75,7 +75,7 @@ impl Catalog {
 
 		Catalog::insert_columns(txn, table_id, to_create)?;
 
-		Ok(Catalog::get_table(txn, table_id)?.unwrap())
+		Ok(Catalog::get_table(txn, table_id)?)
 	}
 
 	fn store_table<T: Transaction>(
