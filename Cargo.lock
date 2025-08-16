@@ -1503,6 +1503,7 @@ name = "reifydb"
 version = "0.0.1"
 dependencies = [
  "reifydb-auth",
+ "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-flow",

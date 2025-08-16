@@ -22,7 +22,17 @@ pub enum SourceId {
 	View(ViewId),
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SourceDef {
 	Table(TableDef),
 	View(ViewDef),
+}
+
+impl SourceDef {
+	pub fn id(&self) -> SourceId {
+		match self {
+			SourceDef::Table(table) => SourceId::Table(table.id),
+			SourceDef::View(view) => SourceId::View(view.id),
+		}
+	}
 }
