@@ -7,17 +7,15 @@ use reifydb_core::{
 	Result, Type, Value,
 	interface::{
 		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
-		CdcEvent, ColumnIndex, ConsumerId, Engine, Identity, Key,
-		Params, SchemaId, TableColumnDef, TableColumnId, TableDef,
-		TableId, TableRowKey, Transaction,
+		CdcEvent, ColumnIndex, ConsumerId, Engine, FlowNodeId,
+		Identity, Key, Params, SchemaId, TableColumnDef, TableColumnId,
+		TableDef, TableId, TableRowKey, Transaction,
 	},
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
 use reifydb_engine::{Evaluator, StandardEngine};
-use reifydb_flow::{
-	Change, Diff, Flow, NodeId, legacy_processor::LegacyFlowProcessor,
-};
+use reifydb_flow::{Change, Diff, Flow, legacy_processor::LegacyFlowProcessor};
 
 use super::{Subsystem, cdc::PollConsumer};
 use crate::health::HealthStatus;
@@ -87,7 +85,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					Evaluator::default(),
 				);
 
-			let node_id = NodeId(1026);
+			let node_id = FlowNodeId(1026);
 
 			let layout = EncodedRowLayout::new(&[
 				Type::Utf8,
@@ -134,7 +132,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 				after: columns,
 			}]);
 
-			lp.hack(&flow, txn, &NodeId(1), change).unwrap();
+			lp.hack(&flow, txn, &FlowNodeId(1), change).unwrap();
 		}
 		Ok(())
 	}

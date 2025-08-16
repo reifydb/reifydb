@@ -5,8 +5,8 @@ use reifydb_core::{
 	EncodedKeyRange, Type, Value,
 	interface::{
 		ActiveCommandTransaction, ColumnIndex, EncodableKey,
-		EncodableKeyRange, Evaluate, SchemaId, TableColumnDef,
-		TableColumnId, TableDef, TableId, Transaction,
+		EncodableKeyRange, Evaluate, FlowNodeId, SchemaId,
+		TableColumnDef, TableColumnId, TableDef, TableId, Transaction,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		VersionedTransaction, ViewColumnDef, ViewColumnId, ViewDef,
 		ViewId, ViewRowKey, ViewRowKeyRange,
@@ -16,14 +16,16 @@ use reifydb_core::{
 };
 
 use crate::{
-	core::{Change, Diff, Flow, NodeId, NodeType, OperatorType},
+	core::{Change, Diff, Flow, FlowNodeType, OperatorType},
 	operator::{FilterOperator, MapOperator, Operator, OperatorContext},
 };
 
 pub struct LegacyFlowProcessor<T: Transaction, E: Evaluate> {
 	flow: Flow,
-	operators:
-		HashMap<NodeId, Box<dyn Operator<E> + Send + Sync + 'static>>,
+	operators: HashMap<
+		FlowNodeId,
+		Box<dyn Operator<E> + Send + Sync + 'static>,
+	>,
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
@@ -50,18 +52,19 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 
 	pub fn initialize(&mut self) -> crate::Result<()> {
 		// Initialize operator for all nodes
-		let node_ids: Vec<NodeId> = self.flow.get_all_nodes().collect();
+		let node_ids: Vec<FlowNodeId> =
+			self.flow.get_all_nodes().collect();
 
 		for node_id in node_ids {
 			if let Some(node) = self.flow.get_node(&node_id) {
 				match &node.ty {
-					NodeType::SourceTable {
+					FlowNodeType::SourceTable {
 						..
 					} => {
 						// Tables use VersionedStorage
 						// directly
 					}
-					NodeType::Operator {
+					FlowNodeType::Operator {
 						operator,
 					} => {
 						// Create operator and context
@@ -79,7 +82,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 						// 	),
 						// );
 					}
-					NodeType::SinkView {
+					FlowNodeType::SinkView {
 						..
 					} => {
 						// Views use VersionedStorage
@@ -94,7 +97,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 
 	pub fn process_change(
 		&self,
-		node_id: &NodeId,
+		node_id: &FlowNodeId,
 		change: Change,
 	) -> crate::Result<()> {
 		// let mut tx = ;
@@ -114,7 +117,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 	fn process_change_with_tx(
 		&self,
 		txn: &mut ActiveCommandTransaction<T>,
-		node_id: &NodeId,
+		node_id: &FlowNodeId,
 		change: Change,
 	) -> crate::Result<()> {
 		let (node_type, output_nodes) =
@@ -125,14 +128,14 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 			};
 
 		let output_change = match &node_type {
-			NodeType::SourceTable {
+			FlowNodeType::SourceTable {
 				..
 			} => {
 				// Source are handled elsewhere in the
 				// system - just propagate
 				change
 			}
-			NodeType::Operator {
+			FlowNodeType::Operator {
 				operator,
 			} => {
 				// Process through operator
@@ -161,7 +164,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 
 				transformed_diff
 			}
-			NodeType::SinkView {
+			FlowNodeType::SinkView {
 				view,
 				..
 			} => {
@@ -187,29 +190,29 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 		&self,
 		flow: &Flow,
 		txn: &mut ActiveCommandTransaction<T>,
-		node_id: &NodeId,
+		node_id: &FlowNodeId,
 		change: Change,
 	) -> crate::Result<()> {
 		let mut operators: HashMap<
-			NodeId,
+			FlowNodeId,
 			Box<dyn Operator<E> + Send + Sync + 'static>,
 		> = HashMap::new();
-		let mut contexts: HashMap<NodeId, OperatorContext<E>> =
+		let mut contexts: HashMap<FlowNodeId, OperatorContext<E>> =
 			HashMap::new();
 
 		// Initialize operator for all nodes
-		let node_ids: Vec<NodeId> = flow.get_all_nodes().collect();
+		let node_ids: Vec<FlowNodeId> = flow.get_all_nodes().collect();
 
 		for node_id in node_ids {
 			if let Some(node) = flow.get_node(&node_id) {
 				match &node.ty {
-					NodeType::SourceTable {
+					FlowNodeType::SourceTable {
 						..
 					} => {
 						// Tables use VersionedStorage
 						// directly
 					}
-					NodeType::Operator {
+					FlowNodeType::Operator {
 						operator,
 					} => {
 						// Create operator and context
@@ -227,7 +230,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 							),
 						);
 					}
-					NodeType::SinkView {
+					FlowNodeType::SinkView {
 						..
 					} => {
 						// Views use VersionedStorage
@@ -245,14 +248,14 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 			};
 
 		let output_change = match &node_type {
-			NodeType::SourceTable {
+			FlowNodeType::SourceTable {
 				..
 			} => {
 				// Source are handled elsewhere in the
 				// system - just propagate
 				change
 			}
-			NodeType::Operator {
+			FlowNodeType::Operator {
 				operator,
 			} => {
 				// Process through operator
@@ -276,7 +279,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 
 				transformed_diff
 			}
-			NodeType::SinkView {
+			FlowNodeType::SinkView {
 				view,
 				..
 			} => {
@@ -482,7 +485,7 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 		// Find view node and read from versioned storage
 		for node_id in self.flow.get_all_nodes() {
 			if let Some(node) = self.flow.get_node(&node_id) {
-				if let NodeType::SinkView {
+				if let FlowNodeType::SinkView {
 					name,
 					..
 				} = &node.ty
@@ -501,14 +504,14 @@ impl<T: Transaction, E: Evaluate> LegacyFlowProcessor<T, E> {
 
 	fn read_columns_from_storage(
 		&self,
-		node_id: &NodeId,
+		node_id: &FlowNodeId,
 	) -> crate::Result<Columns> {
 		// Start a read transaction
 		let mut rx = self.versioned.begin_query()?;
 
 		// Find the view_id from the node
 		let view_id = if let Some(node) = self.flow.get_node(node_id) {
-			if let NodeType::SinkView {
+			if let FlowNodeType::SinkView {
 				view,
 				..
 			} = &node.ty

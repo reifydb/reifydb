@@ -3,18 +3,20 @@
 
 //! Compilation of data source logical plans to FlowGraph nodes
 
-use reifydb_catalog::Catalog;
-use reifydb_core::interface::{ActiveCommandTransaction, Transaction};
+use reifydb_catalog::{Catalog, sequence::flow::next_flow_node_id};
+use reifydb_core::interface::{
+	ActiveCommandTransaction, FlowNodeId, Transaction,
+};
 
 use super::FlowCompiler;
-use crate::{NodeId, NodeType};
+use crate::{FlowNode, FlowNodeType};
 
 impl FlowCompiler {
 	pub(crate) fn compile_table_scan<T: Transaction>(
 		&mut self,
 		txn: &mut ActiveCommandTransaction<T>,
 		table_scan: reifydb_rql::plan::physical::TableScanNode,
-	) -> crate::Result<NodeId> {
+	) -> crate::Result<FlowNodeId> {
 		// Process physical plan TableScanNode directly
 		let table_name = table_scan.table.fragment.clone();
 
@@ -50,10 +52,13 @@ impl FlowCompiler {
 		};
 
 		// Create Source node for the table
-		let node_id = self.flow.add_node(NodeType::SourceTable {
-			name: table_name,
-			table: table.id,
-		});
+		let node_id = self.flow.add_node(FlowNode::new(
+			next_flow_node_id(txn)?,
+			FlowNodeType::SourceTable {
+				name: table_name,
+				table: table.id,
+			},
+		));
 
 		Ok(node_id)
 	}
@@ -61,7 +66,7 @@ impl FlowCompiler {
 	pub(crate) fn compile_inline_data(
 		&mut self,
 		_inline_data: reifydb_rql::plan::physical::InlineDataNode,
-	) -> crate::Result<NodeId> {
+	) -> crate::Result<FlowNodeId> {
 		unimplemented!()
 	}
 }

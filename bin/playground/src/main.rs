@@ -10,13 +10,14 @@ use reifydb::{
 	core::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
-			ColumnIndex, EncodableKeyRange, Params, SchemaId,
-			ViewColumnId, ViewDef, ViewId, ViewRowKeyRange,
+			ColumnIndex, EncodableKeyRange, FlowNodeId, Params,
+			SchemaId, ViewColumnId, ViewDef, ViewId,
+			ViewRowKeyRange,
 		},
 		row::EncodedRowLayout,
 	},
 	engine::columnar::Columns,
-	flow::{Flow, NodeId},
+	flow::Flow,
 	sync,
 };
 
@@ -191,7 +192,7 @@ fn rql_to_flow_example(db: &mut DB) {
 	// Query the computed view results
 	println!("\n--- Computed View Results ---");
 	// let results = get_view_data(db, &flow, "adults").unwrap();
-	let results = read_columns_from_storage(db, &NodeId(1025)).unwrap();
+	let results = read_columns_from_storage(db, &FlowNodeId(1025)).unwrap();
 	// let results = reifydb
 	//     .query_as_root(
 	//         r#"
@@ -232,12 +233,12 @@ pub fn get_view_data(
 	// }
 	// panic!("View {} not found", view_name);
 
-	read_columns_from_storage(db, &NodeId(1025))
+	read_columns_from_storage(db, &FlowNodeId(1025))
 }
 
 fn read_columns_from_storage(
 	db: &mut DB,
-	node_id: &NodeId,
+	node_id: &FlowNodeId,
 ) -> reifydb::Result<Columns> {
 	let range = ViewRowKeyRange {
 		view: ViewId(node_id.0),

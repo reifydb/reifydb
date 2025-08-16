@@ -10,10 +10,11 @@
 mod operators;
 mod sources;
 
-use std::collections::HashMap;
-
+use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_node_id};
 use reifydb_core::{
-	interface::{ActiveCommandTransaction, SchemaId, Transaction, ViewDef},
+	interface::{
+		ActiveCommandTransaction, FlowNodeId, Transaction, ViewDef,
+	},
 	result::error::diagnostic::flow::flow_error,
 };
 use reifydb_rql::plan::physical::{
@@ -21,16 +22,20 @@ use reifydb_rql::plan::physical::{
 	PhysicalPlan, SortNode, TakeNode,
 };
 
-use crate::{Flow, NodeId, NodeType};
+use crate::{Flow, FlowEdge, FlowNode, FlowNodeType};
 
-/// Compiler for converting RQL logical plans into executable FlowGraphs
-pub struct FlowCompiler {
-	/// Counter for generating unique table IDs
-	next_table_id: u64,
-	/// Current schema context for table resolution
-	schema_context: Option<SchemaId>,
-	/// Map from logical plan node references to FlowGraph NodeIds
-	node_mapping: HashMap<usize, NodeId>,
+/// Public API for compiling logical plans to FlowGraphs
+pub fn compile_flow<T: Transaction>(
+	txn: &mut ActiveCommandTransaction<T>,
+	plan: PhysicalPlan,
+	sink: &ViewDef,
+) -> crate::Result<Flow> {
+	let mut compiler = FlowCompiler::new();
+	compiler.compile(txn, plan, sink)
+}
+
+/// Compiler for converting RQL plans into executable Flows
+pub(crate) struct FlowCompiler {
 	/// The flow graph being built
 	flow: Flow,
 }
@@ -39,19 +44,16 @@ impl FlowCompiler {
 	/// Creates a new FlowCompiler instance
 	pub fn new() -> Self {
 		Self {
-			next_table_id: 1,
-			schema_context: None,
-			node_mapping: HashMap::new(),
 			flow: Flow::new(),
 		}
 	}
 
 	/// Compiles a physical plan into a FlowGraph
-	pub fn compile<T: Transaction>(
+	pub(crate) fn compile<T: Transaction>(
 		&mut self,
 		txn: &mut ActiveCommandTransaction<T>,
 		plan: PhysicalPlan,
-		view: &ViewDef,
+		sink: &ViewDef,
 	) -> crate::Result<Flow> {
 		// Reset the flow for this compilation
 		self.flow = Flow::new();
@@ -60,11 +62,18 @@ impl FlowCompiler {
 		let root_node_id = self.compile_plan(txn, plan)?;
 
 		// Create the sink node for the view
-		let result_node = self.flow.add_node(NodeType::SinkView {
-			name: view.name.clone(),
-			view: view.id,
-		});
-		self.flow.add_edge(&root_node_id, &result_node)?;
+		let result_node = self.flow.add_node(FlowNode::new(
+			next_flow_node_id(txn)?,
+			FlowNodeType::SinkView {
+				name: sink.name.clone(),
+				view: sink.id,
+			},
+		));
+		self.flow.add_edge(FlowEdge::new(
+			next_flow_edge_id(txn)?,
+			&root_node_id,
+			&result_node,
+		))?;
 
 		// Return the flow, replacing it with a new one
 		let result = self.flow.clone();
@@ -77,7 +86,7 @@ impl FlowCompiler {
 		&mut self,
 		txn: &mut ActiveCommandTransaction<T>,
 		plan: PhysicalPlan,
-	) -> crate::Result<NodeId> {
+	) -> crate::Result<FlowNodeId> {
 		match plan {
 			// Leaf nodes (data sources)
 			PhysicalPlan::TableScan(table_scan) => {
@@ -95,7 +104,7 @@ impl FlowCompiler {
 				} = filter;
 				let input_node =
 					self.compile_plan(txn, *input)?;
-				self.compile_filter(conditions, input_node)
+				self.compile_filter(txn, conditions, input_node)
 			}
 			PhysicalPlan::Map(map) => {
 				let MapNode {
@@ -107,7 +116,7 @@ impl FlowCompiler {
 				} else {
 					None
 				};
-				self.compile_map(expressions, input_node)
+				self.compile_map(txn, expressions, input_node)
 			}
 			PhysicalPlan::Aggregate(aggregate) => {
 				let AggregateNode {
@@ -117,7 +126,7 @@ impl FlowCompiler {
 				} = aggregate;
 				let input_node =
 					self.compile_plan(txn, *input)?;
-				self.compile_aggregate(by, map, input_node)
+				self.compile_aggregate(txn, by, map, input_node)
 			}
 			PhysicalPlan::Take(take) => {
 				let TakeNode {
@@ -126,7 +135,7 @@ impl FlowCompiler {
 				} = take;
 				let input_node =
 					self.compile_plan(txn, *input)?;
-				self.compile_take(limit, input_node)
+				self.compile_take(txn, limit, input_node)
 			}
 			PhysicalPlan::Sort(sort) => {
 				let SortNode {
@@ -135,7 +144,7 @@ impl FlowCompiler {
 				} = sort;
 				let input_node =
 					self.compile_plan(txn, *input)?;
-				self.compile_sort(by, input_node)
+				self.compile_sort(txn, by, input_node)
 			}
 
 			// Binary operators (two inputs)
@@ -150,7 +159,7 @@ impl FlowCompiler {
 				let right_node =
 					self.compile_plan(txn, *right)?;
 				self.compile_join_inner(
-					on, left_node, right_node,
+					txn, on, left_node, right_node,
 				)
 			}
 			PhysicalPlan::JoinLeft(join) => {
@@ -164,7 +173,7 @@ impl FlowCompiler {
 				let right_node =
 					self.compile_plan(txn, *right)?;
 				self.compile_join_left(
-					on, left_node, right_node,
+					txn, on, left_node, right_node,
 				)
 			}
 			PhysicalPlan::JoinNatural(_) => {
@@ -199,14 +208,4 @@ impl FlowCompiler {
 			}
 		}
 	}
-}
-
-/// Public API for compiling logical plans to FlowGraphs
-pub fn compile_flow<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
-	plan: PhysicalPlan,
-	view: &ViewDef,
-) -> crate::Result<Flow> {
-	let mut compiler = FlowCompiler::new();
-	compiler.compile(txn, plan, view)
 }

@@ -1,22 +1,13 @@
-use std::fmt;
-
 use reifydb_core::{
 	JoinType, SortKey,
-	interface::{TableId, ViewId, expression::Expression},
+	interface::{
+		FlowEdgeId, FlowNodeId, TableId, ViewId, expression::Expression,
+	},
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeId(pub u64);
-
-impl fmt::Display for NodeId {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Node({})", self.0)
-	}
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum NodeType {
+pub enum FlowNodeType {
 	SourceTable {
 		name: String,
 		table: TableId,
@@ -90,9 +81,41 @@ impl OperatorType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
-	pub id: NodeId,
-	pub ty: NodeType,
-	pub inputs: Vec<NodeId>,
-	pub outputs: Vec<NodeId>,
+pub struct FlowNode {
+	pub id: FlowNodeId,
+	pub ty: FlowNodeType,
+	pub inputs: Vec<FlowNodeId>,
+	pub outputs: Vec<FlowNodeId>,
+}
+
+impl FlowNode {
+	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType) -> Self {
+		Self {
+			id: id.into(),
+			ty,
+			inputs: Vec::new(),
+			outputs: Vec::new(),
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FlowEdge {
+	pub id: FlowEdgeId,
+	pub source: FlowNodeId,
+	pub target: FlowNodeId,
+}
+
+impl FlowEdge {
+	pub fn new(
+		id: impl Into<FlowEdgeId>,
+		source: impl Into<FlowNodeId>,
+		target: impl Into<FlowNodeId>,
+	) -> Self {
+		Self {
+			id: id.into(),
+			source: source.into(),
+			target: target.into(),
+		}
+	}
 }
