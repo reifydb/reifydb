@@ -1,14 +1,14 @@
 use std::collections::{Bound::Included, HashMap};
 
-use reifydb_catalog::sequence::TableRowSequence;
+use reifydb_catalog::sequence::ViewRowSequence;
 use reifydb_core::{
 	EncodedKeyRange, Type, Value,
 	interface::{
 		ActiveCommandTransaction, ColumnIndex, EncodableKey,
 		EncodableKeyRange, SchemaId, TableColumnDef, TableColumnId,
-		TableDef, TableId, TableRowKey, TableRowKeyRange, Transaction,
-		VersionedCommandTransaction, VersionedQueryTransaction,
-		VersionedTransaction,
+		TableDef, TableId, Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction, VersionedTransaction, ViewColumnDef,
+		ViewColumnId, ViewDef, ViewId, ViewRowKey, ViewRowKeyRange,
 	},
 	row::EncodedRowLayout,
 	value::columnar::Columns,
@@ -52,7 +52,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 		for node_id in node_ids {
 			if let Some(node) = self.flow.get_node(&node_id) {
 				match &node.ty {
-					NodeType::Source {
+					NodeType::SourceTable {
 						..
 					} => {
 						// Tables use VersionedStorage
@@ -74,7 +74,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 							OperatorContext::new(),
 						);
 					}
-					NodeType::Sink {
+					NodeType::SinkView {
 						..
 					} => {
 						// Views use VersionedStorage
@@ -119,51 +119,47 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 				return Ok(()); // Node not found, nothing to do
 			};
 
-		let output_change =
-			match &node_type {
-				NodeType::Source {
-					..
-				} => {
-					// Source are handled elsewhere in the
-					// system - just propagate
-					change
-				}
-				NodeType::Operator {
-					operator,
-				} => {
-					// Process through operator
-					let transformed_diff = if let (
-						Some(op),
-						Some(context),
-					) = (
-						self.operators.get(node_id),
-						self.contexts.get(node_id),
-					) {
-						op.apply(context, change)?
-					} else {
-						panic!(
-							"Operator or context not found"
-						);
-					};
+		let output_change = match &node_type {
+			NodeType::SourceTable {
+				..
+			} => {
+				// Source are handled elsewhere in the
+				// system - just propagate
+				change
+			}
+			NodeType::Operator {
+				operator,
+			} => {
+				// Process through operator
+				let transformed_diff = if let (
+					Some(op),
+					Some(context),
+				) = (
+					self.operators.get(node_id),
+					self.contexts.get(node_id),
+				) {
+					op.apply(context, change)?
+				} else {
+					panic!("Operator or context not found");
+				};
 
-					// Stateful operator need to persist
-					// their internal state
-					if operator.is_stateful() {
-						self.apply_diff_to_storage_with_tx(txn, node_id, &transformed_diff)?;
-					}
+				// Stateful operator need to persist
+				// their internal state
+				// if operator.is_stateful() {
+				// 	self.apply_to_view(txn, node_id,
+				// &transformed_diff)?; }
 
-					transformed_diff
-				}
-				NodeType::Sink {
-					..
-				} => {
-					// Sinks persist the final results
-					self.apply_diff_to_storage_with_tx(
-						txn, node_id, &change,
-					)?;
-					change
-				}
-			};
+				transformed_diff
+			}
+			NodeType::SinkView {
+				view,
+				..
+			} => {
+				// Sinks persist the final results
+				self.apply_to_view(txn, *view, &change)?;
+				change
+			}
+		};
 
 		// Propagate to downstream nodes
 		for output_id in output_nodes {
@@ -197,7 +193,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 		for node_id in node_ids {
 			if let Some(node) = flow.get_node(&node_id) {
 				match &node.ty {
-					NodeType::Source {
+					NodeType::SourceTable {
 						..
 					} => {
 						// Tables use VersionedStorage
@@ -219,7 +215,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 							OperatorContext::new(),
 						);
 					}
-					NodeType::Sink {
+					NodeType::SinkView {
 						..
 					} => {
 						// Views use VersionedStorage
@@ -236,51 +232,47 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 				return Ok(()); // Node not found, nothing to do
 			};
 
-		let output_change =
-			match &node_type {
-				NodeType::Source {
-					..
-				} => {
-					// Source are handled elsewhere in the
-					// system - just propagate
-					change
-				}
-				NodeType::Operator {
-					operator,
-				} => {
-					// Process through operator
-					let transformed_diff = if let (
-						Some(op),
-						Some(context),
-					) = (
-						operators.get(node_id),
-						contexts.get(node_id),
-					) {
-						op.apply(context, change)?
-					} else {
-						panic!(
-							"Operator or context not found"
-						);
-					};
+		let output_change = match &node_type {
+			NodeType::SourceTable {
+				..
+			} => {
+				// Source are handled elsewhere in the
+				// system - just propagate
+				change
+			}
+			NodeType::Operator {
+				operator,
+			} => {
+				// Process through operator
+				let transformed_diff = if let (
+					Some(op),
+					Some(context),
+				) = (
+					operators.get(node_id),
+					contexts.get(node_id),
+				) {
+					op.apply(context, change)?
+				} else {
+					panic!("Operator or context not found");
+				};
 
-					// Stateful operator need to persist
-					// their internal state
-					if operator.is_stateful() {
-						self.apply_diff_to_storage_with_tx(txn, node_id, &transformed_diff)?;
-					}
+				// Stateful operator need to persist
+				// their internal state
+				// if operator.is_stateful() {
+				// 	self.persist_state(txn, node_id,
+				// &transformed_diff)?; }
 
-					transformed_diff
-				}
-				NodeType::Sink {
-					..
-				} => {
-					// Sinks persist the final results
-					self.apply_diff_to_storage_with_tx(
-						txn, node_id, &change,
-					)?;
-					change
-				}
-			};
+				transformed_diff
+			}
+			NodeType::SinkView {
+				view,
+				..
+			} => {
+				// Sinks persist the final results
+				self.apply_to_view(txn, *view, &change)?;
+				change
+			}
+		};
 
 		// Propagate to downstream nodes
 		for output_id in output_nodes {
@@ -319,34 +311,30 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 		}
 	}
 
-	fn apply_diff_to_storage_with_tx(
+	fn apply_to_view(
 		&self,
 		txn: &mut ActiveCommandTransaction<T>,
-		node_id: &NodeId,
+		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
 		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-		let table = TableDef {
-			id: TableId(node_id.0),
+		let view = ViewDef {
+			id: ViewId(view_id.0),
 			schema: SchemaId(0),
 			name: "view".to_string(),
 			columns: vec![
-				TableColumnDef {
-					id: TableColumnId(0),
+				ViewColumnDef {
+					id: ViewColumnId(0),
 					name: "name".to_string(),
 					ty: Type::Utf8,
-					policies: vec![],
 					index: ColumnIndex(0),
-					auto_increment: false,
 				},
-				TableColumnDef {
-					id: TableColumnId(1),
+				ViewColumnDef {
+					id: ViewColumnId(1),
 					name: "age".to_string(),
 					ty: Type::Int1,
-					policies: vec![],
 					index: ColumnIndex(1),
-					auto_increment: false,
 				},
 			],
 		};
@@ -375,13 +363,13 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 						// For each table column, find
 						// if it exists in the input
 						// columns
-						for (table_idx, table_column) in
-							table.columns
+						for (view_idx, view_column) in
+							view.columns
 								.iter()
 								.enumerate()
 						{
 							let value = if let Some(input_column) =
-                                after.iter().find(|col| col.name() == table_column.name)
+                                after.iter().find(|col| col.name() == view_column.name)
                             {
                                 input_column.data().get_value(row_idx)
                             } else {
@@ -409,39 +397,40 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 							// )?;
 
 							match value {
-                                Value::Bool(v) => layout.set_bool(&mut row, table_idx, v),
-                                Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
-                                Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
-                                Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
-                                Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
-                                Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
-                                Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
-                                Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
-                                Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
-                                Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
-                                Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
-                                Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
-                                Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
-                                Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
-                                Value::Date(v) => layout.set_date(&mut row, table_idx, v),
-                                Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
-                                Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-                                Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
+                                Value::Bool(v) => layout.set_bool(&mut row, view_idx, v),
+                                Value::Float4(v) => layout.set_f32(&mut row, view_idx, *v),
+                                Value::Float8(v) => layout.set_f64(&mut row, view_idx, *v),
+                                Value::Int1(v) => layout.set_i8(&mut row, view_idx, v),
+                                Value::Int2(v) => layout.set_i16(&mut row, view_idx, v),
+                                Value::Int4(v) => layout.set_i32(&mut row, view_idx, v),
+                                Value::Int8(v) => layout.set_i64(&mut row, view_idx, v),
+                                Value::Int16(v) => layout.set_i128(&mut row, view_idx, v),
+                                Value::Utf8(v) => layout.set_utf8(&mut row, view_idx, v),
+                                Value::Uint1(v) => layout.set_u8(&mut row, view_idx, v),
+                                Value::Uint2(v) => layout.set_u16(&mut row, view_idx, v),
+                                Value::Uint4(v) => layout.set_u32(&mut row, view_idx, v),
+                                Value::Uint8(v) => layout.set_u64(&mut row, view_idx, v),
+                                Value::Uint16(v) => layout.set_u128(&mut row, view_idx, v),
+                                Value::Date(v) => layout.set_date(&mut row, view_idx, v),
+                                Value::DateTime(v) => layout.set_datetime(&mut row, view_idx, v),
+                                Value::Time(v) => layout.set_time(&mut row, view_idx, v),
+                                Value::Interval(v) => layout.set_interval(&mut row, view_idx, v),
                                 Value::RowId(_v) => {}
-                                Value::IdentityId(v) => layout.set_identity_id(&mut row, table_idx, v),
-                                Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
-                                Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
-                                Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
-                                Value::Undefined => layout.set_undefined(&mut row, table_idx),
+                                Value::IdentityId(v) => layout.set_identity_id(&mut row, view_idx, v),
+                                Value::Uuid4(v) => layout.set_uuid4(&mut row, view_idx, v),
+                                Value::Uuid7(v) => layout.set_uuid7(&mut row, view_idx, v),
+                                Value::Blob(v) => layout.set_blob(&mut row, view_idx, &v),
+                                Value::Undefined => layout.set_undefined(&mut row, view_idx),
                             }
 						}
 
 						// Insert the row into the
 						// database
-						let row_id = TableRowSequence::next_row_id(txn, TableId(node_id.0))?;
+						let row_id = ViewRowSequence::next_row_id(txn, ViewId(view_id.0))?;
+
 						txn.set(
-                            &TableRowKey { table: TableId(node_id.0), row: row_id }.encode(),
-                            row,
+							&ViewRowKey { view: ViewId(view_id.0), row: row_id }.encode(),
+							row,
                         )
                         .unwrap();
 
@@ -481,7 +470,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 		// Find view node and read from versioned storage
 		for node_id in self.flow.get_all_nodes() {
 			if let Some(node) = self.flow.get_node(&node_id) {
-				if let NodeType::Sink {
+				if let NodeType::SinkView {
 					name,
 					..
 				} = &node.ty
@@ -505,8 +494,27 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 		// Start a read transaction
 		let mut rx = self.versioned.begin_query()?;
 
-		let range = TableRowKeyRange {
-			table: TableId(node_id.0),
+		// Find the view_id from the node
+		let view_id = if let Some(node) = self.flow.get_node(node_id) {
+			if let NodeType::SinkView {
+				view,
+				..
+			} = &node.ty
+			{
+				*view
+			} else {
+				// return Err(crate::Error::UnexpectedError("
+				// Node is not a SinkView".to_string()));
+				panic!()
+			}
+		} else {
+			// return Err(crate::Error::UnexpectedError("Node not
+			// found".to_string()));
+			panic!()
+		};
+
+		let range = ViewRowKeyRange {
+			view: view_id,
 		};
 		let versioned_data = rx
 			.range(EncodedKeyRange::new(
@@ -541,7 +549,7 @@ impl<T: Transaction> LegacyFlowProcessor<T> {
 			],
 		};
 
-		let mut columns = Columns::empty_from_table(&table);
+		let mut columns = Columns::from_table_def(&table);
 		let mut iter = versioned_data.into_iter();
 		while let Some(versioned) = iter.next() {
 			columns.append_rows(&layout, [versioned.row])?;

@@ -13,7 +13,7 @@ pub fn derive_columns_column_layout(
 	if preserve_row_ids {
 		columns.push(ColumnLayout {
 			schema: None,
-			table: None,
+			source: None,
 			name: ROW_ID_COLUMN_NAME.to_string(),
 		});
 	}
@@ -31,24 +31,24 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 	match expr {
 		Expression::Alias(alias_expr) => ColumnLayout {
 			schema: None,
-			table: None,
+			source: None,
 			name: alias_expr.alias.name().to_string(),
 		},
 		Expression::Column(col_expr) => ColumnLayout {
 			schema: None,
-			table: None,
+			source: None,
 			name: col_expr.0.fragment.clone(),
 		},
 		Expression::AccessTable(access_expr) => ColumnLayout {
 			schema: None,
-			table: Some(access_expr.table.fragment.clone()),
+			source: Some(access_expr.source.fragment.clone()),
 			name: access_expr.column.fragment.clone(),
 		},
 		_ => {
 			// For other expressions, generate a simplified name
 			ColumnLayout {
 				schema: None,
-				table: None,
+				source: None,
 				name: simplified_name(expr),
 			}
 		}
@@ -113,7 +113,7 @@ fn simplified_name(expr: &Expression) -> String {
 		Expression::AccessTable(access_expr) => {
 			format!(
 				"{}.{}",
-				access_expr.table.fragment,
+				access_expr.source.fragment,
 				access_expr.column.fragment
 			)
 		}

@@ -41,7 +41,9 @@ impl ColumnData {
 				container.filter(mask)
 			}
 			ColumnData::RowId(container) => container.filter(mask),
-			ColumnData::IdentityId(container) => container.filter(mask),
+			ColumnData::IdentityId(container) => {
+				container.filter(mask)
+			}
 			ColumnData::Uuid4(container) => container.filter(mask),
 			ColumnData::Uuid7(container) => container.filter(mask),
 			ColumnData::Blob(container) => container.filter(mask),
@@ -149,12 +151,12 @@ mod tests {
 	#[test]
 	fn test_filter_identity_id() {
 		use crate::value::identity::IdentityId;
-		
+
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
 		let id3 = IdentityId::generate();
 		let id4 = IdentityId::generate();
-		
+
 		let mut col = ColumnData::identity_id([id1, id2, id3, id4]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 

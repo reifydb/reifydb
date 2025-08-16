@@ -6,7 +6,7 @@ use reifydb_rql::expression::Expression;
 
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, TableQualified,
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
 	evaluate::{EvaluationContext, evaluate},
@@ -107,8 +107,8 @@ impl ExecutionPlan for LeftJoinNode {
                             .cloned()
                             .zip(left_columns.iter().chain(right_columns.iter()))
                             .map(|(v, col)| match col.table() {
-                                Some(table) => Column::TableQualified(TableQualified {
-                                    table: table.to_string(),
+                                Some(source) => Column::SourceQualified(SourceQualified {
+                                    source: source.to_string(),
                                     name: col.name().to_string(),
                                     data: ColumnData::from(v),
                                 }),
@@ -169,15 +169,15 @@ impl ExecutionPlan for LeftJoinNode {
 		for (i, col_meta) in column_metadata.iter().enumerate() {
 			let old_column = &columns[i];
 			columns[i] = match col_meta.table() {
-				Some(table) => {
-					Column::TableQualified(TableQualified {
-						table: table.to_string(),
+				Some(source) => Column::SourceQualified(
+					SourceQualified {
+						source: source.to_string(),
 						name: col_meta
 							.name()
 							.to_string(),
 						data: old_column.data().clone(),
-					})
-				}
+					},
+				),
 				None => Column::ColumnQualified(
 					ColumnQualified {
 						name: col_meta

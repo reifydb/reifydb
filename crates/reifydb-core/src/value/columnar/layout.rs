@@ -3,7 +3,7 @@
 
 use crate::value::columnar::{
 	Column, ColumnData, ColumnQualified, Columns, FullyQualified,
-	TableQualified, Unqualified,
+	SourceQualified, Unqualified,
 };
 
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ impl ColumnsLayout {
 #[derive(Debug, Clone)]
 pub struct ColumnLayout {
 	pub schema: Option<String>,
-	pub table: Option<String>,
+	pub source: Option<String>,
 	pub name: String,
 }
 
@@ -33,7 +33,7 @@ impl ColumnLayout {
 	pub fn from_column(column: &Column) -> Self {
 		Self {
 			schema: column.schema().map(|s| s.to_string()),
-			table: column.table().map(|s| s.to_string()),
+			source: column.source().map(|s| s.to_string()),
 			name: column.name().to_string(),
 		}
 	}
@@ -56,15 +56,15 @@ impl Columns {
 					ColumnData::undefined(0),
 				);
 
-				*column = match (&column_layout.schema, &column_layout.table) {
-                    (Some(schema), Some(table)) => Column::FullyQualified(FullyQualified {
+				*column = match (&column_layout.schema, &column_layout.source) {
+                    (Some(schema), Some(source)) => Column::FullyQualified(FullyQualified {
                         schema: schema.clone(),
-                        table: table.clone(),
+                        source: source.clone(),
                         name: column_layout.name.clone(),
                         data,
                     }),
-                    (None, Some(table)) => Column::TableQualified(TableQualified {
-                        table: table.clone(),
+                    (None, Some(source)) => Column::SourceQualified(SourceQualified {
+                        source: source.clone(),
                         name: column_layout.name.clone(),
                         data,
                     }),
@@ -105,7 +105,7 @@ impl Columns {
 				.or_insert_with(Vec::new)
 				.push((
 					column_layout.schema.clone(),
-					column_layout.table.clone(),
+					column_layout.source.clone(),
 				));
 		}
 
@@ -117,60 +117,60 @@ impl Columns {
             .map(|column_layout| {
                 let contexts = name_groups.get(&column_layout.name).unwrap();
 
-                // Check if this column name appears in different table/schema contexts
+                // Check if this column name appears in different source/schema contexts
                 let mut unique_contexts = std::collections::HashSet::new();
-                for (schema, table) in contexts {
-                    unique_contexts.insert((schema.clone(), table.clone()));
+                for (schema, source) in contexts {
+                    unique_contexts.insert((schema.clone(), source.clone()));
                 }
 
-                // Qualify if there are duplicates OR if the layout explicitly specifies schema/table
+                // Qualify if there are duplicates OR if the layout explicitly specifies schema/source
                 let has_duplicates = unique_contexts.len() > 1;
                 let has_explicit_qualification =
-                    column_layout.schema.is_some() || column_layout.table.is_some();
+                    column_layout.schema.is_some() || column_layout.source.is_some();
 
                 if has_duplicates || has_explicit_qualification {
-                    // This column has naming conflicts - add qualification using available table info
-                    match (&column_layout.schema, &column_layout.table) {
-                        (Some(schema), Some(table)) => ColumnLayout {
+                    // This column has naming conflicts - add qualification using available source info
+                    match (&column_layout.schema, &column_layout.source) {
+                        (Some(schema), Some(source)) => ColumnLayout {
                             schema: Some(schema.clone()),
-                            table: Some(table.clone()),
+                            source: Some(source.clone()),
                             name: column_layout.name.clone(),
                         },
-                        (None, Some(table)) => ColumnLayout {
+                        (None, Some(source)) => ColumnLayout {
                             schema: None,
-                            table: Some(table.clone()),
+                            source: Some(source.clone()),
                             name: column_layout.name.clone(),
                         },
                         _ => {
-                            // No table info in layout, try to get it from existing columns
+                            // No source info in layout, try to get it from existing columns
                             if let Some(existing_column) =
                                 self.iter().find(|c| c.name() == column_layout.name)
                             {
-                                match (existing_column.schema(), existing_column.table()) {
-                                    (Some(schema), Some(table)) => ColumnLayout {
+                                match (existing_column.schema(), existing_column.source()) {
+                                    (Some(schema), Some(source)) => ColumnLayout {
                                         schema: Some(schema.to_string()),
-                                        table: Some(table.to_string()),
+                                        source: Some(source.to_string()),
                                         name: column_layout.name.clone(),
                                     },
-                                    (None, Some(table)) => ColumnLayout {
+                                    (None, Some(source)) => ColumnLayout {
                                         schema: None,
-                                        table: Some(table.to_string()),
+                                        source: Some(source.to_string()),
                                         name: column_layout.name.clone(),
                                     },
                                     _ => {
-                                        // Use columns name as fallback table qualification
+                                        // Use columns name as fallback source qualification
                                         ColumnLayout {
                                             schema: None,
-                                            table: None,
+                                            source: None,
                                             name: column_layout.name.clone(),
                                         }
                                     }
                                 }
                             } else {
-                                // Use columns name as fallback table qualification
+                                // Use columns name as fallback source qualification
                                 ColumnLayout {
                                     schema: None,
-                                    table: None,
+                                    source: None,
                                     name: column_layout.name.clone(),
                                 }
                             }
@@ -178,7 +178,7 @@ impl Columns {
                     }
                 } else {
                     // No duplicates - remove unnecessary qualification
-                    ColumnLayout { schema: None, table: None, name: column_layout.name.clone() }
+                    ColumnLayout { schema: None, source: None, name: column_layout.name.clone() }
                 }
             })
             .collect();

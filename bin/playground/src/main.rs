@@ -11,12 +11,12 @@ use reifydb::{
 		EncodedKeyRange, Frame, Type,
 		interface::{
 			ColumnIndex, EncodableKeyRange, Params, SchemaId,
-			TableColumnId, TableDef, TableId, TableRowKeyRange,
+			ViewColumnId, ViewDef, ViewId, ViewRowKeyRange,
 		},
 		row::EncodedRowLayout,
 	},
 	engine::columnar::Columns,
-	flow::{Flow, NodeId, NodeType},
+	flow::{Flow, NodeId},
 	sync,
 };
 
@@ -103,7 +103,7 @@ fn main() {
 	}
 
 	// loop {}
-	thread::sleep(Duration::from_millis(2));
+	thread::sleep(Duration::from_millis(10));
 
 	// println!("Basic database operations completed successfully!");
 	rql_to_flow_example(&mut db);
@@ -208,36 +208,38 @@ fn rql_to_flow_example(db: &mut DB) {
 
 pub fn get_view_data(
 	db: &mut DB,
-	flow: &Flow,
-	view_name: &str,
+	_flow: &Flow,
+	_view_name: &str,
 ) -> reifydb::Result<Columns> {
 	// Find view node and read from versioned storage
-	for node_id in flow.get_all_nodes() {
-		if let Some(node) = flow.get_node(&node_id) {
-			if let NodeType::Sink {
-				name,
-				..
-			} = &node.ty
-			{
-				dbg!(&name);
-				if name == view_name {
-					dbg!(&node_id);
-					return read_columns_from_storage(
-						db, &node_id,
-					);
-				}
-			}
-		}
-	}
-	panic!("View {} not found", view_name);
+	// for node_id in flow.get_all_nodes() {
+	// 	if let Some(node) = flow.get_node(&node_id) {
+	// 		if let NodeType::SinkView {
+	// 			name,
+	// 			..
+	// 		} = &node.ty
+	// 		{
+	// 			dbg!(&name);
+	// 			if name == view_name {
+	// 				dbg!(&node_id);
+	// 				return read_columns_from_storage(
+	// 					db, &node_id,
+	// 				);
+	// 			}
+	// 		}
+	// 	}
+	// }
+	// panic!("View {} not found", view_name);
+
+	read_columns_from_storage(db, &NodeId(1025))
 }
 
 fn read_columns_from_storage(
 	db: &mut DB,
 	node_id: &NodeId,
 ) -> reifydb::Result<Columns> {
-	let range = TableRowKeyRange {
-		table: TableId(node_id.0),
+	let range = ViewRowKeyRange {
+		view: ViewId(node_id.0),
 	};
 	let versioned_data = db
 		.engine()
@@ -247,37 +249,33 @@ fn read_columns_from_storage(
 				Included(range.start().unwrap()),
 				Included(range.end().unwrap()),
 			),
-			10,
+			u64::MAX,
 		)
 		.unwrap();
 
 	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Int1]);
 
-	let table = TableDef {
-		id: TableId(node_id.0),
+	let view = ViewDef {
+		id: ViewId(node_id.0),
 		schema: SchemaId(0),
 		name: "view".to_string(),
 		columns: vec![
-			reifydb::core::interface::TableColumnDef {
-				id: TableColumnId(0),
+			reifydb::core::interface::ViewColumnDef {
+				id: ViewColumnId(0),
 				name: "name".to_string(),
 				ty: Type::Utf8,
-				policies: vec![],
 				index: ColumnIndex(0),
-				auto_increment: false,
 			},
-			reifydb::core::interface::TableColumnDef {
-				id: TableColumnId(1),
+			reifydb::core::interface::ViewColumnDef {
+				id: ViewColumnId(1),
 				name: "age".to_string(),
 				ty: Type::Int1,
-				policies: vec![],
 				index: ColumnIndex(1),
-				auto_increment: false,
 			},
 		],
 	};
 
-	let mut columns = Columns::empty_from_table(&table);
+	let mut columns = Columns::from_view_def(&view);
 	let mut iter = versioned_data.into_iter();
 	while let Some(versioned) = iter.next() {
 		columns.append_rows(&layout, [versioned.row])?;

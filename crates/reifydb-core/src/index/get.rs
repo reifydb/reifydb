@@ -522,7 +522,11 @@ impl EncodedIndexLayout {
 		Uuid7::from(uuid)
 	}
 
-	pub fn get_identity_id(&self, key: &EncodedIndexKey, index: usize) -> IdentityId {
+	pub fn get_identity_id(
+		&self,
+		key: &EncodedIndexKey,
+		index: usize,
+	) -> IdentityId {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::IdentityId);
 
@@ -1097,7 +1101,9 @@ mod tests {
 
 			let id1 = IdentityId::generate();
 			// Sleep to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			std::thread::sleep(std::time::Duration::from_millis(
+				10,
+			));
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
@@ -1122,7 +1128,9 @@ mod tests {
 
 			let id1 = IdentityId::generate();
 			// Sleep to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			std::thread::sleep(std::time::Duration::from_millis(
+				10,
+			));
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
@@ -1142,10 +1150,10 @@ mod tests {
 				&[SortDirection::Asc],
 			)
 			.unwrap();
-			
+
 			let id = IdentityId::generate();
 			let mut key = layout.allocate_key();
-			
+
 			// Set and get should preserve the value
 			layout.set_identity_id(&mut key, 0, id.clone());
 			let retrieved = layout.get_identity_id(&key, 0);

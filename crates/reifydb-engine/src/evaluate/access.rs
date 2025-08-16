@@ -3,32 +3,32 @@
 
 use reifydb_core::OwnedSpan;
 use reifydb_rql::expression::{
-	AccessTableExpression, ColumnExpression, Expression,
+	AccessSourceExpression, ColumnExpression, Expression,
 };
 
 use crate::{
-	columnar::{Column, TableQualified},
+	columnar::{Column, SourceQualified},
 	evaluate::{EvaluationContext, Evaluator},
 };
 
 impl Evaluator {
 	pub(crate) fn access(
 		&mut self,
-		expr: &AccessTableExpression,
+		expr: &AccessSourceExpression,
 		ctx: &EvaluationContext,
 	) -> crate::Result<Column> {
-		let table = expr.table.fragment.clone();
+		let source = expr.source.fragment.clone();
 		let column = expr.column.fragment.clone();
 
 		let data = self
 			.evaluate(
 				&Expression::Column(ColumnExpression(
 					OwnedSpan {
-						column: expr.table.column,
-						line: expr.table.line,
+						column: expr.source.column,
+						line: expr.source.line,
 						fragment: format!(
 							"{}.{}",
-							table, column
+							source, column
 						),
 					},
 				)),
@@ -37,8 +37,8 @@ impl Evaluator {
 			.data()
 			.clone();
 
-		Ok(Column::TableQualified(TableQualified {
-			table,
+		Ok(Column::SourceQualified(SourceQualified {
+			source,
 			name: column,
 			data,
 		}))

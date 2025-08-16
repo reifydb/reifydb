@@ -77,7 +77,7 @@ impl Flow {
 
 			// Process update based on node type
 			match &node.ty {
-				NodeType::Source {
+				NodeType::SourceTable {
 					name,
 					..
 				} => {
@@ -90,7 +90,7 @@ impl Flow {
 					// Debug: Operator processing update
 					let _ = operator; // Avoid unused variable warning
 				}
-				NodeType::Sink {
+				NodeType::SinkView {
 					name,
 					..
 				} => {
@@ -126,28 +126,19 @@ impl Default for Flow {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{SchemaId, TableDef, TableId};
+	use reifydb_core::interface::{TableId, ViewId};
 
 	use super::*;
 	use crate::core::OperatorType;
-
-	fn create_test_table(id: u64, name: &str) -> TableDef {
-		TableDef {
-			id: TableId(id),
-			schema: SchemaId(1),
-			name: name.to_string(),
-			columns: vec![],
-		}
-	}
 
 	#[test]
 	fn test_dataflow_graph_basic_operations() {
 		let mut graph = Flow::new();
 
 		// Create some test nodes
-		let table1 = graph.add_node(NodeType::Source {
+		let table1 = graph.add_node(NodeType::SourceTable {
 			name: "test_table".to_string(),
-			table: create_test_table(1, "test_table"),
+			table: TableId(1),
 		});
 
 		let operator = graph.add_node(NodeType::Operator {
@@ -156,9 +147,9 @@ mod tests {
 			},
 		});
 
-		let view = graph.add_node(NodeType::Sink {
+		let view = graph.add_node(NodeType::SinkView {
 			name: "test_view".to_string(),
-			table: create_test_table(2, "test_view"),
+			view: ViewId(2),
 		});
 
 		// Add edges

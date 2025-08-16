@@ -1116,7 +1116,7 @@ mod tests {
 			row::EncodedRowLayout,
 			value::columnar::{
 				Column, ColumnData, ColumnQualified, Columns,
-				TableQualified,
+				SourceQualified,
 			},
 		};
 
@@ -2352,13 +2352,13 @@ mod tests {
 
 		fn test_instance_with_columns() -> Columns {
 			Columns::new(vec![
-				Column::TableQualified(TableQualified {
-					table: "test".into(),
+				Column::SourceQualified(SourceQualified {
+					source: "test".into(),
 					name: "int2".into(),
 					data: ColumnData::int2(vec![1]),
 				}),
-				Column::TableQualified(TableQualified {
-					table: "test".into(),
+				Column::SourceQualified(SourceQualified {
+					source: "test".into(),
 					name: "bool".into(),
 					data: ColumnData::bool(vec![true]),
 				}),

@@ -54,7 +54,7 @@ impl PollConsumerConfig {
 
 pub struct PollConsumer<T: Transaction, F: CdcConsume<T>> {
 	engine: Option<StandardEngine<T>>,
-	processor: Option<Box<F>>,
+	consumer: Option<Box<F>>,
 	config: PollConsumerConfig,
 	state: Arc<ConsumerState>,
 	worker: Option<JoinHandle<()>>,
@@ -65,11 +65,11 @@ struct ConsumerState {
 	running: AtomicBool,
 }
 
-impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
+impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 	pub fn new(
 		config: PollConsumerConfig,
 		engine: StandardEngine<T>,
-		consume: F,
+		consume: C,
 	) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
@@ -78,7 +78,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 		
 		Self {
 			engine: Some(engine),
-			processor: Some(Box::new(consume)),
+			consumer: Some(Box::new(consume)),
 			config,
 			state: Arc::new(ConsumerState {
 				consumer_key,
@@ -88,10 +88,10 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 		}
 	}
 
-	fn process_batch(
+	fn consume_batch(
 		state: &ConsumerState,
 		engine: &StandardEngine<T>,
-		processor: &F,
+		consumer: &C,
 	) -> Result<()> {
 		let mut transaction = engine.begin_command()?;
 
@@ -122,7 +122,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 			.collect::<Vec<_>>();
 
 		if !table_events.is_empty() {
-			processor.consume(&mut transaction, table_events)?;
+			consumer.consume(&mut transaction, table_events)?;
 		}
 
 		persist_checkpoint(
@@ -136,7 +136,7 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 	fn polling_loop(
 		config: &PollConsumerConfig,
 		engine: StandardEngine<T>,
-		processor: Box<F>,
+		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
 		println!(
@@ -146,10 +146,10 @@ impl<T: Transaction, F: CdcConsume<T>> PollConsumer<T, F> {
 
 		while state.running.load(Ordering::Acquire) {
 			if let Err(error) =
-				Self::process_batch(&state, &engine, &processor)
+				Self::consume_batch(&state, &engine, &consumer)
 			{
-				println!(
-					"[Consumer {:?}] Error processing events: {}",
+				eprintln!(
+					"[Consumer {:?}] Error consuming events: {}",
 					config.consumer_id, error
 				);
 			}
@@ -176,15 +176,17 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 
 		let engine =
 			self.engine.take().expect("engine already consumed");
-		let processor = self
-			.processor
+
+		let consumer = self
+			.consumer
 			.take()
-			.expect("processor already consumed");
+			.expect("consumer already consumed");
+
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
 
 		self.worker = Some(thread::spawn(move || {
-			Self::polling_loop(&config, engine, processor, state);
+			Self::polling_loop(&config, engine, consumer, state);
 		}));
 
 		Ok(())

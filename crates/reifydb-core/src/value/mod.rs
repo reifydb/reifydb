@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-    cmp::Ordering,
-    fmt::{Display, Formatter},
+	cmp::Ordering,
+	fmt::{Display, Formatter},
 };
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,7 @@ pub mod columnar;
 pub mod container;
 mod date;
 mod datetime;
+mod identity;
 mod interval;
 mod into;
 mod is;
@@ -25,7 +26,6 @@ pub mod temporal;
 mod time;
 mod r#type;
 pub mod uuid;
-mod identity;
 
 pub use blob::Blob;
 pub use date::Date;
@@ -36,9 +36,9 @@ pub use into::IntoValue;
 pub use is::*;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
-pub use r#type::{GetType, Type};
 pub use row_id::RowId;
 pub use time::Time;
+pub use r#type::{GetType, Type};
 pub use uuid::{Uuid4, Uuid7};
 
 /// A RQL value, represented as a native Rust type.
@@ -139,7 +139,9 @@ impl PartialOrd for Value {
 				l.partial_cmp(r)
 			}
 			(Value::RowId(l), Value::RowId(r)) => l.partial_cmp(r),
-			(Value::IdentityId(l), Value::IdentityId(r)) => l.partial_cmp(r),
+			(Value::IdentityId(l), Value::IdentityId(r)) => {
+				l.partial_cmp(r)
+			}
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
@@ -170,7 +172,9 @@ impl Ord for Value {
 			(Value::Time(l), Value::Time(r)) => l.cmp(r),
 			(Value::Interval(l), Value::Interval(r)) => l.cmp(r),
 			(Value::RowId(l), Value::RowId(r)) => l.cmp(r),
-			(Value::IdentityId(l), Value::IdentityId(r)) => l.cmp(r),
+			(Value::IdentityId(l), Value::IdentityId(r)) => {
+				l.cmp(r)
+			}
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),

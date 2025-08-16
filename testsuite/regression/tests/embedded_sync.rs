@@ -97,6 +97,16 @@ where
 
 		Ok(output)
 	}
+
+	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.start()?;
+		Ok(())
+	}
+
+	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.stop()?;
+		Ok(())
+	}
 }
 
 test_each_path! { in "testsuite/regression/tests/scripts" as embedded_sync => test_embedded_sync }

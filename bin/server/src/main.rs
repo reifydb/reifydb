@@ -3,11 +3,11 @@
 
 use std::thread;
 
-use reifydb::{network::ws::server::WsConfig, server, WithHooks};
+use reifydb::{WithHooks, network::ws::server::WsConfig, server};
 use tokio::{
 	runtime::Runtime,
 	select, signal,
-	signal::unix::{signal, SignalKind},
+	signal::unix::{SignalKind, signal},
 	sync::oneshot,
 };
 

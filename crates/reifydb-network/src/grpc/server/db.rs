@@ -81,13 +81,18 @@ fn grpc_value_to_core_value(grpc_val: grpc::Value) -> Option<Value> {
 			.ok()
 			.filter(|u| u.get_version_num() == 7)
 			.map(|u| Value::Uuid7(reifydb_core::Uuid7::from(u))),
-		GrpcType::IdentityIdValue(bytes) => uuid::Uuid::from_slice(&bytes)
-			.ok()
-			.filter(|u| u.get_version_num() == 7)
-			.map(|u| {
-				let uuid7 = reifydb_core::Uuid7::from(u);
-				Value::IdentityId(IdentityId::from(uuid7))
-			}),
+		GrpcType::IdentityIdValue(bytes) => {
+			uuid::Uuid::from_slice(&bytes)
+				.ok()
+				.filter(|u| u.get_version_num() == 7)
+				.map(|u| {
+					let uuid7 =
+						reifydb_core::Uuid7::from(u);
+					Value::IdentityId(IdentityId::from(
+						uuid7,
+					))
+				})
+		}
 		GrpcType::BlobValue(bytes) => {
 			Some(Value::Blob(reifydb_core::Blob::new(bytes)))
 		}

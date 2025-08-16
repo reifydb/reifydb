@@ -18,7 +18,7 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{
-		Column, ColumnData, Columns, TableQualified,
+		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
@@ -48,7 +48,7 @@ impl ScanColumnsNode {
 				.iter()
 				.map(|col| ColumnLayout {
 					schema: None,
-					table: None,
+					source: None,
 					name: col.name.clone(),
 				})
 				.collect(),
@@ -120,14 +120,14 @@ impl ExecutionPlan for ScanColumnsNode {
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::empty_from_table(&self.table);
+		let mut columns = Columns::from_table_def(&self.table);
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 		// Add the RowId column to the columns if requested
 		if ctx.preserve_row_ids {
 			let row_id_column =
-				Column::TableQualified(TableQualified {
-					table: self.table.name.clone(),
+				Column::SourceQualified(SourceQualified {
+					source: self.table.name.clone(),
 					name: ROW_ID_COLUMN_NAME.to_string(),
 					data: ColumnData::row_id(row_ids),
 				});

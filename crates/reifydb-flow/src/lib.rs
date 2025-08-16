@@ -3,19 +3,18 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))] // FIXME
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_variables)]
 mod compile;
-#[allow(dead_code)]
+#[allow(dead_code, unused_variables)]
 mod core;
-#[allow(dead_code)]
+#[allow(dead_code, unused_variables)]
+pub mod legacy_processor;
+#[allow(dead_code, unused_variables)]
 mod operator;
-#[allow(dead_code)]
-mod process;
+#[allow(dead_code, unused_variables)]
+mod process; // FIXME remove that
 
 pub use core::*;
 
 pub use compile::compile_flow;
-
-pub mod legacy_processor; // FIXME remove that
-
 pub use reifydb_core::Result;

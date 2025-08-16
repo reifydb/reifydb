@@ -23,7 +23,7 @@ pub use view::group_by::{GroupByView, GroupKey};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Column {
 	FullyQualified(FullyQualified),
-	TableQualified(TableQualified),
+	SourceQualified(SourceQualified),
 	ColumnQualified(ColumnQualified),
 	Unqualified(Unqualified),
 }
@@ -31,14 +31,14 @@ pub enum Column {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FullyQualified {
 	pub schema: String,
-	pub table: String,
+	pub source: String,
 	pub name: String,
 	pub data: ColumnData,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TableQualified {
-	pub table: String,
+pub struct SourceQualified {
+	pub source: String,
 	pub name: String,
 	pub data: ColumnData,
 }
@@ -59,7 +59,7 @@ impl Column {
 	pub fn get_type(&self) -> Type {
 		match self {
 			Self::FullyQualified(col) => col.data.get_type(),
-			Self::TableQualified(col) => col.data.get_type(),
+			Self::SourceQualified(col) => col.data.get_type(),
 			Self::ColumnQualified(col) => col.data.get_type(),
 			Self::Unqualified(col) => col.data.get_type(),
 		}
@@ -69,10 +69,10 @@ impl Column {
 		match self {
 			Self::FullyQualified(col) => format!(
 				"{}.{}.{}",
-				col.schema, col.table, col.name
+				col.schema, col.source, col.name
 			),
-			Self::TableQualified(col) => {
-				format!("{}.{}", col.table, col.name)
+			Self::SourceQualified(col) => {
+				format!("{}.{}", col.source, col.name)
 			}
 			Self::ColumnQualified(col) => col.name.clone(),
 			Self::Unqualified(col) => col.name.clone(),
@@ -84,14 +84,14 @@ impl Column {
 			Self::FullyQualified(col) => {
 				Self::FullyQualified(FullyQualified {
 					schema: col.schema.clone(),
-					table: col.table.clone(),
+					source: col.source.clone(),
 					name: col.name.clone(),
 					data,
 				})
 			}
-			Self::TableQualified(col) => {
-				Self::TableQualified(TableQualified {
-					table: col.table.clone(),
+			Self::SourceQualified(col) => {
+				Self::SourceQualified(SourceQualified {
+					source: col.source.clone(),
 					name: col.name.clone(),
 					data,
 				})
@@ -114,25 +114,30 @@ impl Column {
 	pub fn name(&self) -> &str {
 		match self {
 			Self::FullyQualified(col) => &col.name,
-			Self::TableQualified(col) => &col.name,
+			Self::SourceQualified(col) => &col.name,
 			Self::ColumnQualified(col) => &col.name,
 			Self::Unqualified(col) => &col.name,
 		}
 	}
 
-	pub fn table(&self) -> Option<&str> {
+	pub fn source(&self) -> Option<&str> {
 		match self {
-			Self::FullyQualified(col) => Some(&col.table),
-			Self::TableQualified(col) => Some(&col.table),
+			Self::FullyQualified(col) => Some(&col.source),
+			Self::SourceQualified(col) => Some(&col.source),
 			Self::ColumnQualified(_) => None,
 			Self::Unqualified(_) => None,
 		}
 	}
 
+	// Deprecated: Use source() instead
+	pub fn table(&self) -> Option<&str> {
+		self.source()
+	}
+
 	pub fn schema(&self) -> Option<&str> {
 		match self {
 			Self::FullyQualified(col) => Some(&col.schema),
-			Self::TableQualified(_) => None,
+			Self::SourceQualified(_) => None,
 			Self::ColumnQualified(_) => None,
 			Self::Unqualified(_) => None,
 		}
@@ -141,7 +146,7 @@ impl Column {
 	pub fn data(&self) -> &ColumnData {
 		match self {
 			Self::FullyQualified(col) => &col.data,
-			Self::TableQualified(col) => &col.data,
+			Self::SourceQualified(col) => &col.data,
 			Self::ColumnQualified(col) => &col.data,
 			Self::Unqualified(col) => &col.data,
 		}
@@ -150,7 +155,7 @@ impl Column {
 	pub fn data_mut(&mut self) -> &mut ColumnData {
 		match self {
 			Self::FullyQualified(col) => &mut col.data,
-			Self::TableQualified(col) => &mut col.data,
+			Self::SourceQualified(col) => &mut col.data,
 			Self::ColumnQualified(col) => &mut col.data,
 			Self::Unqualified(col) => &mut col.data,
 		}
@@ -162,8 +167,8 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_table_qualified_column() {
-		let column = TableQualified::int4(
+	fn test_source_qualified_column() {
+		let column = SourceQualified::int4(
 			"test_columns",
 			"normal_column",
 			[1, 2, 3],
@@ -173,11 +178,11 @@ mod tests {
 			"test_columns.normal_column"
 		);
 		match column {
-			Column::TableQualified(col) => {
-				assert_eq!(col.table, "test_columns");
+			Column::SourceQualified(col) => {
+				assert_eq!(col.source, "test_columns");
 				assert_eq!(col.name, "normal_column");
 			}
-			_ => panic!("Expected TableQualified variant"),
+			_ => panic!("Expected SourceQualified variant"),
 		}
 	}
 
@@ -193,7 +198,7 @@ mod tests {
 		match column {
 			Column::FullyQualified(col) => {
 				assert_eq!(col.schema, "public");
-				assert_eq!(col.table, "users");
+				assert_eq!(col.source, "users");
 				assert_eq!(col.name, "id");
 			}
 			_ => panic!("Expected FullyQualified variant"),

@@ -496,8 +496,8 @@ mod tests {
 	use uuid::Uuid;
 
 	use crate::{
-		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64, RowId, Time,
-		Value,
+		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
+		RowId, Time, Value,
 		value::{
 			columnar::data::ColumnData,
 			uuid::{Uuid4, Uuid7},
