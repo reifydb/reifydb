@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{OwnedSpan, Type};
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use crate::{OwnedSpan, Type};
 
 pub mod ast;
 pub mod auth;
@@ -70,8 +72,8 @@ impl Diagnostic {
 		}
 	}
 
-	/// Set or update the span for this diagnostic and all nested diagnostics
-	/// recursively
+	/// Set or update the span for this diagnostic and all nested
+	/// diagnostics recursively
 	pub fn with_span(&mut self, new_span: &OwnedSpan) {
 		if self.span.is_none() {
 			self.span = Some(new_span.clone());

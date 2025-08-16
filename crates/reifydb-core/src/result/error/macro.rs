@@ -3,13 +3,14 @@
 
 /// Macro to create an Error from a diagnostic function call
 ///
-/// Usage: 
+/// Usage:
 /// - `error!(diagnostic_function(args))` - Creates an error without span
 /// - `error!(diagnostic_function(args), span)` - Creates an error with span
-/// 
-/// Expands to: `Error(diagnostic_function(args))` or `Error(diagnostic_function(args).with_span(span))`
 ///
-/// Examples: 
+/// Expands to: `Error(diagnostic_function(args))` or
+/// `Error(diagnostic_function(args).with_span(span))`
+///
+/// Examples:
 /// - `error!(sequence_exhausted(Type::Uint8))`
 /// - `error!(sequence_exhausted(Type::Uint8), span)`
 #[macro_export]
@@ -28,9 +29,11 @@ macro_rules! error {
 ///
 /// Usage:
 /// - `return_error!(diagnostic_function(args))` - Returns an error without span
-/// - `return_error!(diagnostic_function(args), span)` - Returns an error with span
+/// - `return_error!(diagnostic_function(args), span)` - Returns an error with
+///   span
 ///
-/// Expands to: `return Err(Error(diagnostic_function(args)))` or `return Err(Error(diagnostic_function(args).with_span(span)))`
+/// Expands to: `return Err(Error(diagnostic_function(args)))` or `return
+/// Err(Error(diagnostic_function(args).with_span(span)))`
 ///
 /// Examples:
 /// - `return_error!(sequence_exhausted(Type::Uint8))`
@@ -43,7 +46,7 @@ macro_rules! return_error {
 	($diagnostic:expr, $span:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_span(&$crate::IntoOwnedSpan::into_span($span));
-		return Err($crate::error::Error(diag))
+		return Err($crate::error::Error(diag));
 	}};
 }
 
@@ -53,7 +56,8 @@ macro_rules! return_error {
 /// - `err!(diagnostic_function(args))` - Creates an Err without span
 /// - `err!(diagnostic_function(args), span)` - Creates an Err with span
 ///
-/// Expands to: `Err(Error(diagnostic_function(args)))` or `Err(Error(diagnostic_function(args).with_span(span)))`
+/// Expands to: `Err(Error(diagnostic_function(args)))` or
+/// `Err(Error(diagnostic_function(args).with_span(span)))`
 ///
 /// Examples:
 /// - `err!(sequence_exhausted(Type::Uint8))`
@@ -73,10 +77,9 @@ macro_rules! err {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		Type, err, error,
+		OwnedSpan, SpanColumn, SpanLine, Type, err, error,
 		result::error::diagnostic::sequence::sequence_exhausted,
-		return_error, OwnedSpan,
-		SpanLine, SpanColumn,
+		return_error,
 	};
 
 	#[test]
@@ -160,8 +163,14 @@ mod tests {
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
 			assert!(diagnostic.span.is_some());
-			assert_eq!(diagnostic.span.as_ref().unwrap().line.0, 100);
-			assert_eq!(diagnostic.span.as_ref().unwrap().column.0, 25);
+			assert_eq!(
+				diagnostic.span.as_ref().unwrap().line.0,
+				100
+			);
+			assert_eq!(
+				diagnostic.span.as_ref().unwrap().column.0,
+				25
+			);
 		}
 	}
 
@@ -173,7 +182,8 @@ mod tests {
 			fragment: "err span test".to_string(),
 		};
 
-		// Test that err! macro with span creates correct Result type with Err
+		// Test that err! macro with span creates correct Result type
+		// with Err
 		let result: Result<(), crate::Error> =
 			err!(sequence_exhausted(Type::Uint8), span);
 
@@ -182,14 +192,21 @@ mod tests {
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
 			assert!(diagnostic.span.is_some());
-			assert_eq!(diagnostic.span.as_ref().unwrap().line.0, 200);
-			assert_eq!(diagnostic.span.as_ref().unwrap().column.0, 50);
+			assert_eq!(
+				diagnostic.span.as_ref().unwrap().line.0,
+				200
+			);
+			assert_eq!(
+				diagnostic.span.as_ref().unwrap().column.0,
+				50
+			);
 		}
 	}
 
 	#[test]
 	fn test_macros_with_closure_span() {
-		// Test with closure that returns OwnedSpan (implements IntoOwnedSpan)
+		// Test with closure that returns OwnedSpan (implements
+		// IntoOwnedSpan)
 		let get_span = || OwnedSpan {
 			line: SpanLine(300),
 			column: SpanColumn(75),
