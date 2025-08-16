@@ -1,6 +1,6 @@
 use reifydb_core::{
 	interface::{
-		Evaluate, EvaluationContext, Params, expression::Expression,
+		EvaluationContext, Evaluator, Params, expression::Expression,
 	},
 	value::columnar::Columns,
 };
@@ -22,37 +22,42 @@ impl MapOperator {
 	}
 }
 
-impl<E: Evaluate> Operator<E> for MapOperator {
+impl<E: Evaluator> Operator<E> for MapOperator {
 	fn apply(
 		&self,
 		ctx: &OperatorContext<E>,
-		change: Change,
+		change: &Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();
 
-		for diff in change.diffs {
+		for diff in &change.diffs {
 			match diff {
 				Diff::Insert {
+					source,
 					after,
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
 					output.push(Diff::Insert {
+						source: *source,
 						after: projected_columns,
 					});
 				}
 				Diff::Update {
+					source,
 					before,
 					after,
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
 					output.push(Diff::Update {
-						before,
+						source: *source,
+						before: before.clone(),
 						after: projected_columns,
 					});
 				}
 				Diff::Remove {
+					source,
 					before,
 				} => {
 					// For removes, we might need to project
@@ -60,6 +65,7 @@ impl<E: Evaluate> Operator<E> for MapOperator {
 					let projected_columns =
 						self.project(ctx, &before)?;
 					output.push(Diff::Remove {
+						source: *source,
 						before: projected_columns,
 					});
 				}
@@ -71,7 +77,7 @@ impl<E: Evaluate> Operator<E> for MapOperator {
 }
 
 impl MapOperator {
-	fn project<E: Evaluate>(
+	fn project<E: Evaluator>(
 		&self,
 		ctx: &OperatorContext<E>,
 		columns: &Columns,

@@ -2,15 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	Evaluate, evaluate::expression::AliasExpression,
+	Evaluator, evaluate::expression::AliasExpression,
 };
 
 use crate::{
 	columnar::{Column, ColumnQualified, SourceQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn alias(
 		&self,
 		ctx: &EvaluationContext,

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	OwnedSpan,
 	interface::{
-		Evaluate, EvaluationContext,
+		EvaluationContext, Evaluator,
 		evaluate::expression::{
 			AccessSourceExpression, ColumnExpression, Expression,
 		},
@@ -13,10 +13,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, SourceQualified},
-	evaluate::Evaluator,
+	evaluate::StandardEvaluator,
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn access(
 		&self,
 		ctx: &EvaluationContext,

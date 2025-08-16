@@ -8,7 +8,7 @@ use reifydb_rql::plan::physical::{PhysicalPlan, TakeNode};
 
 use crate::{
 	FlowNodeType, OperatorType, Result,
-	compile::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler},
 };
 
 pub(crate) struct TakeCompiler {

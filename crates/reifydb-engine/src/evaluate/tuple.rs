@@ -1,13 +1,13 @@
 use reifydb_core::interface::{
-	Evaluate, evaluate::expression::TupleExpression,
+	Evaluator, evaluate::expression::TupleExpression,
 };
 
 use crate::{
 	columnar::Column,
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn tuple(
 		&self,
 		ctx: &EvaluationContext,

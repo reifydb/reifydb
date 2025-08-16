@@ -3,6 +3,8 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use std::{thread, time::Duration};
+
 use reifydb::{
 	MemoryDatabaseOptimistic, SessionSync, core::interface::Params, sync,
 };
@@ -88,7 +90,7 @@ create computed view test.basic { name: utf8, age: int1 } with {
 	// }
 
 	// loop {}
-	// thread::sleep(Duration::from_millis(10));
+	thread::sleep(Duration::from_millis(10));
 
 	// println!("Basic database operations completed successfully!");
 	// rql_to_flow_example(&mut db);

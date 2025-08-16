@@ -11,9 +11,9 @@ mod builder;
 mod operator;
 mod source;
 
-use std::mem::take;
-
-use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_node_id};
+use reifydb_catalog::sequence::flow::{
+	next_flow_edge_id, next_flow_id, next_flow_node_id,
+};
 use reifydb_core::interface::{
 	ActiveCommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
 };
@@ -21,7 +21,7 @@ use reifydb_rql::plan::physical::PhysicalPlan;
 
 use crate::{
 	Flow, FlowEdge, FlowNode, FlowNodeType,
-	compile::{
+	compiler::{
 		operator::{
 			aggregate::AggregateCompiler, filter::FilterCompiler,
 			join::JoinCompiler, map::MapCompiler,
@@ -40,7 +40,7 @@ pub fn compile_flow<T: Transaction>(
 	plan: PhysicalPlan,
 	sink: &ViewDef,
 ) -> crate::Result<Flow> {
-	let mut compiler = FlowCompiler::new(txn);
+	let compiler = FlowCompiler::new(txn)?;
 	compiler.compile(plan, sink)
 }
 
@@ -54,11 +54,13 @@ pub(crate) struct FlowCompiler<'a, T: Transaction> {
 
 impl<'a, T: Transaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
-	pub fn new(txn: &'a mut ActiveCommandTransaction<T>) -> Self {
-		Self {
-			flow: Flow::new(),
+	pub fn new(
+		txn: &'a mut ActiveCommandTransaction<T>,
+	) -> crate::Result<Self> {
+		Ok(Self {
+			flow: Flow::new(next_flow_id(txn)?),
 			txn,
-		}
+		})
 	}
 
 	/// Gets the next available node ID
@@ -94,7 +96,7 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 
 	/// Compiles a physical plan into a FlowGraph
 	pub(crate) fn compile(
-		&mut self,
+		mut self,
 		plan: PhysicalPlan,
 		sink: &ViewDef,
 	) -> crate::Result<Flow> {
@@ -107,7 +109,7 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 
 		self.add_edge(&root_node_id, &result_node)?;
 
-		Ok(take(&mut self.flow))
+		Ok(self.flow)
 	}
 
 	/// Compiles a physical plan node into the FlowGraph

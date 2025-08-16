@@ -8,14 +8,14 @@ use reifydb_core::{
 	interface::{
 		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
 		CdcEvent, ColumnIndex, ConsumerId, Engine, FlowNodeId,
-		Identity, Key, Params, SchemaId, TableColumnDef, TableColumnId,
-		TableDef, TableId, TableRowKey, Transaction,
+		Identity, Key, Params, SchemaId, SourceId, TableColumnDef,
+		TableColumnId, TableDef, TableId, TableRowKey, Transaction,
 	},
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
-use reifydb_engine::{Evaluator, StandardEngine};
-use reifydb_flow::{Change, Diff, Flow, legacy_processor::LegacyFlowProcessor};
+use reifydb_engine::{StandardEngine, StandardEvaluator};
+use reifydb_flow::{Change, Diff, Flow, FlowEngine};
 
 use super::{Subsystem, cdc::PollConsumer};
 use crate::health::HealthStatus;
@@ -74,17 +74,6 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 			)
 			.unwrap();
 
-			// dbg!(&flow);
-
-			let lp: LegacyFlowProcessor<T, Evaluator> =
-				LegacyFlowProcessor::new(
-					flow.clone(),
-					self.engine.versioned_owned(),
-					self.engine.unversioned_owned(),
-					self.engine.cdc_owned(),
-					Evaluator::default(),
-				);
-
 			let node_id = FlowNodeId(1026);
 
 			let layout = EncodedRowLayout::new(&[
@@ -129,10 +118,15 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 			columns.append_rows(&layout, [row]).unwrap();
 
 			let change = Change::new(vec![Diff::Insert {
+				source: SourceId::Table(TableId(1026)),
 				after: columns,
 			}]);
 
-			lp.hack(&flow, txn, &FlowNodeId(1), change).unwrap();
+			let mut engine =
+				FlowEngine::new(StandardEvaluator::default());
+			engine.register(flow.clone()).unwrap();
+
+			engine.process(txn, change.clone()).unwrap();
 		}
 		Ok(())
 	}

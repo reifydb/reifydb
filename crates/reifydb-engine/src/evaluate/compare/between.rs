@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		Evaluate,
+		Evaluator,
 		evaluate::expression::{
 			BetweenExpression, GreaterThanEqualExpression,
 			LessThanEqualExpression,
@@ -15,10 +15,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn between(
 		&self,
 		ctx: &EvaluationContext,

@@ -8,7 +8,7 @@ use reifydb_rql::plan::physical::InlineDataNode;
 
 use crate::{
 	Result,
-	compile::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler},
 };
 
 pub(crate) struct InlineDataCompiler {

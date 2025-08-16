@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedSpan,
 	Type::Bool,
-	interface::{Evaluate, evaluate::expression::GreaterThanExpression},
+	interface::{Evaluator, evaluate::expression::GreaterThanExpression},
 	result::error::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -22,10 +22,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn greater_than(
 		&self,
 		ctx: &EvaluationContext,

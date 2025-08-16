@@ -1,7 +1,7 @@
 use reifydb_core::{
 	BitVec,
 	interface::{
-		Evaluate, EvaluationContext, Params, expression::Expression,
+		EvaluationContext, Evaluator, Params, expression::Expression,
 	},
 	value::columnar::{ColumnData, Columns},
 };
@@ -23,28 +23,31 @@ impl FilterOperator {
 	}
 }
 
-impl<E: Evaluate> Operator<E> for FilterOperator {
+impl<E: Evaluator> Operator<E> for FilterOperator {
 	fn apply(
 		&self,
 		ctx: &OperatorContext<E>,
-		change: Change,
+		change: &Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();
 
-		for diff in change.diffs {
+		for diff in &change.diffs {
 			match diff {
 				Diff::Insert {
+					source,
 					after,
 				} => {
 					let filtered_columns =
 						self.filter(ctx, &after)?;
 					if !filtered_columns.is_empty() {
 						output.push(Diff::Insert {
+							source: *source,
 							after: filtered_columns,
 						});
 					}
 				}
 				Diff::Update {
+					source,
 					before,
 					after,
 				} => {
@@ -52,23 +55,27 @@ impl<E: Evaluate> Operator<E> for FilterOperator {
 						self.filter(ctx, &after)?;
 					if !filtered_new.is_empty() {
 						output.push(Diff::Update {
-							before,
+							source: *source,
+							before: before.clone(),
 							after: filtered_new,
 						});
 					} else {
 						// If new doesn't pass filter,
 						// emit remove of old
 						output.push(Diff::Remove {
-							before,
+							source: *source,
+							before: before.clone(),
 						});
 					}
 				}
 				Diff::Remove {
+					source,
 					before,
 				} => {
 					// Always pass through removes
 					output.push(Diff::Remove {
-						before,
+						source: *source,
+						before: before.clone(),
 					});
 				}
 			}
@@ -79,7 +86,7 @@ impl<E: Evaluate> Operator<E> for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter<E: Evaluate>(
+	fn filter<E: Evaluator>(
 		&self,
 		ctx: &OperatorContext<E>,
 		columns: &Columns,

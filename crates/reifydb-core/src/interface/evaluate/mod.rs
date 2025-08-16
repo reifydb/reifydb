@@ -63,7 +63,7 @@ impl<'a> EvaluationContext<'a> {
 	}
 }
 
-pub trait Evaluate {
+pub trait Evaluator: Send + Sync + 'static {
 	fn evaluate(
 		&self,
 		ctx: &EvaluationContext,

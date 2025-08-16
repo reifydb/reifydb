@@ -6,6 +6,7 @@ mod flow;
 mod id;
 mod layout;
 mod policy;
+mod source;
 mod table;
 mod view;
 
@@ -14,5 +15,6 @@ pub use flow::*;
 pub use id::*;
 pub use layout::*;
 pub use policy::*;
+pub use source::*;
 pub use table::*;
 pub use view::*;

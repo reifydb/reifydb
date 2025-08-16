@@ -12,5 +12,5 @@ mod execute;
 mod function;
 
 pub use engine::StandardEngine;
-pub use evaluate::Evaluator;
+pub use evaluate::StandardEvaluator;
 pub use reifydb_core::Result;
