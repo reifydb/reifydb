@@ -1,19 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{IntoDiagnosticOrigin, result::error::diagnostic::Diagnostic};
+use crate::{result::error::diagnostic::Diagnostic, interface::fragment::{Fragment, IntoFragment}};
 
-pub fn invalid_date_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_date_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"expected YYYY-MM-DD format, found '{}'",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_001".to_string(),
 		statement: None,
 		message: "invalid date format".to_string(),
-		origin: origin,
+		fragment,
 		label,
 		help: Some("use the format YYYY-MM-DD (e.g., 2024-03-15)"
 			.to_string()),
@@ -26,17 +26,17 @@ pub fn invalid_date_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_datetime_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_datetime_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"expected YYYY-MM-DDTHH:MM:SS format, found '{}'",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_002".to_string(),
         statement: None,
         message: "invalid datetime format".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: Some(
             "use the format YYYY-MM-DDTHH:MM:SS[.fff][Z|±HH:MM] (e.g., 2024-03-15T14:30:45)"
@@ -48,17 +48,17 @@ pub fn invalid_datetime_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic 
     }
 }
 
-pub fn invalid_time_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_time_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"expected HH:MM:SS format, found '{}'",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_003".to_string(),
         statement: None,
         message: "invalid time format".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: Some("use the format HH:MM:SS[.fff][Z|±HH:MM] (e.g., 14:30:45)".to_string()),
         notes: vec!["time must have exactly 3 parts separated by colons".to_string()],
@@ -67,17 +67,17 @@ pub fn invalid_time_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
     }
 }
 
-pub fn invalid_interval_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_interval_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"expected P[n]Y[n]M[n]W[n]D[T[n]H[n]M[n]S] format, found '{}'",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_004".to_string(),
         statement: None,
         message: "invalid interval format".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: Some(
             "use ISO 8601 duration format starting with 'P' (e.g., P1D, PT2H30M, P1Y2M3DT4H5M6S)"
@@ -93,20 +93,20 @@ pub fn invalid_interval_format(origin: impl IntoDiagnosticOrigin) -> Diagnostic 
     }
 }
 
-pub fn invalid_year(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_year(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"year '{}' cannot be parsed as a number",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_005".to_string(),
 		statement: None,
 		message: format!(
 			"invalid year value '{}'",
-			origin.fragment().unwrap_or("")
+			fragment.value()
 		),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(
 			"ensure the year is a valid 4-digit number".to_string()
@@ -117,20 +117,20 @@ pub fn invalid_year(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_month(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_month(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"month '{}' cannot be parsed as a number (expected 1-12)",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_006".to_string(),
 		statement: None,
 		message: format!(
 			"invalid month value '{}'",
-			origin.fragment().unwrap_or("")
+			fragment.value()
 		),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(
 			"ensure the month is a valid number between 1 and 12"
@@ -142,17 +142,17 @@ pub fn invalid_month(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_day(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_day(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"day '{}' cannot be parsed as a number (expected 1-31)",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_007".to_string(),
 		statement: None,
-		message: format!("invalid day value '{}'", origin.fragment().unwrap_or("")),
-		origin: origin,
+		message: format!("invalid day value '{}'", fragment.value()),
+		fragment,
 		label,
 		help: Some("ensure the day is a valid number between 1 and 31"
 			.to_string()),
@@ -162,17 +162,17 @@ pub fn invalid_day(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_hour(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_hour(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"hour '{}' cannot be parsed as a number (expected 0-23)",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_008".to_string(),
         statement: None,
-        message: format!("invalid hour value '{}'", origin.fragment().unwrap_or("")),
-        origin: origin,
+        message: format!("invalid hour value '{}'", fragment.value()),
+        fragment,
         label,
         help: Some(
             "ensure the hour is a valid number between 0 and 23 (use 24-hour format)".to_string(),
@@ -186,20 +186,20 @@ pub fn invalid_hour(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
     }
 }
 
-pub fn invalid_minute(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_minute(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"minute '{}' cannot be parsed as a number (expected 0-59)",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_009".to_string(),
 		statement: None,
 		message: format!(
 			"invalid minute value '{}'",
-			origin.fragment().unwrap_or("")
+			fragment.value()
 		),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(
 			"ensure the minute is a valid number between 0 and 59"
@@ -211,20 +211,20 @@ pub fn invalid_minute(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_second(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_second(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"second '{}' cannot be parsed as a number (expected 0-59)",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_010".to_string(),
 		statement: None,
 		message: format!(
 			"invalid second value '{}'",
-			origin.fragment().unwrap_or("")
+			fragment.value()
 		),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(
 			"ensure the second is a valid number between 0 and 59"
@@ -236,20 +236,20 @@ pub fn invalid_second(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_fractional_seconds(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_fractional_seconds(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"fractional seconds '{}' cannot be parsed as a number",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_011".to_string(),
 		statement: None,
 		message: format!(
 			"invalid fractional seconds value '{}'",
-			origin.fragment().unwrap_or("")
+			fragment.value()
 		),
-		origin: origin,
+		fragment,
 		label,
 		help: Some("ensure fractional seconds contain only digits"
 			.to_string()),
@@ -259,17 +259,17 @@ pub fn invalid_fractional_seconds(origin: impl IntoDiagnosticOrigin) -> Diagnost
 	}
 }
 
-pub fn invalid_date_values(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_date_values(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"date '{}' represents an invalid calendar date",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_012".to_string(),
         statement: None,
         message: "invalid date values".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: Some("ensure the date exists in the calendar (e.g., no February 30)".to_string()),
         notes: vec![
@@ -281,17 +281,17 @@ pub fn invalid_date_values(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
     }
 }
 
-pub fn invalid_time_values(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_time_values(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"time '{}' contains out-of-range values",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_013".to_string(),
 		statement: None,
 		message: "invalid time values".to_string(),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(
 			"ensure hours are 0-23, minutes and seconds are 0-59"
@@ -303,17 +303,17 @@ pub fn invalid_time_values(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn invalid_interval_character(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn invalid_interval_character(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"character '{}' is not valid in ISO 8601 duration",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_014".to_string(),
         statement: None,
-        message: format!("invalid character in interval '{}'", origin.fragment().unwrap_or("")),
-        origin: origin,
+        message: format!("invalid character in interval '{}'", fragment.value()),
+        fragment,
         label,
         help: Some("use only valid duration units: Y, M, W, D, H, m, S".to_string()),
         notes: vec![
@@ -326,18 +326,18 @@ pub fn invalid_interval_character(origin: impl IntoDiagnosticOrigin) -> Diagnost
 }
 
 pub fn incomplete_interval_specification(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"number '{}' is missing a unit specifier",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_015".to_string(),
         statement: None,
         message: "incomplete interval specification".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: Some("add a unit letter after the number (Y, M, W, D, H, M, or S)".to_string()),
         notes: vec!["example: P1D (not P1), PT2H (not PT2)".to_string()],
@@ -347,11 +347,11 @@ pub fn incomplete_interval_specification(
 }
 
 pub fn invalid_unit_in_context(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 	unit: char,
 	in_time_part: bool,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 	let context = if in_time_part {
 		"time part (after T)"
 	} else {
@@ -370,7 +370,7 @@ pub fn invalid_unit_in_context(
 		code: "TEMPORAL_016".to_string(),
 		statement: None,
 		message: format!("invalid unit '{}' in {}", unit, context),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(format!("use only {} in the {}", allowed, context)),
 		notes: vec![
@@ -383,14 +383,14 @@ pub fn invalid_unit_in_context(
 }
 
 pub fn invalid_interval_component_value(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 	unit: char,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"{} value '{}' cannot be parsed as a number",
 		unit_name(unit),
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_017".to_string(),
@@ -398,9 +398,9 @@ pub fn invalid_interval_component_value(
 		message: format!(
 			"invalid {} value '{}'",
 			unit_name(unit),
-			origin.fragment().unwrap_or("")
+			fragment.value()
 		),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(format!(
 			"ensure the {} value is a valid number",
@@ -412,17 +412,17 @@ pub fn invalid_interval_component_value(
 	}
 }
 
-pub fn unrecognized_temporal_pattern(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn unrecognized_temporal_pattern(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"value '{}' does not match any temporal format",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_018".to_string(),
 		statement: None,
 		message: "unrecognized temporal pattern".to_string(),
-		origin: origin,
+		fragment,
 		label,
 		help: Some("use one of the supported formats: date (YYYY-MM-DD), time (HH:MM:SS), datetime (YYYY-MM-DDTHH:MM:SS), or interval (P...)".to_string()),
 		notes: vec![
@@ -436,17 +436,17 @@ pub fn unrecognized_temporal_pattern(origin: impl IntoDiagnosticOrigin) -> Diagn
 	}
 }
 
-pub fn empty_date_component(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn empty_date_component(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"date component '{}' is empty",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
 		code: "TEMPORAL_019".to_string(),
 		statement: None,
 		message: "empty date component".to_string(),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(
 			"ensure all date parts (year, month, day) are provided"
@@ -459,17 +459,17 @@ pub fn empty_date_component(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
 	}
 }
 
-pub fn empty_time_component(origin: impl IntoDiagnosticOrigin) -> Diagnostic {
-	let origin = origin.into_origin();
+pub fn empty_time_component(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"time component '{}' is empty",
-		origin.fragment().unwrap_or("")
+		fragment.value()
 	));
 	Diagnostic {
         code: "TEMPORAL_020".to_string(),
         statement: None,
         message: "empty time component".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: Some("ensure all time parts (hour, minute, second) are provided".to_string()),
         notes: vec!["time format: HH:MM:SS (e.g., 14:30:45)".to_string()],

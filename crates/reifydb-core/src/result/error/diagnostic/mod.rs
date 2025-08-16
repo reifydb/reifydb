@@ -5,8 +5,9 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use self::origin::{DiagnosticOrigin, OwnedSpan};
-use crate::{diagnostic_origin, Type};
+use self::origin::OwnedSpan;
+use crate::{fragment, Type};
+use crate::interface::fragment::{OwnedFragment, IntoFragment};
 
 pub mod ast;
 pub mod auth;
@@ -38,7 +39,7 @@ pub struct Diagnostic {
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
 
-	pub origin: DiagnosticOrigin,
+	pub fragment: OwnedFragment,
 	pub label: Option<String>,
 	pub help: Option<String>,
 	pub notes: Vec<String>,
@@ -58,7 +59,7 @@ impl Default for Diagnostic {
 			statement: None,
 			message: String::new(),
 			column: None,
-			origin: DiagnosticOrigin::None,
+			fragment: OwnedFragment::None,
 			label: None,
 			help: None,
 			notes: Vec::new(),
@@ -90,40 +91,41 @@ impl Diagnostic {
 		}
 	}
 
-	/// Set or update the origin for this diagnostic and all nested
+	/// Set or update the fragment for this diagnostic and all nested
 	/// diagnostics recursively
-	pub fn with_origin(&mut self, new_origin: DiagnosticOrigin) {
-		// Always update the origin, not just when it's None
+	pub fn with_fragment(&mut self, new_fragment: impl IntoFragment) {
+		// Always update the fragment, not just when it's None
 		// This is needed for cast errors that need to update the span
-		self.origin = new_origin.clone();
+		self.fragment = new_fragment.into_fragment();
 		
 		if let Some(ref mut cause) = self.cause {
-			cause.with_origin(new_origin);
+			cause.with_fragment(self.fragment.clone());
 		}
 	}
 
-	/// Compatibility method - converts span to DiagnosticOrigin
+	/// Compatibility method - converts span to Fragment
 	/// Set or update the span for this diagnostic and all nested
 	/// diagnostics recursively
 	pub fn with_span(&mut self, new_span: &OwnedSpan) {
 		// Use the macro to capture location where with_span was called
-		self.with_origin(
-			diagnostic_origin!(statement: new_span.clone()),
+		self.with_fragment(
+			fragment!(statement: new_span.clone()),
 		);
 	}
 
-	/// Get the span if this is a Statement origin (for backward compatibility)
+	/// Get the span if this is a Statement fragment (for backward compatibility)
 	pub fn span(&self) -> Option<OwnedSpan> {
-		match &self.origin {
-			DiagnosticOrigin::Statement {
+		use self::origin::{SpanLine, SpanColumn};
+		match &self.fragment {
+			OwnedFragment::Statement {
+				text,
 				line,
 				column,
-				fragment,
 				..
 			} => Some(OwnedSpan {
-				line: *line,
-				column: *column,
-				fragment: fragment.clone(),
+				line: SpanLine(line.0),
+				column: SpanColumn(column.0),
+				fragment: text.clone(),
 			}),
 			_ => None,
 		}

@@ -14,8 +14,8 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
-	Date, DateTime, DiagnosticOrigin, Error, Interval, OwnedSpan, RowId, Time, Type, err,
-	interface::Params,
+	Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
+	interface::{Params, fragment::OwnedFragment},
 	result::{
 		Frame, FrameColumn, FrameColumnData,
 		error::diagnostic::Diagnostic,
@@ -70,7 +70,7 @@ impl WsClient {
 					statement: None,
 					message: "TBD".to_string(),
 					column: None,
-					origin: DiagnosticOrigin::None,
+					fragment: OwnedFragment::None,
 					label: None,
 					help: None,
 					notes: vec![],

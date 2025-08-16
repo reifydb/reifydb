@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	IntoDiagnosticOrigin, DiagnosticOrigin, Type,
+	Type,
 	result::error::diagnostic::{Diagnostic, util::value_max},
+    interface::fragment::{Fragment, IntoFragment, OwnedFragment},
 };
 
 pub fn sequence_exhausted(value: Type) -> Diagnostic {
@@ -14,7 +15,7 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 			"sequence generator of type `{}` is exhausted",
 			value
 		),
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: Some("no more values can be generated".to_string()),
 		help: Some(format!(
 			"maximum value for `{}` is `{}`",
@@ -28,17 +29,17 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 }
 
 pub fn can_not_alter_not_auto_increment(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "SEQUENCE_002".to_string(),
         statement: None,
         message: format!(
             "cannot alter sequence for column `{}` which does not have AUTO INCREMENT",
-            origin.fragment().unwrap_or("")
+            fragment.value()
         ),
-        origin: origin,
+        fragment,
         label: Some("column does not have AUTO INCREMENT".to_string()),
         help: Some("only columns with AUTO INCREMENT can have their sequences altered".to_string()),
         column: None,
@@ -52,7 +53,7 @@ pub fn transaction_sequence_exhausted() -> Diagnostic {
         code: "SEQUENCE_003".to_string(),
         statement: None,
         message: "transaction sequence number exhausted".to_string(),
-        origin: DiagnosticOrigin::None,
+        fragment: OwnedFragment::None,
         label: Some("no more CDC sequence numbers available for this version".to_string()),
         help: Some("transaction has reached the maximum of 65535 CDC events (sequences 1-65535)".to_string()),
         column: None,

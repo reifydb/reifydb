@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{DiagnosticOrigin, result::error::diagnostic::Diagnostic};
+use crate::{interface::fragment::OwnedFragment, result::error::diagnostic::Diagnostic};
 
 /// Transaction conflict occurred due to concurrent modifications
 pub fn transaction_conflict() -> Diagnostic {
@@ -11,7 +11,7 @@ pub fn transaction_conflict() -> Diagnostic {
         message: "Transaction conflict detected - another transaction modified the same data"
             .to_string(),
         column: None,
-        origin: DiagnosticOrigin::None,
+        fragment: OwnedFragment::None,
         label: None,
         help: Some("Retry the transaction".to_string()),
         notes: vec![],
@@ -27,7 +27,7 @@ pub fn transaction_rolled_back() -> Diagnostic {
 		message: "Transaction rolled back and cannot be committed"
 			.to_string(),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Start a new transaction".to_string()),
 		notes: vec![],
@@ -42,7 +42,7 @@ pub fn transaction_too_large() -> Diagnostic {
         statement: None,
         message: "Transaction contains too many writes and exceeds size limits".to_string(),
         column: None,
-        origin: DiagnosticOrigin::None,
+        fragment: OwnedFragment::None,
         label: None,
         help: Some("Split the transaction into smaller batches".to_string()),
         notes: vec![],
@@ -57,7 +57,7 @@ pub fn commit_failed(reason: String) -> Diagnostic {
 		statement: None,
 		message: format!("Transaction commit failed: {}", reason),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check transaction state and retry if appropriate"
 			.to_string()),
@@ -73,7 +73,7 @@ pub fn transaction_already_committed() -> Diagnostic {
 		statement: None,
 		message: "Transaction was already committed".to_string(),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(
 			"Cannot use a transaction after it has been committed"
@@ -91,7 +91,7 @@ pub fn transaction_already_rolled_back() -> Diagnostic {
         statement: None,
         message: "Transaction was already rolled back".to_string(),
         column: None,
-        origin: DiagnosticOrigin::None,
+        fragment: OwnedFragment::None,
         label: None,
         help: Some("Cannot use a transaction after it has been rolled back".to_string()),
         notes: vec![],

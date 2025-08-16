@@ -2,18 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	ColumnDescriptor, IntoDiagnosticOrigin, DiagnosticOrigin, Type,
+	ColumnDescriptor, Type,
 	result::error::diagnostic::{Diagnostic, util::value_range},
+    interface::fragment::{Fragment, IntoFragment, OwnedFragment},
 };
 
 pub fn invalid_number_format(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 	target: Type,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"'{}' is not a valid {} number",
-		origin.fragment().unwrap_or(""), target
+		fragment.value(), target
 	));
 
 	let (help, notes) = match target {
@@ -52,7 +53,7 @@ pub fn invalid_number_format(
 		code: "NUMBER_001".to_string(),
 		statement: None,
 		message: "invalid number format".to_string(),
-		origin: origin,
+		fragment,
 		label,
 		help: Some(help),
 		notes,
@@ -62,25 +63,25 @@ pub fn invalid_number_format(
 }
 
 pub fn number_out_of_range(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 	target: Type,
 	descriptor: Option<&ColumnDescriptor>,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 
 	let range = value_range(target);
 
 	let label = if let Some(desc) = descriptor {
 		Some(format!(
 			"value '{}' exceeds the valid range for {} column {}",
-			origin.fragment().unwrap_or(""),
+			fragment.value(),
 			desc.column_type.as_ref().unwrap_or(&target),
 			desc.location_string()
 		))
 	} else {
 		Some(format!(
 			"value '{}' exceeds the valid range for type {} ({})",
-			origin.fragment().unwrap_or(""), target, range
+			fragment.value(), target, range
 		))
 	};
 
@@ -109,7 +110,7 @@ pub fn number_out_of_range(
 		code: "NUMBER_002".to_string(),
 		statement: None,
 		message: "number out of range".to_string(),
-		origin: origin,
+		fragment,
 		label,
 		help,
 		notes,
@@ -126,7 +127,7 @@ pub fn nan_not_allowed() -> Diagnostic {
 		code: "NUMBER_003".to_string(),
 		statement: None,
 		message: "NaN not allowed".to_string(),
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label,
 		help: Some(
 			"use a finite number or undefined instead".to_string()
@@ -138,11 +139,11 @@ pub fn nan_not_allowed() -> Diagnostic {
 }
 
 pub fn integer_precision_loss(
-	origin: impl IntoDiagnosticOrigin,
+	fragment: impl IntoFragment,
 	source_type: Type,
 	target: Type,
 ) -> Diagnostic {
-	let origin = origin.into_origin();
+	let fragment = fragment.into_fragment();
 	let is_signed = source_type.is_signed_integer();
 
 	let (min_limit, max_limit) = match target {
@@ -172,14 +173,14 @@ pub fn integer_precision_loss(
 
 	let label = Some(format!(
 		"converting '{}' from {} to {} would lose precision",
-		origin.fragment().unwrap_or(""), source_type, target
+		fragment.value(), source_type, target
 	));
 
 	Diagnostic {
         code: "NUMBER_004".to_string(),
         statement: None,
         message: "too large for precise float conversion".to_string(),
-        origin: origin,
+        fragment,
         label,
         help: None,
         notes: vec![

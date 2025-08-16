@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{DiagnosticOrigin, result::error::diagnostic::Diagnostic};
+use crate::{interface::fragment::OwnedFragment, result::error::diagnostic::Diagnostic};
 
 /// Network connection error occurred
 pub fn connection_error(message: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn connection_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("Connection error: {}", message),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check network connectivity and server status"
 			.to_string()),
@@ -26,7 +26,7 @@ pub fn engine_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("Engine error: {}", message),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: None,
 		notes: vec![],
@@ -41,7 +41,7 @@ pub fn transport_error(err: impl std::fmt::Display) -> Diagnostic {
 		statement: None,
 		message: format!("Transport error: {}", err),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check network connectivity".to_string()),
 		notes: vec![],
@@ -56,7 +56,7 @@ pub fn status_error(err: impl std::fmt::Display) -> Diagnostic {
 		statement: None,
 		message: format!("gRPC status error: {}", err),
 		column: None,
-		origin: DiagnosticOrigin::None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check gRPC service status".to_string()),
 		notes: vec![],

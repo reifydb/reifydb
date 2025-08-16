@@ -30,7 +30,7 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
 		code: grpc.code,
 		statement: grpc.statement,
 		message: grpc.message,
-		origin: grpc.span.map(|s| OwnedSpan {
+		fragment: grpc.span.map(|s| OwnedSpan {
 			column: SpanColumn(s.offset),
 			line: SpanLine(s.line),
 			fragment: s.fragment,

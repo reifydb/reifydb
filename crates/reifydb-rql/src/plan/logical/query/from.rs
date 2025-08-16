@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan, err, DiagnosticOrigin,
+	OwnedSpan, err,
 	interface::evaluate::expression::{AliasExpression, IdentExpression},
+	interface::fragment::OwnedFragment,
 	result::error::diagnostic::Diagnostic,
 };
 
@@ -62,7 +63,7 @@ impl Compiler {
                                 statement: None,
                                 message: "Expected row in static data".to_string(),
                                 column: None,
-                                origin: DiagnosticOrigin::None,
+                                fragment: OwnedFragment::None,
                                 label: None,
                                 help: None,
                                 notes: vec![],
