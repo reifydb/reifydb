@@ -73,7 +73,7 @@ impl Diagnostic {
 	/// Set or update the span for this diagnostic and all nested diagnostics
 	/// recursively
 	pub fn with_span(&mut self, new_span: &OwnedSpan) {
-		if self.span.is_some() {
+		if self.span.is_none() {
 			self.span = Some(new_span.clone());
 		}
 		if let Some(ref mut cause) = self.cause {
