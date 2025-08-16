@@ -4,5 +4,5 @@
 physical 'from users map {id, name}'
 ---
 > └── Map [Column(id), Column(name)]
->     └── TableScan users
+>     └── TableScan default.users
 > 

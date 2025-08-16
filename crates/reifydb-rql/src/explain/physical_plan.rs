@@ -308,13 +308,10 @@ fn render_physical_plan_inner(
 			schema,
 			table,
 		}) => {
-			let label = match schema {
-				Some(s) => format!(
-					"TableScan {}.{}",
-					s.fragment, table.fragment
-				),
-				None => format!("TableScan {}", table.fragment),
-			};
+			let label = format!(
+				"TableScan {}.{}",
+				schema.name, table.fragment
+			);
 			write_node_header(output, prefix, is_last, &label);
 		}
 

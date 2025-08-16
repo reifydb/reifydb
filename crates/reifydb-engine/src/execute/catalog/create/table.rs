@@ -5,9 +5,7 @@ use reifydb_catalog::{Catalog, table::TableToCreate};
 use reifydb_core::{
 	Value,
 	interface::{ActiveCommandTransaction, Transaction},
-	result::error::diagnostic::catalog::{
-		schema_not_found, table_already_exists,
-	},
+	result::error::diagnostic::catalog::table_already_exists,
 	return_error,
 };
 use reifydb_rql::plan::physical::CreateTablePlan;
@@ -20,24 +18,19 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut ActiveCommandTransaction<T>,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
-		let Some(schema) =
-			Catalog::get_schema_by_name(txn, &plan.schema)?
-		else {
-			return_error!(schema_not_found(
-				Some(plan.schema.clone()),
-				&plan.schema.as_ref(),
-			));
-		};
-
-		if let Some(table) =
-			Catalog::get_table_by_name(txn, schema.id, &plan.table)?
-		{
+		if let Some(table) = Catalog::get_table_by_name(
+			txn,
+			plan.schema.id,
+			&plan.table,
+		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
 						"schema",
 						Value::Utf8(
-							plan.schema.to_string(),
+							plan.schema
+								.name
+								.to_string(),
 						),
 					),
 					(
@@ -52,7 +45,7 @@ impl<T: Transaction> Executor<T> {
 
 			return_error!(table_already_exists(
 				Some(plan.table.clone()),
-				&schema.name,
+				&plan.schema.name,
 				&table.name,
 			));
 		}
@@ -62,13 +55,13 @@ impl<T: Transaction> Executor<T> {
 			TableToCreate {
 				span: Some(plan.table.clone()),
 				table: plan.table.to_string(),
-				schema: plan.schema.to_string(),
+				schema: plan.schema.name.to_string(),
 				columns: plan.columns,
 			},
 		)?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(plan.schema.to_string())),
+			("schema", Value::Utf8(plan.schema.name.to_string())),
 			("table", Value::Utf8(plan.table.to_string())),
 			("created", Value::Bool(true)),
 		]))
@@ -77,8 +70,14 @@ impl<T: Transaction> Executor<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-	use reifydb_core::{OwnedSpan, Value, interface::Params};
+	use reifydb_catalog::{
+		schema::SchemaDef,
+		test_utils::{create_schema, ensure_test_schema},
+	};
+	use reifydb_core::{
+		OwnedSpan, Value,
+		interface::{Params, SchemaId},
+	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
@@ -90,10 +89,13 @@ mod tests {
 	fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 
-		ensure_test_schema(&mut txn);
+		let schema = ensure_test_schema(&mut txn);
 
 		let mut plan = CreateTablePlan {
-			schema: OwnedSpan::testing("test_schema"),
+			schema: SchemaDef {
+				id: schema.id,
+				name: schema.name.clone(),
+			},
 			table: OwnedSpan::testing("test_table"),
 			if_not_exists: false,
 			columns: vec![],
@@ -154,11 +156,14 @@ mod tests {
 	fn test_create_same_table_in_different_schema() {
 		let mut txn = create_test_command_transaction();
 
-		ensure_test_schema(&mut txn);
-		create_schema(&mut txn, "another_schema");
+		let schema = ensure_test_schema(&mut txn);
+		let another_schema = create_schema(&mut txn, "another_schema");
 
 		let plan = CreateTablePlan {
-			schema: OwnedSpan::testing("test_schema"),
+			schema: SchemaDef {
+				id: schema.id,
+				name: schema.name.clone(),
+			},
 			table: OwnedSpan::testing("test_table"),
 			if_not_exists: false,
 			columns: vec![],
@@ -180,9 +185,11 @@ mod tests {
 			Value::Utf8("test_table".to_string())
 		);
 		assert_eq!(result.row(0)[2], Value::Bool(true));
-
 		let plan = CreateTablePlan {
-			schema: OwnedSpan::testing("another_schema"),
+			schema: SchemaDef {
+				id: another_schema.id,
+				name: another_schema.name.clone(),
+			},
 			table: OwnedSpan::testing("test_table"),
 			if_not_exists: false,
 			columns: vec![],
@@ -211,7 +218,10 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = CreateTablePlan {
-			schema: OwnedSpan::testing("missing_schema"),
+			schema: SchemaDef {
+				id: SchemaId(999),
+				name: "missing_schema".to_string(),
+			},
 			table: OwnedSpan::testing("my_table"),
 			if_not_exists: false,
 			columns: vec![],

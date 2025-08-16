@@ -116,15 +116,6 @@ pub(crate) fn compile(
 			schema,
 			table,
 		}) => {
-			// FIXME If schema is NONE resolve table directly by
-			// name
-			let schema = Catalog::get_schema_by_name(
-				rx,
-				&schema.as_ref().unwrap().fragment.as_str(),
-			)
-			.unwrap()
-			.unwrap();
-
 			let table = Catalog::get_table_by_name(
 				rx,
 				schema.id,

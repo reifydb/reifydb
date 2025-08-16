@@ -4,5 +4,5 @@
 physical 'from users take 42'
 ---
 > └── Take 42
->     └── TableScan users
+>     └── TableScan default.users
 > 

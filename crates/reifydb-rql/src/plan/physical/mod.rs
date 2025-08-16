@@ -4,13 +4,18 @@
 mod alter;
 mod create;
 
-use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
+use reifydb_catalog::{
+	Catalog, schema::SchemaDef, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
+};
 use reifydb_core::{
 	JoinType, OwnedSpan, SortKey,
 	interface::{
 		VersionedQueryTransaction,
 		evaluate::expression::{AliasExpression, Expression},
 	},
+	result::error::diagnostic::catalog::schema_not_found,
+	return_error,
 };
 
 use crate::plan::{logical::LogicalPlan, physical::PhysicalPlan::TableScan};
@@ -195,8 +200,26 @@ impl Compiler {
 				}
 
 				LogicalPlan::TableScan(scan) => {
+					let Some(schema) =
+						Catalog::get_schema_by_name(
+							rx,
+							&scan.schema.fragment,
+						)?
+					else {
+						return_error!(
+							schema_not_found(
+								Some(scan
+									.schema
+									.clone(
+									)),
+								&scan.schema
+									.fragment
+							)
+						);
+					};
+
 					stack.push(TableScan(TableScanNode {
-						schema: scan.schema,
+						schema,
 						table: scan.table,
 					}));
 				}
@@ -255,7 +278,7 @@ pub enum PhysicalPlan {
 
 #[derive(Debug, Clone)]
 pub struct CreateComputedViewPlan {
-	pub schema: OwnedSpan,
+	pub schema: SchemaDef,
 	pub view: OwnedSpan,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -270,7 +293,7 @@ pub struct CreateSchemaPlan {
 
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan {
-	pub schema: OwnedSpan,
+	pub schema: SchemaDef,
 	pub table: OwnedSpan,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
@@ -358,7 +381,7 @@ pub struct InlineDataNode {
 
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
-	pub schema: Option<OwnedSpan>,
+	pub schema: SchemaDef,
 	pub table: OwnedSpan,
 }
 

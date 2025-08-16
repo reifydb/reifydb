@@ -355,13 +355,11 @@ fn render_logical_plan_inner(
 			schema,
 			table,
 		}) => {
-			let name = match schema {
-				Some(s) => format!(
-					"{}.{}",
-					s.fragment, table.fragment
-				),
-				None => table.fragment.to_string(),
-			};
+			let name = format!(
+				"{}.{}",
+				schema.fragment, table.fragment
+			);
+
 			output.push_str(&format!(
 				"{}{} TableScan {}\n",
 				prefix, branch, name

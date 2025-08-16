@@ -2,7 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use PhysicalPlan::CreateComputedView;
-use reifydb_core::interface::VersionedQueryTransaction;
+use reifydb_catalog::Catalog;
+use reifydb_core::{
+	diagnostic::catalog::schema_not_found,
+	interface::VersionedQueryTransaction, return_error,
+};
 
 use crate::plan::{
 	logical::CreateComputedViewNode,
@@ -14,9 +18,19 @@ impl Compiler {
 		rx: &mut impl VersionedQueryTransaction,
 		create: CreateComputedViewNode,
 	) -> crate::Result<PhysicalPlan> {
-		// FIXME validate with catalog
+		let Some(schema) = Catalog::get_schema_by_name(
+			rx,
+			&create.schema.fragment,
+		)?
+		else {
+			return_error!(schema_not_found(
+				Some(create.schema.clone()),
+				&create.schema.fragment
+			));
+		};
+
 		Ok(CreateComputedView(CreateComputedViewPlan {
-			schema: create.schema,
+			schema,
 			view: create.view,
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,

@@ -8,7 +8,7 @@ mod create;
 mod get;
 mod layout;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SchemaDef {
 	pub id: SchemaId,
 	pub name: String,

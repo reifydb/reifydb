@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	err,
+	OwnedSpan, err,
 	interface::evaluate::expression::{AliasExpression, IdentExpression},
 	result::error::diagnostic::Diagnostic,
 };
@@ -21,7 +21,11 @@ impl Compiler {
 				table,
 				..
 			} => Ok(LogicalPlan::TableScan(TableScanNode {
-				schema: schema.map(|schema| schema.span()),
+				schema: schema
+					.map(|schema| schema.span())
+					.unwrap_or(OwnedSpan::testing(
+						"default",
+					)),
 				table: table.span(),
 			})),
 			AstFrom::Static {

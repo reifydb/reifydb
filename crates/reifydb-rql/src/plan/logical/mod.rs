@@ -224,7 +224,7 @@ pub struct InlineDataNode {
 
 #[derive(Debug)]
 pub struct TableScanNode {
-	pub schema: Option<OwnedSpan>,
+	pub schema: OwnedSpan,
 	pub table: OwnedSpan,
 }
 

@@ -4,6 +4,6 @@
 physical 'from users left join { with orders on users.id == orders.user_id }'
 ---
 > └── Join(Left) on: [(users.id == orders.user_id)]
->     ├── TableScan users
->     └── TableScan orders
+>     ├── TableScan default.users
+>     └── TableScan default.orders
 > 

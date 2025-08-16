@@ -3,7 +3,7 @@
 
 logical 'from users map {id, name} filter id > 10'
 ---
-> └── TableScan users
+> └── TableScan default.users
 > └── Map
 >     ├── Column(id)
 >     └── Column(name)
@@ -13,7 +13,7 @@ logical 'from users map {id, name} filter id > 10'
 
 logical 'from users filter id > 10 map {id, name}'
 ---
-> └── TableScan users
+> └── TableScan default.users
 > └── Filter
 >     └── condition: (Column(id) > Constant(10))
 > └── Map
