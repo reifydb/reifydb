@@ -63,7 +63,7 @@ pub fn convert_result(
 	match result {
 		command_result::Result::Error(diagnostic) => {
 			let mut diag = convert_diagnostic(diagnostic);
-			diag.set_statement(query.to_string());
+			diag.with_statement(query.to_string());
 			Err(error!(diag))
 		}
 		command_result::Result::Frame(grpc_frame) => {

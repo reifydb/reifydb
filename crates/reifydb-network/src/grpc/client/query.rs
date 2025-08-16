@@ -64,7 +64,7 @@ pub fn convert_result(
 	match result {
 		QueryResultEnum::Error(diagnostic) => {
 			let mut diag = convert_diagnostic(diagnostic);
-			diag.set_statement(query.to_string());
+			diag.with_statement(query.to_string());
 			Err(error!(diag))
 		}
 		QueryResultEnum::Frame(grpc_frame) => {

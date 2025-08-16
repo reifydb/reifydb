@@ -1,6 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::{OwnedSpan, Type};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+
 pub mod ast;
 pub mod auth;
 pub mod blob;
@@ -52,7 +56,7 @@ impl Display for Diagnostic {
 impl Diagnostic {
 	/// Set the statement for this diagnostic and all nested diagnostics
 	/// recursively
-	pub fn set_statement(&mut self, statement: String) {
+	pub fn with_statement(&mut self, statement: String) {
 		self.statement = Some(statement.clone());
 
 		// Recursively set statement for all nested diagnostics
@@ -61,25 +65,19 @@ impl Diagnostic {
 				cause.as_mut(),
 				Diagnostic::default(),
 			);
-			updated_cause.set_statement(statement);
+			updated_cause.with_statement(statement);
 			*cause = Box::new(updated_cause);
 		}
 	}
 
-	/// Update the span for this diagnostic and all nested diagnostics
+	/// Set or update the span for this diagnostic and all nested diagnostics
 	/// recursively
-	pub fn update_spans(&mut self, new_span: &OwnedSpan) {
-		if self.span.is_some() {
+	pub fn with_span(&mut self, new_span: &OwnedSpan) {
+		if self.span.is_none() {
 			self.span = Some(new_span.clone());
 		}
 		if let Some(ref mut cause) = self.cause {
-			cause.update_spans(new_span);
+			cause.with_span(new_span);
 		}
 	}
 }
-
-use std::fmt::{Display, Formatter};
-
-use serde::{Deserialize, Serialize};
-
-use crate::{OwnedSpan, Type};

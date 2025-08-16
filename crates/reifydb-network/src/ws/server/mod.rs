@@ -325,7 +325,7 @@ impl<T: Transaction> WsServer<T> {
 												    }
 												    Err(e) => {
 													    let mut diagnostic = e.diagnostic();
-													    diagnostic.set_statement(statement.clone());
+													    diagnostic.with_statement(statement.clone());
 
 													    let response = crate::ws::response::Response {
 													    id: request.id,
@@ -384,7 +384,7 @@ impl<T: Transaction> WsServer<T> {
 												    }
 												  Err(e) => {
 													    let mut diagnostic = e.diagnostic();
-													    diagnostic.set_statement(statement.clone());
+													    diagnostic.with_statement(statement.clone());
 
 													    let response = crate::ws::response::Response {
 													    id: request.id,
