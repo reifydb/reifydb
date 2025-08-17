@@ -123,7 +123,7 @@ pub(crate) fn compile(
 		}) => Box::new(ViewScanNode::new(view, context).unwrap()),
 
 		PhysicalPlan::AlterSequence(_)
-		| PhysicalPlan::CreateComputedView(_)
+		| PhysicalPlan::CreateDeferredView(_)
 		| PhysicalPlan::CreateSchema(_)
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::Delete(_)

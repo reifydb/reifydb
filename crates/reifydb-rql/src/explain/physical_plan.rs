@@ -79,7 +79,7 @@ fn render_physical_plan_inner(
 	output: &mut String,
 ) {
 	match plan {
-		PhysicalPlan::CreateComputedView(_) => unimplemented!(),
+		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateSchema(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {

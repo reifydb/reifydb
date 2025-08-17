@@ -77,7 +77,7 @@ impl Compiler {
 
 #[derive(Debug)]
 pub enum LogicalPlan {
-	CreateComputedView(CreateComputedViewNode),
+	CreateDeferredView(CreateDeferredViewNode),
 	CreateSchema(CreateSchemaNode),
 	CreateSequence(CreateSequenceNode),
 	CreateTable(CreateTableNode),
@@ -102,7 +102,7 @@ pub enum LogicalPlan {
 }
 
 #[derive(Debug)]
-pub struct CreateComputedViewNode {
+pub struct CreateDeferredViewNode {
 	pub schema: OwnedSpan,
 	pub view: OwnedSpan,
 	pub if_not_exists: bool,

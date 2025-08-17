@@ -161,7 +161,7 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 			PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::AlterSequence(_)
-			| PhysicalPlan::CreateComputedView(_)
+			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::Delete(_) => {

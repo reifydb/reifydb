@@ -69,9 +69,9 @@ impl Compiler {
 					)?);
 				}
 
-				LogicalPlan::CreateComputedView(create) => {
+				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(
-						Self::compile_create_computed(
+						Self::compile_create_deferred(
 							rx, create,
 						)?,
 					);
@@ -279,7 +279,7 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan {
-	CreateComputedView(CreateComputedViewPlan),
+	CreateDeferredView(CreateDeferredViewPlan),
 	CreateSchema(CreateSchemaPlan),
 	CreateTable(CreateTablePlan),
 	// Alter
@@ -304,7 +304,7 @@ pub enum PhysicalPlan {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateComputedViewPlan {
+pub struct CreateDeferredViewPlan {
 	pub schema: SchemaDef,
 	pub view: OwnedSpan,
 	pub if_not_exists: bool,

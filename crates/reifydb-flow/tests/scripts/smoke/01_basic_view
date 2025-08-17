@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Test basic computed view with filter - using playground example
+# Test basic deferred view with filter - using playground example
 
 # Setup schema and table
 command "
@@ -10,9 +10,9 @@ create table test.users { name: utf8, age: int1};"
 ---
 ok
 
-# Create computed view with filter and map
+# Create deferred view with filter and map
 command "
-create computed view test.basic { name: utf8, age: int1 } with {
+create deferred view test.basic { name: utf8, age: int1 } with {
     from test.users
 };"
 ---
@@ -55,7 +55,7 @@ wait 100
 ---
 ok
 
-# Query the computed view
+# Query the deferred view
 query 'FROM test.basic'
 ---
 +---------+-------+

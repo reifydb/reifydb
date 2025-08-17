@@ -53,7 +53,7 @@ fn render_logical_plan_inner(
 	);
 
 	match plan {
-		LogicalPlan::CreateComputedView(_) => unimplemented!(),
+		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
 		LogicalPlan::CreateSchema(_) => unimplemented!(),
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),

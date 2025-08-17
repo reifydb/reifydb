@@ -5,11 +5,11 @@ use Keyword::{Create, Schema};
 use Operator::Colon;
 
 use crate::ast::{
-	AstColumnToCreate, AstCreate, AstCreateComputedView, AstCreateSchema,
+	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
 	AstCreateSeries, AstCreateTable,
 	lex::{
 		Keyword,
-		Keyword::{Computed, Series, Table, View, With},
+		Keyword::{Deferred, Series, Table, View, With},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
@@ -25,11 +25,11 @@ impl Parser {
 			return self.parse_schema(token);
 		}
 
-		if (self.consume_if(TokenKind::Keyword(Computed))?).is_some() {
+		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(View))?)
 				.is_some()
 			{
-				return self.parse_computed_view(token);
+				return self.parse_deferred_view(token);
 			}
 			unimplemented!()
 		}
@@ -70,7 +70,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_computed_view(
+	fn parse_deferred_view(
 		&mut self,
 		token: Token,
 	) -> crate::Result<AstCreate> {
@@ -114,7 +114,7 @@ impl Parser {
 			None
 		};
 
-		Ok(AstCreate::ComputedView(AstCreateComputedView {
+		Ok(AstCreate::DeferredView(AstCreateDeferredView {
 			token,
 			view: name,
 			schema,
@@ -196,7 +196,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateComputedView, AstCreateSchema,
+		AstCreate, AstCreateDeferredView, AstCreateSchema,
 		AstCreateSeries, AstCreateTable, AstPolicyKind, lex::lex,
 		parse::Parser,
 	};
@@ -404,9 +404,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_computed_view() {
+	fn test_create_deferred_view() {
 		let tokens = lex(r#"
-        create computed view test.views{field: int2 policy { saturation error} }
+        create deferred view test.views{field: int2 policy { saturation error} }
     "#)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -416,7 +416,7 @@ mod tests {
 		let result = result.pop().unwrap();
 		let create = result.first_unchecked().as_create();
 		match create {
-			AstCreate::ComputedView(AstCreateComputedView {
+			AstCreate::DeferredView(AstCreateDeferredView {
 				view: name,
 				schema,
 				columns,

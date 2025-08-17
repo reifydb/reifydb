@@ -12,15 +12,15 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_flow::compile_flow;
-use reifydb_rql::plan::physical::{CreateComputedViewPlan, PhysicalPlan};
+use reifydb_rql::plan::physical::{CreateDeferredViewPlan, PhysicalPlan};
 
 use crate::{columnar::Columns, execute::Executor};
 
 impl<T: Transaction> Executor<T> {
-	pub(crate) fn create_computed_view(
+	pub(crate) fn create_deferred_view(
 		&self,
 		txn: &mut ActiveCommandTransaction<T>,
-		plan: CreateComputedViewPlan,
+		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
 		if let Some(view) = Catalog::find_view_by_name(
 			txn,
@@ -117,7 +117,7 @@ mod tests {
 		interface::{Params, SchemaId},
 	};
 	use reifydb_rql::plan::physical::{
-		CreateComputedViewPlan, PhysicalPlan,
+		CreateDeferredViewPlan, PhysicalPlan,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
@@ -129,7 +129,7 @@ mod tests {
 
 		let schema = ensure_test_schema(&mut txn);
 
-		let mut plan = CreateComputedViewPlan {
+		let mut plan = CreateDeferredViewPlan {
 			schema: SchemaDef {
 				id: schema.id,
 				name: schema.name.clone(),
@@ -144,7 +144,7 @@ mod tests {
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateComputedView(plan.clone()),
+				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
@@ -165,7 +165,7 @@ mod tests {
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateComputedView(plan.clone()),
+				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
@@ -186,7 +186,7 @@ mod tests {
 		let err = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateComputedView(plan),
+				PhysicalPlan::CreateDeferredView(plan),
 				Params::default(),
 			)
 			.unwrap_err();
@@ -200,7 +200,7 @@ mod tests {
 		let schema = ensure_test_schema(&mut txn);
 		let another_schema = create_schema(&mut txn, "another_schema");
 
-		let plan = CreateComputedViewPlan {
+		let plan = CreateDeferredViewPlan {
 			schema: SchemaDef {
 				id: schema.id,
 				name: schema.name.clone(),
@@ -214,7 +214,7 @@ mod tests {
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateComputedView(plan.clone()),
+				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
@@ -227,7 +227,7 @@ mod tests {
 			Value::Utf8("test_view".to_string())
 		);
 		assert_eq!(result.row(0)[2], Value::Bool(true));
-		let plan = CreateComputedViewPlan {
+		let plan = CreateDeferredViewPlan {
 			schema: SchemaDef {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
@@ -241,7 +241,7 @@ mod tests {
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateComputedView(plan.clone()),
+				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
@@ -260,7 +260,7 @@ mod tests {
 	fn test_create_view_missing_schema() {
 		let mut txn = create_test_command_transaction();
 
-		let plan = CreateComputedViewPlan {
+		let plan = CreateDeferredViewPlan {
 			schema: SchemaDef {
 				id: SchemaId(999),
 				name: "missing_schema".to_string(),
@@ -274,7 +274,7 @@ mod tests {
 		let err = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateComputedView(plan),
+				PhysicalPlan::CreateDeferredView(plan),
 				Params::default(),
 			)
 			.unwrap_err();
