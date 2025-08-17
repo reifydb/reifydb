@@ -203,11 +203,6 @@ macro_rules! parse_and_push {
 				text: $temp_fragment.value().to_string(),
 				line: StatementLine($base_span.line.0),
 				column: StatementColumn($base_span.column.0),
-				source: reifydb_core::interface::fragment::SourceLocation::from_static(
-					module_path!(),
-					file!(),
-					line!(),
-				),
 			};
 			e.0.with_fragment(value_with_position.clone());
 			
@@ -226,11 +221,6 @@ macro_rules! parse_and_push {
 				text: $temp_fragment.value().to_string(),
 				line: StatementLine($base_span.line.0),
 				column: StatementColumn($base_span.column.0),
-				source: reifydb_core::interface::fragment::SourceLocation::from_static(
-					module_path!(),
-					file!(),
-					line!(),
-				),
 			};
 			e.0.with_fragment(value_with_position.clone());
 			
@@ -416,11 +406,6 @@ fn text_to_float(
 								text: val.to_string(),
 								line: StatementLine(base_span.line.0),
 								column: StatementColumn(base_span.column.0),
-								source: reifydb_core::interface::fragment::SourceLocation::from_static(
-									module_path!(),
-									file!(),
-									line!(),
-								),
 							};
 							e.0.with_fragment(value_with_position.clone());
 							
@@ -440,11 +425,6 @@ fn text_to_float(
 								text: val.to_string(),
 								line: StatementLine(base_span.line.0),
 								column: StatementColumn(base_span.column.0),
-								source: reifydb_core::interface::fragment::SourceLocation::from_static(
-									module_path!(),
-									file!(),
-									line!(),
-								),
 							};
 							e.0.with_fragment(value_with_position.clone());
 							

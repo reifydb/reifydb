@@ -68,11 +68,6 @@ macro_rules! impl_to_temporal {
                             text: val.to_string(),  // The actual value without quotes
                             line: StatementLine(proper_span.line.0),
                             column: StatementColumn(proper_span.column.0),
-                            source: reifydb_core::interface::fragment::SourceLocation::from_static(
-                                module_path!(),
-                                file!(),
-                                line!(),
-                            ),
                         };
                         e.0.with_fragment(value_with_position.clone());
                         

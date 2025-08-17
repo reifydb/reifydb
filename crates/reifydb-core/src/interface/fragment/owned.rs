@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Fragment, SourceLocation, StatementColumn, StatementLine};
+use super::{Fragment, StatementColumn, StatementLine};
 
 /// Owned fragment - owns all its data
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -16,13 +16,11 @@ pub enum OwnedFragment {
         text: String,
         line: StatementLine,
         column: StatementColumn,
-        source: SourceLocation,
     },
     
     /// Fragment from internal/runtime code
     Internal {
         text: String,
-        source: SourceLocation,
     },
 }
 
@@ -36,13 +34,6 @@ impl Fragment for OwnedFragment {
     
     fn into_owned(self) -> OwnedFragment {
         self
-    }
-    
-    fn source_location(&self) -> Option<&SourceLocation> {
-        match self {
-            OwnedFragment::None => None,
-            OwnedFragment::Statement { source, .. } | OwnedFragment::Internal { source, .. } => Some(source),
-        }
     }
     
     fn position(&self) -> Option<(u32, u32)> {
@@ -62,21 +53,10 @@ impl OwnedFragment {
         }
     }
     
-    /// Get debug location info (module, file, line) where the fragment was created
-    pub fn location_info(&self) -> Option<(&str, &str, u32)> {
-        self.source_location()
-            .map(|loc| (loc.module.as_str(), loc.file.as_str(), loc.line))
-    }
-    
     /// Create an internal fragment - useful for creating fragments from substrings
     pub fn internal(text: impl Into<String>) -> Self {
         OwnedFragment::Internal {
             text: text.into(),
-            source: SourceLocation::from_static(
-                module_path!(),
-                file!(),
-                line!(),
-            ),
         }
     }
     
@@ -85,11 +65,6 @@ impl OwnedFragment {
     pub fn testing(text: impl Into<String>) -> Self {
         OwnedFragment::Internal {
             text: text.into(),
-            source: SourceLocation::from_static(
-                "test",
-                "test.rs",
-                0,
-            ),
         }
     }
 }
