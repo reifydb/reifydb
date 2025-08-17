@@ -4,7 +4,8 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, OwnedSpan, Span, Type, error,
+	GetType, OwnedSpan, Type, error,
+	interface::fragment::Fragment,
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -195,20 +196,46 @@ fn float_to_integer(
 }
 
 macro_rules! parse_and_push {
-	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
-		let result = parse_int::<$ty>($temp_span).map_err(|e| {
+	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_span:expr) => {{
+		let result = parse_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
+			use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+			let value_with_position = OwnedFragment::Statement {
+				text: $temp_fragment.value().to_string(),
+				line: StatementLine($base_span.line.0),
+				column: StatementColumn($base_span.column.0),
+				source: reifydb_core::interface::fragment::SourceLocation::from_static(
+					module_path!(),
+					file!(),
+					line!(),
+				),
+			};
+			e.0.with_fragment(value_with_position.clone());
+			
 			error!(cast::invalid_number(
-				$base_span.clone(),
+				value_with_position,
 				$target_type,
 				e.diagnostic(),
 			))
 		})?;
 		$out.push::<$ty>(result);
 	}};
-	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_span:expr, $base_span:expr) => {{
-		let result = parse_uint::<$ty>($temp_span).map_err(|e| {
+	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_span:expr) => {{
+		let result = parse_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
+			use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+			let value_with_position = OwnedFragment::Statement {
+				text: $temp_fragment.value().to_string(),
+				line: StatementLine($base_span.line.0),
+				column: StatementColumn($base_span.column.0),
+				source: reifydb_core::interface::fragment::SourceLocation::from_static(
+					module_path!(),
+					file!(),
+					line!(),
+				),
+			};
+			e.0.with_fragment(value_with_position.clone());
+			
 			error!(cast::invalid_number(
-				$base_span.clone(),
+				value_with_position,
 				$target_type,
 				e.diagnostic(),
 			))
@@ -232,13 +259,8 @@ fn text_to_integer(
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
-					use reifydb_core::BorrowedSpan;
-					let temp_span =
-						BorrowedSpan::with_position(
-							val,
-							base_span.line(),
-							base_span.column(),
-						);
+					use reifydb_core::interface::fragment::BorrowedFragment;
+					let temp_fragment = BorrowedFragment::new_internal(val);
 
 					match target {
 						Type::Int1 => {
@@ -247,7 +269,7 @@ fn text_to_integer(
 								i8,
 								Type::Int1,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -257,7 +279,7 @@ fn text_to_integer(
 								i16,
 								Type::Int2,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -267,7 +289,7 @@ fn text_to_integer(
 								i32,
 								Type::Int4,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -277,7 +299,7 @@ fn text_to_integer(
 								i64,
 								Type::Int8,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -287,7 +309,7 @@ fn text_to_integer(
 								i128,
 								Type::Int16,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -297,7 +319,7 @@ fn text_to_integer(
 								u8,
 								Type::Uint1,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -307,7 +329,7 @@ fn text_to_integer(
 								u16,
 								Type::Uint2,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -317,7 +339,7 @@ fn text_to_integer(
 								u32,
 								Type::Uint4,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -327,7 +349,7 @@ fn text_to_integer(
 								u64,
 								Type::Uint8,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -337,7 +359,7 @@ fn text_to_integer(
 								u128,
 								Type::Uint16,
 								out,
-								temp_span,
+								temp_fragment,
 								base_span
 							)
 						}
@@ -381,20 +403,29 @@ fn text_to_float(
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
-				// Create efficient borrowed span for parsing
-				use reifydb_core::BorrowedSpan;
-				let temp_span = BorrowedSpan::with_position(
-					val,
-					base_span.line(),
-					base_span.column(),
-				);
+				// Create efficient borrowed fragment for parsing
+				use reifydb_core::interface::fragment::BorrowedFragment;
+				let temp_fragment = BorrowedFragment::new_internal(val);
 
 				match target {
 					Type::Float4 => out.push::<f32>(
-						parse_float::<f32>(temp_span)
-							.map_err(|e| {
+						parse_float::<f32>(temp_fragment.clone())
+							.map_err(|mut e| {
+							use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+							let value_with_position = OwnedFragment::Statement {
+								text: val.to_string(),
+								line: StatementLine(base_span.line.0),
+								column: StatementColumn(base_span.column.0),
+								source: reifydb_core::interface::fragment::SourceLocation::from_static(
+									module_path!(),
+									file!(),
+									line!(),
+								),
+							};
+							e.0.with_fragment(value_with_position.clone());
+							
 							error!(cast::invalid_number(
-                                base_span.clone(),
+                                value_with_position,
                                 Type::Float4,
                                 e.diagnostic(),
                             ))
@@ -402,10 +433,23 @@ fn text_to_float(
 					),
 
 					Type::Float8 => out.push::<f64>(
-						parse_float::<f64>(temp_span)
-							.map_err(|e| {
+						parse_float::<f64>(temp_fragment)
+							.map_err(|mut e| {
+							use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+							let value_with_position = OwnedFragment::Statement {
+								text: val.to_string(),
+								line: StatementLine(base_span.line.0),
+								column: StatementColumn(base_span.column.0),
+								source: reifydb_core::interface::fragment::SourceLocation::from_static(
+									module_path!(),
+									file!(),
+									line!(),
+								),
+							};
+							e.0.with_fragment(value_with_position.clone());
+							
 							error!(cast::invalid_number(
-                                base_span.clone(),
+                                value_with_position,
                                 Type::Float8,
                                 e.diagnostic(),
                             ))

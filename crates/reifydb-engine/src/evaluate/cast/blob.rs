@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	BorrowedSpan, OwnedSpan, Type, err, error::diagnostic::cast,
+	interface::fragment::BorrowedFragment, OwnedSpan, Type, err, error::diagnostic::cast,
 	value::Blob,
 };
 
@@ -10,7 +10,7 @@ use crate::columnar::ColumnData;
 
 pub fn to_blob(
 	data: &ColumnData,
-	span: impl Fn() -> OwnedSpan,
+	_span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8(container) => {
@@ -20,10 +20,10 @@ pub fn to_blob(
 			);
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let temp_span = BorrowedSpan::new(
+					let temp_fragment = BorrowedFragment::new_internal(
 						container[idx].as_str(),
 					);
-					out.push(Blob::from_utf8(temp_span));
+					out.push(Blob::from_utf8(temp_fragment));
 				} else {
 					out.push_undefined()
 				}
@@ -33,7 +33,7 @@ pub fn to_blob(
 		_ => {
 			let source_type = data.get_type();
 			err!(cast::unsupported_cast(
-				span(),
+				_span(),
 				source_type,
 				Type::Blob
 			))

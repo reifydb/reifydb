@@ -10,6 +10,7 @@ use number::NumberParser;
 use reifydb_core::{
 	Type,
 	interface::evaluate::expression::ConstantExpression,
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -70,7 +71,7 @@ impl Evaluator {
 		Ok(match expr {
 			ConstantExpression::Bool {
 				span,
-			} => match parse_bool(span.clone()) {
+			} => match parse_bool(span.into_fragment()) {
 				Ok(v) => {
 					return Ok(ColumnData::bool(
 						vec![v; row_count],
@@ -84,7 +85,7 @@ impl Evaluator {
 				if span.fragment.contains(".")
 					|| span.fragment.contains("e")
 				{
-					return match parse_float(span.clone()) {
+					return match parse_float(span.into_fragment()) {
 						Ok(v) => {
 							Ok(ColumnData::float8(
 								vec![
@@ -99,25 +100,25 @@ impl Evaluator {
 					};
 				}
 
-				if let Ok(v) = parse_int::<i8>(span.clone()) {
+				if let Ok(v) = parse_int::<i8>(span.clone().into_fragment()) {
 					return Ok(ColumnData::int1(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i16>(span.clone()) {
+				if let Ok(v) = parse_int::<i16>(span.clone().into_fragment()) {
 					return Ok(ColumnData::int2(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i32>(span.clone()) {
+				if let Ok(v) = parse_int::<i32>(span.clone().into_fragment()) {
 					return Ok(ColumnData::int4(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i64>(span.clone()) {
+				if let Ok(v) = parse_int::<i64>(span.clone().into_fragment()) {
 					return Ok(ColumnData::int8(
 						vec![v; row_count],
 					));
@@ -125,7 +126,7 @@ impl Evaluator {
 
 				// if parsing as i128 fails and its a negative
 				// number, we are maxed out and can stop
-				match parse_int::<i128>(span.clone()) {
+				match parse_int::<i128>(span.clone().into_fragment()) {
 					Ok(v) => {
 						return Ok(ColumnData::int16(
 							vec![v; row_count],
@@ -140,7 +141,7 @@ impl Evaluator {
 					}
 				}
 
-				return match parse_uint::<u128>(span.clone()) {
+				return match parse_uint::<u128>(span.into_fragment()) {
 					Ok(v) => Ok(ColumnData::uint16(
 						vec![v; row_count],
 					)),
@@ -158,7 +159,7 @@ impl Evaluator {
 			ConstantExpression::Temporal {
 				span,
 			} => TemporalParser::parse_temporal(
-				span.clone(),
+				span.clone().into_fragment(),
 				row_count,
 			)?,
 			ConstantExpression::Undefined {
@@ -181,7 +182,7 @@ impl Evaluator {
 				},
 				target,
 			) => NumberParser::from_number(
-				span.clone(),
+				span.clone().into_fragment(),
 				target,
 				row_count,
 			)?,
@@ -195,7 +196,7 @@ impl Evaluator {
 				|| target.is_uuid() =>
 			{
 				TextParser::from_text(
-					span.clone(),
+					span.clone().into_fragment(),
 					target,
 					row_count,
 				)?
@@ -206,7 +207,7 @@ impl Evaluator {
 				},
 				target,
 			) if target.is_temporal() => TemporalParser::from_temporal(
-				span.clone(),
+				span.clone().into_fragment(),
 				target,
 				row_count,
 			)?,

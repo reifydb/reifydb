@@ -125,15 +125,14 @@ impl_float_to_bool!(from_float8, f64);
 
 fn from_utf8(
 	container: &StringContainer,
-	span: impl Fn() -> OwnedSpan,
+	_span: impl Fn() -> OwnedSpan,
 ) -> crate::Result<ColumnData> {
+	use reifydb_core::interface::fragment::OwnedFragment;
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			let mut span = span();
-			span.fragment = container[idx].clone();
-
-			out.push(parse_bool(span)?);
+			let fragment = OwnedFragment::internal(&container[idx]);
+			out.push(parse_bool(fragment)?);
 		} else {
 			out.push_undefined();
 		}

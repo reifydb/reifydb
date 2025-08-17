@@ -50,7 +50,7 @@ macro_rules! fragment {
 }
 
 /// Core trait for fragment types
-pub trait Fragment {
+pub trait Fragment: Clone {
     /// Get the text value of the fragment
     fn value(&self) -> &str;
     
@@ -71,17 +71,10 @@ pub trait IntoFragment {
     fn into_fragment(self) -> OwnedFragment;
 }
 
-// Implementation for OwnedFragment itself (identity)
-impl IntoFragment for OwnedFragment {
+// Blanket implementation for any Fragment type
+impl<T: Fragment> IntoFragment for T {
     fn into_fragment(self) -> OwnedFragment {
-        self
-    }
-}
-
-// Implementation for references to OwnedFragment
-impl IntoFragment for &OwnedFragment {
-    fn into_fragment(self) -> OwnedFragment {
-        self.clone()
+        self.into_owned()
     }
 }
 

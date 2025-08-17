@@ -11,7 +11,7 @@ pub enum OwnedFragment {
     /// No fragment information available
     None,
     
-    /// Fragment from a SQL statement with position information
+    /// Fragment from a RQL statement with position information
     Statement {
         text: String,
         line: StatementLine,
@@ -66,6 +66,31 @@ impl OwnedFragment {
     pub fn location_info(&self) -> Option<(&str, &str, u32)> {
         self.source_location()
             .map(|loc| (loc.module.as_str(), loc.file.as_str(), loc.line))
+    }
+    
+    /// Create an internal fragment - useful for creating fragments from substrings
+    pub fn internal(text: impl Into<String>) -> Self {
+        OwnedFragment::Internal {
+            text: text.into(),
+            source: SourceLocation::from_static(
+                module_path!(),
+                file!(),
+                line!(),
+            ),
+        }
+    }
+    
+    /// Create a testing fragment - returns an Internal fragment for test purposes
+    #[cfg(test)]
+    pub fn testing(text: impl Into<String>) -> Self {
+        OwnedFragment::Internal {
+            text: text.into(),
+            source: SourceLocation::from_static(
+                "test",
+                "test.rs",
+                0,
+            ),
+        }
     }
 }
 

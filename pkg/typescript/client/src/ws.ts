@@ -101,7 +101,7 @@ export class WsClient {
 
     /**
      * Execute command(s) with schemas for each statement for proper type inference
-     * @param statements - Single statement or array of SQL commands
+     * @param statements - Single statement or array of RQL commands
      * @param params - Parameters for the commands (use null or {} if no params)
      * @param schemas - Schema for each statement's result
      */
@@ -144,7 +144,7 @@ export class WsClient {
 
     /**
      * Execute query(s) with schemas for each statement for proper type inference
-     * @param statements - Single statement or array of SQL queries
+     * @param statements - Single statement or array of RQL queries
      * @param params - Parameters for the queries (use null or {} if no params)
      * @param schemas - Schema for each statement's result
      */

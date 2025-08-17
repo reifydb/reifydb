@@ -154,9 +154,10 @@ mod tests {
 
 	#[test]
 	fn test_from_blob() {
+		use reifydb_core::interface::fragment::OwnedFragment;
 		let blobs = vec![
-			Blob::from_utf8(OwnedSpan::testing("Hello")),
-			Blob::from_utf8(OwnedSpan::testing("World")),
+			Blob::from_utf8(OwnedFragment::internal("Hello")),
+			Blob::from_utf8(OwnedFragment::internal("World")),
 		];
 		let bitvec = BitVec::repeat(2, true);
 		let container = BlobContainer::new(blobs, bitvec);

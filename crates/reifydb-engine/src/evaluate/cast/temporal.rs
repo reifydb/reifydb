@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error,
+	interface::fragment::BorrowedFragment, Date, DateTime, Interval, OwnedSpan, Time, Type, error,
 	result::error::diagnostic::cast,
 	value::{
 		container::StringContainer,
@@ -55,18 +55,29 @@ macro_rules! impl_to_temporal {
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = &container[idx];
-                    let temp_span = BorrowedSpan::new(val.as_str());
+                    // Use internal fragment for now - the span will be replaced in error handling
+                    let temp_fragment = BorrowedFragment::new_internal(val.as_str());
 
-                    let parsed = $parse_fn(temp_span).map_err(|mut e| {
+                    let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
                         // Get the original span for error reporting
                         let proper_span = span();
-                        
-                        // Replace the error's origin with the proper SQL span
-                        // This ensures the error shows "at col" not the actual value
-                        e.0.with_span(&proper_span);
+
+
+                        use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+                        let value_with_position = OwnedFragment::Statement {
+                            text: val.to_string(),  // The actual value without quotes
+                            line: StatementLine(proper_span.line.0),
+                            column: StatementColumn(proper_span.column.0),
+                            source: reifydb_core::interface::fragment::SourceLocation::from_static(
+                                module_path!(),
+                                file!(),
+                                line!(),
+                            ),
+                        };
+                        e.0.with_fragment(value_with_position.clone());
                         
                         // Wrap in cast error with the original span
-                        error!(cast::invalid_temporal(proper_span, $target_type, e.0))
+                        error!(cast::invalid_temporal(value_with_position, $target_type, e.0))
                     })?;
 
                     out.push::<$type>(parsed);

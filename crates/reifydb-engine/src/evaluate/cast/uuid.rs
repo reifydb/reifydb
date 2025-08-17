@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	BorrowedSpan, OwnedSpan, Type, error,
+	OwnedSpan, Type, error,
+	interface::fragment::BorrowedFragment,
 	result::error::diagnostic::cast,
 	value::{
 		container::{StringContainer, UuidContainer},
@@ -72,13 +73,13 @@ macro_rules! impl_to_uuid {
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = &container[idx];
-                    let temp_span = BorrowedSpan::new(val.as_str());
+                    let temp_fragment = BorrowedFragment::new_internal(val.as_str());
 
-                    let parsed = $parse_fn(temp_span).map_err(|mut e| {
+                    let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
                         // Get the original span for error reporting
                         let proper_span = span();
                         
-                        // Replace the error's origin with the proper SQL span
+                        // Replace the error's origin with the proper RQL span
                         // This ensures the error shows "at col" not the actual value
                         e.0.with_span(&proper_span);
                         

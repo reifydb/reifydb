@@ -9,7 +9,7 @@ pub enum BorrowedFragment<'a> {
     /// No fragment information available
     None,
     
-    /// Fragment from a SQL statement with position information
+    /// Fragment from a RQL statement with position information
     Statement {
         text: &'a str,
         line: StatementLine,

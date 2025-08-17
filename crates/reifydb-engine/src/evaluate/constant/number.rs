@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Span, Type,
+	Type,
+	interface::fragment::Fragment,
 	result::error::diagnostic::{cast, number},
 	return_error,
 	value::{
@@ -19,38 +20,38 @@ impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
 	pub(crate) fn from_number(
-		span: impl Span,
+		fragment: impl Fragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		match target {
-			Type::Bool => Self::parse_bool(span, row_count),
-			Type::Float4 => Self::parse_float4(span, row_count),
-			Type::Float8 => Self::parse_float8(span, row_count),
-			Type::Int1 => Self::parse_int1(span, target, row_count),
-			Type::Int2 => Self::parse_int2(span, target, row_count),
-			Type::Int4 => Self::parse_int4(span, target, row_count),
-			Type::Int8 => Self::parse_int8(span, target, row_count),
+			Type::Bool => Self::parse_bool(fragment, row_count),
+			Type::Float4 => Self::parse_float4(fragment, row_count),
+			Type::Float8 => Self::parse_float8(fragment, row_count),
+			Type::Int1 => Self::parse_int1(fragment, target, row_count),
+			Type::Int2 => Self::parse_int2(fragment, target, row_count),
+			Type::Int4 => Self::parse_int4(fragment, target, row_count),
+			Type::Int8 => Self::parse_int8(fragment, target, row_count),
 			Type::Int16 => {
-				Self::parse_int16(span, target, row_count)
+				Self::parse_int16(fragment, target, row_count)
 			}
 			Type::Uint1 => {
-				Self::parse_uint1(span, target, row_count)
+				Self::parse_uint1(fragment, target, row_count)
 			}
 			Type::Uint2 => {
-				Self::parse_uint2(span, target, row_count)
+				Self::parse_uint2(fragment, target, row_count)
 			}
 			Type::Uint4 => {
-				Self::parse_uint4(span, target, row_count)
+				Self::parse_uint4(fragment, target, row_count)
 			}
 			Type::Uint8 => {
-				Self::parse_uint8(span, target, row_count)
+				Self::parse_uint8(fragment, target, row_count)
 			}
 			Type::Uint16 => {
-				Self::parse_uint16(span, target, row_count)
+				Self::parse_uint16(fragment, target, row_count)
 			}
 			_ => return_error!(cast::unsupported_cast(
-				span.to_owned(),
+				fragment.clone(),
 				Type::Float8, /* Numbers are treated as
 				               * float8 by default */
 				target,
@@ -59,27 +60,27 @@ impl NumberParser {
 	}
 
 	fn parse_bool(
-		span: impl Span,
+		fragment: impl Fragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		match parse_bool(span.clone()) {
+		match parse_bool(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::bool(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_boolean(
-				span.to_owned(),
+				fragment.clone(),
 				err.diagnostic()
 			)),
 		}
 	}
 
 	fn parse_float4(
-		span: impl Span,
+		fragment: impl Fragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		match parse_float::<f32>(span.clone()) {
+		match parse_float::<f32>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::float4(vec![v; row_count])),
 			Err(err) => {
 				return_error!(cast::invalid_number(
-					span.to_owned(),
+					fragment.clone(),
 					Type::Float4,
 					err.diagnostic()
 				))
@@ -88,14 +89,14 @@ impl NumberParser {
 	}
 
 	fn parse_float8(
-		span: impl Span,
+		fragment: impl Fragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		match parse_float::<f64>(span.clone()) {
+		match parse_float::<f64>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
 			Err(err) => {
 				return_error!(cast::invalid_number(
-					span.to_owned(),
+					fragment.clone(),
 					Type::Float8,
 					err.diagnostic()
 				))
@@ -104,13 +105,13 @@ impl NumberParser {
 	}
 
 	fn parse_int1(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_int::<i8>(span.clone()) {
+		if let Ok(v) = parse_int::<i8>(fragment.clone()) {
 			Ok(ColumnData::int1(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i8::MIN as f64
 				&& truncated <= i8::MAX as f64
@@ -121,21 +122,21 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
 				))
 			}
 		} else {
-			match parse_int::<i8>(span.clone()) {
+			match parse_int::<i8>(fragment.clone()) {
 				Ok(_) => unreachable!(),
 				Err(err) => {
 					return_error!(cast::invalid_number(
-						span.to_owned(),
+						fragment.clone(),
 						ty,
 						err.diagnostic()
 					))
@@ -145,13 +146,13 @@ impl NumberParser {
 	}
 
 	fn parse_int2(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_int::<i16>(span.clone()) {
+		if let Ok(v) = parse_int::<i16>(fragment.clone()) {
 			Ok(ColumnData::int2(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i16::MIN as f64
 				&& truncated <= i16::MAX as f64
@@ -162,10 +163,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -173,10 +174,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -184,13 +185,13 @@ impl NumberParser {
 	}
 
 	fn parse_int4(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_int::<i32>(span.clone()) {
+		if let Ok(v) = parse_int::<i32>(fragment.clone()) {
 			Ok(ColumnData::int4(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i32::MIN as f64
 				&& truncated <= i32::MAX as f64
@@ -201,10 +202,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -212,10 +213,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -223,13 +224,13 @@ impl NumberParser {
 	}
 
 	fn parse_int8(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_int::<i64>(span.clone()) {
+		if let Ok(v) = parse_int::<i64>(fragment.clone()) {
 			Ok(ColumnData::int8(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i64::MIN as f64
 				&& truncated <= i64::MAX as f64
@@ -240,10 +241,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -251,10 +252,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -262,13 +263,13 @@ impl NumberParser {
 	}
 
 	fn parse_int16(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_int::<i128>(span.clone()) {
+		if let Ok(v) = parse_int::<i128>(fragment.clone()) {
 			Ok(ColumnData::int16(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i128::MIN as f64
 				&& truncated <= i128::MAX as f64
@@ -279,10 +280,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -290,10 +291,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -301,13 +302,13 @@ impl NumberParser {
 	}
 
 	fn parse_uint1(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_uint::<u8>(span.clone()) {
+		if let Ok(v) = parse_uint::<u8>(fragment.clone()) {
 			Ok(ColumnData::uint1(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u8::MAX as f64 {
 				Ok(ColumnData::uint1(vec![
@@ -316,10 +317,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -327,10 +328,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -338,13 +339,13 @@ impl NumberParser {
 	}
 
 	fn parse_uint2(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_uint::<u16>(span.clone()) {
+		if let Ok(v) = parse_uint::<u16>(fragment.clone()) {
 			Ok(ColumnData::uint2(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u16::MAX as f64 {
 				Ok(ColumnData::uint2(vec![
@@ -353,10 +354,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -364,10 +365,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -375,13 +376,13 @@ impl NumberParser {
 	}
 
 	fn parse_uint4(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_uint::<u32>(span.clone()) {
+		if let Ok(v) = parse_uint::<u32>(fragment.clone()) {
 			Ok(ColumnData::uint4(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u32::MAX as f64 {
 				Ok(ColumnData::uint4(vec![
@@ -390,10 +391,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -401,10 +402,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -412,13 +413,13 @@ impl NumberParser {
 	}
 
 	fn parse_uint8(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_uint::<u64>(span.clone()) {
+		if let Ok(v) = parse_uint::<u64>(fragment.clone()) {
 			Ok(ColumnData::uint8(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u64::MAX as f64 {
 				Ok(ColumnData::uint8(vec![
@@ -427,10 +428,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -438,10 +439,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
@@ -449,13 +450,13 @@ impl NumberParser {
 	}
 
 	fn parse_uint16(
-		span: impl Span,
+		fragment: impl Fragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		if let Ok(v) = parse_uint::<u128>(span.clone()) {
+		if let Ok(v) = parse_uint::<u128>(fragment.clone()) {
 			Ok(ColumnData::uint16(vec![v; row_count]))
-		} else if let Ok(f) = parse_float::<f64>(span.clone()) {
+		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u128::MAX as f64 {
 				Ok(ColumnData::uint16(vec![
@@ -464,10 +465,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					span.clone().to_owned(),
+					fragment.clone().to_owned(),
 					ty,
 					number::number_out_of_range(
-						span.clone().to_owned(),
+						fragment.clone().to_owned(),
 						ty,
 						None
 					),
@@ -475,10 +476,10 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				span.clone().to_owned(),
+				fragment.clone().to_owned(),
 				ty,
 				number::invalid_number_format(
-					span.to_owned(),
+					fragment.clone(),
 					ty
 				),
 			))
