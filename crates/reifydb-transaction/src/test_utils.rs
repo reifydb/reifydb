@@ -25,10 +25,12 @@ pub fn create_test_command_transaction() -> CommandTransaction<
 	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	CommandTransaction::new(
-		Serializable::new(memory, unversioned.clone(), hooks)
+		Serializable::new(memory, unversioned.clone(), hooks.clone())
 			.begin_command()
 			.unwrap(),
 		unversioned,
 		cdc,
+		hooks,
+		Box::new(|_: &mut _| Ok(())),
 	)
 }

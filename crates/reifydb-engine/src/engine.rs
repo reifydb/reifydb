@@ -32,6 +32,14 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
+			self.hooks.clone(),
+			Box::new(|txn: &mut CommandTransaction<T>| {
+				println!(
+					"before commit: {:#?}",
+					txn.take_pending()
+				);
+				Ok(())
+			}),
 		))
 	}
 

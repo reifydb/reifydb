@@ -4,14 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-	Catalog,
-	sequence::{TableColumnSequence, TableRowSequence},
+	Catalog, sequence::TableColumnSequence,
+	table::operation::TableOperations,
 };
 use reifydb_core::{
 	ColumnDescriptor, IntoOwnedSpan, Type, Value,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Params,
-		TableRowKey, Transaction, VersionedCommandTransaction,
+		ColumnPolicyKind, CommandTransaction, Params, Transaction,
 	},
 	result::error::diagnostic::catalog::table_not_found,
 	return_error,
@@ -264,19 +263,31 @@ impl<T: Transaction> Executor<T> {
 					}
 				}
 
-				// Insert the row into the database
-				let row_id = TableRowSequence::next_row_id(
-					txn, table.id,
-				)?;
-				txn.set(
-					&TableRowKey {
-						table: table.id,
-						row: row_id,
-					}
-					.encode(),
-					row.clone(),
-				)
-				.unwrap();
+				// 	// Insert the row into the database
+				// 	let row_id = TableRowSequence::next_row_id(
+				// 		txn, table.id,
+				// 	)?;
+				// 	txn.set(
+				// 		&TableRowKey {
+				// 			table: table.id,
+				// 			row: row_id,
+				// 		}
+				// 		.encode(),
+				// 		row.clone(),
+				// 	)
+				// 	.unwrap();
+				//
+				// 	// Add to pending changes for flow
+				// processing
+				// txn.add_pending(Pending::InsertIntoTable {
+				// 		table: table.clone(),
+				// 		row_id,
+				// 		row: row.clone(),
+				// 	});
+				//
+				// txn.insert_into_table(table, key, row)
+
+				txn.insert_into_table(table.clone(), row)?;
 
 				// /////
 				//

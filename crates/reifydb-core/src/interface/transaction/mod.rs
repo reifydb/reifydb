@@ -3,6 +3,7 @@
 
 mod cdc;
 mod command;
+mod pending;
 mod query;
 mod unversioned;
 mod versioned;
@@ -11,6 +12,7 @@ use std::marker::PhantomData;
 
 pub use cdc::{CdcTransaction, StandardCdcTransaction};
 pub use command::CommandTransaction;
+pub use pending::PendingWrite;
 pub use query::QueryTransaction;
 pub use unversioned::*;
 pub use versioned::*;

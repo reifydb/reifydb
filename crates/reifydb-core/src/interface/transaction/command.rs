@@ -4,14 +4,19 @@
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
+	hook::Hooks,
 	interface::{
 		BoxedVersionedIter, Transaction, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
 		VersionedQueryTransaction, VersionedTransaction,
+		transaction::pending::PendingWrite,
 	},
 	return_error,
 	row::EncodedRow,
 };
+
+type PreCommitCallback<T> =
+	Box<dyn FnOnce(&mut CommandTransaction<T>) -> crate::Result<()>>;
 
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
@@ -22,6 +27,9 @@ pub struct CommandTransaction<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	state: TransactionState,
+	pending: Vec<PendingWrite>,
+	hooks: Hooks,
+	pre_commit_callback: Option<PreCommitCallback<T>>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -32,18 +40,32 @@ enum TransactionState {
 }
 
 impl<T: Transaction> CommandTransaction<T> {
-	/// Creates a new active command transaction
-	pub fn new(
+	/// Creates a new active command transaction with a pre-commit callback
+	pub fn new<F>(
 		versioned: <T::Versioned as VersionedTransaction>::Command,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-	) -> Self {
+		hooks: Hooks,
+		pre_commit_callback: Box<F>,
+	) -> Self
+	where
+		F: FnOnce(&mut Self) -> crate::Result<()> + 'static,
+	{
 		Self {
 			versioned: Some(versioned),
 			unversioned,
 			cdc,
 			state: TransactionState::Active,
+			hooks,
+			pending: Vec::new(),
+			pre_commit_callback: Some(Box::new(
+				pre_commit_callback,
+			)),
 		}
+	}
+
+	pub fn hooks(&self) -> &Hooks {
+		&self.hooks
 	}
 
 	/// Check if transaction is still active and return appropriate error if
@@ -102,7 +124,7 @@ impl<T: Transaction> CommandTransaction<T> {
 		self.check_active()?;
 		let result = f(self.versioned.as_mut().unwrap());
 
-		// If there was an error, we should rollback the transaction
+		// If there was an error, we should roll back the transaction
 		if result.is_err() {
 			if let Some(versioned) = self.versioned.take() {
 				self.state = TransactionState::RolledBack;
@@ -127,7 +149,7 @@ impl<T: Transaction> CommandTransaction<T> {
 		self.check_active()?;
 		let result = f(self.versioned.as_mut().unwrap());
 
-		// If there was an error, we should rollback the transaction
+		// If there was an error, we should roll back the transaction
 		if result.is_err() {
 			if let Some(versioned) = self.versioned.take() {
 				self.state = TransactionState::RolledBack;
@@ -143,6 +165,11 @@ impl<T: Transaction> CommandTransaction<T> {
 	/// this only commits the versioned transaction.
 	pub fn commit(&mut self) -> crate::Result<()> {
 		self.check_active()?;
+
+		if let Some(callback) = self.pre_commit_callback.take() {
+			callback(self)?;
+		}
+
 		if let Some(versioned) = self.versioned.take() {
 			self.state = TransactionState::Committed;
 			versioned.commit()
@@ -167,6 +194,16 @@ impl<T: Transaction> CommandTransaction<T> {
 	/// Get access to the CDC transaction interface
 	pub fn cdc(&self) -> &T::Cdc {
 		&self.cdc
+	}
+
+	/// Add a pending change to be processed at commit time
+	pub fn add_pending(&mut self, pending: PendingWrite) {
+		self.pending.push(pending);
+	}
+
+	/// Get all pending changes
+	pub fn take_pending(&mut self) -> Vec<PendingWrite> {
+		std::mem::take(&mut self.pending)
 	}
 }
 
