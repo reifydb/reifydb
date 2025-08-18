@@ -3,6 +3,7 @@
 
 mod cdc;
 mod command;
+pub mod interceptor;
 mod pending;
 mod query;
 mod unversioned;

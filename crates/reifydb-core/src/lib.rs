@@ -7,6 +7,7 @@ mod common;
 pub mod delta;
 pub mod hook;
 pub mod index;
+pub mod interceptor;
 pub mod interface;
 pub mod result;
 pub mod row;

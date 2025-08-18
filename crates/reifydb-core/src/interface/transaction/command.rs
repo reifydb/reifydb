@@ -5,6 +5,7 @@ use crate::{
 	EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
 	hook::Hooks,
+	interceptor::Interceptors,
 	interface::{
 		BoxedVersionedIter, Transaction, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
@@ -30,6 +31,7 @@ pub struct CommandTransaction<T: Transaction> {
 	pending: Vec<PendingWrite>,
 	hooks: Hooks,
 	pre_commit_callback: Option<PreCommitCallback<T>>,
+	pub(crate) interceptors: Interceptors<T>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -61,6 +63,7 @@ impl<T: Transaction> CommandTransaction<T> {
 			pre_commit_callback: Some(Box::new(
 				pre_commit_callback,
 			)),
+			interceptors: Interceptors::new(),
 		}
 	}
 
@@ -163,8 +166,13 @@ impl<T: Transaction> CommandTransaction<T> {
 	/// Commit the transaction.
 	/// Since unversioned transactions are short-lived and auto-commit,
 	/// this only commits the versioned transaction.
-	pub fn commit(&mut self) -> crate::Result<()> {
+	pub fn commit(&mut self) -> crate::Result<crate::Version> {
+		use crate::interface::transaction::interceptor::TransactionInterceptor;
+
 		self.check_active()?;
+
+		// Run pre-commit interceptors
+		TransactionInterceptor::pre_commit(self)?;
 
 		if let Some(callback) = self.pre_commit_callback.take() {
 			callback(self)?;
@@ -172,7 +180,13 @@ impl<T: Transaction> CommandTransaction<T> {
 
 		if let Some(versioned) = self.versioned.take() {
 			self.state = TransactionState::Committed;
-			versioned.commit()
+			let version = versioned.commit()?;
+
+			// Run post-commit interceptors with the committed
+			// version
+			TransactionInterceptor::post_commit(self, version)?;
+
+			Ok(version)
 		} else {
 			// This should never happen due to check_active
 			unreachable!("Transaction state inconsistency")
@@ -290,7 +304,7 @@ impl<T: Transaction> VersionedCommandTransaction for CommandTransaction<T> {
 	}
 
 	#[inline]
-	fn commit(mut self) -> crate::Result<()> {
+	fn commit(mut self) -> crate::Result<crate::Version> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
 		self.versioned.take().unwrap().commit()

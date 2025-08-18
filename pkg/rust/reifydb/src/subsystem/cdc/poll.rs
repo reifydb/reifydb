@@ -104,7 +104,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			&state.consumer_key,
 			latest_version,
 		)?;
-		transaction.commit()
+		transaction.commit().map(|_| ())
 	}
 
 	fn polling_loop(

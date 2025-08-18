@@ -8,7 +8,7 @@ use std::{
 };
 
 pub mod lifecycle;
-mod table;
+pub mod table;
 pub mod transaction;
 
 pub type BoxedHookIter = Box<dyn Iterator<Item = Box<dyn Hook>>>;

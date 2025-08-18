@@ -4,9 +4,11 @@
 use PendingWrite::InsertIntoTable;
 use reifydb_core::{
 	RowId,
+	hook::table::{TablePostInsertHook, TablePreInsertHook},
 	interface::{
 		CommandTransaction, EncodableKey, PendingWrite, TableDef,
 		TableRowKey, Transaction, VersionedCommandTransaction,
+		interceptor::TableInterceptor,
 	},
 	row::EncodedRow,
 };
@@ -42,7 +44,15 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 	) -> crate::Result<()> {
 		let row_id = TableRowSequence::next_row_id(self, table.id)?;
 
-		// self.hooks().trigger()
+		TableInterceptor::pre_insert(self, &table, &row)?;
+
+		// Still trigger hooks for backward compatibility
+		self.hooks()
+			.trigger(TablePreInsertHook {
+				table: table.clone(),
+				row: row.clone(),
+			})
+			.unwrap();
 
 		self.set(
 			&TableRowKey {
@@ -52,6 +62,17 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 			.encode(),
 			row.clone(),
 		)?;
+
+		TableInterceptor::post_insert(self, &table, row_id, &row)?;
+
+		// Still trigger hooks for backward compatibility
+		self.hooks()
+			.trigger(TablePostInsertHook {
+				table: table.clone(),
+				id: row_id,
+				row: row.clone(),
+			})
+			.unwrap();
 
 		self.add_pending(InsertIntoTable {
 			table,
@@ -74,19 +95,18 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 		}
 		.encode();
 
-		// // Get the current row before updating (for pending change
-		// // tracking)
-		// let before = self.get(&key)?.map(|v|
-		// v.into_row()).ok_or_else( 	|| {
-		// 		reifydb_core::error::Error::new(
-		// 			reifydb_core::error::ErrorKind::NotFound,
-		// 			format!("Row with id {} not found in table {}", id,
-		// table.name), 		)
-		// 	},
-		// )?;
+		// Get the current row before updating (for post-update
+		// interceptor) let old_row = self.get(&key)?.map(|v|
+		// v.into());
 
-		// Update the row in the database
+		TableInterceptor::pre_update(self, &table, id, &row)?;
+
 		self.set(&key, row.clone())?;
+
+		// Execute post-update interceptors if we had an old row
+		// if let Some(ref old) = old_row {
+		// 	TableInterceptor::post_update(self, &table, id, &row, old)?;
+		// }
 
 		self.add_pending(PendingWrite::Update {
 			table,
@@ -108,18 +128,19 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 		}
 		.encode();
 
-		// Get the row before removing (for pending change tracking)
-		// let row = self.get(&key)?.map(|v| v.into_row()).ok_or_else(
-		// 	|| {
-		// 		reifydb_core::error::Error::new(
-		// 			reifydb_core::error::ErrorKind::NotFound,
-		// 			format!("Row with id {} not found in table {}", id,
-		// table.name), 		)
-		// 	},
-		// )?;
+		// Get the row before removing (for post-delete interceptor)
+		// let deleted_row = self.get(&key)?.map(|v| v.into_row());
+
+		// Execute pre-delete interceptors
+		TableInterceptor::pre_delete(self, &table, id)?;
 
 		// Remove the row from the database
 		self.remove(&key)?;
+
+		// Execute post-delete interceptors if we had a row
+		// if let Some(ref row) = deleted_row {
+		// 	TableInterceptor::post_delete(self, &table, id, row)?;
+		// }
 
 		// Track the removal for flow processing
 		self.add_pending(PendingWrite::Remove {

@@ -47,7 +47,9 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	CommandTransaction<VS, UT>
 {
-	pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
+	pub fn commit(
+		&mut self,
+	) -> Result<reifydb_core::Version, reifydb_core::Error> {
 		let mut version: Option<Version> = None;
 		let mut deltas = CowVec::with_capacity(8);
 
@@ -76,7 +78,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 			})?;
 		}
 
-		Ok(())
+		Ok(version.unwrap_or(0))
 	}
 }
 
