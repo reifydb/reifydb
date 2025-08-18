@@ -7,9 +7,9 @@ mod cdc;
 mod engine;
 pub mod evaluate;
 mod execute;
+pub mod fragment;
 pub mod key;
 mod params;
-mod span;
 mod storage;
 mod transaction;
 
@@ -19,9 +19,9 @@ pub use cdc::*;
 pub use engine::*;
 pub use evaluate::*;
 pub use execute::*;
+pub use fragment::*;
 pub use key::*;
 pub use params::*;
-pub use span::*;
 pub use storage::*;
 pub use transaction::*;
 

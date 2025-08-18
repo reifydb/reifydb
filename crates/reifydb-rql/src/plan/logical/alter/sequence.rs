@@ -12,9 +12,9 @@ impl Compiler {
 		ast: AstAlterSequence,
 	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
-			schema: ast.schema.map(|s| s.span()),
-			table: ast.table.span(),
-			column: ast.column.span(),
+			schema: ast.schema.map(|s| s.fragment()),
+			table: ast.table.fragment(),
+			column: ast.column.fragment(),
 			value: ExpressionCompiler::compile(Ast::Literal(
 				ast.value,
 			))?,
@@ -47,22 +47,25 @@ mod tests {
 			LogicalPlan::AlterSequence(node) => {
 				assert!(node.schema.is_some());
 				assert_eq!(
-					node.schema.as_ref().unwrap().fragment,
+					node.schema
+						.as_ref()
+						.unwrap()
+						.fragment(),
 					"test"
 				);
-				assert_eq!(node.table.fragment, "users");
-				assert_eq!(node.column.fragment, "id");
+				assert_eq!(node.table.fragment(), "users");
+				assert_eq!(node.column.fragment(), "id");
 
 				assert!(matches!(
 					node.value,
 					Expression::Constant(
 						ConstantExpression::Number {
-							span: _
+							fragment: _
 						}
 					)
 				));
-				let span = node.value.span();
-				assert_eq!(span.fragment, "1000");
+				let fragment = node.value.fragment();
+				assert_eq!(fragment.fragment(), "1000");
 			}
 			_ => panic!("Expected AlterSequence plan"),
 		}
@@ -81,19 +84,19 @@ mod tests {
 		match &plans[0] {
 			LogicalPlan::AlterSequence(node) => {
 				assert!(node.schema.is_none());
-				assert_eq!(node.table.fragment, "users");
-				assert_eq!(node.column.fragment, "id");
+				assert_eq!(node.table.fragment(), "users");
+				assert_eq!(node.column.fragment(), "id");
 
 				assert!(matches!(
 					node.value,
 					Expression::Constant(
 						ConstantExpression::Number {
-							span: _
+							fragment: _
 						}
 					)
 				));
-				let span = node.value.span();
-				assert_eq!(span.fragment, "500");
+				let fragment = node.value.fragment();
+				assert_eq!(fragment.fragment(), "500");
 			}
 			_ => panic!("Expected AlterSequence plan"),
 		}

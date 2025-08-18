@@ -11,7 +11,7 @@ pub mod uuid;
 use std::ops::Deref;
 
 use reifydb_core::{
-	OwnedSpan, Type, err, error,
+	OwnedFragment, Type, err, error,
 	interface::{
 		Evaluator,
 		expression::{CastExpression, Expression},
@@ -30,7 +30,7 @@ impl StandardEvaluator {
 		ctx: &EvaluationContext,
 		cast: &CastExpression,
 	) -> crate::Result<Column> {
-		let cast_span = cast.lazy_span();
+		let cast_fragment = cast.lazy_fragment();
 
 		// FIXME optimization does not apply for prefix expressions,
 		// like cast(-2 as int1) at the moment
@@ -49,11 +49,11 @@ impl StandardEvaluator {
 					ctx,
 					&column.data(),
 					cast.to.ty,
-					cast.expression.lazy_span(),
+					cast.expression.lazy_fragment(),
 				)
 				.map_err(|e| {
 					error!(cast::invalid_number(
-						cast_span(),
+						cast_fragment(),
 						cast.to.ty,
 						e.diagnostic()
 					))
@@ -92,7 +92,7 @@ pub fn cast_column_data(
 	ctx: &EvaluationContext,
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
 		let mut result =
@@ -106,25 +106,29 @@ pub fn cast_column_data(
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
 		(_, target) if target.is_number() => {
-			number::to_number(ctx, data, target, span)
+			number::to_number(ctx, data, target, fragment)
 		}
-		(_, target) if target.is_blob() => blob::to_blob(data, span),
+		(_, target) if target.is_blob() => {
+			blob::to_blob(data, fragment)
+		}
 		(_, target) if target.is_bool() => {
-			boolean::to_boolean(data, span)
+			boolean::to_boolean(data, fragment)
 		}
-		(_, target) if target.is_utf8() => text::to_text(data, span),
+		(_, target) if target.is_utf8() => {
+			text::to_text(data, fragment)
+		}
 		(_, target) if target.is_temporal() => {
-			temporal::to_temporal(data, target, span)
+			temporal::to_temporal(data, target, fragment)
 		}
 		(_, target) if target.is_uuid() => {
-			uuid::to_uuid(data, target, span)
+			uuid::to_uuid(data, target, fragment)
 		}
 		(source, target) if source.is_uuid() || target.is_uuid() => {
-			uuid::to_uuid(data, target, span)
+			uuid::to_uuid(data, target, fragment)
 		}
 		_ => {
 			err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -137,7 +141,7 @@ mod tests {
 	use ConstantExpression::Number;
 	use Expression::{Cast, Constant};
 	use reifydb_core::{
-		OwnedSpan, Type,
+		OwnedFragment, Type,
 		interface::expression::{
 			CastExpression, ConstantExpression, Expression::Prefix,
 			PrefixExpression, PrefixOperator, TypeExpression,
@@ -155,12 +159,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("42"),
+					fragment: OwnedFragment::testing("42"),
 				})),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Int4,
 				},
 			}),
@@ -176,13 +181,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
             &Cast(CastExpression {
-                span: OwnedSpan::testing_empty(),
+                fragment: OwnedFragment::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(OwnedSpan::testing_empty()),
-                    expression: Box::new(Constant(Number { span: OwnedSpan::testing("42") })),
-                    span: OwnedSpan::testing_empty(),
+                    operator: PrefixOperator::Minus(OwnedFragment::testing_empty()),
+                    expression: Box::new(Constant(Number { fragment: OwnedFragment::testing("42") })),
+                    fragment: OwnedFragment::testing_empty(),
                 })),
-                to: TypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
+                to: TypeExpression { fragment: OwnedFragment::testing_empty(), ty: Type::Int4 },
             }),
         )
         .unwrap();
@@ -196,13 +201,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
             &Cast(CastExpression {
-                span: OwnedSpan::testing_empty(),
+                fragment: OwnedFragment::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(OwnedSpan::testing_empty()),
-                    expression: Box::new(Constant(Number { span: OwnedSpan::testing("128") })),
-                    span: OwnedSpan::testing_empty(),
+                    operator: PrefixOperator::Minus(OwnedFragment::testing_empty()),
+                    expression: Box::new(Constant(Number { fragment: OwnedFragment::testing("128") })),
+                    fragment: OwnedFragment::testing_empty(),
                 })),
-                to: TypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int1 },
+                to: TypeExpression { fragment: OwnedFragment::testing_empty(), ty: Type::Int1 },
             }),
         )
         .unwrap();
@@ -216,12 +221,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("4.2"),
+					fragment: OwnedFragment::testing("4.2"),
 				})),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float8,
 				},
 			}),
@@ -237,12 +243,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("4.2"),
+					fragment: OwnedFragment::testing("4.2"),
 				})),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float4,
 				},
 			}),
@@ -258,12 +265,15 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("-1.1"),
+					fragment: OwnedFragment::testing(
+						"-1.1",
+					),
 				})),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float4,
 				},
 			}),
@@ -279,12 +289,15 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("-1.1"),
+					fragment: OwnedFragment::testing(
+						"-1.1",
+					),
 				})),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float8,
 				},
 			}),
@@ -300,14 +313,18 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
-						span: OwnedSpan::testing("0"),
+						fragment:
+							OwnedFragment::testing(
+								"0",
+							),
 					},
 				)),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Bool,
 				},
 			}),
@@ -323,14 +340,18 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
-						span: OwnedSpan::testing("-1"),
+						fragment:
+							OwnedFragment::testing(
+								"-1",
+							),
 					},
 				)),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Bool,
 				},
 			}),
@@ -354,16 +375,18 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Bool {
-						span: OwnedSpan::testing(
-							"true",
-						),
+						fragment:
+							OwnedFragment::testing(
+								"true",
+							),
 					},
 				)),
 				to: TypeExpression {
-					span: OwnedSpan::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Date,
 				},
 			}),

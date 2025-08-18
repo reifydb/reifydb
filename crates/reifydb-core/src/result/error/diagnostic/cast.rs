@@ -1,23 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{IntoOwnedSpan, Type, result::error::diagnostic::Diagnostic};
+use crate::{
+	Type,
+	interface::fragment::{Fragment, IntoFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 pub fn unsupported_cast(
-	span: impl IntoOwnedSpan,
+	fragment: impl IntoFragment,
 	from_type: Type,
 	to_type: Type,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"cannot cast {} of type {} to {}",
-		owned_span.fragment, from_type, to_type
+		fragment.value(),
+		from_type,
+		to_type
 	));
 	Diagnostic {
         code: "CAST_001".to_string(),
         statement: None,
         message: format!("unsupported cast from {} to {}", from_type, to_type),
-        span: Some(owned_span),
+        fragment,
         label,
         help: Some("ensure the source and target types are compatible for casting".to_string()),
         notes: vec![
@@ -30,17 +36,17 @@ pub fn unsupported_cast(
 }
 
 pub fn invalid_number(
-	span: impl IntoOwnedSpan,
+	fragment: impl IntoFragment,
 	target: Type,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!("failed to cast to {}", target));
 	Diagnostic {
 		code: "CAST_002".to_string(),
 		statement: None,
 		message: format!("failed to cast to {}", target),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: None,
 		notes: vec![],
@@ -50,17 +56,17 @@ pub fn invalid_number(
 }
 
 pub fn invalid_temporal(
-	span: impl IntoOwnedSpan,
+	fragment: impl IntoFragment,
 	target: Type,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!("failed to cast to {}", target));
 	Diagnostic {
 		code: "CAST_003".to_string(),
 		statement: None,
 		message: format!("failed to cast to {}", target),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: None,
 		notes: vec![],
@@ -70,16 +76,16 @@ pub fn invalid_temporal(
 }
 
 pub fn invalid_boolean(
-	span: impl IntoOwnedSpan,
+	fragment: impl IntoFragment,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
+	let fragment = fragment.into_fragment();
 	let label = Some("failed to cast to bool".to_string());
 	Diagnostic {
 		code: "CAST_004".to_string(),
 		statement: None,
 		message: "failed to cast to bool".to_string(),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: None,
 		notes: vec![],
@@ -89,17 +95,17 @@ pub fn invalid_boolean(
 }
 
 pub fn invalid_uuid(
-	span: impl IntoOwnedSpan,
+	fragment: impl IntoFragment,
 	target: Type,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
+	let fragment = fragment.into_fragment();
 	let label = Some(format!("failed to cast to {}", target));
 	Diagnostic {
 		code: "CAST_005".to_string(),
 		statement: None,
 		message: format!("failed to cast to {}", target),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: None,
 		notes: vec![],
@@ -109,16 +115,16 @@ pub fn invalid_uuid(
 }
 
 pub fn invalid_blob_to_utf8(
-	span: impl IntoOwnedSpan,
+	fragment: impl IntoFragment,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let owned_span = span.into_span();
+	let fragment = fragment.into_fragment();
 	let label = Some("failed to cast BLOB to UTF8".to_string());
 	Diagnostic {
         code: "CAST_006".to_string(),
         statement: None,
         message: "failed to cast BLOB to UTF8".to_string(),
-        span: Some(owned_span),
+        fragment,
         label,
         help: Some("BLOB contains invalid UTF-8 bytes. Consider using to_utf8_lossy() function instead".to_string()),
         notes: vec![],

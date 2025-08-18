@@ -191,6 +191,7 @@ mod tests {
 
 	use crate::{
 		hook::{BoxedHookIter, Callback, Hook, Hooks},
+		interface::fragment::OwnedFragment,
 		result::error::diagnostic::Diagnostic,
 		return_error,
 	};
@@ -281,7 +282,7 @@ mod tests {
 				statement: None,
 				message: "".to_string(),
 				column: None,
-				span: None,
+				fragment: OwnedFragment::None,
 				label: None,
 				help: None,
 				notes: vec![],

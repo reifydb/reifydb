@@ -79,7 +79,7 @@ impl testscript::Runner for Runner {
 				Catalog::create_schema(
 					&mut dummy_tx,
 					SchemaToCreate {
-						schema_span: None,
+						schema_fragment: None,
 						name: "default".to_string(),
 					},
 				)
@@ -88,7 +88,7 @@ impl testscript::Runner for Runner {
 				Catalog::create_table(
 					&mut dummy_tx,
 					TableToCreate {
-						span: None,
+						fragment: None,
 						table: "users".to_string(),
 						schema: "default".to_string(),
 						columns: vec![],
@@ -99,7 +99,7 @@ impl testscript::Runner for Runner {
 				Catalog::create_table(
 					&mut dummy_tx,
 					TableToCreate {
-						span: None,
+						fragment: None,
 						table: "orders".to_string(),
 						schema: "default".to_string(),
 						columns: vec![],

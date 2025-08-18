@@ -4,7 +4,7 @@
 use std::fmt::{Debug, Display};
 
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	result::error::diagnostic::{boolean::invalid_number_boolean, cast},
 	return_error,
 	value::{
@@ -18,26 +18,42 @@ use crate::columnar::ColumnData;
 
 pub fn to_boolean(
 	data: &ColumnData,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Int1(container) => from_int1(container, &span),
-		ColumnData::Int2(container) => from_int2(container, &span),
-		ColumnData::Int4(container) => from_int4(container, &span),
-		ColumnData::Int8(container) => from_int8(container, &span),
-		ColumnData::Int16(container) => from_int16(container, &span),
-		ColumnData::Uint1(container) => from_uint1(container, &span),
-		ColumnData::Uint2(container) => from_uint2(container, &span),
-		ColumnData::Uint4(container) => from_uint4(container, &span),
-		ColumnData::Uint8(container) => from_uint8(container, &span),
-		ColumnData::Uint16(container) => from_uint16(container, &span),
-		ColumnData::Float4(container) => from_float4(container, &span),
-		ColumnData::Float8(container) => from_float8(container, &span),
-		ColumnData::Utf8(container) => from_utf8(container, span),
+		ColumnData::Int1(container) => from_int1(container, &fragment),
+		ColumnData::Int2(container) => from_int2(container, &fragment),
+		ColumnData::Int4(container) => from_int4(container, &fragment),
+		ColumnData::Int8(container) => from_int8(container, &fragment),
+		ColumnData::Int16(container) => {
+			from_int16(container, &fragment)
+		}
+		ColumnData::Uint1(container) => {
+			from_uint1(container, &fragment)
+		}
+		ColumnData::Uint2(container) => {
+			from_uint2(container, &fragment)
+		}
+		ColumnData::Uint4(container) => {
+			from_uint4(container, &fragment)
+		}
+		ColumnData::Uint8(container) => {
+			from_uint8(container, &fragment)
+		}
+		ColumnData::Uint16(container) => {
+			from_uint16(container, &fragment)
+		}
+		ColumnData::Float4(container) => {
+			from_float4(container, &fragment)
+		}
+		ColumnData::Float8(container) => {
+			from_float8(container, &fragment)
+		}
+		ColumnData::Utf8(container) => from_utf8(container, fragment),
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				Type::Bool
 			))
@@ -47,7 +63,7 @@ pub fn to_boolean(
 
 fn to_bool<T>(
 	container: &NumberContainer<T>,
-	span: &impl Fn() -> OwnedSpan,
+	fragment: &impl Fn() -> OwnedFragment,
 	validate: impl Fn(T) -> Option<bool>,
 ) -> crate::Result<ColumnData>
 where
@@ -59,11 +75,19 @@ where
 			match validate(container[idx]) {
 				Some(b) => out.push::<bool>(b),
 				None => {
-					let mut span = span();
-					span.fragment =
-						container[idx].to_string();
+					use reifydb_core::Fragment;
+					let base_fragment = fragment();
+					let error_fragment =
+						OwnedFragment::Statement {
+							text: container[idx]
+								.to_string(),
+							line: base_fragment
+								.line(),
+							column: base_fragment
+								.column(),
+						};
 					return_error!(invalid_number_boolean(
-						span
+						error_fragment
 					));
 				}
 			}
@@ -79,9 +103,9 @@ macro_rules! impl_integer_to_bool {
 		#[inline]
 		fn $fn_name(
 			container: &NumberContainer<$type>,
-			span: &impl Fn() -> OwnedSpan,
+			fragment: &impl Fn() -> OwnedFragment,
 		) -> crate::Result<ColumnData> {
-			to_bool(container, span, |val| match val {
+			to_bool(container, fragment, |val| match val {
 				0 => Some(false),
 				1 => Some(true),
 				_ => None,
@@ -95,9 +119,9 @@ macro_rules! impl_float_to_bool {
 		#[inline]
 		fn $fn_name(
 			container: &NumberContainer<$type>,
-			span: &impl Fn() -> OwnedSpan,
+			fragment: &impl Fn() -> OwnedFragment,
 		) -> crate::Result<ColumnData> {
-			to_bool(container, span, |val| {
+			to_bool(container, fragment, |val| {
 				if val == 0.0 {
 					Some(false)
 				} else if val == 1.0 {
@@ -125,15 +149,25 @@ impl_float_to_bool!(from_float8, f64);
 
 fn from_utf8(
 	container: &StringContainer,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
+	use reifydb_core::interface::fragment::BorrowedFragment;
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			let mut span = span();
-			span.fragment = container[idx].clone();
-
-			out.push(parse_bool(span)?);
+			// Parse with internal fragment, then replace with
+			// proper source fragment if error
+			let temp_fragment =
+				BorrowedFragment::new_internal(&container[idx]);
+			match parse_bool(temp_fragment) {
+				Ok(b) => out.push(b),
+				Err(mut e) => {
+					// Replace the error's fragment with the
+					// proper source fragment
+					e.0.with_fragment(fragment());
+					return Err(e);
+				}
+			}
 		} else {
 			out.push_undefined();
 		}

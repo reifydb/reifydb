@@ -4,7 +4,7 @@
 use nom::{IResult, Input, Parser, branch::alt, bytes::tag, combinator::value};
 use nom_locate::LocatedSpan;
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_fragment};
 
 macro_rules! separator {
     (
@@ -42,7 +42,7 @@ pub(crate) fn parse_separator(
 
 	parser.map(|sep| Token {
 		kind: TokenKind::Separator(sep),
-		span: as_span(start.take(sep.as_str().len())),
+		fragment: as_fragment(start.take(sep.as_str().len())),
 	})
 	.parse(input)
 }
@@ -50,6 +50,7 @@ pub(crate) fn parse_separator(
 #[cfg(test)]
 mod tests {
 	use nom_locate::LocatedSpan;
+	use reifydb_core::Fragment;
 
 	use crate::ast::lex::{
 		TokenKind,
@@ -81,9 +82,9 @@ mod tests {
 			"ty mismatch for symbol: {}",
 			symbol
 		);
-		assert_eq!(token.span.fragment, symbol);
-		assert_eq!(token.span.column, 1);
-		assert_eq!(token.span.line, 1);
+		assert_eq!(token.fragment.fragment(), symbol);
+		assert_eq!(token.fragment.column().0, 1);
+		assert_eq!(token.fragment.line().0, 1);
 		assert_eq!(*remaining.fragment(), " rest");
 	}
 

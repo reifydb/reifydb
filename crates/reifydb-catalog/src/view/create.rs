@@ -3,7 +3,7 @@
 
 use ViewKind::{Deferred, Transactional};
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	interface::{
 		CommandTransaction, EncodableKey, Key, SchemaId, SchemaViewKey,
 		Transaction, VersionedCommandTransaction, ViewDef, ViewId,
@@ -19,7 +19,6 @@ use crate::{
 	Catalog,
 	sequence::SystemSequence,
 	view::layout::{view, view_schema},
-	view_column,
 	view_column::ColumnIndex,
 };
 
@@ -27,12 +26,12 @@ use crate::{
 pub struct ViewColumnToCreate {
 	pub name: String,
 	pub ty: Type,
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ViewToCreate {
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 	pub view: String,
 	pub schema: String,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -62,7 +61,7 @@ impl Catalog {
 			Catalog::find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
-				to_create.span,
+				to_create.fragment,
 				&to_create.schema
 			));
 		};
@@ -73,7 +72,7 @@ impl Catalog {
 			&to_create.view,
 		)? {
 			return_error!(view_already_exists(
-				to_create.span,
+				to_create.fragment,
 				&schema.name,
 				&view.name
 			));
@@ -155,8 +154,10 @@ impl Catalog {
 			Catalog::create_view_column(
 				txn,
 				view,
-				view_column::ViewColumnToCreate {
-					span: column_to_create.span.clone(),
+				crate::view_column::ViewColumnToCreate {
+					fragment: column_to_create
+						.fragment
+						.clone(),
 					schema_name: &to_create.schema,
 					view,
 					view_name: &to_create.view,
@@ -194,7 +195,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			view: "test_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		// First creation should succeed
@@ -223,7 +224,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			view: "test_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		Catalog::create_deferred_view(&mut txn, to_create).unwrap();
@@ -232,7 +233,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			view: "another_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		Catalog::create_deferred_view(&mut txn, to_create).unwrap();
@@ -274,7 +275,7 @@ mod tests {
 			schema: "missing_schema".to_string(),
 			view: "my_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		let err = Catalog::create_deferred_view(&mut txn, to_create)

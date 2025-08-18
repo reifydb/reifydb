@@ -16,9 +16,11 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
-pub use interface::{
-	BorrowedSpan, ColumnDescriptor, IntoOwnedSpan, OwnedSpan, Span,
-	SpanColumn, SpanLine,
+pub use interface::ColumnDescriptor;
+// Re-export fragment types
+pub use interface::fragment::{
+	BorrowedFragment, Fragment, IntoFragment, IntoOwnedFragment,
+	OwnedFragment, StatementColumn, StatementLine,
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod span;
+mod fragment;
 
 use std::{
 	fmt,
@@ -10,13 +10,13 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{OwnedSpan, Type};
+use crate::{OwnedFragment, Type, interface::fragment::Fragment};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression {
 	pub alias: IdentExpression,
 	pub expression: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl Display for AliasExpression {
@@ -80,35 +80,38 @@ pub enum Expression {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessSourceExpression {
-	pub source: OwnedSpan,
-	pub column: OwnedSpan,
+	pub source: OwnedFragment,
+	pub column: OwnedFragment,
 }
 
 impl AccessSourceExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([self.source.clone(), self.column.clone()])
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.source.clone(),
+			self.column.clone(),
+		])
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConstantExpression {
 	Undefined {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 	Bool {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 	// any number
 	Number {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 	// any textual representation can be String, Text, ...
 	Text {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 	// any temporal representation can be Date, Time, DateTime, ...
 	Temporal {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 }
 
@@ -119,55 +122,55 @@ impl Display for ConstantExpression {
 				..
 			} => write!(f, "undefined"),
 			ConstantExpression::Bool {
-				span,
-			} => write!(f, "{}", span.fragment),
+				fragment,
+			} => write!(f, "{}", fragment.fragment()),
 			ConstantExpression::Number {
-				span,
-			} => write!(f, "{}", span.fragment),
+				fragment,
+			} => write!(f, "{}", fragment.fragment()),
 			ConstantExpression::Text {
-				span,
-			} => write!(f, "\"{}\"", span.fragment),
+				fragment,
+			} => write!(f, "\"{}\"", fragment.fragment()),
 			ConstantExpression::Temporal {
-				span,
-			} => write!(f, "{}", span.fragment),
+				fragment,
+			} => write!(f, "{}", fragment.fragment()),
 		}
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CastExpression {
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 	pub expression: Box<Expression>,
 	pub to: TypeExpression,
 }
 
 impl CastExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.span.clone(),
-			self.expression.span(),
-			self.to.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.fragment.clone(),
+			self.expression.fragment(),
+			self.to.fragment(),
 		])
 	}
 
-	pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
-		move || self.span()
+	pub fn lazy_fragment(&self) -> impl Fn() -> OwnedFragment + '_ {
+		move || self.fragment()
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeExpression {
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 	pub ty: Type,
 }
 
 impl TypeExpression {
-	pub fn span(&self) -> OwnedSpan {
-		self.span.clone()
+	pub fn fragment(&self) -> OwnedFragment {
+		self.fragment.clone()
 	}
 
-	pub fn lazy_span(&self) -> impl Fn() -> OwnedSpan + '_ {
-		move || self.span()
+	pub fn lazy_fragment(&self) -> impl Fn() -> OwnedFragment + '_ {
+		move || self.fragment()
 	}
 }
 
@@ -175,50 +178,50 @@ impl TypeExpression {
 pub struct AddExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DivExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MulExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GreaterThanExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl GreaterThanExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -227,15 +230,15 @@ impl GreaterThanExpression {
 pub struct GreaterThanEqualExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl GreaterThanEqualExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -244,15 +247,15 @@ impl GreaterThanEqualExpression {
 pub struct LessThanExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl LessThanExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -261,15 +264,15 @@ impl LessThanExpression {
 pub struct LessThanEqualExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl LessThanEqualExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -278,15 +281,15 @@ impl LessThanEqualExpression {
 pub struct EqualExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl EqualExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -295,15 +298,15 @@ impl EqualExpression {
 pub struct NotEqualExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl NotEqualExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -313,16 +316,16 @@ pub struct BetweenExpression {
 	pub value: Box<Expression>,
 	pub lower: Box<Expression>,
 	pub upper: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl BetweenExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.value.span(),
-			self.span.clone(),
-			self.lower.span(),
-			self.upper.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.value.fragment(),
+			self.fragment.clone(),
+			self.lower.fragment(),
+			self.upper.fragment(),
 		])
 	}
 }
@@ -331,15 +334,15 @@ impl BetweenExpression {
 pub struct AndExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl AndExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -348,15 +351,15 @@ impl AndExpression {
 pub struct OrExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl OrExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
@@ -365,24 +368,24 @@ impl OrExpression {
 pub struct XorExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl XorExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.left.span(),
-			self.span.clone(),
-			self.right.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.left.fragment(),
+			self.fragment.clone(),
+			self.right.fragment(),
 		])
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColumnExpression(pub OwnedSpan);
+pub struct ColumnExpression(pub OwnedFragment);
 
 impl ColumnExpression {
-	pub fn span(&self) -> OwnedSpan {
+	pub fn fragment(&self) -> OwnedFragment {
 		self.0.clone()
 	}
 }
@@ -397,7 +400,8 @@ impl Display for Expression {
 				write!(
 					f,
 					"{}.{}",
-					target.fragment, property.fragment
+					target.fragment(),
+					property.fragment()
 				)
 			}
 			Expression::Alias(AliasExpression {
@@ -411,11 +415,11 @@ impl Display for Expression {
 				expression: expr,
 				..
 			}) => write!(f, "{}", expr),
-			Expression::Constant(span) => {
-				write!(f, "Constant({})", span)
+			Expression::Constant(fragment) => {
+				write!(f, "Constant({})", fragment)
 			}
-			Expression::Column(ColumnExpression(span)) => {
-				write!(f, "Column({})", span.fragment)
+			Expression::Column(ColumnExpression(fragment)) => {
+				write!(f, "Column({})", fragment.fragment())
 			}
 			Expression::Add(AddExpression {
 				left,
@@ -535,17 +539,17 @@ impl Display for Expression {
 				write!(f, "({} xor {})", left, right)
 			}
 			Expression::Type(TypeExpression {
-				span,
+				fragment,
 				..
-			}) => write!(f, "{}", span.fragment),
+			}) => write!(f, "{}", fragment.fragment()),
 			Expression::Parameter(param) => match param {
 				ParameterExpression::Positional {
-					span,
+					fragment,
 					..
-				} => write!(f, "{}", span.fragment),
+				} => write!(f, "{}", fragment.fragment()),
 				ParameterExpression::Named {
-					span,
-				} => write!(f, "{}", span.fragment),
+					fragment,
+				} => write!(f, "{}", fragment.fragment()),
 			},
 		}
 	}
@@ -555,20 +559,23 @@ impl Display for Expression {
 pub struct CallExpression {
 	pub func: IdentExpression,
 	pub args: Vec<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl CallExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan {
-			column: self.func.0.column,
-			line: self.func.0.line,
-			fragment: format!(
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::Statement {
+			column: self.func.0.column(),
+			line: self.func.0.line(),
+			text: format!(
 				"{}({})",
-				self.func.0.fragment,
+				self.func.0.fragment(),
 				self.args
 					.iter()
-					.map(|arg| arg.span().fragment.clone())
+					.map(|arg| arg
+						.fragment()
+						.fragment()
+						.to_string())
 					.collect::<Vec<_>>()
 					.join(",")
 			),
@@ -589,15 +596,15 @@ impl Display for CallExpression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IdentExpression(pub OwnedSpan);
+pub struct IdentExpression(pub OwnedFragment);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParameterExpression {
 	Positional {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 	Named {
-		span: OwnedSpan,
+		fragment: OwnedFragment,
 	},
 }
 
@@ -605,8 +612,8 @@ impl ParameterExpression {
 	pub fn position(&self) -> Option<u32> {
 		match self {
 			ParameterExpression::Positional {
-				span,
-			} => span.fragment[1..].parse().ok(),
+				fragment,
+			} => fragment.fragment()[1..].parse().ok(),
 			ParameterExpression::Named {
 				..
 			} => None,
@@ -616,8 +623,8 @@ impl ParameterExpression {
 	pub fn name(&self) -> Option<&str> {
 		match self {
 			ParameterExpression::Named {
-				span,
-			} => Some(&span.fragment[1..]),
+				fragment,
+			} => Some(&fragment.fragment()[1..]),
 			ParameterExpression::Positional {
 				..
 			} => None,
@@ -627,29 +634,29 @@ impl ParameterExpression {
 
 impl IdentExpression {
 	pub fn name(&self) -> &str {
-		&self.0.fragment
+		self.0.fragment()
 	}
 }
 
 impl Display for IdentExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", self.0.fragment)
+		write!(f, "{}", self.0.fragment())
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PrefixOperator {
-	Minus(OwnedSpan),
-	Plus(OwnedSpan),
-	Not(OwnedSpan),
+	Minus(OwnedFragment),
+	Plus(OwnedFragment),
+	Not(OwnedFragment),
 }
 
 impl PrefixOperator {
-	pub fn span(&self) -> OwnedSpan {
+	pub fn fragment(&self) -> OwnedFragment {
 		match self {
-			PrefixOperator::Minus(span) => span.clone(),
-			PrefixOperator::Plus(span) => span.clone(),
-			PrefixOperator::Not(span) => span.clone(),
+			PrefixOperator::Minus(fragment) => fragment.clone(),
+			PrefixOperator::Plus(fragment) => fragment.clone(),
+			PrefixOperator::Not(fragment) => fragment.clone(),
 		}
 	}
 }
@@ -668,14 +675,14 @@ impl Display for PrefixOperator {
 pub struct PrefixExpression {
 	pub operator: PrefixOperator,
 	pub expression: Box<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl PrefixExpression {
-	pub fn span(&self) -> OwnedSpan {
-		OwnedSpan::merge_all([
-			self.operator.span(),
-			self.expression.span(),
+	pub fn fragment(&self) -> OwnedFragment {
+		OwnedFragment::merge_all([
+			self.operator.fragment(),
+			self.expression.fragment(),
 		])
 	}
 }
@@ -689,7 +696,7 @@ impl Display for PrefixExpression {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TupleExpression {
 	pub expressions: Vec<Expression>,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
 impl Display for TupleExpression {

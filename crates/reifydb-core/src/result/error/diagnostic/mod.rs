@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{OwnedSpan, Type};
+use crate::{OwnedFragment, Type, interface::fragment::IntoFragment};
 
 pub mod ast;
 pub mod auth;
@@ -31,14 +31,14 @@ pub mod transaction;
 mod util;
 pub mod uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
 	pub code: String,
 	pub statement: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
 
-	pub span: Option<OwnedSpan>,
+	pub fragment: OwnedFragment,
 	pub label: Option<String>,
 	pub help: Option<String>,
 	pub notes: Vec<String>,
@@ -49,6 +49,22 @@ pub struct Diagnostic {
 pub struct DiagnosticColumn {
 	pub name: String,
 	pub ty: Type,
+}
+
+impl Default for Diagnostic {
+	fn default() -> Self {
+		Self {
+			code: String::new(),
+			statement: None,
+			message: String::new(),
+			column: None,
+			fragment: OwnedFragment::None,
+			label: None,
+			help: None,
+			notes: Vec::new(),
+			cause: None,
+		}
+	}
 }
 
 impl Display for Diagnostic {
@@ -74,14 +90,27 @@ impl Diagnostic {
 		}
 	}
 
-	/// Set or update the span for this diagnostic and all nested
+	/// Set or update the fragment for this diagnostic and all nested
 	/// diagnostics recursively
-	pub fn with_span(&mut self, new_span: &OwnedSpan) {
-		if self.span.is_none() {
-			self.span = Some(new_span.clone());
-		}
+	pub fn with_fragment(&mut self, new_fragment: impl IntoFragment) {
+		// Always update the fragment, not just when it's None
+		// This is needed for cast errors that need to update the
+		// fragment
+		self.fragment = new_fragment.into_fragment();
+
 		if let Some(ref mut cause) = self.cause {
-			cause.with_span(new_span);
+			cause.with_fragment(self.fragment.clone());
+		}
+	}
+
+	/// Get the fragment if this is a Statement fragment (for backward
+	/// compatibility)
+	pub fn fragment(&self) -> Option<OwnedFragment> {
+		match &self.fragment {
+			OwnedFragment::Statement {
+				..
+			} => Some(self.fragment.clone()),
+			_ => None,
 		}
 	}
 }

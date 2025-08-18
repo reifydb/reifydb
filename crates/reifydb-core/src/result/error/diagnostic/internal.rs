@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::diagnostic::Diagnostic;
+use crate::{OwnedFragment, diagnostic::Diagnostic};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context
@@ -56,7 +56,7 @@ pub fn internal_with_context(
         statement: None,
         message: detailed_message,
         column: None,
-        span: None,
+        fragment: OwnedFragment::None,
         label: Some(format!("Internal invariant violated at {}:{}:{}", file, line, column)),
         help: Some(help_message),
         notes: vec![

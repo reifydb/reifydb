@@ -11,8 +11,8 @@ impl Compiler {
 		ast: AstDelete,
 	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Delete(DeleteNode {
-			schema: ast.schema.map(|s| s.span()),
-			table: ast.table.span(),
+			schema: ast.schema.map(|s| s.fragment()),
+			table: ast.table.fragment(),
 		}))
 	}
 }

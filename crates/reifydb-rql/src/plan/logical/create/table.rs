@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::table::TableColumnToCreate;
-use reifydb_core::{OwnedSpan, interface::ColumnPolicyKind};
+use reifydb_core::{OwnedFragment, interface::ColumnPolicyKind};
 
 use crate::{
 	ast::AstCreateTable,
@@ -33,9 +33,9 @@ impl Compiler {
 				vec![]
 			};
 
-			let span = Some(OwnedSpan::merge_all([
-				col.name.span(),
-				col.ty.span(),
+			let fragment = Some(OwnedFragment::merge_all([
+				col.name.fragment(),
+				col.ty.fragment(),
 			]));
 
 			columns.push(TableColumnToCreate {
@@ -43,13 +43,13 @@ impl Compiler {
 				ty,
 				policies,
 				auto_increment: col.auto_increment,
-				span,
+				fragment,
 			});
 		}
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
-			schema: ast.schema.span(),
-			table: ast.table.span(),
+			schema: ast.schema.fragment(),
+			table: ast.table.fragment(),
 			if_not_exists: false,
 			columns,
 		}))

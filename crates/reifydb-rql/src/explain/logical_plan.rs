@@ -78,24 +78,28 @@ fn render_logical_plan_inner(
 				}
 			);
 
-			if let Some(schema_span) = schema {
+			if let Some(schema_fragment) = schema {
 				output.push_str(&format!(
 					"{}├── Schema: {}\n",
-					child_prefix, schema_span.fragment
+					child_prefix,
+					schema_fragment.fragment()
 				));
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
-					child_prefix, table.fragment
+					child_prefix,
+					table.fragment()
 				));
 			} else {
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
-					child_prefix, table.fragment
+					child_prefix,
+					table.fragment()
 				));
 			}
 			output.push_str(&format!(
 				"{}├── Column: {}\n",
-				child_prefix, column.fragment
+				child_prefix,
+				column.fragment()
 			));
 			output.push_str(&format!(
 				"{}└── Value: {}\n",
@@ -131,15 +135,18 @@ fn render_logical_plan_inner(
 			));
 			output.push_str(&format!(
 				"{}├── Name: {}\n",
-				child_prefix, name.fragment
+				child_prefix,
+				name.fragment()
 			));
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
-				child_prefix, schema.fragment
+				child_prefix,
+				schema.fragment()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
-				child_prefix, table.fragment
+				child_prefix,
+				table.fragment()
 			));
 
 			let columns_str = columns
@@ -148,11 +155,13 @@ fn render_logical_plan_inner(
 					if let Some(order) = &col.order {
 						format!(
 							"{} {:?}",
-							col.column.fragment,
+							col.column.fragment(),
 							order
 						)
 					} else {
-						col.column.fragment.to_string()
+						col.column
+							.fragment()
+							.to_string()
 					}
 				})
 				.collect::<Vec<_>>()
@@ -358,7 +367,8 @@ fn render_logical_plan_inner(
 		}) => {
 			let name = format!(
 				"{}.{}",
-				schema.fragment, table.fragment
+				schema.fragment(),
+				table.fragment()
 			);
 
 			output.push_str(&format!(

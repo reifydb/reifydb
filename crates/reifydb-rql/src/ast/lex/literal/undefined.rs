@@ -7,15 +7,17 @@ use nom_locate::LocatedSpan;
 use crate::ast::{
 	Token,
 	TokenKind::Literal,
-	lex::{Literal::Undefined, as_span},
+	lex::{Literal::Undefined, as_fragment},
 };
 
 pub(crate) fn parse_undefined(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
-	alt((map(tag_no_case("undefined"), |span: LocatedSpan<&str>| Token {
-		kind: Literal(Undefined),
-		span: as_span(span),
+	alt((map(tag_no_case("undefined"), |fragment: LocatedSpan<&str>| {
+		Token {
+			kind: Literal(Undefined),
+			fragment: as_fragment(fragment),
+		}
 	}),))
 	.parse(input)
 }

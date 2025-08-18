@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::result::error::diagnostic::Diagnostic;
+use crate::{
+	interface::fragment::OwnedFragment,
+	result::error::diagnostic::Diagnostic,
+};
 
 /// Authentication failed due to invalid credentials or other reasons
 pub fn authentication_failed(reason: String) -> Diagnostic {
@@ -10,7 +13,7 @@ pub fn authentication_failed(reason: String) -> Diagnostic {
 		statement: None,
 		message: format!("Authentication failed: {}", reason),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check your credentials and try again".to_string()),
 		notes: vec![],
@@ -28,7 +31,7 @@ pub fn authorization_denied(resource: String) -> Diagnostic {
 			resource
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(
 			"Check your permissions for this resource".to_string()
@@ -45,7 +48,7 @@ pub fn token_expired() -> Diagnostic {
 		statement: None,
 		message: "Authentication token has expired".to_string(),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Refresh your authentication token".to_string()),
 		notes: vec![],
@@ -61,7 +64,7 @@ pub fn invalid_token() -> Diagnostic {
 		message: "Invalid or malformed authentication token"
 			.to_string(),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Provide a valid authentication token".to_string()),
 		notes: vec![],

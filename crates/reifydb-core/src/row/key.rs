@@ -111,7 +111,7 @@ impl EncodedKeyRange {
 		}
 	}
 
-	/// Constructs a key range that spans the entire keyspace.
+	/// Constructs a key range that fragments the entire keyspace.
 	///
 	/// This range has no lower or upper bounds, making it suitable for full
 	/// scans over all keys in a sorted key-value store.

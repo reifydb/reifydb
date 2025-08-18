@@ -14,8 +14,8 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
-	Date, DateTime, Error, Interval, OwnedSpan, RowId, Time, Type, err,
-	interface::Params,
+	Date, DateTime, Error, Interval, RowId, Time, Type, err,
+	interface::{Params, fragment::OwnedFragment},
 	result::{
 		Frame, FrameColumn, FrameColumnData,
 		error::diagnostic::Diagnostic,
@@ -70,7 +70,7 @@ impl WsClient {
 					statement: None,
 					message: "TBD".to_string(),
 					column: None,
-					span: None,
+					fragment: OwnedFragment::None,
 					label: None,
 					help: None,
 					notes: vec![],
@@ -309,8 +309,9 @@ fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
 /// Parse interval from ISO 8601 duration string using core parser (eliminates
 /// approximation)
 fn parse_interval_string(s: &str) -> Result<Interval, ()> {
-	let span = OwnedSpan::testing(s);
-	parse_interval(span).map_err(|_| ())
+	use reifydb_core::interface::fragment::BorrowedFragment;
+	let fragment = BorrowedFragment::new_internal(s);
+	parse_interval(fragment).map_err(|_| ())
 }
 
 fn core_params_to_ws_params(params: Params) -> Option<WsParams> {

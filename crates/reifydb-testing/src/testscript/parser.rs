@@ -31,13 +31,13 @@ use nom::{
 
 use crate::testscript::command::{Argument, Block, Command};
 
-/// A string input span, annotated with location information.
+/// A string input fragment, annotated with location information.
 type Span<'a> = nom_locate::LocatedSpan<&'a str>;
 
-/// A Span parse result.
+/// A Fragment parse result.
 type IResult<'a, O> = nom::IResult<Span<'a>, O>;
 
-/// A Span parse error.
+/// A Fragment parse error.
 type Error<'a> = nom::error::Error<Span<'a>>;
 
 /// Parses the given testscript string into a list of command blocks.

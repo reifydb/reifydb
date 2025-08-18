@@ -39,6 +39,6 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
 		"uuid4" => Type::Uuid4,
 		"uuid7" => Type::Uuid7,
 		"blob" => Type::Blob,
-		_ => return_error!(unrecognized_type(ast.span.clone())),
+		_ => return_error!(unrecognized_type(ast.clone().fragment())),
 	})
 }

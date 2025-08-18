@@ -4,23 +4,26 @@
 /// Macro to create an Error from a diagnostic function call
 ///
 /// Usage:
-/// - `error!(diagnostic_function(args))` - Creates an error without span
-/// - `error!(diagnostic_function(args), span)` - Creates an error with span
+/// - `error!(diagnostic_function(args))` - Creates an error without fragment
+/// - `error!(diagnostic_function(args), fragment)` - Creates an error with
+///   fragment
 ///
 /// Expands to: `Error(diagnostic_function(args))` or
-/// `Error(diagnostic_function(args).with_span(span))`
+/// `Error(diagnostic_function(args).with_fragment(fragment))`
 ///
 /// Examples:
 /// - `error!(sequence_exhausted(Type::Uint8))`
-/// - `error!(sequence_exhausted(Type::Uint8), span)`
+/// - `error!(sequence_exhausted(Type::Uint8), fragment)`
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {
 		$crate::error::Error($diagnostic)
 	};
-	($diagnostic:expr, $span:expr) => {{
+	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_span(&$crate::IntoOwnedSpan::into_span($span));
+		diag.with_fragment($crate::IntoOwnedFragment::into_fragment(
+			$fragment,
+		));
 		$crate::error::Error(diag)
 	}};
 }
@@ -28,24 +31,27 @@ macro_rules! error {
 /// Macro to return an error from a diagnostic function call
 ///
 /// Usage:
-/// - `return_error!(diagnostic_function(args))` - Returns an error without span
-/// - `return_error!(diagnostic_function(args), span)` - Returns an error with
-///   span
+/// - `return_error!(diagnostic_function(args))` - Returns an error without
+///   fragment
+/// - `return_error!(diagnostic_function(args), fragment)` - Returns an error
+///   with fragment
 ///
 /// Expands to: `return Err(Error(diagnostic_function(args)))` or `return
-/// Err(Error(diagnostic_function(args).with_span(span)))`
+/// Err(Error(diagnostic_function(args).with_fragment(fragment)))`
 ///
 /// Examples:
 /// - `return_error!(sequence_exhausted(Type::Uint8))`
-/// - `return_error!(sequence_exhausted(Type::Uint8), span)`
+/// - `return_error!(sequence_exhausted(Type::Uint8), fragment)`
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
 		return Err($crate::error::Error($diagnostic))
 	};
-	($diagnostic:expr, $span:expr) => {{
+	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_span(&$crate::IntoOwnedSpan::into_span($span));
+		diag.with_fragment($crate::IntoOwnedFragment::into_fragment(
+			$fragment,
+		));
 		return Err($crate::error::Error(diag));
 	}};
 }
@@ -53,23 +59,25 @@ macro_rules! return_error {
 /// Macro to create an Err(Error()) from a diagnostic function call
 ///
 /// Usage:
-/// - `err!(diagnostic_function(args))` - Creates an Err without span
-/// - `err!(diagnostic_function(args), span)` - Creates an Err with span
+/// - `err!(diagnostic_function(args))` - Creates an Err without fragment
+/// - `err!(diagnostic_function(args), fragment)` - Creates an Err with fragment
 ///
 /// Expands to: `Err(Error(diagnostic_function(args)))` or
-/// `Err(Error(diagnostic_function(args).with_span(span)))`
+/// `Err(Error(diagnostic_function(args).with_fragment(fragment)))`
 ///
 /// Examples:
 /// - `err!(sequence_exhausted(Type::Uint8))`
-/// - `err!(sequence_exhausted(Type::Uint8), span)`
+/// - `err!(sequence_exhausted(Type::Uint8), fragment)`
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
 		Err($crate::error::Error($diagnostic))
 	};
-	($diagnostic:expr, $span:expr) => {{
+	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_span(&$crate::IntoOwnedSpan::into_span($span));
+		diag.with_fragment($crate::IntoOwnedFragment::into_fragment(
+			$fragment,
+		));
 		Err($crate::error::Error(diag))
 	}};
 }
@@ -77,7 +85,8 @@ macro_rules! err {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		OwnedSpan, SpanColumn, SpanLine, Type, err, error,
+		Fragment, OwnedFragment, StatementColumn, StatementLine, Type,
+		err, error,
 		result::error::diagnostic::sequence::sequence_exhausted,
 		return_error,
 	};
@@ -125,36 +134,51 @@ mod tests {
 	}
 
 	#[test]
-	fn test_error_macro_with_span() {
-		// Create a test span
-		let span = OwnedSpan {
-			line: SpanLine(42),
-			column: SpanColumn(10),
-			fragment: "test fragment".to_string(),
+	fn test_error_macro_with_fragment() {
+		// Create a test fragment
+		let fragment = OwnedFragment::Statement {
+			line: StatementLine(42),
+			column: StatementColumn(10),
+			text: "test fragment".to_string(),
 		};
 
-		// Test that error! macro with span creates correct Error type
-		let err = error!(sequence_exhausted(Type::Uint8), span.clone());
+		// Test that error! macro with fragment creates correct Error
+		// type
+		let err = error!(
+			sequence_exhausted(Type::Uint8),
+			fragment.clone()
+		);
 
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::Error(_)));
 
-		// Test that the diagnostic has the span set
+		// Test that the diagnostic has the origin set (via fragment)
 		let diagnostic = err.diagnostic();
-		assert!(diagnostic.span.is_some());
-		assert_eq!(diagnostic.span.as_ref().unwrap().line.0, 42);
-		assert_eq!(diagnostic.span.as_ref().unwrap().column.0, 10);
+		let fragment = diagnostic.fragment();
+		assert!(fragment.is_some());
+		if let Some(OwnedFragment::Statement {
+			line,
+			column,
+			..
+		}) = fragment.as_ref()
+		{
+			assert_eq!(line.0, 42);
+			assert_eq!(column.0, 10);
+		}
 	}
 
 	#[test]
-	fn test_return_error_macro_with_span() {
+	fn test_return_error_macro_with_fragment() {
 		fn test_fn() -> Result<(), crate::Error> {
-			let span = OwnedSpan {
-				line: SpanLine(100),
-				column: SpanColumn(25),
-				fragment: "error location".to_string(),
+			let fragment = OwnedFragment::Statement {
+				line: StatementLine(100),
+				column: StatementColumn(25),
+				text: "error location".to_string(),
 			};
-			return_error!(sequence_exhausted(Type::Uint8), span);
+			return_error!(
+				sequence_exhausted(Type::Uint8),
+				fragment
+			);
 		}
 
 		let result = test_fn();
@@ -162,60 +186,65 @@ mod tests {
 
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
-			assert!(diagnostic.span.is_some());
-			assert_eq!(
-				diagnostic.span.as_ref().unwrap().line.0,
-				100
-			);
-			assert_eq!(
-				diagnostic.span.as_ref().unwrap().column.0,
-				25
-			);
+			let fragment = diagnostic.fragment();
+			assert!(fragment.is_some());
+			if let Some(OwnedFragment::Statement {
+				line,
+				column,
+				..
+			}) = fragment.as_ref()
+			{
+				assert_eq!(line.0, 100);
+				assert_eq!(column.0, 25);
+			}
 		}
 	}
 
 	#[test]
-	fn test_err_macro_with_span() {
-		let span = OwnedSpan {
-			line: SpanLine(200),
-			column: SpanColumn(50),
-			fragment: "err span test".to_string(),
+	fn test_err_macro_with_fragment() {
+		let fragment = OwnedFragment::Statement {
+			line: StatementLine(200),
+			column: StatementColumn(50),
+			text: "err fragment test".to_string(),
 		};
 
-		// Test that err! macro with span creates correct Result type
-		// with Err
+		// Test that err! macro with fragment creates correct Result
+		// type with Err
 		let result: Result<(), crate::Error> =
-			err!(sequence_exhausted(Type::Uint8), span);
+			err!(sequence_exhausted(Type::Uint8), fragment);
 
 		assert!(result.is_err());
 
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
-			assert!(diagnostic.span.is_some());
-			assert_eq!(
-				diagnostic.span.as_ref().unwrap().line.0,
-				200
-			);
-			assert_eq!(
-				diagnostic.span.as_ref().unwrap().column.0,
-				50
-			);
+			let fragment = diagnostic.fragment();
+			assert!(fragment.is_some());
+			if let Some(OwnedFragment::Statement {
+				line,
+				column,
+				..
+			}) = fragment.as_ref()
+			{
+				assert_eq!(line.0, 200);
+				assert_eq!(column.0, 50);
+			}
 		}
 	}
 
 	#[test]
-	fn test_macros_with_closure_span() {
-		// Test with closure that returns OwnedSpan (implements
-		// IntoOwnedSpan)
-		let get_span = || OwnedSpan {
-			line: SpanLine(300),
-			column: SpanColumn(75),
-			fragment: "closure span".to_string(),
+	fn test_macros_with_closure_fragment() {
+		// Test with closure that returns OwnedFragment (implements
+		// IntoOwnedFragment)
+		let get_fragment = || OwnedFragment::Statement {
+			line: StatementLine(300),
+			column: StatementColumn(75),
+			text: "closure fragment".to_string(),
 		};
 
-		let err = error!(sequence_exhausted(Type::Uint8), get_span);
+		let err = error!(sequence_exhausted(Type::Uint8), get_fragment);
 		let diagnostic = err.diagnostic();
-		assert!(diagnostic.span.is_some());
-		assert_eq!(diagnostic.span.as_ref().unwrap().line.0, 300);
+		let fragment = diagnostic.fragment();
+		assert!(fragment.is_some());
+		assert_eq!(fragment.as_ref().unwrap().line().0, 300);
 	}
 }

@@ -9,7 +9,10 @@ mod uuid;
 use number::NumberParser;
 use reifydb_core::{
 	Type,
-	interface::evaluate::expression::ConstantExpression,
+	interface::{
+		evaluate::expression::ConstantExpression,
+		fragment::IntoFragment,
+	},
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -34,7 +37,7 @@ impl StandardEvaluator {
 	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.span().fragment.into(),
+			name: expr.fragment().fragment().into(),
 			data: Self::constant_value(&expr, row_count)?,
 		}))
 	}
@@ -58,7 +61,7 @@ impl StandardEvaluator {
 			}
 		};
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.span().fragment.into(),
+			name: expr.fragment().fragment().into(),
 			data: casted,
 		}))
 	}
@@ -69,8 +72,8 @@ impl StandardEvaluator {
 	) -> crate::Result<ColumnData> {
 		Ok(match expr {
 			ConstantExpression::Bool {
-				span,
-			} => match parse_bool(span.clone()) {
+				fragment,
+			} => match parse_bool(fragment.clone()) {
 				Ok(v) => {
 					return Ok(ColumnData::bool(
 						vec![v; row_count],
@@ -79,12 +82,14 @@ impl StandardEvaluator {
 				Err(err) => return_error!(err.diagnostic()),
 			},
 			ConstantExpression::Number {
-				span,
+				fragment,
 			} => {
-				if span.fragment.contains(".")
-					|| span.fragment.contains("e")
+				if fragment.fragment().contains(".")
+					|| fragment.fragment().contains("e")
 				{
-					return match parse_float(span.clone()) {
+					return match parse_float(
+						fragment.clone(),
+					) {
 						Ok(v) => {
 							Ok(ColumnData::float8(
 								vec![
@@ -99,25 +104,33 @@ impl StandardEvaluator {
 					};
 				}
 
-				if let Ok(v) = parse_int::<i8>(span.clone()) {
+				if let Ok(v) = parse_int::<i8>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int1(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i16>(span.clone()) {
+				if let Ok(v) = parse_int::<i16>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int2(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i32>(span.clone()) {
+				if let Ok(v) = parse_int::<i32>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int4(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i64>(span.clone()) {
+				if let Ok(v) = parse_int::<i64>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int8(
 						vec![v; row_count],
 					));
@@ -125,14 +138,17 @@ impl StandardEvaluator {
 
 				// if parsing as i128 fails and its a negative
 				// number, we are maxed out and can stop
-				match parse_int::<i128>(span.clone()) {
+				match parse_int::<i128>(
+					fragment.clone().into_fragment(),
+				) {
 					Ok(v) => {
 						return Ok(ColumnData::int16(
 							vec![v; row_count],
 						));
 					}
 					Err(err) => {
-						if span.fragment
+						if fragment
+							.fragment()
 							.starts_with("-")
 						{
 							return Err(err);
@@ -140,7 +156,9 @@ impl StandardEvaluator {
 					}
 				}
 
-				return match parse_uint::<u128>(span.clone()) {
+				return match parse_uint::<u128>(
+					fragment.clone(),
+				) {
 					Ok(v) => Ok(ColumnData::uint16(
 						vec![v; row_count],
 					)),
@@ -150,15 +168,15 @@ impl StandardEvaluator {
 				};
 			}
 			ConstantExpression::Text {
-				span,
+				fragment,
 			} => ColumnData::utf8(
-				std::iter::repeat(span.fragment.clone())
+				std::iter::repeat(fragment.fragment())
 					.take(row_count),
 			),
 			ConstantExpression::Temporal {
-				span,
+				fragment,
 			} => TemporalParser::parse_temporal(
-				span.clone(),
+				fragment.clone().into_fragment(),
 				row_count,
 			)?,
 			ConstantExpression::Undefined {
@@ -177,17 +195,17 @@ impl StandardEvaluator {
 		Ok(match (expr, target) {
 			(
 				ConstantExpression::Number {
-					span,
+					fragment,
 				},
 				target,
 			) => NumberParser::from_number(
-				span.clone(),
+				fragment.clone().into_fragment(),
 				target,
 				row_count,
 			)?,
 			(
 				ConstantExpression::Text {
-					span,
+					fragment,
 				},
 				target,
 			) if target.is_bool()
@@ -195,18 +213,18 @@ impl StandardEvaluator {
 				|| target.is_uuid() =>
 			{
 				TextParser::from_text(
-					span.clone(),
+					fragment.clone().into_fragment(),
 					target,
 					row_count,
 				)?
 			}
 			(
 				ConstantExpression::Temporal {
-					span,
+					fragment,
 				},
 				target,
 			) if target.is_temporal() => TemporalParser::from_temporal(
-				span.clone(),
+				fragment.clone().into_fragment(),
 				target,
 				row_count,
 			)?,
@@ -230,7 +248,7 @@ impl StandardEvaluator {
 					} => Type::Undefined,
 				};
 				return_error!(cast::unsupported_cast(
-					expr.span(),
+					expr.fragment(),
 					source_type,
 					target
 				));

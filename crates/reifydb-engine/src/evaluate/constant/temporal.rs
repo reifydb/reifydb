@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Span, Type,
+	Type,
+	interface::fragment::Fragment,
 	result::error::diagnostic::temporal,
 	return_error,
 	value::temporal::{
@@ -18,46 +19,46 @@ impl TemporalParser {
 	/// Parse temporal expression to a specific target type with detailed
 	/// error handling
 	pub fn from_temporal(
-		span: impl Span,
+		fragment: impl Fragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		Self::parse_temporal_type(span, target, row_count)
+		Self::parse_temporal_type(fragment, target, row_count)
 	}
 
 	/// Parse a temporal constant expression and create a column with the
 	/// specified row count
 	pub fn parse_temporal(
-		span: impl Span,
+		fragment: impl Fragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = span.fragment();
+		let value = fragment.value();
 
 		// Route based on character patterns
-		if fragment.starts_with('P') || fragment.starts_with('p') {
+		if value.starts_with('P') || value.starts_with('p') {
 			// Interval format (ISO 8601 duration)
-			let interval = match parse_interval(span.clone()) {
+			let interval = match parse_interval(fragment.clone()) {
 				Ok(interval) => interval,
 				Err(e) => return_error!(e.diagnostic()),
 			};
 			Ok(ColumnData::interval(vec![interval; row_count]))
-		} else if fragment.contains(':') && fragment.contains('-') {
+		} else if value.contains(':') && value.contains('-') {
 			// DateTime format (contains both : and -)
-			let datetime = match parse_datetime(span.clone()) {
+			let datetime = match parse_datetime(fragment.clone()) {
 				Ok(datetime) => datetime,
 				Err(e) => return_error!(e.diagnostic()),
 			};
 			Ok(ColumnData::datetime(vec![datetime; row_count]))
-		} else if fragment.contains('-') {
+		} else if value.contains('-') {
 			// Date format with - separators
-			let date = match parse_date(span.clone()) {
+			let date = match parse_date(fragment.clone()) {
 				Ok(date) => date,
 				Err(e) => return_error!(e.diagnostic()),
 			};
 			Ok(ColumnData::date(vec![date; row_count]))
-		} else if fragment.contains(':') {
+		} else if value.contains(':') {
 			// Time format (contains :)
-			let time = match parse_time(span.clone()) {
+			let time = match parse_time(fragment.clone()) {
 				Ok(time) => time,
 				Err(e) => return_error!(e.diagnostic()),
 			};
@@ -65,14 +66,14 @@ impl TemporalParser {
 		} else {
 			// Unrecognized pattern
 			return_error!(temporal::unrecognized_temporal_pattern(
-				span.to_owned()
+				fragment.clone()
 			))
 		}
 	}
 
 	/// Parse temporal to specific target type with detailed error handling
 	pub fn parse_temporal_type(
-		span: impl Span,
+		fragment: impl Fragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -80,11 +81,11 @@ impl TemporalParser {
 
 		match target {
 			Type::Date => {
-				let date = match parse_date(span.clone()) {
+				let date = match parse_date(fragment.clone()) {
 					Ok(date) => date,
 					Err(e) => return_error!(
 						cast::invalid_temporal(
-							span.clone().to_owned(),
+							fragment.clone(),
 							Type::Date,
 							e.0
 						)
@@ -93,30 +94,30 @@ impl TemporalParser {
 				Ok(ColumnData::date(vec![date; row_count]))
 			}
 			Type::DateTime => {
-				let datetime =
-					match parse_datetime(span.clone()) {
-						Ok(datetime) => datetime,
-						Err(e) => return_error!(
-							cast::invalid_temporal(
-								span.clone()
-									.to_owned(
-									),
-								Type::DateTime,
-								e.0
-							)
-						),
-					};
+				let datetime = match parse_datetime(
+					fragment.clone(),
+				) {
+					Ok(datetime) => datetime,
+					Err(e) => return_error!(
+						cast::invalid_temporal(
+							fragment.clone()
+								.to_owned(),
+							Type::DateTime,
+							e.0
+						)
+					),
+				};
 				Ok(ColumnData::datetime(vec![
 					datetime;
 					row_count
 				]))
 			}
 			Type::Time => {
-				let time = match parse_time(span.clone()) {
+				let time = match parse_time(fragment.clone()) {
 					Ok(time) => time,
 					Err(e) => return_error!(
 						cast::invalid_temporal(
-							span.clone().to_owned(),
+							fragment.clone(),
 							Type::Time,
 							e.0
 						)
@@ -125,26 +126,26 @@ impl TemporalParser {
 				Ok(ColumnData::time(vec![time; row_count]))
 			}
 			Type::Interval => {
-				let interval =
-					match parse_interval(span.clone()) {
-						Ok(interval) => interval,
-						Err(e) => return_error!(
-							cast::invalid_temporal(
-								span.clone()
-									.to_owned(
-									),
-								Type::Interval,
-								e.0
-							)
-						),
-					};
+				let interval = match parse_interval(
+					fragment.clone(),
+				) {
+					Ok(interval) => interval,
+					Err(e) => return_error!(
+						cast::invalid_temporal(
+							fragment.clone()
+								.to_owned(),
+							Type::Interval,
+							e.0
+						)
+					),
+				};
 				Ok(ColumnData::interval(vec![
 					interval;
 					row_count
 				]))
 			}
 			_ => return_error!(cast::unsupported_cast(
-				span.to_owned(),
+				fragment.clone(),
 				Type::DateTime,
 				target
 			)),

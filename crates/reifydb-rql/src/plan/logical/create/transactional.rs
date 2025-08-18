@@ -21,7 +21,7 @@ impl Compiler {
 			columns.push(ViewColumnToCreate {
 				name: column_name,
 				ty: column_type,
-				span: Some(col.name.span()),
+				fragment: Some(col.name.fragment()),
 			});
 		}
 
@@ -33,8 +33,8 @@ impl Compiler {
 
 		Ok(LogicalPlan::CreateTransactionalView(
 			CreateTransactionalViewNode {
-				schema: ast.schema.span(),
-				view: ast.view.span(),
+				schema: ast.schema.fragment(),
+				view: ast.view.fragment(),
 				if_not_exists: false,
 				columns,
 				with,

@@ -26,7 +26,7 @@ pub fn create_schema<T: Transaction>(
 	Catalog::create_schema(
 		txn,
 		SchemaToCreate {
-			schema_span: None,
+			schema_fragment: None,
 			name: schema.to_string(),
 		},
 	)
@@ -66,7 +66,7 @@ pub fn create_table<T: Transaction>(
 	Catalog::create_table(
 		txn,
 		TableToCreate {
-			span: None,
+			fragment: None,
 			schema: schema.to_string(),
 			table: table.to_string(),
 			columns: columns.to_vec(),
@@ -89,7 +89,7 @@ pub fn create_test_table_column<T: Transaction>(
 		txn,
 		TableId(1),
 		TableColumnToCreate {
-			span: None,
+			fragment: None,
 			schema_name: "test_schema",
 			table: TableId(1025),
 			table_name: "test_table",
@@ -113,7 +113,7 @@ pub fn create_view<T: Transaction>(
 	Catalog::create_deferred_view(
 		txn,
 		ViewToCreate {
-			span: None,
+			fragment: None,
 			schema: schema.to_string(),
 			view: view.to_string(),
 			columns: columns.to_vec(),

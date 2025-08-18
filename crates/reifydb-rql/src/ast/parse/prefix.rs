@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{OwnedSpan, diagnostic::ast, return_error};
+use reifydb_core::{OwnedFragment, diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token,
@@ -34,21 +34,24 @@ impl Parser {
 						kind: TokenKind::Literal(
 							Number,
 						),
-						span: OwnedSpan {
-							column: operator
-								.token()
-								.span
-								.column,
-							line: operator
-								.token()
-								.span
-								.line,
-							fragment: format!(
-								"-{}",
-								literal.0
-									.span
+						fragment: {
+							use reifydb_core::interface::fragment::Fragment;
+							OwnedFragment::Statement {
+								column: operator
+									.token()
 									.fragment
-							),
+									.column(),
+								line: operator
+									.token()
+									.fragment
+									.line(),
+								text: format!(
+									"-{}",
+									literal.0
+										.fragment
+										.fragment()
+								),
+							}
 						},
 					}),
 				)));
@@ -81,12 +84,12 @@ impl Parser {
 				}
 				_ => return_error!(
 					ast::unsupported_token_error(
-						token.span
+						token.fragment
 					)
 				),
 			},
 			_ => return_error!(ast::unsupported_token_error(
-				token.span
+				token.fragment
 			)),
 		}
 	}

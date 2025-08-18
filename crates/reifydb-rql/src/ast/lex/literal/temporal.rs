@@ -10,13 +10,13 @@ use nom_locate::LocatedSpan;
 use crate::ast::{
 	Token,
 	TokenKind::Literal,
-	lex::{Literal::Temporal, as_span},
+	lex::{Literal::Temporal, as_fragment},
 };
 
 pub(crate) fn parse_temporal(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
-	let (rest, span) =
+	let (rest, fragment) =
 		preceded(char('@'), recognize(parse_temporal_content))
 			.parse(input)?;
 
@@ -24,7 +24,7 @@ pub(crate) fn parse_temporal(
 		rest,
 		Token {
 			kind: Literal(Temporal),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		},
 	))
 }
@@ -53,7 +53,7 @@ mod tests {
 		lex::{Literal::Temporal, literal::parse_literal},
 	};
 
-	fn span(s: &str) -> LocatedSpan<&str> {
+	fn fragment(s: &str) -> LocatedSpan<&str> {
 		LocatedSpan::new(s)
 	}
 
@@ -177,7 +177,7 @@ mod tests {
 		];
 
 		for (input, should_parse) in cases {
-			let result = parse_literal(span(input));
+			let result = parse_literal(fragment(input));
 			match (result, should_parse) {
 				(Ok((_rest, token)), true) => {
 					assert_eq!(
@@ -214,7 +214,7 @@ mod tests {
 		];
 
 		for (input, should_parse) in cases {
-			let result = parse_literal(span(input));
+			let result = parse_literal(fragment(input));
 			match (result, should_parse) {
 				(Ok((_rest, token)), true) => {
 					assert_eq!(

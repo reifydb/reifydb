@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan,
+	OwnedFragment,
 	interface::{
 		CommandTransaction, EncodableKey, SchemaKey, Transaction,
 		VersionedCommandTransaction,
@@ -19,7 +19,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct SchemaToCreate {
-	pub schema_span: Option<OwnedSpan>,
+	pub schema_fragment: Option<OwnedFragment>,
 	pub name: String,
 }
 
@@ -32,7 +32,7 @@ impl Catalog {
 			Catalog::find_schema_by_name(txn, &to_create.name)?
 		{
 			return_error!(schema_already_exists(
-				to_create.schema_span,
+				to_create.schema_fragment,
 				&schema.name
 			));
 		}
@@ -71,7 +71,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let to_create = SchemaToCreate {
-			schema_span: None,
+			schema_fragment: None,
 			name: "test_schema".to_string(),
 		};
 

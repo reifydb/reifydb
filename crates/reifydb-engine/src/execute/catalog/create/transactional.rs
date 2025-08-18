@@ -53,7 +53,7 @@ impl<T: Transaction> Executor<T> {
 		let result = Catalog::create_transactional_view(
 			txn,
 			ViewToCreate {
-				span: Some(plan.view.clone()),
+				fragment: Some(plan.view.clone()),
 				view: plan.view.to_string(),
 				schema: plan.schema.name.to_string(),
 				columns: plan.columns,

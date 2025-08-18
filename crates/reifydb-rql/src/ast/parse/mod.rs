@@ -248,12 +248,12 @@ impl Parser {
 			// match test format
 			if let TokenKind::Identifier = expected {
 				return_error!(ast::expected_identifier_error(
-					got.clone().span
+					got.clone().fragment
 				))
 			} else {
 				return_error!(ast::unexpected_token_error(
 					&format!("{:?}", expected),
-					&got.span
+					got.fragment.clone()
 				))
 			}
 		}
@@ -359,15 +359,15 @@ mod tests {
 
 		let one = parser.advance().unwrap();
 		assert_eq!(one.kind, Literal(Number));
-		assert_eq!(one.span.fragment, "1");
+		assert_eq!(one.fragment.fragment(), "1");
 
 		let plus = parser.advance().unwrap();
 		assert_eq!(plus.kind, TokenKind::Operator(Plus));
-		assert_eq!(plus.span.fragment, "+");
+		assert_eq!(plus.fragment.fragment(), "+");
 
 		let two = parser.advance().unwrap();
 		assert_eq!(two.kind, Literal(Number));
-		assert_eq!(two.span.fragment, "2");
+		assert_eq!(two.fragment.fragment(), "2");
 	}
 
 	#[test]

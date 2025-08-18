@@ -212,7 +212,7 @@
 //!  * **Literal:** if `>` precedes the command, the entire rest of the line is
 //!    taken to be the command name (except leading whitespace). Arguments,
 //!    tags, comments, and any other special characters are ignored and used
-//!    as-is. As a special case (currently only with `>`), lines can span
+//!    as-is. As a special case (currently only with `>`), lines can fragment
 //!    multiple lines by ending the line with \.
 //!
 //!    ```text

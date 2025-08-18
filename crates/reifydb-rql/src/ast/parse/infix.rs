@@ -95,12 +95,12 @@ impl Parser {
 				Operator::Xor => Ok(InfixOperator::Xor(token)),
 				_ => return_error!(
 					ast::unsupported_token_error(
-						token.span
+						token.fragment
 					)
 				),
 			},
 			_ => return_error!(ast::unsupported_token_error(
-				token.span
+				token.fragment
 			)),
 		}
 	}

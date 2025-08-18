@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-	BitVec, Date, DateTime, FrameColumnData, Interval, OwnedSpan, RowId,
-	SpanColumn, SpanLine, Time, Type,
+	BitVec, Date, DateTime, FrameColumnData, Interval, OwnedFragment,
+	RowId, StatementColumn, StatementLine, Time, Type,
 	interface::Params,
 	result::{
 		Frame, FrameColumn,
@@ -30,11 +30,14 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
 		code: grpc.code,
 		statement: grpc.statement,
 		message: grpc.message,
-		span: grpc.span.map(|s| OwnedSpan {
-			column: SpanColumn(s.offset),
-			line: SpanLine(s.line),
-			fragment: s.fragment,
-		}),
+		fragment: grpc
+			.span
+			.map(|s| OwnedFragment::Statement {
+				column: StatementColumn(s.offset),
+				line: StatementLine(s.line),
+				text: s.fragment,
+			})
+			.into(),
 		label: grpc.label,
 		help: grpc.help,
 		notes: grpc.notes,

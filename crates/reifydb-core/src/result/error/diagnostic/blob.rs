@@ -3,17 +3,22 @@
 
 //! BLOB-related diagnostic functions
 
-use crate::{IntoOwnedSpan, result::error::diagnostic::Diagnostic};
+use crate::{
+	fragment,
+	interface::fragment::{Fragment, IntoFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 /// Invalid hexadecimal string in BLOB constructor
-pub fn invalid_hex_string(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn invalid_hex_string(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
+	let value = fragment.value();
 	Diagnostic {
         code: "BLOB_001".to_string(),
         statement: None,
-        message: format!("Invalid hexadecimal string: '{}'", owned_span.fragment),
+        message: format!("Invalid hexadecimal string: '{}'", value),
         column: None,
-        span: Some(owned_span),
+        fragment,
         label: Some("Invalid hex characters found".to_string()),
         help: Some("Hex strings should only contain 0-9, a-f, A-F characters".to_string()),
         notes: vec![],
@@ -22,14 +27,15 @@ pub fn invalid_hex_string(span: impl IntoOwnedSpan) -> Diagnostic {
 }
 
 /// Invalid base64 string in BLOB constructor
-pub fn invalid_base64_string(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn invalid_base64_string(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
+	let value = fragment.value();
 	Diagnostic {
         code: "BLOB_002".to_string(),
         statement: None,
-        message: format!("Invalid base64 string: '{}'", owned_span.fragment),
+        message: format!("Invalid base64 string: '{}'", value),
         column: None,
-        span: Some(owned_span),
+        fragment,
         label: Some("Invalid base64 encoding found".to_string()),
         help: Some(
             "Base64 strings should only contain A-Z, a-z, 0-9, +, / and = padding".to_string(),
@@ -40,14 +46,15 @@ pub fn invalid_base64_string(span: impl IntoOwnedSpan) -> Diagnostic {
 }
 
 /// Invalid base64url string in BLOB constructor
-pub fn invalid_base64url_string(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn invalid_base64url_string(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
+	let value = fragment.value();
 	Diagnostic {
         code: "BLOB_003".to_string(),
         statement: None,
-        message: format!("Invalid base64url string: '{}'", owned_span.fragment),
+        message: format!("Invalid base64url string: '{}'", value),
         column: None,
-        span: Some(owned_span),
+        fragment,
         label: Some("Invalid base64url encoding found".to_string()),
         help: Some(
             "Base64url strings should only contain A-Z, a-z, 0-9, -, _ characters".to_string(),
@@ -64,7 +71,7 @@ pub fn invalid_utf8_sequence(error: std::str::Utf8Error) -> Diagnostic {
         statement: None,
         message: format!("Invalid UTF-8 sequence in BLOB: {}", error),
         column: None,
-        span: None,
+        fragment: fragment!(internal: error.to_string()),
         label: Some("BLOB contains invalid UTF-8 bytes".to_string()),
         help: Some("Use to_utf8_lossy() if you want to replace invalid sequences with replacement characters".to_string()),
         notes: vec![],

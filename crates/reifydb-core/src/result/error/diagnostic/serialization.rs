@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::result::error::diagnostic::Diagnostic;
+use crate::{
+	interface::fragment::OwnedFragment,
+	result::error::diagnostic::Diagnostic,
+};
 
 /// General deserialization error
 pub fn deserialization_error(msg: String) -> Diagnostic {
@@ -10,7 +13,7 @@ pub fn deserialization_error(msg: String) -> Diagnostic {
 		statement: None,
 		message: format!("Deserialization error: {}", msg),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check data format and structure".to_string()),
 		notes: vec![],
@@ -25,7 +28,7 @@ pub fn serialization_error(msg: String) -> Diagnostic {
 		statement: None,
 		message: format!("Serialization error: {}", msg),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check data format and structure".to_string()),
 		notes: vec![],
@@ -40,7 +43,7 @@ pub fn bincode_encode_error(err: bincode::error::EncodeError) -> Diagnostic {
 		statement: None,
 		message: format!("Bincode encode error: {}", err),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check binary data format".to_string()),
 		notes: vec![],
@@ -55,7 +58,7 @@ pub fn bincode_decode_error(err: bincode::error::DecodeError) -> Diagnostic {
 		statement: None,
 		message: format!("Bincode decode error: {}", err),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check binary data format".to_string()),
 		notes: vec![],
@@ -70,7 +73,7 @@ pub fn keycode_serialization_error(msg: String) -> Diagnostic {
 		statement: None,
 		message: format!("Keycode serialization error: {}", msg),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check keycode data and format".to_string()),
 		notes: vec![],
@@ -85,7 +88,7 @@ pub fn serde_deserialize_error(msg: String) -> Diagnostic {
 		statement: None,
 		message: format!("Serde deserialization error: {}", msg),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check data format and structure".to_string()),
 		notes: vec![],
@@ -100,7 +103,7 @@ pub fn serde_serialize_error(msg: String) -> Diagnostic {
 		statement: None,
 		message: format!("Serde serialization error: {}", msg),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check data format and structure".to_string()),
 		notes: vec![],

@@ -64,7 +64,7 @@ impl Parser {
 			if projections.len() > 1 && !has_projections_braces {
 				return_error!(
 					multiple_expressions_without_braces(
-						token.span
+						token.fragment
 					)
 				);
 			}
@@ -104,7 +104,7 @@ impl Parser {
 
 		if by.len() > 1 && !has_by_braces {
 			return_error!(multiple_expressions_without_braces(
-				token.span
+				token.fragment
 			));
 		}
 

@@ -11,7 +11,7 @@ use nom::{
 };
 use nom_locate::LocatedSpan;
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_fragment};
 
 macro_rules! operator {
     (
@@ -176,7 +176,7 @@ pub(crate) fn parse_operator(
 
 	parser.map(|op| Token {
 		kind: TokenKind::Operator(op),
-		span: as_span(start.take(op.as_str().len())),
+		fragment: as_fragment(start.take(op.as_str().len())),
 	})
 	.parse(input)
 }
@@ -184,6 +184,7 @@ pub(crate) fn parse_operator(
 #[cfg(test)]
 mod tests {
 	use nom_locate::LocatedSpan;
+	use reifydb_core::Fragment;
 
 	use crate::ast::lex::{
 		TokenKind,
@@ -215,9 +216,9 @@ mod tests {
 			"type mismatch for symbol: {}",
 			symbol
 		);
-		assert_eq!(token.span.fragment, symbol);
-		assert_eq!(token.span.column, 1);
-		assert_eq!(token.span.line, 1);
+		assert_eq!(token.fragment.fragment(), symbol);
+		assert_eq!(token.fragment.column().0, 1);
+		assert_eq!(token.fragment.line().0, 1);
 		assert_eq!(remaining.fragment(), &" rest".to_string());
 	}
 

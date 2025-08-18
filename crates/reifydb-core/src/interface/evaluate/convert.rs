@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	GetType, IntoOwnedSpan, error,
+	GetType, IntoOwnedFragment, error,
 	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::{
 		integer_precision_loss, number_out_of_range,
@@ -14,7 +14,7 @@ pub trait Convert {
 	fn convert<From, To>(
 		&self,
 		from: From,
-		span: impl IntoOwnedSpan,
+		fragment: impl IntoOwnedFragment,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
@@ -25,13 +25,13 @@ impl Convert for EvaluationContext<'_> {
 	fn convert<From, To>(
 		&self,
 		from: From,
-		span: impl IntoOwnedSpan,
+		fragment: impl IntoOwnedFragment,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
 	{
-		Convert::convert(&self, from, span)
+		Convert::convert(&self, from, fragment)
 	}
 }
 
@@ -39,35 +39,34 @@ impl Convert for &EvaluationContext<'_> {
 	fn convert<From, To>(
 		&self,
 		from: From,
-		span: impl IntoOwnedSpan,
+		fragment: impl IntoOwnedFragment,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
 	{
 		match self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				from.checked_convert()
-					.ok_or_else(|| {
-						if From::get_type().is_integer()
-							&& To::get_type()
-								.is_floating_point(
-								) {
-							return error!(integer_precision_loss(
-                            span.into_span(),
+			ColumnSaturationPolicy::Error => from
+				.checked_convert()
+				.ok_or_else(|| {
+					if From::get_type().is_integer()
+						&& To::get_type()
+							.is_floating_point()
+					{
+						return error!(integer_precision_loss(
+                            fragment.into_fragment(),
                             From::get_type(),
                             To::get_type(),
                         ));
-						};
+					};
 
-						return error!(number_out_of_range(
-                        span.into_span(),
-                        To::get_type(),
-                        self.target_column.as_ref(),
-                    ));
-					})
-					.map(Some)
-			}
+					return error!(number_out_of_range(
+						fragment.into_fragment(),
+						To::get_type(),
+						self.target_column.as_ref(),
+					));
+				})
+				.map(Some),
 			ColumnSaturationPolicy::Undefined => {
 				match from.checked_convert() {
 					None => Ok(None),

@@ -19,7 +19,7 @@ impl StandardEvaluator {
 		ctx: &EvaluationContext,
 		column: &ColumnExpression,
 	) -> crate::Result<Column> {
-		let name = column.0.fragment.to_string();
+		let name = column.0.fragment().to_string();
 
 		// First try exact qualified name match
 		if let Some(col) =

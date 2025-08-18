@@ -3,7 +3,7 @@
 
 use std::ops::{Deref, Index};
 
-use reifydb_core::{IndexType, JoinType, OwnedSpan, SortDirection};
+use reifydb_core::{IndexType, JoinType, OwnedFragment, SortDirection};
 
 use crate::ast::lex::{Literal, ParameterKind, Token, TokenKind};
 
@@ -751,13 +751,13 @@ pub enum AstLiteral {
 }
 
 impl AstLiteral {
-	pub fn span(self) -> OwnedSpan {
+	pub fn fragment(self) -> OwnedFragment {
 		match self {
-			AstLiteral::Boolean(literal) => literal.0.span,
-			AstLiteral::Number(literal) => literal.0.span,
-			AstLiteral::Text(literal) => literal.0.span,
-			AstLiteral::Temporal(literal) => literal.0.span,
-			AstLiteral::Undefined(literal) => literal.0.span,
+			AstLiteral::Boolean(literal) => literal.0.fragment,
+			AstLiteral::Number(literal) => literal.0.fragment,
+			AstLiteral::Text(literal) => literal.0.fragment,
+			AstLiteral::Temporal(literal) => literal.0.fragment,
+			AstLiteral::Undefined(literal) => literal.0.fragment,
 		}
 	}
 }
@@ -767,15 +767,15 @@ pub struct AstIdentifier(pub Token);
 
 impl AstIdentifier {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 
 	pub fn name(&self) -> String {
 		self.value().to_string()
 	}
 
-	pub fn span(self) -> OwnedSpan {
-		self.0.span
+	pub fn fragment(self) -> OwnedFragment {
+		self.0.fragment
 	}
 }
 
@@ -865,7 +865,7 @@ pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 
@@ -874,7 +874,7 @@ pub struct AstLiteralTemporal(pub Token);
 
 impl AstLiteralTemporal {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 
@@ -883,7 +883,7 @@ pub struct AstLiteralText(pub Token);
 
 impl AstLiteralText {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 
@@ -901,7 +901,7 @@ pub struct AstLiteralUndefined(pub Token);
 
 impl AstLiteralUndefined {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 

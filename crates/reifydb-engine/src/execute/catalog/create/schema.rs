@@ -42,7 +42,7 @@ impl<T: Transaction> Executor<T> {
 		Catalog::create_schema(
 			txn,
 			SchemaToCreate {
-				schema_span: Some(plan.schema.clone()),
+				schema_fragment: Some(plan.schema.clone()),
 				name: plan.schema.to_string(),
 			},
 		)?;
@@ -56,7 +56,7 @@ impl<T: Transaction> Executor<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{OwnedSpan, Value, interface::Params};
+	use reifydb_core::{OwnedFragment, Value, interface::Params};
 	use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
@@ -67,7 +67,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let mut plan = CreateSchemaPlan {
-			schema: OwnedSpan::testing("my_schema"),
+			schema: OwnedFragment::testing("my_schema"),
 			if_not_exists: false,
 		};
 

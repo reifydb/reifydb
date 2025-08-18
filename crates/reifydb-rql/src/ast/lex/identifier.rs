@@ -9,12 +9,12 @@ use nom::{
 };
 use nom_locate::LocatedSpan;
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_fragment};
 
 pub(crate) fn parse_identifier(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
-	let (rest, span) = complete(recognize(pair(
+	let (rest, fragment) = complete(recognize(pair(
 		take_while1(is_identifier_start),
 		take_while(is_identifier_char),
 	)))
@@ -23,7 +23,7 @@ pub(crate) fn parse_identifier(
 		rest,
 		Token {
 			kind: TokenKind::Identifier,
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		},
 	))
 }
@@ -48,6 +48,6 @@ mod tests {
 			parse_identifier(LocatedSpan::new("user_referral"))
 				.unwrap();
 		assert_eq!(result.kind, TokenKind::Identifier);
-		assert_eq!(&result.span.fragment, "user_referral");
+		assert_eq!(result.fragment.fragment(), "user_referral");
 	}
 }

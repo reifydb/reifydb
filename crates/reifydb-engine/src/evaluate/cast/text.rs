@@ -4,7 +4,7 @@
 use std::fmt::{Debug, Display};
 
 use reifydb_core::{
-	Error, OwnedSpan, Type,
+	Error, OwnedFragment, Type,
 	result::error::diagnostic::cast,
 	value::{
 		IsNumber, IsTemporal, IsUuid,
@@ -19,10 +19,10 @@ use crate::columnar::ColumnData;
 
 pub fn to_text(
 	data: &ColumnData,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Blob(container) => from_blob(container, span),
+		ColumnData::Blob(container) => from_blob(container, fragment),
 		ColumnData::Bool(container) => from_bool(container),
 		ColumnData::Int1(container) => from_number(container),
 		ColumnData::Int2(container) => from_number(container),
@@ -45,7 +45,7 @@ pub fn to_text(
 		_ => {
 			let source_type = data.get_type();
 			reifydb_core::err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				Type::Utf8
 			))
@@ -56,7 +56,7 @@ pub fn to_text(
 #[inline]
 pub fn from_blob(
 	container: &BlobContainer,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
@@ -66,7 +66,7 @@ pub fn from_blob(
 				Err(e) => {
 					return Err(Error(
 						cast::invalid_blob_to_utf8(
-							span(),
+							fragment(),
 							e.diagnostic(),
 						),
 					));
@@ -147,23 +147,25 @@ where
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		BitVec, Blob, OwnedSpan, value::container::BlobContainer,
+		BitVec, Blob, OwnedFragment, value::container::BlobContainer,
 	};
 
 	use crate::{columnar::ColumnData, evaluate::cast::text::from_blob};
 
 	#[test]
 	fn test_from_blob() {
+		use reifydb_core::interface::fragment::OwnedFragment;
 		let blobs = vec![
-			Blob::from_utf8(OwnedSpan::testing("Hello")),
-			Blob::from_utf8(OwnedSpan::testing("World")),
+			Blob::from_utf8(OwnedFragment::internal("Hello")),
+			Blob::from_utf8(OwnedFragment::internal("World")),
 		];
 		let bitvec = BitVec::repeat(2, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result =
-			from_blob(&container, || OwnedSpan::testing_empty())
-				.unwrap();
+		let result = from_blob(&container, || {
+			OwnedFragment::testing_empty()
+		})
+		.unwrap();
 
 		match result {
 			ColumnData::Utf8(container) => {
@@ -182,8 +184,9 @@ mod tests {
 		let bitvec = BitVec::repeat(1, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result =
-			from_blob(&container, || OwnedSpan::testing_empty());
+		let result = from_blob(&container, || {
+			OwnedFragment::testing_empty()
+		});
 		assert!(result.is_err());
 	}
 }

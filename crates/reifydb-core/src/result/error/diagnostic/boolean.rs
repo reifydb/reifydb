@@ -1,19 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{IntoOwnedSpan, result::error::diagnostic::Diagnostic};
+use crate::{
+	interface::fragment::{Fragment, IntoFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
-pub fn invalid_boolean_format(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
-	let label = Some(format!(
-		"expected 'true' or 'false', found '{}'",
-		owned_span.fragment
-	));
+pub fn invalid_boolean_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
+	let value = fragment.value();
+	let label =
+		Some(format!("expected 'true' or 'false', found '{}'", value));
 	Diagnostic {
 		code: "BOOLEAN_001".to_string(),
 		statement: None,
 		message: "invalid boolean format".to_string(),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: Some("use 'true' or 'false'".to_string()),
 		notes: vec![
@@ -25,14 +27,14 @@ pub fn invalid_boolean_format(span: impl IntoOwnedSpan) -> Diagnostic {
 	}
 }
 
-pub fn empty_boolean_value(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn empty_boolean_value(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some("boolean value cannot be empty".to_string());
 	Diagnostic {
 		code: "BOOLEAN_002".to_string(),
 		statement: None,
 		message: "empty boolean value".to_string(),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: Some("provide either 'true' or 'false'".to_string()),
 		notes: vec![
@@ -44,17 +46,18 @@ pub fn empty_boolean_value(span: impl IntoOwnedSpan) -> Diagnostic {
 	}
 }
 
-pub fn invalid_number_boolean(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn invalid_number_boolean(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
+	let value = fragment.value();
 	let label = Some(format!(
 		"number '{}' cannot be cast to boolean, only 1 or 0 are allowed",
-		owned_span.fragment
+		value
 	));
 	Diagnostic {
 		code: "BOOLEAN_003".to_string(),
 		statement: None,
 		message: "invalid boolean".to_string(),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: Some("use 1 for true or 0 for false".to_string()),
 		notes: vec![
