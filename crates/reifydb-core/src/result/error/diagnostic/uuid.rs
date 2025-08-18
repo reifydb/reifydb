@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{IntoOwnedSpan, result::error::diagnostic::Diagnostic};
+use crate::{result::error::diagnostic::Diagnostic, interface::fragment::{Fragment, IntoFragment}};
 
-pub fn invalid_uuid4_format(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn invalid_uuid4_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"'{}' is not a valid UUID v4",
-		owned_span.fragment
+		fragment.value()
 	));
 
 	let help = "use UUID v4 format (e.g., 550e8400-e29b-41d4-a716-446655440000)".to_string();
@@ -21,7 +21,7 @@ pub fn invalid_uuid4_format(span: impl IntoOwnedSpan) -> Diagnostic {
 		code: "UUID_001".to_string(),
 		statement: None,
 		message: "invalid UUID v4 format".to_string(),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: Some(help),
 		notes,
@@ -30,11 +30,11 @@ pub fn invalid_uuid4_format(span: impl IntoOwnedSpan) -> Diagnostic {
 	}
 }
 
-pub fn invalid_uuid7_format(span: impl IntoOwnedSpan) -> Diagnostic {
-	let owned_span = span.into_span();
+pub fn invalid_uuid7_format(fragment: impl IntoFragment) -> Diagnostic {
+	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"'{}' is not a valid UUID v7",
-		owned_span.fragment
+		fragment.value()
 	));
 
 	let help = "use UUID v7 format (e.g., 017f22e2-79b0-7cc3-98c4-dc0c0c07398f)".to_string();
@@ -48,7 +48,7 @@ pub fn invalid_uuid7_format(span: impl IntoOwnedSpan) -> Diagnostic {
 		code: "UUID_002".to_string(),
 		statement: None,
 		message: "invalid UUID v7 format".to_string(),
-		span: Some(owned_span),
+		fragment,
 		label,
 		help: Some(help),
 		notes,

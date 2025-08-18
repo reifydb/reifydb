@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod computed;
+mod deferred;
 mod index;
 mod schema;
 mod series;
@@ -17,8 +17,8 @@ impl Compiler {
 		ast: AstCreate,
 	) -> crate::Result<LogicalPlan> {
 		match ast {
-			AstCreate::ComputedView(node) => {
-				Self::compile_computed_view(node)
+			AstCreate::DeferredView(node) => {
+				Self::compile_deferred_view(node)
 			}
 			AstCreate::Schema(node) => {
 				Self::compile_create_schema(node)

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	diagnostic::catalog::{
 		auto_increment_invalid_type, table_column_already_exists,
 	},
@@ -24,7 +24,7 @@ use crate::{
 };
 
 pub struct TableColumnToCreate<'a> {
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 	pub schema_name: &'a str,
 	pub table: TableId,
 	pub table_name: &'a str,
@@ -43,13 +43,13 @@ impl Catalog {
 		column_to_create: TableColumnToCreate,
 	) -> crate::Result<ColumnDef> {
 		// FIXME policies
-		if let Some(column) = Catalog::get_table_column_by_name(
+		if let Some(column) = Catalog::find_table_column_by_name(
 			txn,
 			table,
 			&column_to_create.column,
 		)? {
 			return_error!(table_column_already_exists(
-				None::<OwnedSpan>,
+				None::<OwnedFragment>,
 				column_to_create.schema_name,
 				column_to_create.table_name,
 				&column.name,
@@ -68,7 +68,7 @@ impl Catalog {
 
 			if !is_integer_type {
 				return_error!(auto_increment_invalid_type(
-					column_to_create.span,
+					column_to_create.fragment,
 					&column_to_create.column,
 					column_to_create.value,
 				));
@@ -168,7 +168,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -186,7 +186,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -202,7 +202,6 @@ mod test {
 
 		let column_1 =
 			Catalog::get_table_column(&mut txn, TableColumnId(1))
-				.unwrap()
 				.unwrap();
 
 		assert_eq!(column_1.id, 1);
@@ -212,7 +211,6 @@ mod test {
 
 		let column_2 =
 			Catalog::get_table_column(&mut txn, TableColumnId(2))
-				.unwrap()
 				.unwrap();
 
 		assert_eq!(column_2.id, 2);
@@ -230,7 +228,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -246,7 +244,6 @@ mod test {
 
 		let column =
 			Catalog::get_table_column(&mut txn, TableColumnId(1))
-				.unwrap()
 				.unwrap();
 
 		assert_eq!(column.id, 1);
@@ -265,7 +262,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -290,7 +287,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -311,7 +308,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -337,7 +334,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -356,7 +353,7 @@ mod test {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",

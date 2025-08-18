@@ -12,7 +12,7 @@ use nom::{
 use nom_locate::LocatedSpan;
 use reifydb_core::result::error::diagnostic::ast;
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_fragment};
 
 macro_rules! keyword {
     (
@@ -105,7 +105,7 @@ keyword! {
     Table  => "TABLE",
     Policy => "POLICY",
     View => "VIEW",
-    Computed => "COMPUTED",
+    Deferred => "DEFERRED",
     Transactional => "TRANSACTIONAL",
 
     Index => "INDEX",
@@ -119,14 +119,14 @@ keyword! {
     Value => "VALUE",
 }
 
-type Span<'a> = LocatedSpan<&'a str>;
+type Fragment<'a> = LocatedSpan<&'a str>;
 
 fn keyword_tag<'a>(
 	kw: Keyword,
 	tag_str: &'static str,
-) -> impl Parser<Span<'a>, Output = Keyword, Error = nom::error::Error<Span<'a>>> + 'a
+) -> impl Parser<Fragment<'a>, Output = Keyword, Error = nom::error::Error<Fragment<'a>>> + 'a
 {
-	move |input: Span<'a>| {
+	move |input: Fragment<'a>| {
 		let original = input;
 
 		let res = map(
@@ -135,7 +135,7 @@ fn keyword_tag<'a>(
 				not(peek(alt((
 					alphanumeric1::<
 						LocatedSpan<&str>,
-						nom::error::Error<Span<'a>>,
+						nom::error::Error<Fragment<'a>>,
 					>,
 					tag("_"),
 					tag("."),
@@ -216,7 +216,7 @@ pub(crate) fn parse_keyword(
 			keyword_tag(Keyword::Table, "TABLE"),
 			keyword_tag(Keyword::Policy, "POLICY"),
 			keyword_tag(Keyword::View, "VIEW"),
-			keyword_tag(Keyword::Computed, "COMPUTED"),
+			keyword_tag(Keyword::Deferred, "DEFERRED"),
 			keyword_tag(Keyword::Transactional, "TRANSACTIONAL"),
 			keyword_tag(Keyword::Cast, "CAST"),
 			keyword_tag(Keyword::Index, "INDEX"),
@@ -233,13 +233,14 @@ pub(crate) fn parse_keyword(
 
 	parser.map(|kw| Token {
 		kind: TokenKind::Keyword(kw),
-		span: as_span(start.take(kw.as_str().len())),
+		fragment: as_fragment(start.take(kw.as_str().len())),
 	})
 	.parse(input)
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::Fragment;
 	use crate::ast::lex::{
 		LocatedSpan, TokenKind,
 		keyword::{Keyword, parse_keyword},
@@ -274,11 +275,11 @@ mod tests {
 				repr
 			);
 			assert_eq!(
-				token.span.fragment.to_lowercase(),
+				token.fragment.fragment().to_lowercase(),
 				repr.to_lowercase()
 			);
-			assert_eq!(token.span.column, 1);
-			assert_eq!(token.span.line, 1);
+			assert_eq!(token.fragment.column().0, 1);
+			assert_eq!(token.fragment.line().0, 1);
 			assert_eq!(*remaining.fragment(), " rest");
 		}
 	}
@@ -342,7 +343,7 @@ mod tests {
 	    test_keyword_table => (Table, "TABLE"),
 	    test_keyword_policy => (Policy, "POLICY"),
 	    test_keyword_view => (View, "VIEW"),
-	    test_keyword_computed => (Computed, "COMPUTED"),
+	    test_keyword_deferred => (Deferred, "DEFERRED"),
 	    test_keyword_transactional => (Transactional, "TRANSACTIONAL"),
 	    test_keyword_cast => (Cast, "CAST"),
 	    test_keyword_index => (Index, "INDEX"),

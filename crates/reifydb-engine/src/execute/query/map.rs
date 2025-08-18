@@ -2,10 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	ColumnDescriptor, interface::VersionedQueryTransaction,
+	ColumnDescriptor,
+	interface::{
+		VersionedQueryTransaction, evaluate::expression::Expression,
+	},
 	value::row_id::ROW_ID_COLUMN_NAME,
 };
-use reifydb_rql::expression::Expression;
 
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},
@@ -117,13 +119,13 @@ impl ExecutionPlan for MapNode {
 
 			for expr in &self.expressions {
 				let column = evaluate(
-					expr,
 					&self.create_evaluation_context(
 						expr,
 						ctx,
 						columns.clone(),
 						row_count,
 					),
+					expr,
 				)?;
 
 				new_columns.push(column);
@@ -176,7 +178,6 @@ impl ExecutionPlan for MapWithoutInputNode {
 
 		for expr in self.expressions.iter() {
 			let column = evaluate(
-				&expr,
 				&EvaluationContext {
 					target_column: None,
 					column_policies: Vec::new(),
@@ -185,6 +186,7 @@ impl ExecutionPlan for MapWithoutInputNode {
 					take: None,
 					params: &ctx.params,
 				},
+				&expr,
 			)?;
 
 			columns.push(column);

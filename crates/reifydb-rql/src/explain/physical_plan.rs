@@ -79,7 +79,7 @@ fn render_physical_plan_inner(
 	output: &mut String,
 ) {
 	match plan {
-		PhysicalPlan::CreateComputedView(_) => unimplemented!(),
+		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateSchema(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {
@@ -90,13 +90,13 @@ fn render_physical_plan_inner(
 		}) => {
 			let schema_str = schema
 				.as_ref()
-				.map(|s| format!("{}.", s.fragment))
+				.map(|s| format!("{}.", s.fragment()))
 				.unwrap_or_default();
 			let label = format!(
 				"AlterSequence {}{}.{} SET VALUE {}",
 				schema_str,
-				table.fragment,
-				column.fragment,
+				table.fragment(),
+				column.fragment(),
 				value
 			);
 			write_node_header(output, prefix, is_last, &label);
@@ -308,13 +308,21 @@ fn render_physical_plan_inner(
 			schema,
 			table,
 		}) => {
-			let label = match schema {
-				Some(s) => format!(
-					"TableScan {}.{}",
-					s.fragment, table.fragment
-				),
-				None => format!("TableScan {}", table.fragment),
-			};
+			let label = format!(
+				"TableScan {}.{}",
+				schema.name, table.name
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::ViewScan(physical::ViewScanNode {
+			schema,
+			view,
+		}) => {
+			let label = format!(
+				"ViewScan {}.{}",
+				schema.name, view.name
+			);
 			write_node_header(output, prefix, is_last, &label);
 		}
 

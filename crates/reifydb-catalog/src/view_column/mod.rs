@@ -7,6 +7,7 @@ pub use reifydb_core::interface::{
 };
 
 mod create;
+mod find;
 mod get;
 mod layout;
 mod list;

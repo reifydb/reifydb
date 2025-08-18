@@ -11,7 +11,7 @@ impl Compiler {
 		ast: AstCreateSchema,
 	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::CreateSchema(CreateSchemaNode {
-			schema: ast.name.span(),
+			schema: ast.name.fragment(),
 			if_not_exists: false,
 		}))
 	}

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{OwnedSpan, value::Blob};
+use reifydb_core::{interface::fragment::OwnedFragment, value::Blob};
 
 use crate::{
 	columnar::ColumnData,
@@ -36,7 +36,7 @@ impl ScalarFunction for BlobUtf8 {
 					if container.is_defined(i) {
 						let utf8_str = &container[i];
 						let blob = Blob::from_utf8(
-							OwnedSpan::testing(
+							OwnedFragment::internal(
 								utf8_str,
 							),
 						);

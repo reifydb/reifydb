@@ -75,7 +75,7 @@ impl Parser {
 
 		if columns.len() > 1 && !has_braces {
 			return_error!(multiple_expressions_without_braces(
-				token.span
+				token.fragment
 			));
 		}
 

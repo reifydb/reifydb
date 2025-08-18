@@ -1,23 +1,13 @@
-use std::fmt;
-
 use reifydb_core::{
 	JoinType, SortKey,
-	interface::{TableId, ViewId},
+	interface::{
+		FlowEdgeId, FlowNodeId, TableId, ViewId, expression::Expression,
+	},
 };
-use reifydb_rql::expression::Expression;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeId(pub u64);
-
-impl fmt::Display for NodeId {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Node({})", self.0)
-	}
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum NodeType {
+pub enum FlowNodeType {
 	SourceTable {
 		name: String,
 		table: TableId,
@@ -34,7 +24,7 @@ pub enum NodeType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperatorType {
 	Filter {
-		predicate: Expression,
+		conditions: Vec<Expression>,
 	},
 	Map {
 		expressions: Vec<Expression>,
@@ -49,12 +39,14 @@ pub enum OperatorType {
 		map: Vec<Expression>,
 	},
 	Union,
-	TopK {
-		k: usize,
-		sort: Vec<SortKey>,
+	Sort {
+		by: Vec<SortKey>,
+	},
+	Take {
+		limit: usize,
 	},
 	Distinct {
-		expressions: Option<Vec<Expression>>,
+		expressions: Vec<Expression>,
 	},
 }
 
@@ -72,28 +64,61 @@ impl OperatorType {
 			} => false,
 			OperatorType::Union => false,
 
-			// Stateful operator - need persistent state for
-			// incremental updates
 			OperatorType::Join {
 				..
-			} => true, // Hash tables for both sides
+			} => true,
 			OperatorType::Aggregate {
 				..
-			} => true, // Running aggregation state
-			OperatorType::TopK {
+			} => true,
+			OperatorType::Take {
 				..
-			} => true, // Sorted buffer of top K elements
+			} => true,
+			OperatorType::Sort {
+				..
+			} => true,
 			OperatorType::Distinct {
 				..
-			} => true, // Set of seen data
+			} => true,
 		}
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Node {
-	pub id: NodeId,
-	pub ty: NodeType,
-	pub inputs: Vec<NodeId>,
-	pub outputs: Vec<NodeId>,
+pub struct FlowNode {
+	pub id: FlowNodeId,
+	pub ty: FlowNodeType,
+	pub inputs: Vec<FlowNodeId>,
+	pub outputs: Vec<FlowNodeId>,
+}
+
+impl FlowNode {
+	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType) -> Self {
+		Self {
+			id: id.into(),
+			ty,
+			inputs: Vec::new(),
+			outputs: Vec::new(),
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FlowEdge {
+	pub id: FlowEdgeId,
+	pub source: FlowNodeId,
+	pub target: FlowNodeId,
+}
+
+impl FlowEdge {
+	pub fn new(
+		id: impl Into<FlowEdgeId>,
+		source: impl Into<FlowNodeId>,
+		target: impl Into<FlowNodeId>,
+	) -> Self {
+		Self {
+			id: id.into(),
+			source: source.into(),
+			target: target.into(),
+		}
+	}
 }

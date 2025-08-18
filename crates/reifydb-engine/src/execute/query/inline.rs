@@ -5,9 +5,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	ColumnDescriptor, Value,
-	interface::{TableDef, VersionedQueryTransaction},
+	interface::{
+		TableDef, VersionedQueryTransaction,
+		evaluate::expression::AliasExpression,
+	},
 };
-use reifydb_rql::expression::AliasExpression;
 
 use crate::{
 	columnar::{
@@ -105,7 +107,7 @@ impl InlineDataNode {
 		for row in &self.rows {
 			for keyed_expr in row {
 				let column_name =
-					keyed_expr.alias.0.fragment.clone();
+					keyed_expr.alias.0.fragment().to_string();
 				all_columns.insert(column_name);
 			}
 		}
@@ -119,7 +121,7 @@ impl InlineDataNode {
 				HashMap::new();
 			for alias_expr in row {
 				let column_name =
-					alias_expr.alias.0.fragment.clone();
+					alias_expr.alias.0.fragment().to_string();
 				row_map.insert(column_name, alias_expr);
 			}
 			rows_data.push(row_map);
@@ -145,8 +147,8 @@ impl InlineDataNode {
 					};
 
 					let evaluated = evaluate(
-						&alias_expr.expression,
 						&ctx,
+						&alias_expr.expression,
 					)?;
 
 					// Take the first value from the
@@ -196,7 +198,7 @@ impl InlineDataNode {
 				HashMap::new();
 			for alias_expr in row {
 				let column_name =
-					alias_expr.alias.0.fragment.clone();
+					alias_expr.alias.0.fragment().to_string();
 				row_map.insert(column_name, alias_expr);
 			}
 			rows_data.push(row_map);
@@ -248,8 +250,8 @@ impl InlineDataNode {
 					};
 
 					column_data.extend(evaluate(
-						&alias_expr.expression,
 						&ctx,
+						&alias_expr.expression,
 					)?
 					.data()
 					.clone())?;

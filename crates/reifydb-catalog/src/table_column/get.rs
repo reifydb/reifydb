@@ -2,239 +2,94 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Type,
-	interface::{
-		EncodableKey, TableColumnKey, TableColumnsKey, TableId,
-		VersionedQueryTransaction,
-	},
+	Error, Type,
+	interface::{EncodableKey, TableColumnsKey, VersionedQueryTransaction},
+	internal_error,
 };
 
 use crate::{
 	Catalog,
-	table_column::{
-		ColumnDef, ColumnId, ColumnIndex,
-		layout::{column, table_column},
-	},
+	table_column::{ColumnDef, ColumnId, ColumnIndex, layout::column},
 };
 
 impl Catalog {
 	pub fn get_table_column(
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
-	) -> crate::Result<Option<ColumnDef>> {
-		match rx.get(&TableColumnsKey {
-			column,
-		}
-		.encode())?
-		{
-			None => Ok(None),
-			Some(versioned) => {
-				let row = versioned.row;
+	) -> crate::Result<ColumnDef> {
+		let versioned = rx
+			.get(&TableColumnsKey { column }.encode())?
+			.ok_or_else(|| {
+				Error(internal_error!(
+					"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+					column
+				))
+			})?;
 
-				let id = ColumnId(
-					column::LAYOUT
-						.get_u64(&row, column::ID),
-				);
-				let name = column::LAYOUT
-					.get_utf8(&row, column::NAME)
-					.to_string();
-				let value = Type::from_u8(
-					column::LAYOUT
-						.get_u8(&row, column::VALUE),
-				);
-				let index = ColumnIndex(
-					column::LAYOUT
-						.get_u16(&row, column::INDEX),
-				);
-				let auto_increment = column::LAYOUT
-					.get_bool(&row, column::AUTO_INCREMENT);
+		let row = versioned.row;
 
-				let policies =
-					Catalog::list_table_column_policies(
-						rx, id,
-					)?;
+		let id = ColumnId(column::LAYOUT.get_u64(&row, column::ID));
+		let name =
+			column::LAYOUT.get_utf8(&row, column::NAME).to_string();
+		let value = Type::from_u8(
+			column::LAYOUT.get_u8(&row, column::VALUE),
+		);
+		let index = ColumnIndex(
+			column::LAYOUT.get_u16(&row, column::INDEX),
+		);
+		let auto_increment =
+			column::LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
 
-				Ok(Some(ColumnDef {
-					id,
-					name,
-					ty: value,
-					index,
-					policies,
-					auto_increment,
-				}))
-			}
-		}
-	}
+		let policies = Catalog::list_table_column_policies(rx, id)?;
 
-	pub fn get_table_column_by_name(
-		rx: &mut impl VersionedQueryTransaction,
-		table: TableId,
-		column_name: &str,
-	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx
-			.range(TableColumnKey::full_scan(table))?
-			.find_map(|versioned| {
-				let row = versioned.row;
-				let column =
-					ColumnId(table_column::LAYOUT.get_u64(
-						&row,
-						table_column::ID,
-					));
-				let name = table_column::LAYOUT
-					.get_utf8(&row, table_column::NAME);
-
-				if name == column_name {
-					Some(column)
-				} else {
-					None
-				}
-			});
-
-		if let Some(id) = maybe_id {
-			Catalog::get_table_column(rx, id)
-		} else {
-			Ok(None)
-		}
+		Ok(ColumnDef {
+			id,
+			name,
+			ty: value,
+			index,
+			policies,
+			auto_increment,
+		})
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	mod get_column {
-		use reifydb_core::Type;
-		use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_core::Type;
+	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-		use crate::{
-			Catalog, table_column::ColumnId,
-			test_utils::create_test_table_column,
-		};
+	use crate::{
+		Catalog, table_column::ColumnId,
+		test_utils::create_test_table_column,
+	};
 
-		#[test]
-		fn test_ok() {
-			let mut txn = create_test_command_transaction();
-			create_test_table_column(
-				&mut txn,
-				"col_1",
-				Type::Int1,
-				vec![],
-			);
-			create_test_table_column(
-				&mut txn,
-				"col_2",
-				Type::Int2,
-				vec![],
-			);
-			create_test_table_column(
-				&mut txn,
-				"col_3",
-				Type::Int4,
-				vec![],
-			);
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
+		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-			let result = Catalog::get_table_column(
-				&mut txn,
-				ColumnId(2),
-			)
-			.unwrap()
+		let result = Catalog::get_table_column(&mut txn, ColumnId(2))
 			.unwrap();
 
-			assert_eq!(result.id, 2);
-			assert_eq!(result.name, "col_2");
-			assert_eq!(result.ty, Type::Int2);
-			assert_eq!(result.auto_increment, false);
-		}
-
-		#[test]
-		fn test_not_found() {
-			let mut txn = create_test_command_transaction();
-			create_test_table_column(
-				&mut txn,
-				"col_1",
-				Type::Int1,
-				vec![],
-			);
-			create_test_table_column(
-				&mut txn,
-				"col_2",
-				Type::Int2,
-				vec![],
-			);
-			create_test_table_column(
-				&mut txn,
-				"col_3",
-				Type::Int4,
-				vec![],
-			);
-
-			let result = Catalog::get_table_column(
-				&mut txn,
-				ColumnId(4),
-			)
-			.unwrap();
-			assert!(result.is_none());
-		}
+		assert_eq!(result.id, 2);
+		assert_eq!(result.name, "col_2");
+		assert_eq!(result.ty, Type::Int2);
+		assert_eq!(result.auto_increment, false);
 	}
 
-	mod get_column_by_name {
-		use reifydb_core::{Type, interface::TableId};
-		use reifydb_transaction::test_utils::create_test_command_transaction;
+	#[test]
+	fn test_not_found() {
+		let mut txn = create_test_command_transaction();
+		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
+		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		use crate::{Catalog, test_utils::create_test_table_column};
-
-		#[test]
-		fn test_ok() {
-			let mut txn = create_test_command_transaction();
-			create_test_table_column(
-				&mut txn,
-				"col_1",
-				Type::Int1,
-				vec![],
-			);
-			create_test_table_column(
-				&mut txn,
-				"col_2",
-				Type::Int2,
-				vec![],
-			);
-			create_test_table_column(
-				&mut txn,
-				"col_3",
-				Type::Int4,
-				vec![],
-			);
-
-			let result = Catalog::get_table_column_by_name(
-				&mut txn,
-				TableId(1),
-				"col_3",
-			)
-			.unwrap()
-			.unwrap();
-
-			assert_eq!(result.id, 3);
-			assert_eq!(result.name, "col_3");
-			assert_eq!(result.ty, Type::Int4);
-			assert_eq!(result.auto_increment, false);
-		}
-
-		#[test]
-		fn test_not_found() {
-			let mut txn = create_test_command_transaction();
-			create_test_table_column(
-				&mut txn,
-				"col_1",
-				Type::Int1,
-				vec![],
-			);
-
-			let result = Catalog::get_table_column_by_name(
-				&mut txn,
-				TableId(1),
-				"not_found",
-			)
-			.unwrap();
-
-			assert!(result.is_none());
-		}
+		let err = Catalog::get_table_column(&mut txn, ColumnId(4))
+			.unwrap_err();
+		assert_eq!(err.code, "INTERNAL_ERROR");
+		assert!(err.message.contains("ColumnId(4)"));
+		assert!(err.message.contains("not found in catalog"));
 	}
 }

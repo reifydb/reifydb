@@ -17,7 +17,7 @@ impl Parser {
 		let token = self.consume_keyword(Keyword::From)?;
 
 		if self.current()?.is_operator(OpenBracket) {
-			Ok(AstFrom::Static {
+			Ok(AstFrom::Inline {
 				token,
 				list: self.parse_static()?,
 			})
@@ -34,10 +34,10 @@ impl Parser {
 				(None, identifier)
 			};
 
-			Ok(AstFrom::Table {
+			Ok(AstFrom::Source {
 				token,
 				schema,
-				table,
+				source: table,
 			})
 		}
 	}
@@ -82,8 +82,8 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Table {
-				table,
+			AstFrom::Source {
+				source: table,
 				schema,
 				..
 			} => {
@@ -93,7 +93,7 @@ mod tests {
 				);
 				assert_eq!(table.value(), "users");
 			}
-			AstFrom::Static {
+			AstFrom::Inline {
 				..
 			} => unreachable!(),
 		}
@@ -110,15 +110,15 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Table {
-				table,
+			AstFrom::Source {
+				source: table,
 				schema,
 				..
 			} => {
 				assert_eq!(schema, &None);
 				assert_eq!(table.value(), "users");
 			}
-			AstFrom::Static {
+			AstFrom::Inline {
 				..
 			} => unreachable!(),
 		}
@@ -135,10 +135,10 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Table {
+			AstFrom::Source {
 				..
 			} => unreachable!(),
-			AstFrom::Static {
+			AstFrom::Inline {
 				list: query,
 				..
 			} => {
@@ -159,10 +159,10 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Table {
+			AstFrom::Source {
 				..
 			} => unreachable!(),
-			AstFrom::Static {
+			AstFrom::Inline {
 				list,
 				..
 			} => {
@@ -200,10 +200,10 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Table {
+			AstFrom::Source {
 				..
 			} => unreachable!(),
-			AstFrom::Static {
+			AstFrom::Inline {
 				list,
 				..
 			} => {
@@ -253,10 +253,10 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Table {
+			AstFrom::Source {
 				..
 			} => unreachable!(),
-			AstFrom::Static {
+			AstFrom::Inline {
 				list,
 				..
 			} => {

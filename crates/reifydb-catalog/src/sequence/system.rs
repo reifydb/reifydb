@@ -19,6 +19,9 @@ pub(crate) const TABLE_SEQ_ID: SystemSequenceId = SystemSequenceId(2);
 pub(crate) const COLUMN_SEQ_ID: SystemSequenceId = SystemSequenceId(3);
 pub(crate) const COLUMN_POLICY_SEQ_ID: SystemSequenceId = SystemSequenceId(4);
 pub(crate) const VIEW_SEQ_ID: SystemSequenceId = SystemSequenceId(5);
+pub(crate) const FLOW_SEQ_ID: SystemSequenceId = SystemSequenceId(6);
+pub(crate) const FLOW_NODE_SEQ_ID: SystemSequenceId = SystemSequenceId(7);
+pub(crate) const FLOW_EDGE_SEQ_ID: SystemSequenceId = SystemSequenceId(8);
 
 static SCHEMA_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
@@ -51,6 +54,27 @@ static COLUMN_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 static VIEW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
 		sequence: VIEW_SEQ_ID,
+	}
+	.encode()
+});
+
+pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+	SystemSequenceKey {
+		sequence: FLOW_SEQ_ID,
+	}
+	.encode()
+});
+
+pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+	SystemSequenceKey {
+		sequence: FLOW_NODE_SEQ_ID,
+	}
+	.encode()
+});
+
+pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+	SystemSequenceKey {
+		sequence: FLOW_EDGE_SEQ_ID,
 	}
 	.encode()
 });

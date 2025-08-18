@@ -10,7 +10,8 @@ use nom_locate::LocatedSpan;
 pub use operator::Operator;
 pub use parameter::ParameterKind;
 use reifydb_core::{
-	OwnedSpan, SpanColumn, SpanLine, result::error::diagnostic::ast,
+	OwnedFragment, StatementColumn, StatementLine,
+	result::error::diagnostic::ast,
 };
 pub use separator::Separator;
 
@@ -31,12 +32,12 @@ mod separator;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
 	pub kind: TokenKind,
-	pub span: OwnedSpan,
+	pub fragment: OwnedFragment,
 }
 
-impl From<Token> for OwnedSpan {
+impl From<Token> for OwnedFragment {
 	fn from(value: Token) -> Self {
-		value.span
+		value.fragment
 	}
 }
 
@@ -60,7 +61,7 @@ impl Token {
 		self.kind == TokenKind::Operator(operator)
 	}
 	pub fn value(&self) -> &str {
-		self.span.fragment.as_str()
+		self.fragment.fragment()
 	}
 }
 
@@ -111,11 +112,11 @@ fn token(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 	.parse(input)
 }
 
-pub(crate) fn as_span(value: LocatedSpan<&str>) -> OwnedSpan {
-	OwnedSpan {
-		column: SpanColumn(value.get_column() as u32),
-		line: SpanLine(value.location_line()),
-		fragment: value.fragment().to_string(),
+pub(crate) fn as_fragment(value: LocatedSpan<&str>) -> OwnedFragment {
+	OwnedFragment::Statement {
+		column: StatementColumn(value.get_column() as u32),
+		line: StatementLine(value.location_line()),
+		text: value.fragment().to_string(),
 	}
 }
 
@@ -126,99 +127,99 @@ mod tests {
 	use super::*;
 	use crate::ast::lex::Literal::{Number, Text};
 
-	fn span(s: &str) -> LocatedSpan<&str> {
+	fn fragment(s: &str) -> LocatedSpan<&str> {
 		LocatedSpan::new(s)
 	}
 
 	#[test]
 	fn test_keyword() {
-		let (_rest, token) = token(span("MAP")).unwrap();
+		let (_rest, token) = token(fragment("MAP")).unwrap();
 		assert_eq!(token.kind, TokenKind::Keyword(Keyword::Map));
-		assert_eq!(token.span.fragment.as_str(), "MAP");
+		assert_eq!(token.fragment.fragment(), "MAP");
 	}
 
 	#[test]
 	fn test_identifier() {
-		let (_rest, token) = token(span("my_var123")).unwrap();
+		let (_rest, token) = token(fragment("my_var123")).unwrap();
 		assert_eq!(token.kind, TokenKind::Identifier);
-		assert_eq!(token.span.fragment.as_str(), "my_var123");
+		assert_eq!(token.fragment.fragment(), "my_var123");
 	}
 
 	#[test]
 	fn test_number() {
-		let (_rest, token) = token(span("42")).unwrap();
+		let (_rest, token) = token(fragment("42")).unwrap();
 		assert_eq!(token.kind, Literal(Number));
-		assert_eq!(token.span.fragment.as_str(), "42");
+		assert_eq!(token.fragment.fragment(), "42");
 	}
 
 	#[test]
 	fn test_number_negative() {
-		let (rest, token) = token(span("-42")).unwrap();
+		let (rest, token) = token(fragment("-42")).unwrap();
 		assert_eq!(token.kind, TokenKind::Operator(Operator::Minus));
-		assert_eq!(token.span.fragment.as_str(), "-");
+		assert_eq!(token.fragment.fragment(), "-");
 		assert_eq!(rest.fragment().to_string(), "42");
 	}
 
 	#[test]
 	fn test_text() {
-		let (_rest, token) = token(span("'hello world'")).unwrap();
+		let (_rest, token) = token(fragment("'hello world'")).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(token.span.fragment.as_str(), "hello world");
+		assert_eq!(token.fragment.fragment(), "hello world");
 	}
 
 	#[test]
 	fn test_operator() {
-		let (_rest, token) = token(span("+")).unwrap();
+		let (_rest, token) = token(fragment("+")).unwrap();
 		assert_eq!(token.kind, TokenKind::Operator(Operator::Plus));
-		assert_eq!(token.span.fragment.as_str(), "+");
+		assert_eq!(token.fragment.fragment(), "+");
 	}
 
 	#[test]
 	fn test_separator() {
-		let (_rest, token) = token(span(",")).unwrap();
+		let (_rest, token) = token(fragment(",")).unwrap();
 		assert_eq!(token.kind, TokenKind::Separator(Separator::Comma));
-		assert_eq!(token.span.fragment.as_str(), ",");
+		assert_eq!(token.fragment.fragment(), ",");
 	}
 
 	#[test]
 	fn test_skips_whitespace() {
-		let (_rest, token) = token(span("   MAP")).unwrap();
+		let (_rest, token) = token(fragment("   MAP")).unwrap();
 		assert_eq!(token.kind, TokenKind::Keyword(Keyword::Map));
-		assert_eq!(token.span.fragment.as_str(), "MAP");
+		assert_eq!(token.fragment.fragment(), "MAP");
 	}
 
 	#[test]
 	fn test_desc() {
-		let (_rest, token) = token(span("DESC")).unwrap();
+		let (_rest, token) = token(fragment("DESC")).unwrap();
 		assert_eq!(token.kind, TokenKind::Keyword(Keyword::Desc));
-		assert_eq!(token.span.fragment.as_str(), "DESC");
+		assert_eq!(token.fragment.fragment(), "DESC");
 	}
 
 	#[test]
 	fn test_a() {
-		let (_rest, token) = token(span("a")).unwrap();
+		let (_rest, token) = token(fragment("a")).unwrap();
 		assert_eq!(token.kind, TokenKind::Identifier);
-		assert_eq!(token.span.fragment.as_str(), "a");
+		assert_eq!(token.fragment.fragment(), "a");
 	}
 
 	#[test]
 	fn test_parameter_positional() {
-		let (_rest, token) = token(span("$1")).unwrap();
+		let (_rest, token) = token(fragment("$1")).unwrap();
 		assert_eq!(
 			token.kind,
 			TokenKind::Parameter(ParameterKind::Positional(1))
 		);
-		assert_eq!(token.span.fragment.as_str(), "$1");
+		assert_eq!(token.fragment.fragment(), "$1");
 	}
 
 	#[test]
 	fn test_parameter_named() {
-		let (_rest, token) = token(span("$user_id")).unwrap();
+		let (_rest, token) = token(fragment("$user_id")).unwrap();
 		assert_eq!(
 			token.kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(token.span.fragment.as_str(), "$user_id");
+		assert_eq!(token.fragment.fragment(), "$user_id");
 	}
 
 	#[test]

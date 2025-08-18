@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	BorrowedSpan, Date, DateTime, Interval, OwnedSpan, Time, Type, error,
+	interface::fragment::{BorrowedFragment, OwnedFragment, Fragment},
+	Date, DateTime, Interval, Time, Type, error,
 	result::error::diagnostic::cast,
 	value::{
 		container::StringContainer,
@@ -17,18 +18,18 @@ use crate::columnar::ColumnData;
 pub fn to_temporal(
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8(container) = data {
 		match target {
-			Type::Date => to_date(container, span),
-			Type::DateTime => to_datetime(container, span),
-			Type::Time => to_time(container, span),
-			Type::Interval => to_interval(container, span),
+			Type::Date => to_date(container, fragment),
+			Type::DateTime => to_datetime(container, fragment),
+			Type::Time => to_time(container, fragment),
+			Type::Interval => to_interval(container, fragment),
 			_ => {
 				let source_type = data.get_type();
 				reifydb_core::err!(cast::unsupported_cast(
-					span(),
+					fragment(),
 					source_type,
 					target
 				))
@@ -37,7 +38,7 @@ pub fn to_temporal(
 	} else {
 		let source_type = data.get_type();
 		reifydb_core::err!(cast::unsupported_cast(
-			span(),
+			fragment(),
 			source_type,
 			target
 		))
@@ -49,25 +50,43 @@ macro_rules! impl_to_temporal {
         #[inline]
         fn $fn_name(
             container: &StringContainer,
-            span: impl Fn() -> OwnedSpan,
+            fragment: impl Fn() -> OwnedFragment,
         ) -> crate::Result<ColumnData> {
             let mut out = ColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
                 if container.is_defined(idx) {
                     let val = &container[idx];
-                    let temp_span = BorrowedSpan::new(val.as_str());
+                    // Use internal fragment for parsing - positions will be replaced with actual source positions
+                    let temp_fragment = BorrowedFragment::new_internal(val.as_str());
 
-                    let parsed = $parse_fn(temp_span).map_err(|mut e| {
-                        // Only create proper span on error
-                        let proper_span = span();
-
-                        // Update the diagnostic span
-                        if let Some(ref mut diagnostic_span) = e.0.span {
-                            *diagnostic_span = proper_span.clone();
+                    let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
+                        // Get the original fragment for error reporting
+                        let proper_fragment = fragment();
+                        
+                        // Handle fragment replacement based on the context
+                        // For Internal fragments (from parsing), we need to adjust position
+                        if let OwnedFragment::Internal { text: error_text } = &e.0.fragment {
+                            // Check if we're dealing with a string literal (Statement fragment)
+                            // that contains position information we can use for sub-fragments
+                            if let OwnedFragment::Statement { text: source_text, .. } = &proper_fragment {
+                                // For string literals, if the source text exactly matches the value being parsed,
+                                // or contains it with quotes, it's a string literal
+                                if source_text == val.as_str() || source_text.contains(&format!("\"{}\"", val.as_str())) {
+                                    // This is a string literal - adjust position within the string
+                                    let offset = val.as_str().find(error_text.as_str()).unwrap_or(0);
+                                    e.0.fragment = proper_fragment.sub_fragment(offset, error_text.len());
+                                } else {
+                                    // This is a column reference - use the column name
+                                    e.0.fragment = proper_fragment.clone();
+                                }
+                            } else {
+                                // Not a Statement fragment - use as is (for column references)
+                                e.0.fragment = proper_fragment.clone();
+                            }
                         }
-
-                        e.0.update_spans(&proper_span);
-                        error!(cast::invalid_temporal(proper_span, $target_type, e.0))
+                        
+                        // Wrap in cast error with the original fragment for the outer error
+                        error!(cast::invalid_temporal(proper_fragment, $target_type, e.0))
                     })?;
 
                     out.push::<$type>(parsed);

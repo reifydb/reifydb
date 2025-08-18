@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::JoinType;
+use reifydb_core::{JoinType};
 
 use crate::{
 	ast::parse,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, FilterNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, MapNode, OrderNode, TableScanNode, TakeNode,
+		LogicalPlan, MapNode, OrderNode, SourceScanNode, TakeNode,
 		compile_logical,
 	},
 };
@@ -53,7 +53,7 @@ fn render_logical_plan_inner(
 	);
 
 	match plan {
-		LogicalPlan::CreateComputedView(_) => unimplemented!(),
+		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
 		LogicalPlan::CreateSchema(_) => unimplemented!(),
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
@@ -77,24 +77,24 @@ fn render_logical_plan_inner(
 				}
 			);
 
-			if let Some(schema_span) = schema {
+			if let Some(schema_fragment) = schema {
 				output.push_str(&format!(
 					"{}├── Schema: {}\n",
-					child_prefix, schema_span.fragment
+					child_prefix, schema_fragment.fragment()
 				));
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
-					child_prefix, table.fragment
+					child_prefix, table.fragment()
 				));
 			} else {
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
-					child_prefix, table.fragment
+					child_prefix, table.fragment()
 				));
 			}
 			output.push_str(&format!(
 				"{}├── Column: {}\n",
-				child_prefix, column.fragment
+				child_prefix, column.fragment()
 			));
 			output.push_str(&format!(
 				"{}└── Value: {}\n",
@@ -130,15 +130,15 @@ fn render_logical_plan_inner(
 			));
 			output.push_str(&format!(
 				"{}├── Name: {}\n",
-				child_prefix, name.fragment
+				child_prefix, name.fragment()
 			));
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
-				child_prefix, schema.fragment
+				child_prefix, schema.fragment()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
-				child_prefix, table.fragment
+				child_prefix, table.fragment()
 			));
 
 			let columns_str = columns
@@ -147,11 +147,11 @@ fn render_logical_plan_inner(
 					if let Some(order) = &col.order {
 						format!(
 							"{} {:?}",
-							col.column.fragment,
+							col.column.fragment(),
 							order
 						)
 					} else {
-						col.column.fragment.to_string()
+						col.column.fragment().to_string()
 					}
 				})
 				.collect::<Vec<_>>()
@@ -351,17 +351,15 @@ fn render_logical_plan_inner(
 				);
 			}
 		}
-		LogicalPlan::TableScan(TableScanNode {
+		LogicalPlan::SourceScan(SourceScanNode {
 			schema,
-			table,
+			source: table,
 		}) => {
-			let name = match schema {
-				Some(s) => format!(
-					"{}.{}",
-					s.fragment, table.fragment
-				),
-				None => table.fragment.to_string(),
-			};
+			let name = format!(
+				"{}.{}",
+				schema.fragment(), table.fragment()
+			);
+
 			output.push_str(&format!(
 				"{}{} TableScan {}\n",
 				prefix, branch, name

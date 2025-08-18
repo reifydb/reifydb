@@ -1,38 +1,43 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::OwnedSpan;
-use reifydb_rql::expression::{
-	AccessSourceExpression, ColumnExpression, Expression,
+use reifydb_core::{
+	OwnedFragment, Fragment,
+	interface::{
+		EvaluationContext, Evaluator,
+		evaluate::expression::{
+			AccessSourceExpression, ColumnExpression, Expression,
+		},
+	},
 };
 
 use crate::{
 	columnar::{Column, SourceQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::StandardEvaluator,
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn access(
-		&mut self,
-		expr: &AccessSourceExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &AccessSourceExpression,
 	) -> crate::Result<Column> {
-		let source = expr.source.fragment.clone();
-		let column = expr.column.fragment.clone();
+		let source = expr.source.fragment().to_string();
+		let column = expr.column.fragment().to_string();
 
 		let data = self
 			.evaluate(
+				ctx,
 				&Expression::Column(ColumnExpression(
-					OwnedSpan {
-						column: expr.source.column,
-						line: expr.source.line,
-						fragment: format!(
+					OwnedFragment::Statement {
+						column: expr.source.column(),
+						line: expr.source.line(),
+						text: format!(
 							"{}.{}",
 							source, column
 						),
 					},
 				)),
-				&ctx,
 			)?
 			.data()
 			.clone();

@@ -50,7 +50,7 @@ impl Parser {
 				}
 				_ => return_error!(
 					ast::unsupported_token_error(
-						self.advance()?.span
+						self.advance()?.fragment
 					)
 				),
 			},
@@ -135,7 +135,7 @@ impl Parser {
 							},
 						))
 					} else {
-						return_error!(ast::unsupported_token_error(self.advance()?.span))
+						return_error!(ast::unsupported_token_error(self.advance()?.fragment))
 					}
 				}
 			},

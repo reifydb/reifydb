@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::Catalog;
 use reifydb_core::interface::VersionedQueryTransaction;
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
@@ -17,9 +16,10 @@ use crate::execute::{
 		join_left::LeftJoinNode,
 		join_natural::NaturalJoinNode,
 		map::{MapNode, MapWithoutInputNode},
-		scan::ScanColumnsNode,
 		sort::SortNode,
+		table_scan::TableScanNode,
 		take::TakeNode,
+		view_scan::ViewScanNode,
 	},
 };
 
@@ -113,30 +113,17 @@ pub(crate) fn compile(
 		}) => Box::new(InlineDataNode::new(rows, context)),
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
-			schema,
+			schema: _,
 			table,
-		}) => {
-			// FIXME If schema is NONE resolve table directly by
-			// name
-			let schema = Catalog::get_schema_by_name(
-				rx,
-				&schema.as_ref().unwrap().fragment.as_str(),
-			)
-			.unwrap()
-			.unwrap();
+		}) => Box::new(TableScanNode::new(table, context).unwrap()),
 
-			let table = Catalog::get_table_by_name(
-				rx,
-				schema.id,
-				&table.fragment.as_str(),
-			)
-			.unwrap()
-			.unwrap();
+		PhysicalPlan::ViewScan(physical::ViewScanNode {
+			schema: _,
+			view,
+		}) => Box::new(ViewScanNode::new(view, context).unwrap()),
 
-			Box::new(ScanColumnsNode::new(table, context).unwrap())
-		}
 		PhysicalPlan::AlterSequence(_)
-		| PhysicalPlan::CreateComputedView(_)
+		| PhysicalPlan::CreateDeferredView(_)
 		| PhysicalPlan::CreateSchema(_)
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::Delete(_)

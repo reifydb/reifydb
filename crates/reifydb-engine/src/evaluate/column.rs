@@ -3,23 +3,23 @@
 
 use reifydb_core::{
 	Date, DateTime, Interval, RowId, Time, Value, error,
+	interface::evaluate::expression::ColumnExpression,
 	result::error::diagnostic::query::column_not_found,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
-use reifydb_rql::expression::ColumnExpression;
 
 use crate::{
 	columnar::{Column, ColumnData},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn column(
-		&mut self,
-		column: &ColumnExpression,
+		&self,
 		ctx: &EvaluationContext,
+		column: &ColumnExpression,
 	) -> crate::Result<Column> {
-		let name = column.0.fragment.to_string();
+		let name = column.0.fragment().to_string();
 
 		// First try exact qualified name match
 		if let Some(col) =
@@ -63,7 +63,7 @@ impl Evaluator {
 	}
 
 	fn extract_column_data(
-		&mut self,
+		&self,
 		col: &Column,
 		ctx: &EvaluationContext,
 	) -> crate::Result<Column> {

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	interface::{
 		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey, Key,
 		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
@@ -27,12 +27,12 @@ pub struct TableColumnToCreate {
 	pub ty: Type,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 	pub table: String,
 	pub schema: String,
 	pub columns: Vec<TableColumnToCreate>,
@@ -44,21 +44,21 @@ impl Catalog {
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
-			Catalog::get_schema_by_name(txn, &to_create.schema)?
+			Catalog::find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
-				to_create.span,
+				to_create.fragment,
 				&to_create.schema
 			));
 		};
 
-		if let Some(table) = Catalog::get_table_by_name(
+		if let Some(table) = Catalog::find_table_by_name(
 			txn,
 			schema.id,
 			&to_create.table,
 		)? {
 			return_error!(table_already_exists(
-				to_create.span,
+				to_create.fragment,
 				&schema.name,
 				&table.name
 			));
@@ -75,7 +75,7 @@ impl Catalog {
 
 		Catalog::insert_columns(txn, table_id, to_create)?;
 
-		Ok(Catalog::get_table(txn, table_id)?.unwrap())
+		Ok(Catalog::get_table(txn, table_id)?)
 	}
 
 	fn store_table<T: Transaction>(
@@ -136,7 +136,7 @@ impl Catalog {
 				txn,
 				table,
 				crate::table_column::TableColumnToCreate {
-					span: column_to_create.span.clone(),
+					fragment: column_to_create.fragment.clone(),
 					schema_name: &to_create.schema,
 					table,
 					table_name: &to_create.table,
@@ -179,7 +179,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			table: "test_table".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		// First creation should succeed
@@ -205,7 +205,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			table: "test_table".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		Catalog::create_table(&mut txn, to_create).unwrap();
@@ -214,7 +214,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			table: "another_table".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		Catalog::create_table(&mut txn, to_create).unwrap();
@@ -256,7 +256,7 @@ mod tests {
 			schema: "missing_schema".to_string(),
 			table: "my_table".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		let err =

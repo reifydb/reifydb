@@ -3,31 +3,37 @@ mod map;
 
 pub use filter::FilterOperator;
 pub use map::MapOperator;
+use reifydb_core::{
+	interface::{EvaluationContext, Evaluator, expression::Expression},
+	value::columnar::Column,
+};
 
 use crate::core::Change;
 
-pub trait Operator {
+pub trait Operator<E: Evaluator>: Send + Sync + 'static {
 	fn apply(
 		&self,
-		ctx: &OperatorContext,
-		change: Change,
+		ctx: &OperatorContext<E>,
+		change: &Change,
 	) -> crate::Result<Change>;
 }
 
-pub struct OperatorContext {
-	// pub state: StateStore,
+pub struct OperatorContext<'a, E: Evaluator> {
+	pub evaluator: &'a E,
 }
 
-impl OperatorContext {
-	pub fn new() -> Self {
+impl<'a, E: Evaluator> OperatorContext<'a, E> {
+	pub fn new(evaluator: &'a E) -> Self {
 		Self {
-			// state: StateStore::new(),
+			evaluator,
 		}
 	}
 
-	// pub fn with_state(state: StateStore) -> Self {
-	// 	Self {
-	// 		state,
-	// 	}
-	// }
+	pub fn evaluate(
+		&self,
+		ctx: &EvaluationContext,
+		expr: &Expression,
+	) -> crate::Result<Column> {
+		self.evaluator.evaluate(ctx, expr)
+	}
 }

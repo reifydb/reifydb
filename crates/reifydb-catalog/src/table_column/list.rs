@@ -29,7 +29,7 @@ impl Catalog {
 				.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(Catalog::get_table_column(rx, id)?.unwrap());
+			result.push(Catalog::get_table_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -59,7 +59,7 @@ mod tests {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -77,7 +77,7 @@ mod tests {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",

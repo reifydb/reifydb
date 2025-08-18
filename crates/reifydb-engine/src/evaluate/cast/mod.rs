@@ -11,22 +11,26 @@ pub mod uuid;
 use std::ops::Deref;
 
 use reifydb_core::{
-	OwnedSpan, Type, err, error, result::error::diagnostic::cast,
+	OwnedFragment, Type, err, error,
+	interface::{
+		Evaluator,
+		expression::{CastExpression, Expression},
+	},
+	result::error::diagnostic::cast,
 };
-use reifydb_rql::expression::{CastExpression, Expression};
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{Convert, Demote, EvaluationContext, Evaluator, Promote},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn cast(
-		&mut self,
-		cast: &CastExpression,
+		&self,
 		ctx: &EvaluationContext,
+		cast: &CastExpression,
 	) -> crate::Result<Column> {
-		let cast_span = cast.lazy_span();
+		let cast_fragment = cast.lazy_fragment();
 
 		// FIXME optimization does not apply for prefix expressions,
 		// like cast(-2 as int1) at the moment
@@ -36,20 +40,20 @@ impl Evaluator {
 			// data directly which means there is no reason to
 			// further adjust the column
 			Expression::Constant(expr) => {
-				self.constant_of(expr, cast.to.ty, ctx)
+				self.constant_of(ctx, expr, cast.to.ty)
 			}
 			expr => {
-				let column = self.evaluate(expr, ctx)?;
+				let column = self.evaluate(ctx, expr)?;
 
 				let casted = cast_column_data(
+					ctx,
 					&column.data(),
 					cast.to.ty,
-					ctx,
-					cast.expression.lazy_span(),
+					cast.expression.lazy_fragment(),
 				)
 				.map_err(|e| {
 					error!(cast::invalid_number(
-						cast_span(),
+						cast_fragment(),
 						cast.to.ty,
 						e.diagnostic()
 					))
@@ -85,10 +89,10 @@ impl Evaluator {
 }
 
 pub fn cast_column_data(
+	ctx: &EvaluationContext,
 	data: &ColumnData,
 	target: Type,
-	ctx: impl Promote + Demote + Convert,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
 		let mut result =
@@ -102,25 +106,25 @@ pub fn cast_column_data(
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
 		(_, target) if target.is_number() => {
-			number::to_number(data, target, ctx, span)
+			number::to_number(ctx, data, target, fragment)
 		}
-		(_, target) if target.is_blob() => blob::to_blob(data, span),
+		(_, target) if target.is_blob() => blob::to_blob(data, fragment),
 		(_, target) if target.is_bool() => {
-			boolean::to_boolean(data, span)
+			boolean::to_boolean(data, fragment)
 		}
-		(_, target) if target.is_utf8() => text::to_text(data, span),
+		(_, target) if target.is_utf8() => text::to_text(data, fragment),
 		(_, target) if target.is_temporal() => {
-			temporal::to_temporal(data, target, span)
+			temporal::to_temporal(data, target, fragment)
 		}
 		(_, target) if target.is_uuid() => {
-			uuid::to_uuid(data, target, span)
+			uuid::to_uuid(data, target, fragment)
 		}
 		(source, target) if source.is_uuid() || target.is_uuid() => {
-			uuid::to_uuid(data, target, span)
+			uuid::to_uuid(data, target, fragment)
 		}
 		_ => {
 			err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -132,10 +136,12 @@ pub fn cast_column_data(
 mod tests {
 	use ConstantExpression::Number;
 	use Expression::{Cast, Constant};
-	use reifydb_core::{OwnedSpan, Type};
-	use reifydb_rql::expression::{
-		CastExpression, ConstantExpression, DataTypeExpression,
-		Expression::Prefix, PrefixExpression, PrefixOperator,
+	use reifydb_core::{
+		OwnedFragment, Type,
+		interface::expression::{
+			CastExpression, ConstantExpression, Expression::Prefix,
+			PrefixExpression, PrefixOperator, TypeExpression,
+		},
 	};
 
 	use crate::{
@@ -145,19 +151,19 @@ mod tests {
 
 	#[test]
 	fn test_cast_integer() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("42"),
+					fragment: OwnedFragment::testing("42"),
 				})),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Int4,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -166,18 +172,18 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_integer() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
             &Cast(CastExpression {
-                span: OwnedSpan::testing_empty(),
+                fragment: OwnedFragment::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(OwnedSpan::testing_empty()),
-                    expression: Box::new(Constant(Number { span: OwnedSpan::testing("42") })),
-                    span: OwnedSpan::testing_empty(),
+                    operator: PrefixOperator::Minus(OwnedFragment::testing_empty()),
+                    expression: Box::new(Constant(Number { fragment: OwnedFragment::testing("42") })),
+                    fragment: OwnedFragment::testing_empty(),
                 })),
-                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int4 },
+                to: TypeExpression { fragment: OwnedFragment::testing_empty(), ty: Type::Int4 },
             }),
-            &ctx,
         )
         .unwrap();
 
@@ -186,18 +192,18 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_min() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
             &Cast(CastExpression {
-                span: OwnedSpan::testing_empty(),
+                fragment: OwnedFragment::testing_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(OwnedSpan::testing_empty()),
-                    expression: Box::new(Constant(Number { span: OwnedSpan::testing("128") })),
-                    span: OwnedSpan::testing_empty(),
+                    operator: PrefixOperator::Minus(OwnedFragment::testing_empty()),
+                    expression: Box::new(Constant(Number { fragment: OwnedFragment::testing("128") })),
+                    fragment: OwnedFragment::testing_empty(),
                 })),
-                to: DataTypeExpression { span: OwnedSpan::testing_empty(), ty: Type::Int1 },
+                to: TypeExpression { fragment: OwnedFragment::testing_empty(), ty: Type::Int1 },
             }),
-            &ctx,
         )
         .unwrap();
 
@@ -206,19 +212,19 @@ mod tests {
 
 	#[test]
 	fn test_cast_float_8() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("4.2"),
+					fragment: OwnedFragment::testing("4.2"),
 				})),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Float8,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -227,19 +233,19 @@ mod tests {
 
 	#[test]
 	fn test_cast_float_4() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("4.2"),
+					fragment: OwnedFragment::testing("4.2"),
 				})),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Float4,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -248,19 +254,19 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_float_4() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("-1.1"),
+					fragment: OwnedFragment::testing("-1.1"),
 				})),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Float4,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -269,19 +275,19 @@ mod tests {
 
 	#[test]
 	fn test_cast_negative_float_8() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					span: OwnedSpan::testing("-1.1"),
+					fragment: OwnedFragment::testing("-1.1"),
 				})),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Float8,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -290,21 +296,21 @@ mod tests {
 
 	#[test]
 	fn test_cast_string_to_bool() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
-						span: OwnedSpan::testing("0"),
+						fragment: OwnedFragment::testing("0"),
 					},
 				)),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Bool,
 				},
 			}),
-			&ctx,
 		)
 		.unwrap();
 
@@ -313,21 +319,21 @@ mod tests {
 
 	#[test]
 	fn test_cast_string_neg_one_to_bool_should_fail() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
-						span: OwnedSpan::testing("-1"),
+						fragment: OwnedFragment::testing("-1"),
 					},
 				)),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Bool,
 				},
 			}),
-			&ctx,
 		);
 
 		assert!(result.is_err());
@@ -344,23 +350,23 @@ mod tests {
 
 	#[test]
 	fn test_cast_bool_to_date_should_fail() {
-		let ctx = EvaluationContext::testing();
+		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
+			&mut ctx,
 			&Cast(CastExpression {
-				span: OwnedSpan::testing_empty(),
+				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Bool {
-						span: OwnedSpan::testing(
+						fragment: OwnedFragment::testing(
 							"true",
 						),
 					},
 				)),
-				to: DataTypeExpression {
-					span: OwnedSpan::testing_empty(),
+				to: TypeExpression {
+					fragment: OwnedFragment::testing_empty(),
 					ty: Type::Date,
 				},
 			}),
-			&ctx,
 		);
 
 		assert!(result.is_err());

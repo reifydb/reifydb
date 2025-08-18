@@ -3,7 +3,7 @@
 
 use std::ops::{Deref, Index};
 
-use reifydb_core::{IndexType, JoinType, OwnedSpan, SortDirection};
+use reifydb_core::{IndexType, JoinType, OwnedFragment, SortDirection};
 
 use crate::ast::lex::{Literal, ParameterKind, Token, TokenKind};
 
@@ -534,7 +534,7 @@ impl Index<usize> for AstInline {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstCreate {
-	ComputedView(AstCreateComputedView),
+	DeferredView(AstCreateDeferredView),
 	Schema(AstCreateSchema),
 	Series(AstCreateSeries),
 	Table(AstCreateTable),
@@ -556,7 +556,7 @@ pub struct AstAlterSequence {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateComputedView {
+pub struct AstCreateDeferredView {
 	pub token: Token,
 	pub schema: AstIdentifier,
 	pub view: AstIdentifier,
@@ -623,7 +623,7 @@ pub struct AstIndexColumn {
 impl AstCreate {
 	pub fn token(&self) -> &Token {
 		match self {
-			AstCreate::ComputedView(AstCreateComputedView {
+			AstCreate::DeferredView(AstCreateDeferredView {
 				token,
 				..
 			}) => token,
@@ -666,12 +666,12 @@ pub struct AstFilter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstFrom {
-	Table {
+	Source {
 		token: Token,
 		schema: Option<AstIdentifier>,
-		table: AstIdentifier,
+		source: AstIdentifier,
 	},
-	Static {
+	Inline {
 		token: Token,
 		list: AstList,
 	},
@@ -687,11 +687,11 @@ pub struct AstAggregate {
 impl AstFrom {
 	pub fn token(&self) -> &Token {
 		match self {
-			AstFrom::Table {
+			AstFrom::Source {
 				token,
 				..
 			} => token,
-			AstFrom::Static {
+			AstFrom::Inline {
 				token,
 				..
 			} => token,
@@ -735,13 +735,13 @@ pub enum AstLiteral {
 }
 
 impl AstLiteral {
-	pub fn span(self) -> OwnedSpan {
+	pub fn fragment(self) -> OwnedFragment {
 		match self {
-			AstLiteral::Boolean(literal) => literal.0.span,
-			AstLiteral::Number(literal) => literal.0.span,
-			AstLiteral::Text(literal) => literal.0.span,
-			AstLiteral::Temporal(literal) => literal.0.span,
-			AstLiteral::Undefined(literal) => literal.0.span,
+			AstLiteral::Boolean(literal) => literal.0.fragment,
+			AstLiteral::Number(literal) => literal.0.fragment,
+			AstLiteral::Text(literal) => literal.0.fragment,
+			AstLiteral::Temporal(literal) => literal.0.fragment,
+			AstLiteral::Undefined(literal) => literal.0.fragment,
 		}
 	}
 }
@@ -751,15 +751,15 @@ pub struct AstIdentifier(pub Token);
 
 impl AstIdentifier {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 
 	pub fn name(&self) -> String {
 		self.value().to_string()
 	}
 
-	pub fn span(self) -> OwnedSpan {
-		self.0.span
+	pub fn fragment(self) -> OwnedFragment {
+		self.0.fragment
 	}
 }
 
@@ -849,7 +849,7 @@ pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 
@@ -858,7 +858,7 @@ pub struct AstLiteralTemporal(pub Token);
 
 impl AstLiteralTemporal {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 
@@ -867,7 +867,7 @@ pub struct AstLiteralText(pub Token);
 
 impl AstLiteralText {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 
@@ -885,7 +885,7 @@ pub struct AstLiteralUndefined(pub Token);
 
 impl AstLiteralUndefined {
 	pub fn value(&self) -> &str {
-		self.0.span.fragment.as_str()
+		self.0.fragment.fragment()
 	}
 }
 

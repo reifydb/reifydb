@@ -1,8 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{BitVec, interface::VersionedQueryTransaction};
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	BitVec,
+	interface::{
+		VersionedQueryTransaction, evaluate::expression::Expression,
+	},
+};
 
 use crate::{
 	columnar::{ColumnData, layout::ColumnsLayout},
@@ -58,7 +62,7 @@ impl ExecutionPlan for FilterNode {
 				};
 
 				// Evaluate the filter expression
-				let result = evaluate(filter_expr, &eval_ctx)?;
+				let result = evaluate(&eval_ctx, filter_expr)?;
 
 				// Create filter mask from result
 				let filter_mask =

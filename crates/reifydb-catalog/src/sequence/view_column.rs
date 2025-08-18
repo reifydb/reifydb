@@ -27,49 +27,46 @@ impl ViewColumnSequence {
 		view: ViewId,
 		column: ViewColumnId,
 	) -> crate::Result<Value> {
-		if let Some(column) = Catalog::get_view_column(txn, column)? {
-			let key = ViewColumnSequenceKey {
-				view,
-				column: column.id,
-			}
-			.encode();
-
-			Ok(match column.ty {
-				Type::Int1 => Value::Int1(GeneratorI8::next(
-					txn, &key, None,
-				)?),
-				Type::Int2 => Value::Int2(GeneratorI16::next(
-					txn, &key, None,
-				)?),
-				Type::Int4 => Value::Int4(GeneratorI32::next(
-					txn, &key, None,
-				)?),
-				Type::Int8 => Value::Int8(GeneratorI64::next(
-					txn, &key, None,
-				)?),
-				Type::Int16 => Value::Int16(
-					GeneratorI128::next(txn, &key, None)?,
-				),
-				Type::Uint1 => Value::Uint1(GeneratorU8::next(
-					txn, &key, None,
-				)?),
-				Type::Uint2 => Value::Uint2(
-					GeneratorU16::next(txn, &key, None)?,
-				),
-				Type::Uint4 => Value::Uint4(
-					GeneratorU32::next(txn, &key, None)?,
-				),
-				Type::Uint8 => Value::Uint8(
-					GeneratorU64::next(txn, &key, None)?,
-				),
-				Type::Uint16 => Value::Uint16(
-					GeneratorU128::next(txn, &key, None)?,
-				),
-				_ => Value::Undefined,
-			})
-		} else {
-			Ok(Value::Undefined)
+		let column = Catalog::get_view_column(txn, column)?;
+		let key = ViewColumnSequenceKey {
+			view,
+			column: column.id,
 		}
+		.encode();
+
+		Ok(match column.ty {
+			Type::Int1 => {
+				Value::Int1(GeneratorI8::next(txn, &key, None)?)
+			}
+			Type::Int2 => Value::Int2(GeneratorI16::next(
+				txn, &key, None,
+			)?),
+			Type::Int4 => Value::Int4(GeneratorI32::next(
+				txn, &key, None,
+			)?),
+			Type::Int8 => Value::Int8(GeneratorI64::next(
+				txn, &key, None,
+			)?),
+			Type::Int16 => Value::Int16(GeneratorI128::next(
+				txn, &key, None,
+			)?),
+			Type::Uint1 => Value::Uint1(GeneratorU8::next(
+				txn, &key, None,
+			)?),
+			Type::Uint2 => Value::Uint2(GeneratorU16::next(
+				txn, &key, None,
+			)?),
+			Type::Uint4 => Value::Uint4(GeneratorU32::next(
+				txn, &key, None,
+			)?),
+			Type::Uint8 => Value::Uint8(GeneratorU64::next(
+				txn, &key, None,
+			)?),
+			Type::Uint16 => Value::Uint16(GeneratorU128::next(
+				txn, &key, None,
+			)?),
+			_ => Value::Undefined,
+		})
 	}
 
 	pub fn set_value<T: Transaction>(
@@ -78,17 +75,9 @@ impl ViewColumnSequence {
 		column: ViewColumnId,
 		value: Value,
 	) -> crate::Result<()> {
-		let Some(view) = Catalog::get_view(txn, view)? else {
-			// return_error!(view_not_found(plan.view.clone(),
-			// &schema.name, &plan.view.as_ref(),));
-			unimplemented!()
-		};
+		let view = Catalog::get_view(txn, view)?;
 
-		let Some(column) = Catalog::get_view_column(txn, column)?
-		else {
-			// return_error!(column_not_found(plan.column.clone()));
-			unimplemented!()
-		};
+		let column = Catalog::get_view_column(txn, column)?;
 
 		debug_assert!(value.get_type() == column.ty);
 

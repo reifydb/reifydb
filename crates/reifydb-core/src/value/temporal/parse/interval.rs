@@ -2,22 +2,23 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	Error, Interval, Span, result::error::diagnostic::temporal,
+	Error, Interval, result::error::diagnostic::temporal,
+	interface::fragment::Fragment,
 	return_error,
 };
 
-pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
-	let fragment = span.fragment();
+pub fn parse_interval(fragment: impl Fragment) -> Result<Interval, Error> {
+	let fragment_value = fragment.value();
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
-	if fragment.len() == 1 || !fragment.starts_with('P') || fragment == "PT"
+	if fragment_value.len() == 1 || !fragment_value.starts_with('P') || fragment_value == "PT"
 	{
 		return_error!(temporal::invalid_interval_format(
-			span.to_owned()
+			fragment.clone()
 		));
 	}
 
-	let mut chars = fragment.chars().skip(1); // Skip 'P'
+	let mut chars = fragment_value.chars().skip(1); // Skip 'P'
 	let mut months = 0i32;
 	let mut days = 0i32;
 	let mut nanos = 0i64;
@@ -37,19 +38,17 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 			}
 			'Y' => {
 				if in_time_part {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_span, 'Y', true));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::invalid_unit_in_context(unit_frag, 'Y', true));
 				}
 				if current_number.is_empty() {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::incomplete_interval_specification(unit_span));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let years: i32 = current_number.parse().map_err(|_| {
-                    let number_span = span
-                        .sub_span(current_position - current_number.len(), current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_span, 'Y'))
+                    let start = current_position - current_number.len();
+                    let number_frag = fragment.sub_fragment(start, current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_frag, 'Y'))
                 })?;
 				months += years * 12; // Exact: store as months
 				current_number.clear();
@@ -57,14 +56,13 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 			}
 			'M' => {
 				if current_number.is_empty() {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::incomplete_interval_specification(unit_span));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let value: i64 = current_number.parse().map_err(|_| {
-                    let number_span = span
-                        .sub_span(current_position - current_number.len(), current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_span, 'M'))
+                    let start = current_position - current_number.len();
+                    let number_frag = fragment.sub_fragment(start, current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_frag, 'M'))
                 })?;
 				if in_time_part {
 					nanos += value * 60 * 1_000_000_000; // Minutes
@@ -76,19 +74,17 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 			}
 			'W' => {
 				if in_time_part {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_span, 'W', true));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::invalid_unit_in_context(unit_frag, 'W', true));
 				}
 				if current_number.is_empty() {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::incomplete_interval_specification(unit_span));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let weeks: i32 = current_number.parse().map_err(|_| {
-                    let number_span = span
-                        .sub_span(current_position - current_number.len(), current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_span, 'W'))
+                    let start = current_position - current_number.len();
+                    let number_frag = fragment.sub_fragment(start, current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_frag, 'W'))
                 })?;
 				days += weeks * 7;
 				current_number.clear();
@@ -96,19 +92,17 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 			}
 			'D' => {
 				if in_time_part {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_span, 'D', true));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::invalid_unit_in_context(unit_frag, 'D', true));
 				}
 				if current_number.is_empty() {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::incomplete_interval_specification(unit_span));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let day_value: i32 = current_number.parse().map_err(|_| {
-                    let number_span = span
-                        .sub_span(current_position - current_number.len(), current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_span, 'D'))
+                    let start = current_position - current_number.len();
+                    let number_frag = fragment.sub_fragment(start, current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_frag, 'D'))
                 })?;
 				days += day_value;
 				current_number.clear();
@@ -116,19 +110,17 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 			}
 			'H' => {
 				if !in_time_part {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_span, 'H', false));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::invalid_unit_in_context(unit_frag, 'H', false));
 				}
 				if current_number.is_empty() {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::incomplete_interval_specification(unit_span));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let hours: i64 = current_number.parse().map_err(|_| {
-                    let number_span = span
-                        .sub_span(current_position - current_number.len(), current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_span, 'H'))
+                    let start = current_position - current_number.len();
+                    let number_frag = fragment.sub_fragment(start, current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_frag, 'H'))
                 })?;
 				nanos += hours * 60 * 60 * 1_000_000_000;
 				current_number.clear();
@@ -136,44 +128,35 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 			}
 			'S' => {
 				if !in_time_part {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_span, 'S', false));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::invalid_unit_in_context(unit_frag, 'S', false));
 				}
 				if current_number.is_empty() {
-					let unit_span = span
-						.sub_span(current_position, 1);
-					return_error!(temporal::incomplete_interval_specification(unit_span));
+					let unit_frag = fragment.sub_fragment(current_position, 1);
+					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let seconds: i64 = current_number.parse().map_err(|_| {
-                    let number_span = span
-                        .sub_span(current_position - current_number.len(), current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_span, 'S'))
+                    let start = current_position - current_number.len();
+                    let number_frag = fragment.sub_fragment(start, current_number.len());
+                    Error(temporal::invalid_interval_component_value(number_frag, 'S'))
                 })?;
 				nanos += seconds * 1_000_000_000;
 				current_number.clear();
 				current_position += 1;
 			}
 			_ => {
-				let char_span =
-					span.sub_span(current_position, 1);
+				let char_frag = fragment.sub_fragment(current_position, 1);
 				return_error!(
-					temporal::invalid_interval_character(
-						char_span
-					)
+					temporal::invalid_interval_character(char_frag)
 				);
 			}
 		}
 	}
 
 	if !current_number.is_empty() {
-		let number_span = span.sub_span(
-			current_position - current_number.len(),
-			current_number.len(),
-		);
-		return_error!(temporal::incomplete_interval_specification(
-			number_span
-		));
+		let start = current_position - current_number.len();
+		let number_frag = fragment.sub_fragment(start, current_number.len());
+		return_error!(temporal::incomplete_interval_specification(number_frag));
 	}
 
 	Ok(Interval::new(months, days, nanos))
@@ -182,12 +165,12 @@ pub fn parse_interval(span: impl Span) -> Result<Interval, Error> {
 #[cfg(test)]
 mod tests {
 	use super::parse_interval;
-	use crate::OwnedSpan;
+	use crate::interface::fragment::OwnedFragment;
 
 	#[test]
 	fn test_days() {
-		let span = OwnedSpan::testing("P1D");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("P1D");
+		let interval = parse_interval(fragment).unwrap();
 		// 1 day = 1 day, 0 nanos
 		assert_eq!(interval.get_days(), 1);
 		assert_eq!(interval.get_nanos(), 0);
@@ -195,8 +178,8 @@ mod tests {
 
 	#[test]
 	fn test_time_hours_minutes() {
-		let span = OwnedSpan::testing("PT2H30M");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("PT2H30M");
+		let interval = parse_interval(fragment).unwrap();
 		// 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000
 		// nanos
 		assert_eq!(
@@ -207,8 +190,8 @@ mod tests {
 
 	#[test]
 	fn test_complex() {
-		let span = OwnedSpan::testing("P1DT2H30M");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("P1DT2H30M");
+		let interval = parse_interval(fragment).unwrap();
 		// 1 day + 2 hours + 30 minutes
 		let expected_nanos = (2 * 60 * 60 + 30 * 60) * 1_000_000_000;
 		assert_eq!(interval.get_days(), 1);
@@ -217,37 +200,37 @@ mod tests {
 
 	#[test]
 	fn test_seconds_only() {
-		let span = OwnedSpan::testing("PT45S");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("PT45S");
+		let interval = parse_interval(fragment).unwrap();
 		assert_eq!(interval.get_nanos(), 45 * 1_000_000_000);
 	}
 
 	#[test]
 	fn test_minutes_only() {
-		let span = OwnedSpan::testing("PT5M");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("PT5M");
+		let interval = parse_interval(fragment).unwrap();
 		assert_eq!(interval.get_nanos(), 5 * 60 * 1_000_000_000);
 	}
 
 	#[test]
 	fn test_hours_only() {
-		let span = OwnedSpan::testing("PT1H");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("PT1H");
+		let interval = parse_interval(fragment).unwrap();
 		assert_eq!(interval.get_nanos(), 60 * 60 * 1_000_000_000);
 	}
 
 	#[test]
 	fn test_weeks() {
-		let span = OwnedSpan::testing("P1W");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("P1W");
+		let interval = parse_interval(fragment).unwrap();
 		assert_eq!(interval.get_days(), 7);
 		assert_eq!(interval.get_nanos(), 0);
 	}
 
 	#[test]
 	fn test_years() {
-		let span = OwnedSpan::testing("P1Y");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("P1Y");
+		let interval = parse_interval(fragment).unwrap();
 		assert_eq!(interval.get_months(), 12);
 		assert_eq!(interval.get_days(), 0);
 		assert_eq!(interval.get_nanos(), 0);
@@ -255,8 +238,8 @@ mod tests {
 
 	#[test]
 	fn test_months() {
-		let span = OwnedSpan::testing("P1M");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("P1M");
+		let interval = parse_interval(fragment).unwrap();
 		assert_eq!(interval.get_months(), 1);
 		assert_eq!(interval.get_days(), 0);
 		assert_eq!(interval.get_nanos(), 0);
@@ -264,8 +247,8 @@ mod tests {
 
 	#[test]
 	fn test_full_format() {
-		let span = OwnedSpan::testing("P1Y2M3DT4H5M6S");
-		let interval = parse_interval(span).unwrap();
+		let fragment = OwnedFragment::testing("P1Y2M3DT4H5M6S");
+		let interval = parse_interval(fragment).unwrap();
 		let expected_months = 12 + 2; // 1 year + 2 months
 		let expected_days = 3;
 		let expected_nanos = 4 * 60 * 60 * 1_000_000_000 +    // 4 hours
@@ -278,57 +261,57 @@ mod tests {
 
 	#[test]
 	fn test_invalid_format() {
-		let span = OwnedSpan::testing("invalid");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("invalid");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_004");
 	}
 
 	#[test]
 	fn test_invalid_character() {
-		let span = OwnedSpan::testing("P1X");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("P1X");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_014");
 	}
 
 	#[test]
 	fn test_years_in_time_part() {
-		let span = OwnedSpan::testing("PTY");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("PTY");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_weeks_in_time_part() {
-		let span = OwnedSpan::testing("PTW");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("PTW");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_days_in_time_part() {
-		let span = OwnedSpan::testing("PTD");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("PTD");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_hours_in_date_part() {
-		let span = OwnedSpan::testing("P1H");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("P1H");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_seconds_in_date_part() {
-		let span = OwnedSpan::testing("P1S");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("P1S");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_incomplete_specification() {
-		let span = OwnedSpan::testing("P1");
-		let err = parse_interval(span).unwrap_err();
+		let fragment = OwnedFragment::testing("P1");
+		let err = parse_interval(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_015");
 	}
 }

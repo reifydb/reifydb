@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	interface::{
 		ActiveCommandTransaction, EncodableKey, Key, SchemaId,
 		SchemaViewKey, Transaction, VersionedCommandTransaction,
@@ -25,12 +25,12 @@ use crate::{
 pub struct ViewColumnToCreate {
 	pub name: String,
 	pub ty: Type,
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ViewToCreate {
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 	pub view: String,
 	pub schema: String,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -42,21 +42,21 @@ impl Catalog {
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		let Some(schema) =
-			Catalog::get_schema_by_name(txn, &to_create.schema)?
+			Catalog::find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
-				to_create.span,
+				to_create.fragment,
 				&to_create.schema
 			));
 		};
 
-		if let Some(view) = Catalog::get_view_by_name(
+		if let Some(view) = Catalog::find_view_by_name(
 			txn,
 			schema.id,
 			&to_create.view,
 		)? {
 			return_error!(view_already_exists(
-				to_create.span,
+				to_create.fragment,
 				&schema.name,
 				&view.name
 			));
@@ -73,7 +73,7 @@ impl Catalog {
 
 		Catalog::insert_columns_for_view(txn, view_id, to_create)?;
 
-		Ok(Catalog::get_view(txn, view_id)?.unwrap())
+		Ok(Catalog::get_view(txn, view_id)?)
 	}
 
 	fn store_view<T: Transaction>(
@@ -130,7 +130,7 @@ impl Catalog {
 				txn,
 				view,
 				crate::view_column::ViewColumnToCreate {
-					span: column_to_create.span.clone(),
+					fragment: column_to_create.fragment.clone(),
 					schema_name: &to_create.schema,
 					view,
 					view_name: &to_create.view,
@@ -168,7 +168,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			view: "test_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		// First creation should succeed
@@ -194,7 +194,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			view: "test_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		Catalog::create_view(&mut txn, to_create).unwrap();
@@ -203,7 +203,7 @@ mod tests {
 			schema: "test_schema".to_string(),
 			view: "another_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		Catalog::create_view(&mut txn, to_create).unwrap();
@@ -245,7 +245,7 @@ mod tests {
 			schema: "missing_schema".to_string(),
 			view: "my_view".to_string(),
 			columns: vec![],
-			span: None,
+			fragment: None,
 		};
 
 		let err =

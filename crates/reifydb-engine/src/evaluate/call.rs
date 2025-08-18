@@ -1,34 +1,40 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{error, result::error::diagnostic::function};
-use reifydb_rql::expression::{CallExpression, Expression};
+use reifydb_core::{
+	error,
+	interface::{
+		Evaluator,
+		evaluate::expression::{CallExpression, Expression},
+	},
+	result::error::diagnostic::function,
+};
 
 use crate::{
 	columnar::{Column, ColumnQualified, Columns},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 	function::ScalarFunctionContext,
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn call(
-		&mut self,
-		call: &CallExpression,
+		&self,
 		ctx: &EvaluationContext,
+		call: &CallExpression,
 	) -> crate::Result<Column> {
-		let arguments = self.evaluate_arguments(&call.args, ctx)?;
-		let function = &call.func.0.fragment;
+		let arguments = self.evaluate_arguments(ctx, &call.args)?;
+		let function = call.func.0.fragment();
 
 		let functor = self
 			.functions
-			.get_scalar(function.as_str())
+			.get_scalar(function)
 			.ok_or(error!(function::unknown_function(
-				function.clone()
+				function.to_string()
 			)))?;
 
 		let row_count = ctx.row_count;
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: call.span().fragment.into(),
+			name: call.fragment().fragment().into(),
 			data: functor.scalar(ScalarFunctionContext {
 				columns: &arguments,
 				row_count,
@@ -37,15 +43,15 @@ impl Evaluator {
 	}
 
 	fn evaluate_arguments<'a>(
-		&mut self,
-		expressions: &Vec<Expression>,
+		&self,
 		ctx: &EvaluationContext,
+		expressions: &Vec<Expression>,
 	) -> crate::Result<Columns> {
 		let mut result: Vec<Column> =
 			Vec::with_capacity(expressions.len());
 
 		for expression in expressions {
-			result.push(self.evaluate(&expression, ctx)?)
+			result.push(self.evaluate(ctx, expression)?)
 		}
 
 		Ok(Columns::new(result))

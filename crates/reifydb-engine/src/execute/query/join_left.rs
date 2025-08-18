@@ -1,8 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Value, interface::VersionedQueryTransaction};
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	Value,
+	interface::{
+		VersionedQueryTransaction, evaluate::expression::Expression,
+	},
+};
 
 use crate::{
 	columnar::{
@@ -128,7 +132,7 @@ impl ExecutionPlan for LeftJoinNode {
 					true,
 					|acc, cond| {
 						let col = evaluate(
-							cond, &eval_ctx,
+							&eval_ctx, cond,
 						)
 						.unwrap();
 						matches!(

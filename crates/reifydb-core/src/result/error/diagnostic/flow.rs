@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::result::error::diagnostic::Diagnostic;
+use crate::{interface::fragment::OwnedFragment, result::error::diagnostic::Diagnostic};
 
 /// View flow processing error
 pub fn flow_error(message: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn flow_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("Flow processing error: {}", message),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check view flow configuration".to_string()),
 		notes: vec![],

@@ -1,21 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{err, result::error::diagnostic::operator};
-use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
+use reifydb_core::{
+	err,
+	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
+	result::error::diagnostic::operator,
+};
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{EvaluationContext, Evaluator, evaluate},
+	evaluate::{EvaluationContext, StandardEvaluator, evaluate},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn prefix(
-		&mut self,
-		prefix: &PrefixExpression,
+		&self,
 		ctx: &EvaluationContext,
+		prefix: &PrefixExpression,
 	) -> crate::Result<Column> {
-		let column = evaluate(&prefix.expression, ctx)?;
+		let column = evaluate(ctx, &prefix.expression)?;
 
 		match column.data() {
             // EngineColumnData::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
@@ -55,7 +58,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -85,7 +88,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -115,7 +118,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -145,7 +148,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -175,7 +178,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -205,7 +208,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -235,7 +238,7 @@ impl Evaluator {
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
-                                    prefix.span()
+                                    prefix.fragment()
                                 ));
                             }
                         });
@@ -258,7 +261,7 @@ impl Evaluator {
 
             ColumnData::Utf8(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_text(prefix.span()))
+                    err!(operator::not_can_not_applied_to_text(prefix.fragment()))
                 }
                 _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
                     "Cannot apply arithmetic prefix operator to text".to_string()
@@ -273,7 +276,7 @@ impl Evaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                            return err!(operator::not_can_not_applied_to_number(prefix.fragment()));
                         }
                     });
                 }
@@ -298,7 +301,7 @@ impl Evaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                            return err!(operator::not_can_not_applied_to_number(prefix.fragment()));
                         }
                     });
                 }
@@ -323,7 +326,7 @@ impl Evaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                            return err!(operator::not_can_not_applied_to_number(prefix.fragment()));
                         }
                     });
                 }
@@ -348,7 +351,7 @@ impl Evaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                            return err!(operator::not_can_not_applied_to_number(prefix.fragment()));
                         }
                     });
                 }
@@ -372,7 +375,7 @@ impl Evaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.span()));
+                            return err!(operator::not_can_not_applied_to_number(prefix.fragment()));
                         }
                     });
                 }
@@ -397,49 +400,49 @@ impl Evaluator {
 
             ColumnData::Date(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                    err!(operator::not_can_not_applied_to_temporal(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::DateTime(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                    err!(operator::not_can_not_applied_to_temporal(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::Time(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                    err!(operator::not_can_not_applied_to_temporal(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::Interval(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.span()))
+                    err!(operator::not_can_not_applied_to_temporal(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::RowId(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_number(prefix.span()))
+                    err!(operator::not_can_not_applied_to_number(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::IdentityId(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_uuid(prefix.span()))
+                    err!(operator::not_can_not_applied_to_uuid(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::Uuid4(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_uuid(prefix.span()))
+                    err!(operator::not_can_not_applied_to_uuid(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },
             ColumnData::Uuid7(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_uuid(prefix.span()))
+                    err!(operator::not_can_not_applied_to_uuid(prefix.fragment()))
                 }
                 _ => unimplemented!(),
             },

@@ -11,8 +11,8 @@ impl Compiler {
 		ast: AstInsert,
 	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Insert(InsertNode {
-			schema: ast.schema.map(|s| s.span()),
-			table: ast.table.span(),
+			schema: ast.schema.map(|s| s.fragment()),
+			table: ast.table.fragment(),
 		}))
 	}
 }

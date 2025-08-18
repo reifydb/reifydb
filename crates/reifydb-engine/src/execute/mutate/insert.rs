@@ -8,7 +8,7 @@ use reifydb_catalog::{
 	sequence::{TableColumnSequence, TableRowSequence},
 };
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedSpan, Type, Value,
+	ColumnDescriptor, IntoOwnedFragment, Type, Value,
 	interface::{
 		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey,
 		Params, TableRowKey, Transaction, VersionedCommandTransaction,
@@ -37,22 +37,22 @@ impl<T: Transaction> Executor<T> {
 		let schema_name = plan
 			.schema
 			.as_ref()
-			.map(|s| s.fragment.as_str())
+			.map(|s| s.fragment())
 			.unwrap(); // FIXME
 
-		let schema =
-			Catalog::get_schema_by_name(txn, schema_name)?.unwrap();
-		let Some(table) = Catalog::get_table_by_name(
+		let schema = Catalog::find_schema_by_name(txn, schema_name)?
+			.unwrap();
+		let Some(table) = Catalog::find_table_by_name(
 			txn,
 			schema.id,
-			&plan.table.fragment,
+			&plan.table.fragment(),
 		)?
 		else {
-			let span = plan.table.into_span();
+			let fragment = plan.table.into_fragment();
 			return_error!(table_not_found(
-				span.clone(),
+				fragment.clone(),
 				schema_name,
-				&span.fragment,
+				&fragment.fragment(),
 			));
 		};
 

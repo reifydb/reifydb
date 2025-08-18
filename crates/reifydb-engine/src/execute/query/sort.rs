@@ -69,9 +69,9 @@ impl ExecutionPlan for SortNode {
 						.find(|c| {
 							c.qualified_name()
 								== key.column
-									.fragment || c.name()
+									.fragment() || c.name()
 								== key.column
-									.fragment
+									.fragment()
 						})
 						.ok_or_else(|| {
 							error!(query::column_not_found(key.column.clone()))

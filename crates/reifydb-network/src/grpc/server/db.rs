@@ -4,7 +4,7 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use reifydb_core::{
-	Type, Value,
+	Type, Value, Fragment,
 	interface::{
 		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
@@ -255,15 +255,18 @@ impl<T: Transaction> grpc::db_server::Db for DbService<T> {
 }
 
 fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
+	// Extract fragment before moving other fields
+	let span = diagnostic.fragment().map(|s| grpc::Span {
+		offset: s.column().0,
+		line: s.line().0,
+		fragment: s.fragment().to_string(),
+	});
+	
 	grpc::Diagnostic {
 		code: diagnostic.code.to_string(),
 		statement: diagnostic.statement,
 		message: diagnostic.message,
-		span: diagnostic.span.map(|s| grpc::Span {
-			offset: s.column.0,
-			line: s.line.0,
-			fragment: s.fragment,
-		}),
+		span,
 		label: diagnostic.label,
 		help: diagnostic.help,
 		notes: diagnostic.notes,

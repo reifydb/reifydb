@@ -34,7 +34,7 @@ impl<T: Transaction> CommandSession<T> {
 		let params = params.into();
 		self.engine.query_as(&self.identity, &rql, params).map_err(
 			|mut err| {
-				err.set_statement(rql);
+				err.with_statement(rql);
 				err
 			},
 		)
@@ -49,7 +49,7 @@ impl<T: Transaction> CommandSession<T> {
 		let params = params.into();
 		self.engine.command_as(&self.identity, &rql, params).map_err(
 			|mut err| {
-				err.set_statement(rql);
+				err.with_statement(rql);
 				err
 			},
 		)
@@ -69,7 +69,7 @@ impl<T: Transaction> CommandSession<T> {
 		spawn_blocking(move || {
 			engine.command_as(&identity, &rql, params).map_err(
 				|mut err| {
-					err.set_statement(rql.to_string());
+					err.with_statement(rql.to_string());
 					err
 				},
 			)
@@ -92,7 +92,7 @@ impl<T: Transaction> CommandSession<T> {
 		spawn_blocking(move || {
 			engine.query_as(&identity, &rql, params).map_err(
 				|mut err| {
-					err.set_statement(rql.to_string());
+					err.with_statement(rql.to_string());
 					err
 				},
 			)

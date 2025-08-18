@@ -1,4 +1,4 @@
-use reifydb_core::{BorrowedSpan, ColumnDescriptor, Span, Type, Value};
+use reifydb_core::{ColumnDescriptor, OwnedFragment, Type, Value};
 
 use crate::{
 	columnar::{ColumnData, Columns},
@@ -38,8 +38,6 @@ pub(crate) fn coerce_value_to_column_type(
 	let column_policies = column.policies.clone();
 
 	let coerced_column = cast_column_data(
-		&temp_column_data,
-		target,
 		&EvaluationContext {
 			target_column: Some(column),
 			column_policies,
@@ -48,7 +46,9 @@ pub(crate) fn coerce_value_to_column_type(
 			take: None,
 			params: &ctx.params,
 		},
-		|| BorrowedSpan::new(&value_str).to_owned(),
+		&temp_column_data,
+		target,
+		|| OwnedFragment::testing(&value_str),
 	)?;
 
 	Ok(coerced_column.get_value(0))

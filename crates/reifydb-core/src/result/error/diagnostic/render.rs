@@ -4,6 +4,7 @@
 use std::fmt::Write;
 
 use super::Diagnostic;
+use crate::interface::fragment::OwnedFragment;
 
 pub trait DiagnosticRenderer {
 	fn render(&self, diagnostic: &Diagnostic) -> String;
@@ -35,9 +36,10 @@ impl DefaultRenderer {
 		let _ = writeln!(output, "  {}", diagnostic.message);
 		let _ = writeln!(output);
 
-		if let Some(span) = &diagnostic.span {
-			let line = span.line.0;
-			let col = span.column.0;
+		if let OwnedFragment::Statement { line, column, text, .. } = &diagnostic.fragment {
+			let fragment = text;
+			let line = line.0;
+			let col = column.0;
 			let statement = diagnostic
 				.statement
 				.as_ref()
@@ -61,25 +63,25 @@ impl DefaultRenderer {
 				line, line_content
 			);
 			let fragment_start = line_content
-				.find(&span.fragment)
+				.find(fragment.as_str())
 				.unwrap_or(col as usize);
 			let _ = writeln!(
 				output,
 				"    │ {}{}",
 				" ".repeat(fragment_start),
-				"~".repeat(span.fragment.len())
+				"~".repeat(fragment.len())
 			);
 			let _ = writeln!(output, "    │");
 
 			let label_text =
 				diagnostic.label.as_deref().unwrap_or("");
-			let span_center =
-				fragment_start + span.fragment.len() / 2;
+			let fragment_center =
+				fragment_start + fragment.len() / 2;
 			let label_center_offset =
-				if label_text.len() / 2 > span_center {
+				if label_text.len() / 2 > fragment_center {
 					0
 				} else {
-					span_center - label_text.len() / 2
+					fragment_center - label_text.len() / 2
 				};
 
 			let _ = writeln!(
@@ -140,9 +142,10 @@ impl DefaultRenderer {
 		);
 
 		// Location info
-		if let Some(span) = &diagnostic.span {
-			let line = span.line.0;
-			let col = span.column.0;
+		if let OwnedFragment::Statement { line, column, text, .. } = &diagnostic.fragment {
+			let fragment = text;
+			let line = line.0;
+			let col = column.0;
 			let statement = diagnostic
 				.statement
 				.as_ref()
@@ -156,7 +159,7 @@ impl DefaultRenderer {
 				if statement.is_empty() {
 					"unknown".to_string()
 				} else {
-					format!("\"{}\"", span.fragment)
+					format!("\"{}\"", fragment)
 				},
 				line,
 				col
@@ -172,27 +175,27 @@ impl DefaultRenderer {
 				indent, line, line_content
 			);
 			let fragment_start = line_content
-				.find(&span.fragment)
+				.find(fragment.as_str())
 				.unwrap_or(col as usize);
 			let _ = writeln!(
 				output,
 				"{}    │ {}{}",
 				indent,
 				" ".repeat(fragment_start),
-				"~".repeat(span.fragment.len())
+				"~".repeat(fragment.len())
 			);
 
 			let label_text =
 				diagnostic.label.as_deref().unwrap_or("");
 			if !label_text.is_empty() {
-				let span_center = fragment_start
-					+ span.fragment.len() / 2;
+				let fragment_center = fragment_start
+					+ fragment.len() / 2;
 				let label_center_offset = if label_text.len()
-					/ 2 > span_center
+					/ 2 > fragment_center
 				{
 					0
 				} else {
-					span_center - label_text.len() / 2
+					fragment_center - label_text.len() / 2
 				};
 
 				let _ = writeln!(

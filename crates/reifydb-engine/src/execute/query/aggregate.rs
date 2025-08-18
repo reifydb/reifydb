@@ -6,8 +6,12 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{OwnedSpan, Value, interface::VersionedQueryTransaction};
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	OwnedFragment, Value,
+	interface::{
+		VersionedQueryTransaction, evaluate::expression::Expression,
+	},
+};
 
 use crate::{
 	columnar::{
@@ -21,12 +25,12 @@ use crate::{
 enum Projection {
 	Aggregate {
 		column: String,
-		alias: OwnedSpan,
+		alias: OwnedFragment,
 		function: Box<dyn AggregateFunction>,
 	},
 	Group {
 		column: String,
-		alias: OwnedSpan,
+		alias: OwnedFragment,
 	},
 }
 
@@ -121,7 +125,7 @@ impl ExecutionPlan for AggregateNode {
 						.unwrap();
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
-                        name: alias.fragment.clone(),
+                        name: alias.fragment().to_string(),
                         data: ColumnData::int2_with_capacity(group_key_order.len()),
                     });
 					for key in &group_key_order {
@@ -148,9 +152,8 @@ impl ExecutionPlan for AggregateNode {
 						Column::ColumnQualified(
 							ColumnQualified {
 								name: alias
-									.fragment
-									.clone(
-									),
+									.fragment()
+									.to_string(),
 								data,
 							},
 						),
@@ -183,10 +186,10 @@ fn parse_keys_and_aggregates<'a>(
 	for gb in by {
 		match gb {
 			Expression::Column(c) => {
-				keys.push(c.0.fragment.as_str());
+				keys.push(c.0.fragment());
 				projections.push(Projection::Group {
-					column: c.0.fragment.to_string(),
-					alias: c.span(),
+					column: c.0.fragment().to_string(),
+					alias: c.fragment(),
 				})
 			} // _ => return
 			// Err(reifydb_core::Error::Unsupported("Non-column
@@ -198,7 +201,7 @@ fn parse_keys_and_aggregates<'a>(
 	for p in project {
 		match p {
 			Expression::Call(call) => {
-				let func = call.func.0.fragment.as_str();
+				let func = call.func.0.fragment();
 				match call.args.first().map(|arg| arg) {
 					Some(Expression::Column(c)) => {
 						let function = functions
@@ -208,10 +211,9 @@ fn parse_keys_and_aggregates<'a>(
 							Projection::Aggregate {
 								column: c
 									.0
-									.fragment
-									.to_string(
-									),
-								alias: p.span(),
+									.fragment()
+									.to_string(),
+								alias: p.fragment(),
 								function,
 							},
 						);

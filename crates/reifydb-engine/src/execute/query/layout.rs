@@ -1,5 +1,7 @@
-use reifydb_core::value::row_id::ROW_ID_COLUMN_NAME;
-use reifydb_rql::expression::{ConstantExpression, Expression};
+use reifydb_core::{
+	interface::evaluate::expression::{ConstantExpression, Expression},
+	value::row_id::ROW_ID_COLUMN_NAME,
+};
 
 use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
 
@@ -37,12 +39,12 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 		Expression::Column(col_expr) => ColumnLayout {
 			schema: None,
 			source: None,
-			name: col_expr.0.fragment.clone(),
+			name: col_expr.0.fragment().to_string(),
 		},
-		Expression::AccessTable(access_expr) => ColumnLayout {
+		Expression::AccessSource(access_expr) => ColumnLayout {
 			schema: None,
-			source: Some(access_expr.source.fragment.clone()),
-			name: access_expr.column.fragment.clone(),
+			source: Some(access_expr.source.fragment().to_string()),
+			name: access_expr.column.fragment().to_string(),
 		},
 		_ => {
 			// For other expressions, generate a simplified name
@@ -92,29 +94,29 @@ fn simplified_name(expr: &Expression) -> String {
 				simplified_name(&expr.right)
 			)
 		}
-		Expression::Column(col_expr) => col_expr.0.fragment.clone(),
+		Expression::Column(col_expr) => col_expr.0.fragment().to_string(),
 		Expression::Constant(const_expr) => match const_expr {
 			ConstantExpression::Number {
-				span,
-			} => span.fragment.clone(),
+				fragment,
+			} => fragment.fragment().to_string(),
 			ConstantExpression::Text {
-				span,
-			} => span.fragment.clone(),
+				fragment,
+			} => fragment.fragment().to_string(),
 			ConstantExpression::Bool {
-				span,
-			} => span.fragment.clone(),
+				fragment,
+			} => fragment.fragment().to_string(),
 			ConstantExpression::Temporal {
-				span,
-			} => span.fragment.clone(),
+				fragment,
+			} => fragment.fragment().to_string(),
 			ConstantExpression::Undefined {
 				..
 			} => "undefined".to_string(),
 		},
-		Expression::AccessTable(access_expr) => {
+		Expression::AccessSource(access_expr) => {
 			format!(
 				"{}.{}",
-				access_expr.source.fragment,
-				access_expr.column.fragment
+				access_expr.source.fragment(),
+				access_expr.column.fragment()
 			)
 		}
 		Expression::Call(call_expr) => format!(
@@ -220,7 +222,7 @@ fn simplified_name(expr: &Expression) -> String {
 				simplified_name(&expr.right)
 			)
 		}
-		Expression::Type(type_expr) => type_expr.span.fragment.clone(),
+		Expression::Type(type_expr) => type_expr.fragment.fragment().to_string(),
 		Expression::Parameter(_) => "parameter".to_string(),
 	}
 }

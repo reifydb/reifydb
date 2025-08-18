@@ -2,27 +2,27 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	interface::{Evaluator, evaluate::expression::OrExpression},
 	result::error::diagnostic::operator::{
 		or_can_not_applied_to_number, or_can_not_applied_to_temporal,
 		or_can_not_applied_to_text, or_can_not_applied_to_uuid,
 	},
 	return_error,
 };
-use reifydb_rql::expression::OrExpression;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn or(
-		&mut self,
-		expr: &OrExpression,
+		&self,
 		ctx: &EvaluationContext,
+		expr: &OrExpression,
 	) -> crate::Result<Column> {
-		let left = self.evaluate(&expr.left, ctx)?;
-		let right = self.evaluate(&expr.right, ctx)?;
+		let left = self.evaluate(ctx, &expr.left)?;
+		let right = self.evaluate(ctx, &expr.right)?;
 
 		match (&left.data(), &right.data()) {
 			(
@@ -54,7 +54,7 @@ impl Evaluator {
 				}
 
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: expr.span().fragment.into(),
+					name: expr.fragment().fragment().into(),
 					data: ColumnData::bool_with_bitvec(
 						data, bitvec,
 					),
@@ -64,25 +64,25 @@ impl Evaluator {
 				if l.is_number() || r.is_number() {
 					return_error!(
 						or_can_not_applied_to_number(
-							expr.span()
+							expr.fragment()
 						)
 					);
 				} else if l.is_text() || r.is_text() {
 					return_error!(
 						or_can_not_applied_to_text(
-							expr.span()
+							expr.fragment()
 						)
 					);
 				} else if l.is_temporal() || r.is_temporal() {
 					return_error!(
 						or_can_not_applied_to_temporal(
-							expr.span()
+							expr.fragment()
 						)
 					);
 				} else {
 					return_error!(
 						or_can_not_applied_to_uuid(
-							expr.span()
+							expr.fragment()
 						)
 					);
 				}

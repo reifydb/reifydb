@@ -4,14 +4,23 @@
 mod alter;
 mod create;
 
-use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
+use reifydb_catalog::{
+	Catalog, schema::SchemaDef, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
+};
 use reifydb_core::{
-	JoinType, OwnedSpan, SortKey, interface::VersionedQueryTransaction,
+	JoinType, OwnedFragment, SortKey,
+	interface::{
+		TableDef, VersionedQueryTransaction, ViewDef,
+		evaluate::expression::{AliasExpression, Expression},
+	},
+	result::error::diagnostic::catalog::schema_not_found,
+	return_error,
 };
 
-use crate::{
-	expression::{AliasExpression, Expression},
-	plan::{logical::LogicalPlan, physical::PhysicalPlan::TableScan},
+use crate::plan::{
+	logical::LogicalPlan,
+	physical::PhysicalPlan::{TableScan, ViewScan},
 };
 
 struct Compiler {}
@@ -60,9 +69,9 @@ impl Compiler {
 					)?);
 				}
 
-				LogicalPlan::CreateComputedView(create) => {
+				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(
-						Self::compile_create_computed(
+						Self::compile_create_deferred(
 							rx, create,
 						)?,
 					);
@@ -193,11 +202,52 @@ impl Compiler {
 					));
 				}
 
-				LogicalPlan::TableScan(scan) => {
-					stack.push(TableScan(TableScanNode {
-						schema: scan.schema,
-						table: scan.table,
-					}));
+				LogicalPlan::SourceScan(scan) => {
+					let Some(schema) =
+						Catalog::find_schema_by_name(
+							rx,
+							&scan.schema.fragment(),
+						)?
+					else {
+						return_error!(
+							schema_not_found(
+								Some(scan
+									.schema
+									.clone(
+									)),
+								&scan.schema
+									.fragment()
+							)
+						);
+					};
+
+					if let Some(table) =
+						Catalog::find_table_by_name(
+							rx,
+							schema.id,
+							&scan.source.fragment(),
+						)? {
+						stack.push(TableScan(
+							TableScanNode {
+								schema,
+								table,
+							},
+						));
+					} else if let Some(view) =
+						Catalog::find_view_by_name(
+							rx,
+							schema.id,
+							&scan.source.fragment(),
+						)? {
+						stack.push(ViewScan(
+							ViewScanNode {
+								schema,
+								view,
+							},
+						));
+					} else {
+						unimplemented!()
+					}
 				}
 
 				LogicalPlan::Take(take) => {
@@ -229,7 +279,7 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan {
-	CreateComputedView(CreateComputedViewPlan),
+	CreateDeferredView(CreateDeferredViewPlan),
 	CreateSchema(CreateSchemaPlan),
 	CreateTable(CreateTablePlan),
 	// Alter
@@ -250,35 +300,37 @@ pub enum PhysicalPlan {
 	Map(MapNode),
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
+	ViewScan(ViewScanNode),
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateComputedViewPlan {
-	pub schema: OwnedSpan,
-	pub view: OwnedSpan,
+pub struct CreateDeferredViewPlan {
+	pub schema: SchemaDef,
+	pub view: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub with: Option<Box<PhysicalPlan>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateSchemaPlan {
-	pub schema: OwnedSpan,
+	pub schema: OwnedFragment,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan {
-	pub schema: OwnedSpan,
-	pub table: OwnedSpan,
+	pub schema: SchemaDef,
+	pub table: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
 pub struct AlterSequencePlan {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
-	pub column: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
+	pub column: OwnedFragment,
 	pub value: Expression,
 }
 
@@ -298,22 +350,22 @@ pub struct FilterNode {
 #[derive(Debug, Clone)]
 pub struct DeletePlan {
 	pub input: Option<Box<PhysicalPlan>>,
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertPlan {
 	pub input: Box<PhysicalPlan>,
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdatePlan {
 	pub input: Box<PhysicalPlan>,
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]
@@ -356,8 +408,14 @@ pub struct InlineDataNode {
 
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: SchemaDef,
+	pub table: TableDef,
+}
+
+#[derive(Debug, Clone)]
+pub struct ViewScanNode {
+	pub schema: SchemaDef,
+	pub view: ViewDef,
 }
 
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Type, result::error::diagnostic::Diagnostic};
+use crate::{Type, interface::fragment::OwnedFragment, result::error::diagnostic::Diagnostic};
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn unknown_function(name: String) -> Diagnostic {
 		statement: None,
 		message: format!("Unknown function: {}", name),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check the function name and available functions"
 			.to_string()),
@@ -33,7 +33,7 @@ pub fn arity_mismatch(
 			function, expected, actual
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(format!(
 			"Provide exactly {} arguments to function {}",
@@ -58,7 +58,7 @@ pub fn too_many_arguments(
 			function, max_args, actual
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(format!(
 			"Provide at most {} arguments to function {}",
@@ -93,7 +93,7 @@ pub fn invalid_argument_type(
 			actual
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(format!(
 			"Provide an argument of type: {}",
@@ -115,7 +115,7 @@ pub fn undefined_argument(function: String, index: usize) -> Diagnostic {
 			index + 1
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(
 			"Provide a defined value for this argument".to_string()
@@ -135,7 +135,7 @@ pub fn missing_input(function: String) -> Diagnostic {
 			function
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Provide input data to the function".to_string()),
 		notes: vec![],
@@ -153,7 +153,7 @@ pub fn execution_failed(function: String, reason: String) -> Diagnostic {
 			function, reason
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("Check function arguments and data".to_string()),
 		notes: vec![],
@@ -171,7 +171,7 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 			function, details
 		),
 		column: None,
-		span: None,
+		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(
 			"This is an internal error - please report this issue"

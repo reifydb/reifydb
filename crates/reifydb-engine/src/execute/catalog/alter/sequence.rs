@@ -9,16 +9,15 @@ use reifydb_core::{
 		catalog, catalog::table_not_found, query::column_not_found,
 		sequence::can_not_alter_not_auto_increment,
 	},
-	interface::{ActiveCommandTransaction, Params, Transaction},
+	interface::{
+		ActiveCommandTransaction, EvaluationContext, Params,
+		Transaction,
+	},
 	return_error,
 };
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
-use crate::{
-	columnar::Columns,
-	evaluate::{EvaluationContext, evaluate},
-	execute::Executor,
-};
+use crate::{columnar::Columns, evaluate::evaluate, execute::Executor};
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn alter_table_sequence(
@@ -32,7 +31,7 @@ impl<T: Transaction> Executor<T> {
 		};
 
 		let Some(schema) =
-			Catalog::get_schema_by_name(txn, schema_name)?
+			Catalog::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(schema_not_found(
 				plan.schema.clone(),
@@ -40,7 +39,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		};
 
-		let Some(table) = Catalog::get_table_by_name(
+		let Some(table) = Catalog::find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table,
@@ -53,7 +52,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		};
 
-		let Some(column) = Catalog::get_table_column_by_name(
+		let Some(column) = Catalog::find_table_column_by_name(
 			txn,
 			table.id,
 			plan.column.as_ref(),
@@ -72,7 +71,6 @@ impl<T: Transaction> Executor<T> {
 		// ExecutionContext is available
 		let empty_params = Params::None;
 		let value = evaluate(
-			&plan.value,
 			&EvaluationContext {
 				target_column: Some(ColumnDescriptor {
 					schema: None,
@@ -87,6 +85,7 @@ impl<T: Transaction> Executor<T> {
 				take: None,
 				params: &empty_params,
 			},
+			&plan.value,
 		)?;
 
 		let data = value.data();
@@ -111,18 +110,22 @@ impl<T: Transaction> Executor<T> {
 
 #[cfg(test)]
 mod tests {
-	use ConstantExpression::Number;
-	use Expression::Constant;
 	use reifydb_catalog::{
 		Catalog,
 		table::{TableColumnToCreate, TableToCreate},
 		test_utils::ensure_test_schema,
 	};
-	use reifydb_core::{OwnedSpan, Type, Value, interface::Params};
-	use reifydb_rql::{
-		expression::{ConstantExpression, Expression},
-		plan::physical::{AlterSequencePlan, PhysicalPlan},
+	use reifydb_core::{
+		OwnedFragment, Type, Value,
+		interface::{
+			Params,
+			expression::{
+				ConstantExpression::Number,
+				Expression::Constant,
+			},
+		},
 	};
+	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::execute::Executor;
@@ -136,19 +139,19 @@ mod tests {
 		Catalog::create_table(
 			&mut txn,
 			TableToCreate {
-				span: None,
+				fragment: None,
 				schema: "test_schema".to_string(),
 				table: "users".to_string(),
 				columns: vec![
 					TableColumnToCreate {
-						span: None,
+						fragment: None,
 						name: "id".to_string(),
 						ty: Type::Int4,
 						policies: vec![],
 						auto_increment: true,
 					},
 					TableColumnToCreate {
-						span: None,
+						fragment: None,
 						name: "name".to_string(),
 						ty: Type::Utf8,
 						policies: vec![],
@@ -161,11 +164,11 @@ mod tests {
 
 		// Alter the sequence to start at 1000
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("users"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("users"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 
@@ -195,11 +198,11 @@ mod tests {
 		Catalog::create_table(
 			&mut txn,
 			TableToCreate {
-				span: None,
+				fragment: None,
 				schema: "test_schema".to_string(),
 				table: "items".to_string(),
 				columns: vec![TableColumnToCreate {
-					span: None,
+					fragment: None,
 					name: "id".to_string(),
 					ty: Type::Int4,
 					policies: vec![],
@@ -211,11 +214,11 @@ mod tests {
 
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("items"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("items"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("100"),
+				fragment: OwnedFragment::testing("100"),
 			}),
 		};
 
@@ -236,11 +239,11 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("non_existent_schema")),
-			table: OwnedSpan::testing("some_table"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("non_existent_schema")),
+			table: OwnedFragment::testing("some_table"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 
@@ -261,11 +264,11 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("non_existent_table"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("non_existent_table"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 
@@ -289,11 +292,11 @@ mod tests {
 		Catalog::create_table(
 			&mut txn,
 			TableToCreate {
-				span: None,
+				fragment: None,
 				schema: "test_schema".to_string(),
 				table: "posts".to_string(),
 				columns: vec![TableColumnToCreate {
-					span: None,
+					fragment: None,
 					name: "id".to_string(),
 					ty: Type::Int4,
 					policies: vec![],
@@ -305,11 +308,11 @@ mod tests {
 
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("posts"),
-			column: OwnedSpan::testing("non_existent_column"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("posts"),
+			column: OwnedFragment::testing("non_existent_column"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 

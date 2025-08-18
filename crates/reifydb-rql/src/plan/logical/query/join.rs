@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::JoinType;
+use reifydb_core::{JoinType, OwnedFragment};
 
 use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, LogicalPlan::TableScan, TableScanNode,
+		LogicalPlan, LogicalPlan::SourceScan, SourceScanNode,
 	},
 };
 
@@ -20,37 +20,34 @@ impl Compiler {
 				on,
 				..
 			} => {
-				let with =
-					match *with {
-						Ast::Identifier(identifier) => {
-							vec![TableScan(TableScanNode { schema: None, table: identifier.span() })]
-						}
-						Ast::Infix(AstInfix {
-							left,
-							operator,
-							right,
-							..
-						}) => {
-							assert!(matches!(operator, InfixOperator::AccessTable(_)));
-							let Ast::Identifier(
-								schema,
-							) = *left
-							else {
-								unreachable!()
-							};
-							let Ast::Identifier(
-								table,
-							) = *right
-							else {
-								unreachable!()
-							};
-							vec![TableScan(TableScanNode {
-                            schema: Some(schema.span()),
-                            table: table.span(),
-                        })]
-						}
-						_ => unimplemented!(),
-					};
+				let with = match *with {
+					Ast::Identifier(identifier) => {
+						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
+					}
+					Ast::Infix(AstInfix {
+						left,
+						operator,
+						right,
+						..
+					}) => {
+						assert!(matches!(operator, InfixOperator::AccessTable(_)));
+						let Ast::Identifier(schema) =
+							*left
+						else {
+							unreachable!()
+						};
+						let Ast::Identifier(table) =
+							*right
+						else {
+							unreachable!()
+						};
+						vec![SourceScan(SourceScanNode {
+							schema: schema.fragment(),
+							source: table.fragment(),
+						})]
+					}
+					_ => unimplemented!(),
+				};
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
                     with,
                     on: on
@@ -64,37 +61,34 @@ impl Compiler {
 				on,
 				..
 			} => {
-				let with =
-					match *with {
-						Ast::Identifier(identifier) => {
-							vec![TableScan(TableScanNode { schema: None, table: identifier.span() })]
-						}
-						Ast::Infix(AstInfix {
-							left,
-							operator,
-							right,
-							..
-						}) => {
-							assert!(matches!(operator, InfixOperator::AccessTable(_)));
-							let Ast::Identifier(
-								schema,
-							) = *left
-							else {
-								unreachable!()
-							};
-							let Ast::Identifier(
-								table,
-							) = *right
-							else {
-								unreachable!()
-							};
-							vec![TableScan(TableScanNode {
-                            schema: Some(schema.span()),
-                            table: table.span(),
-                        })]
-						}
-						_ => unimplemented!(),
-					};
+				let with = match *with {
+					Ast::Identifier(identifier) => {
+						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
+					}
+					Ast::Infix(AstInfix {
+						left,
+						operator,
+						right,
+						..
+					}) => {
+						assert!(matches!(operator, InfixOperator::AccessTable(_)));
+						let Ast::Identifier(schema) =
+							*left
+						else {
+							unreachable!()
+						};
+						let Ast::Identifier(table) =
+							*right
+						else {
+							unreachable!()
+						};
+						vec![SourceScan(SourceScanNode {
+							schema: schema.fragment(),
+							source: table.fragment(),
+						})]
+					}
+					_ => unimplemented!(),
+				};
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
                     with,
                     on: on
@@ -108,37 +102,34 @@ impl Compiler {
 				join_type,
 				..
 			} => {
-				let with =
-					match *with {
-						Ast::Identifier(identifier) => {
-							vec![TableScan(TableScanNode { schema: None, table: identifier.span() })]
-						}
-						Ast::Infix(AstInfix {
-							left,
-							operator,
-							right,
-							..
-						}) => {
-							assert!(matches!(operator, InfixOperator::AccessTable(_)));
-							let Ast::Identifier(
-								schema,
-							) = *left
-							else {
-								unreachable!()
-							};
-							let Ast::Identifier(
-								table,
-							) = *right
-							else {
-								unreachable!()
-							};
-							vec![TableScan(TableScanNode {
-                            schema: Some(schema.span()),
-                            table: table.span(),
-                        })]
-						}
-						_ => unimplemented!(),
-					};
+				let with = match *with {
+					Ast::Identifier(identifier) => {
+						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
+					}
+					Ast::Infix(AstInfix {
+						left,
+						operator,
+						right,
+						..
+					}) => {
+						assert!(matches!(operator, InfixOperator::AccessTable(_)));
+						let Ast::Identifier(schema) =
+							*left
+						else {
+							unreachable!()
+						};
+						let Ast::Identifier(table) =
+							*right
+						else {
+							unreachable!()
+						};
+						vec![SourceScan(SourceScanNode {
+							schema: schema.fragment(),
+							source: table.fragment(),
+						})]
+					}
+					_ => unimplemented!(),
+				};
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,

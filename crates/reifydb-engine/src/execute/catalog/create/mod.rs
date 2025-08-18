@@ -2,6 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 #[allow(dead_code)] // FIXME
-mod computed;
+mod deferred;
 mod schema;
 mod table;

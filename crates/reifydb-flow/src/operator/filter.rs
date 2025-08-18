@@ -1,5 +1,10 @@
-use reifydb_core::value::columnar::Columns;
-use reifydb_rql::expression::Expression;
+use reifydb_core::{
+	BitVec,
+	interface::{
+		EvaluationContext, Evaluator, Params, expression::Expression,
+	},
+	value::columnar::{ColumnData, Columns},
+};
 
 use crate::{
 	core::{Change, Diff},
@@ -7,63 +12,70 @@ use crate::{
 };
 
 pub struct FilterOperator {
-	predicate: Expression,
+	conditions: Vec<Expression>,
 }
 
 impl FilterOperator {
-	pub fn new(predicate: Expression) -> Self {
+	pub fn new(conditions: Vec<Expression>) -> Self {
 		Self {
-			predicate,
+			conditions,
 		}
 	}
 }
 
-impl Operator for FilterOperator {
+impl<E: Evaluator> Operator<E> for FilterOperator {
 	fn apply(
 		&self,
-		_ctx: &OperatorContext,
-		change: Change,
+		ctx: &OperatorContext<E>,
+		change: &Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();
 
-		for diff in change.diffs {
+		for diff in &change.diffs {
 			match diff {
 				Diff::Insert {
+					source,
 					after,
 				} => {
 					let filtered_columns =
-						self.filter(&after)?;
+						self.filter(ctx, &after)?;
 					if !filtered_columns.is_empty() {
 						output.push(Diff::Insert {
+							source: *source,
 							after: filtered_columns,
 						});
 					}
 				}
 				Diff::Update {
+					source,
 					before,
 					after,
 				} => {
 					let filtered_new =
-						self.filter(&after)?;
+						self.filter(ctx, &after)?;
 					if !filtered_new.is_empty() {
 						output.push(Diff::Update {
-							before,
+							source: *source,
+							before: before.clone(),
 							after: filtered_new,
 						});
 					} else {
 						// If new doesn't pass filter,
 						// emit remove of old
 						output.push(Diff::Remove {
-							before,
+							source: *source,
+							before: before.clone(),
 						});
 					}
 				}
 				Diff::Remove {
+					source,
 					before,
 				} => {
 					// Always pass through removes
 					output.push(Diff::Remove {
-						before,
+						source: *source,
+						before: before.clone(),
 					});
 				}
 			}
@@ -74,47 +86,60 @@ impl Operator for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter(&self, columns: &Columns) -> crate::Result<Columns> {
-		// let row_count = columns.row_count();
-		//
-		// // TODO: Flow operator need access to params through
-		// // OperatorContext
-		// let empty_params = Params::None;
-		// let eval_ctx = EvaluationContext {
-		// 	target_column: None,
-		// 	column_policies: Vec::new(),
-		// 	columns: columns.clone(),
-		// 	row_count,
-		// 	take: None,
-		// 	params: &empty_params,
-		// };
-		//
-		// // Evaluate predicate to get boolean column
-		// let result_column = evaluate(&self.predicate, &eval_ctx)?;
-		// let mut columns = columns.clone();
-		//
-		// let mut bv = BitVec::repeat(row_count, true);
-		//
-		// match result_column.data() {
-		// 	ColumnData::Bool(container) => {
-		// 		for (idx, val) in
-		// 			container.data().iter().enumerate()
-		// 		{
-		// 			debug_assert!(
-		// 				container.is_defined(idx)
-		// 			);
-		// 			bv.set(idx, val);
-		// 		}
-		// 	}
-		// 	_ => unreachable!(),
-		// }
-		//
-		// columns.filter(&bv)?;
-		//
-		// dbg!(&columns);
-		//
-		// Ok(columns)
+	fn filter<E: Evaluator>(
+		&self,
+		ctx: &OperatorContext<E>,
+		columns: &Columns,
+	) -> crate::Result<Columns> {
+		let row_count = columns.row_count();
 
-		Ok(columns.clone())
+		let empty_params = Params::None;
+
+		let eval_ctx = EvaluationContext {
+			target_column: None,
+			column_policies: Vec::new(),
+			columns: columns.clone(),
+			row_count,
+			take: None,
+			params: &empty_params,
+		};
+
+		// Start with all bits set to true
+		let mut final_bv = BitVec::repeat(row_count, true);
+
+		// Evaluate each condition and AND them together
+		for condition in &self.conditions {
+			let result_column =
+				ctx.evaluate(&eval_ctx, condition)?;
+
+			match result_column.data() {
+				ColumnData::Bool(container) => {
+					for (idx, val) in container
+						.data()
+						.iter()
+						.enumerate()
+					{
+						debug_assert!(
+							container.is_defined(
+								idx
+							)
+						);
+						// AND the current condition
+						// with the accumulated result
+						if !val {
+							final_bv.set(
+								idx, false,
+							);
+						}
+					}
+				}
+				_ => unreachable!(),
+			}
+		}
+
+		let mut columns = columns.clone();
+		columns.filter(&final_bv)?;
+
+		Ok(columns)
 	}
 }

@@ -80,7 +80,7 @@ mod tests {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
 				table_name: "test_table",
@@ -95,7 +95,6 @@ mod tests {
 		.unwrap();
 
 		let column = Catalog::get_table_column(&mut txn, ColumnId(1))
-			.unwrap()
 			.unwrap();
 
 		let policies = Catalog::list_table_column_policies(
@@ -104,11 +103,6 @@ mod tests {
 		.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);
-		assert!(matches!(
-			policies[0].policy,
-			ColumnPolicyKind::Saturation(
-				ColumnSaturationPolicy::Undefined
-			)
-		));
+		assert!(matches!(policies[0].policy, Saturation(Undefined)));
 	}
 }

@@ -3,7 +3,7 @@
 
 logical 'from users sort id asc'
 ---
-> └── TableScan users
+> └── TableScan default.users
 > └── Order
 >     └── by: id ASC
 > 

@@ -1,6 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use crate::interface::fragment::IntoFragment;
+use crate::{OwnedFragment, Type};
+
 pub mod ast;
 pub mod auth;
 pub mod blob;
@@ -11,6 +18,8 @@ pub mod conversion;
 pub mod engine;
 pub mod flow;
 pub mod function;
+pub mod internal;
+pub use internal::{internal, internal_with_context};
 pub mod network;
 pub mod number;
 pub mod operator;
@@ -23,14 +32,14 @@ pub mod transaction;
 mod util;
 pub mod uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
 	pub code: String,
 	pub statement: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
 
-	pub span: Option<OwnedSpan>,
+	pub fragment: OwnedFragment,
 	pub label: Option<String>,
 	pub help: Option<String>,
 	pub notes: Vec<String>,
@@ -43,6 +52,22 @@ pub struct DiagnosticColumn {
 	pub ty: Type,
 }
 
+impl Default for Diagnostic {
+	fn default() -> Self {
+		Self {
+			code: String::new(),
+			statement: None,
+			message: String::new(),
+			column: None,
+			fragment: OwnedFragment::None,
+			label: None,
+			help: None,
+			notes: Vec::new(),
+			cause: None,
+		}
+	}
+}
+
 impl Display for Diagnostic {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("{}", self.code))
@@ -52,7 +77,7 @@ impl Display for Diagnostic {
 impl Diagnostic {
 	/// Set the statement for this diagnostic and all nested diagnostics
 	/// recursively
-	pub fn set_statement(&mut self, statement: String) {
+	pub fn with_statement(&mut self, statement: String) {
 		self.statement = Some(statement.clone());
 
 		// Recursively set statement for all nested diagnostics
@@ -61,25 +86,30 @@ impl Diagnostic {
 				cause.as_mut(),
 				Diagnostic::default(),
 			);
-			updated_cause.set_statement(statement);
+			updated_cause.with_statement(statement);
 			*cause = Box::new(updated_cause);
 		}
 	}
 
-	/// Update the span for this diagnostic and all nested diagnostics
-	/// recursively
-	pub fn update_spans(&mut self, new_span: &OwnedSpan) {
-		if self.span.is_some() {
-			self.span = Some(new_span.clone());
-		}
+	/// Set or update the fragment for this diagnostic and all nested
+	/// diagnostics recursively
+	pub fn with_fragment(&mut self, new_fragment: impl IntoFragment) {
+		// Always update the fragment, not just when it's None
+		// This is needed for cast errors that need to update the fragment
+		self.fragment = new_fragment.into_fragment();
+
 		if let Some(ref mut cause) = self.cause {
-			cause.update_spans(new_span);
+			cause.with_fragment(self.fragment.clone());
+		}
+	}
+
+	/// Get the fragment if this is a Statement fragment (for backward compatibility)
+	pub fn fragment(&self) -> Option<OwnedFragment> {
+		match &self.fragment {
+			OwnedFragment::Statement {
+				..
+			} => Some(self.fragment.clone()),
+			_ => None,
 		}
 	}
 }
-
-use std::fmt::{Display, Formatter};
-
-use serde::{Deserialize, Serialize};
-
-use crate::{OwnedSpan, Type};

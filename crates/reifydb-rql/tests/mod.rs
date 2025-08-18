@@ -3,6 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
+use reifydb_catalog::{Catalog, schema::SchemaToCreate, table::TableToCreate};
 use reifydb_rql::explain::{
 	explain_ast, explain_lex, explain_logical_plan, explain_physical_plan,
 };
@@ -74,6 +75,38 @@ impl testscript::Runner for Runner {
 
 				let mut dummy_tx =
 					create_test_command_transaction();
+
+				Catalog::create_schema(
+					&mut dummy_tx,
+					SchemaToCreate {
+						schema_fragment: None,
+						name: "default".to_string(),
+					},
+				)
+				.unwrap();
+
+				Catalog::create_table(
+					&mut dummy_tx,
+					TableToCreate {
+						fragment: None,
+						table: "users".to_string(),
+						schema: "default".to_string(),
+						columns: vec![],
+					},
+				)
+				.unwrap();
+
+				Catalog::create_table(
+					&mut dummy_tx,
+					TableToCreate {
+						fragment: None,
+						table: "orders".to_string(),
+						schema: "default".to_string(),
+						columns: vec![],
+					},
+				)
+				.unwrap();
+
 				let result = explain_physical_plan(
 					&mut dummy_tx,
 					query,
