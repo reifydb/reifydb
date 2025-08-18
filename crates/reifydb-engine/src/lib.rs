@@ -10,7 +10,6 @@ mod evaluate;
 mod execute;
 #[allow(dead_code)]
 mod function;
-pub mod interceptor;
 
 pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;

@@ -1,12 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{hook::Hooks, interface::Transaction};
-use reifydb_engine::{
-	StandardEngine, interceptor::InterceptorBuilder as InterceptorConfig,
+use reifydb_core::{
+	hook::Hooks,
+	interceptor::{AddToBuilder, StandardInterceptorBuilder},
+	interface::Transaction,
 };
+use reifydb_engine::StandardEngine;
 
-use super::{DatabaseBuilder, InterceptorBuilder};
+use super::DatabaseBuilder;
 use crate::Database;
 
 pub struct SyncBuilder<T: Transaction> {
@@ -14,7 +16,7 @@ pub struct SyncBuilder<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	hooks: Hooks,
-	interceptor_config: InterceptorConfig<T>,
+	interceptors: StandardInterceptorBuilder<T>,
 }
 
 impl<T: Transaction> SyncBuilder<T> {
@@ -29,8 +31,17 @@ impl<T: Transaction> SyncBuilder<T> {
 			unversioned,
 			cdc,
 			hooks,
-			interceptor_config: InterceptorConfig::new(),
+			interceptors: StandardInterceptorBuilder::new(),
 		}
+	}
+
+	pub fn intercept<I>(mut self, interceptor: I) -> Self
+	where
+		I: AddToBuilder<T>,
+	{
+		self.interceptors =
+			interceptor.add_to_builder(self.interceptors);
+		self
 	}
 
 	pub fn build(self) -> Database<T> {
@@ -39,14 +50,8 @@ impl<T: Transaction> SyncBuilder<T> {
 			self.unversioned,
 			self.cdc,
 			self.hooks,
-			Box::new(self.interceptor_config.build()),
+			Box::new(self.interceptors.build()),
 		);
 		DatabaseBuilder::new(engine).build()
-	}
-}
-
-impl<T: Transaction> InterceptorBuilder<T> for SyncBuilder<T> {
-	fn builder(&mut self) -> &mut InterceptorConfig<T> {
-		&mut self.interceptor_config
 	}
 }

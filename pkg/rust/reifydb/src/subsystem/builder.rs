@@ -25,7 +25,7 @@ pub enum SubsystemBuilder {
 
 impl SubsystemBuilder {
 	/// Build the subsystem with the provided engine and runtime
-	#[allow(unreachable_patterns)]
+	#[allow(unreachable_patterns, unused_variables)]
 	pub fn build<T: Transaction>(
 		self,
 		engine: &StandardEngine<T>,

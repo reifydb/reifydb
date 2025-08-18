@@ -1,113 +1,289 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::Transaction;
+mod builder;
+mod chain;
+mod factory;
+mod interceptors;
+mod table;
+mod transaction;
 
-pub mod chain;
-pub mod factory;
-pub mod table;
-pub mod transaction;
-
+pub use builder::*;
 pub use chain::InterceptorChain;
-pub use factory::InterceptorFactory;
+pub use factory::{InterceptorFactory, StandardInterceptorFactory};
+pub use interceptors::Interceptors;
 pub use table::*;
-pub use transaction::{PostCommitInterceptor, PreCommitInterceptor};
+pub use transaction::*;
 
 type Chain<T, I> = InterceptorChain<T, I>;
 
-/// Container for all interceptor chains
-pub struct Interceptors<T: Transaction> {
-	pub table_pre_insert: Chain<T, dyn TablePreInsertInterceptor<T>>,
-	pub table_post_insert: Chain<T, dyn TablePostInsertInterceptor<T>>,
-	pub table_pre_update: Chain<T, dyn TablePreUpdateInterceptor<T>>,
-	pub table_post_update: Chain<T, dyn TablePostUpdateInterceptor<T>>,
-	pub table_pre_delete: Chain<T, dyn TablePreDeleteInterceptor<T>>,
-	pub table_post_delete: Chain<T, dyn TablePostDeleteInterceptor<T>>,
-	pub pre_commit: Chain<T, dyn PreCommitInterceptor<T>>,
-	pub post_commit: Chain<T, dyn PostCommitInterceptor<T>>,
-}
-
-impl<T: Transaction> Default for Interceptors<T> {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-impl<T: Transaction> Interceptors<T> {
-	pub fn new() -> Self {
-		Self {
-			table_pre_insert: InterceptorChain::new(),
-			table_post_insert: InterceptorChain::new(),
-			table_pre_update: InterceptorChain::new(),
-			table_post_update: InterceptorChain::new(),
-			table_pre_delete: InterceptorChain::new(),
-			table_post_delete: InterceptorChain::new(),
-			pre_commit: InterceptorChain::new(),
-			post_commit: InterceptorChain::new(),
+/// Generic macro to define interceptor contexts, traits, and chain execution
+#[macro_export]
+macro_rules! define_interceptor {
+	// Version with Transaction type parameter
+	(
+		context: $context_name:ident<T>,
+		trait: $trait_name:ident,
+		fields: {
+			$($field_name:ident: $field_type:ty),* $(,)?
 		}
-	}
+	) => {
+		/// Context for interceptors
+		pub struct $context_name<'a, T: $crate::interface::Transaction> {
+			$(pub $field_name: $field_type,)*
+		}
 
-	/// Add a pre-insert interceptor
-	pub fn add_table_pre_insert(
-		&mut self,
-		interceptor: Box<dyn TablePreInsertInterceptor<T>>,
-	) {
-		self.table_pre_insert.add(interceptor);
-	}
+		impl<'a, T: $crate::interface::Transaction> $context_name<'a, T> {
+			pub fn new(
+				$($field_name: $field_type,)*
+			) -> Self {
+				Self {
+					$($field_name,)*
+				}
+			}
+		}
 
-	/// Add a post-insert interceptor
-	pub fn add_table_post_insert(
-		&mut self,
-		interceptor: Box<dyn TablePostInsertInterceptor<T>>,
-	) {
-		self.table_post_insert.add(interceptor);
-	}
+		pub trait $trait_name<T: $crate::interface::Transaction>: Send + Sync {
+			fn intercept(
+				&self,
+				ctx: &mut $context_name<T>,
+			) -> $crate::Result<()>;
+		}
 
-	/// Add a pre-update interceptor
-	pub fn add_table_pre_update(
-		&mut self,
-		interceptor: Box<dyn TablePreUpdateInterceptor<T>>,
-	) {
-		self.table_pre_update.add(interceptor);
-	}
+		impl<T: $crate::interface::Transaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
+			pub fn execute(
+				&self,
+				mut ctx: $context_name<T>,
+			) -> $crate::Result<()> {
+				for interceptor in &self.interceptors {
+					interceptor.intercept(&mut ctx)?;
+				}
+				Ok(())
+			}
+		}
+	};
 
-	/// Add a post-update interceptor
-	pub fn add_table_post_update(
-		&mut self,
-		interceptor: Box<dyn TablePostUpdateInterceptor<T>>,
-	) {
-		self.table_post_update.add(interceptor);
-	}
+	// Version without Transaction type parameter
+	(
+		context: $context_name:ident,
+		trait: $trait_name:ident<T>,
+		fields: {
+			$($field_name:ident: $field_type:ty),* $(,)?
+		}
+	) => {
+		/// Context for interceptors
+		pub struct $context_name {
+			$(pub $field_name: $field_type,)*
+		}
 
-	/// Add a pre-delete interceptor
-	pub fn add_table_pre_delete(
-		&mut self,
-		interceptor: Box<dyn TablePreDeleteInterceptor<T>>,
-	) {
-		self.table_pre_delete.add(interceptor);
-	}
+		impl $context_name {
+			pub fn new(
+				$($field_name: $field_type,)*
+			) -> Self {
+				Self {
+					$($field_name,)*
+				}
+			}
+		}
 
-	/// Add a post-delete interceptor
-	pub fn add_table_post_delete(
-		&mut self,
-		interceptor: Box<dyn TablePostDeleteInterceptor<T>>,
-	) {
-		self.table_post_delete.add(interceptor);
-	}
+		pub trait $trait_name<T: $crate::interface::Transaction>: Send + Sync {
+			fn intercept(
+				&self,
+				ctx: &mut $context_name,
+			) -> $crate::Result<()>;
+		}
 
-	/// Add a pre-commit interceptor
-	pub fn add_pre_commit(
-		&mut self,
-		interceptor: Box<dyn PreCommitInterceptor<T>>,
-	) {
-		self.pre_commit.add(interceptor);
-	}
+		impl<T: $crate::interface::Transaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
+			pub fn execute(
+				&self,
+				mut ctx: $context_name,
+			) -> $crate::Result<()> {
+				for interceptor in &self.interceptors {
+					interceptor.intercept(&mut ctx)?;
+				}
+				Ok(())
+			}
+		}
+	};
+}
 
-	/// Add a post-commit interceptor
-	pub fn add_post_commit(
-		&mut self,
-		interceptor: Box<dyn PostCommitInterceptor<T>>,
-	) {
-		self.post_commit.add(interceptor);
-	}
+/// Macro to generate closure interceptor wrapper types
+#[macro_export]
+macro_rules! define_closure_interceptor {
+	// Version with Transaction type parameter
+	(
+		$wrapper_name:ident,
+		$trait_name:ident,
+		$context_type:ident,
+		with_transaction
+	) => {
+		pub struct $wrapper_name<T: Transaction, F>
+		where
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>
+				+ Send
+				+ Sync,
+		{
+			closure: F,
+			_phantom: PhantomData<T>,
+		}
+
+		impl<T: Transaction, F> $wrapper_name<T, F>
+		where
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>
+				+ Send
+				+ Sync,
+		{
+			pub fn new(closure: F) -> Self {
+				Self {
+					closure,
+					_phantom: PhantomData,
+				}
+			}
+		}
+
+		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<T, F>
+		where
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>
+				+ Send
+				+ Sync,
+		{
+			fn intercept(
+				&self,
+				ctx: &mut $context_type<T>,
+			) -> crate::Result<()> {
+				(self.closure)(ctx)
+			}
+		}
+	};
+
+	// Version without Transaction type parameter in struct (but still
+	// implements trait with T)
+	(
+		$wrapper_name:ident,
+		$trait_name:ident,
+		$context_type:ident,
+		no_transaction_param
+	) => {
+		pub struct $wrapper_name<F>
+		where
+			F: Fn(&mut $context_type) -> crate::Result<()>
+				+ Send
+				+ Sync,
+		{
+			closure: F,
+		}
+
+		impl<F> $wrapper_name<F>
+		where
+			F: Fn(&mut $context_type) -> crate::Result<()>
+				+ Send
+				+ Sync,
+		{
+			pub fn new(closure: F) -> Self {
+				Self {
+					closure,
+				}
+			}
+		}
+
+		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<F>
+		where
+			F: Fn(&mut $context_type) -> crate::Result<()>
+				+ Send
+				+ Sync,
+		{
+			fn intercept(
+				&self,
+				ctx: &mut $context_type,
+			) -> crate::Result<()> {
+				(self.closure)(ctx)
+			}
+		}
+	};
+}
+
+/// Macro to implement AddToBuilder for closure interceptor types
+#[macro_export]
+macro_rules! impl_add_to_builder {
+	// Version with Transaction type parameter in closure type
+	(
+		$closure_type:ident<T, F>,
+		$context_type:ident<T>,
+		$builder_method:ident
+	) => {
+		impl<T: Transaction, F> AddToBuilder<T> for $closure_type<T, F>
+		where
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>
+				+ Send
+				+ Sync
+				+ 'static,
+		{
+			fn add_to_builder(
+				self,
+				builder: StandardInterceptorBuilder<T>,
+			) -> StandardInterceptorBuilder<T> {
+				builder.$builder_method(self)
+			}
+		}
+	};
+
+	// Version without Transaction type parameter in closure type
+	(
+		$closure_type:ident<F>,
+		$context_type:ident,
+		$builder_method:ident
+	) => {
+		impl<T: Transaction, F> AddToBuilder<T> for $closure_type<F>
+		where
+			F: Fn(&mut $context_type) -> crate::Result<()>
+				+ Send
+				+ Sync
+				+ 'static,
+		{
+			fn add_to_builder(
+				self,
+				builder: StandardInterceptorBuilder<T>,
+			) -> StandardInterceptorBuilder<T> {
+				builder.$builder_method(self)
+			}
+		}
+	};
+}
+
+/// Macro to create helper functions that create closure interceptors
+#[macro_export]
+macro_rules! define_helper_function {
+	// Version with Transaction type parameter
+	(
+		$fn_name:ident,
+		$closure_type:ident<T, F>,
+		$context_type:ident<T>
+	) => {
+		pub fn $fn_name<T: Transaction, F>(f: F) -> $closure_type<T, F>
+		where
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>
+				+ Send
+				+ Sync
+				+ 'static,
+		{
+			$closure_type::new(f)
+		}
+	};
+
+	// Version without Transaction type parameter
+	(
+		$fn_name:ident,
+		$closure_type:ident<F>,
+		$context_type:ident
+	) => {
+		pub fn $fn_name<F>(f: F) -> $closure_type<F>
+		where
+			F: Fn(&mut $context_type) -> crate::Result<()>
+				+ Send
+				+ Sync
+				+ 'static,
+		{
+			$closure_type::new(f)
+		}
+	};
 }

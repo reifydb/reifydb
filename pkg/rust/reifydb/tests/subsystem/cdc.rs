@@ -16,6 +16,7 @@ use reifydb_core::{
 	EncodedKey, Result, RowId,
 	diagnostic::Diagnostic,
 	hook::Hooks,
+	interceptor::StandardInterceptorFactory,
 	interface::{
 		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
 		CommandTransaction, ConsumerId, EncodableKey,
@@ -26,7 +27,7 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::{CowVec, MockClock},
 };
-use reifydb_engine::{StandardEngine, interceptor::StandardInterceptorFactory};
+use reifydb_engine::StandardEngine;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,

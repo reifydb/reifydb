@@ -4,11 +4,8 @@
 use crate::{
 	impl_interceptor_method,
 	interceptor::{
-		InterceptorChain,
-		transaction::{
-			PostCommitInterceptor, PreCommitInterceptor,
-			context::{PostCommitContext, PreCommitContext},
-		},
+		InterceptorChain, PostCommitContext, PostCommitInterceptor,
+		PreCommitContext, PreCommitInterceptor,
 	},
 	interface::{CommandTransaction, Transaction},
 };

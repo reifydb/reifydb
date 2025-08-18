@@ -1,13 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{hook::Hooks, interface::Transaction};
-use reifydb_engine::{
-	StandardEngine, interceptor::InterceptorBuilder as InterceptorConfig,
+use reifydb_core::{
+	hook::Hooks,
+	interceptor::{AddToBuilder, StandardInterceptorBuilder},
+	interface::Transaction,
 };
+use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::WsConfig;
 
-use super::{DatabaseBuilder, InterceptorBuilder};
+use super::DatabaseBuilder;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use crate::context::{RuntimeProvider, TokioRuntimeProvider};
 use crate::{Database, subsystem::SubsystemBuilder};
@@ -18,7 +20,7 @@ pub struct ServerBuilder<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	hooks: Hooks,
-	interceptor_config: InterceptorConfig<T>,
+	interceptors: StandardInterceptorBuilder<T>,
 	subsystem_builders: Vec<SubsystemBuilder>,
 	runtime_provider: RuntimeProvider,
 }
@@ -42,10 +44,19 @@ impl<T: Transaction> ServerBuilder<T> {
 			unversioned,
 			cdc,
 			hooks,
-			interceptor_config: InterceptorConfig::new(),
+			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_builders: Vec::new(),
 			runtime_provider,
 		}
+	}
+
+	pub fn intercept<I>(mut self, interceptor: I) -> Self
+	where
+		I: AddToBuilder<T>,
+	{
+		self.interceptors =
+			interceptor.add_to_builder(self.interceptors);
+		self
 	}
 
 	#[cfg(feature = "sub_ws")]
@@ -70,7 +81,7 @@ impl<T: Transaction> ServerBuilder<T> {
 			self.unversioned,
 			self.cdc,
 			self.hooks,
-			Box::new(self.interceptor_config.build()),
+			Box::new(self.interceptors.build()),
 		);
 
 		// Build subsystems with the engine
@@ -84,17 +95,3 @@ impl<T: Transaction> ServerBuilder<T> {
 		inner.build()
 	}
 }
-
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-impl<T: Transaction> InterceptorBuilder<T> for ServerBuilder<T> {
-	fn builder(&mut self) -> &mut InterceptorConfig<T> {
-		&mut self.interceptor_config
-	}
-}
-
-// #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-// impl<T: Transaction> WithHooks<T> for ServerBuilder<T> {
-// 	fn engine(&self) -> &StandardEngine<T> {
-// 		&self.temp_engine
-// 	}
-// }

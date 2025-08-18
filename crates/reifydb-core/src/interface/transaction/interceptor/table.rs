@@ -4,17 +4,13 @@
 use crate::{
 	RowId, impl_interceptor_method,
 	interceptor::{
-		InterceptorChain,
-		table::{
-			TablePostDeleteInterceptor, TablePostInsertInterceptor,
-			TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-			TablePreInsertInterceptor, TablePreUpdateInterceptor,
-			context::{
-				TablePostDeleteContext, TablePostInsertContext,
-				TablePostUpdateContext, TablePreDeleteContext,
-				TablePreInsertContext, TablePreUpdateContext,
-			},
-		},
+		InterceptorChain, TablePostDeleteContext,
+		TablePostDeleteInterceptor, TablePostInsertContext,
+		TablePostInsertInterceptor, TablePostUpdateContext,
+		TablePostUpdateInterceptor, TablePreDeleteContext,
+		TablePreDeleteInterceptor, TablePreInsertContext,
+		TablePreInsertInterceptor, TablePreUpdateContext,
+		TablePreUpdateInterceptor,
 	},
 	interface::{CommandTransaction, TableDef, Transaction},
 	row::EncodedRow,
