@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedFragment,
 	Type::Bool,
-	interface::{Evaluate, evaluate::expression::LessThanEqualExpression},
+	interface::{Evaluator, evaluate::expression::LessThanEqualExpression},
 	result::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -22,10 +22,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn less_than_equal(
 		&self,
 		ctx: &EvaluationContext,

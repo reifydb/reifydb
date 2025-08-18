@@ -79,7 +79,7 @@ fn render_physical_plan_inner(
 	output: &mut String,
 ) {
 	match plan {
-		PhysicalPlan::CreateComputedView(_) => unimplemented!(),
+		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateSchema(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {
@@ -310,7 +310,18 @@ fn render_physical_plan_inner(
 		}) => {
 			let label = format!(
 				"TableScan {}.{}",
-				schema.name, table.fragment()
+				schema.name, table.name
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::ViewScan(physical::ViewScanNode {
+			schema,
+			view,
+		}) => {
+			let label = format!(
+				"ViewScan {}.{}",
+				schema.name, view.name
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}

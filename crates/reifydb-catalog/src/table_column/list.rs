@@ -29,7 +29,7 @@ impl Catalog {
 				.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(Catalog::get_table_column(rx, id)?.unwrap());
+			result.push(Catalog::get_table_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);

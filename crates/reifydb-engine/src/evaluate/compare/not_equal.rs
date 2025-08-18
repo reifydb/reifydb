@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedFragment,
 	Type::Bool,
-	interface::{Evaluate, evaluate::expression::NotEqualExpression},
+	interface::{Evaluator, evaluate::expression::NotEqualExpression},
 	result::error::diagnostic::operator::not_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -22,10 +22,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn not_equal(
 		&self,
 		ctx: &EvaluationContext,

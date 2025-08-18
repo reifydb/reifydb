@@ -24,10 +24,10 @@ use text::TextParser;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn constant(
 		&self,
 		ctx: &EvaluationContext,

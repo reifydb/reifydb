@@ -10,25 +10,27 @@ use reifydb_core::{
 use crate::{
 	ast::{Ast, AstFrom},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, InlineDataNode, LogicalPlan, TableScanNode},
+	plan::logical::{
+		Compiler, InlineDataNode, LogicalPlan, SourceScanNode,
+	},
 };
 
 impl Compiler {
 	pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {
 		match ast {
-			AstFrom::Table {
+			AstFrom::Source {
 				schema,
-				table,
+				source: table,
 				..
-			} => Ok(LogicalPlan::TableScan(TableScanNode {
+			} => Ok(LogicalPlan::SourceScan(SourceScanNode {
 				schema: schema
 					.map(|schema| schema.fragment())
 					.unwrap_or(OwnedFragment::testing(
 						"default",
 					)),
-				table: table.fragment(),
+				source: table.fragment(),
 			})),
-			AstFrom::Static {
+			AstFrom::Inline {
 				list,
 				..
 			} => {

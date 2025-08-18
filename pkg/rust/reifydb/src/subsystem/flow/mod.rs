@@ -3,19 +3,18 @@
 
 use std::{any::Any, time::Duration};
 
+use reifydb_catalog::Catalog;
 use reifydb_core::{
-	Result, Type, Value,
+	Result, Value,
 	interface::{
 		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
-		CdcEvent, ColumnIndex, ConsumerId, Engine, FlowNodeId,
-		Identity, Key, Params, SchemaId, TableColumnDef, TableColumnId,
-		TableDef, TableId, TableRowKey, Transaction,
+		CdcEvent, ConsumerId, Engine, GetEncodedRowLayout, Identity,
+		Key, Params, SourceId, TableRowKey, Transaction,
 	},
-	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
-use reifydb_engine::{Evaluator, StandardEngine};
-use reifydb_flow::{Change, Diff, Flow, legacy_processor::LegacyFlowProcessor};
+use reifydb_engine::{StandardEngine, StandardEvaluator};
+use reifydb_flow::{Change, Diff, Flow, FlowEngine};
 
 use super::{Subsystem, cdc::PollConsumer};
 use crate::health::HealthStatus;
@@ -34,21 +33,13 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 		for event in events {
 			let key = Key::decode(event.key()).unwrap();
 
-			match key {
+			let table = match key {
 				Key::TableRow(TableRowKey {
 					table,
 					row,
-				}) => {
-					if table != 1026 {
-						println!("skip {table:?}");
-						continue;
-					}
-				}
+				}) => table,
 				_ => continue,
-			}
-
-			// find all flows which needs to be updated with that
-			// event
+			};
 
 			let frame = self
 				.engine
@@ -62,59 +53,17 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 				.unwrap();
 
 			let value = frame[0].get_value(0);
-
 			if matches!(value, Value::Undefined) {
 				continue;
 			}
-
-			// dbg!(&value.to_string());
 
 			let flow: Flow = serde_json::from_str(
 				value.to_string().as_str(),
 			)
 			.unwrap();
 
-			// dbg!(&flow);
-
-			let lp: LegacyFlowProcessor<T, Evaluator> =
-				LegacyFlowProcessor::new(
-					flow.clone(),
-					self.engine.versioned_owned(),
-					self.engine.unversioned_owned(),
-					self.engine.cdc_owned(),
-					Evaluator::default(),
-				);
-
-			let node_id = FlowNodeId(1026);
-
-			let layout = EncodedRowLayout::new(&[
-				Type::Utf8,
-				Type::Int1,
-			]);
-
-			let table = TableDef {
-				id: TableId(node_id.0),
-				schema: SchemaId(0),
-				name: "table".to_string(), // FIXME
-				columns: vec![
-					TableColumnDef {
-						id: TableColumnId(0),
-						name: "name".to_string(),
-						ty: Type::Utf8,
-						policies: vec![],
-						index: ColumnIndex(0),
-						auto_increment: false,
-					},
-					TableColumnDef {
-						id: TableColumnId(1),
-						name: "age".to_string(),
-						ty: Type::Int1,
-						policies: vec![],
-						index: ColumnIndex(1),
-						auto_increment: false,
-					},
-				],
-			};
+			let table = Catalog::get_table(txn, table)?;
+			let layout = table.get_layout();
 
 			let mut columns = Columns::from_table_def(&table);
 
@@ -129,10 +78,16 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 			columns.append_rows(&layout, [row]).unwrap();
 
 			let change = Change::new(vec![Diff::Insert {
+				source: SourceId::Table(table.id),
 				after: columns,
 			}]);
 
-			lp.hack(&flow, txn, &FlowNodeId(1), change).unwrap();
+			let mut engine =
+				FlowEngine::new(StandardEvaluator::default());
+
+			engine.register(flow.clone()).unwrap();
+
+			engine.process(txn, change.clone()).unwrap();
 		}
 		Ok(())
 	}

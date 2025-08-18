@@ -5,10 +5,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, Unqualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn parameter(
 		&self,
 		ctx: &EvaluationContext,

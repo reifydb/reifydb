@@ -17,4 +17,5 @@ serde = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
+reifydb = {workspace = true, features = ["sub_flow"]}
 test_each_file = { workspace = true }

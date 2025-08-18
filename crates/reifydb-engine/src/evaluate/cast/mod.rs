@@ -13,7 +13,7 @@ use std::ops::Deref;
 use reifydb_core::{
 	OwnedFragment, Type, err, error,
 	interface::{
-		Evaluate,
+		Evaluator,
 		expression::{CastExpression, Expression},
 	},
 	result::error::diagnostic::cast,
@@ -21,10 +21,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn cast(
 		&self,
 		ctx: &EvaluationContext,

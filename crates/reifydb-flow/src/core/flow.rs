@@ -1,42 +1,29 @@
-use std::collections::HashMap;
-
-use reifydb_core::interface::FlowNodeId;
+use reifydb_core::interface::{FlowId, FlowNodeId};
 use serde::{Deserialize, Serialize};
 
 use super::{
-	change::Change,
 	graph::DirectedGraph,
-	node::{FlowEdge, FlowNode, FlowNodeType},
+	node::{FlowEdge, FlowNode},
 };
 use crate::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {
-	graph: DirectedGraph<FlowNode>,
-	node_map: HashMap<FlowNodeId, FlowNodeId>,
-}
-
-impl Default for Flow {
-	fn default() -> Self {
-		Self {
-			graph: DirectedGraph::default(),
-			node_map: HashMap::default(),
-		}
-	}
+	pub(crate) id: FlowId,
+	pub(crate) graph: DirectedGraph<FlowNode>,
 }
 
 impl Flow {
-	pub fn new() -> Self {
+	pub fn new(id: impl Into<FlowId>) -> Self {
 		Self {
+			id: id.into(),
 			graph: DirectedGraph::new(),
-			node_map: HashMap::new(),
 		}
 	}
 
 	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
 		let node_id = node.id.clone();
 		self.graph.add_node(node_id.clone(), node);
-		self.node_map.insert(node_id.clone(), node_id.clone());
 		node_id
 	}
 
@@ -62,50 +49,6 @@ impl Flow {
 		Ok(self.graph.topological_sort())
 	}
 
-	pub fn propagate_update(
-		&mut self,
-		node_id: &FlowNodeId,
-		change: Change,
-	) -> Result<()> {
-		// This is a placeholder for update propagation logic
-		// In a full implementation, this would:
-		// 1. Process the update at the given node
-		// 2. Generate output changes
-		// 3. Propagate to downstream nodes
-
-		if let Some(node) = self.graph.get_node(node_id) {
-			// Debug: Propagating update to node with change
-
-			// Process update based on node type
-			match &node.ty {
-				FlowNodeType::SourceTable {
-					name,
-					..
-				} => {
-					// Debug: Base table received update
-					let _ = name; // Avoid unused variable warning
-				}
-				FlowNodeType::Operator {
-					operator,
-				} => {
-					// Debug: Operator processing update
-					let _ = operator; // Avoid unused variable warning
-				}
-				FlowNodeType::SinkView {
-					name,
-					..
-				} => {
-					// Debug: View storing update
-					let _ = name; // Avoid unused variable warning
-				}
-			}
-		}
-
-		let _ = change; // Avoid unused variable warning
-
-		Ok(())
-	}
-
 	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&FlowNode> {
 		self.graph.get_node(node_id)
 	}
@@ -117,8 +60,8 @@ impl Flow {
 		self.graph.get_node_mut(node_id)
 	}
 
-	pub fn get_all_nodes(&self) -> impl Iterator<Item = FlowNodeId> + '_ {
-		self.node_map.keys().cloned()
+	pub fn get_node_ids(&self) -> impl Iterator<Item = FlowNodeId> + '_ {
+		self.graph.nodes().map(|e| *e.0)
 	}
 }
 
@@ -127,11 +70,11 @@ mod tests {
 	use reifydb_core::interface::{TableId, ViewId};
 
 	use super::*;
-	use crate::{FlowEdge, core::OperatorType};
+	use crate::{FlowEdge, FlowNodeType, core::OperatorType};
 
 	#[test]
 	fn test_dataflow_graph_basic_operations() {
-		let mut graph = Flow::new();
+		let mut graph = Flow::new(1);
 
 		// Create some test nodes
 		let table1 = graph.add_node(FlowNode::new(

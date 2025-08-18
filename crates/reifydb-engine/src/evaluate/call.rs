@@ -4,7 +4,7 @@
 use reifydb_core::{
 	error,
 	interface::{
-		Evaluate,
+		Evaluator,
 		evaluate::expression::{CallExpression, Expression},
 	},
 	result::error::diagnostic::function,
@@ -12,11 +12,11 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnQualified, Columns},
-	evaluate::{EvaluationContext, Evaluator},
+	evaluate::{EvaluationContext, StandardEvaluator},
 	function::ScalarFunctionContext,
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn call(
 		&self,
 		ctx: &EvaluationContext,

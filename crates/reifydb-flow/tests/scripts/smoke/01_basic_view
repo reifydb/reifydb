@@ -1,0 +1,68 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test basic deferred view with filter - using playground example
+
+# Setup schema and table
+command "
+create schema test;
+create table test.users { name: utf8, age: int1};"
+---
+ok
+
+# Create deferred view with filter and map
+command "
+create deferred view test.basic { name: utf8, age: int1 } with {
+    from test.users
+};"
+---
+ok
+
+# Insert first batch of test data
+command "
+from [
+    { name: \"bob\", age: 17 },
+    { name: \"lucy\", age: 20 },
+    { name: \"juciy\", age: 19 }
+]
+insert test.users;"
+---
+ok
+
+# Insert second batch
+command "
+from [
+    { name: \"dim\", age: 40 }
+]
+insert test.users;"
+---
+ok
+
+# Query the source table - should show all users
+query 'FROM test.users'
+---
++---------+-------+
+|  name   |  age  |
++---------+-------+
+|   dim   |  40   |
+|  juciy  |  19   |
+|  lucy   |  20   |
+|   bob   |  17   |
++---------+-------+
+
+# Wait for flow processor to complete processing
+wait 100
+---
+ok
+
+# Query the deferred view
+query 'FROM test.basic'
+---
++---------+-------+
+|  name   |  age  |
++---------+-------+
+|   dim   |  40   |
+|   bob   |  17   |
+|  lucy   |  20   |
+|  juciy  |  19   |
++---------+-------+

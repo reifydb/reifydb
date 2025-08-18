@@ -109,9 +109,9 @@ fn render_ast_tree_inner(
 		Ast::Cast(c) => children.extend(c.tuple.nodes),
 		Ast::Filter(f) => children.push(*f.node),
 		Ast::From(from) => match from {
-			AstFrom::Table {
+			AstFrom::Source {
 				schema,
-				table,
+				source: table,
 				..
 			} => {
 				if let Some(schema) = schema {
@@ -119,7 +119,7 @@ fn render_ast_tree_inner(
 				}
 				children.push(Ast::Identifier(table));
 			}
-			AstFrom::Static {
+			AstFrom::Inline {
 				list: query,
 				..
 			} => {

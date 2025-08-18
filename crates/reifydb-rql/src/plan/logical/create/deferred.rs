@@ -4,14 +4,14 @@
 use reifydb_catalog::view::ViewColumnToCreate;
 
 use crate::{
-	ast::AstCreateComputedView,
+	ast::AstCreateDeferredView,
 	convert_data_type,
-	plan::logical::{Compiler, CreateComputedViewNode, LogicalPlan},
+	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_computed_view(
-		ast: AstCreateComputedView,
+	pub(crate) fn compile_deferred_view(
+		ast: AstCreateDeferredView,
 	) -> crate::Result<LogicalPlan> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
@@ -31,7 +31,7 @@ impl Compiler {
 			vec![]
 		};
 
-		Ok(LogicalPlan::CreateComputedView(CreateComputedViewNode {
+		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
 			schema: ast.schema.fragment(),
 			view: ast.view.fragment(),
 			if_not_exists: false,

@@ -4,7 +4,7 @@
 pub(crate) use reifydb_core::interface::{
 	Convert, Demote, EvaluationContext, Promote,
 };
-use reifydb_core::interface::{Evaluate, evaluate::expression::Expression};
+use reifydb_core::interface::{Evaluator, evaluate::expression::Expression};
 
 use crate::{
 	columnar::{Column, ColumnQualified, SourceQualified},
@@ -24,11 +24,11 @@ mod parameter;
 mod prefix;
 mod tuple;
 
-pub struct Evaluator {
+pub struct StandardEvaluator {
 	functions: Functions,
 }
 
-impl Default for Evaluator {
+impl Default for StandardEvaluator {
 	fn default() -> Self {
 		Self {
 			functions: Functions::builder()
@@ -55,7 +55,7 @@ impl Default for Evaluator {
 	}
 }
 
-impl Evaluate for Evaluator {
+impl Evaluator for StandardEvaluator {
 	fn evaluate(
 		&self,
 		ctx: &EvaluationContext,
@@ -105,7 +105,7 @@ pub fn evaluate(
 	ctx: &EvaluationContext,
 	expr: &Expression,
 ) -> crate::Result<Column> {
-	let evaluator = Evaluator {
+	let evaluator = StandardEvaluator {
 		functions: Functions::builder()
 			.register_scalar("abs", math::scalar::Abs::new)
 			.register_scalar("avg", math::scalar::Avg::new)

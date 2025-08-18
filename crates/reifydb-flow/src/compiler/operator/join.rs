@@ -12,7 +12,7 @@ use reifydb_rql::plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan};
 
 use crate::{
 	FlowNodeType, OperatorType, Result,
-	compile::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler},
 };
 
 pub(crate) struct JoinCompiler {

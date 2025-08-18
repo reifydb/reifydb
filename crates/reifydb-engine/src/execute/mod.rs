@@ -169,10 +169,11 @@ impl<T: Transaction> Executor<T> {
 			| PhysicalPlan::Delete(_)
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
-			| PhysicalPlan::TableScan(_) => self.query(rx, plan, params),
+			| PhysicalPlan::TableScan(_)
+			| PhysicalPlan::ViewScan(_) => self.query(rx, plan, params),
 
 			PhysicalPlan::AlterSequence(_)
-			| PhysicalPlan::CreateComputedView(_)
+			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 		}
@@ -188,8 +189,8 @@ impl<T: Transaction> Executor<T> {
 			PhysicalPlan::AlterSequence(plan) => {
 				self.alter_table_sequence(txn, plan)
 			}
-			PhysicalPlan::CreateComputedView(plan) => {
-				self.create_computed_view(txn, plan)
+			PhysicalPlan::CreateDeferredView(plan) => {
+				self.create_deferred_view(txn, plan)
 			}
 			PhysicalPlan::CreateSchema(plan) => {
 				self.create_schema(txn, plan)
@@ -216,7 +217,8 @@ impl<T: Transaction> Executor<T> {
 			| PhysicalPlan::Sort(_)
 			| PhysicalPlan::Map(_)
 			| PhysicalPlan::InlineData(_)
-			| PhysicalPlan::TableScan(_) => self.query(txn, plan, params),
+			| PhysicalPlan::TableScan(_)
+			| PhysicalPlan::ViewScan(_) => self.query(txn, plan, params),
 		}
 	}
 

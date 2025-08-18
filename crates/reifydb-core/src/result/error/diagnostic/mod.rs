@@ -18,6 +18,8 @@ pub mod conversion;
 pub mod engine;
 pub mod flow;
 pub mod function;
+pub mod internal;
+pub use internal::{internal, internal_with_context};
 pub mod network;
 pub mod number;
 pub mod operator;

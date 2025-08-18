@@ -29,13 +29,12 @@ impl Catalog {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
 				let column =
-					Catalog::get_table_column(txn, column)?
-						.map(|col| col.name)
-						.unwrap_or("".to_string());
+					Catalog::get_table_column(txn, column)?;
+
 				return_error!(
 					table_column_policy_already_exists(
 						&policy.to_string(),
-						&column
+						&column.name
 					)
 				);
 			}

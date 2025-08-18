@@ -18,7 +18,7 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut ActiveCommandTransaction<T>,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
-		if let Some(table) = Catalog::get_table_by_name(
+		if let Some(table) = Catalog::find_table_by_name(
 			txn,
 			plan.schema.id,
 			&plan.table,

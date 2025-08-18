@@ -43,7 +43,7 @@ impl Catalog {
 		column_to_create: TableColumnToCreate,
 	) -> crate::Result<ColumnDef> {
 		// FIXME policies
-		if let Some(column) = Catalog::get_table_column_by_name(
+		if let Some(column) = Catalog::find_table_column_by_name(
 			txn,
 			table,
 			&column_to_create.column,
@@ -202,7 +202,6 @@ mod test {
 
 		let column_1 =
 			Catalog::get_table_column(&mut txn, TableColumnId(1))
-				.unwrap()
 				.unwrap();
 
 		assert_eq!(column_1.id, 1);
@@ -212,7 +211,6 @@ mod test {
 
 		let column_2 =
 			Catalog::get_table_column(&mut txn, TableColumnId(2))
-				.unwrap()
 				.unwrap();
 
 		assert_eq!(column_2.id, 2);
@@ -246,7 +244,6 @@ mod test {
 
 		let column =
 			Catalog::get_table_column(&mut txn, TableColumnId(1))
-				.unwrap()
 				.unwrap();
 
 		assert_eq!(column.id, 1);

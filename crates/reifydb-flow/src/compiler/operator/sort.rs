@@ -11,7 +11,7 @@ use reifydb_rql::plan::physical::{PhysicalPlan, SortNode};
 
 use crate::{
 	FlowNodeType, OperatorType, Result,
-	compile::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler},
 };
 
 pub(crate) struct SortCompiler {

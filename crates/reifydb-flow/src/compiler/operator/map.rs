@@ -10,7 +10,7 @@ use reifydb_rql::plan::physical::{MapNode, PhysicalPlan};
 
 use crate::{
 	FlowNodeType, OperatorType, Result,
-	compile::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler},
 };
 
 pub(crate) struct MapCompiler {

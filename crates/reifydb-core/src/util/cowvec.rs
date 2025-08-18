@@ -30,7 +30,7 @@ where
 	/// Create a new CowVec with aligned capacity for SIMD operations
 	pub fn with_aligned_capacity(capacity: usize) -> Self {
 		// For SIMD, we want capacity aligned to at least 32 bytes
-		// (256-bit SIMD) This ensures we can process data in chunks
+		// (256-bit SIMD) This ensures we can engine data in chunks
 		// without bounds checking
 		let simd_alignment = 32 / std::mem::size_of::<T>().max(1);
 		let aligned_capacity = ((capacity + simd_alignment - 1)

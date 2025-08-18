@@ -9,10 +9,10 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{EvaluationContext, Evaluator, evaluate},
+	evaluate::{EvaluationContext, StandardEvaluator, evaluate},
 };
 
-impl Evaluator {
+impl StandardEvaluator {
 	pub(crate) fn prefix(
 		&self,
 		ctx: &EvaluationContext,

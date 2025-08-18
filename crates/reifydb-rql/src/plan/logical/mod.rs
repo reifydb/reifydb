@@ -77,7 +77,7 @@ impl Compiler {
 
 #[derive(Debug)]
 pub enum LogicalPlan {
-	CreateComputedView(CreateComputedViewNode),
+	CreateDeferredView(CreateDeferredViewNode),
 	CreateSchema(CreateSchemaNode),
 	CreateSequence(CreateSequenceNode),
 	CreateTable(CreateTableNode),
@@ -98,11 +98,11 @@ pub enum LogicalPlan {
 	Order(OrderNode),
 	Map(MapNode),
 	InlineData(InlineDataNode),
-	TableScan(TableScanNode),
+	SourceScan(SourceScanNode),
 }
 
 #[derive(Debug)]
-pub struct CreateComputedViewNode {
+pub struct CreateDeferredViewNode {
 	pub schema: OwnedFragment,
 	pub view: OwnedFragment,
 	pub if_not_exists: bool,
@@ -223,9 +223,9 @@ pub struct InlineDataNode {
 }
 
 #[derive(Debug)]
-pub struct TableScanNode {
+pub struct SourceScanNode {
 	pub schema: OwnedFragment,
-	pub table: OwnedFragment,
+	pub source: OwnedFragment,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

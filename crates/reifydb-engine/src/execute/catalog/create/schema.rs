@@ -19,7 +19,7 @@ impl<T: Transaction> Executor<T> {
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
 		if let Some(schema) =
-			Catalog::get_schema_by_name(txn, &plan.schema)?
+			Catalog::find_schema_by_name(txn, &plan.schema)?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([

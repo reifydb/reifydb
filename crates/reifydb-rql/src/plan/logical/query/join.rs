@@ -8,7 +8,7 @@ use crate::{
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, LogicalPlan::TableScan, TableScanNode,
+		LogicalPlan, LogicalPlan::SourceScan, SourceScanNode,
 	},
 };
 
@@ -22,7 +22,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedFragment::testing("default"), table: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -41,9 +41,9 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![TableScan(TableScanNode {
+						vec![SourceScan(SourceScanNode {
 							schema: schema.fragment(),
-							table: table.fragment(),
+							source: table.fragment(),
 						})]
 					}
 					_ => unimplemented!(),
@@ -63,7 +63,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedFragment::testing("default"), table: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -82,9 +82,9 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![TableScan(TableScanNode {
+						vec![SourceScan(SourceScanNode {
 							schema: schema.fragment(),
-							table: table.fragment(),
+							source: table.fragment(),
 						})]
 					}
 					_ => unimplemented!(),
@@ -104,7 +104,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedFragment::testing("default"), table: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -123,9 +123,9 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![TableScan(TableScanNode {
+						vec![SourceScan(SourceScanNode {
 							schema: schema.fragment(),
-							table: table.fragment(),
+							source: table.fragment(),
 						})]
 					}
 					_ => unimplemented!(),

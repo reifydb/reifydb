@@ -261,6 +261,12 @@ impl<'de> Deserialize<'de> for ColumnPolicyId {
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct SchemaId(pub u64);
 
+impl Display for SchemaId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
 impl Deref for SchemaId {
 	type Target = u64;
 

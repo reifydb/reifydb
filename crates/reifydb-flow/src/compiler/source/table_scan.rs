@@ -3,13 +3,12 @@
 
 //! Compilation of table scan operations
 
-use reifydb_catalog::Catalog;
 use reifydb_core::interface::{FlowNodeId, Transaction};
 use reifydb_rql::plan::physical::TableScanNode;
 
 use crate::{
 	FlowNodeType, Result,
-	compile::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler},
 };
 
 pub(crate) struct TableScanCompiler {
@@ -26,18 +25,8 @@ impl From<TableScanNode> for TableScanCompiler {
 
 impl<T: Transaction> CompileOperator<T> for TableScanCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let table_name = self.table_scan.table.fragment().to_string();
-
-		let table = compiler
-			.txn
-			.with_versioned_query(|rx| {
-				Catalog::get_table_by_name(
-					rx,
-					self.table_scan.schema.id,
-					&table_name,
-				)
-			})?
-			.unwrap();
+		let table = self.table_scan.table;
+		let table_name = table.name.clone();
 
 		compiler.build_node(FlowNodeType::SourceTable {
 			name: table_name,
