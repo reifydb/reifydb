@@ -6,6 +6,7 @@ use std::{marker::PhantomData, ops::Deref, sync::Arc};
 use reifydb_core::{
 	Frame,
 	hook::{Hook, Hooks},
+	interceptor::InterceptorFactory,
 	interface::{
 		Command, CommandTransaction, Engine as EngineInterface,
 		ExecuteCommand, ExecuteQuery, GetHooks, Identity, Params,
@@ -28,18 +29,13 @@ impl<T: Transaction> GetHooks for StandardEngine<T> {
 
 impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	fn begin_command(&self) -> crate::Result<CommandTransaction<T>> {
+		let interceptors = self.interceptors.create();
 		Ok(CommandTransaction::new(
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
 			self.hooks.clone(),
-			Box::new(|txn: &mut CommandTransaction<T>| {
-				println!(
-					"before commit: {:#?}",
-					txn.take_pending()
-				);
-				Ok(())
-			}),
+			interceptors,
 		))
 	}
 
@@ -131,6 +127,7 @@ pub struct EngineInner<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	executor: Executor<T>,
+	interceptors: Box<dyn InterceptorFactory<T>>,
 }
 
 impl<T: Transaction> StandardEngine<T> {
@@ -139,8 +136,9 @@ impl<T: Transaction> StandardEngine<T> {
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		hooks: Hooks,
-	) -> crate::Result<Self> {
-		let result = Self(Arc::new(EngineInner {
+		interceptors: Box<dyn InterceptorFactory<T>>,
+	) -> Self {
+		Self(Arc::new(EngineInner {
 			versioned: versioned.clone(),
 			unversioned: unversioned.clone(),
 			cdc: cdc.clone(),
@@ -174,9 +172,8 @@ impl<T: Transaction> StandardEngine<T> {
 					.build(),
 				_phantom: PhantomData,
 			},
-		}));
-
-		Ok(result)
+			interceptors,
+		}))
 	}
 
 	#[inline]

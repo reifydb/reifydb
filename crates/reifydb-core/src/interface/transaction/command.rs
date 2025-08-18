@@ -10,14 +10,12 @@ use crate::{
 		BoxedVersionedIter, Transaction, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
 		VersionedQueryTransaction, VersionedTransaction,
+		interceptor::TransactionInterceptor,
 		transaction::pending::PendingWrite,
 	},
 	return_error,
 	row::EncodedRow,
 };
-
-type PreCommitCallback<T> =
-	Box<dyn FnOnce(&mut CommandTransaction<T>) -> crate::Result<()>>;
 
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
@@ -30,7 +28,6 @@ pub struct CommandTransaction<T: Transaction> {
 	state: TransactionState,
 	pending: Vec<PendingWrite>,
 	hooks: Hooks,
-	pre_commit_callback: Option<PreCommitCallback<T>>,
 	pub(crate) interceptors: Interceptors<T>,
 }
 
@@ -43,16 +40,13 @@ enum TransactionState {
 
 impl<T: Transaction> CommandTransaction<T> {
 	/// Creates a new active command transaction with a pre-commit callback
-	pub fn new<F>(
+	pub fn new(
 		versioned: <T::Versioned as VersionedTransaction>::Command,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		hooks: Hooks,
-		pre_commit_callback: Box<F>,
-	) -> Self
-	where
-		F: FnOnce(&mut Self) -> crate::Result<()> + 'static,
-	{
+		interceptors: Interceptors<T>,
+	) -> Self {
 		Self {
 			versioned: Some(versioned),
 			unversioned,
@@ -60,10 +54,7 @@ impl<T: Transaction> CommandTransaction<T> {
 			state: TransactionState::Active,
 			hooks,
 			pending: Vec::new(),
-			pre_commit_callback: Some(Box::new(
-				pre_commit_callback,
-			)),
-			interceptors: Interceptors::new(),
+			interceptors,
 		}
 	}
 
@@ -167,23 +158,14 @@ impl<T: Transaction> CommandTransaction<T> {
 	/// Since unversioned transactions are short-lived and auto-commit,
 	/// this only commits the versioned transaction.
 	pub fn commit(&mut self) -> crate::Result<crate::Version> {
-		use crate::interface::transaction::interceptor::TransactionInterceptor;
-
 		self.check_active()?;
 
-		// Run pre-commit interceptors
 		TransactionInterceptor::pre_commit(self)?;
-
-		if let Some(callback) = self.pre_commit_callback.take() {
-			callback(self)?;
-		}
 
 		if let Some(versioned) = self.versioned.take() {
 			self.state = TransactionState::Committed;
 			let version = versioned.commit()?;
 
-			// Run post-commit interceptors with the committed
-			// version
 			TransactionInterceptor::post_commit(self, version)?;
 
 			Ok(version)

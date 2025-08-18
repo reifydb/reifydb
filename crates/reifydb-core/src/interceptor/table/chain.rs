@@ -5,7 +5,6 @@
 use super::{context::*, *};
 use crate::{interceptor::InterceptorChain, interface::Transaction};
 
-// Implement chains for each interceptor type with specific contexts
 impl<T: Transaction> InterceptorChain<T, dyn TablePreInsertInterceptor<T>> {
 	pub fn execute(
 		&mut self,
@@ -20,10 +19,10 @@ impl<T: Transaction> InterceptorChain<T, dyn TablePreInsertInterceptor<T>> {
 
 impl<T: Transaction> InterceptorChain<T, dyn TablePostInsertInterceptor<T>> {
 	pub fn execute(
-		&mut self,
+		&self,
 		mut ctx: TablePostInsertContext<T>,
 	) -> crate::Result<()> {
-		for interceptor in &mut self.interceptors {
+		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
@@ -32,10 +31,10 @@ impl<T: Transaction> InterceptorChain<T, dyn TablePostInsertInterceptor<T>> {
 
 impl<T: Transaction> InterceptorChain<T, dyn TablePreUpdateInterceptor<T>> {
 	pub fn execute(
-		&mut self,
+		&self,
 		mut ctx: TablePreUpdateContext<T>,
 	) -> crate::Result<()> {
-		for interceptor in &mut self.interceptors {
+		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
@@ -44,10 +43,10 @@ impl<T: Transaction> InterceptorChain<T, dyn TablePreUpdateInterceptor<T>> {
 
 impl<T: Transaction> InterceptorChain<T, dyn TablePostUpdateInterceptor<T>> {
 	pub fn execute(
-		&mut self,
+		&self,
 		mut ctx: TablePostUpdateContext<T>,
 	) -> crate::Result<()> {
-		for interceptor in &mut self.interceptors {
+		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
@@ -56,10 +55,10 @@ impl<T: Transaction> InterceptorChain<T, dyn TablePostUpdateInterceptor<T>> {
 
 impl<T: Transaction> InterceptorChain<T, dyn TablePreDeleteInterceptor<T>> {
 	pub fn execute(
-		&mut self,
+		&self,
 		mut ctx: TablePreDeleteContext<T>,
 	) -> crate::Result<()> {
-		for interceptor in &mut self.interceptors {
+		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
@@ -71,7 +70,7 @@ impl<T: Transaction> InterceptorChain<T, dyn TablePostDeleteInterceptor<T>> {
 		&mut self,
 		mut ctx: TablePostDeleteContext<T>,
 	) -> crate::Result<()> {
-		for interceptor in &mut self.interceptors {
+		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())

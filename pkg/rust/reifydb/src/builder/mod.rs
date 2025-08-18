@@ -4,6 +4,7 @@
 #[cfg(feature = "async")]
 mod r#async;
 mod database;
+mod interceptor;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 mod server;
 mod sync;
@@ -11,6 +12,7 @@ mod sync;
 #[cfg(feature = "async")]
 pub use r#async::AsyncBuilder;
 pub use database::DatabaseBuilder;
+pub use interceptor::InterceptorBuilder;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub use server::ServerBuilder;
 pub use sync::SyncBuilder;

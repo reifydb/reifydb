@@ -4,7 +4,6 @@
 use super::{context::*, *};
 use crate::{interceptor::InterceptorChain, interface::Transaction};
 
-// Implement chains for pre-commit interceptor
 impl<T: Transaction> InterceptorChain<T, dyn PreCommitInterceptor<T>> {
 	pub fn execute(
 		&mut self,
@@ -17,7 +16,6 @@ impl<T: Transaction> InterceptorChain<T, dyn PreCommitInterceptor<T>> {
 	}
 }
 
-// Implement chains for post-commit interceptor
 impl<T: Transaction> InterceptorChain<T, dyn PostCommitInterceptor<T>> {
 	pub fn execute(
 		&mut self,

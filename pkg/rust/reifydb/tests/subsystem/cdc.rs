@@ -26,7 +26,7 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::{CowVec, MockClock},
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{StandardEngine, interceptor::StandardInterceptorFactory};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
@@ -465,8 +465,13 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let versioned =
 		Serializable::new(memory, unversioned.clone(), hooks.clone());
 
-	StandardEngine::new(versioned, unversioned, cdc, hooks)
-		.expect("Failed to create engine")
+	StandardEngine::new(
+		versioned,
+		unversioned,
+		cdc,
+		hooks,
+		Box::new(StandardInterceptorFactory::default()),
+	)
 }
 
 struct TestConsumer {

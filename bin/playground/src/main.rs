@@ -13,7 +13,7 @@ pub type DB = MemoryDatabaseOptimistic;
 // pub type DB = SqliteDatabaseOptimistic;
 
 fn main() {
-	let mut db: DB = sync::memory_optimistic();
+	let mut db: DB = sync::memory_optimistic().build();
 	// let mut db: DB =
 	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 

@@ -10,7 +10,6 @@ use self::context::{
 };
 use crate::interface::Transaction;
 
-/// Interceptor for table pre-insert operations
 pub trait TablePreInsertInterceptor<T: Transaction>: Send + Sync {
 	fn intercept(
 		&mut self,
@@ -18,42 +17,37 @@ pub trait TablePreInsertInterceptor<T: Transaction>: Send + Sync {
 	) -> crate::Result<()>;
 }
 
-/// Interceptor for table post-insert operations
 pub trait TablePostInsertInterceptor<T: Transaction>: Send + Sync {
 	fn intercept(
-		&mut self,
+		&self,
 		ctx: &mut TablePostInsertContext<T>,
 	) -> crate::Result<()>;
 }
 
-/// Interceptor for table pre-update operations
 pub trait TablePreUpdateInterceptor<T: Transaction>: Send + Sync {
 	fn intercept(
-		&mut self,
+		&self,
 		ctx: &mut TablePreUpdateContext<T>,
 	) -> crate::Result<()>;
 }
 
-/// Interceptor for table post-update operations
 pub trait TablePostUpdateInterceptor<T: Transaction>: Send + Sync {
 	fn intercept(
-		&mut self,
+		&self,
 		ctx: &mut TablePostUpdateContext<T>,
 	) -> crate::Result<()>;
 }
 
-/// Interceptor for table pre-delete operations
 pub trait TablePreDeleteInterceptor<T: Transaction>: Send + Sync {
 	fn intercept(
-		&mut self,
+		&self,
 		ctx: &mut TablePreDeleteContext<T>,
 	) -> crate::Result<()>;
 }
 
-/// Interceptor for table post-delete operations
 pub trait TablePostDeleteInterceptor<T: Transaction>: Send + Sync {
 	fn intercept(
-		&mut self,
+		&self,
 		ctx: &mut TablePostDeleteContext<T>,
 	) -> crate::Result<()>;
 }

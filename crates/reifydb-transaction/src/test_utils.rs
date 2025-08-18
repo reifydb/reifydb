@@ -3,6 +3,7 @@
 
 use reifydb_core::{
 	hook::Hooks,
+	interceptor::Interceptors,
 	interface::{
 		CommandTransaction, StandardCdcTransaction, StandardTransaction,
 	},
@@ -31,6 +32,6 @@ pub fn create_test_command_transaction() -> CommandTransaction<
 		unversioned,
 		cdc,
 		hooks,
-		Box::new(|_: &mut _| Ok(())),
+		Interceptors::new(),
 	)
 }

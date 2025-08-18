@@ -4,29 +4,27 @@
 use crate::interface::Transaction;
 
 pub mod chain;
+pub mod factory;
 pub mod table;
 pub mod transaction;
 
 pub use chain::InterceptorChain;
+pub use factory::InterceptorFactory;
 pub use table::*;
 pub use transaction::{PostCommitInterceptor, PreCommitInterceptor};
 
+type Chain<T, I> = InterceptorChain<T, I>;
+
 /// Container for all interceptor chains
 pub struct Interceptors<T: Transaction> {
-	pub table_pre_insert:
-		InterceptorChain<T, dyn TablePreInsertInterceptor<T>>,
-	pub table_post_insert:
-		InterceptorChain<T, dyn TablePostInsertInterceptor<T>>,
-	pub table_pre_update:
-		InterceptorChain<T, dyn TablePreUpdateInterceptor<T>>,
-	pub table_post_update:
-		InterceptorChain<T, dyn TablePostUpdateInterceptor<T>>,
-	pub table_pre_delete:
-		InterceptorChain<T, dyn TablePreDeleteInterceptor<T>>,
-	pub table_post_delete:
-		InterceptorChain<T, dyn TablePostDeleteInterceptor<T>>,
-	pub pre_commit: InterceptorChain<T, dyn PreCommitInterceptor<T>>,
-	pub post_commit: InterceptorChain<T, dyn PostCommitInterceptor<T>>,
+	pub table_pre_insert: Chain<T, dyn TablePreInsertInterceptor<T>>,
+	pub table_post_insert: Chain<T, dyn TablePostInsertInterceptor<T>>,
+	pub table_pre_update: Chain<T, dyn TablePreUpdateInterceptor<T>>,
+	pub table_post_update: Chain<T, dyn TablePostUpdateInterceptor<T>>,
+	pub table_pre_delete: Chain<T, dyn TablePreDeleteInterceptor<T>>,
+	pub table_post_delete: Chain<T, dyn TablePostDeleteInterceptor<T>>,
+	pub pre_commit: Chain<T, dyn PreCommitInterceptor<T>>,
+	pub post_commit: Chain<T, dyn PostCommitInterceptor<T>>,
 }
 
 impl<T: Transaction> Default for Interceptors<T> {

@@ -13,6 +13,7 @@ use reifydb_core::Result;
 
 use crate::health::HealthStatus;
 
+mod builder;
 pub mod cdc;
 #[cfg(feature = "sub_flow")]
 #[allow(dead_code, unused_imports, unused_variables)] // FIXME remove me
@@ -23,6 +24,7 @@ mod subsystems;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
 
+pub use builder::SubsystemBuilder;
 #[cfg(feature = "sub_flow")]
 pub use flow::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]

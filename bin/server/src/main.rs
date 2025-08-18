@@ -3,7 +3,7 @@
 
 use std::thread;
 
-use reifydb::{WithHooks, network::ws::server::WsConfig, server};
+use reifydb::{network::ws::server::WsConfig, server};
 use tokio::{
 	runtime::Runtime,
 	select, signal,
@@ -45,10 +45,10 @@ fn main() {
 		.with_ws(WsConfig {
 			socket: "0.0.0.0:8090".parse().ok(),
 		})
-		.on_create(|ctx| {
-			ctx.command_as_root("create schema test", ())?;
-			Ok(())
-		})
+		// .on_create(|ctx| {
+		// 	ctx.command_as_root("create schema test", ())?;
+		// 	Ok(())
+		// })
 		.build();
 
 	// Start the database
