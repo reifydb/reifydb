@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, OwnedFragment, Fragment, StatementLine, StatementColumn, Type, error,
+	GetType, OwnedFragment, Type, error,
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -197,16 +197,11 @@ fn float_to_integer(
 macro_rules! parse_and_push {
 	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			use reifydb_core::{Fragment as _FragmentTrait};
-			let value_with_position = OwnedFragment::Statement {
-				text: $temp_fragment.value().to_string(),
-				line: $base_fragment.line(),
-				column: $base_fragment.column(),
-			};
-			e.0.with_fragment(value_with_position.clone());
+			// Use the base_fragment (column reference) for the error position
+			e.0.with_fragment($base_fragment.clone());
 			
 			error!(cast::invalid_number(
-				value_with_position,
+				$base_fragment.clone(),
 				$target_type,
 				e.diagnostic(),
 			))
@@ -215,16 +210,11 @@ macro_rules! parse_and_push {
 	}};
 	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			use reifydb_core::{Fragment as _FragmentTrait};
-			let value_with_position = OwnedFragment::Statement {
-				text: $temp_fragment.value().to_string(),
-				line: $base_fragment.line(),
-				column: $base_fragment.column(),
-			};
-			e.0.with_fragment(value_with_position.clone());
+			// Use the base_fragment (column reference) for the error position
+			e.0.with_fragment($base_fragment.clone());
 			
 			error!(cast::invalid_number(
-				value_with_position,
+				$base_fragment.clone(),
 				$target_type,
 				e.diagnostic(),
 			))
@@ -400,16 +390,11 @@ fn text_to_float(
 					Type::Float4 => out.push::<f32>(
 						parse_float::<f32>(temp_fragment.clone())
 							.map_err(|mut e| {
-							use reifydb_core::{Fragment as _FragmentTrait};
-							let value_with_position = OwnedFragment::Statement {
-								text: val.to_string(),
-								line: base_fragment.line(),
-								column: base_fragment.column(),
-							};
-							e.0.with_fragment(value_with_position.clone());
+							// Use the base_fragment (column reference) for the error position
+							e.0.with_fragment(base_fragment.clone());
 							
 							error!(cast::invalid_number(
-                                value_with_position,
+                                base_fragment.clone(),
                                 Type::Float4,
                                 e.diagnostic(),
                             ))
@@ -419,16 +404,11 @@ fn text_to_float(
 					Type::Float8 => out.push::<f64>(
 						parse_float::<f64>(temp_fragment)
 							.map_err(|mut e| {
-							use reifydb_core::{Fragment as _FragmentTrait};
-							let value_with_position = OwnedFragment::Statement {
-								text: val.to_string(),
-								line: base_fragment.line(),
-								column: base_fragment.column(),
-							};
-							e.0.with_fragment(value_with_position.clone());
+							// Use the base_fragment (column reference) for the error position
+							e.0.with_fragment(base_fragment.clone());
 							
 							error!(cast::invalid_number(
-                                value_with_position,
+                                base_fragment.clone(),
                                 Type::Float8,
                                 e.diagnostic(),
                             ))

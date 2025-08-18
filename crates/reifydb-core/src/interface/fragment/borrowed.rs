@@ -32,28 +32,7 @@ impl<'a> BorrowedFragment<'a> {
 		}
 	}
 	
-	/// Create a new borrowed fragment with specific position
-	pub fn with_position(
-		text: &'a str,
-		line: StatementLine,
-		column: StatementColumn,
-	) -> Self {
-		Self::Statement {
-			text,
-			line,
-			column,
-		}
-	}
 	
-	/// Create a new Statement fragment (alias for with_position)
-	pub fn new_statement(
-		text: &'a str,
-		line: StatementLine,
-		column: StatementColumn,
-	) -> Self {
-		Self::with_position(text, line, column)
-	}
-
 	/// Create a new Internal fragment
 	pub fn new_internal(text: &'a str) -> Self {
 		BorrowedFragment::Internal {
@@ -110,39 +89,6 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 		}
 	}
 
-	fn position(&self) -> Option<(u32, u32)> {
-		match self {
-			BorrowedFragment::Statement { line, column, .. } => {
-				Some((line.0, column.0))
-			}
-			_ => None,
-		}
-	}
-	
-	fn split(&self, delimiter: char) -> Vec<OwnedFragment> {
-		let text = self.value();
-		let parts: Vec<&str> = text.split(delimiter).collect();
-		let mut result = Vec::new();
-		let mut current_column = self.column().0;
-		
-		for part in parts {
-			let fragment = match self {
-				BorrowedFragment::None => OwnedFragment::None,
-				BorrowedFragment::Statement { line, .. } => OwnedFragment::Statement {
-					text: part.to_string(),
-					line: *line,
-					column: StatementColumn(current_column),
-				},
-				BorrowedFragment::Internal { .. } => OwnedFragment::Internal {
-					text: part.to_string(),
-				},
-			};
-			result.push(fragment);
-			current_column += part.len() as u32 + 1;
-		}
-		
-		result
-	}
 	
 	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		let text = self.value();
@@ -187,13 +133,6 @@ impl<'a> Fragment for &BorrowedFragment<'a> {
 		(*self).into_owned()
 	}
 	
-	fn position(&self) -> Option<(u32, u32)> {
-		(*self).position()
-	}
-	
-	fn split(&self, delimiter: char) -> Vec<OwnedFragment> {
-		(*self).split(delimiter)
-	}
 	
 	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		(*self).sub_fragment(offset, length)

@@ -39,7 +39,6 @@ fn is_identifier_char(c: char) -> bool {
 #[cfg(test)]
 mod tests {
 	use nom_locate::LocatedSpan;
-	use reifydb_core::Fragment;
 
 	use crate::ast::lex::{TokenKind, identifier::parse_identifier};
 

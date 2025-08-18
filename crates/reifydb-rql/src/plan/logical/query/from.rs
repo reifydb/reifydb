@@ -82,9 +82,9 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{Fragment, interface::evaluate::expression::{
+	use reifydb_core::interface::evaluate::expression::{
 		ConstantExpression, Expression,
-	}};
+	};
 
 	use super::*;
 	use crate::ast::{lex::lex, parse::parse};

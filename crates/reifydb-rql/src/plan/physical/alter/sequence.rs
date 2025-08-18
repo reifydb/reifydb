@@ -26,9 +26,9 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{Fragment, interface::evaluate::expression::{
+	use reifydb_core::interface::evaluate::expression::{
 		ConstantExpression, Expression,
-	}};
+	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{

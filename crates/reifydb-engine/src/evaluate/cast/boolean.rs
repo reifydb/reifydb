@@ -129,14 +129,22 @@ impl_float_to_bool!(from_float8, f64);
 
 fn from_utf8(
 	container: &StringContainer,
-	_fragment: impl Fn() -> OwnedFragment,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
-	use reifydb_core::interface::fragment::OwnedFragment;
+	use reifydb_core::interface::fragment::BorrowedFragment;
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			let fragment = OwnedFragment::internal(&container[idx]);
-			out.push(parse_bool(fragment)?);
+			// Parse with internal fragment, then replace with proper source fragment if error
+			let temp_fragment = BorrowedFragment::new_internal(&container[idx]);
+			match parse_bool(temp_fragment) {
+				Ok(b) => out.push(b),
+				Err(mut e) => {
+					// Replace the error's fragment with the proper source fragment
+					e.0.with_fragment(fragment());
+					return Err(e);
+				}
+			}
 		} else {
 			out.push_undefined();
 		}

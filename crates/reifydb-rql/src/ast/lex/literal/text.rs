@@ -54,7 +54,6 @@ pub(crate) fn parse_text(
 #[cfg(test)]
 mod tests {
 	use nom::Offset;
-	use reifydb_core::Fragment;
 
 	use super::*;
 	use crate::ast::lex::literal::parse_literal;

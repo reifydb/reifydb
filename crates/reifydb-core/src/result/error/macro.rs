@@ -77,7 +77,7 @@ macro_rules! err {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		OwnedFragment, Fragment, StatementColumn, StatementLine, Type, err, error, IntoOwnedFragment,
+		OwnedFragment, Fragment, StatementColumn, StatementLine, Type, err, error,
 		result::error::diagnostic::sequence::sequence_exhausted,
 		return_error,
 	};

@@ -57,38 +57,6 @@ impl Fragment for OwnedFragment {
         self
     }
     
-    fn position(&self) -> Option<(u32, u32)> {
-        match self {
-            OwnedFragment::Statement { line, column, .. } => Some((line.0, column.0)),
-            _ => None,
-        }
-    }
-    
-    fn split(&self, delimiter: char) -> Vec<OwnedFragment> {
-        let text = self.value();
-        let parts: Vec<&str> = text.split(delimiter).collect();
-        let mut result = Vec::new();
-        let mut current_column = self.column().0;
-        
-        for part in parts {
-            let fragment = match self {
-                OwnedFragment::None => OwnedFragment::None,
-                OwnedFragment::Statement { .. } => OwnedFragment::Statement {
-                    text: part.to_string(),
-                    line: self.line(),
-                    column: StatementColumn(current_column),
-                },
-                OwnedFragment::Internal { .. } => OwnedFragment::Internal {
-                    text: part.to_string(),
-                },
-            };
-            result.push(fragment);
-            current_column += part.len() as u32 + 1;
-        }
-        
-        result
-    }
-    
     fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
         let text = self.value();
         let end = std::cmp::min(offset + length, text.len());
@@ -113,14 +81,6 @@ impl Fragment for OwnedFragment {
 }
 
 impl OwnedFragment {
-    /// Get the text value as an Option
-    pub fn text(&self) -> Option<&str> {
-        match self {
-            OwnedFragment::None => None,
-            OwnedFragment::Statement { text, .. } | OwnedFragment::Internal { text, .. } => Some(text),
-        }
-    }
-    
     /// Create an internal fragment - useful for creating fragments from substrings
     pub fn internal(text: impl Into<String>) -> Self {
         OwnedFragment::Internal {

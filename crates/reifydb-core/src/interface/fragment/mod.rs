@@ -109,17 +109,6 @@ pub trait Fragment: Clone {
 		self.into_owned()
 	}
 
-	/// Get position information for Statement fragments
-	fn position(&self) -> Option<(u32, u32)>;
-
-	/// Get the fragment with leading and trailing whitespace trimmed
-	fn trimmed_fragment(&self) -> &str {
-		self.value().trim()
-	}
-
-	/// Split this fragment by delimiter
-	fn split(&self, delimiter: char) -> Vec<OwnedFragment>;
-
 	/// Get a sub-fragment starting at the given offset with the given length
 	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment;
 }

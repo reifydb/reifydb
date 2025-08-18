@@ -4,7 +4,7 @@
 use super::{date::parse_date, time::parse_time};
 use crate::{
 	DateTime, Error,
-	interface::fragment::{BorrowedFragment, Fragment},
+	interface::fragment::Fragment,
 	result::error::diagnostic::temporal, return_error,
 };
 
@@ -14,9 +14,11 @@ pub fn parse_datetime(fragment: impl Fragment) -> Result<DateTime, Error> {
 		return_error!(temporal::invalid_datetime_format(fragment));
 	}
 
-	// Create fragments for the date and time parts
-	let date_fragment = BorrowedFragment::new_internal(parts[0]);
-	let time_fragment = BorrowedFragment::new_internal(parts[1]);
+	// Create sub-fragments for the date and time parts with proper position
+	let date_offset = 0;
+	let date_fragment = fragment.sub_fragment(date_offset, parts[0].len());
+	let time_offset = parts[0].len() + 1; // +1 for the 'T' separator
+	let time_fragment = fragment.sub_fragment(time_offset, parts[1].len());
 	
 	let date = parse_date(date_fragment)?;
 	let time = parse_time(time_fragment)?;

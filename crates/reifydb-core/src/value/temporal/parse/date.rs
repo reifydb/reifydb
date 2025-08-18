@@ -14,40 +14,70 @@ pub fn parse_date(fragment: impl Fragment) -> Result<Date, Error> {
 		return_error!(temporal::invalid_date_format(fragment));
 	}
 
-	// Check for empty parts
+	// Check for empty parts and calculate positions
 	let year_str = parts[0].trim();
 	let month_str = parts[1].trim();
 	let day_str = parts[2].trim();
 
-	if year_str.is_empty() || month_str.is_empty() || day_str.is_empty() {
-		return_error!(temporal::empty_date_component(fragment.clone()));
+	let mut offset = 0;
+	if year_str.is_empty() {
+		let year_frag = fragment.sub_fragment(offset, parts[0].len());
+		return_error!(temporal::empty_date_component(year_frag));
+	}
+	offset += parts[0].len() + 1; // +1 for dash
+	
+	if month_str.is_empty() {
+		let month_frag = fragment.sub_fragment(offset, parts[1].len());
+		return_error!(temporal::empty_date_component(month_frag));
+	}
+	offset += parts[1].len() + 1; // +1 for dash
+	
+	if day_str.is_empty() {
+		let day_frag = fragment.sub_fragment(offset, parts[2].len());
+		return_error!(temporal::empty_date_component(day_frag));
 	}
 
+	// Reset offset for further validation
+	offset = 0;
+	
 	if year_str.len() != 4 {
-		return_error!(temporal::invalid_year(fragment.clone()));
+		let year_frag = fragment.sub_fragment(offset, parts[0].len());
+		return_error!(temporal::invalid_year(year_frag));
 	}
 
 	let year = year_str
 		.parse::<i32>()
-		.map_err(|_| Error(temporal::invalid_year(fragment.clone())))?;
+		.map_err(|_| {
+			let year_frag = fragment.sub_fragment(offset, parts[0].len());
+			Error(temporal::invalid_year(year_frag))
+		})?;
+	offset += parts[0].len() + 1; // +1 for dash
 
 	if month_str.len() != 2 {
-		return_error!(temporal::invalid_month(fragment.clone()));
+		let month_frag = fragment.sub_fragment(offset, parts[1].len());
+		return_error!(temporal::invalid_month(month_frag));
 	}
 
 	let month = month_str.parse::<u32>().map_err(|_| {
-		Error(temporal::invalid_month(fragment.clone()))
+		let month_frag = fragment.sub_fragment(offset, parts[1].len());
+		Error(temporal::invalid_month(month_frag))
 	})?;
+	offset += parts[1].len() + 1; // +1 for dash
+	
 	if day_str.len() != 2 {
-		return_error!(temporal::invalid_day(fragment.clone()));
+		let day_frag = fragment.sub_fragment(offset, parts[2].len());
+		return_error!(temporal::invalid_day(day_frag));
 	}
 
 	let day = day_str
 		.parse::<u32>()
-		.map_err(|_| Error(temporal::invalid_day(fragment.clone())))?;
+		.map_err(|_| {
+			let day_frag = fragment.sub_fragment(offset, parts[2].len());
+			Error(temporal::invalid_day(day_frag))
+		})?;
 
 	Date::new(year, month, day)
-		.ok_or_else(|| Error(temporal::invalid_date_values(fragment)))
+		.ok_or_else(|| Error(temporal::invalid_date_values(fragment.into_owned())))
 }
 
 #[cfg(test)]

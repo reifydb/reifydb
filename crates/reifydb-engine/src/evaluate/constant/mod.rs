@@ -153,7 +153,7 @@ impl Evaluator {
 			ConstantExpression::Text {
 				fragment,
 			} => ColumnData::utf8(
-				std::iter::repeat(fragment.fragment().clone())
+				std::iter::repeat(fragment.fragment())
 					.take(row_count),
 			),
 			ConstantExpression::Temporal {

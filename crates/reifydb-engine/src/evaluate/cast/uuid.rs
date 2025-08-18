@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	OwnedFragment, Fragment, Type, error,
+	OwnedFragment, Type, error,
 	interface::fragment::BorrowedFragment,
 	result::error::diagnostic::cast,
 	value::{

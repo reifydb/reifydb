@@ -101,7 +101,6 @@ fn is_parameter_name_char(c: char) -> bool {
 #[cfg(test)]
 mod tests {
 	use nom_locate::LocatedSpan;
-	use reifydb_core::Fragment;
 
 	use super::*;
 	use crate::ast::lex::TokenKind;
