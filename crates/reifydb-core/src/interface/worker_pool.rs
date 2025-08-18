@@ -62,10 +62,10 @@ pub trait WorkerPool: Send + Sync {
 	fn schedule_periodic(
 		&self,
 		name: String,
-		task: Box<dyn Fn() -> Result<bool, String> + Send + Sync>,
+		task: Box<dyn Fn() -> crate::Result<bool> + Send + Sync>,
 		interval: Duration,
-	) -> Result<TaskHandle, String>;
+	) -> crate::Result<TaskHandle>;
 
 	/// Cancel a scheduled task
-	fn cancel(&self, handle: TaskHandle) -> Result<(), String>;
+	fn cancel(&self, handle: TaskHandle) -> crate::Result<()>;
 }

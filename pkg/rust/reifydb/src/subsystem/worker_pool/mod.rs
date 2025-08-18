@@ -320,12 +320,12 @@ impl WorkerPool for WorkerPoolSubsystem {
 		&self,
 		name: String,
 		task: Box<
-			dyn Fn() -> std::result::Result<bool, String>
+			dyn Fn() -> crate::Result<bool>
 				+ Send
 				+ Sync,
 		>,
 		interval: Duration,
-	) -> std::result::Result<TaskHandle, String> {
+	) -> crate::Result<TaskHandle> {
 		// Create a closure task that wraps the provided function
 		let closure_task = Box::new(ClosureTask::new(
 			name,
@@ -335,7 +335,7 @@ impl WorkerPool for WorkerPoolSubsystem {
 				match task() {
 					Ok(_) => Ok(()),
 					Err(e) => panic!(
-						"Task execution error: {}",
+						"Task execution error: {:?}",
 						e
 					),
 				}
@@ -344,13 +344,12 @@ impl WorkerPool for WorkerPoolSubsystem {
 
 		// Schedule the periodic task
 		self.schedule_periodic(closure_task, interval, Priority::Normal)
-			.map_err(|e| e.to_string())
 	}
 
 	fn cancel(
 		&self,
 		handle: TaskHandle,
-	) -> std::result::Result<(), String> {
-		self.cancel_task(handle).map_err(|e| e.to_string())
+	) -> crate::Result<()> {
+		self.cancel_task(handle)
 	}
 }
