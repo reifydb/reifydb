@@ -162,6 +162,7 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::CreateDeferredView(_)
+			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::Delete(_) => {

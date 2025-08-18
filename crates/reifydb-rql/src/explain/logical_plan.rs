@@ -54,6 +54,7 @@ fn render_logical_plan_inner(
 
 	match plan {
 		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
+		LogicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		LogicalPlan::CreateSchema(_) => unimplemented!(),
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),

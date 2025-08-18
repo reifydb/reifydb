@@ -28,7 +28,6 @@ fn main() {
 	)
 	.unwrap();
 
-	// Skip deferred view for now since flow subsystem has unimplemented
 	db.command_as_root(
 		r#"
 create deferred view test.basic { name: utf8, age: int1 } with {

@@ -11,7 +11,7 @@ use reifydb_core::{
 		ActiveCommandTransaction, ColumnIndex, EncodableKey, Evaluator,
 		GetEncodedRowLayout, SchemaId, SourceId, SourceId::Table,
 		Transaction, VersionedCommandTransaction, ViewColumnDef,
-		ViewColumnId, ViewDef, ViewId, ViewRowKey,
+		ViewColumnId, ViewDef, ViewId, ViewKind, ViewRowKey,
 	},
 };
 
@@ -136,6 +136,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 			id: view_id,
 			schema: SchemaId(0),
 			name: "view".to_string(),
+			kind: ViewKind::Deferred,
 			columns: vec![
 				ViewColumnDef {
 					id: ViewColumnId(0),

@@ -8,6 +8,12 @@ use crate::{
 	interface::{ColumnIndex, SchemaId, ViewColumnId, ViewId},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ViewKind {
+	Deferred,
+	Transactional,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ViewColumnDef {
 	pub id: ViewColumnId,
@@ -21,5 +27,6 @@ pub struct ViewDef {
 	pub id: ViewId,
 	pub schema: SchemaId,
 	pub name: String,
+	pub kind: ViewKind,
 	pub columns: Vec<ViewColumnDef>,
 }

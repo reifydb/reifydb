@@ -174,6 +174,7 @@ impl<T: Transaction> Executor<T> {
 
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::CreateDeferredView(_)
+			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 		}
@@ -191,6 +192,9 @@ impl<T: Transaction> Executor<T> {
 			}
 			PhysicalPlan::CreateDeferredView(plan) => {
 				self.create_deferred_view(txn, plan)
+			}
+			PhysicalPlan::CreateTransactionalView(plan) => {
+				self.create_transactional_view(txn, plan)
 			}
 			PhysicalPlan::CreateSchema(plan) => {
 				self.create_schema(txn, plan)

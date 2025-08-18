@@ -13,8 +13,7 @@ use std::ops::RangeBounds;
 
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Version,
-	hook::transaction::{PostCommitHook, PreCommitHook},
-	row::EncodedRow,
+	hook::transaction::PostCommitHook, row::EncodedRow,
 };
 
 use super::*;
@@ -63,11 +62,6 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 			}
 
 			if let Some(version) = version {
-				self.engine.hooks.trigger(PreCommitHook {
-					deltas: deltas.clone(),
-					version,
-				})?;
-
 				self.engine
 					.versioned
 					.commit(deltas.clone(), version)?;

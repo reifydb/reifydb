@@ -4,15 +4,11 @@
 use reifydb_catalog::{Catalog, view::ViewToCreate};
 use reifydb_core::{
 	Value,
-	interface::{
-		ActiveCommandTransaction, Command, ExecuteCommand, Identity,
-		Params, Transaction, ViewDef,
-	},
+	interface::{ActiveCommandTransaction, Transaction},
 	result::error::diagnostic::catalog::view_already_exists,
 	return_error,
 };
-use reifydb_flow::compile_flow;
-use reifydb_rql::plan::physical::{CreateDeferredViewPlan, PhysicalPlan};
+use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
 use crate::{columnar::Columns, execute::Executor};
 
@@ -54,7 +50,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		let result = Catalog::create_view(
+		let result = Catalog::create_deferred_view(
 			txn,
 			ViewToCreate {
 				span: Some(plan.view.clone()),
@@ -71,38 +67,6 @@ impl<T: Transaction> Executor<T> {
 			("view", Value::Utf8(plan.view.to_string())),
 			("created", Value::Bool(true)),
 		]))
-	}
-
-	fn create_flow(
-		&self,
-		txn: &mut ActiveCommandTransaction<T>,
-		view: &ViewDef,
-		plan: Option<Box<PhysicalPlan>>,
-	) -> crate::Result<()> {
-		let Some(plan) = plan else {
-			return Ok(());
-		};
-
-		let flow = compile_flow(txn, *plan, view).unwrap();
-
-		let rql = r#"
-                 from[{data: blob::utf8('$REPLACE')}]
-                 insert reifydb.flows
-             "#
-		.replace(
-			"$REPLACE",
-			serde_json::to_string(&flow).unwrap().as_str(),
-		);
-
-		self.execute_command(
-			txn,
-			Command {
-				rql: rql.as_str(),
-				params: Params::default(),
-				identity: &Identity::root(),
-			},
-		)?;
-		Ok(())
 	}
 }
 

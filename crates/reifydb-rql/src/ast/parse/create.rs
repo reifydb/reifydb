@@ -6,10 +6,10 @@ use Operator::Colon;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
-	AstCreateSeries, AstCreateTable,
+	AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
 	lex::{
 		Keyword,
-		Keyword::{Deferred, Series, Table, View, With},
+		Keyword::{Deferred, Series, Table, Transactional, View, With},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
@@ -30,6 +30,17 @@ impl Parser {
 				.is_some()
 			{
 				return self.parse_deferred_view(token);
+			}
+			unimplemented!()
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Transactional))?)
+			.is_some()
+		{
+			if (self.consume_if(TokenKind::Keyword(View))?)
+				.is_some()
+			{
+				return self.parse_transactional_view(token);
 			}
 			unimplemented!()
 		}
@@ -123,6 +134,59 @@ impl Parser {
 		}))
 	}
 
+	fn parse_transactional_view(
+		&mut self,
+		token: Token,
+	) -> crate::Result<AstCreate> {
+		let schema = self.parse_identifier()?;
+		self.consume_operator(Operator::Dot)?;
+		let name = self.parse_identifier()?;
+		let columns = self.parse_columns()?;
+
+		// Parse optional WITH clause
+		let with = if self
+			.consume_if(TokenKind::Keyword(With))?
+			.is_some()
+		{
+			// Expect opening curly brace
+			self.consume_operator(Operator::OpenCurly)?;
+
+			// Parse the query nodes inside the WITH clause
+			let mut query_nodes = Vec::new();
+
+			// Parse statements until we hit the closing brace
+			loop {
+				if self.is_eof()
+					|| self.current()?.kind
+						== TokenKind::Operator(
+							Operator::CloseCurly,
+						) {
+					break;
+				}
+
+				let node = self.parse_node(
+					crate::ast::parse::Precedence::None,
+				)?;
+				query_nodes.push(node);
+			}
+
+			// Expect closing curly brace
+			self.consume_operator(Operator::CloseCurly)?;
+
+			Some(crate::ast::AstStatement(query_nodes))
+		} else {
+			None
+		};
+
+		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
+			token,
+			view: name,
+			schema,
+			columns,
+			with,
+		}))
+	}
+
 	fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
 		let schema = self.parse_identifier()?;
 		self.consume_operator(Operator::Dot)?;
@@ -197,8 +261,8 @@ impl Parser {
 mod tests {
 	use crate::ast::{
 		AstCreate, AstCreateDeferredView, AstCreateSchema,
-		AstCreateSeries, AstCreateTable, AstPolicyKind, lex::lex,
-		parse::Parser,
+		AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
+		AstPolicyKind, lex::lex, parse::Parser,
 	};
 
 	#[test]
@@ -447,6 +511,92 @@ mod tests {
 					policy.value.as_identifier().value(),
 					"error"
 				);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_transactional_view() {
+		let tokens = lex(r#"
+        create transactional view test.myview{id: int4, name: utf8}
+    "#)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+		match create {
+			AstCreate::TransactionalView(
+				AstCreateTransactionalView {
+					view: name,
+					schema,
+					columns,
+					..
+				},
+			) => {
+				assert_eq!(schema.value(), "test");
+				assert_eq!(name.value(), "myview");
+
+				assert_eq!(columns.len(), 2);
+
+				{
+					let col = &columns[0];
+					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.ty.value(), "int4");
+					assert_eq!(col.auto_increment, false);
+					assert!(col.policies.is_none());
+				}
+
+				{
+					let col = &columns[1];
+					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.ty.value(), "utf8");
+					assert_eq!(col.auto_increment, false);
+					assert!(col.policies.is_none());
+				}
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_transactional_view_with_query() {
+		let tokens = lex(r#"
+        create transactional view test.myview{id: int4, name: utf8} with {
+            from test.users
+            where age > 18
+        }
+    "#)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+		match create {
+			AstCreate::TransactionalView(
+				AstCreateTransactionalView {
+					view: name,
+					schema,
+					columns,
+					with,
+					..
+				},
+			) => {
+				assert_eq!(schema.value(), "test");
+				assert_eq!(name.value(), "myview");
+				assert_eq!(columns.len(), 2);
+				assert!(with.is_some());
+
+				if let Some(with_statement) = with {
+					// The WITH clause should have the query
+					// nodes
+					assert!(with_statement.len() > 0);
+				}
 			}
 			_ => unreachable!(),
 		}

@@ -110,7 +110,7 @@ pub fn create_view<T: Transaction>(
 	view: &str,
 	columns: &[view::ViewColumnToCreate],
 ) -> ViewDef {
-	Catalog::create_view(
+	Catalog::create_deferred_view(
 		txn,
 		ViewToCreate {
 			span: None,
