@@ -126,7 +126,7 @@ mod tests {
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
-				span: None,
+				fragment: None,
 				schema_name: "schema",
 				table: TableId(1),
 				table_name: "table",

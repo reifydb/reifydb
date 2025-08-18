@@ -25,7 +25,7 @@ impl Compiler {
 						.unwrap_or(SortDirection::Desc);
 
 					SortKey {
-						column: column.span(),
+						column: column.fragment(),
 						direction,
 					}
 				})

@@ -8,7 +8,7 @@ mod query;
 
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	IndexType, JoinType, OwnedSpan, SortDirection, SortKey,
+	IndexType, JoinType, OwnedFragment, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		expression::{AliasExpression, Expression},
@@ -103,8 +103,8 @@ pub enum LogicalPlan {
 
 #[derive(Debug)]
 pub struct CreateComputedViewNode {
-	pub schema: OwnedSpan,
-	pub view: OwnedSpan,
+	pub schema: OwnedFragment,
+	pub view: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan>,
@@ -112,38 +112,38 @@ pub struct CreateComputedViewNode {
 
 #[derive(Debug)]
 pub struct CreateSchemaNode {
-	pub schema: OwnedSpan,
+	pub schema: OwnedFragment,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateSequenceNode {
-	pub schema: OwnedSpan,
+	pub schema: OwnedFragment,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateTableNode {
-	pub schema: OwnedSpan,
-	pub table: OwnedSpan,
+	pub schema: OwnedFragment,
+	pub table: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug)]
 pub struct AlterSequenceNode {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
-	pub column: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
+	pub column: OwnedFragment,
 	pub value: Expression,
 }
 
 #[derive(Debug)]
 pub struct CreateIndexNode {
 	pub index_type: IndexType,
-	pub name: OwnedSpan,
-	pub schema: OwnedSpan,
-	pub table: OwnedSpan,
+	pub name: OwnedFragment,
+	pub schema: OwnedFragment,
+	pub table: OwnedFragment,
 	pub columns: Vec<IndexColumn>,
 	pub filter: Vec<Expression>,
 	pub map: Option<Expression>,
@@ -151,26 +151,26 @@ pub struct CreateIndexNode {
 
 #[derive(Debug)]
 pub struct IndexColumn {
-	pub column: OwnedSpan,
+	pub column: OwnedFragment,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
 pub struct DeleteNode {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug)]
 pub struct InsertNode {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug)]
 pub struct UpdateNode {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug)]
@@ -224,8 +224,8 @@ pub struct InlineDataNode {
 
 #[derive(Debug)]
 pub struct TableScanNode {
-	pub schema: OwnedSpan,
-	pub table: OwnedSpan,
+	pub schema: OwnedFragment,
+	pub table: OwnedFragment,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

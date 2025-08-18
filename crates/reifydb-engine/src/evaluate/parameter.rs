@@ -16,28 +16,28 @@ impl Evaluator {
 	) -> crate::Result<Column> {
 		let value = match expr {
 			ParameterExpression::Positional {
-				span,
+				fragment,
 			} => {
-				let index = span.fragment[1..]
+				let index = fragment.fragment()[1..]
 					.parse::<usize>()
 					.map_err(|_| {
-						error!(engine::invalid_parameter_reference(span.clone()))
+						error!(engine::invalid_parameter_reference(fragment.clone()))
 					})?;
 
 				ctx.params
 					.get_positional(index - 1)
 					.ok_or_else(|| {
-						error!(engine::parameter_not_found(span.clone()))
+						error!(engine::parameter_not_found(fragment.clone()))
 					})?
 			}
 			ParameterExpression::Named {
-				span,
+				fragment,
 			} => {
-				let name = &span.fragment[1..];
+				let name = &fragment.fragment()[1..];
 
 				ctx.params.get_named(name).ok_or_else(|| {
 					error!(engine::parameter_not_found(
-						span.clone()
+						fragment.clone()
 					))
 				})?
 			}

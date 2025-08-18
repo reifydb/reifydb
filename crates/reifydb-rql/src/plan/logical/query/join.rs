@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{JoinType, OwnedSpan};
+use reifydb_core::{JoinType, OwnedFragment};
 
 use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
@@ -22,7 +22,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedSpan::testing("default"), table: identifier.span() })]
+						vec![TableScan(TableScanNode { schema: OwnedFragment::testing("default"), table: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -42,8 +42,8 @@ impl Compiler {
 							unreachable!()
 						};
 						vec![TableScan(TableScanNode {
-							schema: schema.span(),
-							table: table.span(),
+							schema: schema.fragment(),
+							table: table.fragment(),
 						})]
 					}
 					_ => unimplemented!(),
@@ -63,7 +63,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedSpan::testing("default"), table: identifier.span() })]
+						vec![TableScan(TableScanNode { schema: OwnedFragment::testing("default"), table: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -83,8 +83,8 @@ impl Compiler {
 							unreachable!()
 						};
 						vec![TableScan(TableScanNode {
-							schema: schema.span(),
-							table: table.span(),
+							schema: schema.fragment(),
+							table: table.fragment(),
 						})]
 					}
 					_ => unimplemented!(),
@@ -104,7 +104,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![TableScan(TableScanNode { schema: OwnedSpan::testing("default"), table: identifier.span() })]
+						vec![TableScan(TableScanNode { schema: OwnedFragment::testing("default"), table: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -124,8 +124,8 @@ impl Compiler {
 							unreachable!()
 						};
 						vec![TableScan(TableScanNode {
-							schema: schema.span(),
-							table: table.span(),
+							schema: schema.fragment(),
+							table: table.fragment(),
 						})]
 					}
 					_ => unimplemented!(),

@@ -62,7 +62,7 @@ impl Parser {
 
 		if on.len() > 1 && !has_on_braces {
 			return_error!(multiple_expressions_without_braces(
-				token.span
+				token.fragment
 			));
 		}
 
@@ -167,7 +167,7 @@ impl Parser {
 
 		if on.len() > 1 && !has_on_braces {
 			return_error!(multiple_expressions_without_braces(
-				token.span
+				token.fragment
 			));
 		}
 
@@ -231,7 +231,7 @@ impl Parser {
 
 		if on.len() > 1 && !has_on_braces {
 			return_error!(multiple_expressions_without_braces(
-				token.span
+				token.fragment
 			));
 		}
 

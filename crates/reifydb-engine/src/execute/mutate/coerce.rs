@@ -1,4 +1,4 @@
-use reifydb_core::{ColumnDescriptor, OwnedSpan, Type, Value};
+use reifydb_core::{ColumnDescriptor, OwnedFragment, Type, Value};
 
 use crate::{
 	columnar::{ColumnData, Columns},
@@ -48,7 +48,7 @@ pub(crate) fn coerce_value_to_column_type(
 		},
 		&temp_column_data,
 		target,
-		|| OwnedSpan::testing(&value_str),
+		|| OwnedFragment::testing(&value_str),
 	)?;
 
 	Ok(coerced_column.get_value(0))

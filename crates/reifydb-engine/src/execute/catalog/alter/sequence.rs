@@ -116,7 +116,7 @@ mod tests {
 		test_utils::ensure_test_schema,
 	};
 	use reifydb_core::{
-		OwnedSpan, Type, Value,
+		OwnedFragment, Type, Value,
 		interface::{
 			Params,
 			expression::{
@@ -139,19 +139,19 @@ mod tests {
 		Catalog::create_table(
 			&mut txn,
 			TableToCreate {
-				span: None,
+				fragment: None,
 				schema: "test_schema".to_string(),
 				table: "users".to_string(),
 				columns: vec![
 					TableColumnToCreate {
-						span: None,
+						fragment: None,
 						name: "id".to_string(),
 						ty: Type::Int4,
 						policies: vec![],
 						auto_increment: true,
 					},
 					TableColumnToCreate {
-						span: None,
+						fragment: None,
 						name: "name".to_string(),
 						ty: Type::Utf8,
 						policies: vec![],
@@ -164,11 +164,11 @@ mod tests {
 
 		// Alter the sequence to start at 1000
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("users"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("users"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 
@@ -198,11 +198,11 @@ mod tests {
 		Catalog::create_table(
 			&mut txn,
 			TableToCreate {
-				span: None,
+				fragment: None,
 				schema: "test_schema".to_string(),
 				table: "items".to_string(),
 				columns: vec![TableColumnToCreate {
-					span: None,
+					fragment: None,
 					name: "id".to_string(),
 					ty: Type::Int4,
 					policies: vec![],
@@ -214,11 +214,11 @@ mod tests {
 
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("items"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("items"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("100"),
+				fragment: OwnedFragment::testing("100"),
 			}),
 		};
 
@@ -239,11 +239,11 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("non_existent_schema")),
-			table: OwnedSpan::testing("some_table"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("non_existent_schema")),
+			table: OwnedFragment::testing("some_table"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 
@@ -264,11 +264,11 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("non_existent_table"),
-			column: OwnedSpan::testing("id"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("non_existent_table"),
+			column: OwnedFragment::testing("id"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 
@@ -292,11 +292,11 @@ mod tests {
 		Catalog::create_table(
 			&mut txn,
 			TableToCreate {
-				span: None,
+				fragment: None,
 				schema: "test_schema".to_string(),
 				table: "posts".to_string(),
 				columns: vec![TableColumnToCreate {
-					span: None,
+					fragment: None,
 					name: "id".to_string(),
 					ty: Type::Int4,
 					policies: vec![],
@@ -308,11 +308,11 @@ mod tests {
 
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedSpan::testing("test_schema")),
-			table: OwnedSpan::testing("posts"),
-			column: OwnedSpan::testing("non_existent_column"),
+			schema: Some(OwnedFragment::testing("test_schema")),
+			table: OwnedFragment::testing("posts"),
+			column: OwnedFragment::testing("non_existent_column"),
 			value: Constant(Number {
-				span: OwnedSpan::testing("1000"),
+				fragment: OwnedFragment::testing("1000"),
 			}),
 		};
 

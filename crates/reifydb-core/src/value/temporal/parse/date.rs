@@ -57,140 +57,140 @@ mod tests {
 
 	#[test]
 	fn test_basic() {
-		let span = OwnedFragment::testing("2024-03-15");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("2024-03-15");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-03-15");
 	}
 
 	#[test]
 	fn test_leap_year() {
-		let span = OwnedFragment::testing("2024-02-29");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("2024-02-29");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-02-29");
 	}
 
 	#[test]
 	fn test_boundaries() {
-		let span = OwnedFragment::testing("2000-01-01");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("2000-01-01");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2000-01-01");
 
-		let span = OwnedFragment::testing("2024-12-31");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("2024-12-31");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-12-31");
 	}
 
 	#[test]
 	fn test_invalid_format() {
-		let span = OwnedFragment::testing("2024-03");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-03");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_001");
 	}
 
 	#[test]
 	fn test_invalid_year() {
-		let span = OwnedFragment::testing("abcd-03-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("abcd-03-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 	}
 
 	#[test]
 	fn test_invalid_month() {
-		let span = OwnedFragment::testing("2024-invalid-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-invalid-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 	}
 
 	#[test]
 	fn test_invalid_day() {
-		let span = OwnedFragment::testing("2024-03-invalid");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-03-invalid");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 	}
 
 	#[test]
 	fn test_invalid_date_values() {
-		let span = OwnedFragment::testing("2024-13-32");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-13-32");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_012");
 	}
 
 	#[test]
 	fn test_four_digit_year() {
 		// Test 2-digit year
-		let span = OwnedFragment::testing("24-03-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("24-03-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 
 		// Test 3-digit year
-		let span = OwnedFragment::testing("024-03-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("024-03-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 
 		// Test 5-digit year
-		let span = OwnedFragment::testing("20240-03-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("20240-03-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 
 		// Test year with leading zeros (still 4 digits, should work)
-		let span = OwnedFragment::testing("0024-03-15");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("0024-03-15");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "0024-03-15");
 	}
 
 	#[test]
 	fn test_two_digit_month() {
 		// Test 1-digit month
-		let span = OwnedFragment::testing("2024-3-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-3-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 
 		// Test 3-digit month
-		let span = OwnedFragment::testing("2024-003-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-003-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 
 		// Test month with leading zeros (still 2 digits, should work)
-		let span = OwnedFragment::testing("2024-03-15");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("2024-03-15");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-03-15");
 
 		// Test month with non-digits
-		let span = OwnedFragment::testing("2024-0a-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-0a-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 
 		// Test month with spaces
-		let span = OwnedFragment::testing("2024- 3-15");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024- 3-15");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 	}
 
 	#[test]
 	fn test_two_digit_day() {
 		// Test 1-digit day
-		let span = OwnedFragment::testing("2024-03-5");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-03-5");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 
 		// Test 3-digit day
-		let span = OwnedFragment::testing("2024-03-015");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-03-015");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 
 		// Test day with leading zeros (still 2 digits, should work)
-		let span = OwnedFragment::testing("2024-03-05");
-		let date = parse_date(span).unwrap();
+		let fragment = OwnedFragment::testing("2024-03-05");
+		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-03-05");
 
 		// Test day with non-digits
-		let span = OwnedFragment::testing("2024-03-1a");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-03-1a");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 
 		// Test day with spaces
-		let span = OwnedFragment::testing("2024-03- 5");
-		let err = parse_date(span).unwrap_err();
+		let fragment = OwnedFragment::testing("2024-03- 5");
+		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 	}
 }

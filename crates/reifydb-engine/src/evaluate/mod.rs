@@ -125,7 +125,7 @@ pub fn evaluate(
 			ctx,
 			&column.data(),
 			ty,
-			expr.lazy_span(),
+			expr.lazy_fragment(),
 		)?;
 		column = match column.table() {
 			Some(source) => {

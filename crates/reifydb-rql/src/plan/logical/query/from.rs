@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan, err,
+	OwnedFragment, err,
 	interface::evaluate::expression::{AliasExpression, IdentExpression},
-	interface::fragment::OwnedFragment,
 	result::error::diagnostic::Diagnostic,
 };
 
@@ -23,11 +22,11 @@ impl Compiler {
 				..
 			} => Ok(LogicalPlan::TableScan(TableScanNode {
 				schema: schema
-					.map(|schema| schema.span())
-					.unwrap_or(OwnedSpan::testing(
+					.map(|schema| schema.fragment())
+					.unwrap_or(OwnedFragment::testing(
 						"default",
 					)),
-				table: table.span(),
+				table: table.fragment(),
 			})),
 			AstFrom::Static {
 				list,
@@ -43,15 +42,15 @@ impl Compiler {
 							for field in
 								row.keyed_values
 							{
-								let key_span = field.key.span();
-								let alias = IdentExpression(key_span.clone());
+								let key_fragment = field.key.fragment();
+								let alias = IdentExpression(key_fragment.clone());
 								let expr =
                                     ExpressionCompiler::compile(field.value.as_ref().clone())?;
 
 								let alias_expr = AliasExpression {
                                     alias,
                                     expression: Box::new(expr),
-                                    span: key_span,
+                                    fragment: key_fragment,
                                 };
 								alias_fields.push(alias_expr);
 							}
@@ -83,9 +82,9 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::evaluate::expression::{
+	use reifydb_core::{Fragment, interface::evaluate::expression::{
 		ConstantExpression, Expression,
-	};
+	}};
 
 	use super::*;
 	use crate::ast::{lex::lex, parse::parse};
@@ -104,11 +103,11 @@ mod tests {
 				assert_eq!(node.rows.len(), 1); // One row
 				assert_eq!(node.rows[0].len(), 2); // Two KeyedExpressions: id and name
 				assert_eq!(
-					node.rows[0][0].alias.0.fragment,
+					node.rows[0][0].alias.0.fragment(),
 					"id"
 				);
 				assert_eq!(
-					node.rows[0][1].alias.0.fragment,
+					node.rows[0][1].alias.0.fragment(),
 					"name"
 				);
 			}
@@ -135,29 +134,29 @@ mod tests {
 				// First row: id: 1, name: 'Alice'
 				assert_eq!(node.rows[0].len(), 2);
 				assert_eq!(
-					node.rows[0][0].alias.0.fragment,
+					node.rows[0][0].alias.0.fragment(),
 					"id"
 				);
 				assert_eq!(
-					node.rows[0][1].alias.0.fragment,
+					node.rows[0][1].alias.0.fragment(),
 					"name"
 				);
 
 				// Second row: id: 2, email: 'bob@test.com'
 				assert_eq!(node.rows[1].len(), 2);
 				assert_eq!(
-					node.rows[1][0].alias.0.fragment,
+					node.rows[1][0].alias.0.fragment(),
 					"id"
 				);
 				assert_eq!(
-					node.rows[1][1].alias.0.fragment,
+					node.rows[1][1].alias.0.fragment(),
 					"email"
 				);
 
 				// Third row: name: 'Charlie'
 				assert_eq!(node.rows[2].len(), 1);
 				assert_eq!(
-					node.rows[2][0].alias.0.fragment,
+					node.rows[2][0].alias.0.fragment(),
 					"name"
 				);
 
@@ -165,10 +164,10 @@ mod tests {
 				match &*node.rows[0][0].expression {
 					Expression::Constant(
 						ConstantExpression::Number {
-							span,
+							fragment,
 						},
 					) => {
-						assert_eq!(span.fragment, "1");
+						assert_eq!(fragment.fragment(), "1");
 					}
 					_ => panic!(
 						"Expected Number for id in first row"
@@ -178,11 +177,11 @@ mod tests {
 				match &*node.rows[0][1].expression {
 					Expression::Constant(
 						ConstantExpression::Text {
-							span,
+							fragment,
 						},
 					) => {
 						assert_eq!(
-							span.fragment,
+							fragment.fragment(),
 							"Alice"
 						);
 					}

@@ -9,7 +9,7 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	JoinType, OwnedSpan, SortKey,
+	JoinType, OwnedFragment, SortKey,
 	interface::{
 		VersionedQueryTransaction,
 		evaluate::expression::{AliasExpression, Expression},
@@ -203,7 +203,7 @@ impl Compiler {
 					let Some(schema) =
 						Catalog::get_schema_by_name(
 							rx,
-							&scan.schema.fragment,
+							&scan.schema.fragment(),
 						)?
 					else {
 						return_error!(
@@ -213,7 +213,7 @@ impl Compiler {
 									.clone(
 									)),
 								&scan.schema
-									.fragment
+									.fragment()
 							)
 						);
 					};
@@ -279,7 +279,7 @@ pub enum PhysicalPlan {
 #[derive(Debug, Clone)]
 pub struct CreateComputedViewPlan {
 	pub schema: SchemaDef,
-	pub view: OwnedSpan,
+	pub view: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Option<Box<PhysicalPlan>>,
@@ -287,23 +287,23 @@ pub struct CreateComputedViewPlan {
 
 #[derive(Debug, Clone)]
 pub struct CreateSchemaPlan {
-	pub schema: OwnedSpan,
+	pub schema: OwnedFragment,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan {
 	pub schema: SchemaDef,
-	pub table: OwnedSpan,
+	pub table: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
 pub struct AlterSequencePlan {
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
-	pub column: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
+	pub column: OwnedFragment,
 	pub value: Expression,
 }
 
@@ -323,22 +323,22 @@ pub struct FilterNode {
 #[derive(Debug, Clone)]
 pub struct DeletePlan {
 	pub input: Option<Box<PhysicalPlan>>,
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertPlan {
 	pub input: Box<PhysicalPlan>,
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdatePlan {
 	pub input: Box<PhysicalPlan>,
-	pub schema: Option<OwnedSpan>,
-	pub table: OwnedSpan,
+	pub schema: Option<OwnedFragment>,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]
@@ -382,7 +382,7 @@ pub struct InlineDataNode {
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
 	pub schema: SchemaDef,
-	pub table: OwnedSpan,
+	pub table: OwnedFragment,
 }
 
 #[derive(Debug, Clone)]

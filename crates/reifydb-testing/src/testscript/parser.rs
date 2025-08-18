@@ -31,35 +31,35 @@ use nom::{
 
 use crate::testscript::command::{Argument, Block, Command};
 
-/// A string input span, annotated with location information.
-type Span<'a> = nom_locate::LocatedSpan<&'a str>;
+/// A string input fragment, annotated with location information.
+type Fragment<'a> = nom_locate::LocatedSpan<&'a str>;
 
-/// A Span parse result.
-type IResult<'a, O> = nom::IResult<Span<'a>, O>;
+/// A Fragment parse result.
+type IResult<'a, O> = nom::IResult<Fragment<'a>, O>;
 
-/// A Span parse error.
-type Error<'a> = nom::error::Error<Span<'a>>;
+/// A Fragment parse error.
+type Error<'a> = nom::error::Error<Fragment<'a>>;
 
 /// Parses the given testscript string into a list of command blocks.
 pub(crate) fn parse(input: &str) -> Result<Vec<Block>, Error> {
-	blocks(Span::new(input)).finish().map(|(_, blocks)| blocks)
+	blocks(Fragment::new(input)).finish().map(|(_, blocks)| blocks)
 }
 
 /// Parses a command, for use in tests.
 #[cfg(test)]
 pub(crate) fn parse_command(input: &str) -> Result<Command, Error> {
-	command(Span::new(input)).finish().map(|(_, cmd)| cmd)
+	command(Fragment::new(input)).finish().map(|(_, cmd)| cmd)
 }
 
 /// Parses a list of blocks until EOF.
-fn blocks(input: Span) -> IResult<Vec<Block>> {
+fn blocks(input: Fragment) -> IResult<Vec<Block>> {
 	let (input, (blocks, _)) = many_till(block, eof).parse(input)?;
 	Ok((input, blocks))
 }
 
 /// Parses a single block, consisting of a set of commands, a --- separator, and
 /// the command output.
-fn block(input: Span) -> IResult<Block> {
+fn block(input: Fragment) -> IResult<Block> {
 	// Parse the command section, preserving the literal for output.
 	let line_number = input.location_line();
 	let (input, (literal, commands)) = consumed(commands).parse(input)?;
@@ -86,7 +86,7 @@ fn block(input: Span) -> IResult<Block> {
 
 /// Parses the command section of a block. This consists of lines that are
 /// either empty/blank, commands, or comments, up to the separator or EOF.
-fn commands(mut input: Span) -> IResult<Vec<Command>> {
+fn commands(mut input: Fragment) -> IResult<Vec<Command>> {
 	let mut commands = Vec::new();
 	loop {
 		// Skip empty/comment lines.
@@ -120,7 +120,7 @@ fn commands(mut input: Span) -> IResult<Vec<Command>> {
 /// Parses a single command, consisting of a command name and optionally a set
 /// of arguments (with or without values), prefix, and silencing parentheses.
 /// Consumes the entire line, including any whitespace and comments at the end.
-fn command(input: Span) -> IResult<Command> {
+fn command(input: Fragment) -> IResult<Command> {
 	// Look for a silencing (.
 	let (input, maybe_silent) =
 		opt(terminated(char('('), space0)).parse(input)?;
@@ -194,7 +194,7 @@ fn command(input: Span) -> IResult<Command> {
 
 /// Parses a single command argument, consisting of an argument value and
 /// optionally a key separated by =.
-fn argument(input: Span) -> IResult<Argument> {
+fn argument(input: Fragment) -> IResult<Argument> {
 	if let Ok((input, (key, value))) =
 		separated_pair(string, tag("="), opt(string)).parse(input)
 	{
@@ -217,7 +217,7 @@ fn argument(input: Span) -> IResult<Argument> {
 }
 
 /// Parses a list of []-delimited command tags separated by comma or whitespace.
-fn taglist(input: Span) -> IResult<HashSet<String>> {
+fn taglist(input: Fragment) -> IResult<HashSet<String>> {
 	let (input, tags) = delimited(
 		tag("["),
 		separated_list1(one_of(", "), string),
@@ -228,7 +228,7 @@ fn taglist(input: Span) -> IResult<HashSet<String>> {
 }
 
 /// Parses a command/output separator: --- followed by a line ending.
-fn separator(input: Span) -> IResult<()> {
+fn separator(input: Fragment) -> IResult<()> {
 	value((), terminated(tag("---"), alt((line_ending, eof)))).parse(input)
 }
 
@@ -236,7 +236,7 @@ fn separator(input: Span) -> IResult<()> {
 /// line or EOF. This is typically two consecutive line endings, except the
 /// special case where there is no output, i.e. the first character is a line
 /// ending or EOF.
-fn output(input: Span) -> IResult<Span> {
+fn output(input: Fragment) -> IResult<Fragment> {
 	if let (input, Some(output)) =
 		opt(alt((line_ending, eof))).parse(input)?
 	{
@@ -251,14 +251,14 @@ fn output(input: Span) -> IResult<Span> {
 }
 
 /// Parses a string, both quoted (' or ") and unquoted.
-fn string(input: Span) -> IResult<String> {
+fn string(input: Fragment) -> IResult<String> {
 	alt((unquoted_string, quoted_string('\''), quoted_string('"')))
 		.parse(input)
 }
 
 /// An unquoted string can't contain whitespace, and can only contain
 /// alphanumeric characters and some punctuation.
-fn unquoted_string(input: Span) -> IResult<String> {
+fn unquoted_string(input: Fragment) -> IResult<String> {
 	let (input, string) = recognize(pair(
 		alt((alphanumeric1, tag("_"))),
 		many0_count(alt((
@@ -276,7 +276,7 @@ fn unquoted_string(input: Span) -> IResult<String> {
 
 /// A quoted string can contain anything, and respects common escape sequences.
 /// It can be quoted using ' or ".
-fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
+fn quoted_string(quote: char) -> impl FnMut(Fragment) -> IResult<String> {
 	move |input| {
 		let q = match quote {
 			'\'' | '\"' => quote.to_string(),
@@ -307,7 +307,7 @@ fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
                     value('\t', tag("t")),
                     map_res(
                         preceded(tag("x"), take(2usize)),
-                        |input: Span| match u8::from_str_radix(input.fragment(), 16) {
+                        |input: Fragment| match u8::from_str_radix(input.fragment(), 16) {
                             Ok(byte) => Ok(char::from(byte)),
                             Err(_) => Err(Error::new(input, ErrorKind::HexDigit)),
                         },
@@ -318,7 +318,7 @@ fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
                             take_while_m_n(1, 6, |c: char| c.is_ascii_hexdigit()),
                             tag("}"),
                         ),
-                        |input: Span| {
+                        |input: Fragment| {
                             let codepoint = u32::from_str_radix(input.fragment(), 16)
                                 .or(Err(Error::new(input, ErrorKind::HexDigit)))?;
                             char::from_u32(codepoint).ok_or(Error::new(input, ErrorKind::Char))
@@ -334,27 +334,27 @@ fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
 }
 
 /// Parses a line that only contains whitespace and/or a comment.
-fn empty_or_comment_line(input: Span) -> IResult<Span> {
+fn empty_or_comment_line(input: Fragment) -> IResult<Fragment> {
 	verify(
 		recognize(delimited(
 			space0,
 			opt(comment),
 			alt((line_ending, eof)),
 		)),
-		|line: &Span| !line.is_empty(),
+		|line: &Fragment| !line.is_empty(),
 	)
 	.parse(input)
 }
 
 /// Parses a # or // comment until the end of the line/file (not inclusive).
-fn comment(input: Span) -> IResult<Span> {
+fn comment(input: Fragment) -> IResult<Fragment> {
 	recognize(preceded(alt((tag("//"), tag("#"))), not_line_ending))
 		.parse(input)
 }
 
 /// Parses a raw line with optional \ line continuation escapes. Naïve but
 /// sufficient implementation that e.g. doesn't support \\ escapes.
-fn line_continuation(mut input: Span) -> IResult<String> {
+fn line_continuation(mut input: Fragment) -> IResult<String> {
 	let mut result = String::new();
 	loop {
 		let (i, line) = terminated(not_line_ending, line_ending)

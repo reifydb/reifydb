@@ -4,8 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, OwnedSpan, Type, error,
-	interface::fragment::Fragment,
+	GetType, OwnedFragment, Fragment, StatementLine, StatementColumn, Type, error,
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -27,46 +26,46 @@ pub fn to_number(
 	ctx: impl Promote + Demote + Convert,
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		let source_type = data.get_type();
 		return_error!(cast::unsupported_cast(
-			span(),
+			fragment(),
 			source_type,
 			target
 		));
 	}
 
 	if data.get_type().is_number() {
-		return number_to_number(data, target, ctx, span);
+		return number_to_number(data, target, ctx, fragment);
 	}
 
 	if data.is_bool() {
-		return bool_to_number(data, target, span);
+		return bool_to_number(data, target, fragment);
 	}
 
 	if data.is_utf8() {
 		return match target {
 			Type::Float4 | Type::Float8 => {
-				text_to_float(data, target, span)
+				text_to_float(data, target, fragment)
 			}
-			_ => text_to_integer(data, target, span),
+			_ => text_to_integer(data, target, fragment),
 		};
 	}
 
 	if data.is_float() {
-		return float_to_integer(data, target, span);
+		return float_to_integer(data, target, fragment);
 	}
 
 	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(span(), source_type, target))
+	return_error!(cast::unsupported_cast(fragment(), source_type, target))
 }
 
 fn bool_to_number(
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	macro_rules! bool_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
@@ -106,7 +105,7 @@ fn bool_to_number(
 				_ => {
 					let source_type = data.get_type();
 					return_error!(cast::unsupported_cast(
-						span(),
+						fragment(),
 						source_type,
 						target
 					));
@@ -130,7 +129,7 @@ fn bool_to_number(
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -141,7 +140,7 @@ fn bool_to_number(
 fn float_to_integer(
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Float4(container) => match target {
@@ -158,7 +157,7 @@ fn float_to_integer(
 			_ => {
 				let source_type = data.get_type();
 				return_error!(cast::unsupported_cast(
-					span(),
+					fragment(),
 					source_type,
 					target
 				))
@@ -178,7 +177,7 @@ fn float_to_integer(
 			_ => {
 				let source_type = data.get_type();
 				return_error!(cast::unsupported_cast(
-					span(),
+					fragment(),
 					source_type,
 					target
 				))
@@ -187,7 +186,7 @@ fn float_to_integer(
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -196,13 +195,13 @@ fn float_to_integer(
 }
 
 macro_rules! parse_and_push {
-	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_span:expr) => {{
+	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+			use reifydb_core::{Fragment as _FragmentTrait};
 			let value_with_position = OwnedFragment::Statement {
 				text: $temp_fragment.value().to_string(),
-				line: StatementLine($base_span.line.0),
-				column: StatementColumn($base_span.column.0),
+				line: $base_fragment.line(),
+				column: $base_fragment.column(),
 			};
 			e.0.with_fragment(value_with_position.clone());
 			
@@ -214,13 +213,13 @@ macro_rules! parse_and_push {
 		})?;
 		$out.push::<$ty>(result);
 	}};
-	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_span:expr) => {{
+	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+			use reifydb_core::{Fragment as _FragmentTrait};
 			let value_with_position = OwnedFragment::Statement {
 				text: $temp_fragment.value().to_string(),
-				line: StatementLine($base_span.line.0),
-				column: StatementColumn($base_span.column.0),
+				line: $base_fragment.line(),
+				column: $base_fragment.column(),
 			};
 			e.0.with_fragment(value_with_position.clone());
 			
@@ -237,11 +236,11 @@ macro_rules! parse_and_push {
 fn text_to_integer(
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8(container) => {
-			let base_span = span();
+			let base_fragment = fragment();
 			let mut out = ColumnData::with_capacity(
 				target,
 				container.len(),
@@ -260,7 +259,7 @@ fn text_to_integer(
 								Type::Int1,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Int2 => {
@@ -270,7 +269,7 @@ fn text_to_integer(
 								Type::Int2,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Int4 => {
@@ -280,7 +279,7 @@ fn text_to_integer(
 								Type::Int4,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Int8 => {
@@ -290,7 +289,7 @@ fn text_to_integer(
 								Type::Int8,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Int16 => {
@@ -300,7 +299,7 @@ fn text_to_integer(
 								Type::Int16,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Uint1 => {
@@ -310,7 +309,7 @@ fn text_to_integer(
 								Type::Uint1,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Uint2 => {
@@ -320,7 +319,7 @@ fn text_to_integer(
 								Type::Uint2,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Uint4 => {
@@ -330,7 +329,7 @@ fn text_to_integer(
 								Type::Uint4,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Uint8 => {
@@ -340,7 +339,7 @@ fn text_to_integer(
 								Type::Uint8,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						Type::Uint16 => {
@@ -350,14 +349,14 @@ fn text_to_integer(
 								Type::Uint16,
 								out,
 								temp_fragment,
-								base_span
+								base_fragment
 							)
 						}
 						_ => {
 							let source_type =
 								data.get_type();
 							return_error!(cast::unsupported_cast(
-                                base_span.clone(),
+                                base_fragment.clone(),
                                 source_type,
                                 target
                             ));
@@ -372,7 +371,7 @@ fn text_to_integer(
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -383,11 +382,11 @@ fn text_to_integer(
 fn text_to_float(
 	column_data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8(container) = column_data {
-		// Create base span once for efficiency
-		let base_span = span();
+		// Create base fragment once for efficiency
+		let base_fragment = fragment();
 		let mut out =
 			ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
@@ -401,11 +400,11 @@ fn text_to_float(
 					Type::Float4 => out.push::<f32>(
 						parse_float::<f32>(temp_fragment.clone())
 							.map_err(|mut e| {
-							use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+							use reifydb_core::{Fragment as _FragmentTrait};
 							let value_with_position = OwnedFragment::Statement {
 								text: val.to_string(),
-								line: StatementLine(base_span.line.0),
-								column: StatementColumn(base_span.column.0),
+								line: base_fragment.line(),
+								column: base_fragment.column(),
 							};
 							e.0.with_fragment(value_with_position.clone());
 							
@@ -420,11 +419,11 @@ fn text_to_float(
 					Type::Float8 => out.push::<f64>(
 						parse_float::<f64>(temp_fragment)
 							.map_err(|mut e| {
-							use reifydb_core::interface::fragment::{OwnedFragment, StatementLine, StatementColumn};
+							use reifydb_core::{Fragment as _FragmentTrait};
 							let value_with_position = OwnedFragment::Statement {
 								text: val.to_string(),
-								line: StatementLine(base_span.line.0),
-								column: StatementColumn(base_span.column.0),
+								line: base_fragment.line(),
+								column: base_fragment.column(),
 							};
 							e.0.with_fragment(value_with_position.clone());
 							
@@ -440,7 +439,7 @@ fn text_to_float(
 							column_data.get_type();
 						return_error!(
 							cast::unsupported_cast(
-								base_span
+								base_fragment
 									.clone(
 									),
 								source_type,
@@ -457,7 +456,7 @@ fn text_to_float(
 	} else {
 		let source_type = column_data.get_type();
 		return_error!(cast::unsupported_cast(
-			span(),
+			fragment(),
 			source_type,
 			target
 		))
@@ -608,11 +607,11 @@ fn number_to_number(
 	data: &ColumnData,
 	target: Type,
 	ctx: impl Promote + Demote + Convert,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		return_error!(cast::unsupported_cast(
-			span(),
+			fragment(),
 			data.get_type(),
 			target,
 		));
@@ -631,7 +630,7 @@ fn number_to_number(
                         Type::$pro_variant => return promote_vec::<$src_ty, $pro_ty>(
                             container,
                                 ctx,
-                                &span,
+                                &fragment,
                                 Type::$pro_variant,
                                 ColumnData::push::<$pro_ty>,
                             ),
@@ -640,7 +639,7 @@ fn number_to_number(
                         Type::$dem_variant => return demote_vec::<$src_ty, $dem_ty>(
                             container,
                                     ctx,
-                                    &span,
+                                    &fragment,
                                     Type::$dem_variant,
                                     ColumnData::push::<$dem_ty>,
                                 ),
@@ -649,7 +648,7 @@ fn number_to_number(
                         Type::$con_variant => return convert_vec::<$src_ty, $con_ty>(
                             container,
                                 ctx,
-                                &span,
+                                &fragment,
                                 Type::$con_variant,
                                 ColumnData::push::<$con_ty>,
                             ),
@@ -733,13 +732,13 @@ fn number_to_number(
 	);
 
 	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(span(), source_type, target))
+	return_error!(cast::unsupported_cast(fragment(), source_type, target))
 }
 
 pub(crate) fn demote_vec<From, To>(
 	container: &NumberContainer<From>,
 	demote: impl Demote,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -751,7 +750,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match demote.demote::<From, To>(val, &span)? {
+			match demote.demote::<From, To>(val, &fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -765,7 +764,7 @@ where
 pub(crate) fn promote_vec<From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Promote,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -777,7 +776,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match ctx.promote::<From, To>(val, &span)? {
+			match ctx.promote::<From, To>(val, &fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -791,7 +790,7 @@ where
 pub(crate) fn convert_vec<From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Convert,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -809,7 +808,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match ctx.convert::<From, To>(val, &span)? {
+			match ctx.convert::<From, To>(val, &fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -824,7 +823,7 @@ where
 mod tests {
 	mod promote {
 		use reifydb_core::{
-			BitVec, IntoOwnedSpan, OwnedSpan, Type,
+			BitVec, IntoOwnedFragment, OwnedFragment, Type,
 			value::{
 				container::NumberContainer, number::SafePromote,
 			},
@@ -843,7 +842,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -865,7 +864,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -885,7 +884,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -906,7 +905,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -933,7 +932,7 @@ mod tests {
 			fn promote<From, To>(
 				&self,
 				val: From,
-				_span: impl IntoOwnedSpan,
+				_fragment: impl IntoOwnedFragment,
 			) -> crate::Result<Option<To>>
 			where
 				From: SafePromote<To>,
@@ -952,7 +951,7 @@ mod tests {
 
 	mod demote {
 		use reifydb_core::{
-			BitVec, IntoOwnedSpan, OwnedSpan, Type,
+			BitVec, IntoOwnedFragment, OwnedFragment, Type,
 			value::{
 				container::NumberContainer, number::SafeDemote,
 			},
@@ -971,7 +970,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -994,7 +993,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1014,7 +1013,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1035,7 +1034,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedSpan::testing_empty(),
+				|| OwnedFragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1062,7 +1061,7 @@ mod tests {
 			fn demote<From, To>(
 				&self,
 				val: From,
-				_span: impl IntoOwnedSpan,
+				_fragment: impl IntoOwnedFragment,
 			) -> crate::Result<Option<To>>
 			where
 				From: SafeDemote<To>,

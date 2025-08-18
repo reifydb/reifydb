@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	OwnedSpan, Type, error,
+	OwnedFragment, Fragment, Type, error,
 	interface::fragment::BorrowedFragment,
 	result::error::diagnostic::cast,
 	value::{
@@ -19,22 +19,22 @@ use crate::columnar::ColumnData;
 pub fn to_uuid(
 	data: &ColumnData,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8(container) => {
-			from_text(container, target, span)
+			from_text(container, target, fragment)
 		}
 		ColumnData::Uuid4(container) => {
-			from_uuid4(container, target, span)
+			from_uuid4(container, target, fragment)
 		}
 		ColumnData::Uuid7(container) => {
-			from_uuid7(container, target, span)
+			from_uuid7(container, target, fragment)
 		}
 		_ => {
 			let source_type = data.get_type();
 			reifydb_core::err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -46,15 +46,15 @@ pub fn to_uuid(
 fn from_text(
 	container: &StringContainer,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
-		Type::Uuid4 => to_uuid4(container, span),
-		Type::Uuid7 => to_uuid7(container, span),
+		Type::Uuid4 => to_uuid4(container, fragment),
+		Type::Uuid7 => to_uuid7(container, fragment),
 		_ => {
 			let source_type = Type::Utf8;
 			reifydb_core::err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -67,7 +67,7 @@ macro_rules! impl_to_uuid {
         #[inline]
         fn $fn_name(
             container: &StringContainer,
-            span: impl Fn() -> OwnedSpan,
+            fragment: impl Fn() -> OwnedFragment,
         ) -> crate::Result<ColumnData> {
             let mut out = ColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
@@ -76,15 +76,15 @@ macro_rules! impl_to_uuid {
                     let temp_fragment = BorrowedFragment::new_internal(val.as_str());
 
                     let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
-                        // Get the original span for error reporting
-                        let proper_span = span();
+                        // Get the original fragment for error reporting
+                        let proper_fragment = fragment();
                         
-                        // Replace the error's origin with the proper RQL span
+                        // Replace the error's origin with the proper RQL fragment
                         // This ensures the error shows "at col" not the actual value
-                        e.0.with_span(&proper_span);
+                        e.0.with_fragment(proper_fragment.clone());
                         
-                        // Wrap in cast error with the original span
-                        error!(cast::invalid_uuid(proper_span, $target_type, e.0))
+                        // Wrap in cast error with the original fragment
+                        error!(cast::invalid_uuid(proper_fragment, $target_type, e.0))
                     })?;
 
                     out.push::<$type>(parsed);
@@ -104,7 +104,7 @@ impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 fn from_uuid4(
 	container: &UuidContainer<Uuid4>,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(
@@ -114,7 +114,7 @@ fn from_uuid4(
 		_ => {
 			let source_type = Type::Uuid4;
 			reifydb_core::err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))
@@ -126,7 +126,7 @@ fn from_uuid4(
 fn from_uuid7(
 	container: &UuidContainer<Uuid7>,
 	target: Type,
-	span: impl Fn() -> OwnedSpan,
+	fragment: impl Fn() -> OwnedFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(
@@ -136,7 +136,7 @@ fn from_uuid7(
 		_ => {
 			let source_type = Type::Uuid7;
 			reifydb_core::err!(cast::unsupported_cast(
-				span(),
+				fragment(),
 				source_type,
 				target
 			))

@@ -12,7 +12,7 @@ use nom::{
 use nom_locate::LocatedSpan;
 use reifydb_core::result::error::diagnostic::ast;
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_fragment};
 
 macro_rules! keyword {
     (
@@ -119,14 +119,14 @@ keyword! {
     Value => "VALUE",
 }
 
-type Span<'a> = LocatedSpan<&'a str>;
+type Fragment<'a> = LocatedSpan<&'a str>;
 
 fn keyword_tag<'a>(
 	kw: Keyword,
 	tag_str: &'static str,
-) -> impl Parser<Span<'a>, Output = Keyword, Error = nom::error::Error<Span<'a>>> + 'a
+) -> impl Parser<Fragment<'a>, Output = Keyword, Error = nom::error::Error<Fragment<'a>>> + 'a
 {
-	move |input: Span<'a>| {
+	move |input: Fragment<'a>| {
 		let original = input;
 
 		let res = map(
@@ -135,7 +135,7 @@ fn keyword_tag<'a>(
 				not(peek(alt((
 					alphanumeric1::<
 						LocatedSpan<&str>,
-						nom::error::Error<Span<'a>>,
+						nom::error::Error<Fragment<'a>>,
 					>,
 					tag("_"),
 					tag("."),
@@ -233,13 +233,14 @@ pub(crate) fn parse_keyword(
 
 	parser.map(|kw| Token {
 		kind: TokenKind::Keyword(kw),
-		span: as_span(start.take(kw.as_str().len())),
+		fragment: as_fragment(start.take(kw.as_str().len())),
 	})
 	.parse(input)
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::Fragment;
 	use crate::ast::lex::{
 		LocatedSpan, TokenKind,
 		keyword::{Keyword, parse_keyword},
@@ -274,11 +275,11 @@ mod tests {
 				repr
 			);
 			assert_eq!(
-				token.span.fragment.to_lowercase(),
+				token.fragment.fragment().to_lowercase(),
 				repr.to_lowercase()
 			);
-			assert_eq!(token.span.column, 1);
-			assert_eq!(token.span.line, 1);
+			assert_eq!(token.fragment.column().0, 1);
+			assert_eq!(token.fragment.line().0, 1);
 			assert_eq!(*remaining.fragment(), " rest");
 		}
 	}

@@ -111,7 +111,7 @@ impl EncodedIndexKeyRange {
 		}
 	}
 
-	/// Constructs a key range that spans the entire keyspace.
+	/// Constructs a key range that fragments the entire keyspace.
 	pub fn all() -> Self {
 		Self {
 			start: Bound::Unbounded,

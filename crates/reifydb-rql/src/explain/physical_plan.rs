@@ -90,13 +90,13 @@ fn render_physical_plan_inner(
 		}) => {
 			let schema_str = schema
 				.as_ref()
-				.map(|s| format!("{}.", s.fragment))
+				.map(|s| format!("{}.", s.fragment()))
 				.unwrap_or_default();
 			let label = format!(
 				"AlterSequence {}{}.{} SET VALUE {}",
 				schema_str,
-				table.fragment,
-				column.fragment,
+				table.fragment(),
+				column.fragment(),
 				value
 			);
 			write_node_header(output, prefix, is_last, &label);
@@ -310,7 +310,7 @@ fn render_physical_plan_inner(
 		}) => {
 			let label = format!(
 				"TableScan {}.{}",
-				schema.name, table.fragment
+				schema.name, table.fragment()
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}

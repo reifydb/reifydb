@@ -15,7 +15,7 @@ impl Compiler {
 			.columns
 			.into_iter()
 			.map(|col: AstIndexColumn| IndexColumn {
-				column: col.column.span(),
+				column: col.column.fragment(),
 				order: col.order,
 			})
 			.collect();
@@ -36,9 +36,9 @@ impl Compiler {
 
 		Ok(LogicalPlan::CreateIndex(CreateIndexNode {
 			index_type: ast.index_type,
-			name: ast.name.span(),
-			schema: ast.schema.span(),
-			table: ast.table.span(),
+			name: ast.name.fragment(),
+			schema: ast.schema.fragment(),
+			table: ast.table.fragment(),
 			columns,
 			filter,
 			map,

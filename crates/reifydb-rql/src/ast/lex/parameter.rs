@@ -10,7 +10,7 @@ use nom::{
 };
 use nom_locate::LocatedSpan;
 
-use crate::ast::lex::{Token, TokenKind, as_span};
+use crate::ast::lex::{Token, TokenKind, as_fragment};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ParameterKind {
@@ -27,14 +27,14 @@ pub(crate) fn parse_parameter(
 fn parse_positional_parameter(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
-	let (rest, span) = complete(recognize(preceded(
+	let (rest, fragment) = complete(recognize(preceded(
 		tag("$"),
 		take_while1(|c: char| c.is_ascii_digit()),
 	)))
 	.parse(input)?;
 
 	// Extract the number part for validation
-	let num_str = &span.fragment()[1..]; // Skip the '$'
+	let num_str = &fragment.fragment()[1..]; // Skip the '$'
 	if let Ok(num) = num_str.parse::<u32>() {
 		if num > 0 {
 			Ok((
@@ -43,7 +43,7 @@ fn parse_positional_parameter(
 					kind: TokenKind::Parameter(
 						ParameterKind::Positional(num),
 					),
-					span: as_span(span),
+					fragment: as_fragment(fragment),
 				},
 			))
 		} else {
@@ -64,14 +64,14 @@ fn parse_positional_parameter(
 fn parse_named_parameter(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
-	let (rest, span) = complete(recognize(preceded(
+	let (rest, fragment) = complete(recognize(preceded(
 		tag("$"),
 		take_while1(is_parameter_name_char),
 	)))
 	.parse(input)?;
 
 	// Make sure the first character after $ is alphabetic or underscore
-	let name_part = &span.fragment()[1..]; // Skip the '$'
+	let name_part = &fragment.fragment()[1..]; // Skip the '$'
 	if name_part.chars().next().map_or(false, is_parameter_name_start) {
 		Ok((
 			rest,
@@ -79,7 +79,7 @@ fn parse_named_parameter(
 				kind: TokenKind::Parameter(
 					ParameterKind::Named,
 				),
-				span: as_span(span),
+				fragment: as_fragment(fragment),
 			},
 		))
 	} else {
@@ -101,6 +101,7 @@ fn is_parameter_name_char(c: char) -> bool {
 #[cfg(test)]
 mod tests {
 	use nom_locate::LocatedSpan;
+	use reifydb_core::Fragment;
 
 	use super::*;
 	use crate::ast::lex::TokenKind;
@@ -113,7 +114,7 @@ mod tests {
 			result.kind,
 			TokenKind::Parameter(ParameterKind::Positional(1))
 		);
-		assert_eq!(&result.span.fragment, "$1");
+		assert_eq!(result.fragment.fragment(), "$1");
 
 		let (_rest, result) =
 			parse_parameter(LocatedSpan::new("$42")).unwrap();
@@ -121,7 +122,7 @@ mod tests {
 			result.kind,
 			TokenKind::Parameter(ParameterKind::Positional(42))
 		);
-		assert_eq!(&result.span.fragment, "$42");
+		assert_eq!(result.fragment.fragment(), "$42");
 	}
 
 	#[test]
@@ -132,7 +133,7 @@ mod tests {
 			result.kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(&result.span.fragment, "$name");
+		assert_eq!(result.fragment.fragment(), "$name");
 
 		let (_rest, result) =
 			parse_parameter(LocatedSpan::new("$user_id")).unwrap();
@@ -140,7 +141,7 @@ mod tests {
 			result.kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(&result.span.fragment, "$user_id");
+		assert_eq!(result.fragment.fragment(), "$user_id");
 
 		let (_rest, result) =
 			parse_parameter(LocatedSpan::new("$_private")).unwrap();
@@ -148,7 +149,7 @@ mod tests {
 			result.kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(&result.span.fragment, "$_private");
+		assert_eq!(result.fragment.fragment(), "$_private");
 	}
 
 	#[test]

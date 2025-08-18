@@ -13,7 +13,7 @@ fn test_view_and_table_can_coexist_with_same_name() {
 	let schema = Catalog::create_schema(
 		&mut txn,
 		reifydb_catalog::schema::SchemaToCreate {
-			schema_span: None,
+			schema_fragment: None,
 			name: "test_schema".to_string(),
 		},
 	)
@@ -23,7 +23,7 @@ fn test_view_and_table_can_coexist_with_same_name() {
 	let table = Catalog::create_table(
 		&mut txn,
 		TableToCreate {
-			span: None,
+			fragment: None,
 			schema: "test_schema".to_string(),
 			table: "users".to_string(),
 			columns: vec![],
@@ -36,7 +36,7 @@ fn test_view_and_table_can_coexist_with_same_name() {
 	let view = Catalog::create_view(
 		&mut txn,
 		ViewToCreate {
-			span: None,
+			fragment: None,
 			schema: "test_schema".to_string(),
 			view: "users".to_string(),
 			columns: vec![],
@@ -75,7 +75,7 @@ fn test_view_ids_are_separate_from_table_ids() {
 	Catalog::create_schema(
 		&mut txn,
 		reifydb_catalog::schema::SchemaToCreate {
-			schema_span: None,
+			schema_fragment: None,
 			name: "test_schema".to_string(),
 		},
 	)
@@ -85,7 +85,7 @@ fn test_view_ids_are_separate_from_table_ids() {
 	let table1 = Catalog::create_table(
 		&mut txn,
 		TableToCreate {
-			span: None,
+			fragment: None,
 			schema: "test_schema".to_string(),
 			table: "table1".to_string(),
 			columns: vec![],
@@ -96,7 +96,7 @@ fn test_view_ids_are_separate_from_table_ids() {
 	let table2 = Catalog::create_table(
 		&mut txn,
 		TableToCreate {
-			span: None,
+			fragment: None,
 			schema: "test_schema".to_string(),
 			table: "table2".to_string(),
 			columns: vec![],
@@ -108,7 +108,7 @@ fn test_view_ids_are_separate_from_table_ids() {
 	let view1 = Catalog::create_view(
 		&mut txn,
 		ViewToCreate {
-			span: None,
+			fragment: None,
 			schema: "test_schema".to_string(),
 			view: "view1".to_string(),
 			columns: vec![],
@@ -119,7 +119,7 @@ fn test_view_ids_are_separate_from_table_ids() {
 	let view2 = Catalog::create_view(
 		&mut txn,
 		ViewToCreate {
-			span: None,
+			fragment: None,
 			schema: "test_schema".to_string(),
 			view: "view2".to_string(),
 			columns: vec![],

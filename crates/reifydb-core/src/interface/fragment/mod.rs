@@ -7,36 +7,72 @@ pub mod owned;
 pub use borrowed::BorrowedFragment;
 pub use owned::OwnedFragment;
 
-// Re-export position types (will be renamed later)
-pub use crate::result::error::diagnostic::origin::{
-	SpanColumn as StatementColumn, SpanLine as StatementLine,
-};
+use serde::{Deserialize, Serialize};
+
+// Position types for fragments
+#[repr(transparent)]
+#[derive(
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Serialize,
+	Deserialize,
+)]
+pub struct StatementColumn(pub u32);
+
+impl PartialEq<i32> for StatementColumn {
+	fn eq(&self, other: &i32) -> bool {
+		self.0 == *other as u32
+	}
+}
+
+#[repr(transparent)]
+#[derive(
+	Debug,
+	Clone,
+	Copy,
+	PartialEq,
+	Eq,
+	PartialOrd,
+	Ord,
+	Serialize,
+	Deserialize,
+)]
+pub struct StatementLine(pub u32);
+
+impl PartialEq<i32> for StatementLine {
+	fn eq(&self, other: &i32) -> bool {
+		self.0 == *other as u32
+	}
+}
 
 /// Macro to create Fragment with automatic location capture
 #[macro_export]
 macro_rules! fragment {
-	// Statement fragment from span with location tracking
-	(statement: $span:expr) => {{
-		let span = $crate::IntoOwnedSpan::into_span($span);
-		$crate::interface::fragment::OwnedFragment::Statement {
-			text: span.fragment,
-			line: $crate::interface::fragment::StatementLine(
-				span.line.0,
-			),
-			column: $crate::interface::fragment::StatementColumn(
-				span.column.0,
-			),
+	(statement: $fragment:expr) => {{
+		let fragment = $crate::interface::fragment::IntoOwnedFragment::into_fragment($fragment);
+		match fragment {
+			$crate::interface::fragment::OwnedFragment::Statement { text, line, column } => {
+				$crate::interface::fragment::OwnedFragment::Statement {
+					text,
+					line,
+					column,
+				}
+			}
+			_ => fragment,
 		}
 	}};
 
-	// Internal fragment with location tracking
 	(internal: $text:expr) => {
 		$crate::interface::fragment::OwnedFragment::Internal {
 			text: $text.to_string(),
 		}
 	};
 
-	// None variant
 	(none) => {
 		$crate::interface::fragment::OwnedFragment::None
 	};
@@ -44,21 +80,107 @@ macro_rules! fragment {
 
 /// Core trait for fragment types
 pub trait Fragment: Clone {
+	type SubFragment: Fragment + IntoOwnedFragment + IntoFragment;
+
 	/// Get the text value of the fragment
 	fn value(&self) -> &str;
+
+	/// Alias for value() for compatibility
+	fn fragment(&self) -> &str {
+		self.value()
+	}
+
+	/// Get line position
+	fn line(&self) -> StatementLine;
+
+	/// Get column position
+	fn column(&self) -> StatementColumn;
 
 	/// Convert to owned variant
 	fn into_owned(self) -> OwnedFragment
 	where
 		Self: Sized;
 
+	/// Convert to owned variant (alias for compatibility)
+	fn to_owned(self) -> OwnedFragment
+	where
+		Self: Sized,
+	{
+		self.into_owned()
+	}
+
 	/// Get position information for Statement fragments
 	fn position(&self) -> Option<(u32, u32)>;
+
+	/// Get the fragment with leading and trailing whitespace trimmed
+	fn trimmed_fragment(&self) -> &str {
+		self.value().trim()
+	}
+
+	/// Split this fragment by delimiter
+	fn split(&self, delimiter: char) -> Vec<OwnedFragment>;
+
+	/// Get a sub-fragment starting at the given offset with the given length
+	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment;
 }
 
 /// Trait for types that can be converted into a Fragment
 pub trait IntoFragment {
 	fn into_fragment(self) -> OwnedFragment;
+}
+
+/// Trait to provide an OwnedFragment either directly or lazily (via closure)
+pub trait IntoOwnedFragment {
+	fn into_fragment(self) -> OwnedFragment;
+}
+
+impl IntoOwnedFragment for OwnedFragment {
+	fn into_fragment(self) -> OwnedFragment {
+		self
+	}
+}
+
+impl IntoOwnedFragment for &OwnedFragment {
+	fn into_fragment(self) -> OwnedFragment {
+		self.clone()
+	}
+}
+
+impl<F> IntoOwnedFragment for F
+where
+	F: Fn() -> OwnedFragment,
+{
+	fn into_fragment(self) -> OwnedFragment {
+		self()
+	}
+}
+
+impl<'a> IntoOwnedFragment for BorrowedFragment<'a> {
+	fn into_fragment(self) -> OwnedFragment {
+		match self {
+			BorrowedFragment::None => OwnedFragment::None,
+			BorrowedFragment::Statement {
+				text,
+				line,
+				column,
+			} => OwnedFragment::Statement {
+				text: text.to_string(),
+				line,
+				column,
+			},
+			BorrowedFragment::Internal {
+				text,
+			} => OwnedFragment::Internal {
+				text: text.to_string(),
+			},
+		}
+	}
+}
+
+impl<'a> IntoOwnedFragment for &BorrowedFragment<'a> {
+	fn into_fragment(self) -> OwnedFragment {
+		IntoOwnedFragment::into_fragment(*self)
+	}
 }
 
 // Blanket implementation for any Fragment type
@@ -68,46 +190,19 @@ impl<T: Fragment> IntoFragment for T {
 	}
 }
 
-// Conversions from old Span types for backward compatibility
-use crate::{BorrowedSpan, OwnedSpan};
-
-impl IntoFragment for OwnedSpan {
-	fn into_fragment(self) -> OwnedFragment {
-		fragment!(statement: self)
-	}
-}
-
-impl IntoFragment for &OwnedSpan {
-	fn into_fragment(self) -> OwnedFragment {
-		fragment!(statement: self.clone())
-	}
-}
-
-impl<'a> IntoFragment for BorrowedSpan<'a> {
-	fn into_fragment(self) -> OwnedFragment {
-		fragment!(statement: self)
-	}
-}
-
-impl<'a> IntoFragment for &BorrowedSpan<'a> {
-	fn into_fragment(self) -> OwnedFragment {
-		fragment!(statement: *self)
-	}
-}
-
-// Implementation for Option<OwnedSpan>
-impl IntoFragment for Option<OwnedSpan> {
+// Implementation for Option<OwnedFragment>
+impl IntoFragment for Option<OwnedFragment> {
 	fn into_fragment(self) -> OwnedFragment {
 		match self {
-			Some(span) => span.into_fragment(),
+			Some(fragment) => fragment,
 			None => OwnedFragment::None,
 		}
 	}
 }
 
 // Also provide From implementations for convenience
-impl From<Option<OwnedSpan>> for OwnedFragment {
-	fn from(span_opt: Option<OwnedSpan>) -> Self {
-		span_opt.into_fragment()
+impl From<Option<OwnedFragment>> for OwnedFragment {
+	fn from(fragment_opt: Option<OwnedFragment>) -> Self {
+		fragment_opt.into_fragment()
 	}
 }

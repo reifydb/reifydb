@@ -59,7 +59,7 @@ impl Parser {
 
 		if nodes.len() > 1 && !has_braces {
 			return_error!(multiple_expressions_without_braces(
-				token.span
+				token.fragment
 			));
 		}
 
@@ -77,7 +77,7 @@ impl Parser {
 		// Look ahead to see if we have "identifier: expression" pattern
 		if len < 2 {
 			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().span
+				self.current()?.clone().fragment
 			));
 		}
 
@@ -85,14 +85,14 @@ impl Parser {
 		match &self.tokens[len - 1].kind {
 			TokenKind::Identifier => {}
 			_ => return_error!(ast::unsupported_token_error(
-				self.current()?.clone().span
+				self.current()?.clone().fragment
 			)),
 		};
 
 		// Check if second token is colon
 		if !self.tokens[len - 2].is_operator(Colon) {
 			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().span
+				self.current()?.clone().fragment
 			));
 		}
 

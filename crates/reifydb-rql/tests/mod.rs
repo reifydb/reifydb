@@ -79,7 +79,7 @@ impl testscript::Runner for Runner {
 				Catalog::create_schema(
 					&mut dummy_tx,
 					SchemaToCreate {
-						schema_span: None,
+						schema_fragment: None,
 						name: "default".to_string(),
 					},
 				)

@@ -18,12 +18,11 @@ pub use common::*;
 pub use interface::{
 	ColumnDescriptor,
 };
-// Re-export span/origin types from new location
-pub use result::error::diagnostic::origin::{
-	BorrowedSpan, IntoOwnedSpan, OwnedSpan, Span,
-	SpanColumn, SpanLine,
-	// Also export new names for gradual migration
-	OwnedStatementOrigin, BorrowedStatementOrigin,
+// Re-export fragment types
+pub use interface::fragment::{
+	Fragment, IntoFragment, IntoOwnedFragment,
+	OwnedFragment, BorrowedFragment,
+	StatementColumn, StatementLine,
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};

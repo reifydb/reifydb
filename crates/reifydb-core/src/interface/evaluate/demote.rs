@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	GetType, IntoOwnedSpan, error,
+	GetType, IntoOwnedFragment, error,
 	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::number_out_of_range,
 	value::number::SafeDemote,
@@ -12,7 +12,7 @@ pub trait Demote {
 	fn demote<From, To>(
 		&self,
 		from: From,
-		span: impl IntoOwnedSpan,
+		fragment: impl IntoOwnedFragment,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeDemote<To>,
@@ -23,13 +23,13 @@ impl Demote for EvaluationContext<'_> {
 	fn demote<From, To>(
 		&self,
 		from: From,
-		span: impl IntoOwnedSpan,
+		fragment: impl IntoOwnedFragment,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeDemote<To>,
 		To: GetType,
 	{
-		Demote::demote(&self, from, span)
+		Demote::demote(&self, from, fragment)
 	}
 }
 
@@ -37,7 +37,7 @@ impl Demote for &EvaluationContext<'_> {
 	fn demote<From, To>(
 		&self,
 		from: From,
-		span: impl IntoOwnedSpan,
+		fragment: impl IntoOwnedFragment,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeDemote<To>,
@@ -48,7 +48,7 @@ impl Demote for &EvaluationContext<'_> {
 				.checked_demote()
 				.ok_or_else(|| {
 					return error!(number_out_of_range(
-						span.into_span(),
+						fragment.into_fragment(),
 						To::get_type(),
 						self.target_column.as_ref(),
 					));
@@ -67,7 +67,7 @@ impl Demote for &EvaluationContext<'_> {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		ColumnDescriptor, GetType, OwnedSpan, Type,
+		ColumnDescriptor, GetType, OwnedFragment, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
@@ -85,7 +85,7 @@ mod tests {
 		ctx.column_policies = vec![Saturation(Error)];
 
 		let result = ctx
-			.demote::<i16, i8>(1i16, || OwnedSpan::testing_empty());
+			.demote::<i16, i8>(1i16, || OwnedFragment::testing_empty());
 		assert_eq!(result, Ok(Some(1i8)));
 	}
 
@@ -99,7 +99,7 @@ mod tests {
 
 		let err = ctx
 			.demote::<TestI16, TestI8>(TestI16 {}, || {
-				OwnedSpan::testing_empty()
+				OwnedFragment::testing_empty()
 			})
 			.err()
 			.unwrap();
@@ -118,7 +118,7 @@ mod tests {
 
 		let result = ctx
 			.demote::<TestI16, TestI8>(TestI16 {}, || {
-				OwnedSpan::testing_empty()
+				OwnedFragment::testing_empty()
 			})
 			.unwrap();
 		assert!(result.is_none());

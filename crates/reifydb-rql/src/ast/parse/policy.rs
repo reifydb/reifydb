@@ -48,7 +48,7 @@ impl Parser {
 		&mut self,
 	) -> crate::Result<(Token, AstPolicyKind)> {
 		let identifier = self.consume(Identifier)?;
-		let ty = match identifier.span.fragment.as_str() {
+		let ty = match identifier.fragment.fragment() {
 			"saturation" => AstPolicyKind::Saturation,
 			"default" => AstPolicyKind::Default,
 			"not" => {
@@ -56,7 +56,7 @@ impl Parser {
 				AstPolicyKind::NotUndefined
 			}
 			_ => return_error!(ast::invalid_policy_error(
-				identifier.span
+				identifier.fragment
 			)),
 		};
 

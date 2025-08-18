@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::Fragment;
 use crate::ast::{Ast, AstFrom, AstJoin, lex::lex, parse::parse};
 
 pub fn explain_ast(query: &str) -> crate::Result<String> {
@@ -25,7 +26,7 @@ fn render_ast_tree_inner(
 	output: &mut String,
 ) {
 	let token = ast.token();
-	let span = &token.span;
+	let fragment = &token.fragment;
 	let ty = match ast {
 		Ast::Aggregate(_) => "Aggregate",
 		Ast::Between(_) => "Between",
@@ -86,9 +87,9 @@ fn render_ast_tree_inner(
 		prefix,
 		branch,
 		description,
-		span.line.0,
-		span.column.0,
-		span.fragment
+		fragment.line().0,
+		fragment.column().0,
+		fragment.fragment()
 	));
 
 	let child_prefix = format!(

@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use reifydb_core::Fragment;
 use crate::ast::{Token, TokenKind, lex::lex};
 
 pub fn explain_lex(query: &str) -> crate::Result<String> {
@@ -10,7 +11,7 @@ pub fn explain_lex(query: &str) -> crate::Result<String> {
 
 	let mut lines: BTreeMap<u32, Vec<(usize, &Token)>> = BTreeMap::new();
 	for (i, token) in tokens.iter().enumerate() {
-		lines.entry(token.span.line.0).or_default().push((i, token));
+		lines.entry(token.fragment.line().0).or_default().push((i, token));
 	}
 
 	let mut result = String::new();

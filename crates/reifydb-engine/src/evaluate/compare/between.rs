@@ -28,13 +28,13 @@ impl Evaluator {
 		let greater_equal_expr = GreaterThanEqualExpression {
 			left: expr.value.clone(),
 			right: expr.lower.clone(),
-			span: expr.span.clone(),
+			fragment: expr.fragment.clone(),
 		};
 
 		let less_equal_expr = LessThanEqualExpression {
 			left: expr.value.clone(),
 			right: expr.upper.clone(),
-			span: expr.span.clone(),
+			fragment: expr.fragment.clone(),
 		};
 
 		// Evaluate both comparisons
@@ -54,7 +54,7 @@ impl Evaluator {
 			let lower = self.evaluate(ctx, &expr.lower)?;
 			return_error!(
 				between_cannot_be_applied_to_incompatible_types(
-					expr.span(),
+					expr.fragment(),
 					value.get_type(),
 					lower.get_type(),
 				)
@@ -93,7 +93,7 @@ impl Evaluator {
 				}
 
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: expr.span.fragment.clone(),
+					name: expr.fragment.fragment().to_string(),
 					data: ColumnData::bool_with_bitvec(
 						data, bitvec,
 					),

@@ -12,7 +12,7 @@ use nom_locate::LocatedSpan;
 use crate::ast::{
 	Token,
 	TokenKind::Literal,
-	lex::{Literal::Number, as_span},
+	lex::{Literal::Number, as_fragment},
 };
 
 /// Parses any numeric token (float, int, hex, octal, binary)
@@ -44,9 +44,9 @@ fn parse_hex(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 	let full =
 		recognize(pair(tag("0x"), take_while1(is_hex_or_underscore)));
 
-	let (rest, span) = complete(full).parse(input)?;
+	let (rest, fragment) = complete(full).parse(input)?;
 
-	let literal = *span.fragment();
+	let literal = *fragment.fragment();
 	if !is_valid_hex_with_underscores(&literal[2..]) {
 		return Err(nom::Err::Error(Error::new(input, Verify)));
 	}
@@ -55,7 +55,7 @@ fn parse_hex(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 		rest,
 		Token {
 			kind: Literal(Number),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		},
 	))
 }
@@ -87,13 +87,13 @@ fn parse_octal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 		s.chars().all(|c| c.is_oct_digit() || c == '_')
 	}
 
-	let (rest, span) = complete(recognize(pair(
+	let (rest, fragment) = complete(recognize(pair(
 		tag("0o"),
 		take_while1(not_whitespace),
 	)))
 	.parse(input)?;
 
-	let literal = *span.fragment();
+	let literal = *fragment.fragment();
 	let suffix = &literal[2..]; // after "0x"
 	if !is_valid_octal_format(suffix) {
 		return Err(nom::Err::Error(Error::new(input, Verify)));
@@ -103,7 +103,7 @@ fn parse_octal(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 		rest,
 		Token {
 			kind: Literal(Number),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		},
 	))
 }
@@ -136,13 +136,13 @@ fn parse_binary(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 	}
 
 	// Recognize "0b" + valid char sequence
-	let (rest, span) = complete(recognize(pair(
+	let (rest, fragment) = complete(recognize(pair(
 		tag("0b"),
 		take_while1(not_whitespace),
 	)))
 	.parse(input)?;
 
-	let literal = *span.fragment();
+	let literal = *fragment.fragment();
 	let suffix = &literal[2..]; // skip "0b"
 	if !is_valid_binary_format(suffix) {
 		return Err(nom::Err::Error(Error::new(input, Verify)));
@@ -152,7 +152,7 @@ fn parse_binary(input: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Token> {
 		rest,
 		Token {
 			kind: Literal(Number),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		},
 	))
 }
@@ -231,8 +231,8 @@ fn parse_decimal(
 
 	let mut full = complete(recognize(pair(base, opt(exponent))));
 
-	let (rest, span) = full.parse(input)?;
-	let literal = *span.fragment();
+	let (rest, fragment) = full.parse(input)?;
+	let literal = *fragment.fragment();
 
 	if !is_valid_decimal_format(literal) {
 		return Err(nom::Err::Error(Error::new(input, Verify)));
@@ -242,7 +242,7 @@ fn parse_decimal(
 		rest,
 		Token {
 			kind: Literal(Number),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		},
 	))
 }

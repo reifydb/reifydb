@@ -119,7 +119,7 @@ pub(crate) fn compile(
 			let table = Catalog::get_table_by_name(
 				rx,
 				schema.id,
-				&table.fragment.as_str(),
+				&table.fragment(),
 			)
 			.unwrap()
 			.unwrap();

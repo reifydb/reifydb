@@ -11,8 +11,8 @@ impl Compiler {
 		ast: AstUpdate,
 	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Update(UpdateNode {
-			schema: ast.schema.map(|s| s.span()),
-			table: ast.table.span(),
+			schema: ast.schema.map(|s| s.fragment()),
+			table: ast.table.fragment(),
 		}))
 	}
 }

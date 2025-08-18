@@ -57,7 +57,7 @@ impl<T: Transaction> Executor<T> {
 		let result = Catalog::create_view(
 			txn,
 			ViewToCreate {
-				span: Some(plan.view.clone()),
+				fragment: Some(plan.view.clone()),
 				view: plan.view.to_string(),
 				schema: plan.schema.name.to_string(),
 				columns: plan.columns,
@@ -113,7 +113,7 @@ mod tests {
 		test_utils::{create_schema, ensure_test_schema},
 	};
 	use reifydb_core::{
-		OwnedSpan, Value,
+		OwnedFragment, Value,
 		interface::{Params, SchemaId},
 	};
 	use reifydb_rql::plan::physical::{
@@ -134,7 +134,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			view: OwnedSpan::testing("test_view"),
+			view: OwnedFragment::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: None,
@@ -205,7 +205,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			view: OwnedSpan::testing("test_view"),
+			view: OwnedFragment::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: None,
@@ -232,7 +232,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: OwnedSpan::testing("test_view"),
+			view: OwnedFragment::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: None,
@@ -265,7 +265,7 @@ mod tests {
 				id: SchemaId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: OwnedSpan::testing("my_view"),
+			view: OwnedFragment::testing("my_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: None,

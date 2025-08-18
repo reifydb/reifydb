@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::Catalog;
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedSpan, Type, Value,
+	ColumnDescriptor, IntoOwnedFragment, Type, Value,
 	interface::{
 		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey,
 		Params, TableRowKey, Transaction, VersionedCommandTransaction,
@@ -37,25 +37,25 @@ impl<T: Transaction> Executor<T> {
 	) -> crate::Result<Columns> {
 		let Some(schema_ref) = plan.schema.as_ref() else {
 			return_error!(schema_not_found(
-				None::<reifydb_core::OwnedSpan>,
+				None::<reifydb_core::OwnedFragment>,
 				"default"
 			));
 		};
-		let schema_name = schema_ref.fragment.as_str();
+		let schema_name = schema_ref.fragment();
 
 		let schema =
 			Catalog::get_schema_by_name(txn, schema_name)?.unwrap();
 		let Some(table) = Catalog::get_table_by_name(
 			txn,
 			schema.id,
-			&plan.table.fragment,
+			&plan.table.fragment(),
 		)?
 		else {
-			let span = plan.table.into_span();
+			let fragment = plan.table.into_fragment();
 			return_error!(table_not_found(
-				span.clone(),
+				fragment.clone(),
 				schema_name,
-				&span.fragment,
+				&fragment.fragment(),
 			));
 		};
 

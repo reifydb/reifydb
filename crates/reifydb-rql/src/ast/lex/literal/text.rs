@@ -7,7 +7,7 @@ use nom_locate::LocatedSpan;
 use crate::ast::{
 	Token,
 	TokenKind::Literal,
-	lex::{Literal::Text, as_span},
+	lex::{Literal::Text, as_fragment},
 };
 
 /// Parses text with support for both single and double quotes, allowing mixing
@@ -17,7 +17,7 @@ pub(crate) fn parse_text(
 	use nom::{branch::alt, bytes::complete::take_while};
 
 	let parse_single_quoted = |input| {
-		let (rest, span) = delimited(
+		let (rest, fragment) = delimited(
 			char('\''),
 			take_while(|c| c != '\''),
 			char('\''),
@@ -27,13 +27,13 @@ pub(crate) fn parse_text(
 			rest,
 			Token {
 				kind: Literal(Text),
-				span: as_span(span),
+				fragment: as_fragment(fragment),
 			},
 		))
 	};
 
 	let parse_double_quoted = |input| {
-		let (rest, span) = delimited(
+		let (rest, fragment) = delimited(
 			char('"'),
 			take_while(|c| c != '"'),
 			char('"'),
@@ -43,7 +43,7 @@ pub(crate) fn parse_text(
 			rest,
 			Token {
 				kind: Literal(Text),
-				span: as_span(span),
+				fragment: as_fragment(fragment),
 			},
 		))
 	};
@@ -54,6 +54,7 @@ pub(crate) fn parse_text(
 #[cfg(test)]
 mod tests {
 	use nom::Offset;
+	use reifydb_core::Fragment;
 
 	use super::*;
 	use crate::ast::lex::literal::parse_literal;
@@ -63,7 +64,7 @@ mod tests {
 		let input = LocatedSpan::new("'hello'");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(&token.span.fragment, "hello");
+		assert_eq!(token.fragment.fragment(), "hello");
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -72,7 +73,7 @@ mod tests {
 		let input = LocatedSpan::new("\"hello\"");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(&token.span.fragment, "hello");
+		assert_eq!(token.fragment.fragment(), "hello");
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -81,7 +82,7 @@ mod tests {
 		let input = LocatedSpan::new("'some text\"xx\"no problem'");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(&token.span.fragment, "some text\"xx\"no problem");
+		assert_eq!(token.fragment.fragment(), "some text\"xx\"no problem");
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -90,7 +91,7 @@ mod tests {
 		let input = LocatedSpan::new("\"some text'xx'no problem\"");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(&token.span.fragment, "some text'xx'no problem");
+		assert_eq!(token.fragment.fragment(), "some text'xx'no problem");
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -98,7 +99,7 @@ mod tests {
 	fn test_text_with_trailing() {
 		let input = LocatedSpan::new("'data'123");
 		let (rest, token) = parse_literal(input).unwrap();
-		assert_eq!(&token.span.fragment, "data");
+		assert_eq!(token.fragment.fragment(), "data");
 		assert_eq!(*rest.fragment(), "123");
 		assert_eq!(input.offset(&rest), 6); // 'data' is 6 chars
 	}
@@ -107,7 +108,7 @@ mod tests {
 	fn test_text_double_quotes_with_trailing() {
 		let input = LocatedSpan::new("\"data\"123");
 		let (rest, token) = parse_literal(input).unwrap();
-		assert_eq!(&token.span.fragment, "data");
+		assert_eq!(token.fragment.fragment(), "data");
 		assert_eq!(*rest.fragment(), "123");
 		assert_eq!(input.offset(&rest), 6); // "data" is 6 chars
 	}
@@ -131,7 +132,7 @@ mod tests {
 		let input = LocatedSpan::new("''");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(&token.span.fragment, "");
+		assert_eq!(token.fragment.fragment(), "");
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -140,7 +141,7 @@ mod tests {
 		let input = LocatedSpan::new("\"\"");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(&token.span.fragment, "");
+		assert_eq!(token.fragment.fragment(), "");
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -152,7 +153,7 @@ mod tests {
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
 		assert_eq!(
-			&token.span.fragment,
+			token.fragment.fragment(),
 			"He said \"Hello\" and she replied \"Hi\""
 		);
 		assert_eq!(rest.fragment().len(), 0);
@@ -165,7 +166,7 @@ mod tests {
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
 		assert_eq!(
-			&token.span.fragment,
+			token.fragment.fragment(),
 			"It's a 'nice' day, isn't it?"
 		);
 		assert_eq!(rest.fragment().len(), 0);

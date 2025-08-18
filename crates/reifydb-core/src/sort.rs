@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::OwnedSpan;
+use crate::OwnedFragment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SortDirection {
@@ -18,7 +18,7 @@ pub enum SortDirection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SortKey {
-	pub column: OwnedSpan,
+	pub column: OwnedFragment,
 	pub direction: SortDirection,
 }
 
@@ -33,6 +33,6 @@ impl Display for SortDirection {
 
 impl Display for SortKey {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "{} {}", self.column.fragment, self.direction)
+		write!(f, "{} {}", self.column.fragment(), self.direction)
 	}
 }

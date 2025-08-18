@@ -9,7 +9,7 @@ use crate::ast::{
 	TokenKind::Literal,
 	lex::{
 		Literal::{False, True},
-		as_span,
+		as_fragment,
 	},
 };
 
@@ -17,13 +17,13 @@ pub(crate) fn parse_boolean(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
 	alt((
-		map(tag_no_case("true"), |span: LocatedSpan<&str>| Token {
+		map(tag_no_case("true"), |fragment: LocatedSpan<&str>| Token {
 			kind: Literal(True),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		}),
-		map(tag_no_case("false"), |span: LocatedSpan<&str>| Token {
+		map(tag_no_case("false"), |fragment: LocatedSpan<&str>| Token {
 			kind: Literal(False),
-			span: as_span(span),
+			fragment: as_fragment(fragment),
 		}),
 	))
 	.parse(input)

@@ -5,9 +5,8 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use self::origin::OwnedSpan;
-use crate::{fragment, Type};
-use crate::interface::fragment::{OwnedFragment, IntoFragment};
+use crate::interface::fragment::IntoFragment;
+use crate::{OwnedFragment, Type};
 
 pub mod ast;
 pub mod auth;
@@ -22,7 +21,6 @@ pub mod function;
 pub mod network;
 pub mod number;
 pub mod operator;
-pub mod origin;
 pub mod query;
 pub mod render;
 pub mod sequence;
@@ -95,38 +93,20 @@ impl Diagnostic {
 	/// diagnostics recursively
 	pub fn with_fragment(&mut self, new_fragment: impl IntoFragment) {
 		// Always update the fragment, not just when it's None
-		// This is needed for cast errors that need to update the span
+		// This is needed for cast errors that need to update the fragment
 		self.fragment = new_fragment.into_fragment();
-		
+
 		if let Some(ref mut cause) = self.cause {
 			cause.with_fragment(self.fragment.clone());
 		}
 	}
 
-	/// Compatibility method - converts span to Fragment
-	/// Set or update the span for this diagnostic and all nested
-	/// diagnostics recursively
-	pub fn with_span(&mut self, new_span: &OwnedSpan) {
-		// Use the macro to capture location where with_span was called
-		self.with_fragment(
-			fragment!(statement: new_span.clone()),
-		);
-	}
-
-	/// Get the span if this is a Statement fragment (for backward compatibility)
-	pub fn span(&self) -> Option<OwnedSpan> {
-		use self::origin::{SpanLine, SpanColumn};
+	/// Get the fragment if this is a Statement fragment (for backward compatibility)
+	pub fn fragment(&self) -> Option<OwnedFragment> {
 		match &self.fragment {
 			OwnedFragment::Statement {
-				text,
-				line,
-				column,
 				..
-			} => Some(OwnedSpan {
-				line: SpanLine(line.0),
-				column: SpanColumn(column.0),
-				fragment: text.clone(),
-			}),
+			} => Some(self.fragment.clone()),
 			_ => None,
 		}
 	}

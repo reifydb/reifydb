@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	diagnostic::catalog::view_column_already_exists,
 	interface::{
 		ActiveCommandTransaction, EncodableKey, Key, Transaction,
@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub struct ViewColumnToCreate<'a> {
-	pub span: Option<OwnedSpan>,
+	pub fragment: Option<OwnedFragment>,
 	pub schema_name: &'a str,
 	pub view: ViewId,
 	pub view_name: &'a str,
@@ -48,7 +48,7 @@ impl Catalog {
 			}
 
 			return_error!(view_column_already_exists(
-				None::<OwnedSpan>,
+				None::<OwnedFragment>,
 				column_to_create.schema_name,
 				column_to_create.view_name,
 				&column.name,

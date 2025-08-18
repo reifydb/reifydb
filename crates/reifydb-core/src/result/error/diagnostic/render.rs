@@ -75,13 +75,13 @@ impl DefaultRenderer {
 
 			let label_text =
 				diagnostic.label.as_deref().unwrap_or("");
-			let span_center =
+			let fragment_center =
 				fragment_start + fragment.len() / 2;
 			let label_center_offset =
-				if label_text.len() / 2 > span_center {
+				if label_text.len() / 2 > fragment_center {
 					0
 				} else {
-					span_center - label_text.len() / 2
+					fragment_center - label_text.len() / 2
 				};
 
 			let _ = writeln!(
@@ -188,14 +188,14 @@ impl DefaultRenderer {
 			let label_text =
 				diagnostic.label.as_deref().unwrap_or("");
 			if !label_text.is_empty() {
-				let span_center = fragment_start
+				let fragment_center = fragment_start
 					+ fragment.len() / 2;
 				let label_center_offset = if label_text.len()
-					/ 2 > span_center
+					/ 2 > fragment_center
 				{
 					0
 				} else {
-					span_center - label_text.len() / 2
+					fragment_center - label_text.len() / 2
 				};
 
 				let _ = writeln!(

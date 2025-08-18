@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 use Type::Bool;
 use reifydb_core::{
-	OwnedSpan, Type,
+	OwnedFragment, Type,
 	interface::{Evaluate, evaluate::expression::EqualExpression},
 	result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
@@ -37,7 +37,7 @@ impl Evaluator {
 
 		match (&left.data(), &right.data()) {
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => {
-				Ok(compare_bool(ctx, l, r, eq.span()))
+				Ok(compare_bool(ctx, l, r, eq.fragment()))
 			}
 			// Float4
 			(ColumnData::Float4(l), ColumnData::Float4(r)) => {
@@ -45,7 +45,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Float8(r)) => {
@@ -53,18 +53,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<f32, i8>(ctx, l, r, eq.span()),
+				compare_number::<f32, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Float4(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<f32, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int4(r)) => {
@@ -72,7 +72,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int8(r)) => {
@@ -80,7 +80,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int16(r)) => {
@@ -88,18 +88,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<f32, u8>(ctx, l, r, eq.span()),
+				compare_number::<f32, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Float4(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<f32, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint4(r)) => {
@@ -107,7 +107,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint8(r)) => {
@@ -115,7 +115,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint16(r)) => {
@@ -123,7 +123,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Float8
@@ -132,7 +132,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Float8(r)) => {
@@ -140,18 +140,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<f64, i8>(ctx, l, r, eq.span()),
+				compare_number::<f64, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Float8(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<f64, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int4(r)) => {
@@ -159,7 +159,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int8(r)) => {
@@ -167,7 +167,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int16(r)) => {
@@ -175,18 +175,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<f64, u8>(ctx, l, r, eq.span()),
+				compare_number::<f64, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Float8(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<f64, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint4(r)) => {
@@ -194,7 +194,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint8(r)) => {
@@ -202,7 +202,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint16(r)) => {
@@ -210,54 +210,54 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Int1
 			(ColumnData::Int1(l), ColumnData::Float4(r)) => Ok(
-				compare_number::<i8, f32>(ctx, l, r, eq.span()),
+				compare_number::<i8, f32>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Float8(r)) => Ok(
-				compare_number::<i8, f64>(ctx, l, r, eq.span()),
+				compare_number::<i8, f64>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<i8, i8>(ctx, l, r, eq.span()),
+				compare_number::<i8, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Int2(r)) => Ok(
-				compare_number::<i8, i16>(ctx, l, r, eq.span()),
+				compare_number::<i8, i16>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Int4(r)) => Ok(
-				compare_number::<i8, i32>(ctx, l, r, eq.span()),
+				compare_number::<i8, i32>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Int8(r)) => Ok(
-				compare_number::<i8, i64>(ctx, l, r, eq.span()),
+				compare_number::<i8, i64>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Int16(r)) => {
 				Ok(compare_number::<i8, i128>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<i8, u8>(ctx, l, r, eq.span()),
+				compare_number::<i8, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Uint2(r)) => Ok(
-				compare_number::<i8, u16>(ctx, l, r, eq.span()),
+				compare_number::<i8, u16>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Uint4(r)) => Ok(
-				compare_number::<i8, u32>(ctx, l, r, eq.span()),
+				compare_number::<i8, u32>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Uint8(r)) => Ok(
-				compare_number::<i8, u64>(ctx, l, r, eq.span()),
+				compare_number::<i8, u64>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int1(l), ColumnData::Uint16(r)) => {
 				Ok(compare_number::<i8, u128>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Int2
@@ -266,7 +266,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Float8(r)) => {
@@ -274,18 +274,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<i16, i8>(ctx, l, r, eq.span()),
+				compare_number::<i16, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int2(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<i16, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int4(r)) => {
@@ -293,7 +293,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int8(r)) => {
@@ -301,7 +301,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int16(r)) => {
@@ -309,18 +309,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<i16, u8>(ctx, l, r, eq.span()),
+				compare_number::<i16, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int2(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<i16, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint4(r)) => {
@@ -328,7 +328,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint8(r)) => {
@@ -336,7 +336,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint16(r)) => {
@@ -344,7 +344,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Int4
@@ -353,7 +353,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Float8(r)) => {
@@ -361,18 +361,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<i32, i8>(ctx, l, r, eq.span()),
+				compare_number::<i32, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int4(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<i32, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int4(r)) => {
@@ -380,7 +380,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int8(r)) => {
@@ -388,7 +388,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int16(r)) => {
@@ -396,18 +396,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<i32, u8>(ctx, l, r, eq.span()),
+				compare_number::<i32, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int4(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<i32, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint4(r)) => {
@@ -415,7 +415,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint8(r)) => {
@@ -423,7 +423,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint16(r)) => {
@@ -431,7 +431,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Int8
@@ -440,7 +440,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Float8(r)) => {
@@ -448,18 +448,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<i64, i8>(ctx, l, r, eq.span()),
+				compare_number::<i64, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int8(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<i64, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int4(r)) => {
@@ -467,7 +467,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int8(r)) => {
@@ -475,7 +475,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int16(r)) => {
@@ -483,18 +483,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<i64, u8>(ctx, l, r, eq.span()),
+				compare_number::<i64, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Int8(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<i64, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint4(r)) => {
@@ -502,7 +502,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint8(r)) => {
@@ -510,7 +510,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint16(r)) => {
@@ -518,7 +518,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Int16
@@ -527,7 +527,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Float8(r)) => {
@@ -535,7 +535,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int1(r)) => {
@@ -543,7 +543,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int2(r)) => {
@@ -551,7 +551,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int4(r)) => {
@@ -559,7 +559,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int8(r)) => {
@@ -567,7 +567,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int16(r)) => {
@@ -575,7 +575,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint1(r)) => {
@@ -583,7 +583,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint2(r)) => {
@@ -591,7 +591,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint4(r)) => {
@@ -599,7 +599,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint8(r)) => {
@@ -607,7 +607,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint16(r)) => {
@@ -615,54 +615,54 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Uint1
 			(ColumnData::Uint1(l), ColumnData::Float4(r)) => Ok(
-				compare_number::<u8, f32>(ctx, l, r, eq.span()),
+				compare_number::<u8, f32>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Float8(r)) => Ok(
-				compare_number::<u8, f64>(ctx, l, r, eq.span()),
+				compare_number::<u8, f64>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<u8, i8>(ctx, l, r, eq.span()),
+				compare_number::<u8, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Int2(r)) => Ok(
-				compare_number::<u8, i16>(ctx, l, r, eq.span()),
+				compare_number::<u8, i16>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Int4(r)) => Ok(
-				compare_number::<u8, i32>(ctx, l, r, eq.span()),
+				compare_number::<u8, i32>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Int8(r)) => Ok(
-				compare_number::<u8, i64>(ctx, l, r, eq.span()),
+				compare_number::<u8, i64>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Int16(r)) => {
 				Ok(compare_number::<u8, i128>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<u8, u8>(ctx, l, r, eq.span()),
+				compare_number::<u8, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Uint2(r)) => Ok(
-				compare_number::<u8, u16>(ctx, l, r, eq.span()),
+				compare_number::<u8, u16>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Uint4(r)) => Ok(
-				compare_number::<u8, u32>(ctx, l, r, eq.span()),
+				compare_number::<u8, u32>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Uint8(r)) => Ok(
-				compare_number::<u8, u64>(ctx, l, r, eq.span()),
+				compare_number::<u8, u64>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
 				Ok(compare_number::<u8, u128>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Uint2
@@ -671,7 +671,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Float8(r)) => {
@@ -679,18 +679,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<u16, i8>(ctx, l, r, eq.span()),
+				compare_number::<u16, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint2(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<u16, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int4(r)) => {
@@ -698,7 +698,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int8(r)) => {
@@ -706,7 +706,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int16(r)) => {
@@ -714,18 +714,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<u16, u8>(ctx, l, r, eq.span()),
+				compare_number::<u16, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<u16, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
@@ -733,7 +733,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
@@ -741,7 +741,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
@@ -749,7 +749,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Uint4
@@ -758,7 +758,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Float8(r)) => {
@@ -766,18 +766,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<u32, i8>(ctx, l, r, eq.span()),
+				compare_number::<u32, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint4(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<u32, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int4(r)) => {
@@ -785,7 +785,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int8(r)) => {
@@ -793,7 +793,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int16(r)) => {
@@ -801,18 +801,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<u32, u8>(ctx, l, r, eq.span()),
+				compare_number::<u32, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<u32, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
@@ -820,7 +820,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
@@ -828,7 +828,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
@@ -836,7 +836,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Uint8
@@ -845,7 +845,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Float8(r)) => {
@@ -853,18 +853,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int1(r)) => Ok(
-				compare_number::<u64, i8>(ctx, l, r, eq.span()),
+				compare_number::<u64, i8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint8(l), ColumnData::Int2(r)) => {
 				Ok(compare_number::<u64, i16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int4(r)) => {
@@ -872,7 +872,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int8(r)) => {
@@ -880,7 +880,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int16(r)) => {
@@ -888,18 +888,18 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint1(r)) => Ok(
-				compare_number::<u64, u8>(ctx, l, r, eq.span()),
+				compare_number::<u64, u8>(ctx, l, r, eq.fragment()),
 			),
 			(ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
 				Ok(compare_number::<u64, u16>(
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
@@ -907,7 +907,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
@@ -915,7 +915,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
@@ -923,7 +923,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			// Uint16
@@ -932,7 +932,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Float8(r)) => {
@@ -940,7 +940,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int1(r)) => {
@@ -948,7 +948,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int2(r)) => {
@@ -956,7 +956,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int4(r)) => {
@@ -964,7 +964,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int8(r)) => {
@@ -972,7 +972,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int16(r)) => {
@@ -980,7 +980,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
@@ -988,7 +988,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
@@ -996,7 +996,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
@@ -1004,7 +1004,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
@@ -1012,7 +1012,7 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
@@ -1020,29 +1020,29 @@ impl Evaluator {
 					ctx,
 					l,
 					r,
-					eq.span(),
+					eq.fragment(),
 				))
 			}
 			(ColumnData::Date(l), ColumnData::Date(r)) => {
-				Ok(compare_temporal(l, r, eq.span()))
+				Ok(compare_temporal(l, r, eq.fragment()))
 			}
 			(ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
-				Ok(compare_temporal(l, r, eq.span()))
+				Ok(compare_temporal(l, r, eq.fragment()))
 			}
 			(ColumnData::Time(l), ColumnData::Time(r)) => {
-				Ok(compare_temporal(l, r, eq.span()))
+				Ok(compare_temporal(l, r, eq.fragment()))
 			}
 			(ColumnData::Interval(l), ColumnData::Interval(r)) => {
-				Ok(compare_temporal(l, r, eq.span()))
+				Ok(compare_temporal(l, r, eq.fragment()))
 			}
 			(ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
-				Ok(compare_utf8(l, r, eq.span()))
+				Ok(compare_utf8(l, r, eq.fragment()))
 			}
 			(ColumnData::Undefined(container), _)
 			| (_, ColumnData::Undefined(container)) => {
-				let span = eq.span();
+				let fragment = eq.fragment();
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: span.fragment.into(),
+					name: fragment.fragment().into(),
 					data: ColumnData::bool(vec![
 						false;
 						container
@@ -1053,7 +1053,7 @@ impl Evaluator {
 			}
 			_ => return_error!(
 				equal_cannot_be_applied_to_incompatible_types(
-					eq.span(),
+					eq.fragment(),
 					left.get_type(),
 					right.get_type(),
 				)
@@ -1066,7 +1066,7 @@ fn compare_bool(
 	ctx: &EvaluationContext,
 	l: &BoolContainer,
 	r: &BoolContainer,
-	span: OwnedSpan,
+	fragment: OwnedFragment,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -1081,7 +1081,7 @@ fn compare_bool(
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: span.fragment.into(),
+		name: fragment.fragment().into(),
 		data,
 	})
 }
@@ -1090,7 +1090,7 @@ fn compare_number<L, R>(
 	ctx: &EvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	span: OwnedSpan,
+	fragment: OwnedFragment,
 ) -> Column
 where
 	L: Promote<R> + IsNumber + Clone + Debug + Default,
@@ -1110,7 +1110,7 @@ where
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: span.fragment.into(),
+		name: fragment.fragment().into(),
 		data,
 	})
 }
@@ -1118,7 +1118,7 @@ where
 fn compare_temporal<T>(
 	l: &TemporalContainer<T>,
 	r: &TemporalContainer<T>,
-	span: OwnedSpan,
+	fragment: OwnedFragment,
 ) -> Column
 where
 	T: IsTemporal + Clone + Debug + Default,
@@ -1142,7 +1142,7 @@ where
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: span.fragment.into(),
+		name: fragment.fragment().into(),
 		data: ColumnData::bool_with_bitvec(data, bitvec),
 	})
 }
@@ -1150,7 +1150,7 @@ where
 fn compare_utf8(
 	l: &StringContainer,
 	r: &StringContainer,
-	span: OwnedSpan,
+	fragment: OwnedFragment,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -1170,7 +1170,7 @@ fn compare_utf8(
 		}
 	}
 	Column::ColumnQualified(ColumnQualified {
-		name: span.fragment.into(),
+		name: fragment.fragment().into(),
 		data: ColumnData::bool_with_bitvec(data, bitvec),
 	})
 }

@@ -53,7 +53,7 @@ impl<T: Transaction> Executor<T> {
 		Catalog::create_table(
 			txn,
 			TableToCreate {
-				span: Some(plan.table.clone()),
+				fragment: Some(plan.table.clone()),
 				table: plan.table.to_string(),
 				schema: plan.schema.name.to_string(),
 				columns: plan.columns,
@@ -75,7 +75,7 @@ mod tests {
 		test_utils::{create_schema, ensure_test_schema},
 	};
 	use reifydb_core::{
-		OwnedSpan, Value,
+		OwnedFragment, Value,
 		interface::{Params, SchemaId},
 	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
@@ -96,7 +96,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			table: OwnedSpan::testing("test_table"),
+			table: OwnedFragment::testing("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -164,7 +164,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			table: OwnedSpan::testing("test_table"),
+			table: OwnedFragment::testing("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -190,7 +190,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			table: OwnedSpan::testing("test_table"),
+			table: OwnedFragment::testing("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -222,7 +222,7 @@ mod tests {
 				id: SchemaId(999),
 				name: "missing_schema".to_string(),
 			},
-			table: OwnedSpan::testing("my_table"),
+			table: OwnedFragment::testing("my_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
