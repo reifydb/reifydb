@@ -4,7 +4,7 @@
 use reifydb_core::{
 	OwnedSpan, Type,
 	interface::{
-		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey, Key,
+		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
 		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
 		Transaction, VersionedCommandTransaction,
 	},
@@ -40,7 +40,7 @@ pub struct TableToCreate {
 
 impl Catalog {
 	pub fn create_table<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
@@ -79,7 +79,7 @@ impl Catalog {
 	}
 
 	fn store_table<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		table: TableId,
 		schema: SchemaId,
 		to_create: &TableToCreate,
@@ -101,7 +101,7 @@ impl Catalog {
 	}
 
 	fn link_table_to_schema<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		schema: SchemaId,
 		table: TableId,
 		name: &str,
@@ -125,7 +125,7 @@ impl Catalog {
 	}
 
 	fn insert_columns<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {

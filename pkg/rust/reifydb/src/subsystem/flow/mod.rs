@@ -7,9 +7,9 @@ use reifydb_catalog::Catalog;
 use reifydb_core::{
 	Result, Value,
 	interface::{
-		ActiveCommandTransaction, CdcChange, CdcConsume, CdcConsumer,
-		CdcEvent, ConsumerId, Engine, GetEncodedRowLayout, Identity,
-		Key, Params, SourceId, TableRowKey, Transaction,
+		CdcChange, CdcConsume, CdcConsumer, CdcEvent,
+		CommandTransaction, ConsumerId, Engine, GetEncodedRowLayout,
+		Identity, Key, Params, SourceId, TableRowKey, Transaction,
 	},
 	value::columnar::Columns,
 };
@@ -27,7 +27,7 @@ struct FlowConsumer<T: Transaction> {
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		for event in events {

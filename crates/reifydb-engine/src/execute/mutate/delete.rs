@@ -7,8 +7,8 @@ use reifydb_catalog::Catalog;
 use reifydb_core::{
 	EncodedKeyRange, IntoOwnedSpan, Value,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, EncodableKeyRange,
-		Params, TableRowKey, TableRowKeyRange, Transaction,
+		CommandTransaction, EncodableKey, EncodableKeyRange, Params,
+		TableRowKey, TableRowKeyRange, Transaction,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 	},
 	result::error::diagnostic::{
@@ -28,7 +28,7 @@ use crate::{
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn delete(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

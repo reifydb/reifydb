@@ -7,8 +7,8 @@ use reifydb_catalog::Catalog;
 use reifydb_core::{
 	ColumnDescriptor, IntoOwnedSpan, Type, Value,
 	interface::{
-		ActiveCommandTransaction, ColumnPolicyKind, EncodableKey,
-		Params, TableRowKey, Transaction, VersionedCommandTransaction,
+		ColumnPolicyKind, CommandTransaction, EncodableKey, Params,
+		TableRowKey, Transaction, VersionedCommandTransaction,
 	},
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
@@ -31,7 +31,7 @@ use crate::{
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn update(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

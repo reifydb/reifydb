@@ -4,7 +4,7 @@
 use reifydb_catalog::{Catalog, schema::SchemaToCreate};
 use reifydb_core::{
 	Value,
-	interface::{ActiveCommandTransaction, Transaction},
+	interface::{CommandTransaction, Transaction},
 	result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
 };
@@ -15,7 +15,7 @@ use crate::{columnar::Columns, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_schema(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
 		if let Some(schema) =

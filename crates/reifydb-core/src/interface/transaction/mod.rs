@@ -1,15 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod active;
 mod cdc;
+mod command;
+mod query;
 mod unversioned;
 mod versioned;
 
 use std::marker::PhantomData;
 
-pub use active::*;
 pub use cdc::{CdcTransaction, StandardCdcTransaction};
+pub use command::CommandTransaction;
+pub use query::QueryTransaction;
 pub use unversioned::*;
 pub use versioned::*;
 

@@ -10,8 +10,7 @@ use reifydb_core::{
 		sequence::can_not_alter_not_auto_increment,
 	},
 	interface::{
-		ActiveCommandTransaction, EvaluationContext, Params,
-		Transaction,
+		CommandTransaction, EvaluationContext, Params, Transaction,
 	},
 	return_error,
 };
@@ -22,7 +21,7 @@ use crate::{columnar::Columns, evaluate::evaluate, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn alter_table_sequence(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
 		let schema_name = match &plan.schema {

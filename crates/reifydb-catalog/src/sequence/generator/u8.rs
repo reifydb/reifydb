@@ -6,8 +6,8 @@ use reifydb_core::{
 	EncodedKey, Type,
 	diagnostic::sequence::sequence_exhausted,
 	interface::{
-		ActiveCommandTransaction, Transaction,
-		UnversionedCommandTransaction, UnversionedQueryTransaction,
+		CommandTransaction, Transaction, UnversionedCommandTransaction,
+		UnversionedQueryTransaction,
 	},
 	return_error,
 	row::EncodedRowLayout,
@@ -20,7 +20,7 @@ pub(crate) struct GeneratorU8 {}
 
 impl GeneratorU8 {
 	pub(crate) fn next<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		key: &EncodedKey,
 		default: Option<u8>,
 	) -> crate::Result<u8>
@@ -53,7 +53,7 @@ where {
 	}
 
 	pub(crate) fn set<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		key: &EncodedKey,
 		value: u8,
 	) -> crate::Result<()>

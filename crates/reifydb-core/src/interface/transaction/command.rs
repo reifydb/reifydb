@@ -13,19 +13,11 @@ use crate::{
 	row::EncodedRow,
 };
 
-/// An active query transaction that holds a versioned query transaction
-/// and provides query-only access to unversioned storage.
-pub struct ActiveQueryTransaction<T: Transaction> {
-	versioned: <T::Versioned as VersionedTransaction>::Query,
-	unversioned: T::Unversioned,
-	cdc: T::Cdc,
-}
-
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct ActiveCommandTransaction<T: Transaction> {
+pub struct CommandTransaction<T: Transaction> {
 	versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
@@ -39,107 +31,7 @@ enum TransactionState {
 	RolledBack,
 }
 
-impl<T: Transaction> ActiveQueryTransaction<T> {
-	/// Creates a new active query transaction
-	pub fn new(
-		versioned: <T::Versioned as VersionedTransaction>::Query,
-		unversioned: T::Unversioned,
-		cdc: T::Cdc,
-	) -> Self {
-		Self {
-			versioned,
-			unversioned,
-			cdc,
-		}
-	}
-
-	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(
-			&mut <T::Unversioned as UnversionedTransaction>::Query<
-				'_,
-			>,
-		) -> crate::Result<R>,
-	{
-		self.unversioned.with_query(f)
-	}
-
-	/// Execute a function with access to the versioned query transaction.
-	/// This operates within the same transaction context.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(
-			&mut <T::Versioned as VersionedTransaction>::Query,
-		) -> crate::Result<R>,
-	{
-		f(&mut self.versioned)
-	}
-
-	/// Get access to the CDC transaction interface
-	pub fn cdc(&self) -> &T::Cdc {
-		&self.cdc
-	}
-}
-
-impl<T: Transaction> VersionedQueryTransaction for ActiveQueryTransaction<T> {
-	#[inline]
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Versioned>> {
-		self.versioned.get(key)
-	}
-
-	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-		self.versioned.contains_key(key)
-	}
-
-	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.scan()
-	}
-
-	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.scan_rev()
-	}
-
-	#[inline]
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.range(range)
-	}
-
-	#[inline]
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.range_rev(range)
-	}
-
-	#[inline]
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.prefix(prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.prefix_rev(prefix)
-	}
-}
-
-impl<T: Transaction> ActiveCommandTransaction<T> {
+impl<T: Transaction> CommandTransaction<T> {
 	/// Creates a new active command transaction
 	pub fn new(
 		versioned: <T::Versioned as VersionedTransaction>::Command,
@@ -278,7 +170,7 @@ impl<T: Transaction> ActiveCommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedQueryTransaction for ActiveCommandTransaction<T> {
+impl<T: Transaction> VersionedQueryTransaction for CommandTransaction<T> {
 	#[inline]
 	fn get(
 		&mut self,
@@ -343,9 +235,7 @@ impl<T: Transaction> VersionedQueryTransaction for ActiveCommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedCommandTransaction
-	for ActiveCommandTransaction<T>
-{
+impl<T: Transaction> VersionedCommandTransaction for CommandTransaction<T> {
 	#[inline]
 	fn set(
 		&mut self,
@@ -377,7 +267,7 @@ impl<T: Transaction> VersionedCommandTransaction
 	}
 }
 
-impl<T: Transaction> Drop for ActiveCommandTransaction<T> {
+impl<T: Transaction> Drop for CommandTransaction<T> {
 	fn drop(&mut self) {
 		if let Some(versioned) = self.versioned.take() {
 			// Auto-rollback if still active (not committed or

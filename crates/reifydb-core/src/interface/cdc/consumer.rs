@@ -3,14 +3,14 @@
 
 use crate::{
 	Result,
-	interface::{ActiveCommandTransaction, CdcEvent, Transaction},
+	interface::{CdcEvent, CommandTransaction, Transaction},
 };
 
 /// Trait for CDC event processing functions
 pub trait CdcConsume<T: Transaction>: Send + Sync + 'static {
 	fn consume(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		events: Vec<CdcEvent>,
 	) -> Result<()>;
 }

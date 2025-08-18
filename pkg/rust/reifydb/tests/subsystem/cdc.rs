@@ -17,8 +17,8 @@ use reifydb_core::{
 	diagnostic::Diagnostic,
 	hook::Hooks,
 	interface::{
-		ActiveCommandTransaction, CdcConsume, CdcConsumer,
-		CdcConsumerKey, CdcEvent, ConsumerId, EncodableKey,
+		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
+		CommandTransaction, ConsumerId, EncodableKey,
 		Engine as EngineInterface, Key, StandardCdcTransaction,
 		StandardTransaction, TableId, VersionedCommandTransaction,
 		VersionedQueryTransaction, key::TableRowKey,
@@ -510,7 +510,7 @@ impl Clone for TestConsumer {
 impl CdcConsume<TestTransaction> for TestConsumer {
 	fn consume(
 		&self,
-		_txn: &mut ActiveCommandTransaction<TestTransaction>,
+		_txn: &mut CommandTransaction<TestTransaction>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {

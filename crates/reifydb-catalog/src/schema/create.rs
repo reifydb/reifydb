@@ -4,7 +4,7 @@
 use reifydb_core::{
 	OwnedSpan,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, SchemaKey, Transaction,
+		CommandTransaction, EncodableKey, SchemaKey, Transaction,
 		VersionedCommandTransaction,
 	},
 	result::error::diagnostic::catalog::schema_already_exists,
@@ -25,7 +25,7 @@ pub struct SchemaToCreate {
 
 impl Catalog {
 	pub fn create_schema<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =

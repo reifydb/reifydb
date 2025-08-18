@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ActiveCommandTransaction, Command, ExecuteCommand, Identity, Params,
+	Command, CommandTransaction, ExecuteCommand, Identity, Params,
 	Transaction, ViewDef,
 };
 use reifydb_flow::compile_flow;
@@ -20,7 +20,7 @@ mod transactional;
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_flow(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: &ViewDef,
 		plan: Option<Box<PhysicalPlan>>,
 	) -> crate::Result<()> {

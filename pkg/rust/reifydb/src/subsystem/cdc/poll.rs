@@ -14,8 +14,8 @@ use std::{
 use reifydb_core::{
 	EncodedKey, Result, Version,
 	interface::{
-		ActiveCommandTransaction, CdcConsume, CdcConsumer, CdcEvent,
-		CdcTransaction, ConsumerId, Engine as EngineInterface, Key,
+		CdcConsume, CdcConsumer, CdcEvent, CdcTransaction,
+		CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
 		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 		key::{CdcConsumerKey, EncodableKey},
@@ -182,7 +182,7 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 }
 
 fn fetch_checkpoint<T: Transaction>(
-	transaction: &mut ActiveCommandTransaction<T>,
+	transaction: &mut CommandTransaction<T>,
 	consumer_key: &EncodedKey,
 ) -> Result<Version> {
 	transaction
@@ -201,7 +201,7 @@ fn fetch_checkpoint<T: Transaction>(
 }
 
 fn persist_checkpoint<T: Transaction>(
-	transaction: &mut ActiveCommandTransaction<T>,
+	transaction: &mut CommandTransaction<T>,
 	consumer_key: &EncodedKey,
 	version: Version,
 ) -> Result<()> {
@@ -210,7 +210,7 @@ fn persist_checkpoint<T: Transaction>(
 }
 
 fn fetch_events_since<T: Transaction>(
-	transaction: &mut ActiveCommandTransaction<T>,
+	transaction: &mut CommandTransaction<T>,
 	since_version: Version,
 ) -> Result<Vec<CdcEvent>> {
 	Ok(transaction

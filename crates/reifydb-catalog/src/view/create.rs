@@ -5,9 +5,9 @@ use ViewKind::{Deferred, Transactional};
 use reifydb_core::{
 	OwnedSpan, Type,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, Key, SchemaId,
-		SchemaViewKey, Transaction, VersionedCommandTransaction,
-		ViewDef, ViewId, ViewKey, ViewKind,
+		CommandTransaction, EncodableKey, Key, SchemaId, SchemaViewKey,
+		Transaction, VersionedCommandTransaction, ViewDef, ViewId,
+		ViewKey, ViewKind,
 	},
 	result::error::diagnostic::catalog::{
 		schema_not_found, view_already_exists,
@@ -40,21 +40,21 @@ pub struct ViewToCreate {
 
 impl Catalog {
 	pub fn create_deferred_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
 	pub fn create_transactional_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Transactional)
 	}
 
 	fn create_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		to_create: ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<ViewDef> {
@@ -94,7 +94,7 @@ impl Catalog {
 	}
 
 	fn store_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		schema: SchemaId,
 		to_create: &ViewToCreate,
@@ -125,7 +125,7 @@ impl Catalog {
 	}
 
 	fn link_view_to_schema<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		schema: SchemaId,
 		view: ViewId,
 		name: &str,
@@ -145,7 +145,7 @@ impl Catalog {
 	}
 
 	fn insert_columns_for_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {

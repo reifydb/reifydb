@@ -4,8 +4,8 @@
 use reifydb_core::{
 	Type, Value,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, Transaction,
-		ViewColumnId, ViewColumnSequenceKey, ViewId,
+		CommandTransaction, EncodableKey, Transaction, ViewColumnId,
+		ViewColumnSequenceKey, ViewId,
 	},
 };
 
@@ -23,7 +23,7 @@ pub struct ViewColumnSequence {}
 
 impl ViewColumnSequence {
 	pub fn next_value<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		column: ViewColumnId,
 	) -> crate::Result<Value> {
@@ -70,7 +70,7 @@ impl ViewColumnSequence {
 	}
 
 	pub fn set_value<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		column: ViewColumnId,
 		value: Value,
