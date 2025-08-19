@@ -1,8 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod factory;
+mod intercept;
+
 use std::{any::Any, time::Duration};
 
+pub use factory::FlowSubsystemFactory;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
 	Result, Value,
@@ -98,11 +102,15 @@ pub struct FlowSubsystem<T: Transaction> {
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(engine: StandardEngine<T>) -> Self {
+	pub fn new(
+		engine: StandardEngine<T>,
+		consumer_id: ConsumerId,
+		poll_interval: Duration,
+	) -> Self {
 		Self {
 			consumer: PollConsumer::new(
-				ConsumerId::flow_consumer(),
-				Duration::from_millis(1),
+				consumer_id,
+				poll_interval,
 				engine.clone(),
 				FlowConsumer {
 					engine: engine.clone(),

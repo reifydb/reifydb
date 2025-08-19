@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod factory;
 use std::{
 	any::Any,
 	net::SocketAddr,
@@ -10,6 +11,7 @@ use std::{
 	},
 };
 
+pub use factory::WsSubsystemFactory;
 use reifydb_core::{Result, interface::Transaction};
 use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::{WsConfig, WsServer};

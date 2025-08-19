@@ -5,6 +5,7 @@ mod builder;
 mod chain;
 mod factory;
 mod interceptors;
+mod provider;
 mod table;
 mod transaction;
 
@@ -12,6 +13,7 @@ pub use builder::*;
 pub use chain::InterceptorChain;
 pub use factory::{InterceptorFactory, StandardInterceptorFactory};
 pub use interceptors::Interceptors;
+pub use provider::InterceptorProvider;
 pub use table::*;
 pub use transaction::*;
 

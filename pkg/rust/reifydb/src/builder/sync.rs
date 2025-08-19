@@ -6,7 +6,6 @@ use reifydb_core::{
 	interceptor::{AddToBuilder, StandardInterceptorBuilder},
 	interface::Transaction,
 };
-use reifydb_engine::StandardEngine;
 
 use super::DatabaseBuilder;
 use crate::Database;
@@ -45,13 +44,13 @@ impl<T: Transaction> SyncBuilder<T> {
 	}
 
 	pub fn build(self) -> Database<T> {
-		let engine = StandardEngine::new(
+		DatabaseBuilder::new(
 			self.versioned,
 			self.unversioned,
 			self.cdc,
 			self.hooks,
-			Box::new(self.interceptors.build()),
-		);
-		DatabaseBuilder::new(engine).build()
+		)
+		.with_interceptor_builder(self.interceptors)
+		.build()
 	}
 }

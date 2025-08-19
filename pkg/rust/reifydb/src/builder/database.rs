@@ -3,36 +3,55 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::interface::Transaction;
+use reifydb_core::{
+	hook::Hooks, interceptor::StandardInterceptorBuilder,
+	interface::Transaction,
+};
 use reifydb_engine::StandardEngine;
 
 #[cfg(feature = "sub_flow")]
-use crate::subsystem::FlowSubsystem;
+use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
-	subsystem::{Subsystem, Subsystems},
+	subsystem::{SubsystemFactory, Subsystems},
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
 	config: DatabaseConfig,
-	engine: StandardEngine<T>,
-	subsystems: Vec<Box<dyn Subsystem>>,
+	versioned: Option<T::Versioned>,
+	unversioned: Option<T::Unversioned>,
+	cdc: Option<T::Cdc>,
+	hooks: Option<Hooks>,
+	interceptors: StandardInterceptorBuilder<T>,
+	subsystems: Vec<Box<dyn SubsystemFactory<T>>>,
 }
 
 impl<T: Transaction> DatabaseBuilder<T> {
+	/// Create a new builder with engine components (new factory-based
+	/// approach)
 	#[allow(unused_mut)]
-	pub fn new(engine: StandardEngine<T>) -> Self {
+	pub fn new(
+		versioned: T::Versioned,
+		unversioned: T::Unversioned,
+		cdc: T::Cdc,
+		hooks: Hooks,
+	) -> Self {
 		let mut result = Self {
-			engine: engine.clone(),
+			versioned: Some(versioned),
+			unversioned: Some(unversioned),
+			cdc: Some(cdc),
+			hooks: Some(hooks),
 			config: DatabaseConfig::default(),
+			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
 		};
 
 		#[cfg(feature = "sub_flow")]
 		{
-			let flow_subsystem = FlowSubsystem::new(engine);
-			result = result.add_subsystem(flow_subsystem);
+			result = result.add_subsystem_factory(Box::new(
+				FlowSubsystemFactory::new(),
+			));
 		}
 
 		result
@@ -65,19 +84,20 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		self
 	}
 
-	pub fn add_subsystem(
+	pub fn add_subsystem_factory(
 		mut self,
-		subsystem: impl Subsystem + 'static,
+		factory: Box<dyn SubsystemFactory<T>>,
 	) -> Self {
-		self.subsystems.push(Box::new(subsystem));
+		self.subsystems.push(factory);
 		self
 	}
 
-	pub fn add_boxed_subsystem(
+	/// Add interceptors directly to the builder
+	pub fn with_interceptor_builder(
 		mut self,
-		subsystem: Box<dyn Subsystem>,
+		builder: StandardInterceptorBuilder<T>,
 	) -> Self {
-		self.subsystems.push(subsystem);
+		self.interceptors = builder;
 		self
 	}
 
@@ -89,21 +109,33 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		self.subsystems.len()
 	}
 
-	pub fn build(self) -> Database<T> {
-		let health_monitor = Arc::new(HealthMonitor::new());
+	pub fn build(mut self) -> Database<T> {
+		// Phase 1: Collect interceptors from all factories
+		for factory in &self.subsystems {
+			self.interceptors =
+				factory.provide_interceptors(self.interceptors);
+		}
 
+		// Phase 2: Create engine with all interceptors
+		let engine = StandardEngine::new(
+			self.versioned.expect("versioned required"),
+			self.unversioned.expect("unversioned required"),
+			self.cdc.expect("cdc required"),
+			self.hooks.expect("hooks required"),
+			Box::new(self.interceptors.build()),
+		);
+
+		// Phase 3: Create subsystems from factories
+		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems =
 			Subsystems::new(Arc::clone(&health_monitor));
-		for subsystem in self.subsystems {
+
+		for factory in self.subsystems {
+			let subsystem = factory.create(engine.clone());
 			subsystems.add_subsystem(subsystem);
 		}
 
-		Database::new(
-			self.engine,
-			subsystems,
-			self.config,
-			health_monitor,
-		)
+		Database::new(engine, subsystems, self.config, health_monitor)
 	}
 }
 

@@ -6,13 +6,18 @@ use reifydb_core::{
 	interceptor::{AddToBuilder, StandardInterceptorBuilder},
 	interface::Transaction,
 };
-use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_grpc")]
+use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
 
 use super::DatabaseBuilder;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use crate::context::{RuntimeProvider, TokioRuntimeProvider};
-use crate::{Database, subsystem::SubsystemBuilder};
+#[cfg(feature = "sub_grpc")]
+use crate::subsystem::GrpcSubsystemFactory;
+#[cfg(feature = "sub_ws")]
+use crate::subsystem::WsSubsystemFactory;
+use crate::{Database, subsystem::SubsystemFactory};
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub struct ServerBuilder<T: Transaction> {
@@ -21,7 +26,7 @@ pub struct ServerBuilder<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	interceptors: StandardInterceptorBuilder<T>,
-	subsystem_builders: Vec<SubsystemBuilder>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<T>>>,
 	runtime_provider: RuntimeProvider,
 }
 
@@ -45,7 +50,7 @@ impl<T: Transaction> ServerBuilder<T> {
 			cdc,
 			hooks,
 			interceptors: StandardInterceptorBuilder::new(),
-			subsystem_builders: Vec::new(),
+			subsystem_factories: Vec::new(),
 			runtime_provider,
 		}
 	}
@@ -61,37 +66,39 @@ impl<T: Transaction> ServerBuilder<T> {
 
 	#[cfg(feature = "sub_ws")]
 	pub fn with_ws(mut self, config: WsConfig) -> Self {
-		self.subsystem_builders.push(SubsystemBuilder::Ws(config));
+		let factory = WsSubsystemFactory::new(
+			config,
+			self.runtime_provider.clone(),
+		);
+		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 
 	#[cfg(feature = "sub_grpc")]
-	pub fn with_grpc(
-		mut self,
-		config: reifydb_network::grpc::server::GrpcConfig,
-	) -> Self {
-		self.subsystem_builders.push(SubsystemBuilder::Grpc(config));
+	pub fn with_grpc(mut self, config: GrpcConfig) -> Self {
+		let factory = GrpcSubsystemFactory::new(
+			config,
+			self.runtime_provider.clone(),
+		);
+		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 
 	pub fn build(self) -> Database<T> {
-		// Create the engine
-		let engine = StandardEngine::new(
+		let mut database_builder = DatabaseBuilder::new(
 			self.versioned,
 			self.unversioned,
 			self.cdc,
 			self.hooks,
-			Box::new(self.interceptors.build()),
-		);
+		)
+		.with_interceptor_builder(self.interceptors);
 
-		// Build subsystems with the engine
-		let mut inner = DatabaseBuilder::new(engine.clone());
-		for builder in self.subsystem_builders {
-			let subsystem =
-				builder.build(&engine, &self.runtime_provider);
-			inner = inner.add_boxed_subsystem(subsystem);
+		// Add all subsystem factories
+		for factory in self.subsystem_factories {
+			database_builder =
+				database_builder.add_subsystem_factory(factory);
 		}
 
-		inner.build()
+		database_builder.build()
 	}
 }

@@ -13,8 +13,8 @@ use reifydb_core::Result;
 
 use crate::health::HealthStatus;
 
-mod builder;
 pub mod cdc;
+mod factory;
 #[cfg(feature = "sub_flow")]
 #[allow(dead_code, unused_imports, unused_variables)] // FIXME remove me
 pub mod flow;
@@ -24,14 +24,14 @@ mod subsystems;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
 
-pub use builder::SubsystemBuilder;
+pub use factory::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-pub use flow::FlowSubsystem;
+pub use flow::{FlowSubsystem, FlowSubsystemFactory};
 #[cfg(feature = "sub_grpc")]
-pub use grpc::GrpcSubsystem;
+pub use grpc::{GrpcSubsystem, GrpcSubsystemFactory};
 pub(crate) use subsystems::Subsystems;
 #[cfg(feature = "sub_ws")]
-pub use ws::WsSubsystem;
+pub use ws::{WsSubsystem, WsSubsystemFactory};
 
 pub use crate::boot::Bootloader;
 

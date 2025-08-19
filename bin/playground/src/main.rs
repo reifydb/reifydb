@@ -25,8 +25,6 @@ fn main() {
 		.intercept(table_pre_insert(|_ctx| {
 			println!("Table pre insert interceptor called!");
 
-			dbg!(&_ctx.table);
-
 			Ok(())
 		}))
 		.intercept(table_post_insert(|_ctx| {
