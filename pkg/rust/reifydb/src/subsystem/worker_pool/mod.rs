@@ -25,6 +25,7 @@ use crate::health::HealthStatus;
 use reifydb_core::interface::worker_pool::WorkerPool;
 
 mod scheduler;
+#[allow(dead_code)]
 mod task;
 mod worker;
 
@@ -82,6 +83,7 @@ pub struct WorkerPoolSubsystem {
 
 	// Scheduler for periodic tasks
 	scheduler: Arc<Mutex<TaskScheduler>>,
+	scheduler_condvar: Arc<Condvar>, // Wake scheduler when tasks are added
 	scheduler_handle: Option<JoinHandle<()>>,
 }
 
@@ -104,6 +106,7 @@ impl WorkerPoolSubsystem {
 			task_condvar: Arc::new(Condvar::new()),
 			workers: Vec::new(),
 			scheduler: Arc::new(Mutex::new(TaskScheduler::new())),
+			scheduler_condvar: Arc::new(Condvar::new()),
 			scheduler_handle: None,
 		}
 	}
@@ -141,7 +144,13 @@ impl WorkerPoolSubsystem {
 		priority: Priority,
 	) -> Result<TaskHandle> {
 		let mut scheduler = self.scheduler.lock().unwrap();
-		Ok(scheduler.schedule_periodic(task, interval, priority))
+		let handle = scheduler.schedule_periodic(task, interval, priority);
+		drop(scheduler);
+		
+		// Wake up the scheduler thread
+		self.scheduler_condvar.notify_one();
+		
+		Ok(handle)
 	}
 
 	/// Cancel a scheduled task
@@ -169,41 +178,75 @@ impl WorkerPoolSubsystem {
 	/// Start the scheduler thread
 	fn start_scheduler(&mut self) {
 		let scheduler = Arc::clone(&self.scheduler);
+		let scheduler_condvar = Arc::clone(&self.scheduler_condvar);
 		let task_queue = Arc::clone(&self.task_queue);
 		let task_condvar = Arc::clone(&self.task_condvar);
 		let running = Arc::clone(&self.running);
 		let stats = Arc::clone(&self.stats);
-		let interval = self.config.scheduler_interval;
 		let max_queue_size = self.config.max_queue_size;
 
 		let handle = thread::Builder::new()
             .name("worker-pool-scheduler".to_string())
             .spawn(move || {
                 while running.load(Ordering::Relaxed) {
-                    // Check for tasks that need to run
-                    {
-                        let mut sched = scheduler.lock().unwrap();
-                        let ready_tasks = sched.get_ready_tasks();
-
-                        if !ready_tasks.is_empty() {
-                            let mut queue = task_queue.lock().unwrap();
-
-                            for task in ready_tasks {
-                                if queue.len() >= max_queue_size {
-                                    println!("[WorkerPool] Scheduler: Queue full, dropping scheduled task");
-                                    break;
-                                }
-
-                                queue.push(PrioritizedTask::new(task));
-                                stats.tasks_queued.fetch_add(1, Ordering::Relaxed);
-                            }
-
-                            drop(queue);
-                            task_condvar.notify_all();
+                    let mut sched = scheduler.lock().unwrap();
+                    
+                    // Wait until we have scheduled tasks or need to check for ready tasks
+                    if sched.task_count() == 0 {
+                        // No scheduled tasks, wait for notification with timeout
+                        let result = scheduler_condvar.wait_timeout(
+                            sched,
+                            Duration::from_millis(100)
+                        ).unwrap();
+                        sched = result.0;
+                        
+                        // Check again if we should exit
+                        if !running.load(Ordering::Relaxed) {
+                            break;
                         }
                     }
+                    
+                    // Check what tasks are ready
+                    let ready_tasks = sched.get_ready_tasks();
+                    
+                    // Calculate wait time until next task
+                    let wait_duration = if let Some(next_time) = sched.next_run_time() {
+                        let now = std::time::Instant::now();
+                        if next_time > now {
+                            next_time - now
+                        } else {
+                            Duration::from_millis(0)
+                        }
+                    } else {
+                        // No scheduled tasks, wait indefinitely
+                        Duration::from_secs(3600)
+                    };
+                    
+                    drop(sched);
 
-                    thread::sleep(interval);
+                    // Submit ready tasks to the work queue
+                    if !ready_tasks.is_empty() {
+                        let mut queue = task_queue.lock().unwrap();
+
+                        for task in ready_tasks {
+                            if queue.len() >= max_queue_size {
+                                println!("[WorkerPool] Scheduler: Queue full, dropping scheduled task");
+                                break;
+                            }
+
+                            queue.push(PrioritizedTask::new(task));
+                            stats.tasks_queued.fetch_add(1, Ordering::Relaxed);
+                        }
+
+                        drop(queue);
+                        task_condvar.notify_all();
+                    }
+                    
+                    // Wait until the next task is ready or we get a notification
+                    if wait_duration > Duration::from_millis(0) {
+                        let sched = scheduler.lock().unwrap();
+                        let _ = scheduler_condvar.wait_timeout(sched, wait_duration);
+                    }
                 }
             })
             .expect("Failed to create scheduler thread");
@@ -257,6 +300,16 @@ impl Subsystem for WorkerPoolSubsystem {
 		println!("[WorkerPool] Shutting down...");
 		self.running.store(false, Ordering::Relaxed);
 
+		// Wake scheduler so it can exit
+		self.scheduler_condvar.notify_all();
+		
+		// Wake all worker threads repeatedly to ensure they exit
+		// This handles the race condition where a thread might miss the first notify
+		for _ in 0..3 {
+			self.task_condvar.notify_all();
+			std::thread::sleep(Duration::from_millis(1));
+		}
+		
 		// Stop scheduler
 		if let Some(handle) = self.scheduler_handle.take() {
 			let _ = handle.join();

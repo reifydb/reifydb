@@ -93,32 +93,37 @@ impl Worker {
 		task_counter: Arc<AtomicU64>,
 	) {
 		stats.active_workers.fetch_add(1, Ordering::Relaxed);
-		
+
 		println!("[WorkerPool] Worker {} started", id);
-		
+
 		while running.load(Ordering::Relaxed) {
 			// Get task from priority queue
 			let task = {
 				let mut queue = task_queue.lock().unwrap();
-				
+
 				loop {
 					if let Some(prioritized_task) = queue.pop() {
 						break Some(prioritized_task.task);
 					}
-					
+
 					if !running.load(Ordering::Relaxed) {
 						break None;
 					}
-					
-					// Wait for new tasks with timeout
+
+					// Wait for new tasks with short timeout to check running flag
 					let result = task_condvar.wait_timeout(
 						queue,
-						Duration::from_millis(100)
+						Duration::from_millis(10)
 					).unwrap();
 					queue = result.0;
+					
+					// Check running flag after timeout
+					if !running.load(Ordering::Relaxed) {
+						break None;
+					}
 				}
 			};
-			
+
 			if let Some(task) = task {
 				Self::execute_task(
 					id,
@@ -129,7 +134,7 @@ impl Worker {
 				);
 			}
 		}
-		
+
 		// Drain remaining tasks before shutting down
 		{
 			let mut queue = task_queue.lock().unwrap();
@@ -143,7 +148,7 @@ impl Worker {
 				);
 			}
 		}
-		
+
 		stats.active_workers.fetch_sub(1, Ordering::Relaxed);
 		println!("[WorkerPool] Worker {} stopped", id);
 	}
