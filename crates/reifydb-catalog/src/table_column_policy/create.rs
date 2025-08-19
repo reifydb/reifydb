@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		ActiveCommandTransaction, ColumnPolicy, ColumnPolicyKind,
+		ColumnPolicy, ColumnPolicyKind, CommandTransaction,
 		EncodableKey, TableColumnPolicyKey, Transaction,
 		VersionedCommandTransaction,
 	},
@@ -18,7 +18,7 @@ use crate::{
 
 impl Catalog {
 	pub(crate) fn create_table_column_policy<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {

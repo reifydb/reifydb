@@ -16,7 +16,9 @@ impl Expression {
 	pub fn lazy_fragment(&self) -> impl Fn() -> OwnedFragment + '_ {
 		move || {
 			match self {
-				Expression::AccessSource(expr) => expr.fragment(),
+				Expression::AccessSource(expr) => {
+					expr.fragment()
+				}
 				Expression::Alias(expr) => {
 					expr.expression.fragment()
 				}
@@ -51,12 +53,18 @@ impl Expression {
 				Expression::GreaterThanEqual(expr) => {
 					expr.fragment.clone()
 				}
-				Expression::LessThan(expr) => expr.fragment.clone(),
+				Expression::LessThan(expr) => {
+					expr.fragment.clone()
+				}
 				Expression::LessThanEqual(expr) => {
 					expr.fragment.clone()
 				}
-				Expression::Equal(expr) => expr.fragment.clone(),
-				Expression::NotEqual(expr) => expr.fragment.clone(),
+				Expression::Equal(expr) => {
+					expr.fragment.clone()
+				}
+				Expression::NotEqual(expr) => {
+					expr.fragment.clone()
+				}
 				Expression::Between(expr) => expr.fragment(),
 				Expression::And(expr) => expr.fragment.clone(),
 				Expression::Or(expr) => expr.fragment.clone(),
@@ -70,7 +78,8 @@ impl Expression {
 					// let fragments =
 					// expr.elements.iter().map(|e|
 					// e.fragment()).collect::<Vec<_>>();
-					// Fragment::merge_all(fragments).unwrap()
+					// Fragment::merge_all(fragments).
+					// unwrap()
 					unimplemented!()
 				}
 				Expression::Type(expr) => expr.fragment.clone(),

@@ -15,8 +15,8 @@ use crate::{
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
-	engine: StandardEngine<T>,
 	config: DatabaseConfig,
+	engine: StandardEngine<T>,
 	subsystems: Vec<Box<dyn Subsystem>>,
 }
 
@@ -74,6 +74,14 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		subsystem: impl Subsystem + 'static,
 	) -> Self {
 		self.subsystems.push(Box::new(subsystem));
+		self
+	}
+
+	pub fn add_boxed_subsystem(
+		mut self,
+		subsystem: Box<dyn Subsystem>,
+	) -> Self {
+		self.subsystems.push(subsystem);
 		self
 	}
 

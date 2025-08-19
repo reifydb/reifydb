@@ -77,6 +77,16 @@ impl Compiler {
 					);
 				}
 
+				LogicalPlan::CreateTransactionalView(
+					create,
+				) => {
+					stack.push(
+						Self::compile_create_transactional(
+							rx, create,
+						)?,
+					);
+				}
+
 				LogicalPlan::AlterSequence(alter) => {
 					stack.push(
 						Self::compile_alter_sequence(
@@ -216,7 +226,8 @@ impl Compiler {
 									.clone(
 									)),
 								&scan.schema
-									.fragment()
+									.fragment(
+									)
 							)
 						);
 					};
@@ -280,6 +291,7 @@ impl Compiler {
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan {
 	CreateDeferredView(CreateDeferredViewPlan),
+	CreateTransactionalView(CreateTransactionalViewPlan),
 	CreateSchema(CreateSchemaPlan),
 	CreateTable(CreateTablePlan),
 	// Alter
@@ -305,6 +317,15 @@ pub enum PhysicalPlan {
 
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewPlan {
+	pub schema: SchemaDef,
+	pub view: OwnedFragment,
+	pub if_not_exists: bool,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub with: Option<Box<PhysicalPlan>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateTransactionalViewPlan {
 	pub schema: SchemaDef,
 	pub view: OwnedFragment,
 	pub if_not_exists: bool,

@@ -5,8 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::fragment::IntoFragment;
-use crate::{OwnedFragment, Type};
+use crate::{OwnedFragment, Type, interface::fragment::IntoFragment};
 
 pub mod ast;
 pub mod auth;
@@ -95,7 +94,8 @@ impl Diagnostic {
 	/// diagnostics recursively
 	pub fn with_fragment(&mut self, new_fragment: impl IntoFragment) {
 		// Always update the fragment, not just when it's None
-		// This is needed for cast errors that need to update the fragment
+		// This is needed for cast errors that need to update the
+		// fragment
 		self.fragment = new_fragment.into_fragment();
 
 		if let Some(ref mut cause) = self.cause {
@@ -103,7 +103,8 @@ impl Diagnostic {
 		}
 	}
 
-	/// Get the fragment if this is a Statement fragment (for backward compatibility)
+	/// Get the fragment if this is a Statement fragment (for backward
+	/// compatibility)
 	pub fn fragment(&self) -> Option<OwnedFragment> {
 		match &self.fragment {
 			OwnedFragment::Statement {

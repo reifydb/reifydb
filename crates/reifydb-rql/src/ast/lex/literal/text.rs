@@ -81,7 +81,10 @@ mod tests {
 		let input = LocatedSpan::new("'some text\"xx\"no problem'");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(token.fragment.fragment(), "some text\"xx\"no problem");
+		assert_eq!(
+			token.fragment.fragment(),
+			"some text\"xx\"no problem"
+		);
 		assert_eq!(rest.fragment().len(), 0);
 	}
 
@@ -90,7 +93,10 @@ mod tests {
 		let input = LocatedSpan::new("\"some text'xx'no problem\"");
 		let (rest, token) = parse_literal(input).unwrap();
 		assert_eq!(token.kind, Literal(Text));
-		assert_eq!(token.fragment.fragment(), "some text'xx'no problem");
+		assert_eq!(
+			token.fragment.fragment(),
+			"some text'xx'no problem"
+		);
 		assert_eq!(rest.fragment().len(), 0);
 	}
 

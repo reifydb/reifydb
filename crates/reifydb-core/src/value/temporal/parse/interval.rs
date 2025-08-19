@@ -2,16 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	Error, Interval, result::error::diagnostic::temporal,
-	interface::fragment::Fragment,
-	return_error,
+	Error, Interval, interface::fragment::Fragment,
+	result::error::diagnostic::temporal, return_error,
 };
 
 pub fn parse_interval(fragment: impl Fragment) -> Result<Interval, Error> {
 	let fragment_value = fragment.value();
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
-	if fragment_value.len() == 1 || !fragment_value.starts_with('P') || fragment_value == "PT"
+	if fragment_value.len() == 1
+		|| !fragment_value.starts_with('P')
+		|| fragment_value == "PT"
 	{
 		return_error!(temporal::invalid_interval_format(
 			fragment.clone()
@@ -38,32 +39,47 @@ pub fn parse_interval(fragment: impl Fragment) -> Result<Interval, Error> {
 			}
 			'Y' => {
 				if in_time_part {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'Y', true));
 				}
 				if current_number.is_empty() {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
-				let years: i32 = current_number.parse().map_err(|_| {
-                    let start = current_position - current_number.len();
-                    let number_frag = fragment.sub_fragment(start, current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_frag, 'Y'))
-                })?;
+				let years: i32 =
+					current_number.parse().map_err(
+						|_| {
+							let start = current_position - current_number.len();
+							let number_frag = fragment.sub_fragment(start, current_number.len());
+							Error(temporal::invalid_interval_component_value(number_frag, 'Y'))
+						},
+					)?;
 				months += years * 12; // Exact: store as months
 				current_number.clear();
 				current_position += 1;
 			}
 			'M' => {
 				if current_number.is_empty() {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
-				let value: i64 = current_number.parse().map_err(|_| {
-                    let start = current_position - current_number.len();
-                    let number_frag = fragment.sub_fragment(start, current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_frag, 'M'))
-                })?;
+				let value: i64 =
+					current_number.parse().map_err(
+						|_| {
+							let start = current_position - current_number.len();
+							let number_frag = fragment.sub_fragment(start, current_number.len());
+							Error(temporal::invalid_interval_component_value(number_frag, 'M'))
+						},
+					)?;
 				if in_time_part {
 					nanos += value * 60 * 1_000_000_000; // Minutes
 				} else {
@@ -74,80 +90,119 @@ pub fn parse_interval(fragment: impl Fragment) -> Result<Interval, Error> {
 			}
 			'W' => {
 				if in_time_part {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'W', true));
 				}
 				if current_number.is_empty() {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
-				let weeks: i32 = current_number.parse().map_err(|_| {
-                    let start = current_position - current_number.len();
-                    let number_frag = fragment.sub_fragment(start, current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_frag, 'W'))
-                })?;
+				let weeks: i32 =
+					current_number.parse().map_err(
+						|_| {
+							let start = current_position - current_number.len();
+							let number_frag = fragment.sub_fragment(start, current_number.len());
+							Error(temporal::invalid_interval_component_value(number_frag, 'W'))
+						},
+					)?;
 				days += weeks * 7;
 				current_number.clear();
 				current_position += 1;
 			}
 			'D' => {
 				if in_time_part {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'D', true));
 				}
 				if current_number.is_empty() {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
-				let day_value: i32 = current_number.parse().map_err(|_| {
-                    let start = current_position - current_number.len();
-                    let number_frag = fragment.sub_fragment(start, current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_frag, 'D'))
-                })?;
+				let day_value: i32 =
+					current_number.parse().map_err(
+						|_| {
+							let start = current_position - current_number.len();
+							let number_frag = fragment.sub_fragment(start, current_number.len());
+							Error(temporal::invalid_interval_component_value(number_frag, 'D'))
+						},
+					)?;
 				days += day_value;
 				current_number.clear();
 				current_position += 1;
 			}
 			'H' => {
 				if !in_time_part {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'H', false));
 				}
 				if current_number.is_empty() {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
-				let hours: i64 = current_number.parse().map_err(|_| {
-                    let start = current_position - current_number.len();
-                    let number_frag = fragment.sub_fragment(start, current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_frag, 'H'))
-                })?;
+				let hours: i64 =
+					current_number.parse().map_err(
+						|_| {
+							let start = current_position - current_number.len();
+							let number_frag = fragment.sub_fragment(start, current_number.len());
+							Error(temporal::invalid_interval_component_value(number_frag, 'H'))
+						},
+					)?;
 				nanos += hours * 60 * 60 * 1_000_000_000;
 				current_number.clear();
 				current_position += 1;
 			}
 			'S' => {
 				if !in_time_part {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'S', false));
 				}
 				if current_number.is_empty() {
-					let unit_frag = fragment.sub_fragment(current_position, 1);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
-				let seconds: i64 = current_number.parse().map_err(|_| {
-                    let start = current_position - current_number.len();
-                    let number_frag = fragment.sub_fragment(start, current_number.len());
-                    Error(temporal::invalid_interval_component_value(number_frag, 'S'))
-                })?;
+				let seconds: i64 =
+					current_number.parse().map_err(
+						|_| {
+							let start = current_position - current_number.len();
+							let number_frag = fragment.sub_fragment(start, current_number.len());
+							Error(temporal::invalid_interval_component_value(number_frag, 'S'))
+						},
+					)?;
 				nanos += seconds * 1_000_000_000;
 				current_number.clear();
 				current_position += 1;
 			}
 			_ => {
-				let char_frag = fragment.sub_fragment(current_position, 1);
+				let char_frag = fragment
+					.sub_fragment(current_position, 1);
 				return_error!(
-					temporal::invalid_interval_character(char_frag)
+					temporal::invalid_interval_character(
+						char_frag
+					)
 				);
 			}
 		}
@@ -155,8 +210,11 @@ pub fn parse_interval(fragment: impl Fragment) -> Result<Interval, Error> {
 
 	if !current_number.is_empty() {
 		let start = current_position - current_number.len();
-		let number_frag = fragment.sub_fragment(start, current_number.len());
-		return_error!(temporal::incomplete_interval_specification(number_frag));
+		let number_frag =
+			fragment.sub_fragment(start, current_number.len());
+		return_error!(temporal::incomplete_interval_specification(
+			number_frag
+		));
 	}
 
 	Ok(Interval::new(months, days, nanos))

@@ -34,7 +34,7 @@ pub trait VersionedTransaction:
 	{
 		let mut tx = self.begin_command()?;
 		let result = f(&mut tx)?;
-		tx.commit()?;
+		let _version = tx.commit()?;
 		Ok(result)
 	}
 }
@@ -79,7 +79,7 @@ pub trait VersionedCommandTransaction: VersionedQueryTransaction {
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 
-	fn commit(self) -> crate::Result<()>;
+	fn commit(self) -> crate::Result<crate::Version>;
 
 	fn rollback(self) -> crate::Result<()>;
 }

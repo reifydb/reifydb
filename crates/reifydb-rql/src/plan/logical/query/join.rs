@@ -41,10 +41,16 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![SourceScan(SourceScanNode {
-							schema: schema.fragment(),
-							source: table.fragment(),
-						})]
+						vec![SourceScan(
+							SourceScanNode {
+								schema: schema
+									.fragment(
+									),
+								source: table
+									.fragment(
+									),
+							},
+						)]
 					}
 					_ => unimplemented!(),
 				};
@@ -82,10 +88,16 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![SourceScan(SourceScanNode {
-							schema: schema.fragment(),
-							source: table.fragment(),
-						})]
+						vec![SourceScan(
+							SourceScanNode {
+								schema: schema
+									.fragment(
+									),
+								source: table
+									.fragment(
+									),
+							},
+						)]
 					}
 					_ => unimplemented!(),
 				};
@@ -123,10 +135,16 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
-						vec![SourceScan(SourceScanNode {
-							schema: schema.fragment(),
-							source: table.fragment(),
-						})]
+						vec![SourceScan(
+							SourceScanNode {
+								schema: schema
+									.fragment(
+									),
+								source: table
+									.fragment(
+									),
+							},
+						)]
 					}
 					_ => unimplemented!(),
 				};

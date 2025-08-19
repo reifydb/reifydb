@@ -25,14 +25,30 @@ pub fn to_boolean(
 		ColumnData::Int2(container) => from_int2(container, &fragment),
 		ColumnData::Int4(container) => from_int4(container, &fragment),
 		ColumnData::Int8(container) => from_int8(container, &fragment),
-		ColumnData::Int16(container) => from_int16(container, &fragment),
-		ColumnData::Uint1(container) => from_uint1(container, &fragment),
-		ColumnData::Uint2(container) => from_uint2(container, &fragment),
-		ColumnData::Uint4(container) => from_uint4(container, &fragment),
-		ColumnData::Uint8(container) => from_uint8(container, &fragment),
-		ColumnData::Uint16(container) => from_uint16(container, &fragment),
-		ColumnData::Float4(container) => from_float4(container, &fragment),
-		ColumnData::Float8(container) => from_float8(container, &fragment),
+		ColumnData::Int16(container) => {
+			from_int16(container, &fragment)
+		}
+		ColumnData::Uint1(container) => {
+			from_uint1(container, &fragment)
+		}
+		ColumnData::Uint2(container) => {
+			from_uint2(container, &fragment)
+		}
+		ColumnData::Uint4(container) => {
+			from_uint4(container, &fragment)
+		}
+		ColumnData::Uint8(container) => {
+			from_uint8(container, &fragment)
+		}
+		ColumnData::Uint16(container) => {
+			from_uint16(container, &fragment)
+		}
+		ColumnData::Float4(container) => {
+			from_float4(container, &fragment)
+		}
+		ColumnData::Float8(container) => {
+			from_float8(container, &fragment)
+		}
 		ColumnData::Utf8(container) => from_utf8(container, fragment),
 		_ => {
 			let source_type = data.get_type();
@@ -61,11 +77,15 @@ where
 				None => {
 					use reifydb_core::Fragment;
 					let base_fragment = fragment();
-					let error_fragment = OwnedFragment::Statement {
-						text: container[idx].to_string(),
-						line: base_fragment.line(),
-						column: base_fragment.column(),
-					};
+					let error_fragment =
+						OwnedFragment::Statement {
+							text: container[idx]
+								.to_string(),
+							line: base_fragment
+								.line(),
+							column: base_fragment
+								.column(),
+						};
 					return_error!(invalid_number_boolean(
 						error_fragment
 					));
@@ -135,12 +155,15 @@ fn from_utf8(
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			// Parse with internal fragment, then replace with proper source fragment if error
-			let temp_fragment = BorrowedFragment::new_internal(&container[idx]);
+			// Parse with internal fragment, then replace with
+			// proper source fragment if error
+			let temp_fragment =
+				BorrowedFragment::new_internal(&container[idx]);
 			match parse_bool(temp_fragment) {
 				Ok(b) => out.push(b),
 				Err(mut e) => {
-					// Replace the error's fragment with the proper source fragment
+					// Replace the error's fragment with the
+					// proper source fragment
 					e.0.with_fragment(fragment());
 					return Err(e);
 				}

@@ -152,8 +152,10 @@ impl ExecutionPlan for AggregateNode {
 						Column::ColumnQualified(
 							ColumnQualified {
 								name: alias
-									.fragment()
-									.to_string(),
+									.fragment(
+									)
+									.to_string(
+									),
 								data,
 							},
 						),
@@ -207,16 +209,15 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions
 							.get_aggregate(func)
 							.unwrap();
-						projections.push(
-							Projection::Aggregate {
-								column: c
-									.0
-									.fragment()
-									.to_string(),
-								alias: p.fragment(),
-								function,
-							},
-						);
+						projections
+							.push(Projection::Aggregate {
+							column: c
+								.0
+								.fragment()
+								.to_string(),
+							alias: p.fragment(),
+							function,
+						});
 					}
 					// _ => return
 					// Err(reifydb_core::Error::Unsupported("

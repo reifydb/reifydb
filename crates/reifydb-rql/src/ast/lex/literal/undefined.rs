@@ -13,9 +13,11 @@ use crate::ast::{
 pub(crate) fn parse_undefined(
 	input: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, Token> {
-	alt((map(tag_no_case("undefined"), |fragment: LocatedSpan<&str>| Token {
-		kind: Literal(Undefined),
-		fragment: as_fragment(fragment),
+	alt((map(tag_no_case("undefined"), |fragment: LocatedSpan<&str>| {
+		Token {
+			kind: Literal(Undefined),
+			fragment: as_fragment(fragment),
+		}
 	}),))
 	.parse(input)
 }

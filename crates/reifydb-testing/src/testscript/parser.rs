@@ -12,7 +12,9 @@
 use std::collections::HashSet;
 
 use nom::{
-	branch::alt, bytes::complete::{
+	Finish as _, Parser,
+	branch::alt,
+	bytes::complete::{
 		escaped_transform, is_not, tag, take, take_while_m_n,
 	},
 	character::complete::{
@@ -23,10 +25,8 @@ use nom::{
 		consumed, eof, map_res, opt, peek, recognize, value, verify,
 	},
 	error::ErrorKind,
-	multi::{many0, many0_count, many_till, separated_list1},
+	multi::{many_till, many0, many0_count, separated_list1},
 	sequence::{delimited, pair, preceded, separated_pair, terminated},
-	Finish as _,
-	Parser,
 };
 
 use crate::testscript::command::{Argument, Block, Command};

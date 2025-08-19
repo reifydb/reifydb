@@ -169,7 +169,10 @@ mod tests {
 							fragment,
 						},
 					) => {
-						assert_eq!(fragment.fragment(), "1");
+						assert_eq!(
+							fragment.fragment(),
+							"1"
+						);
 					}
 					_ => panic!(
 						"Expected Number for id in first row"

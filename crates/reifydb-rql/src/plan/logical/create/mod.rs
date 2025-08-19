@@ -6,6 +6,7 @@ mod index;
 mod schema;
 mod series;
 mod table;
+mod transactional;
 
 use crate::{
 	ast::AstCreate,
@@ -19,6 +20,9 @@ impl Compiler {
 		match ast {
 			AstCreate::DeferredView(node) => {
 				Self::compile_deferred_view(node)
+			}
+			AstCreate::TransactionalView(node) => {
+				Self::compile_transactional_view(node)
 			}
 			AstCreate::Schema(node) => {
 				Self::compile_create_schema(node)

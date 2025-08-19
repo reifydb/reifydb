@@ -3,8 +3,7 @@
 
 use super::{date::parse_date, time::parse_time};
 use crate::{
-	DateTime, Error,
-	interface::fragment::Fragment,
+	DateTime, Error, interface::fragment::Fragment,
 	result::error::diagnostic::temporal, return_error,
 };
 
@@ -19,7 +18,7 @@ pub fn parse_datetime(fragment: impl Fragment) -> Result<DateTime, Error> {
 	let date_fragment = fragment.sub_fragment(date_offset, parts[0].len());
 	let time_offset = parts[0].len() + 1; // +1 for the 'T' separator
 	let time_fragment = fragment.sub_fragment(time_offset, parts[1].len());
-	
+
 	let date = parse_date(date_fragment)?;
 	let time = parse_time(time_fragment)?;
 
@@ -62,7 +61,8 @@ mod tests {
 
 	#[test]
 	fn test_with_milliseconds() {
-		let fragment = OwnedFragment::testing("2024-03-15T14:30:00.123Z");
+		let fragment =
+			OwnedFragment::testing("2024-03-15T14:30:00.123Z");
 		let datetime = parse_datetime(fragment).unwrap();
 		assert_eq!(
 			datetime.to_string(),
@@ -72,7 +72,8 @@ mod tests {
 
 	#[test]
 	fn test_with_microseconds() {
-		let fragment = OwnedFragment::testing("2024-03-15T14:30:00.123456Z");
+		let fragment =
+			OwnedFragment::testing("2024-03-15T14:30:00.123456Z");
 		let datetime = parse_datetime(fragment).unwrap();
 		assert_eq!(
 			datetime.to_string(),
@@ -82,7 +83,9 @@ mod tests {
 
 	#[test]
 	fn test_with_nanoseconds() {
-		let fragment = OwnedFragment::testing("2024-03-15T14:30:00.123456789Z");
+		let fragment = OwnedFragment::testing(
+			"2024-03-15T14:30:00.123456789Z",
+		);
 		let datetime = parse_datetime(fragment).unwrap();
 		assert_eq!(
 			datetime.to_string(),
@@ -161,7 +164,8 @@ mod tests {
 
 	#[test]
 	fn test_invalid_fractional_seconds() {
-		let fragment = OwnedFragment::testing("2024-03-15T14:30:00.123.456");
+		let fragment =
+			OwnedFragment::testing("2024-03-15T14:30:00.123.456");
 		let err = parse_datetime(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_011");
 	}

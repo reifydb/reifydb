@@ -21,9 +21,11 @@ pub(crate) fn parse_boolean(
 			kind: Literal(True),
 			fragment: as_fragment(fragment),
 		}),
-		map(tag_no_case("false"), |fragment: LocatedSpan<&str>| Token {
-			kind: Literal(False),
-			fragment: as_fragment(fragment),
+		map(tag_no_case("false"), |fragment: LocatedSpan<&str>| {
+			Token {
+				kind: Literal(False),
+				fragment: as_fragment(fragment),
+			}
 		}),
 	))
 	.parse(input)

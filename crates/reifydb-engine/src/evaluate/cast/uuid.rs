@@ -78,11 +78,11 @@ macro_rules! impl_to_uuid {
                     let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
                         // Get the original fragment for error reporting
                         let proper_fragment = fragment();
-                        
+
                         // Replace the error's origin with the proper RQL fragment
                         // This ensures the error shows "at col" not the actual value
                         e.0.with_fragment(proper_fragment.clone());
-                        
+
                         // Wrap in cast error with the original fragment
                         error!(cast::invalid_uuid(proper_fragment, $target_type, e.0))
                     })?;

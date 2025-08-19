@@ -31,15 +31,14 @@ impl<'a> BorrowedFragment<'a> {
 			column: StatementColumn(0),
 		}
 	}
-	
-	
+
 	/// Create a new Internal fragment
 	pub fn new_internal(text: &'a str) -> Self {
 		BorrowedFragment::Internal {
 			text,
 		}
 	}
-	
+
 	/// Compatibility: expose fragment field
 	pub fn fragment(&self) -> &str {
 		self.value()
@@ -48,25 +47,37 @@ impl<'a> BorrowedFragment<'a> {
 
 impl<'a> Fragment for BorrowedFragment<'a> {
 	type SubFragment = BorrowedFragment<'a>;
-	
+
 	fn value(&self) -> &str {
 		match self {
 			BorrowedFragment::None => "",
-			BorrowedFragment::Statement { text, .. }
-			| BorrowedFragment::Internal { text, .. } => text,
+			BorrowedFragment::Statement {
+				text,
+				..
+			}
+			| BorrowedFragment::Internal {
+				text,
+				..
+			} => text,
 		}
 	}
-	
+
 	fn line(&self) -> StatementLine {
 		match self {
-			BorrowedFragment::Statement { line, .. } => *line,
+			BorrowedFragment::Statement {
+				line,
+				..
+			} => *line,
 			_ => StatementLine(1),
 		}
 	}
-	
+
 	fn column(&self) -> StatementColumn {
 		match self {
-			BorrowedFragment::Statement { column, .. } => *column,
+			BorrowedFragment::Statement {
+				column,
+				..
+			} => *column,
 			_ => StatementColumn(0),
 		}
 	}
@@ -83,13 +94,14 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 				line,
 				column,
 			},
-			BorrowedFragment::Internal { text } => OwnedFragment::Internal {
+			BorrowedFragment::Internal {
+				text,
+			} => OwnedFragment::Internal {
 				text: text.to_string(),
 			},
 		}
 	}
 
-	
 	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		let text = self.value();
 		let end = std::cmp::min(offset + length, text.len());
@@ -98,15 +110,23 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 		} else {
 			""
 		};
-		
+
 		match self {
 			BorrowedFragment::None => OwnedFragment::None,
-			BorrowedFragment::Statement { line, column, .. } => OwnedFragment::Statement {
+			BorrowedFragment::Statement {
+				line,
+				column,
+				..
+			} => OwnedFragment::Statement {
 				text: sub_text.to_string(),
 				line: *line,
-				column: StatementColumn(column.0 + offset as u32),
+				column: StatementColumn(
+					column.0 + offset as u32,
+				),
 			},
-			BorrowedFragment::Internal { .. } => OwnedFragment::Internal {
+			BorrowedFragment::Internal {
+				..
+			} => OwnedFragment::Internal {
 				text: sub_text.to_string(),
 			},
 		}
@@ -116,24 +136,23 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 // Implement Fragment for &BorrowedFragment as well
 impl<'a> Fragment for &BorrowedFragment<'a> {
 	type SubFragment = BorrowedFragment<'a>;
-	
+
 	fn value(&self) -> &str {
 		(*self).value()
 	}
-	
+
 	fn line(&self) -> StatementLine {
 		(*self).line()
 	}
-	
+
 	fn column(&self) -> StatementColumn {
 		(*self).column()
 	}
-	
+
 	fn into_owned(self) -> OwnedFragment {
 		(*self).into_owned()
 	}
-	
-	
+
 	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		(*self).sub_fragment(offset, length)
 	}

@@ -36,7 +36,13 @@ impl DefaultRenderer {
 		let _ = writeln!(output, "  {}", diagnostic.message);
 		let _ = writeln!(output);
 
-		if let OwnedFragment::Statement { line, column, text, .. } = &diagnostic.fragment {
+		if let OwnedFragment::Statement {
+			line,
+			column,
+			text,
+			..
+		} = &diagnostic.fragment
+		{
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
@@ -142,7 +148,13 @@ impl DefaultRenderer {
 		);
 
 		// Location info
-		if let OwnedFragment::Statement { line, column, text, .. } = &diagnostic.fragment {
+		if let OwnedFragment::Statement {
+			line,
+			column,
+			text,
+			..
+		} = &diagnostic.fragment
+		{
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
@@ -188,10 +200,11 @@ impl DefaultRenderer {
 			let label_text =
 				diagnostic.label.as_deref().unwrap_or("");
 			if !label_text.is_empty() {
-				let fragment_center = fragment_start
-					+ fragment.len() / 2;
+				let fragment_center =
+					fragment_start + fragment.len() / 2;
 				let label_center_offset = if label_text.len()
-					/ 2 > fragment_center
+					/ 2
+					> fragment_center
 				{
 					0
 				} else {

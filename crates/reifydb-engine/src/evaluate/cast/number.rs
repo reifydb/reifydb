@@ -196,29 +196,34 @@ fn float_to_integer(
 
 macro_rules! parse_and_push {
 	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
-		let result = parse_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			// Use the base_fragment (column reference) for the error position
-			e.0.with_fragment($base_fragment.clone());
-			
-			error!(cast::invalid_number(
-				$base_fragment.clone(),
-				$target_type,
-				e.diagnostic(),
-			))
-		})?;
+		let result = parse_int::<$ty>($temp_fragment.clone()).map_err(
+			|mut e| {
+				// Use the base_fragment (column reference) for
+				// the error position
+				e.0.with_fragment($base_fragment.clone());
+
+				error!(cast::invalid_number(
+					$base_fragment.clone(),
+					$target_type,
+					e.diagnostic(),
+				))
+			},
+		)?;
 		$out.push::<$ty>(result);
 	}};
 	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
-		let result = parse_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			// Use the base_fragment (column reference) for the error position
-			e.0.with_fragment($base_fragment.clone());
-			
-			error!(cast::invalid_number(
-				$base_fragment.clone(),
-				$target_type,
-				e.diagnostic(),
-			))
-		})?;
+		let result = parse_uint::<$ty>($temp_fragment.clone())
+			.map_err(|mut e| {
+				// Use the base_fragment (column reference) for
+				// the error position
+				e.0.with_fragment($base_fragment.clone());
+
+				error!(cast::invalid_number(
+					$base_fragment.clone(),
+					$target_type,
+					e.diagnostic(),
+				))
+			})?;
 		$out.push::<$ty>(result);
 	}};
 }
@@ -239,7 +244,10 @@ fn text_to_integer(
 				if container.is_defined(idx) {
 					let val = &container[idx];
 					use reifydb_core::interface::fragment::BorrowedFragment;
-					let temp_fragment = BorrowedFragment::new_internal(val);
+					let temp_fragment =
+						BorrowedFragment::new_internal(
+							val,
+						);
 
 					match target {
 						Type::Int1 => {
@@ -382,38 +390,54 @@ fn text_to_float(
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
-				// Create efficient borrowed fragment for parsing
+				// Create efficient borrowed fragment for
+				// parsing
 				use reifydb_core::interface::fragment::BorrowedFragment;
-				let temp_fragment = BorrowedFragment::new_internal(val);
+				let temp_fragment =
+					BorrowedFragment::new_internal(val);
 
 				match target {
-					Type::Float4 => out.push::<f32>(
-						parse_float::<f32>(temp_fragment.clone())
-							.map_err(|mut e| {
-							// Use the base_fragment (column reference) for the error position
-							e.0.with_fragment(base_fragment.clone());
-							
-							error!(cast::invalid_number(
+					Type::Float4 => {
+						out.push::<f32>(
+							parse_float::<f32>(
+								temp_fragment
+									.clone(
+									),
+							)
+							.map_err(
+								|mut e| {
+									// Use the base_fragment (column reference) for the error position
+									e.0.with_fragment(base_fragment.clone());
+
+									error!(cast::invalid_number(
                                 base_fragment.clone(),
                                 Type::Float4,
                                 e.diagnostic(),
                             ))
-						})?,
-					),
+								},
+							)?,
+						)
+					}
 
-					Type::Float8 => out.push::<f64>(
-						parse_float::<f64>(temp_fragment)
-							.map_err(|mut e| {
-							// Use the base_fragment (column reference) for the error position
-							e.0.with_fragment(base_fragment.clone());
-							
-							error!(cast::invalid_number(
+					Type::Float8 => {
+						out.push::<f64>(
+							parse_float::<f64>(
+								temp_fragment,
+							)
+							.map_err(
+								|mut e| {
+									// Use the base_fragment (column reference) for the error position
+									e.0.with_fragment(base_fragment.clone());
+
+									error!(cast::invalid_number(
                                 base_fragment.clone(),
                                 Type::Float8,
                                 e.diagnostic(),
                             ))
-						})?,
-					),
+								},
+							)?,
+						)
+					}
 					_ => {
 						let source_type =
 							column_data.get_type();

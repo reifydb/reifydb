@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Type, interface::fragment::OwnedFragment, result::error::diagnostic::Diagnostic};
+use crate::{
+	Type, interface::fragment::OwnedFragment,
+	result::error::diagnostic::Diagnostic,
+};
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {

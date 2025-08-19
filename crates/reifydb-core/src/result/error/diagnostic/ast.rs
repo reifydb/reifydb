@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	result::error::diagnostic::Diagnostic,
 	interface::fragment::{Fragment, IntoFragment, OwnedFragment},
+	result::error::diagnostic::Diagnostic,
 };
 
 /// Generic lexer error with custom message
@@ -37,9 +37,7 @@ pub fn unexpected_eof_error() -> Diagnostic {
 }
 
 /// Error for when we expect an identifier token specifically  
-pub fn expected_identifier_error(
-	fragment: impl IntoFragment,
-) -> Diagnostic {
+pub fn expected_identifier_error(fragment: impl IntoFragment) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	let value = fragment.value();
 	let label = Some(format!("found `{}`", value));
@@ -103,9 +101,7 @@ pub fn unexpected_token_error(
 }
 
 /// Error for unsupported tokens
-pub fn unsupported_token_error(
-	fragment: impl IntoFragment,
-) -> Diagnostic {
+pub fn unsupported_token_error(fragment: impl IntoFragment) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	let value = fragment.value();
 	let message = format!("Unsupported token: {}", value);

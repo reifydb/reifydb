@@ -94,19 +94,19 @@ impl TemporalParser {
 				Ok(ColumnData::date(vec![date; row_count]))
 			}
 			Type::DateTime => {
-				let datetime =
-					match parse_datetime(fragment.clone()) {
-						Ok(datetime) => datetime,
-						Err(e) => return_error!(
-							cast::invalid_temporal(
-								fragment.clone()
-									.to_owned(
-									),
-								Type::DateTime,
-								e.0
-							)
-						),
-					};
+				let datetime = match parse_datetime(
+					fragment.clone(),
+				) {
+					Ok(datetime) => datetime,
+					Err(e) => return_error!(
+						cast::invalid_temporal(
+							fragment.clone()
+								.to_owned(),
+							Type::DateTime,
+							e.0
+						)
+					),
+				};
 				Ok(ColumnData::datetime(vec![
 					datetime;
 					row_count
@@ -126,19 +126,19 @@ impl TemporalParser {
 				Ok(ColumnData::time(vec![time; row_count]))
 			}
 			Type::Interval => {
-				let interval =
-					match parse_interval(fragment.clone()) {
-						Ok(interval) => interval,
-						Err(e) => return_error!(
-							cast::invalid_temporal(
-								fragment.clone()
-									.to_owned(
-									),
-								Type::Interval,
-								e.0
-							)
-						),
-					};
+				let interval = match parse_interval(
+					fragment.clone(),
+				) {
+					Ok(interval) => interval,
+					Err(e) => return_error!(
+						cast::invalid_temporal(
+							fragment.clone()
+								.to_owned(),
+							Type::Interval,
+							e.0
+						)
+					),
+				};
 				Ok(ColumnData::interval(vec![
 					interval;
 					row_count

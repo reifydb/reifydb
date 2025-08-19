@@ -1,7 +1,7 @@
 use crate::{
 	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, GetHooks,
-		Identity, Params, Transaction,
+		CommandTransaction, GetHooks, Identity, Params,
+		QueryTransaction, Transaction,
 	},
 	result::frame::Frame,
 };
@@ -9,9 +9,9 @@ use crate::{
 pub trait Engine<T: Transaction>:
 	GetHooks + Send + Sync + Clone + 'static
 {
-	fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>>;
+	fn begin_command(&self) -> crate::Result<CommandTransaction<T>>;
 
-	fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<T>>;
+	fn begin_query(&self) -> crate::Result<QueryTransaction<T>>;
 
 	fn command_as(
 		&self,

@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{result::error::diagnostic::Diagnostic, interface::fragment::{Fragment, IntoFragment}};
+use crate::{
+	interface::fragment::{Fragment, IntoFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 pub fn invalid_date_format(fragment: impl IntoFragment) -> Diagnostic {
 	let fragment = fragment.into_fragment();
@@ -102,10 +105,7 @@ pub fn invalid_year(fragment: impl IntoFragment) -> Diagnostic {
 	Diagnostic {
 		code: "TEMPORAL_005".to_string(),
 		statement: None,
-		message: format!(
-			"invalid year value '{}'",
-			fragment.value()
-		),
+		message: format!("invalid year value '{}'", fragment.value()),
 		fragment,
 		label,
 		help: Some(
@@ -126,10 +126,7 @@ pub fn invalid_month(fragment: impl IntoFragment) -> Diagnostic {
 	Diagnostic {
 		code: "TEMPORAL_006".to_string(),
 		statement: None,
-		message: format!(
-			"invalid month value '{}'",
-			fragment.value()
-		),
+		message: format!("invalid month value '{}'", fragment.value()),
 		fragment,
 		label,
 		help: Some(
@@ -195,10 +192,7 @@ pub fn invalid_minute(fragment: impl IntoFragment) -> Diagnostic {
 	Diagnostic {
 		code: "TEMPORAL_009".to_string(),
 		statement: None,
-		message: format!(
-			"invalid minute value '{}'",
-			fragment.value()
-		),
+		message: format!("invalid minute value '{}'", fragment.value()),
 		fragment,
 		label,
 		help: Some(
@@ -220,10 +214,7 @@ pub fn invalid_second(fragment: impl IntoFragment) -> Diagnostic {
 	Diagnostic {
 		code: "TEMPORAL_010".to_string(),
 		statement: None,
-		message: format!(
-			"invalid second value '{}'",
-			fragment.value()
-		),
+		message: format!("invalid second value '{}'", fragment.value()),
 		fragment,
 		label,
 		help: Some(
@@ -412,7 +403,9 @@ pub fn invalid_interval_component_value(
 	}
 }
 
-pub fn unrecognized_temporal_pattern(fragment: impl IntoFragment) -> Diagnostic {
+pub fn unrecognized_temporal_pattern(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"value '{}' does not match any temporal format",
@@ -438,10 +431,8 @@ pub fn unrecognized_temporal_pattern(fragment: impl IntoFragment) -> Diagnostic 
 
 pub fn empty_date_component(fragment: impl IntoFragment) -> Diagnostic {
 	let fragment = fragment.into_fragment();
-	let label = Some(format!(
-		"date component '{}' is empty",
-		fragment.value()
-	));
+	let label =
+		Some(format!("date component '{}' is empty", fragment.value()));
 	Diagnostic {
 		code: "TEMPORAL_019".to_string(),
 		statement: None,
@@ -461,10 +452,8 @@ pub fn empty_date_component(fragment: impl IntoFragment) -> Diagnostic {
 
 pub fn empty_time_component(fragment: impl IntoFragment) -> Diagnostic {
 	let fragment = fragment.into_fragment();
-	let label = Some(format!(
-		"time component '{}' is empty",
-		fragment.value()
-	));
+	let label =
+		Some(format!("time component '{}' is empty", fragment.value()));
 	Diagnostic {
         code: "TEMPORAL_020".to_string(),
         statement: None,

@@ -1,7 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Type, result::error::diagnostic::Diagnostic, interface::fragment::{Fragment, IntoFragment}};
+use crate::{
+	Type,
+	interface::fragment::{Fragment, IntoFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 pub fn unsupported_cast(
 	fragment: impl IntoFragment,
@@ -11,7 +15,9 @@ pub fn unsupported_cast(
 	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"cannot cast {} of type {} to {}",
-		fragment.value(), from_type, to_type
+		fragment.value(),
+		from_type,
+		to_type
 	));
 	Diagnostic {
         code: "CAST_001".to_string(),

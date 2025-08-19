@@ -4,6 +4,7 @@
 #[cfg(feature = "async")]
 mod r#async;
 mod database;
+mod interceptor;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 mod server;
 mod sync;

@@ -42,12 +42,18 @@ mod tests {
 
 	#[test]
 	fn test_valid_true() {
-		assert_eq!(parse_bool(OwnedFragment::testing("true")), Ok(true));
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("true")),
+			Ok(true)
+		);
 	}
 
 	#[test]
 	fn test_valid_false() {
-		assert_eq!(parse_bool(OwnedFragment::testing("false")), Ok(false));
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("false")),
+			Ok(false)
+		);
 	}
 
 	#[test]
@@ -68,16 +74,34 @@ mod tests {
 
 	#[test]
 	fn test_case_mismatch_true() {
-		assert_eq!(parse_bool(OwnedFragment::testing("True")), Ok(true));
-		assert_eq!(parse_bool(OwnedFragment::testing("TRUE")), Ok(true));
-		assert_eq!(parse_bool(OwnedFragment::testing("tRuE")), Ok(true));
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("True")),
+			Ok(true)
+		);
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("TRUE")),
+			Ok(true)
+		);
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("tRuE")),
+			Ok(true)
+		);
 	}
 
 	#[test]
 	fn test_case_mismatch_false() {
-		assert_eq!(parse_bool(OwnedFragment::testing("False")), Ok(false));
-		assert_eq!(parse_bool(OwnedFragment::testing("FALSE")), Ok(false));
-		assert_eq!(parse_bool(OwnedFragment::testing("fAlSe")), Ok(false));
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("False")),
+			Ok(false)
+		);
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("FALSE")),
+			Ok(false)
+		);
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("fAlSe")),
+			Ok(false)
+		);
 	}
 
 	#[test]
@@ -85,7 +109,10 @@ mod tests {
 		assert_eq!(parse_bool(OwnedFragment::testing("1")), Ok(true));
 		assert_eq!(parse_bool(OwnedFragment::testing("0")), Ok(false));
 		assert_eq!(parse_bool(OwnedFragment::testing("1.0")), Ok(true));
-		assert_eq!(parse_bool(OwnedFragment::testing("0.0")), Ok(false));
+		assert_eq!(
+			parse_bool(OwnedFragment::testing("0.0")),
+			Ok(false)
+		);
 	}
 
 	#[test]

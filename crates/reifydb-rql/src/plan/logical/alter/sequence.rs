@@ -47,7 +47,10 @@ mod tests {
 			LogicalPlan::AlterSequence(node) => {
 				assert!(node.schema.is_some());
 				assert_eq!(
-					node.schema.as_ref().unwrap().fragment(),
+					node.schema
+						.as_ref()
+						.unwrap()
+						.fragment(),
 					"test"
 				);
 				assert_eq!(node.table.fragment(), "users");

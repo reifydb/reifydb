@@ -5,7 +5,7 @@ use reifydb_core::{
 	OwnedFragment, Type,
 	diagnostic::catalog::view_column_already_exists,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, Key, Transaction,
+		CommandTransaction, EncodableKey, Key, Transaction,
 		VersionedCommandTransaction, ViewColumnKey, ViewColumnsKey,
 		ViewId,
 	},
@@ -34,7 +34,7 @@ pub struct ViewColumnToCreate<'a> {
 
 impl Catalog {
 	pub(crate) fn create_view_column<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		column_to_create: ViewColumnToCreate,
 	) -> crate::Result<ColumnDef> {

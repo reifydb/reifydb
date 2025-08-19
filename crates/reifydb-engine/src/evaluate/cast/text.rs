@@ -162,9 +162,10 @@ mod tests {
 		let bitvec = BitVec::repeat(2, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result =
-			from_blob(&container, || OwnedFragment::testing_empty())
-				.unwrap();
+		let result = from_blob(&container, || {
+			OwnedFragment::testing_empty()
+		})
+		.unwrap();
 
 		match result {
 			ColumnData::Utf8(container) => {
@@ -183,8 +184,9 @@ mod tests {
 		let bitvec = BitVec::repeat(1, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result =
-			from_blob(&container, || OwnedFragment::testing_empty());
+		let result = from_blob(&container, || {
+			OwnedFragment::testing_empty()
+		});
 		assert!(result.is_err());
 	}
 }

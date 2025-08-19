@@ -12,9 +12,7 @@
 use std::ops::RangeBounds;
 
 use reifydb_core::{
-	CowVec,
-	hook::transaction::{PostCommitHook, PreCommitHook},
-	row::EncodedRow,
+	CowVec, hook::transaction::PostCommitHook, row::EncodedRow,
 };
 
 use super::*;
@@ -48,7 +46,9 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	CommandTransaction<VS, UT>
 {
-	pub fn commit(&mut self) -> Result<(), reifydb_core::Error> {
+	pub fn commit(
+		&mut self,
+	) -> Result<reifydb_core::Version, reifydb_core::Error> {
 		let mut version: Option<Version> = None;
 		let mut deltas = CowVec::with_capacity(8);
 
@@ -63,11 +63,6 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 			}
 
 			if let Some(version) = version {
-				self.engine.hooks.trigger(PreCommitHook {
-					deltas: deltas.clone(),
-					version,
-				})?;
-
 				self.engine
 					.versioned
 					.commit(deltas.clone(), version)?;
@@ -82,7 +77,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 			})?;
 		}
 
-		Ok(())
+		Ok(version.unwrap_or(0))
 	}
 }
 

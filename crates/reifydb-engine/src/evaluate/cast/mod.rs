@@ -108,11 +108,15 @@ pub fn cast_column_data(
 		(_, target) if target.is_number() => {
 			number::to_number(ctx, data, target, fragment)
 		}
-		(_, target) if target.is_blob() => blob::to_blob(data, fragment),
+		(_, target) if target.is_blob() => {
+			blob::to_blob(data, fragment)
+		}
 		(_, target) if target.is_bool() => {
 			boolean::to_boolean(data, fragment)
 		}
-		(_, target) if target.is_utf8() => text::to_text(data, fragment),
+		(_, target) if target.is_utf8() => {
+			text::to_text(data, fragment)
+		}
 		(_, target) if target.is_temporal() => {
 			temporal::to_temporal(data, target, fragment)
 		}
@@ -160,7 +164,8 @@ mod tests {
 					fragment: OwnedFragment::testing("42"),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Int4,
 				},
 			}),
@@ -221,7 +226,8 @@ mod tests {
 					fragment: OwnedFragment::testing("4.2"),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float8,
 				},
 			}),
@@ -242,7 +248,8 @@ mod tests {
 					fragment: OwnedFragment::testing("4.2"),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float4,
 				},
 			}),
@@ -260,10 +267,13 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing("-1.1"),
+					fragment: OwnedFragment::testing(
+						"-1.1",
+					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float4,
 				},
 			}),
@@ -281,10 +291,13 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing("-1.1"),
+					fragment: OwnedFragment::testing(
+						"-1.1",
+					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Float8,
 				},
 			}),
@@ -303,11 +316,15 @@ mod tests {
 				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
-						fragment: OwnedFragment::testing("0"),
+						fragment:
+							OwnedFragment::testing(
+								"0",
+							),
 					},
 				)),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Bool,
 				},
 			}),
@@ -326,11 +343,15 @@ mod tests {
 				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
-						fragment: OwnedFragment::testing("-1"),
+						fragment:
+							OwnedFragment::testing(
+								"-1",
+							),
 					},
 				)),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Bool,
 				},
 			}),
@@ -357,13 +378,15 @@ mod tests {
 				fragment: OwnedFragment::testing_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Bool {
-						fragment: OwnedFragment::testing(
-							"true",
-						),
+						fragment:
+							OwnedFragment::testing(
+								"true",
+							),
 					},
 				)),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(),
+					fragment: OwnedFragment::testing_empty(
+					),
 					ty: Type::Date,
 				},
 			}),

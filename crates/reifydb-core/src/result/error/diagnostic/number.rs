@@ -3,8 +3,8 @@
 
 use crate::{
 	ColumnDescriptor, Type,
+	interface::fragment::{Fragment, IntoFragment, OwnedFragment},
 	result::error::diagnostic::{Diagnostic, util::value_range},
-    interface::fragment::{Fragment, IntoFragment, OwnedFragment},
 };
 
 pub fn invalid_number_format(
@@ -14,7 +14,8 @@ pub fn invalid_number_format(
 	let fragment = fragment.into_fragment();
 	let label = Some(format!(
 		"'{}' is not a valid {} number",
-		fragment.value(), target
+		fragment.value(),
+		target
 	));
 
 	let (help, notes) = match target {
@@ -81,7 +82,9 @@ pub fn number_out_of_range(
 	} else {
 		Some(format!(
 			"value '{}' exceeds the valid range for type {} ({})",
-			fragment.value(), target, range
+			fragment.value(),
+			target,
+			range
 		))
 	};
 
@@ -173,7 +176,9 @@ pub fn integer_precision_loss(
 
 	let label = Some(format!(
 		"converting '{}' from {} to {} would lose precision",
-		fragment.value(), source_type, target
+		fragment.value(),
+		source_type,
+		target
 	));
 
 	Diagnostic {

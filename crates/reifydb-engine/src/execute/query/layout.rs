@@ -94,7 +94,9 @@ fn simplified_name(expr: &Expression) -> String {
 				simplified_name(&expr.right)
 			)
 		}
-		Expression::Column(col_expr) => col_expr.0.fragment().to_string(),
+		Expression::Column(col_expr) => {
+			col_expr.0.fragment().to_string()
+		}
 		Expression::Constant(const_expr) => match const_expr {
 			ConstantExpression::Number {
 				fragment,
@@ -222,7 +224,9 @@ fn simplified_name(expr: &Expression) -> String {
 				simplified_name(&expr.right)
 			)
 		}
-		Expression::Type(type_expr) => type_expr.fragment.fragment().to_string(),
+		Expression::Type(type_expr) => {
+			type_expr.fragment.fragment().to_string()
+		}
 		Expression::Parameter(_) => "parameter".to_string(),
 	}
 }

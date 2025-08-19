@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{result::error::diagnostic::Diagnostic, interface::fragment::IntoFragment};
+use crate::{
+	interface::fragment::IntoFragment,
+	result::error::diagnostic::Diagnostic,
+};
 
 pub fn column_not_found(fragment: impl IntoFragment) -> Diagnostic {
 	let fragment = fragment.into_fragment();

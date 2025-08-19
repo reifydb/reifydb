@@ -526,7 +526,9 @@ where
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
-				if let Some(value) = ctx.mul(*l, *r, &fragment)? {
+				if let Some(value) =
+					ctx.mul(*l, *r, &fragment)?
+				{
 					data.push(value);
 				} else {
 					data.push_undefined()

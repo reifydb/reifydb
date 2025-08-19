@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Error,
+	EncodedKey, EncodedKeyRange, Error, Version,
 	hook::Hooks,
 	interface::{
 		BoxedVersionedIter, GetHooks, UnversionedTransaction,
@@ -209,9 +209,9 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		Ok(())
 	}
 
-	fn commit(mut self) -> Result<(), Error> {
-		CommandTransaction::commit(&mut self)?;
-		Ok(())
+	fn commit(mut self) -> Result<Version, Error> {
+		let version = CommandTransaction::commit(&mut self)?;
+		Ok(version)
 	}
 
 	fn rollback(mut self) -> Result<(), Error> {

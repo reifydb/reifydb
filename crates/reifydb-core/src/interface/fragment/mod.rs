@@ -6,7 +6,6 @@ pub mod owned;
 
 pub use borrowed::BorrowedFragment;
 pub use owned::OwnedFragment;
-
 use serde::{Deserialize, Serialize};
 
 // Position types for fragments
@@ -109,7 +108,8 @@ pub trait Fragment: Clone {
 		self.into_owned()
 	}
 
-	/// Get a sub-fragment starting at the given offset with the given length
+	/// Get a sub-fragment starting at the given offset with the given
+	/// length
 	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment;
 }
 

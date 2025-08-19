@@ -4,8 +4,8 @@
 use crate::{
 	Frame,
 	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, Identity,
-		Params, Transaction,
+		CommandTransaction, Identity, Params, QueryTransaction,
+		Transaction,
 	},
 };
 
@@ -28,7 +28,7 @@ pub trait Execute<T: Transaction>: ExecuteCommand<T> + ExecuteQuery<T> {}
 pub trait ExecuteCommand<T: Transaction> {
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		cmd: Command<'a>,
 	) -> crate::Result<Vec<Frame>>;
 }
@@ -36,7 +36,7 @@ pub trait ExecuteCommand<T: Transaction> {
 pub trait ExecuteQuery<T: Transaction> {
 	fn execute_query<'a>(
 		&'a self,
-		txn: &mut ActiveQueryTransaction<T>,
+		txn: &mut QueryTransaction<T>,
 		qry: Query<'a>,
 	) -> crate::Result<Vec<Frame>>;
 }

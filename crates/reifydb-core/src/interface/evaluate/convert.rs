@@ -46,28 +46,27 @@ impl Convert for &EvaluationContext<'_> {
 		To: GetType,
 	{
 		match self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				from.checked_convert()
-					.ok_or_else(|| {
-						if From::get_type().is_integer()
-							&& To::get_type()
-								.is_floating_point(
-								) {
-							return error!(integer_precision_loss(
+			ColumnSaturationPolicy::Error => from
+				.checked_convert()
+				.ok_or_else(|| {
+					if From::get_type().is_integer()
+						&& To::get_type()
+							.is_floating_point()
+					{
+						return error!(integer_precision_loss(
                             fragment.into_fragment(),
                             From::get_type(),
                             To::get_type(),
                         ));
-						};
+					};
 
-						return error!(number_out_of_range(
-                        fragment.into_fragment(),
-                        To::get_type(),
-                        self.target_column.as_ref(),
-                    ));
-					})
-					.map(Some)
-			}
+					return error!(number_out_of_range(
+						fragment.into_fragment(),
+						To::get_type(),
+						self.target_column.as_ref(),
+					));
+				})
+				.map(Some),
 			ColumnSaturationPolicy::Undefined => {
 				match from.checked_convert() {
 					None => Ok(None),

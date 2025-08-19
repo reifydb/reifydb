@@ -4,32 +4,31 @@
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
+	hook::Hooks,
+	interceptor::Interceptors,
 	interface::{
 		BoxedVersionedIter, Transaction, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
 		VersionedQueryTransaction, VersionedTransaction,
+		interceptor::TransactionInterceptor,
+		transaction::pending::PendingWrite,
 	},
 	return_error,
 	row::EncodedRow,
 };
 
-/// An active query transaction that holds a versioned query transaction
-/// and provides query-only access to unversioned storage.
-pub struct ActiveQueryTransaction<T: Transaction> {
-	versioned: <T::Versioned as VersionedTransaction>::Query,
-	unversioned: T::Unversioned,
-	cdc: T::Cdc,
-}
-
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct ActiveCommandTransaction<T: Transaction> {
+pub struct CommandTransaction<T: Transaction> {
 	versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	state: TransactionState,
+	pending: Vec<PendingWrite>,
+	hooks: Hooks,
+	pub(crate) interceptors: Interceptors<T>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -39,119 +38,28 @@ enum TransactionState {
 	RolledBack,
 }
 
-impl<T: Transaction> ActiveQueryTransaction<T> {
-	/// Creates a new active query transaction
-	pub fn new(
-		versioned: <T::Versioned as VersionedTransaction>::Query,
-		unversioned: T::Unversioned,
-		cdc: T::Cdc,
-	) -> Self {
-		Self {
-			versioned,
-			unversioned,
-			cdc,
-		}
-	}
-
-	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(
-			&mut <T::Unversioned as UnversionedTransaction>::Query<
-				'_,
-			>,
-		) -> crate::Result<R>,
-	{
-		self.unversioned.with_query(f)
-	}
-
-	/// Execute a function with access to the versioned query transaction.
-	/// This operates within the same transaction context.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(
-			&mut <T::Versioned as VersionedTransaction>::Query,
-		) -> crate::Result<R>,
-	{
-		f(&mut self.versioned)
-	}
-
-	/// Get access to the CDC transaction interface
-	pub fn cdc(&self) -> &T::Cdc {
-		&self.cdc
-	}
-}
-
-impl<T: Transaction> VersionedQueryTransaction for ActiveQueryTransaction<T> {
-	#[inline]
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Versioned>> {
-		self.versioned.get(key)
-	}
-
-	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-		self.versioned.contains_key(key)
-	}
-
-	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.scan()
-	}
-
-	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.scan_rev()
-	}
-
-	#[inline]
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.range(range)
-	}
-
-	#[inline]
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.range_rev(range)
-	}
-
-	#[inline]
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.prefix(prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
-		self.versioned.prefix_rev(prefix)
-	}
-}
-
-impl<T: Transaction> ActiveCommandTransaction<T> {
-	/// Creates a new active command transaction
+impl<T: Transaction> CommandTransaction<T> {
+	/// Creates a new active command transaction with a pre-commit callback
 	pub fn new(
 		versioned: <T::Versioned as VersionedTransaction>::Command,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
+		hooks: Hooks,
+		interceptors: Interceptors<T>,
 	) -> Self {
 		Self {
 			versioned: Some(versioned),
 			unversioned,
 			cdc,
 			state: TransactionState::Active,
+			hooks,
+			pending: Vec::new(),
+			interceptors,
 		}
+	}
+
+	pub fn hooks(&self) -> &Hooks {
+		&self.hooks
 	}
 
 	/// Check if transaction is still active and return appropriate error if
@@ -210,7 +118,7 @@ impl<T: Transaction> ActiveCommandTransaction<T> {
 		self.check_active()?;
 		let result = f(self.versioned.as_mut().unwrap());
 
-		// If there was an error, we should rollback the transaction
+		// If there was an error, we should roll back the transaction
 		if result.is_err() {
 			if let Some(versioned) = self.versioned.take() {
 				self.state = TransactionState::RolledBack;
@@ -235,7 +143,7 @@ impl<T: Transaction> ActiveCommandTransaction<T> {
 		self.check_active()?;
 		let result = f(self.versioned.as_mut().unwrap());
 
-		// If there was an error, we should rollback the transaction
+		// If there was an error, we should roll back the transaction
 		if result.is_err() {
 			if let Some(versioned) = self.versioned.take() {
 				self.state = TransactionState::RolledBack;
@@ -249,11 +157,18 @@ impl<T: Transaction> ActiveCommandTransaction<T> {
 	/// Commit the transaction.
 	/// Since unversioned transactions are short-lived and auto-commit,
 	/// this only commits the versioned transaction.
-	pub fn commit(&mut self) -> crate::Result<()> {
+	pub fn commit(&mut self) -> crate::Result<crate::Version> {
 		self.check_active()?;
+
+		TransactionInterceptor::pre_commit(self)?;
+
 		if let Some(versioned) = self.versioned.take() {
 			self.state = TransactionState::Committed;
-			versioned.commit()
+			let version = versioned.commit()?;
+
+			TransactionInterceptor::post_commit(self, version)?;
+
+			Ok(version)
 		} else {
 			// This should never happen due to check_active
 			unreachable!("Transaction state inconsistency")
@@ -276,9 +191,19 @@ impl<T: Transaction> ActiveCommandTransaction<T> {
 	pub fn cdc(&self) -> &T::Cdc {
 		&self.cdc
 	}
+
+	/// Add a pending change to be processed at commit time
+	pub fn add_pending(&mut self, pending: PendingWrite) {
+		self.pending.push(pending);
+	}
+
+	/// Get all pending changes
+	pub fn take_pending(&mut self) -> Vec<PendingWrite> {
+		std::mem::take(&mut self.pending)
+	}
 }
 
-impl<T: Transaction> VersionedQueryTransaction for ActiveCommandTransaction<T> {
+impl<T: Transaction> VersionedQueryTransaction for CommandTransaction<T> {
 	#[inline]
 	fn get(
 		&mut self,
@@ -343,9 +268,7 @@ impl<T: Transaction> VersionedQueryTransaction for ActiveCommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedCommandTransaction
-	for ActiveCommandTransaction<T>
-{
+impl<T: Transaction> VersionedCommandTransaction for CommandTransaction<T> {
 	#[inline]
 	fn set(
 		&mut self,
@@ -363,7 +286,7 @@ impl<T: Transaction> VersionedCommandTransaction
 	}
 
 	#[inline]
-	fn commit(mut self) -> crate::Result<()> {
+	fn commit(mut self) -> crate::Result<crate::Version> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
 		self.versioned.take().unwrap().commit()
@@ -377,7 +300,7 @@ impl<T: Transaction> VersionedCommandTransaction
 	}
 }
 
-impl<T: Transaction> Drop for ActiveCommandTransaction<T> {
+impl<T: Transaction> Drop for CommandTransaction<T> {
 	fn drop(&mut self) {
 		if let Some(versioned) = self.versioned.take() {
 			// Auto-rollback if still active (not committed or

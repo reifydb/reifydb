@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	interface::fragment::BorrowedFragment, OwnedFragment, Type, err, error::diagnostic::cast,
-	value::Blob,
+	OwnedFragment, Type, err, error::diagnostic::cast,
+	interface::fragment::BorrowedFragment, value::Blob,
 };
 
 use crate::columnar::ColumnData;
@@ -20,10 +20,13 @@ pub fn to_blob(
 			);
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let temp_fragment = BorrowedFragment::new_internal(
-						container[idx].as_str(),
-					);
-					out.push(Blob::from_utf8(temp_fragment));
+					let temp_fragment =
+						BorrowedFragment::new_internal(
+							container[idx].as_str(),
+						);
+					out.push(Blob::from_utf8(
+						temp_fragment,
+					));
 				} else {
 					out.push_undefined()
 				}
@@ -53,8 +56,9 @@ mod tests {
 		let bitvec = BitVec::repeat(2, true);
 		let container = ColumnData::utf8_with_bitvec(strings, bitvec);
 
-		let result = to_blob(&container, || OwnedFragment::testing_empty())
-			.unwrap();
+		let result =
+			to_blob(&container, || OwnedFragment::testing_empty())
+				.unwrap();
 
 		match result {
 			ColumnData::Blob(container) => {
@@ -71,7 +75,8 @@ mod tests {
 		let bitvec = BitVec::repeat(1, true);
 		let container = ColumnData::int4_with_bitvec(ints, bitvec);
 
-		let result = to_blob(&container, || OwnedFragment::testing_empty());
+		let result =
+			to_blob(&container, || OwnedFragment::testing_empty());
 		assert!(result.is_err());
 	}
 }

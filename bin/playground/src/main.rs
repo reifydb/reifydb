@@ -6,14 +6,41 @@
 use std::{thread, time::Duration};
 
 use reifydb::{
-	MemoryDatabaseOptimistic, SessionSync, core::interface::Params, sync,
+	MemoryDatabaseOptimistic, SessionSync,
+	core::{
+		interceptor::{
+			post_commit, table_post_insert, table_pre_insert,
+		},
+		interface::Params,
+	},
+	sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
 // pub type DB = SqliteDatabaseOptimistic;
 
 fn main() {
-	let mut db: DB = sync::memory_optimistic();
+	// Example: Using the new unified interceptor API
+	let mut db: DB = sync::memory_optimistic()
+		.intercept(table_pre_insert(|_ctx| {
+			println!("Table pre insert interceptor called!");
+
+			dbg!(&_ctx.table);
+
+			Ok(())
+		}))
+		.intercept(table_post_insert(|_ctx| {
+			println!("Table post insert interceptor called!");
+			Ok(())
+		}))
+		.intercept(post_commit(|ctx| {
+			println!(
+				"Post-commit interceptor called with version: {:?}",
+				ctx.version
+			);
+			Ok(())
+		}))
+		.build();
 	// let mut db: DB =
 	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
@@ -28,7 +55,6 @@ fn main() {
 	)
 	.unwrap();
 
-	// Skip deferred view for now since flow subsystem has unimplemented
 	db.command_as_root(
 		r#"
 create deferred view test.basic { name: utf8, age: int1 } with {

@@ -9,8 +9,10 @@ mod uuid;
 use number::NumberParser;
 use reifydb_core::{
 	Type,
-	interface::evaluate::expression::ConstantExpression,
-	interface::fragment::IntoFragment,
+	interface::{
+		evaluate::expression::ConstantExpression,
+		fragment::IntoFragment,
+	},
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -85,7 +87,9 @@ impl StandardEvaluator {
 				if fragment.fragment().contains(".")
 					|| fragment.fragment().contains("e")
 				{
-					return match parse_float(fragment.clone()) {
+					return match parse_float(
+						fragment.clone(),
+					) {
 						Ok(v) => {
 							Ok(ColumnData::float8(
 								vec![
@@ -100,25 +104,33 @@ impl StandardEvaluator {
 					};
 				}
 
-				if let Ok(v) = parse_int::<i8>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_int::<i8>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int1(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i16>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_int::<i16>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int2(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i32>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_int::<i32>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int4(
 						vec![v; row_count],
 					));
 				}
 
-				if let Ok(v) = parse_int::<i64>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_int::<i64>(
+					fragment.clone().into_fragment(),
+				) {
 					return Ok(ColumnData::int8(
 						vec![v; row_count],
 					));
@@ -126,14 +138,17 @@ impl StandardEvaluator {
 
 				// if parsing as i128 fails and its a negative
 				// number, we are maxed out and can stop
-				match parse_int::<i128>(fragment.clone().into_fragment()) {
+				match parse_int::<i128>(
+					fragment.clone().into_fragment(),
+				) {
 					Ok(v) => {
 						return Ok(ColumnData::int16(
 							vec![v; row_count],
 						));
 					}
 					Err(err) => {
-						if fragment.fragment()
+						if fragment
+							.fragment()
 							.starts_with("-")
 						{
 							return Err(err);
@@ -141,7 +156,9 @@ impl StandardEvaluator {
 					}
 				}
 
-				return match parse_uint::<u128>(fragment.clone()) {
+				return match parse_uint::<u128>(
+					fragment.clone(),
+				) {
 					Ok(v) => Ok(ColumnData::uint16(
 						vec![v; row_count],
 					)),

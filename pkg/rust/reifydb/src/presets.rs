@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Pre-configured database types for common use cases
+//! Pre-configured post types for common use cases
 //!
-//! These type aliases provide non-generic database types that are ready to use
+//! These type aliases provide non-generic post types that are ready to use
 //! without having to specify the transaction types.
 
 use reifydb_core::interface::{StandardCdcTransaction, StandardTransaction};
@@ -26,38 +26,42 @@ pub type MemoryCdc = StandardCdcTransaction<Memory>;
 /// CDC transaction type for SQLite storage
 pub type SqliteCdc = StandardCdcTransaction<Sqlite>;
 
-/// In-memory database with serializable isolation
-pub type MemoryDatabaseSerializable = Database<
-	StandardTransaction<
-		Serializable<Memory, UnversionedMemory>,
-		UnversionedMemory,
-		MemoryCdc,
-	>,
+/// In-memory with serializable isolation
+pub type MemorySerializableTransaction = StandardTransaction<
+	Serializable<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
 >;
 
-/// In-memory database with optimistic concurrency control
-pub type MemoryDatabaseOptimistic = Database<
-	StandardTransaction<
-		Optimistic<Memory, UnversionedMemory>,
-		UnversionedMemory,
-		MemoryCdc,
-	>,
+/// In-memory post with serializable isolation
+pub type MemoryDatabaseSerializable = Database<MemorySerializableTransaction>;
+
+/// In-memory with optimistic concurrency control
+pub type MemoryOptimisticTransaction = StandardTransaction<
+	Optimistic<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
 >;
 
-/// SQLite-backed database with serializable isolations
-pub type SqliteDatabaseSerializable = Database<
-	StandardTransaction<
-		Serializable<Sqlite, UnversionedSqlite>,
-		UnversionedSqlite,
-		SqliteCdc,
-	>,
+/// In-memory post with optimistic concurrency control
+pub type MemoryDatabaseOptimistic = Database<MemoryOptimisticTransaction>;
+
+/// SQLite with serializable isolation
+pub type SqliteSerializableTransaction = StandardTransaction<
+	Serializable<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
 >;
 
-/// SQLite-backed database with optimistic concurrency control
-pub type SqliteDatabaseOptimistic = Database<
-	StandardTransaction<
-		Optimistic<Sqlite, UnversionedSqlite>,
-		UnversionedSqlite,
-		SqliteCdc,
-	>,
+/// SQLite-backed with serializable isolations
+pub type SqliteDatabaseSerializable = Database<SqliteSerializableTransaction>;
+
+/// SQLite with optimistic concurrency control
+pub type SqliteOptimisticTransaction = StandardTransaction<
+	Optimistic<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
 >;
+
+/// SQLite-backed post with optimistic concurrency control
+pub type SqliteDatabaseOptimistic = Database<SqliteOptimisticTransaction>;

@@ -80,6 +80,7 @@ fn render_physical_plan_inner(
 ) {
 	match plan {
 		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
+		PhysicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		PhysicalPlan::CreateSchema(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {

@@ -1,9 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Type, result::error::diagnostic::Diagnostic, interface::fragment::IntoFragment};
+use crate::{
+	Type, interface::fragment::IntoFragment,
+	result::error::diagnostic::Diagnostic,
+};
 
-pub fn not_can_not_applied_to_number(fragment: impl IntoFragment) -> Diagnostic {
+pub fn not_can_not_applied_to_number(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_001".to_string(),
@@ -41,7 +46,9 @@ pub fn not_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn not_can_not_applied_to_temporal(fragment: impl IntoFragment) -> Diagnostic {
+pub fn not_can_not_applied_to_temporal(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_003".to_string(),
@@ -79,7 +86,9 @@ pub fn not_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn and_can_not_applied_to_number(fragment: impl IntoFragment) -> Diagnostic {
+pub fn and_can_not_applied_to_number(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_005".to_string(),
@@ -117,7 +126,9 @@ pub fn and_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn and_can_not_applied_to_temporal(fragment: impl IntoFragment) -> Diagnostic {
+pub fn and_can_not_applied_to_temporal(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_007".to_string(),
@@ -193,7 +204,9 @@ pub fn or_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn or_can_not_applied_to_temporal(fragment: impl IntoFragment) -> Diagnostic {
+pub fn or_can_not_applied_to_temporal(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_011".to_string(),
@@ -231,7 +244,9 @@ pub fn or_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn xor_can_not_applied_to_number(fragment: impl IntoFragment) -> Diagnostic {
+pub fn xor_can_not_applied_to_number(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_013".to_string(),
@@ -269,7 +284,9 @@ pub fn xor_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn xor_can_not_applied_to_temporal(fragment: impl IntoFragment) -> Diagnostic {
+pub fn xor_can_not_applied_to_temporal(
+	fragment: impl IntoFragment,
+) -> Diagnostic {
 	let fragment = fragment.into_fragment();
 	Diagnostic {
         code: "OPERATOR_015".to_string(),

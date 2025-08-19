@@ -3,7 +3,7 @@
 
 use std::thread;
 
-use reifydb::{WithHooks, network::ws::server::WsConfig, server};
+use reifydb::{network::ws::server::WsConfig, server};
 use tokio::{
 	runtime::Runtime,
 	select, signal,
@@ -45,27 +45,27 @@ fn main() {
 		.with_ws(WsConfig {
 			socket: "0.0.0.0:8090".parse().ok(),
 		})
-		.on_create(|ctx| {
-			println!("on create");
-
-			ctx.command_as_root("create schema test", ())?;
-			ctx.command_as_root(
-				"create table test.arith { id: int1, value: int2, num: int2 }",
-				(),
-			)?;
-			ctx.command_as_root(
-				"from [
-                { id: 1, value: 1, num: 5  },
-                { id: 1, value: 1, num: 10 },
-                { id: 1, value: 2, num: 15 },
-                { id: 2, value: 1, num: 10 },
-                { id: 2, value: 1, num: 30 }
-              ] insert test.arith
-            ",
-				(),
-			)?;
-			Ok(())
-		})
+		// .on_create(|ctx| {
+		// 	println!("on create");
+		//
+		// 	ctx.command_as_root("create schema test", ())?;
+		// 	ctx.command_as_root(
+		// 		"create table test.arith { id: int1, value: int2, num: int2 }",
+		// 		(),
+		// 	)?;
+		// 	ctx.command_as_root(
+		// 		"from [
+		//         { id: 1, value: 1, num: 5  },
+		//         { id: 1, value: 1, num: 10 },
+		//         { id: 1, value: 2, num: 15 },
+		//         { id: 2, value: 1, num: 10 },
+		//         { id: 2, value: 1, num: 30 }
+		//       ] insert test.arith
+		//     ",
+		// 		(),
+		// 	)?;
+		// 	Ok(())
+		// })
 		.build();
 
 	// Start the database

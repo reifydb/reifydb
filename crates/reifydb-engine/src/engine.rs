@@ -6,11 +6,11 @@ use std::{marker::PhantomData, ops::Deref, sync::Arc};
 use reifydb_core::{
 	Frame,
 	hook::{Hook, Hooks},
+	interceptor::InterceptorFactory,
 	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, Command,
-		Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		GetHooks, Identity, Params, Query, Transaction,
-		VersionedTransaction,
+		Command, CommandTransaction, Engine as EngineInterface,
+		ExecuteCommand, ExecuteQuery, GetHooks, Identity, Params,
+		Query, QueryTransaction, Transaction, VersionedTransaction,
 	},
 };
 
@@ -28,16 +28,19 @@ impl<T: Transaction> GetHooks for StandardEngine<T> {
 }
 
 impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
-	fn begin_command(&self) -> crate::Result<ActiveCommandTransaction<T>> {
-		Ok(ActiveCommandTransaction::new(
+	fn begin_command(&self) -> crate::Result<CommandTransaction<T>> {
+		let interceptors = self.interceptors.create();
+		Ok(CommandTransaction::new(
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
+			self.hooks.clone(),
+			interceptors,
 		))
 	}
 
-	fn begin_query(&self) -> crate::Result<ActiveQueryTransaction<T>> {
-		Ok(ActiveQueryTransaction::new(
+	fn begin_query(&self) -> crate::Result<QueryTransaction<T>> {
+		Ok(QueryTransaction::new(
 			self.versioned.begin_query()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
@@ -86,7 +89,7 @@ impl<T: Transaction> ExecuteCommand<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		cmd: Command<'a>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)
@@ -97,7 +100,7 @@ impl<T: Transaction> ExecuteQuery<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_query<'a>(
 		&'a self,
-		txn: &mut ActiveQueryTransaction<T>,
+		txn: &mut QueryTransaction<T>,
 		qry: Query<'a>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)
@@ -124,6 +127,7 @@ pub struct EngineInner<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	executor: Executor<T>,
+	interceptors: Box<dyn InterceptorFactory<T>>,
 }
 
 impl<T: Transaction> StandardEngine<T> {
@@ -132,8 +136,9 @@ impl<T: Transaction> StandardEngine<T> {
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		hooks: Hooks,
-	) -> crate::Result<Self> {
-		let result = Self(Arc::new(EngineInner {
+		interceptors: Box<dyn InterceptorFactory<T>>,
+	) -> Self {
+		Self(Arc::new(EngineInner {
 			versioned: versioned.clone(),
 			unversioned: unversioned.clone(),
 			cdc: cdc.clone(),
@@ -167,9 +172,8 @@ impl<T: Transaction> StandardEngine<T> {
 					.build(),
 				_phantom: PhantomData,
 			},
-		}));
-
-		Ok(result)
+			interceptors,
+		}))
 	}
 
 	#[inline]

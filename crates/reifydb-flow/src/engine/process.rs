@@ -8,10 +8,10 @@ use reifydb_catalog::{Catalog, sequence::ViewRowSequence};
 use reifydb_core::{
 	Type, Value,
 	interface::{
-		ActiveCommandTransaction, ColumnIndex, EncodableKey, Evaluator,
+		ColumnIndex, CommandTransaction, EncodableKey, Evaluator,
 		GetEncodedRowLayout, SchemaId, SourceId, SourceId::Table,
 		Transaction, VersionedCommandTransaction, ViewColumnDef,
-		ViewColumnId, ViewDef, ViewId, ViewRowKey,
+		ViewColumnId, ViewDef, ViewId, ViewKind, ViewRowKey,
 	},
 };
 
@@ -20,7 +20,7 @@ use crate::{Change, Diff, Flow, FlowNode, FlowNodeType, engine::FlowEngine};
 impl<E: Evaluator> FlowEngine<'_, E> {
 	pub fn process<T: Transaction>(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		change: Change,
 	) -> crate::Result<()> {
 		let mut diffs_by_source = HashMap::new();
@@ -81,7 +81,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 
 	fn process_node<T: Transaction>(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		flow: &Flow,
 		node: &FlowNode,
 		change: &Change,
@@ -124,7 +124,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 
 	fn apply_to_view<T: Transaction>(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
@@ -136,6 +136,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 			id: view_id,
 			schema: SchemaId(0),
 			name: "view".to_string(),
+			kind: ViewKind::Deferred,
 			columns: vec![
 				ViewColumnDef {
 					id: ViewColumnId(0),

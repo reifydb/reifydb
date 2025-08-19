@@ -8,6 +8,7 @@ use std::{
 };
 
 pub mod lifecycle;
+pub mod table;
 pub mod transaction;
 
 pub type BoxedHookIter = Box<dyn Iterator<Item = Box<dyn Hook>>>;
@@ -189,8 +190,8 @@ mod tests {
 	use std::sync::{Arc, Mutex};
 
 	use crate::{
-		interface::fragment::OwnedFragment,
 		hook::{BoxedHookIter, Callback, Hook, Hooks},
+		interface::fragment::OwnedFragment,
 		result::error::diagnostic::Diagnostic,
 		return_error,
 	};

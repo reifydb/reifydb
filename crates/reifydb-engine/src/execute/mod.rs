@@ -7,8 +7,8 @@ use query::compile::compile;
 use reifydb_core::{
 	Frame,
 	interface::{
-		ActiveCommandTransaction, ActiveQueryTransaction, Command,
-		Execute, ExecuteCommand, ExecuteQuery, Params, Query,
+		Command, CommandTransaction, Execute, ExecuteCommand,
+		ExecuteQuery, Params, Query, QueryTransaction,
 		StandardCdcTransaction, StandardTransaction, TableDef,
 		Transaction, VersionedQueryTransaction,
 	},
@@ -101,7 +101,7 @@ impl
 impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		cmd: Command<'a>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -125,7 +125,7 @@ impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
 impl<T: Transaction> ExecuteQuery<T> for Executor<T> {
 	fn execute_query<'a>(
 		&'a self,
-		txn: &mut ActiveQueryTransaction<T>,
+		txn: &mut QueryTransaction<T>,
 		qry: Query<'a>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -174,6 +174,7 @@ impl<T: Transaction> Executor<T> {
 
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::CreateDeferredView(_)
+			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 		}
@@ -181,7 +182,7 @@ impl<T: Transaction> Executor<T> {
 
 	pub(crate) fn execute_command_plan(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -191,6 +192,9 @@ impl<T: Transaction> Executor<T> {
 			}
 			PhysicalPlan::CreateDeferredView(plan) => {
 				self.create_deferred_view(txn, plan)
+			}
+			PhysicalPlan::CreateTransactionalView(plan) => {
+				self.create_transactional_view(txn, plan)
 			}
 			PhysicalPlan::CreateSchema(plan) => {
 				self.create_schema(txn, plan)

@@ -230,8 +230,9 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				let Expression::Column(ColumnExpression(fragment)) =
-					left
+				let Expression::Column(ColumnExpression(
+					fragment,
+				)) = left
 				else {
 					panic!()
 				};
@@ -318,7 +319,9 @@ impl ExpressionCompiler {
 				};
 
 				Ok(Expression::Alias(AliasExpression {
-					alias: IdentExpression(right.fragment()),
+					alias: IdentExpression(
+						right.fragment(),
+					),
 					expression: Box::new(left),
 					fragment: token.fragment,
 				}))

@@ -124,8 +124,11 @@ type Fragment<'a> = LocatedSpan<&'a str>;
 fn keyword_tag<'a>(
 	kw: Keyword,
 	tag_str: &'static str,
-) -> impl Parser<Fragment<'a>, Output = Keyword, Error = nom::error::Error<Fragment<'a>>> + 'a
-{
+) -> impl Parser<
+	Fragment<'a>,
+	Output = Keyword,
+	Error = nom::error::Error<Fragment<'a>>,
+> + 'a {
 	move |input: Fragment<'a>| {
 		let original = input;
 
@@ -241,6 +244,7 @@ pub(crate) fn parse_keyword(
 #[cfg(test)]
 mod tests {
 	use reifydb_core::Fragment;
+
 	use crate::ast::lex::{
 		LocatedSpan, TokenKind,
 		keyword::{Keyword, parse_keyword},

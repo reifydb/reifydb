@@ -3,7 +3,7 @@
 
 use super::Blob;
 use crate::{
-	interface::fragment::Fragment, result::error::diagnostic::blob, Error,
+	Error, interface::fragment::Fragment, result::error::diagnostic::blob,
 };
 
 impl Blob {

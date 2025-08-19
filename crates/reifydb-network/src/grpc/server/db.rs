@@ -4,7 +4,7 @@
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use reifydb_core::{
-	Type, Value, Fragment,
+	Fragment, Type, Value,
 	interface::{
 		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
@@ -261,7 +261,7 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
 		line: s.line().0,
 		fragment: s.fragment().to_string(),
 	});
-	
+
 	grpc::Diagnostic {
 		code: diagnostic.code.to_string(),
 		statement: diagnostic.statement,

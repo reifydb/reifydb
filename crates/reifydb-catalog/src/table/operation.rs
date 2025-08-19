@@ -1,0 +1,153 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use PendingWrite::InsertIntoTable;
+use reifydb_core::{
+	RowId,
+	hook::table::{TablePostInsertHook, TablePreInsertHook},
+	interface::{
+		CommandTransaction, EncodableKey, PendingWrite, TableDef,
+		TableRowKey, Transaction, VersionedCommandTransaction,
+		interceptor::TableInterceptor,
+	},
+	row::EncodedRow,
+};
+
+use crate::sequence::TableRowSequence;
+
+pub trait TableOperations {
+	fn insert_into_table(
+		&mut self,
+		table: TableDef,
+		row: EncodedRow,
+	) -> crate::Result<()>;
+
+	fn update_table(
+		&mut self,
+		table: TableDef,
+		id: RowId,
+		row: EncodedRow,
+	) -> crate::Result<()>;
+
+	fn remove_from_table(
+		&mut self,
+		table: TableDef,
+		id: RowId,
+	) -> crate::Result<()>;
+}
+
+impl<T: Transaction> TableOperations for CommandTransaction<T> {
+	fn insert_into_table(
+		&mut self,
+		table: TableDef,
+		row: EncodedRow,
+	) -> crate::Result<()> {
+		let row_id = TableRowSequence::next_row_id(self, table.id)?;
+
+		TableInterceptor::pre_insert(self, &table, &row)?;
+
+		// Still trigger hooks for backward compatibility
+		self.hooks()
+			.trigger(TablePreInsertHook {
+				table: table.clone(),
+				row: row.clone(),
+			})
+			.unwrap();
+
+		self.set(
+			&TableRowKey {
+				table: table.id,
+				row: row_id,
+			}
+			.encode(),
+			row.clone(),
+		)?;
+
+		TableInterceptor::post_insert(self, &table, row_id, &row)?;
+
+		// Still trigger hooks for backward compatibility
+		self.hooks()
+			.trigger(TablePostInsertHook {
+				table: table.clone(),
+				id: row_id,
+				row: row.clone(),
+			})
+			.unwrap();
+
+		self.add_pending(InsertIntoTable {
+			table,
+			id: row_id,
+			row,
+		});
+
+		Ok(())
+	}
+
+	fn update_table(
+		&mut self,
+		table: TableDef,
+		id: RowId,
+		row: EncodedRow,
+	) -> crate::Result<()> {
+		let key = TableRowKey {
+			table: table.id,
+			row: id,
+		}
+		.encode();
+
+		// Get the current row before updating (for post-update
+		// interceptor) let old_row = self.get(&key)?.map(|v|
+		// v.into());
+
+		TableInterceptor::pre_update(self, &table, id, &row)?;
+
+		self.set(&key, row.clone())?;
+
+		// Execute post-update interceptors if we had an old row
+		// if let Some(ref old) = old_row {
+		// 	TableInterceptor::post_update(self, &table, id, &row, old)?;
+		// }
+
+		self.add_pending(PendingWrite::Update {
+			table,
+			id,
+			row,
+		});
+
+		Ok(())
+	}
+
+	fn remove_from_table(
+		&mut self,
+		table: TableDef,
+		id: RowId,
+	) -> crate::Result<()> {
+		let key = TableRowKey {
+			table: table.id,
+			row: id,
+		}
+		.encode();
+
+		// Get the row before removing (for post-delete interceptor)
+		// let deleted_row = self.get(&key)?.map(|v| v.into_row());
+
+		// Execute pre-delete interceptors
+		TableInterceptor::pre_delete(self, &table, id)?;
+
+		// Remove the row from the database
+		self.remove(&key)?;
+
+		// Execute post-delete interceptors if we had a row
+		// if let Some(ref row) = deleted_row {
+		// 	TableInterceptor::post_delete(self, &table, id, row)?;
+		// }
+
+		// Track the removal for flow processing
+		self.add_pending(PendingWrite::Remove {
+			table,
+			id,
+		});
+
+		Ok(())
+	}
+}

@@ -3,8 +3,8 @@
 
 use crate::{
 	Type,
+	interface::fragment::{Fragment, IntoFragment, OwnedFragment},
 	result::error::diagnostic::{Diagnostic, util::value_max},
-    interface::fragment::{Fragment, IntoFragment, OwnedFragment},
 };
 
 pub fn sequence_exhausted(value: Type) -> Diagnostic {

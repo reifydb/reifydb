@@ -8,11 +8,9 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use crate::interface::fragment::Fragment;
-
 use serde::{Deserialize, Serialize};
 
-use crate::{OwnedFragment, Type};
+use crate::{OwnedFragment, Type, interface::fragment::Fragment};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression {
@@ -88,7 +86,10 @@ pub struct AccessSourceExpression {
 
 impl AccessSourceExpression {
 	pub fn fragment(&self) -> OwnedFragment {
-		OwnedFragment::merge_all([self.source.clone(), self.column.clone()])
+		OwnedFragment::merge_all([
+			self.source.clone(),
+			self.column.clone(),
+		])
 	}
 }
 
@@ -399,7 +400,8 @@ impl Display for Expression {
 				write!(
 					f,
 					"{}.{}",
-					target.fragment(), property.fragment()
+					target.fragment(),
+					property.fragment()
 				)
 			}
 			Expression::Alias(AliasExpression {
@@ -570,7 +572,10 @@ impl CallExpression {
 				self.func.0.fragment(),
 				self.args
 					.iter()
-					.map(|arg| arg.fragment().fragment().to_string())
+					.map(|arg| arg
+						.fragment()
+						.fragment()
+						.to_string())
 					.collect::<Vec<_>>()
 					.join(",")
 			),

@@ -16,9 +16,10 @@ use reifydb_core::{
 	EncodedKey, Result, RowId,
 	diagnostic::Diagnostic,
 	hook::Hooks,
+	interceptor::StandardInterceptorFactory,
 	interface::{
-		ActiveCommandTransaction, CdcConsume, CdcConsumer,
-		CdcConsumerKey, CdcEvent, ConsumerId, EncodableKey,
+		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
+		CommandTransaction, ConsumerId, EncodableKey,
 		Engine as EngineInterface, Key, StandardCdcTransaction,
 		StandardTransaction, TableId, VersionedCommandTransaction,
 		VersionedQueryTransaction, key::TableRowKey,
@@ -465,8 +466,13 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let versioned =
 		Serializable::new(memory, unversioned.clone(), hooks.clone());
 
-	StandardEngine::new(versioned, unversioned, cdc, hooks)
-		.expect("Failed to create engine")
+	StandardEngine::new(
+		versioned,
+		unversioned,
+		cdc,
+		hooks,
+		Box::new(StandardInterceptorFactory::default()),
+	)
 }
 
 struct TestConsumer {
@@ -510,7 +516,7 @@ impl Clone for TestConsumer {
 impl CdcConsume<TestTransaction> for TestConsumer {
 	fn consume(
 		&self,
-		_txn: &mut ActiveCommandTransaction<TestTransaction>,
+		_txn: &mut CommandTransaction<TestTransaction>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {

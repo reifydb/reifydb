@@ -25,12 +25,11 @@ impl StandardEvaluator {
 		let arguments = self.evaluate_arguments(ctx, &call.args)?;
 		let function = call.func.0.fragment();
 
-		let functor = self
-			.functions
-			.get_scalar(function)
-			.ok_or(error!(function::unknown_function(
+		let functor = self.functions.get_scalar(function).ok_or(
+			error!(function::unknown_function(
 				function.to_string()
-			)))?;
+			)),
+		)?;
 
 		let row_count = ctx.row_count;
 		Ok(Column::ColumnQualified(ColumnQualified {

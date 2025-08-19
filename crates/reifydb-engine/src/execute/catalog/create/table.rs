@@ -4,7 +4,7 @@
 use reifydb_catalog::{Catalog, table::TableToCreate};
 use reifydb_core::{
 	Value,
-	interface::{ActiveCommandTransaction, Transaction},
+	interface::{CommandTransaction, Transaction},
 	result::error::diagnostic::catalog::table_already_exists,
 	return_error,
 };
@@ -15,7 +15,7 @@ use crate::{columnar::Columns, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_table(
 		&self,
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
 		if let Some(table) = Catalog::find_table_by_name(

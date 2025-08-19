@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	interface::fragment::{BorrowedFragment, OwnedFragment, Fragment},
 	Date, DateTime, Interval, Time, Type, error,
+	interface::fragment::{BorrowedFragment, Fragment, OwnedFragment},
 	result::error::diagnostic::cast,
 	value::{
 		container::StringContainer,
@@ -62,7 +62,7 @@ macro_rules! impl_to_temporal {
                     let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
                         // Get the original fragment for error reporting
                         let proper_fragment = fragment();
-                        
+
                         // Handle fragment replacement based on the context
                         // For Internal fragments (from parsing), we need to adjust position
                         if let OwnedFragment::Internal { text: error_text } = &e.0.fragment {
@@ -84,7 +84,7 @@ macro_rules! impl_to_temporal {
                                 e.0.fragment = proper_fragment.clone();
                             }
                         }
-                        
+
                         // Wrap in cast error with the original fragment for the outer error
                         error!(cast::invalid_temporal(proper_fragment, $target_type, e.0))
                     })?;

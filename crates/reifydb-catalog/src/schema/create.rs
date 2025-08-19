@@ -2,19 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	OwnedFragment,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, SchemaKey, Transaction,
+		CommandTransaction, EncodableKey, SchemaKey, Transaction,
 		VersionedCommandTransaction,
 	},
 	result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
-	OwnedFragment,
 };
 
 use crate::{
-	schema::{layout::schema, SchemaDef},
-	sequence::SystemSequence,
 	Catalog,
+	schema::{SchemaDef, layout::schema},
+	sequence::SystemSequence,
 };
 
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ pub struct SchemaToCreate {
 
 impl Catalog {
 	pub fn create_schema<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =
@@ -64,7 +64,7 @@ mod tests {
 	use reifydb_core::interface::SchemaId;
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{schema::create::SchemaToCreate, Catalog};
+	use crate::{Catalog, schema::create::SchemaToCreate};
 
 	#[test]
 	fn test_create_schema() {

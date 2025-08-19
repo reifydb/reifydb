@@ -3,7 +3,11 @@
 
 //! BLOB-related diagnostic functions
 
-use crate::{result::error::diagnostic::Diagnostic, interface::fragment::{Fragment, IntoFragment}, fragment};
+use crate::{
+	fragment,
+	interface::fragment::{Fragment, IntoFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 /// Invalid hexadecimal string in BLOB constructor
 pub fn invalid_hex_string(fragment: impl IntoFragment) -> Diagnostic {

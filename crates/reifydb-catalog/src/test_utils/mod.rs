@@ -4,7 +4,7 @@
 use reifydb_core::{
 	Type,
 	interface::{
-		ActiveCommandTransaction, ColumnPolicyKind, TableDef, TableId,
+		ColumnPolicyKind, CommandTransaction, TableDef, TableId,
 		Transaction, ViewDef,
 	},
 };
@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub fn create_schema<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 	schema: &str,
 ) -> SchemaDef {
 	Catalog::create_schema(
@@ -34,7 +34,7 @@ pub fn create_schema<T: Transaction>(
 }
 
 pub fn ensure_test_schema<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 ) -> SchemaDef {
 	if let Some(result) =
 		Catalog::find_schema_by_name(txn, "test_schema").unwrap()
@@ -45,7 +45,7 @@ pub fn ensure_test_schema<T: Transaction>(
 }
 
 pub fn ensure_test_table<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 ) -> TableDef {
 	let schema = ensure_test_schema(txn);
 	if let Some(result) =
@@ -58,7 +58,7 @@ pub fn ensure_test_table<T: Transaction>(
 }
 
 pub fn create_table<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 	schema: &str,
 	table: &str,
 	columns: &[table::TableColumnToCreate],
@@ -76,7 +76,7 @@ pub fn create_table<T: Transaction>(
 }
 
 pub fn create_test_table_column<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 	name: &str,
 	value: Type,
 	policies: Vec<ColumnPolicyKind>,
@@ -105,12 +105,12 @@ pub fn create_test_table_column<T: Transaction>(
 }
 
 pub fn create_view<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 	schema: &str,
 	view: &str,
 	columns: &[view::ViewColumnToCreate],
 ) -> ViewDef {
-	Catalog::create_view(
+	Catalog::create_deferred_view(
 		txn,
 		ViewToCreate {
 			fragment: None,

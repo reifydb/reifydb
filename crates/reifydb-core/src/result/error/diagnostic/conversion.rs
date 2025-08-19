@@ -1,4 +1,7 @@
-use crate::{interface::fragment::OwnedFragment, result::error::diagnostic::Diagnostic};
+use crate::{
+	interface::fragment::OwnedFragment,
+	result::error::diagnostic::Diagnostic,
+};
 
 /// Array conversion error
 pub fn array_conversion_error(

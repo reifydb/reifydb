@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{result::error::diagnostic::Diagnostic, interface::fragment::{Fragment, IntoFragment, OwnedFragment}};
+use crate::{
+	interface::fragment::{Fragment, IntoFragment, OwnedFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 /// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {

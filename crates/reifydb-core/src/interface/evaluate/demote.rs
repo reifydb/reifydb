@@ -84,8 +84,9 @@ mod tests {
 				.with_column_type(Type::Int1));
 		ctx.column_policies = vec![Saturation(Error)];
 
-		let result = ctx
-			.demote::<i16, i8>(1i16, || OwnedFragment::testing_empty());
+		let result = ctx.demote::<i16, i8>(1i16, || {
+			OwnedFragment::testing_empty()
+		});
 		assert_eq!(result, Ok(Some(1i8)));
 	}
 

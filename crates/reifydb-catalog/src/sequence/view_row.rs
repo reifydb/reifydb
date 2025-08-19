@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ActiveCommandTransaction, EncodableKey, Transaction, ViewId,
+	CommandTransaction, EncodableKey, Transaction, ViewId,
 	ViewRowSequenceKey,
 };
 
@@ -12,7 +12,7 @@ pub struct ViewRowSequence {}
 
 impl ViewRowSequence {
 	pub fn next_row_id<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 	) -> crate::Result<RowId> {
 		GeneratorU64::next(

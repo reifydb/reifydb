@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::Blob;
-use crate::{interface::fragment::Fragment, result::error::diagnostic::blob, Error};
+use crate::{
+	Error, interface::fragment::Fragment, result::error::diagnostic::blob,
+};
 
 impl Blob {
 	pub fn from_utf8(fragment: impl Fragment) -> Self {
@@ -28,19 +30,22 @@ impl Blob {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::interface::OwnedFragment;
+	use super::*;
+	use crate::interface::OwnedFragment;
 
-    #[test]
+	#[test]
 	fn test_from_utf8() {
-		let blob = Blob::from_utf8(OwnedFragment::testing("Hello, World!"));
+		let blob = Blob::from_utf8(OwnedFragment::testing(
+			"Hello, World!",
+		));
 		assert_eq!(blob.as_bytes(), b"Hello, World!");
 	}
 
 	#[test]
 	fn test_from_utf8_unicode() {
-		let blob =
-			Blob::from_utf8(OwnedFragment::testing("Hello, 世界! 🦀"));
+		let blob = Blob::from_utf8(OwnedFragment::testing(
+			"Hello, 世界! 🦀",
+		));
 		assert_eq!(blob.as_bytes(), "Hello, 世界! 🦀".as_bytes());
 	}
 

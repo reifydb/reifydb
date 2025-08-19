@@ -58,7 +58,10 @@ mod tests {
 			PhysicalPlan::AlterSequence(plan) => {
 				assert!(plan.schema.is_some());
 				assert_eq!(
-					plan.schema.as_ref().unwrap().fragment(),
+					plan.schema
+						.as_ref()
+						.unwrap()
+						.fragment(),
 					"test"
 				);
 				assert_eq!(plan.table.fragment(), "users");

@@ -15,7 +15,7 @@ use reifydb_catalog::sequence::flow::{
 	next_flow_edge_id, next_flow_id, next_flow_node_id,
 };
 use reifydb_core::interface::{
-	ActiveCommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
+	CommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
 
@@ -36,7 +36,7 @@ use crate::{
 
 /// Public API for compiling logical plans to Flows
 pub fn compile_flow<T: Transaction>(
-	txn: &mut ActiveCommandTransaction<T>,
+	txn: &mut CommandTransaction<T>,
 	plan: PhysicalPlan,
 	sink: &ViewDef,
 ) -> crate::Result<Flow> {
@@ -49,14 +49,12 @@ pub(crate) struct FlowCompiler<'a, T: Transaction> {
 	/// The flow graph being built
 	flow: Flow,
 	/// Transaction for accessing catalog and sequences
-	txn: &'a mut ActiveCommandTransaction<T>,
+	txn: &'a mut CommandTransaction<T>,
 }
 
 impl<'a, T: Transaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
-	pub fn new(
-		txn: &'a mut ActiveCommandTransaction<T>,
-	) -> crate::Result<Self> {
+	pub fn new(txn: &'a mut CommandTransaction<T>) -> crate::Result<Self> {
 		Ok(Self {
 			flow: Flow::new(next_flow_id(txn)?),
 			txn,
@@ -162,6 +160,7 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::CreateDeferredView(_)
+			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::Delete(_) => {

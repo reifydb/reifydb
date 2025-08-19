@@ -78,6 +78,7 @@ impl Compiler {
 #[derive(Debug)]
 pub enum LogicalPlan {
 	CreateDeferredView(CreateDeferredViewNode),
+	CreateTransactionalView(CreateTransactionalViewNode),
 	CreateSchema(CreateSchemaNode),
 	CreateSequence(CreateSequenceNode),
 	CreateTable(CreateTableNode),
@@ -103,6 +104,15 @@ pub enum LogicalPlan {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode {
+	pub schema: OwnedFragment,
+	pub view: OwnedFragment,
+	pub if_not_exists: bool,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub with: Vec<LogicalPlan>,
+}
+
+#[derive(Debug)]
+pub struct CreateTransactionalViewNode {
 	pub schema: OwnedFragment,
 	pub view: OwnedFragment,
 	pub if_not_exists: bool,

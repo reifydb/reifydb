@@ -7,6 +7,7 @@ mod common;
 pub mod delta;
 pub mod hook;
 pub mod index;
+pub mod interceptor;
 pub mod interface;
 pub mod result;
 pub mod row;
@@ -15,14 +16,11 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
-pub use interface::{
-	ColumnDescriptor,
-};
+pub use interface::ColumnDescriptor;
 // Re-export fragment types
 pub use interface::fragment::{
-	Fragment, IntoFragment, IntoOwnedFragment,
-	OwnedFragment, BorrowedFragment,
-	StatementColumn, StatementLine,
+	BorrowedFragment, Fragment, IntoFragment, IntoOwnedFragment,
+	OwnedFragment, StatementColumn, StatementLine,
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};

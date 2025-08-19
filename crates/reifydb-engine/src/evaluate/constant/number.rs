@@ -28,10 +28,18 @@ impl NumberParser {
 			Type::Bool => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
 			Type::Float8 => Self::parse_float8(fragment, row_count),
-			Type::Int1 => Self::parse_int1(fragment, target, row_count),
-			Type::Int2 => Self::parse_int2(fragment, target, row_count),
-			Type::Int4 => Self::parse_int4(fragment, target, row_count),
-			Type::Int8 => Self::parse_int8(fragment, target, row_count),
+			Type::Int1 => {
+				Self::parse_int1(fragment, target, row_count)
+			}
+			Type::Int2 => {
+				Self::parse_int2(fragment, target, row_count)
+			}
+			Type::Int4 => {
+				Self::parse_int4(fragment, target, row_count)
+			}
+			Type::Int8 => {
+				Self::parse_int8(fragment, target, row_count)
+			}
 			Type::Int16 => {
 				Self::parse_int16(fragment, target, row_count)
 			}

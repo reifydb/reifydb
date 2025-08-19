@@ -1,16 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{hook::Hooks, interface::Transaction};
+use reifydb_core::{
+	hook::Hooks,
+	interceptor::{AddToBuilder, StandardInterceptorBuilder},
+	interface::Transaction,
+};
 use reifydb_engine::StandardEngine;
 
 use super::DatabaseBuilder;
-use crate::{Database, hook::WithHooks};
+use crate::Database;
 
 #[cfg(feature = "async")]
 pub struct AsyncBuilder<T: Transaction> {
-	inner: DatabaseBuilder<T>,
-	engine: StandardEngine<T>,
+	versioned: T::Versioned,
+	unversioned: T::Unversioned,
+	cdc: T::Cdc,
+	hooks: Hooks,
+	interceptors: StandardInterceptorBuilder<T>,
 }
 
 #[cfg(feature = "async")]
@@ -21,28 +28,33 @@ impl<T: Transaction> AsyncBuilder<T> {
 		cdc: T::Cdc,
 		hooks: Hooks,
 	) -> Self {
-		let engine = StandardEngine::new(
+		Self {
 			versioned,
 			unversioned,
 			cdc,
-			hooks.clone(),
-		)
-		.unwrap();
-		let inner = DatabaseBuilder::new(engine.clone());
-		Self {
-			inner,
-			engine,
+			hooks,
+			interceptors: StandardInterceptorBuilder::new(),
 		}
 	}
 
-	pub fn build(self) -> Database<T> {
-		self.inner.build()
+	pub fn intercept<I>(mut self, interceptor: I) -> Self
+	where
+		I: AddToBuilder<T>,
+	{
+		self.interceptors =
+			interceptor.add_to_builder(self.interceptors);
+		self
 	}
-}
 
-#[cfg(feature = "async")]
-impl<T: Transaction> WithHooks<T> for AsyncBuilder<T> {
-	fn engine(&self) -> &StandardEngine<T> {
-		&self.engine
+	pub fn build(self) -> Database<T> {
+		let engine = StandardEngine::new(
+			self.versioned,
+			self.unversioned,
+			self.cdc,
+			self.hooks,
+			Box::new(self.interceptors.build()),
+		);
+
+		DatabaseBuilder::new(engine).build()
 	}
 }

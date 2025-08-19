@@ -124,6 +124,7 @@ pub(crate) fn compile(
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::CreateDeferredView(_)
+		| PhysicalPlan::CreateTransactionalView(_)
 		| PhysicalPlan::CreateSchema(_)
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::Delete(_)

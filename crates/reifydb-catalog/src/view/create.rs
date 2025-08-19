@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use ViewKind::{Deferred, Transactional};
 use reifydb_core::{
 	OwnedFragment, Type,
 	interface::{
-		ActiveCommandTransaction, EncodableKey, Key, SchemaId,
-		SchemaViewKey, Transaction, VersionedCommandTransaction,
-		ViewDef, ViewId, ViewKey,
+		CommandTransaction, EncodableKey, Key, SchemaId, SchemaViewKey,
+		Transaction, VersionedCommandTransaction, ViewDef, ViewId,
+		ViewKey, ViewKind,
 	},
 	result::error::diagnostic::catalog::{
 		schema_not_found, view_already_exists,
@@ -37,9 +38,24 @@ pub struct ViewToCreate {
 }
 
 impl Catalog {
-	pub fn create_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+	pub fn create_deferred_view<T: Transaction>(
+		txn: &mut CommandTransaction<T>,
 		to_create: ViewToCreate,
+	) -> crate::Result<ViewDef> {
+		Self::create_view(txn, to_create, Deferred)
+	}
+
+	pub fn create_transactional_view<T: Transaction>(
+		txn: &mut CommandTransaction<T>,
+		to_create: ViewToCreate,
+	) -> crate::Result<ViewDef> {
+		Self::create_view(txn, to_create, Transactional)
+	}
+
+	fn create_view<T: Transaction>(
+		txn: &mut CommandTransaction<T>,
+		to_create: ViewToCreate,
+		kind: ViewKind,
 	) -> crate::Result<ViewDef> {
 		let Some(schema) =
 			Catalog::find_schema_by_name(txn, &to_create.schema)?
@@ -63,7 +79,7 @@ impl Catalog {
 		}
 
 		let view_id = SystemSequence::next_view_id(txn)?;
-		Self::store_view(txn, view_id, schema.id, &to_create)?;
+		Self::store_view(txn, view_id, schema.id, &to_create, kind)?;
 		Self::link_view_to_schema(
 			txn,
 			schema.id,
@@ -77,15 +93,24 @@ impl Catalog {
 	}
 
 	fn store_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		schema: SchemaId,
 		to_create: &ViewToCreate,
+		kind: ViewKind,
 	) -> crate::Result<()> {
 		let mut row = view::LAYOUT.allocate_row();
 		view::LAYOUT.set_u64(&mut row, view::ID, view);
 		view::LAYOUT.set_u64(&mut row, view::SCHEMA, schema);
 		view::LAYOUT.set_utf8(&mut row, view::NAME, &to_create.view);
+		view::LAYOUT.set_u8(
+			&mut row,
+			view::KIND,
+			match kind {
+				Deferred => 0,
+				Transactional => 1,
+			},
+		);
 
 		txn.set(
 			&ViewKey {
@@ -99,7 +124,7 @@ impl Catalog {
 	}
 
 	fn link_view_to_schema<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		schema: SchemaId,
 		view: ViewId,
 		name: &str,
@@ -119,7 +144,7 @@ impl Catalog {
 	}
 
 	fn insert_columns_for_view<T: Transaction>(
-		txn: &mut ActiveCommandTransaction<T>,
+		txn: &mut CommandTransaction<T>,
 		view: ViewId,
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {
@@ -130,7 +155,9 @@ impl Catalog {
 				txn,
 				view,
 				crate::view_column::ViewColumnToCreate {
-					fragment: column_to_create.fragment.clone(),
+					fragment: column_to_create
+						.fragment
+						.clone(),
 					schema_name: &to_create.schema,
 					view,
 					view_name: &to_create.view,
@@ -159,7 +186,7 @@ mod tests {
 	};
 
 	#[test]
-	fn test_create_view() {
+	fn test_create_deferred_view() {
 		let mut txn = create_test_command_transaction();
 
 		ensure_test_schema(&mut txn);
@@ -172,16 +199,19 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = Catalog::create_view(&mut txn, to_create.clone())
-			.unwrap();
+		let result = Catalog::create_deferred_view(
+			&mut txn,
+			to_create.clone(),
+		)
+		.unwrap();
 		assert_eq!(result.id, ViewId(1025));
 		assert_eq!(result.schema, SchemaId(1025));
 		assert_eq!(result.name, "test_view");
 
 		// Creating the same view again with `if_not_exists = false`
 		// should return error
-		let err =
-			Catalog::create_view(&mut txn, to_create).unwrap_err();
+		let err = Catalog::create_deferred_view(&mut txn, to_create)
+			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
@@ -197,7 +227,7 @@ mod tests {
 			fragment: None,
 		};
 
-		Catalog::create_view(&mut txn, to_create).unwrap();
+		Catalog::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let to_create = ViewToCreate {
 			schema: "test_schema".to_string(),
@@ -206,7 +236,7 @@ mod tests {
 			fragment: None,
 		};
 
-		Catalog::create_view(&mut txn, to_create).unwrap();
+		Catalog::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let links = txn
 			.range(SchemaViewKey::full_scan(schema.id))
@@ -238,7 +268,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_view_missing_schema() {
+	fn test_create_deferred_view_missing_schema() {
 		let mut txn = create_test_command_transaction();
 
 		let to_create = ViewToCreate {
@@ -248,8 +278,8 @@ mod tests {
 			fragment: None,
 		};
 
-		let err =
-			Catalog::create_view(&mut txn, to_create).unwrap_err();
+		let err = Catalog::create_deferred_view(&mut txn, to_create)
+			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_002");
 	}
 }

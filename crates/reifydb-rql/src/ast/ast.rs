@@ -535,6 +535,7 @@ impl Index<usize> for AstInline {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstCreate {
 	DeferredView(AstCreateDeferredView),
+	TransactionalView(AstCreateTransactionalView),
 	Schema(AstCreateSchema),
 	Series(AstCreateSeries),
 	Table(AstCreateTable),
@@ -557,6 +558,15 @@ pub struct AstAlterSequence {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDeferredView {
+	pub token: Token,
+	pub schema: AstIdentifier,
+	pub view: AstIdentifier,
+	pub columns: Vec<AstColumnToCreate>,
+	pub with: Option<AstStatement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateTransactionalView {
 	pub token: Token,
 	pub schema: AstIdentifier,
 	pub view: AstIdentifier,
@@ -627,6 +637,12 @@ impl AstCreate {
 				token,
 				..
 			}) => token,
+			AstCreate::TransactionalView(
+				AstCreateTransactionalView {
+					token,
+					..
+				},
+			) => token,
 			AstCreate::Schema(AstCreateSchema {
 				token,
 				..

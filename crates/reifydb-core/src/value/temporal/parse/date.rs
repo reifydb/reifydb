@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	interface::fragment::Fragment, result::error::diagnostic::temporal, return_error,
-	Date, Error,
+	Date, Error, interface::fragment::Fragment,
+	result::error::diagnostic::temporal, return_error,
 };
 
 pub fn parse_date(fragment: impl Fragment) -> Result<Date, Error> {
@@ -25,13 +25,13 @@ pub fn parse_date(fragment: impl Fragment) -> Result<Date, Error> {
 		return_error!(temporal::empty_date_component(year_frag));
 	}
 	offset += parts[0].len() + 1; // +1 for dash
-	
+
 	if month_str.is_empty() {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
 		return_error!(temporal::empty_date_component(month_frag));
 	}
 	offset += parts[1].len() + 1; // +1 for dash
-	
+
 	if day_str.is_empty() {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
 		return_error!(temporal::empty_date_component(day_frag));
@@ -39,18 +39,16 @@ pub fn parse_date(fragment: impl Fragment) -> Result<Date, Error> {
 
 	// Reset offset for further validation
 	offset = 0;
-	
+
 	if year_str.len() != 4 {
 		let year_frag = fragment.sub_fragment(offset, parts[0].len());
 		return_error!(temporal::invalid_year(year_frag));
 	}
 
-	let year = year_str
-		.parse::<i32>()
-		.map_err(|_| {
-			let year_frag = fragment.sub_fragment(offset, parts[0].len());
-			Error(temporal::invalid_year(year_frag))
-		})?;
+	let year = year_str.parse::<i32>().map_err(|_| {
+		let year_frag = fragment.sub_fragment(offset, parts[0].len());
+		Error(temporal::invalid_year(year_frag))
+	})?;
 	offset += parts[0].len() + 1; // +1 for dash
 
 	if month_str.len() != 2 {
@@ -63,21 +61,20 @@ pub fn parse_date(fragment: impl Fragment) -> Result<Date, Error> {
 		Error(temporal::invalid_month(month_frag))
 	})?;
 	offset += parts[1].len() + 1; // +1 for dash
-	
+
 	if day_str.len() != 2 {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
 		return_error!(temporal::invalid_day(day_frag));
 	}
 
-	let day = day_str
-		.parse::<u32>()
-		.map_err(|_| {
-			let day_frag = fragment.sub_fragment(offset, parts[2].len());
-			Error(temporal::invalid_day(day_frag))
-		})?;
+	let day = day_str.parse::<u32>().map_err(|_| {
+		let day_frag = fragment.sub_fragment(offset, parts[2].len());
+		Error(temporal::invalid_day(day_frag))
+	})?;
 
-	Date::new(year, month, day)
-		.ok_or_else(|| Error(temporal::invalid_date_values(fragment.into_owned())))
+	Date::new(year, month, day).ok_or_else(|| {
+		Error(temporal::invalid_date_values(fragment.into_owned()))
+	})
 }
 
 #[cfg(test)]
