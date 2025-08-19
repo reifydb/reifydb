@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::marker::PhantomData;
+
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
@@ -29,6 +31,8 @@ pub struct CommandTransaction<T: Transaction> {
 	pending: Vec<PendingWrite>,
 	hooks: Hooks,
 	pub(crate) interceptors: Interceptors<T>,
+	// Marker to prevent Send and Sync
+	_not_send_sync: PhantomData<*const ()>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -55,6 +59,7 @@ impl<T: Transaction> CommandTransaction<T> {
 			hooks,
 			pending: Vec::new(),
 			interceptors,
+			_not_send_sync: PhantomData,
 		}
 	}
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::{
 	interceptor::{
-		Interceptors, PostCommitInterceptor, PreCommitInterceptor,
+		PostCommitInterceptor, PreCommitInterceptor,
 		TablePostDeleteInterceptor, TablePostInsertInterceptor,
 		TablePostUpdateInterceptor, TablePreDeleteInterceptor,
 		TablePreInsertInterceptor, TablePreUpdateInterceptor,
@@ -35,22 +35,6 @@ macro_rules! define_builder_methods {
 			{
 				self.$field.push(Arc::new(interceptor));
 				self
-			}
-		)*
-	};
-}
-
-/// Macro to generate build method body
-macro_rules! impl_build_transfers {
-	(
-		$self:ident, $interceptors:ident,
-		$(
-			$field:ident => $add_method:ident
-		),* $(,)?
-	) => {
-		$(
-			for interceptor in $self.$field {
-				$interceptors.$add_method(interceptor);
 			}
 		)*
 	};
@@ -109,23 +93,15 @@ impl<T: Transaction> StandardInterceptorBuilder<T> {
 	}
 
 	pub fn build(self) -> StandardInterceptorFactory<T> {
-		let mut interceptors = Interceptors::new();
-
-		// Transfer all interceptors using the macro
-		impl_build_transfers! {
-			self, interceptors,
-			table_pre_insert => add_table_pre_insert,
-			table_post_insert => add_table_post_insert,
-			table_pre_update => add_table_pre_update,
-			table_post_update => add_table_post_update,
-			table_pre_delete => add_table_pre_delete,
-			table_post_delete => add_table_post_delete,
-			pre_commit => add_pre_commit,
-			post_commit => add_post_commit,
-		}
-
 		StandardInterceptorFactory {
-			interceptors,
+			table_pre_insert: self.table_pre_insert,
+			table_post_insert: self.table_post_insert,
+			table_pre_update: self.table_pre_update,
+			table_post_update: self.table_post_update,
+			table_pre_delete: self.table_pre_delete,
+			table_post_delete: self.table_post_delete,
+			pre_commit: self.pre_commit,
+			post_commit: self.post_commit,
 		}
 	}
 }

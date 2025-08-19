@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
 	interceptor::{
@@ -15,7 +15,6 @@ use crate::{
 };
 
 /// Container for all interceptor chains
-#[derive(Clone)]
 pub struct Interceptors<T: Transaction> {
 	pub table_pre_insert: Chain<T, dyn TablePreInsertInterceptor<T>>,
 	pub table_post_insert: Chain<T, dyn TablePostInsertInterceptor<T>>,
@@ -25,6 +24,8 @@ pub struct Interceptors<T: Transaction> {
 	pub table_post_delete: Chain<T, dyn TablePostDeleteInterceptor<T>>,
 	pub pre_commit: Chain<T, dyn PreCommitInterceptor<T>>,
 	pub post_commit: Chain<T, dyn PostCommitInterceptor<T>>,
+	// Marker to prevent Send and Sync
+	_not_send_sync: PhantomData<*const ()>,
 }
 
 impl<T: Transaction> Default for Interceptors<T> {
@@ -44,9 +45,28 @@ impl<T: Transaction> Interceptors<T> {
 			table_post_delete: InterceptorChain::new(),
 			pre_commit: InterceptorChain::new(),
 			post_commit: InterceptorChain::new(),
+			_not_send_sync: PhantomData,
 		}
 	}
+}
 
+impl<T: Transaction> Clone for Interceptors<T> {
+	fn clone(&self) -> Self {
+		Self {
+			table_pre_insert: self.table_pre_insert.clone(),
+			table_post_insert: self.table_post_insert.clone(),
+			table_pre_update: self.table_pre_update.clone(),
+			table_post_update: self.table_post_update.clone(),
+			table_pre_delete: self.table_pre_delete.clone(),
+			table_post_delete: self.table_post_delete.clone(),
+			pre_commit: self.pre_commit.clone(),
+			post_commit: self.post_commit.clone(),
+			_not_send_sync: PhantomData,
+		}
+	}
+}
+
+impl<T: Transaction> Interceptors<T> {
 	/// Add a pre-insert interceptor
 	pub fn add_table_pre_insert(
 		&mut self,

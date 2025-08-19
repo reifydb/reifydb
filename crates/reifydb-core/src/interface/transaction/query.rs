@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::marker::PhantomData;
+
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
@@ -15,6 +17,8 @@ pub struct QueryTransaction<T: Transaction> {
 	versioned: <T::Versioned as VersionedTransaction>::Query,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
+	// Marker to prevent Send and Sync
+	_not_send_sync: PhantomData<*const ()>,
 }
 
 impl<T: Transaction> QueryTransaction<T> {
@@ -28,6 +32,7 @@ impl<T: Transaction> QueryTransaction<T> {
 			versioned,
 			unversioned,
 			cdc,
+			_not_send_sync: PhantomData,
 		}
 	}
 
