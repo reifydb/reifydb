@@ -16,6 +16,7 @@ use crate::{
 	health::HealthMonitor,
 	subsystem::{
 		SubsystemFactory, Subsystems,
+		logging::LoggingSubsystemFactory,
 		worker_pool::WorkerPoolSubsystemFactory,
 	},
 };
@@ -51,6 +52,11 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			ioc,
 		};
 
+		// Add logging subsystem first so it's initialized before other subsystems
+		result = result.add_subsystem_factory(Box::new(
+			LoggingSubsystemFactory::new(),
+		));
+		
 		result = result.add_subsystem_factory(Box::new(
 			WorkerPoolSubsystemFactory::new(),
 		));

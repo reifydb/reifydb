@@ -16,6 +16,7 @@ members = [
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
+    "crates/reifydb-sub-log",
     "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -38,6 +39,7 @@ default-members = [
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
+    "crates/reifydb-sub-log",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
@@ -76,6 +78,7 @@ overflow-checks = true
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust/reifydb", version = "0.0.1" }
+#internal
 reifydb-auth = { path = "crates/reifydb-auth", version = "0.0.1" }
 reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
 reifydb-core = { path = "crates/reifydb-core", version = "0.0.1" }
@@ -86,6 +89,8 @@ reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
 reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
+#subsystems
+reifydb-sub-log = { path = "crates/reifydb-sub-log", version = "0.0.1" }
 
 # util
 chrono = { version = "0.4.41", features = ["serde"] }
@@ -99,6 +104,10 @@ uuid = { version = "1.16.0", features = ["v4", "v7", "serde"] }
 
 crossbeam-skiplist = { version = "0.1.3" }
 crossbeam-channel = { version = "0.5.15" }
+
+# Logging
+parking_lot = { version = "0.12" }
+colored = { version = "3.0" }
 
 # lexing
 nom = { version = "8.0.0" }

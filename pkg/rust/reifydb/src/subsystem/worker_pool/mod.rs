@@ -18,6 +18,8 @@ use std::{
 	time::Duration,
 };
 
+use reifydb_sub_log::{info, warn};
+
 use reifydb_core::{Result, interface::worker_pool::WorkerPool};
 
 use super::Subsystem;
@@ -232,7 +234,7 @@ impl WorkerPoolSubsystem {
 
                         for task in ready_tasks {
                             if queue.len() >= max_queue_size {
-                                println!("[WorkerPool] Scheduler: Queue full, dropping scheduled task");
+                                warn!("Scheduler: Queue full, dropping scheduled task");
                                 break;
                             }
 
@@ -286,10 +288,7 @@ impl Subsystem for WorkerPoolSubsystem {
 		// Start scheduler thread
 		self.start_scheduler();
 
-		println!(
-			"[WorkerPool] Started with {} workers",
-			self.config.num_workers
-		);
+		info!("Started with {} workers", self.config.num_workers);
 
 		Ok(())
 	}
@@ -299,7 +298,7 @@ impl Subsystem for WorkerPoolSubsystem {
 			return Ok(()); // Already stopped
 		}
 
-		println!("[WorkerPool] Shutting down...");
+		info!("Shutting down...");
 		self.running.store(false, Ordering::Relaxed);
 
 		// Wake scheduler so it can exit
@@ -323,7 +322,7 @@ impl Subsystem for WorkerPoolSubsystem {
 			worker.stop();
 		}
 
-		println!("[WorkerPool] Shutdown complete");
+		info!("Shutdown complete");
 		Ok(())
 	}
 
@@ -361,6 +360,10 @@ impl Subsystem for WorkerPoolSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
+		self
+	}
+	
+	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

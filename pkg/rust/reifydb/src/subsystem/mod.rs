@@ -20,6 +20,7 @@ mod factory;
 pub mod flow;
 #[cfg(feature = "sub_grpc")]
 pub mod grpc;
+pub mod logging;
 mod subsystems;
 pub mod worker_pool;
 #[cfg(feature = "sub_ws")]
@@ -30,6 +31,7 @@ pub use factory::SubsystemFactory;
 pub use flow::{FlowSubsystem, FlowSubsystemFactory};
 #[cfg(feature = "sub_grpc")]
 pub use grpc::{GrpcSubsystem, GrpcSubsystemFactory};
+pub use logging::{LoggingSubsystem, LoggingSubsystemFactory};
 pub(crate) use subsystems::Subsystems;
 pub use worker_pool::{WorkerPoolSubsystem, WorkerPoolSubsystemFactory};
 #[cfg(feature = "sub_ws")]
@@ -68,4 +70,7 @@ pub trait Subsystem: Send + Sync + Any {
 
 	/// Get a reference to self as Any for downcasting
 	fn as_any(&self) -> &dyn Any;
+	
+	/// Get a mutable reference to self as Any for downcasting
+	fn as_any_mut(&mut self) -> &mut dyn Any;
 }

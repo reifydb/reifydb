@@ -249,6 +249,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
+dependencies = [
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1511,6 +1520,7 @@ dependencies = [
  "reifydb-network",
  "reifydb-rql",
  "reifydb-storage",
+ "reifydb-sub-log",
  "reifydb-transaction",
  "serde_json",
  "tokio",
@@ -1656,6 +1666,19 @@ dependencies = [
  "reifydb-testing",
  "rusqlite",
  "test_each_file",
+]
+
+[[package]]
+name = "reifydb-sub-log"
+version = "0.0.1"
+dependencies = [
+ "chrono",
+ "colored",
+ "crossbeam-channel",
+ "parking_lot",
+ "reifydb-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

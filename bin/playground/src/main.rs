@@ -3,111 +3,41 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{rc::Rc, thread, time::Duration};
+use std::{thread, time::Duration};
 
 use reifydb::{
-	MemoryDatabaseOptimistic, SessionSync,
+	MemoryDatabaseOptimistic, SessionSync, 
 	core::{
 		interceptor::{
-			Interceptors, PreCommitContext, PreCommitInterceptor,
-			RegisterInterceptor, TablePostInsertContext,
-			TablePostInsertInterceptor, TablePreInsertContext,
-			TablePreInsertInterceptor, post_commit,
-			table_post_insert, table_pre_insert,
+			post_commit, table_post_insert, table_pre_insert,
 		},
-		interface::{Params, Transaction},
-	},
-	sync,
+		interface::Params,
+	}, 
+	sync, info,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
-
-// Example: Multi-trait interceptor that implements multiple interceptor
-// interfaces
-#[derive(Clone)]
-struct AuditInterceptor {
-	name: String,
-}
-
-impl AuditInterceptor {
-	fn new(name: impl Into<String>) -> Self {
-		Self {
-			name: name.into(),
-		}
-	}
-}
-
-// Implement multiple interceptor traits
-impl<T: Transaction> TablePreInsertInterceptor<T> for AuditInterceptor {
-	fn intercept(
-		&self,
-		_ctx: &mut TablePreInsertContext<T>,
-	) -> reifydb::core::Result<()> {
-		println!(
-			"[{}] Audit: Pre-insert interceptor called",
-			self.name
-		);
-		Ok(())
-	}
-}
-
-impl<T: Transaction> TablePostInsertInterceptor<T> for AuditInterceptor {
-	fn intercept(
-		&self,
-		_ctx: &mut TablePostInsertContext<T>,
-	) -> reifydb::core::Result<()> {
-		println!(
-			"[{}] Audit: Post-insert interceptor called",
-			self.name
-		);
-		Ok(())
-	}
-}
-
-impl<T: Transaction> PreCommitInterceptor<T> for AuditInterceptor {
-	fn intercept(
-		&self,
-		_ctx: &mut PreCommitContext<T>,
-	) -> reifydb::core::Result<()> {
-		println!(
-			"[{}] Audit: Pre-commit interceptor called",
-			self.name
-		);
-		Ok(())
-	}
-}
-
-// Implement RegisterInterceptor to handle multi-trait registration
-impl<T: Transaction> RegisterInterceptor<T> for AuditInterceptor {
-	fn register(self: Rc<Self>, interceptors: &mut Interceptors<T>) {
-		interceptors.table_pre_insert.add(self.clone());
-		interceptors.table_post_insert.add(self.clone());
-		interceptors.pre_commit.add(self);
-	}
-}
 // pub type DB = SqliteDatabaseOptimistic;
 
 fn main() {
 	// Example: Using the new unified interceptor API
 	let mut db: DB = sync::memory_optimistic()
 		.intercept(table_pre_insert(|_ctx| {
-			println!("Table pre insert interceptor called!");
+			info!("Table pre insert interceptor called!");
 
 			Ok(())
 		}))
 		.intercept(table_post_insert(|_ctx| {
-			println!("Table post insert interceptor called!");
+			info!("Table post insert interceptor called!");
 			Ok(())
 		}))
 		.intercept(post_commit(|ctx| {
-			println!(
+			info!(
 				"Post-commit interceptor called with version: {:?}",
 				ctx.version
 			);
 			Ok(())
 		}))
-		// Example: Using a multi-trait interceptor
-		.intercept(AuditInterceptor::new("MyAudit"))
 		.build()
 		.unwrap();
 	// let mut db: DB =
@@ -193,6 +123,6 @@ create deferred view test.basic { name: utf8, age: int1 } with {
 	for frame in
 		db.query_as_root(r#"FROM test.basic"#, Params::None).unwrap()
 	{
-		println!("{}", frame);
+		info!("{}", frame);
 	}
 }

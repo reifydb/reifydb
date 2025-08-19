@@ -4,18 +4,19 @@
 use std::{cell::RefCell, rc::Rc};
 
 use reifydb_core::{
-	Result, RowId,
 	interceptor::{
 		Interceptors, PreCommitContext, PreCommitInterceptor,
 		RegisterInterceptor, TablePostDeleteContext,
 		TablePostDeleteInterceptor, TablePostInsertContext,
 		TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
-	},
-	interface::{TableId, Transaction},
+	}, interface::{TableId, Transaction},
 	ioc::{IocContainer, SingleThreadLazyResolve},
+	Result,
+	RowId,
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_log::{debug, info};
 
 /// Event type for flow processing
 #[derive(Debug, Clone)]
@@ -115,7 +116,7 @@ impl<T: Transaction> PreCommitInterceptor<T>
 		// Process all collected changes
 		let mut changes = self.changes.borrow_mut();
 		for _change in changes.drain(..) {
-			println!("{_change:?}")
+			debug!("{_change:?}")
 			// TODO: Process with flow engine
 			// This is where you would process the changes through
 			// the flow system For now, we just have the

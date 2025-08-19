@@ -12,6 +12,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-flow = { workspace = true, optional = true }
+reifydb-sub-log = { workspace = true }
 reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }

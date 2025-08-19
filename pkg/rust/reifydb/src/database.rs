@@ -14,6 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_log::{info, warn, error};
 
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
@@ -147,10 +148,7 @@ impl<T: Transaction> Database<T> {
 
 		self.bootloader.load()?;
 
-		println!(
-			"[Database] Starting system with {} subsystems",
-			self.subsystem_count()
-		);
+		info!("Starting system with {} subsystems", self.subsystem_count());
 
 		// Initialize engine health monitoring
 		self.health_monitor.update_component_health(
@@ -166,17 +164,12 @@ impl<T: Transaction> Database<T> {
 		match self.subsystems.start_all(self.config.max_startup_time) {
 			Ok(()) => {
 				self.running = true;
-				println!(
-					"[Database] System started successfully"
-				);
+				info!("System started successfully");
 				self.update_health_monitoring();
 				Ok(())
 			}
 			Err(e) => {
-				println!(
-					"[Database] System startup failed: {}",
-					e
-				);
+				error!("System startup failed: {}", e);
 				// Update system health to reflect failure
 				self.health_monitor.update_component_health(
 					"system".to_string(),
@@ -198,7 +191,7 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already stopped
 		}
 
-		println!("[Database] Stopping system gracefully");
+		info!("Stopping system gracefully");
 
 		// Stop all subsystems
 		let result = self
@@ -217,9 +210,7 @@ impl<T: Transaction> Database<T> {
 
 		match result {
 			Ok(()) => {
-				println!(
-					"[Database] System stopped successfully"
-				);
+				info!("System stopped successfully");
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Healthy,
@@ -228,10 +219,7 @@ impl<T: Transaction> Database<T> {
 				Ok(())
 			}
 			Err(e) => {
-				println!(
-					"[Database] System shutdown completed with errors: {}",
-					e
-				);
+				warn!("System shutdown completed with errors: {}", e);
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Warning {
@@ -309,8 +297,8 @@ impl<T: Transaction> Database<T> {
 impl<T: Transaction> Drop for Database<T> {
 	fn drop(&mut self) {
 		if self.running {
-			println!(
-				"[Database] System being dropped while running, attempting graceful shutdown"
+			warn!(
+				"System being dropped while running, attempting graceful shutdown"
 			);
 			let _ = self.stop();
 		}

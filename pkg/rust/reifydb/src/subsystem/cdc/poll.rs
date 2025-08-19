@@ -4,27 +4,28 @@
 use std::{
 	ops::Bound,
 	sync::{
-		Arc,
 		atomic::{AtomicBool, Ordering},
+		Arc,
 	},
 	thread::{self, JoinHandle},
 	time::Duration,
 };
 
 use reifydb_core::{
-	EncodedKey, Result, Version,
 	interface::{
-		CdcConsume, CdcConsumer, CdcEvent, CdcTransaction,
-		CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
-		Transaction, VersionedCommandTransaction,
+		key::{CdcConsumerKey, EncodableKey}, worker_pool::Priority, CdcConsume, CdcConsumer,
+		CdcEvent, CdcTransaction, CommandTransaction, ConsumerId,
+		Engine as EngineInterface, Key,
+		Transaction,
+		VersionedCommandTransaction,
 		VersionedQueryTransaction,
-		key::{CdcConsumerKey, EncodableKey},
-		worker_pool::Priority,
-	},
-	row::EncodedRow,
-	util::CowVec,
+	}, row::EncodedRow, util::CowVec,
+	EncodedKey,
+	Result,
+	Version,
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_log::{debug, error, info};
 
 /// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]
@@ -139,7 +140,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
-		println!(
+		debug!(
 			"[Consumer {:?}] Started polling with interval {:?}",
 			config.consumer_id, config.poll_interval
 		);
@@ -148,7 +149,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			if let Err(error) =
 				Self::consume_batch(&state, &engine, &consumer)
 			{
-				eprintln!(
+				error!(
 					"[Consumer {:?}] Error consuming events: {}",
 					config.consumer_id, error
 				);
@@ -157,7 +158,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			thread::sleep(config.poll_interval);
 		}
 
-		println!("[Consumer {:?}] Stopped", config.consumer_id);
+		info!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 

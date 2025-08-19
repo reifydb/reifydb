@@ -14,6 +14,12 @@ pub mod subsystem;
 
 use std::time::Duration;
 
+// Re-export logging functionality
+pub use reifydb_sub_log::{
+    debug, error, info, log, trace, warn, critical,
+    LogLevel, LogRecord, LoggingBuilder,
+};
+
 pub use api::*;
 pub use builder::*;
 #[cfg(feature = "async")]
