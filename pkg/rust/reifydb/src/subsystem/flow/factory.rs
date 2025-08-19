@@ -4,13 +4,16 @@
 use std::time::Duration;
 
 use reifydb_core::{
-	interceptor::{InterceptorProvider, StandardInterceptorBuilder},
+	interceptor::StandardInterceptorBuilder,
 	interface::{ConsumerId, Transaction},
 };
 use reifydb_engine::StandardEngine;
 
 use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
-use crate::subsystem::{Subsystem, factory::SubsystemFactory};
+use crate::{
+	ioc::IocContainer,
+	subsystem::{Subsystem, factory::SubsystemFactory},
+};
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 #[derive()]
@@ -35,25 +38,28 @@ impl<T: Transaction> FlowSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> InterceptorProvider<T> for FlowSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 	fn provide_interceptors(
 		&self,
 		builder: StandardInterceptorBuilder<T>,
+		ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<T> {
-		let interceptor = TransactionalFlowInterceptor::new();
+		// Create interceptor with IoC container
+		let interceptor =
+			TransactionalFlowInterceptor::new(ioc.clone());
 
 		builder.add_table_post_insert(interceptor.clone())
 			.add_table_post_update(interceptor.clone())
 			.add_table_post_delete(interceptor.clone())
 			.add_pre_commit(interceptor)
 	}
-}
 
-impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
-	fn create(
-		self: Box<Self>,
-		engine: StandardEngine<T>,
-	) -> Box<dyn Subsystem> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Box<dyn Subsystem> {
+		// Get engine from IoC
+		let engine = ioc
+			.resolve::<StandardEngine<T>>()
+			.expect("StandardEngine must be registered in IoC");
+
 		Box::new(FlowSubsystem::new(
 			engine,
 			self.consumer_id,

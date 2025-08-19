@@ -14,6 +14,7 @@ use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
+	ioc::IocContainer,
 	subsystem::{SubsystemFactory, Subsystems},
 };
 
@@ -25,6 +26,7 @@ pub struct DatabaseBuilder<T: Transaction> {
 	hooks: Option<Hooks>,
 	interceptors: StandardInterceptorBuilder<T>,
 	subsystems: Vec<Box<dyn SubsystemFactory<T>>>,
+	ioc: IocContainer,
 }
 
 impl<T: Transaction> DatabaseBuilder<T> {
@@ -37,6 +39,13 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		cdc: T::Cdc,
 		hooks: Hooks,
 	) -> Self {
+		// Create IoC container and register initial services
+		let ioc = IocContainer::new()
+			.register(hooks.clone())
+			.register(versioned.clone())
+			.register(unversioned.clone())
+			.register(cdc.clone());
+
 		let mut result = Self {
 			versioned: Some(versioned),
 			unversioned: Some(unversioned),
@@ -45,6 +54,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
+			ioc,
 		};
 
 		#[cfg(feature = "sub_flow")]
@@ -110,10 +120,13 @@ impl<T: Transaction> DatabaseBuilder<T> {
 	}
 
 	pub fn build(mut self) -> Database<T> {
-		// Phase 1: Collect interceptors from all factories
+		// Phase 1: Collect interceptors from all factories (passing
+		// IoC)
 		for factory in &self.subsystems {
-			self.interceptors =
-				factory.provide_interceptors(self.interceptors);
+			self.interceptors = factory.provide_interceptors(
+				self.interceptors,
+				&self.ioc,
+			);
 		}
 
 		// Phase 2: Create engine with all interceptors
@@ -125,13 +138,17 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			Box::new(self.interceptors.build()),
 		);
 
-		// Phase 3: Create subsystems from factories
+		// Register engine in IoC container
+		self.ioc = self.ioc.register(engine.clone());
+
+		// Phase 3: Create subsystems from factories (they get engine
+		// from IoC)
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems =
 			Subsystems::new(Arc::clone(&health_monitor));
 
 		for factory in self.subsystems {
-			let subsystem = factory.create(engine.clone());
+			let subsystem = factory.create(&self.ioc);
 			subsystems.add_subsystem(subsystem);
 		}
 
