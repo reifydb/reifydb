@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, rc::Rc};
 
 use crate::interface::Transaction;
 
 /// Chain for a specific interceptor type
 pub struct InterceptorChain<T: Transaction, I: ?Sized> {
-	pub(crate) interceptors: Vec<Arc<I>>,
+	pub(crate) interceptors: Vec<Rc<I>>,
 	_phantom: PhantomData<T>,
 }
 
@@ -19,7 +19,7 @@ impl<T: Transaction, I: ?Sized> InterceptorChain<T, I> {
 		}
 	}
 
-	pub fn add(&mut self, interceptor: Arc<I>) {
+	pub fn add(&mut self, interceptor: Rc<I>) {
 		self.interceptors.push(interceptor);
 	}
 

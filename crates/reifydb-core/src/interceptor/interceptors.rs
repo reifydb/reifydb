@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, rc::Rc};
 
 use crate::{
 	interceptor::{
@@ -70,7 +70,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a pre-insert interceptor
 	pub fn add_table_pre_insert(
 		&mut self,
-		interceptor: Arc<dyn TablePreInsertInterceptor<T>>,
+		interceptor: Rc<dyn TablePreInsertInterceptor<T>>,
 	) {
 		self.table_pre_insert.add(interceptor);
 	}
@@ -78,7 +78,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a post-insert interceptor
 	pub fn add_table_post_insert(
 		&mut self,
-		interceptor: Arc<dyn TablePostInsertInterceptor<T>>,
+		interceptor: Rc<dyn TablePostInsertInterceptor<T>>,
 	) {
 		self.table_post_insert.add(interceptor);
 	}
@@ -86,7 +86,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a pre-update interceptor
 	pub fn add_table_pre_update(
 		&mut self,
-		interceptor: Arc<dyn TablePreUpdateInterceptor<T>>,
+		interceptor: Rc<dyn TablePreUpdateInterceptor<T>>,
 	) {
 		self.table_pre_update.add(interceptor);
 	}
@@ -94,7 +94,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a post-update interceptor
 	pub fn add_table_post_update(
 		&mut self,
-		interceptor: Arc<dyn TablePostUpdateInterceptor<T>>,
+		interceptor: Rc<dyn TablePostUpdateInterceptor<T>>,
 	) {
 		self.table_post_update.add(interceptor);
 	}
@@ -102,7 +102,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a pre-delete interceptor
 	pub fn add_table_pre_delete(
 		&mut self,
-		interceptor: Arc<dyn TablePreDeleteInterceptor<T>>,
+		interceptor: Rc<dyn TablePreDeleteInterceptor<T>>,
 	) {
 		self.table_pre_delete.add(interceptor);
 	}
@@ -110,7 +110,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a post-delete interceptor
 	pub fn add_table_post_delete(
 		&mut self,
-		interceptor: Arc<dyn TablePostDeleteInterceptor<T>>,
+		interceptor: Rc<dyn TablePostDeleteInterceptor<T>>,
 	) {
 		self.table_post_delete.add(interceptor);
 	}
@@ -118,7 +118,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a pre-commit interceptor
 	pub fn add_pre_commit(
 		&mut self,
-		interceptor: Arc<dyn PreCommitInterceptor<T>>,
+		interceptor: Rc<dyn PreCommitInterceptor<T>>,
 	) {
 		self.pre_commit.add(interceptor);
 	}
@@ -126,7 +126,7 @@ impl<T: Transaction> Interceptors<T> {
 	/// Add a post-commit interceptor
 	pub fn add_post_commit(
 		&mut self,
-		interceptor: Arc<dyn PostCommitInterceptor<T>>,
+		interceptor: Rc<dyn PostCommitInterceptor<T>>,
 	) {
 		self.post_commit.add(interceptor);
 	}

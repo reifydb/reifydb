@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
-
 use crate::{
 	interceptor::{
 		PostCommitInterceptor, PreCommitInterceptor,
@@ -28,7 +26,10 @@ macro_rules! impl_builder_method {
 	($method_name:ident, $trait_type:ty, $factory_method:ident) => {
 		pub fn $method_name<F>(mut self, factory_fn: F) -> Self
 		where
-			F: Fn() -> Arc<$trait_type> + Send + Sync + 'static,
+			F: Fn() -> std::rc::Rc<$trait_type>
+				+ Send
+				+ Sync
+				+ 'static,
 		{
 			self.factory.$factory_method(factory_fn);
 			self
@@ -70,6 +71,7 @@ impl<T: Transaction> StandardInterceptorBuilder<T> {
 		dyn TablePreInsertInterceptor<T>,
 		add_table_pre_insert_factory
 	);
+
 	impl_builder_method!(
 		add_table_post_insert,
 		dyn TablePostInsertInterceptor<T>,

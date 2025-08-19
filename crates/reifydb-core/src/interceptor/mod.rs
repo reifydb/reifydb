@@ -239,11 +239,11 @@ macro_rules! impl_add_to_builder {
 				builder: $crate::interceptor::StandardInterceptorBuilder<T>,
 			) -> $crate::interceptor::StandardInterceptorBuilder<T>
 			{
-				use std::sync::Arc;
+				use std::rc::Rc;
 				// Create a factory function that creates new
 				// instances
 				builder.$builder_method(move || {
-					Arc::new(self.clone())
+					Rc::new(self.clone())
 				})
 			}
 		}
@@ -269,11 +269,11 @@ macro_rules! impl_add_to_builder {
 				builder: $crate::interceptor::StandardInterceptorBuilder<T>,
 			) -> $crate::interceptor::StandardInterceptorBuilder<T>
 			{
-				use std::sync::Arc;
+				use std::rc::Rc;
 				// Create a factory function that creates new
 				// instances
 				builder.$builder_method(move || {
-					Arc::new(self.clone())
+					Rc::new(self.clone())
 				})
 			}
 		}

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 
 use crate::{
 	interceptor::{
@@ -20,7 +20,7 @@ pub trait InterceptorFactory<T: Transaction>: Send + Sync {
 }
 
 /// Factory function that creates an interceptor instance
-type InterceptorFactoryFn<I> = Arc<dyn Fn() -> Arc<I> + Send + Sync>;
+type InterceptorFactoryFn<I> = Arc<dyn Fn() -> Rc<I> + Send + Sync>;
 
 /// Standard implementation of InterceptorFactory that stores factory functions
 /// This allows the factory to be Send+Sync while creating non-Send/Sync
@@ -59,94 +59,59 @@ impl<T: Transaction> Default for StandardInterceptorFactory<T> {
 	}
 }
 
+/// Macro to generate factory methods for adding interceptors
+macro_rules! impl_factory_method {
+	($method_name:ident, $trait_type:ty, $field_name:ident) => {
+		pub fn $method_name<F>(&mut self, factory: F)
+		where
+			F: Fn() -> Rc<$trait_type> + Send + Sync + 'static,
+		{
+			self.$field_name.push(Arc::new(factory));
+		}
+	};
+}
+
 impl<T: Transaction> StandardInterceptorFactory<T> {
-	/// Add a factory function for a table pre-insert interceptor
-	pub fn add_table_pre_insert_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn TablePreInsertInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.table_pre_insert.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a table post-insert interceptor
-	pub fn add_table_post_insert_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn TablePostInsertInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.table_post_insert.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a table pre-update interceptor
-	pub fn add_table_pre_update_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn TablePreUpdateInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.table_pre_update.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a table post-update interceptor
-	pub fn add_table_post_update_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn TablePostUpdateInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.table_post_update.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a table pre-delete interceptor
-	pub fn add_table_pre_delete_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn TablePreDeleteInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.table_pre_delete.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a table post-delete interceptor
-	pub fn add_table_post_delete_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn TablePostDeleteInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.table_post_delete.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a pre-commit interceptor
-	pub fn add_pre_commit_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn PreCommitInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.pre_commit.push(Arc::new(factory));
-	}
-
-	/// Add a factory function for a post-commit interceptor
-	pub fn add_post_commit_factory<F>(&mut self, factory: F)
-	where
-		F: Fn() -> Arc<dyn PostCommitInterceptor<T>>
-			+ Send
-			+ Sync
-			+ 'static,
-	{
-		self.post_commit.push(Arc::new(factory));
-	}
+	impl_factory_method!(
+		add_table_pre_insert_factory,
+		dyn TablePreInsertInterceptor<T>,
+		table_pre_insert
+	);
+	impl_factory_method!(
+		add_table_post_insert_factory,
+		dyn TablePostInsertInterceptor<T>,
+		table_post_insert
+	);
+	impl_factory_method!(
+		add_table_pre_update_factory,
+		dyn TablePreUpdateInterceptor<T>,
+		table_pre_update
+	);
+	impl_factory_method!(
+		add_table_post_update_factory,
+		dyn TablePostUpdateInterceptor<T>,
+		table_post_update
+	);
+	impl_factory_method!(
+		add_table_pre_delete_factory,
+		dyn TablePreDeleteInterceptor<T>,
+		table_pre_delete
+	);
+	impl_factory_method!(
+		add_table_post_delete_factory,
+		dyn TablePostDeleteInterceptor<T>,
+		table_post_delete
+	);
+	impl_factory_method!(
+		add_pre_commit_factory,
+		dyn PreCommitInterceptor<T>,
+		pre_commit
+	);
+	impl_factory_method!(
+		add_post_commit_factory,
+		dyn PostCommitInterceptor<T>,
+		post_commit
+	);
 }
 
 impl<T: Transaction> InterceptorFactory<T> for StandardInterceptorFactory<T> {

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, rc::Rc, time::Duration};
 
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
@@ -50,22 +50,22 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 		let ioc_clone4 = ioc.clone();
 
 		builder.add_table_post_insert(move || {
-			Arc::new(TransactionalFlowInterceptor::new(
+			Rc::new(TransactionalFlowInterceptor::new(
 				ioc_clone.clone(),
 			))
 		})
 		.add_table_post_update(move || {
-			Arc::new(TransactionalFlowInterceptor::new(
+			Rc::new(TransactionalFlowInterceptor::new(
 				ioc_clone2.clone(),
 			))
 		})
 		.add_table_post_delete(move || {
-			Arc::new(TransactionalFlowInterceptor::new(
+			Rc::new(TransactionalFlowInterceptor::new(
 				ioc_clone3.clone(),
 			))
 		})
 		.add_pre_commit(move || {
-			Arc::new(TransactionalFlowInterceptor::new(
+			Rc::new(TransactionalFlowInterceptor::new(
 				ioc_clone4.clone(),
 			))
 		})
