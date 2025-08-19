@@ -5,7 +5,6 @@ mod builder;
 mod chain;
 mod factory;
 mod interceptors;
-mod provider;
 mod table;
 mod transaction;
 
@@ -13,7 +12,6 @@ pub use builder::*;
 pub use chain::InterceptorChain;
 pub use factory::{InterceptorFactory, StandardInterceptorFactory};
 pub use interceptors::Interceptors;
-pub use provider::InterceptorProvider;
 pub use table::*;
 pub use transaction::*;
 
@@ -216,73 +214,9 @@ macro_rules! define_closure_interceptor {
 	};
 }
 
-/// Macro to implement AddToBuilder for closure interceptor types
-#[macro_export]
-macro_rules! impl_add_to_builder {
-	// Version with Transaction type parameter in closure type
-	(
-		$closure_type:ident<T, F>,
-		$context_type:ident<T>,
-		$builder_method:ident
-	) => {
-		impl<T: Transaction, F> $crate::interceptor::AddToBuilder<T>
-			for $closure_type<T, F>
-		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>
-				+ Send
-				+ Sync
-				+ Clone
-				+ 'static,
-		{
-			fn add_to_builder(
-				self,
-				builder: $crate::interceptor::StandardInterceptorBuilder<T>,
-			) -> $crate::interceptor::StandardInterceptorBuilder<T>
-			{
-				use std::rc::Rc;
-				// Create a factory function that creates new
-				// instances
-				builder.$builder_method(move || {
-					Rc::new(self.clone())
-				})
-			}
-		}
-	};
-
-	// Version without Transaction type parameter in closure type
-	(
-		$closure_type:ident<F>,
-		$context_type:ident,
-		$builder_method:ident
-	) => {
-		impl<T: Transaction, F> $crate::interceptor::AddToBuilder<T>
-			for $closure_type<F>
-		where
-			F: Fn(&mut $context_type) -> crate::Result<()>
-				+ Send
-				+ Sync
-				+ Clone
-				+ 'static,
-		{
-			fn add_to_builder(
-				self,
-				builder: $crate::interceptor::StandardInterceptorBuilder<T>,
-			) -> $crate::interceptor::StandardInterceptorBuilder<T>
-			{
-				use std::rc::Rc;
-				// Create a factory function that creates new
-				// instances
-				builder.$builder_method(move || {
-					Rc::new(self.clone())
-				})
-			}
-		}
-	};
-}
-
 /// Macro to create helper functions that create closure interceptors
 #[macro_export]
-macro_rules! define_helper_function {
+macro_rules! define_api_function {
 	// Version with Transaction type parameter
 	(
 		$fn_name:ident,
@@ -316,6 +250,66 @@ macro_rules! define_helper_function {
 				+ 'static,
 		{
 			$closure_type::new(f)
+		}
+	};
+}
+
+/// Trait for self-registering interceptors
+/// This allows interceptors that implement multiple interceptor traits
+/// to register themselves in all appropriate chains with a single Rc instance
+pub trait RegisterInterceptor<T: crate::interface::Transaction> {
+	fn register(
+		self: std::rc::Rc<Self>,
+		interceptors: &mut Interceptors<T>,
+	);
+}
+
+#[macro_export]
+macro_rules! impl_register_interceptor {
+	(
+		$closure_type:ident<T, F>,
+		$context_type:ident<T>,
+		$trait_type:ident,
+		$field:ident
+	) => {
+		impl<T, F> $crate::interceptor::RegisterInterceptor<T>
+			for $closure_type<T, F>
+		where
+			T: $crate::interface::Transaction,
+			F: Fn(&mut $context_type<T>) -> $crate::Result<()>
+				+ 'static,
+		{
+			fn register(
+				self: std::rc::Rc<Self>,
+				interceptors: &mut $crate::interceptor::Interceptors<T>,
+			) {
+				interceptors.$field.add(self as std::rc::Rc<
+					dyn $trait_type<T>,
+				>);
+			}
+		}
+	};
+	(
+		$closure_type:ident<F>,
+		$context_type:ident,
+		$trait_type:ident<T>,
+		$field:ident
+	) => {
+		impl<T, F> $crate::interceptor::RegisterInterceptor<T>
+			for $closure_type<F>
+		where
+			T: $crate::interface::Transaction,
+			F: Fn(&mut $context_type) -> $crate::Result<()>
+				+ 'static,
+		{
+			fn register(
+				self: std::rc::Rc<Self>,
+				interceptors: &mut $crate::interceptor::Interceptors<T>,
+			) {
+				interceptors.$field.add(self as std::rc::Rc<
+					dyn $trait_type<T>,
+				>);
+			}
 		}
 	};
 }

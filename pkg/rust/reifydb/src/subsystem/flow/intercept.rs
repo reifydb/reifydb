@@ -6,7 +6,8 @@ use std::{cell::RefCell, rc::Rc};
 use reifydb_core::{
 	Result, RowId,
 	interceptor::{
-		PreCommitContext, PreCommitInterceptor, TablePostDeleteContext,
+		Interceptors, PreCommitContext, PreCommitInterceptor,
+		RegisterInterceptor, TablePostDeleteContext,
 		TablePostDeleteInterceptor, TablePostInsertContext,
 		TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
@@ -122,5 +123,16 @@ impl<T: Transaction> PreCommitInterceptor<T>
 		}
 
 		Ok(())
+	}
+}
+
+impl<T: Transaction> RegisterInterceptor<T>
+	for TransactionalFlowInterceptor<T>
+{
+	fn register(self: Rc<Self>, interceptors: &mut Interceptors<T>) {
+		interceptors.table_post_insert.add(self.clone());
+		interceptors.table_post_update.add(self.clone());
+		interceptors.table_post_delete.add(self.clone());
+		interceptors.pre_commit.add(self);
 	}
 }

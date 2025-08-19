@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-	RowId, define_closure_interceptor, define_helper_function,
-	define_interceptor, impl_add_to_builder,
+	RowId, define_api_function, define_closure_interceptor,
+	define_interceptor, impl_register_interceptor,
 	interface::{CommandTransaction, TableDef, Transaction},
 	row::EncodedRow,
 };
@@ -25,16 +25,10 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	table_pre_insert,
 	ClosureTablePreInsertInterceptor<T, F>,
 	TablePreInsertContext<T>
-);
-
-impl_add_to_builder!(
-	ClosureTablePreInsertInterceptor<T, F>,
-	TablePreInsertContext<T>,
-	add_table_pre_insert
 );
 
 // POST INSERT
@@ -56,16 +50,10 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	table_post_insert,
 	ClosureTablePostInsertInterceptor<T, F>,
 	TablePostInsertContext<T>
-);
-
-impl_add_to_builder!(
-	ClosureTablePostInsertInterceptor<T, F>,
-	TablePostInsertContext<T>,
-	add_table_post_insert
 );
 
 // PRE UPDATE
@@ -87,16 +75,10 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	table_pre_update,
 	ClosureTablePreUpdateInterceptor<T, F>,
 	TablePreUpdateContext<T>
-);
-
-impl_add_to_builder!(
-	ClosureTablePreUpdateInterceptor<T, F>,
-	TablePreUpdateContext<T>,
-	add_table_pre_update
 );
 
 // POST UPDATE
@@ -119,16 +101,10 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	table_post_update,
 	ClosureTablePostUpdateInterceptor<T, F>,
 	TablePostUpdateContext<T>
-);
-
-impl_add_to_builder!(
-	ClosureTablePostUpdateInterceptor<T, F>,
-	TablePostUpdateContext<T>,
-	add_table_post_update
 );
 
 // PRE DELETE
@@ -149,16 +125,10 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	table_pre_delete,
 	ClosureTablePreDeleteInterceptor<T, F>,
 	TablePreDeleteContext<T>
-);
-
-impl_add_to_builder!(
-	ClosureTablePreDeleteInterceptor<T, F>,
-	TablePreDeleteContext<T>,
-	add_table_pre_delete
 );
 
 // POST DELETE
@@ -180,14 +150,50 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	table_post_delete,
 	ClosureTablePostDeleteInterceptor<T, F>,
 	TablePostDeleteContext<T>
 );
 
-impl_add_to_builder!(
+impl_register_interceptor!(
+	ClosureTablePreInsertInterceptor<T, F>,
+	TablePreInsertContext<T>,
+	TablePreInsertInterceptor,
+	table_pre_insert
+);
+
+impl_register_interceptor!(
+	ClosureTablePostInsertInterceptor<T, F>,
+	TablePostInsertContext<T>,
+	TablePostInsertInterceptor,
+	table_post_insert
+);
+
+impl_register_interceptor!(
+	ClosureTablePreUpdateInterceptor<T, F>,
+	TablePreUpdateContext<T>,
+	TablePreUpdateInterceptor,
+	table_pre_update
+);
+
+impl_register_interceptor!(
+	ClosureTablePostUpdateInterceptor<T, F>,
+	TablePostUpdateContext<T>,
+	TablePostUpdateInterceptor,
+	table_post_update
+);
+
+impl_register_interceptor!(
+	ClosureTablePreDeleteInterceptor<T, F>,
+	TablePreDeleteContext<T>,
+	TablePreDeleteInterceptor,
+	table_pre_delete
+);
+
+impl_register_interceptor!(
 	ClosureTablePostDeleteInterceptor<T, F>,
 	TablePostDeleteContext<T>,
-	add_table_post_delete
+	TablePostDeleteInterceptor,
+	table_post_delete
 );

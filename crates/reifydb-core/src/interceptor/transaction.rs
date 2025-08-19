@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-	Version, define_closure_interceptor, define_helper_function,
-	define_interceptor, impl_add_to_builder,
+	Version, define_api_function, define_closure_interceptor,
+	define_interceptor,
 	interface::{CommandTransaction, Transaction},
 };
 
@@ -25,17 +25,17 @@ define_closure_interceptor!(
 	with_transaction
 );
 
-define_helper_function!(
+define_api_function!(
 	pre_commit,
 	ClosurePreCommitInterceptor<T, F>,
 	PreCommitContext<T>
 );
 
-impl_add_to_builder!(
-	ClosurePreCommitInterceptor<T, F>,
-	PreCommitContext<T>,
-	add_pre_commit
-);
+// impl_add_to_builder!(
+// 	ClosurePreCommitInterceptor<T, F>,
+// 	PreCommitContext<T>,
+// 	add_pre_commit
+// );
 
 // POST COMMIT
 define_interceptor!(
@@ -53,14 +53,29 @@ define_closure_interceptor!(
 	no_transaction_param
 );
 
-define_helper_function!(
+define_api_function!(
 	post_commit,
 	ClosurePostCommitInterceptor<F>,
 	PostCommitContext
 );
+// impl_add_to_builder!(
+// 	ClosurePostCommitInterceptor<F>,
+// 	PostCommitContext,
+// 	add_post_commit
+// );
 
-impl_add_to_builder!(
+use crate::impl_register_interceptor;
+
+impl_register_interceptor!(
+	ClosurePreCommitInterceptor<T, F>,
+	PreCommitContext<T>,
+	PreCommitInterceptor,
+	pre_commit
+);
+
+impl_register_interceptor!(
 	ClosurePostCommitInterceptor<F>,
 	PostCommitContext,
-	add_post_commit
+	PostCommitInterceptor<T>,
+	post_commit
 );

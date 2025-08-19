@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	hook::Hooks,
-	interceptor::{AddToBuilder, StandardInterceptorBuilder},
+	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 	interface::Transaction,
 };
 #[cfg(feature = "sub_grpc")]
@@ -57,10 +57,12 @@ impl<T: Transaction> ServerBuilder<T> {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: AddToBuilder<T>,
+		I: RegisterInterceptor<T> + Send + Sync + Clone + 'static,
 	{
 		self.interceptors =
-			interceptor.add_to_builder(self.interceptors);
+			self.interceptors.add_factory(move |interceptors| {
+				interceptors.register(interceptor.clone());
+			});
 		self
 	}
 

@@ -3,20 +3,88 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{thread, time::Duration};
+use std::{rc::Rc, thread, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, SessionSync,
 	core::{
 		interceptor::{
-			post_commit, table_post_insert, table_pre_insert,
+			Interceptors, PreCommitContext, PreCommitInterceptor,
+			RegisterInterceptor, TablePostInsertContext,
+			TablePostInsertInterceptor, TablePreInsertContext,
+			TablePreInsertInterceptor, post_commit,
+			table_post_insert, table_pre_insert,
 		},
-		interface::Params,
+		interface::{Params, Transaction},
 	},
 	sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
+
+// Example: Multi-trait interceptor that implements multiple interceptor
+// interfaces
+#[derive(Clone)]
+struct AuditInterceptor {
+	name: String,
+}
+
+impl AuditInterceptor {
+	fn new(name: impl Into<String>) -> Self {
+		Self {
+			name: name.into(),
+		}
+	}
+}
+
+// Implement multiple interceptor traits
+impl<T: Transaction> TablePreInsertInterceptor<T> for AuditInterceptor {
+	fn intercept(
+		&self,
+		_ctx: &mut TablePreInsertContext<T>,
+	) -> reifydb::core::Result<()> {
+		println!(
+			"[{}] Audit: Pre-insert interceptor called",
+			self.name
+		);
+		Ok(())
+	}
+}
+
+impl<T: Transaction> TablePostInsertInterceptor<T> for AuditInterceptor {
+	fn intercept(
+		&self,
+		_ctx: &mut TablePostInsertContext<T>,
+	) -> reifydb::core::Result<()> {
+		println!(
+			"[{}] Audit: Post-insert interceptor called",
+			self.name
+		);
+		Ok(())
+	}
+}
+
+impl<T: Transaction> PreCommitInterceptor<T> for AuditInterceptor {
+	fn intercept(
+		&self,
+		_ctx: &mut PreCommitContext<T>,
+	) -> reifydb::core::Result<()> {
+		println!(
+			"[{}] Audit: Pre-commit interceptor called",
+			self.name
+		);
+		Ok(())
+	}
+}
+
+// Implement RegisterInterceptor to handle multi-trait registration
+impl<T: Transaction> RegisterInterceptor<T> for AuditInterceptor {
+	fn register(self: Rc<Self>, interceptors: &mut Interceptors<T>) {
+		interceptors.table_pre_insert.add(self.clone());
+		interceptors.table_post_insert.add(self.clone());
+		interceptors.pre_commit.add(self);
+	}
+}
 // pub type DB = SqliteDatabaseOptimistic;
 
 fn main() {
@@ -38,6 +106,8 @@ fn main() {
 			);
 			Ok(())
 		}))
+		// Example: Using a multi-trait interceptor
+		.intercept(AuditInterceptor::new("MyAudit"))
 		.build()
 		.unwrap();
 	// let mut db: DB =

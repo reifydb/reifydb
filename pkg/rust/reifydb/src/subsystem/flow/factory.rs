@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, rc::Rc, time::Duration};
+use std::{marker::PhantomData, time::Duration};
 
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
@@ -42,32 +42,11 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 		builder: StandardInterceptorBuilder<T>,
 		ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<T> {
-		// Create factory functions that create new interceptor
-		// instances
-		let ioc_clone = ioc.clone();
-		let ioc_clone2 = ioc.clone();
-		let ioc_clone3 = ioc.clone();
-		let ioc_clone4 = ioc.clone();
-
-		builder.add_table_post_insert(move || {
-			Rc::new(TransactionalFlowInterceptor::new(
-				ioc_clone.clone(),
-			))
-		})
-		.add_table_post_update(move || {
-			Rc::new(TransactionalFlowInterceptor::new(
-				ioc_clone2.clone(),
-			))
-		})
-		.add_table_post_delete(move || {
-			Rc::new(TransactionalFlowInterceptor::new(
-				ioc_clone3.clone(),
-			))
-		})
-		.add_pre_commit(move || {
-			Rc::new(TransactionalFlowInterceptor::new(
-				ioc_clone4.clone(),
-			))
+		let ioc = ioc.clone();
+		builder.add_factory(move |interceptors| {
+			interceptors.register(
+				TransactionalFlowInterceptor::new(ioc.clone()),
+			);
 		})
 	}
 
@@ -76,7 +55,6 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 		ioc: &IocContainer,
 	) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
-
 		Ok(Box::new(FlowSubsystem::new(engine)))
 	}
 }

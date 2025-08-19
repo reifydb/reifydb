@@ -67,67 +67,12 @@ impl<T: Transaction> Clone for Interceptors<T> {
 }
 
 impl<T: Transaction> Interceptors<T> {
-	/// Add a pre-insert interceptor
-	pub fn add_table_pre_insert(
-		&mut self,
-		interceptor: Rc<dyn TablePreInsertInterceptor<T>>,
-	) {
-		self.table_pre_insert.add(interceptor);
-	}
-
-	/// Add a post-insert interceptor
-	pub fn add_table_post_insert(
-		&mut self,
-		interceptor: Rc<dyn TablePostInsertInterceptor<T>>,
-	) {
-		self.table_post_insert.add(interceptor);
-	}
-
-	/// Add a pre-update interceptor
-	pub fn add_table_pre_update(
-		&mut self,
-		interceptor: Rc<dyn TablePreUpdateInterceptor<T>>,
-	) {
-		self.table_pre_update.add(interceptor);
-	}
-
-	/// Add a post-update interceptor
-	pub fn add_table_post_update(
-		&mut self,
-		interceptor: Rc<dyn TablePostUpdateInterceptor<T>>,
-	) {
-		self.table_post_update.add(interceptor);
-	}
-
-	/// Add a pre-delete interceptor
-	pub fn add_table_pre_delete(
-		&mut self,
-		interceptor: Rc<dyn TablePreDeleteInterceptor<T>>,
-	) {
-		self.table_pre_delete.add(interceptor);
-	}
-
-	/// Add a post-delete interceptor
-	pub fn add_table_post_delete(
-		&mut self,
-		interceptor: Rc<dyn TablePostDeleteInterceptor<T>>,
-	) {
-		self.table_post_delete.add(interceptor);
-	}
-
-	/// Add a pre-commit interceptor
-	pub fn add_pre_commit(
-		&mut self,
-		interceptor: Rc<dyn PreCommitInterceptor<T>>,
-	) {
-		self.pre_commit.add(interceptor);
-	}
-
-	/// Add a post-commit interceptor
-	pub fn add_post_commit(
-		&mut self,
-		interceptor: Rc<dyn PostCommitInterceptor<T>>,
-	) {
-		self.post_commit.add(interceptor);
+	/// Register any interceptor - it will be added to all appropriate
+	/// chains based on which traits it implements
+	pub fn register<I>(&mut self, interceptor: I)
+	where
+		I: super::RegisterInterceptor<T> + 'static,
+	{
+		Rc::new(interceptor).register(self);
 	}
 }
