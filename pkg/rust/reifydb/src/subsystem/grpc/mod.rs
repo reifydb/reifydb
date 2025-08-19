@@ -106,7 +106,7 @@ impl<T: Transaction> Subsystem for GrpcSubsystem<T> {
 				addr_task.abort(); // Clean up address polling task
 
 				if let Err(e) = serve_result {
-					eprintln!(
+					println!(
 						"[GrpcSubsystem] gRPC server error: {}",
 						e
 					);

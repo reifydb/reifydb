@@ -14,7 +14,10 @@ use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
-	subsystem::{SubsystemFactory, Subsystems},
+	subsystem::{
+		SubsystemFactory, Subsystems,
+		worker_pool::WorkerPoolSubsystemFactory,
+	},
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
@@ -47,6 +50,10 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			subsystems: Vec::new(),
 			ioc,
 		};
+
+		result = result.add_subsystem_factory(Box::new(
+			WorkerPoolSubsystemFactory::new(),
+		));
 
 		#[cfg(feature = "sub_flow")]
 		{
@@ -135,7 +142,6 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			Box::new(self.interceptors.build()),
 		);
 
-		// Register engine in IoC container
 		self.ioc = self.ioc.register(engine.clone());
 
 		// Phase 3: Create subsystems from factories (they get engine

@@ -11,7 +11,7 @@ use std::{
 };
 
 use Key::TableRow;
-use reifydb::subsystem::cdc::PollConsumer;
+use reifydb::subsystem::cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	EncodedKey, Result, RowId,
 	diagnostic::Diagnostic,
@@ -39,12 +39,11 @@ fn test_consumer_lifecycle() {
 	let consumer = TestConsumer::new();
 	let consumer_id = ConsumerId::flow_consumer();
 
-	let mut test_instance = PollConsumer::new(
+	let config = PollConsumerConfig::new(
 		consumer_id,
 		Duration::from_millis(100),
-		engine,
-		consumer,
 	);
+	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	assert!(!test_instance.is_running());
 
@@ -73,12 +72,10 @@ fn test_event_processing() {
 
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
-	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
-		engine.clone(),
-		consumer,
-	);
+	let config =
+		PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let mut test_instance =
+		PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
 
@@ -113,12 +110,12 @@ fn test_checkpoint_persistence() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let mut test_instance = PollConsumer::new(
+	let config = PollConsumerConfig::new(
 		consumer_id.clone(),
 		Duration::from_millis(50),
-		engine.clone(),
-		consumer,
 	);
+	let mut test_instance =
+		PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
 	thread::sleep(Duration::from_millis(150));
@@ -136,12 +133,12 @@ fn test_checkpoint_persistence() {
 
 	let consumer2 = TestConsumer::new();
 	let consumer2_clone = consumer2.clone();
-	let mut test_instance2 = PollConsumer::new(
+	let config2 = PollConsumerConfig::new(
 		consumer_id.clone(),
 		Duration::from_millis(50),
-		engine.clone(),
-		consumer2,
 	);
+	let mut test_instance2 =
+		PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance2.start().expect("Failed to start consumer");
 	thread::sleep(Duration::from_millis(150));
@@ -185,12 +182,10 @@ fn test_error_handling() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
-		engine.clone(),
-		consumer,
-	);
+	let config =
+		PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let mut test_instance =
+		PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
 	thread::sleep(Duration::from_millis(100));
@@ -235,12 +230,10 @@ fn test_empty_events_handling() {
 	let consumer_clone = consumer.clone();
 	let consumer_id = ConsumerId::flow_consumer();
 
-	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
-		engine.clone(),
-		consumer,
-	);
+	let config =
+		PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let mut test_instance =
+		PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
 
@@ -285,19 +278,19 @@ fn test_multiple_consumers() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let mut test_instance1 = PollConsumer::new(
+	let config1 = PollConsumerConfig::new(
 		consumer_id1.clone(),
 		Duration::from_millis(50),
-		engine.clone(),
-		consumer1,
 	);
+	let mut test_instance1 =
+		PollConsumer::new(config1, engine.clone(), consumer1);
 
-	let mut test_instance2 = PollConsumer::new(
+	let config2 = PollConsumerConfig::new(
 		consumer_id2.clone(),
 		Duration::from_millis(75),
-		engine.clone(),
-		consumer2,
 	);
+	let mut test_instance2 =
+		PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance1.start().expect("Failed to start consumer 1");
 	test_instance2.start().expect("Failed to start consumer 2");
@@ -405,12 +398,9 @@ fn test_non_table_events_filtered() {
 
 	txn.commit().expect("Failed to commit transaction");
 
-	let mut test_instance = PollConsumer::new(
-		consumer_id,
-		Duration::from_millis(50),
-		engine,
-		consumer,
-	);
+	let config =
+		PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	test_instance.start().expect("Failed to start consumer");
 	thread::sleep(Duration::from_millis(150));
@@ -434,9 +424,12 @@ fn test_rapid_start_stop() {
 	let consumer_id = ConsumerId::flow_consumer();
 
 	for _ in 0..5 {
-		let mut test_instance = PollConsumer::new(
+		let config = PollConsumerConfig::new(
 			consumer_id.clone(),
 			Duration::from_millis(100),
+		);
+		let mut test_instance = PollConsumer::new(
+			config,
 			engine.clone(),
 			consumer.clone(),
 		);

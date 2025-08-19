@@ -12,6 +12,7 @@ pub mod key;
 mod params;
 mod storage;
 mod transaction;
+pub mod worker_pool;
 
 pub use auth::*;
 pub use catalog::*;

@@ -103,7 +103,7 @@ impl WsClient {
 							))
 							.await
 						{
-							eprintln!(
+							println!(
 								"❌ Send error: {e}"
 							);
 							break;
@@ -122,10 +122,10 @@ impl WsClient {
 							if let Some(tx) = stream_pending.lock().await.remove(&resp.id) {
                                 let _ = tx.send(resp);
                             } else {
-                                eprintln!("⚠️ No pending handler for id: {}", resp.id);
+                                println!("⚠️ No pending handler for id: {}", resp.id);
                             }
 						}
-						Err(e) => eprintln!(
+						Err(e) => println!(
 							"❌ Parse error: {e}"
 						),
 					}
@@ -170,7 +170,7 @@ impl WsClient {
 		match resp.payload {
 			ResponsePayload::Auth(_) => Ok(()),
 			other => {
-				eprintln!(
+				println!(
 					"Unexpected auth response: {:?}",
 					other
 				);
@@ -209,7 +209,7 @@ impl WsClient {
 				err!(payload.diagnostic)
 			}
 			other => {
-				eprintln!(
+				println!(
 					"Unexpected execute response: {:?}",
 					other
 				);
@@ -250,7 +250,7 @@ impl WsClient {
 				err!(payload.diagnostic)
 			}
 			other => {
-				eprintln!(
+				println!(
 					"Unexpected query response: {:?}",
 					other
 				);

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [features]
 test-stress = []
+worker_pool = []
 
 [dependencies]
 reifydb-core = { workspace = true }

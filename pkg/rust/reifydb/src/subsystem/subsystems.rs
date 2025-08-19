@@ -75,7 +75,7 @@ impl Subsystems {
 		for subsystem in &mut self.subsystems {
 			// Check timeout
 			if start_time.elapsed() > startup_timeout {
-				eprintln!(
+				println!(
 					"[Subsystem] Startup timeout exceeded"
 				);
 				// Rollback: stop all previously started
@@ -107,7 +107,7 @@ impl Subsystems {
 					);
 				}
 				Err(e) => {
-					eprintln!(
+					println!(
 						"[Subsystem] Failed to start subsystem '{}': {}",
 						name, e
 					);
@@ -158,7 +158,7 @@ impl Subsystems {
 		for subsystem in self.subsystems.iter_mut().rev() {
 			// Check timeout
 			if start_time.elapsed() > shutdown_timeout {
-				eprintln!(
+				println!(
 					"[Subsystem] Shutdown timeout exceeded"
 				);
 				break;
@@ -184,7 +184,7 @@ impl Subsystems {
 					);
 				}
 				Err(e) => {
-					eprintln!(
+					println!(
 						"[Subsystem] Error stopping subsystem '{}': {}",
 						name, e
 					);
@@ -218,7 +218,7 @@ impl Subsystems {
 				errors.len(),
 				errors
 			);
-			eprintln!("[Subsystem] {}", error_msg);
+			println!("[Subsystem] {}", error_msg);
 			panic!("Errors occurred during shutdown: {:?}", errors)
 		}
 	}
@@ -258,7 +258,7 @@ impl Subsystems {
 			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
 					if let Err(e) = subsystem.stop() {
-						eprintln!(
+						println!(
 							"[Subsystem] Error stopping '{}' during rollback: {}",
 							name, e
 						);

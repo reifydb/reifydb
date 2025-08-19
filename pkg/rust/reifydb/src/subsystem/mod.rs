@@ -21,6 +21,7 @@ pub mod flow;
 #[cfg(feature = "sub_grpc")]
 pub mod grpc;
 mod subsystems;
+pub mod worker_pool;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
 
@@ -30,6 +31,7 @@ pub use flow::{FlowSubsystem, FlowSubsystemFactory};
 #[cfg(feature = "sub_grpc")]
 pub use grpc::{GrpcSubsystem, GrpcSubsystemFactory};
 pub(crate) use subsystems::Subsystems;
+pub use worker_pool::{WorkerPoolSubsystem, WorkerPoolSubsystemFactory};
 #[cfg(feature = "sub_ws")]
 pub use ws::{WsSubsystem, WsSubsystemFactory};
 

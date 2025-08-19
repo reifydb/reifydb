@@ -173,7 +173,7 @@ impl<T: Transaction> Database<T> {
 				Ok(())
 			}
 			Err(e) => {
-				eprintln!(
+				println!(
 					"[Database] System startup failed: {}",
 					e
 				);
@@ -228,7 +228,7 @@ impl<T: Transaction> Database<T> {
 				Ok(())
 			}
 			Err(e) => {
-				eprintln!(
+				println!(
 					"[Database] System shutdown completed with errors: {}",
 					e
 				);

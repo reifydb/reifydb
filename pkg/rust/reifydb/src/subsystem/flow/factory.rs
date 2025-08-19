@@ -77,10 +77,6 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 	) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		Ok(Box::new(FlowSubsystem::new(
-			engine,
-			self.consumer_id,
-			self.poll_interval,
-		)))
+		Ok(Box::new(FlowSubsystem::new(engine)))
 	}
 }

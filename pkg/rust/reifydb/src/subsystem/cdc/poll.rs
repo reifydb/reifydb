@@ -19,43 +19,69 @@ use reifydb_core::{
 		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 		key::{CdcConsumerKey, EncodableKey},
+		worker_pool::Priority,
 	},
 	row::EncodedRow,
 	util::CowVec,
 };
 use reifydb_engine::StandardEngine;
 
+/// Configuration for a CDC poll consumer
+#[derive(Debug, Clone)]
+pub struct PollConsumerConfig {
+	/// Unique identifier for this consumer
+	pub consumer_id: ConsumerId,
+	/// How often to poll for new CDC events
+	pub poll_interval: Duration,
+	/// Priority for the polling task in the worker pool
+	pub priority: Priority,
+}
+
+impl PollConsumerConfig {
+	pub fn new(consumer_id: ConsumerId, poll_interval: Duration) -> Self {
+		Self {
+			consumer_id,
+			poll_interval,
+			priority: Priority::Normal,
+		}
+	}
+
+	pub fn with_priority(mut self, priority: Priority) -> Self {
+		self.priority = priority;
+		self
+	}
+}
+
 pub struct PollConsumer<T: Transaction, F: CdcConsume<T>> {
 	engine: Option<StandardEngine<T>>,
 	consumer: Option<Box<F>>,
+	config: PollConsumerConfig,
 	state: Arc<ConsumerState>,
 	worker: Option<JoinHandle<()>>,
 }
 
 struct ConsumerState {
-	id: ConsumerId,
-	interval: Duration,
 	consumer_key: EncodedKey,
 	running: AtomicBool,
 }
 
 impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 	pub fn new(
-		id: ConsumerId,
-		poll_interval: Duration,
+		config: PollConsumerConfig,
 		engine: StandardEngine<T>,
 		consume: C,
 	) -> Self {
+		let consumer_key = CdcConsumerKey {
+			consumer: config.consumer_id.clone(),
+		}
+		.encode();
+
 		Self {
 			engine: Some(engine),
 			consumer: Some(Box::new(consume)),
+			config,
 			state: Arc::new(ConsumerState {
-				id: id.clone(),
-				interval: poll_interval,
-				consumer_key: CdcConsumerKey {
-					consumer: id,
-				}
-				.encode(),
+				consumer_key,
 				running: AtomicBool::new(false),
 			}),
 			worker: None,
@@ -108,13 +134,14 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 	}
 
 	fn polling_loop(
+		config: &PollConsumerConfig,
 		engine: StandardEngine<T>,
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
 		println!(
 			"[Consumer {:?}] Started polling with interval {:?}",
-			state.id, state.interval
+			config.consumer_id, config.poll_interval
 		);
 
 		while state.running.load(Ordering::Acquire) {
@@ -123,14 +150,14 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			{
 				eprintln!(
 					"[Consumer {:?}] Error consuming events: {}",
-					state.id, error
+					config.consumer_id, error
 				);
 			}
 
-			thread::sleep(state.interval);
+			thread::sleep(config.poll_interval);
 		}
 
-		println!("[Consumer {:?}] Stopped", state.id);
+		println!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 
@@ -156,9 +183,10 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 			.expect("consumer already consumed");
 
 		let state = Arc::clone(&self.state);
+		let config = self.config.clone();
 
 		self.worker = Some(thread::spawn(move || {
-			Self::polling_loop(engine, consumer, state);
+			Self::polling_loop(&config, engine, consumer, state);
 		}));
 
 		Ok(())

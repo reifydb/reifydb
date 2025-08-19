@@ -20,7 +20,10 @@ use reifydb_core::{
 use reifydb_engine::{StandardEngine, StandardEvaluator};
 use reifydb_flow::{Change, Diff, Flow, FlowEngine};
 
-use super::{Subsystem, cdc::PollConsumer};
+use super::{
+	Subsystem,
+	cdc::{PollConsumer, PollConsumerConfig},
+};
 use crate::health::HealthStatus;
 
 #[derive(Clone)]
@@ -102,15 +105,14 @@ pub struct FlowSubsystem<T: Transaction> {
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(
-		engine: StandardEngine<T>,
-		consumer_id: ConsumerId,
-		poll_interval: Duration,
-	) -> Self {
+	pub fn new(engine: StandardEngine<T>) -> Self {
+		let config = PollConsumerConfig::new(
+			ConsumerId::flow_consumer(),
+			Duration::from_millis(1),
+		);
 		Self {
 			consumer: PollConsumer::new(
-				consumer_id,
-				poll_interval,
+				config,
 				engine.clone(),
 				FlowConsumer {
 					engine: engine.clone(),

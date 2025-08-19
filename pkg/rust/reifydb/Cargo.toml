@@ -19,6 +19,7 @@ reifydb-transaction = { workspace = true }
 
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
+crossbeam-channel = { workspace = true }
 
 [features]
 default = []
