@@ -43,7 +43,7 @@ impl<T: Transaction> SyncBuilder<T> {
 		self
 	}
 
-	pub fn build(self) -> Database<T> {
+	pub fn build(self) -> crate::Result<Database<T>> {
 		DatabaseBuilder::new(
 			self.versioned,
 			self.unversioned,

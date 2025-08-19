@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interceptor::StandardInterceptorBuilder, interface::Transaction,
+	Result, interceptor::StandardInterceptorBuilder,
+	interface::Transaction, ioc::IocContainer,
 };
 
 use super::Subsystem;
-use crate::ioc::IocContainer;
 
 /// Factory trait for creating subsystems with IoC support
 pub trait SubsystemFactory<T: Transaction> {
@@ -18,5 +18,8 @@ pub trait SubsystemFactory<T: Transaction> {
 	) -> StandardInterceptorBuilder<T>;
 
 	/// Create the subsystem using services from IoC container
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Box<dyn Subsystem>;
+	fn create(
+		self: Box<Self>,
+		ioc: &IocContainer,
+	) -> Result<Box<dyn Subsystem>>;
 }

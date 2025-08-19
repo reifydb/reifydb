@@ -84,7 +84,7 @@ impl<T: Transaction> ServerBuilder<T> {
 		self
 	}
 
-	pub fn build(self) -> Database<T> {
+	pub fn build(self) -> crate::Result<Database<T>> {
 		let mut database_builder = DatabaseBuilder::new(
 			self.versioned,
 			self.unversioned,

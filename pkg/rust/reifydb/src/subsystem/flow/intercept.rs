@@ -12,10 +12,9 @@ use reifydb_core::{
 		TablePostUpdateInterceptor,
 	},
 	interface::{TableId, Transaction},
+	ioc::{IocContainer, LazyResolve},
 };
 use reifydb_engine::StandardEngine;
-
-use crate::ioc::{IocContainer, LazyResolve};
 
 /// Event type for flow processing
 #[derive(Debug, Clone)]

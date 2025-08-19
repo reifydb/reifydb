@@ -14,7 +14,7 @@ pub struct FlowTestRunner {
 
 impl FlowTestRunner {
 	pub fn new() -> Self {
-		let db = sync::memory_optimistic().build();
+		let db = sync::memory_optimistic().build().unwrap();
 		Self {
 			instance: db,
 		}

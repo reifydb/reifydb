@@ -43,7 +43,8 @@ where
 				cdc,
 				hooks,
 			)
-			.build(),
+			.build()
+			.unwrap(),
 			runtime: Runtime::new().unwrap(),
 		}
 	}

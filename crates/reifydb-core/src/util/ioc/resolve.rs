@@ -6,9 +6,8 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
-use reifydb_core::{Result, diagnostic::internal, error};
-
 use super::IocContainer;
+use crate::{Result, diagnostic::internal, error};
 
 /// Inner storage for lazy resolution
 struct LazyResolveInner<T> {

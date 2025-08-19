@@ -6,6 +6,7 @@ pub mod clock;
 pub mod cowvec;
 pub mod either;
 pub mod encoding;
+pub mod ioc;
 pub mod retry;
 pub mod wait_group;
 

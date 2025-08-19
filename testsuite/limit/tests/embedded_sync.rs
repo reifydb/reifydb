@@ -41,7 +41,8 @@ where
 				cdc,
 				hooks,
 			)
-			.build(),
+			.build()
+			.unwrap(),
 		}
 	}
 }

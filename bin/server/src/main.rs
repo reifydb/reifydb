@@ -49,7 +49,8 @@ fn main() {
 		// 	ctx.command_as_root("create schema test", ())?;
 		// 	Ok(())
 		// })
-		.build();
+		.build()
+		.unwrap();
 
 	// Start the database
 	db.start().unwrap();

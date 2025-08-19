@@ -38,7 +38,8 @@ fn main() {
 			);
 			Ok(())
 		}))
-		.build();
+		.build()
+		.unwrap();
 	// let mut db: DB =
 	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 

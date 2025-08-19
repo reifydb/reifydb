@@ -16,16 +16,17 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
-pub use interface::ColumnDescriptor;
-// Re-export fragment types
-pub use interface::fragment::{
-	BorrowedFragment, Fragment, IntoFragment, IntoOwnedFragment,
-	OwnedFragment, StatementColumn, StatementLine,
+pub use interface::{
+	ColumnDescriptor,
+	fragment::{
+		BorrowedFragment, Fragment, IntoFragment, IntoOwnedFragment,
+		OwnedFragment, StatementColumn, StatementLine,
+	},
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
-pub use util::{BitVec, CowVec, Either, WaitGroup, retry};
+pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};
 pub use value::{
 	Blob, Date, DateTime, GetType, IdentityId, Interval, IntoValue,
 	OrderedF32, OrderedF64, RowId, Time, Type, Uuid4, Uuid7, Value,

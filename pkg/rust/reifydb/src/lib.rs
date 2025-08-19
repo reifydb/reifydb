@@ -8,7 +8,6 @@ mod context;
 mod database;
 mod health;
 mod hook;
-mod ioc;
 mod presets;
 mod session;
 pub mod subsystem;

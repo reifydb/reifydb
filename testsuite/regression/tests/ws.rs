@@ -49,7 +49,8 @@ where
 						.parse()
 						.unwrap()),
 				})
-				.build();
+				.build()
+				.unwrap();
 
 		Self {
 			instance: Some(instance),

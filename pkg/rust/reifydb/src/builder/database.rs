@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{
 	hook::Hooks, interceptor::StandardInterceptorBuilder,
-	interface::Transaction,
+	interface::Transaction, ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
 
@@ -14,16 +14,11 @@ use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
-	ioc::IocContainer,
 	subsystem::{SubsystemFactory, Subsystems},
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
 	config: DatabaseConfig,
-	versioned: Option<T::Versioned>,
-	unversioned: Option<T::Unversioned>,
-	cdc: Option<T::Cdc>,
-	hooks: Option<Hooks>,
 	interceptors: StandardInterceptorBuilder<T>,
 	subsystems: Vec<Box<dyn SubsystemFactory<T>>>,
 	ioc: IocContainer,
@@ -39,7 +34,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		cdc: T::Cdc,
 		hooks: Hooks,
 	) -> Self {
-		// Create IoC container and register initial services
+		// Create IoC container and register initial dependencies
 		let ioc = IocContainer::new()
 			.register(hooks.clone())
 			.register(versioned.clone())
@@ -47,10 +42,6 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			.register(cdc.clone());
 
 		let mut result = Self {
-			versioned: Some(versioned),
-			unversioned: Some(unversioned),
-			cdc: Some(cdc),
-			hooks: Some(hooks),
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
@@ -119,7 +110,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		self.subsystems.len()
 	}
 
-	pub fn build(mut self) -> Database<T> {
+	pub fn build(mut self) -> crate::Result<Database<T>> {
 		// Phase 1: Collect interceptors from all factories (passing
 		// IoC)
 		for factory in &self.subsystems {
@@ -130,11 +121,17 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		}
 
 		// Phase 2: Create engine with all interceptors
+		// Retrieve components from IoC container
+		let versioned = self.ioc.resolve::<T::Versioned>()?;
+		let unversioned = self.ioc.resolve::<T::Unversioned>()?;
+		let cdc = self.ioc.resolve::<T::Cdc>()?;
+		let hooks = self.ioc.resolve::<Hooks>()?;
+
 		let engine = StandardEngine::new(
-			self.versioned.expect("versioned required"),
-			self.unversioned.expect("unversioned required"),
-			self.cdc.expect("cdc required"),
-			self.hooks.expect("hooks required"),
+			versioned,
+			unversioned,
+			cdc,
+			hooks,
 			Box::new(self.interceptors.build()),
 		);
 
@@ -148,11 +145,16 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			Subsystems::new(Arc::clone(&health_monitor));
 
 		for factory in self.subsystems {
-			let subsystem = factory.create(&self.ioc);
+			let subsystem = factory.create(&self.ioc)?;
 			subsystems.add_subsystem(subsystem);
 		}
 
-		Database::new(engine, subsystems, self.config, health_monitor)
+		Ok(Database::new(
+			engine,
+			subsystems,
+			self.config,
+			health_monitor,
+		))
 	}
 }
 

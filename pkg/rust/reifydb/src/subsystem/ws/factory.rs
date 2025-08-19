@@ -1,8 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::marker::PhantomData;
+
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder, interface::Transaction,
+	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::WsConfig;
@@ -10,7 +13,6 @@ use reifydb_network::ws::server::WsConfig;
 use super::WsSubsystem;
 use crate::{
 	context::RuntimeProvider,
-	ioc::IocContainer,
 	subsystem::{Subsystem, factory::SubsystemFactory},
 };
 
@@ -18,7 +20,7 @@ use crate::{
 pub struct WsSubsystemFactory<T: Transaction> {
 	config: WsConfig,
 	runtime_provider: RuntimeProvider,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> WsSubsystemFactory<T> {
@@ -29,7 +31,7 @@ impl<T: Transaction> WsSubsystemFactory<T> {
 		Self {
 			config,
 			runtime_provider,
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		}
 	}
 }
@@ -44,16 +46,16 @@ impl<T: Transaction> SubsystemFactory<T> for WsSubsystemFactory<T> {
 		builder
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Box<dyn Subsystem> {
-		// Get engine from IoC
-		let engine = ioc
-			.resolve::<StandardEngine<T>>()
-			.expect("StandardEngine must be registered in IoC");
+	fn create(
+		self: Box<Self>,
+		ioc: &IocContainer,
+	) -> crate::Result<Box<dyn Subsystem>> {
+		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		Box::new(WsSubsystem::new(
+		Ok(Box::new(WsSubsystem::new(
 			self.config,
 			engine,
 			&self.runtime_provider,
-		))
+		)))
 	}
 }

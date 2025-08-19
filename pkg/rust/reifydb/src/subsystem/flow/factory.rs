@@ -1,26 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::time::Duration;
+use std::{marker::PhantomData, time::Duration};
 
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{ConsumerId, Transaction},
+	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
 
 use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
-use crate::{
-	ioc::IocContainer,
-	subsystem::{Subsystem, factory::SubsystemFactory},
-};
+use crate::subsystem::{Subsystem, factory::SubsystemFactory};
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 #[derive()]
 pub struct FlowSubsystemFactory<T: Transaction> {
 	consumer_id: ConsumerId,
 	poll_interval: Duration,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> FlowSubsystemFactory<T> {
@@ -28,7 +26,7 @@ impl<T: Transaction> FlowSubsystemFactory<T> {
 		Self {
 			consumer_id: ConsumerId::flow_consumer(),
 			poll_interval: Duration::from_millis(1),
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		}
 	}
 
@@ -44,7 +42,6 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 		builder: StandardInterceptorBuilder<T>,
 		ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<T> {
-		// Create interceptor with IoC container
 		let interceptor =
 			TransactionalFlowInterceptor::new(ioc.clone());
 
@@ -54,16 +51,16 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 			.add_pre_commit(interceptor)
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Box<dyn Subsystem> {
-		// Get engine from IoC
-		let engine = ioc
-			.resolve::<StandardEngine<T>>()
-			.expect("StandardEngine must be registered in IoC");
+	fn create(
+		self: Box<Self>,
+		ioc: &IocContainer,
+	) -> reifydb_core::Result<Box<dyn Subsystem>> {
+		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		Box::new(FlowSubsystem::new(
+		Ok(Box::new(FlowSubsystem::new(
 			engine,
 			self.consumer_id,
 			self.poll_interval,
-		))
+		)))
 	}
 }

@@ -9,9 +9,10 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use reifydb_core::{Result, diagnostic::internal, error};
 #[allow(unused_imports)]
 pub use resolve::LazyResolve;
+
+use crate::{Result, diagnostic::internal, error};
 
 struct BoxedValue {
 	value: Box<dyn Any + Send + Sync>,

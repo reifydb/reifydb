@@ -66,7 +66,8 @@ fn main() {
 		// 	)?;
 		// 	Ok(())
 		// })
-		.build();
+		.build()
+		.unwrap();
 
 	// Start the database
 	db.start().unwrap();
