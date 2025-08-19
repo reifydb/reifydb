@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod resolve;
+mod single_thread;
 
 use std::{
 	any::{Any, TypeId, type_name},
@@ -11,6 +12,7 @@ use std::{
 
 #[allow(unused_imports)]
 pub use resolve::LazyResolve;
+pub use single_thread::SingleThreadLazyResolve;
 
 use crate::{Result, diagnostic::internal, error};
 

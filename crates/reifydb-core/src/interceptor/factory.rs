@@ -19,20 +19,29 @@ pub trait InterceptorFactory<T: Transaction>: Send + Sync {
 	fn create(&self) -> Interceptors<T>;
 }
 
-/// Standard implementation of InterceptorFactory that stores interceptors in a
-/// Send+Sync safe way
+/// Factory function that creates an interceptor instance
+type InterceptorFactoryFn<I> = Arc<dyn Fn() -> Arc<I> + Send + Sync>;
+
+/// Standard implementation of InterceptorFactory that stores factory functions
+/// This allows the factory to be Send+Sync while creating non-Send/Sync
+/// interceptors
 pub struct StandardInterceptorFactory<T: Transaction> {
-	pub(crate) table_pre_insert: Vec<Arc<dyn TablePreInsertInterceptor<T>>>,
+	pub(crate) table_pre_insert:
+		Vec<InterceptorFactoryFn<dyn TablePreInsertInterceptor<T>>>,
 	pub(crate) table_post_insert:
-		Vec<Arc<dyn TablePostInsertInterceptor<T>>>,
-	pub(crate) table_pre_update: Vec<Arc<dyn TablePreUpdateInterceptor<T>>>,
+		Vec<InterceptorFactoryFn<dyn TablePostInsertInterceptor<T>>>,
+	pub(crate) table_pre_update:
+		Vec<InterceptorFactoryFn<dyn TablePreUpdateInterceptor<T>>>,
 	pub(crate) table_post_update:
-		Vec<Arc<dyn TablePostUpdateInterceptor<T>>>,
-	pub(crate) table_pre_delete: Vec<Arc<dyn TablePreDeleteInterceptor<T>>>,
+		Vec<InterceptorFactoryFn<dyn TablePostUpdateInterceptor<T>>>,
+	pub(crate) table_pre_delete:
+		Vec<InterceptorFactoryFn<dyn TablePreDeleteInterceptor<T>>>,
 	pub(crate) table_post_delete:
-		Vec<Arc<dyn TablePostDeleteInterceptor<T>>>,
-	pub(crate) pre_commit: Vec<Arc<dyn PreCommitInterceptor<T>>>,
-	pub(crate) post_commit: Vec<Arc<dyn PostCommitInterceptor<T>>>,
+		Vec<InterceptorFactoryFn<dyn TablePostDeleteInterceptor<T>>>,
+	pub(crate) pre_commit:
+		Vec<InterceptorFactoryFn<dyn PreCommitInterceptor<T>>>,
+	pub(crate) post_commit:
+		Vec<InterceptorFactoryFn<dyn PostCommitInterceptor<T>>>,
 }
 
 impl<T: Transaction> Default for StandardInterceptorFactory<T> {
@@ -50,40 +59,124 @@ impl<T: Transaction> Default for StandardInterceptorFactory<T> {
 	}
 }
 
+impl<T: Transaction> StandardInterceptorFactory<T> {
+	/// Add a factory function for a table pre-insert interceptor
+	pub fn add_table_pre_insert_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn TablePreInsertInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.table_pre_insert.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a table post-insert interceptor
+	pub fn add_table_post_insert_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn TablePostInsertInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.table_post_insert.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a table pre-update interceptor
+	pub fn add_table_pre_update_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn TablePreUpdateInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.table_pre_update.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a table post-update interceptor
+	pub fn add_table_post_update_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn TablePostUpdateInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.table_post_update.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a table pre-delete interceptor
+	pub fn add_table_pre_delete_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn TablePreDeleteInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.table_pre_delete.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a table post-delete interceptor
+	pub fn add_table_post_delete_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn TablePostDeleteInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.table_post_delete.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a pre-commit interceptor
+	pub fn add_pre_commit_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn PreCommitInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.pre_commit.push(Arc::new(factory));
+	}
+
+	/// Add a factory function for a post-commit interceptor
+	pub fn add_post_commit_factory<F>(&mut self, factory: F)
+	where
+		F: Fn() -> Arc<dyn PostCommitInterceptor<T>>
+			+ Send
+			+ Sync
+			+ 'static,
+	{
+		self.post_commit.push(Arc::new(factory));
+	}
+}
+
 impl<T: Transaction> InterceptorFactory<T> for StandardInterceptorFactory<T> {
 	fn create(&self) -> Interceptors<T> {
 		let mut interceptors = Interceptors::new();
 
-		// Clone the Arc references into the new Interceptors instance
-		for interceptor in &self.table_pre_insert {
-			interceptors
-				.add_table_pre_insert(Arc::clone(interceptor));
+		// Create new interceptor instances using the factory functions
+		for factory in &self.table_pre_insert {
+			interceptors.add_table_pre_insert(factory());
 		}
-		for interceptor in &self.table_post_insert {
-			interceptors
-				.add_table_post_insert(Arc::clone(interceptor));
+		for factory in &self.table_post_insert {
+			interceptors.add_table_post_insert(factory());
 		}
-		for interceptor in &self.table_pre_update {
-			interceptors
-				.add_table_pre_update(Arc::clone(interceptor));
+		for factory in &self.table_pre_update {
+			interceptors.add_table_pre_update(factory());
 		}
-		for interceptor in &self.table_post_update {
-			interceptors
-				.add_table_post_update(Arc::clone(interceptor));
+		for factory in &self.table_post_update {
+			interceptors.add_table_post_update(factory());
 		}
-		for interceptor in &self.table_pre_delete {
-			interceptors
-				.add_table_pre_delete(Arc::clone(interceptor));
+		for factory in &self.table_pre_delete {
+			interceptors.add_table_pre_delete(factory());
 		}
-		for interceptor in &self.table_post_delete {
-			interceptors
-				.add_table_post_delete(Arc::clone(interceptor));
+		for factory in &self.table_post_delete {
+			interceptors.add_table_post_delete(factory());
 		}
-		for interceptor in &self.pre_commit {
-			interceptors.add_pre_commit(Arc::clone(interceptor));
+		for factory in &self.pre_commit {
+			interceptors.add_pre_commit(factory());
 		}
-		for interceptor in &self.post_commit {
-			interceptors.add_post_commit(Arc::clone(interceptor));
+		for factory in &self.post_commit {
+			interceptors.add_post_commit(factory());
 		}
 
 		interceptors

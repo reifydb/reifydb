@@ -14,6 +14,8 @@ use crate::{
 	interface::Transaction,
 };
 
+/// Trait for types that can be added to the interceptor builder
+/// This allows both direct interceptors and factory functions
 pub trait AddToBuilder<T: Transaction> {
 	fn add_to_builder(
 		self,
@@ -21,35 +23,24 @@ pub trait AddToBuilder<T: Transaction> {
 	) -> StandardInterceptorBuilder<T>;
 }
 
-/// Macro to generate add methods for interceptor builder
-macro_rules! define_builder_methods {
-	(
-		$(
-			$field:ident: $trait_type:ident => $method_name:ident
-		),* $(,)?
-	) => {
-		$(
-			pub fn $method_name<I>(mut self, interceptor: I) -> Self
-			where
-				I: $trait_type<T> + 'static,
-			{
-				self.$field.push(Arc::new(interceptor));
-				self
-			}
-		)*
+/// Macro to generate builder methods for adding interceptors
+macro_rules! impl_builder_method {
+	($method_name:ident, $trait_type:ty, $factory_method:ident) => {
+		pub fn $method_name<F>(mut self, factory_fn: F) -> Self
+		where
+			F: Fn() -> Arc<$trait_type> + Send + Sync + 'static,
+		{
+			self.factory.$factory_method(factory_fn);
+			self
+		}
 	};
 }
 
-/// Builder for configuring interceptors
+/// Builder for configuring interceptors using factory functions
+/// This allows building a Send+Sync factory that creates non-Send/Sync
+/// interceptors
 pub struct StandardInterceptorBuilder<T: Transaction> {
-	table_pre_insert: Vec<Arc<dyn TablePreInsertInterceptor<T>>>,
-	table_post_insert: Vec<Arc<dyn TablePostInsertInterceptor<T>>>,
-	table_pre_update: Vec<Arc<dyn TablePreUpdateInterceptor<T>>>,
-	table_post_update: Vec<Arc<dyn TablePostUpdateInterceptor<T>>>,
-	table_pre_delete: Vec<Arc<dyn TablePreDeleteInterceptor<T>>>,
-	table_post_delete: Vec<Arc<dyn TablePostDeleteInterceptor<T>>>,
-	pre_commit: Vec<Arc<dyn PreCommitInterceptor<T>>>,
-	post_commit: Vec<Arc<dyn PostCommitInterceptor<T>>>,
+	factory: StandardInterceptorFactory<T>,
 }
 
 impl<T: Transaction> Default for StandardInterceptorBuilder<T> {
@@ -61,18 +52,12 @@ impl<T: Transaction> Default for StandardInterceptorBuilder<T> {
 impl<T: Transaction> StandardInterceptorBuilder<T> {
 	pub fn new() -> Self {
 		Self {
-			table_pre_insert: Vec::new(),
-			table_post_insert: Vec::new(),
-			table_pre_update: Vec::new(),
-			table_post_update: Vec::new(),
-			table_pre_delete: Vec::new(),
-			table_post_delete: Vec::new(),
-			pre_commit: Vec::new(),
-			post_commit: Vec::new(),
+			factory: StandardInterceptorFactory::default(),
 		}
 	}
 
-	/// Add any interceptor - the type determines which chain it goes to
+	/// Add an interceptor using the AddToBuilder trait
+	/// This maintains backward compatibility with the existing API
 	pub fn add_interceptor<I>(self, interceptor: I) -> Self
 	where
 		I: AddToBuilder<T>,
@@ -80,28 +65,48 @@ impl<T: Transaction> StandardInterceptorBuilder<T> {
 		interceptor.add_to_builder(self)
 	}
 
-	// Generate all the add methods using the macro
-	define_builder_methods! {
-		table_pre_insert: TablePreInsertInterceptor => add_table_pre_insert,
-		table_post_insert: TablePostInsertInterceptor => add_table_post_insert,
-		table_pre_update: TablePreUpdateInterceptor => add_table_pre_update,
-		table_post_update: TablePostUpdateInterceptor => add_table_post_update,
-		table_pre_delete: TablePreDeleteInterceptor => add_table_pre_delete,
-		table_post_delete: TablePostDeleteInterceptor => add_table_post_delete,
-		pre_commit: PreCommitInterceptor => add_pre_commit,
-		post_commit: PostCommitInterceptor => add_post_commit,
-	}
+	impl_builder_method!(
+		add_table_pre_insert,
+		dyn TablePreInsertInterceptor<T>,
+		add_table_pre_insert_factory
+	);
+	impl_builder_method!(
+		add_table_post_insert,
+		dyn TablePostInsertInterceptor<T>,
+		add_table_post_insert_factory
+	);
+	impl_builder_method!(
+		add_table_pre_update,
+		dyn TablePreUpdateInterceptor<T>,
+		add_table_pre_update_factory
+	);
+	impl_builder_method!(
+		add_table_post_update,
+		dyn TablePostUpdateInterceptor<T>,
+		add_table_post_update_factory
+	);
+	impl_builder_method!(
+		add_table_pre_delete,
+		dyn TablePreDeleteInterceptor<T>,
+		add_table_pre_delete_factory
+	);
+	impl_builder_method!(
+		add_table_post_delete,
+		dyn TablePostDeleteInterceptor<T>,
+		add_table_post_delete_factory
+	);
+	impl_builder_method!(
+		add_pre_commit,
+		dyn PreCommitInterceptor<T>,
+		add_pre_commit_factory
+	);
+	impl_builder_method!(
+		add_post_commit,
+		dyn PostCommitInterceptor<T>,
+		add_post_commit_factory
+	);
 
 	pub fn build(self) -> StandardInterceptorFactory<T> {
-		StandardInterceptorFactory {
-			table_pre_insert: self.table_pre_insert,
-			table_post_insert: self.table_post_insert,
-			table_pre_update: self.table_pre_update,
-			table_post_update: self.table_post_update,
-			table_pre_delete: self.table_pre_delete,
-			table_post_delete: self.table_post_delete,
-			pre_commit: self.pre_commit,
-			post_commit: self.post_commit,
-		}
+		self.factory
 	}
 }

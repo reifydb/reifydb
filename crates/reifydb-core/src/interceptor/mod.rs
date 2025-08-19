@@ -45,7 +45,7 @@ macro_rules! define_interceptor {
 			}
 		}
 
-		pub trait $trait_name<T: $crate::interface::Transaction>: Send + Sync {
+		pub trait $trait_name<T: $crate::interface::Transaction> {
 			fn intercept(
 				&self,
 				ctx: &mut $context_name<T>,
@@ -88,7 +88,7 @@ macro_rules! define_interceptor {
 			}
 		}
 
-		pub trait $trait_name<T: $crate::interface::Transaction>: Send + Sync {
+		pub trait $trait_name<T: $crate::interface::Transaction> {
 			fn intercept(
 				&self,
 				ctx: &mut $context_name,
@@ -121,9 +121,7 @@ macro_rules! define_closure_interceptor {
 	) => {
 		pub struct $wrapper_name<T: Transaction, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>
-				+ Send
-				+ Sync,
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
 			closure: F,
 			_phantom: PhantomData<T>,
@@ -131,9 +129,7 @@ macro_rules! define_closure_interceptor {
 
 		impl<T: Transaction, F> $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>
-				+ Send
-				+ Sync,
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
 			pub fn new(closure: F) -> Self {
 				Self {
@@ -143,11 +139,22 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<T, F>
+		impl<T: Transaction, F> Clone for $wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
-				+ Send
-				+ Sync,
+				+ Clone,
+		{
+			fn clone(&self) -> Self {
+				Self {
+					closure: self.closure.clone(),
+					_phantom: PhantomData,
+				}
+			}
+		}
+
+		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<T, F>
+		where
+			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
 			fn intercept(
 				&self,
@@ -168,18 +175,14 @@ macro_rules! define_closure_interceptor {
 	) => {
 		pub struct $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()>
-				+ Send
-				+ Sync,
+			F: Fn(&mut $context_type) -> crate::Result<()>,
 		{
 			closure: F,
 		}
 
 		impl<F> $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()>
-				+ Send
-				+ Sync,
+			F: Fn(&mut $context_type) -> crate::Result<()>,
 		{
 			pub fn new(closure: F) -> Self {
 				Self {
@@ -188,11 +191,20 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
+		impl<F> Clone for $wrapper_name<F>
+		where
+			F: Fn(&mut $context_type) -> crate::Result<()> + Clone,
+		{
+			fn clone(&self) -> Self {
+				Self {
+					closure: self.closure.clone(),
+				}
+			}
+		}
+
 		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()>
-				+ Send
-				+ Sync,
+			F: Fn(&mut $context_type) -> crate::Result<()>,
 		{
 			fn intercept(
 				&self,
@@ -213,18 +225,26 @@ macro_rules! impl_add_to_builder {
 		$context_type:ident<T>,
 		$builder_method:ident
 	) => {
-		impl<T: Transaction, F> AddToBuilder<T> for $closure_type<T, F>
+		impl<T: Transaction, F> $crate::interceptor::AddToBuilder<T>
+			for $closure_type<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
 				+ Send
 				+ Sync
+				+ Clone
 				+ 'static,
 		{
 			fn add_to_builder(
 				self,
-				builder: StandardInterceptorBuilder<T>,
-			) -> StandardInterceptorBuilder<T> {
-				builder.$builder_method(self)
+				builder: $crate::interceptor::StandardInterceptorBuilder<T>,
+			) -> $crate::interceptor::StandardInterceptorBuilder<T>
+			{
+				use std::sync::Arc;
+				// Create a factory function that creates new
+				// instances
+				builder.$builder_method(move || {
+					Arc::new(self.clone())
+				})
 			}
 		}
 	};
@@ -235,18 +255,26 @@ macro_rules! impl_add_to_builder {
 		$context_type:ident,
 		$builder_method:ident
 	) => {
-		impl<T: Transaction, F> AddToBuilder<T> for $closure_type<F>
+		impl<T: Transaction, F> $crate::interceptor::AddToBuilder<T>
+			for $closure_type<F>
 		where
 			F: Fn(&mut $context_type) -> crate::Result<()>
 				+ Send
 				+ Sync
+				+ Clone
 				+ 'static,
 		{
 			fn add_to_builder(
 				self,
-				builder: StandardInterceptorBuilder<T>,
-			) -> StandardInterceptorBuilder<T> {
-				builder.$builder_method(self)
+				builder: $crate::interceptor::StandardInterceptorBuilder<T>,
+			) -> $crate::interceptor::StandardInterceptorBuilder<T>
+			{
+				use std::sync::Arc;
+				// Create a factory function that creates new
+				// instances
+				builder.$builder_method(move || {
+					Arc::new(self.clone())
+				})
 			}
 		}
 	};
@@ -266,6 +294,7 @@ macro_rules! define_helper_function {
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
 				+ Send
 				+ Sync
+				+ Clone
 				+ 'static,
 		{
 			$closure_type::new(f)
@@ -283,6 +312,7 @@ macro_rules! define_helper_function {
 			F: Fn(&mut $context_type) -> crate::Result<()>
 				+ Send
 				+ Sync
+				+ Clone
 				+ 'static,
 		{
 			$closure_type::new(f)

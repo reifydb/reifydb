@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use crate::{
 	RowId, define_closure_interceptor, define_helper_function,
 	define_interceptor, impl_add_to_builder,
-	interceptor::{AddToBuilder, StandardInterceptorBuilder},
 	interface::{CommandTransaction, TableDef, Transaction},
 	row::EncodedRow,
 };

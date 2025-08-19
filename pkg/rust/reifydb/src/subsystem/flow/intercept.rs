@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 
 use reifydb_core::{
 	Result, RowId,
@@ -12,7 +12,7 @@ use reifydb_core::{
 		TablePostUpdateInterceptor,
 	},
 	interface::{TableId, Transaction},
-	ioc::{IocContainer, LazyResolve},
+	ioc::{IocContainer, SingleThreadLazyResolve},
 };
 use reifydb_engine::StandardEngine;
 
@@ -38,18 +38,18 @@ pub enum FlowChange {
 }
 
 pub struct TransactionalFlowInterceptor<T: Transaction> {
-	engine: LazyResolve<StandardEngine<T>>,
+	engine: SingleThreadLazyResolve<StandardEngine<T>>,
 	ioc: IocContainer,
 	// Transaction-scoped change buffer
-	changes: Arc<Mutex<Vec<FlowChange>>>,
+	changes: Rc<RefCell<Vec<FlowChange>>>,
 }
 
 impl<T: Transaction> TransactionalFlowInterceptor<T> {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			engine: LazyResolve::new(),
+			engine: SingleThreadLazyResolve::new(),
 			ioc,
-			changes: Arc::new(Mutex::new(Vec::new())),
+			changes: Rc::new(RefCell::new(Vec::new())),
 		}
 	}
 }
@@ -59,7 +59,7 @@ impl<T: Transaction> Clone for TransactionalFlowInterceptor<T> {
 		Self {
 			engine: self.engine.clone(),
 			ioc: self.ioc.clone(),
-			changes: Arc::clone(&self.changes),
+			changes: Rc::clone(&self.changes),
 		}
 	}
 }
@@ -68,12 +68,12 @@ impl<T: Transaction> TablePostInsertInterceptor<T>
 	for TransactionalFlowInterceptor<T>
 {
 	fn intercept(&self, ctx: &mut TablePostInsertContext<T>) -> Result<()> {
-		// Collect insert event
-		self.changes.lock().unwrap().push(FlowChange::Insert {
+		self.changes.borrow_mut().push(FlowChange::Insert {
 			table_id: ctx.table.id,
 			row_id: ctx.id,
 			row: ctx.row.to_vec(),
 		});
+
 		Ok(())
 	}
 }
@@ -82,8 +82,7 @@ impl<T: Transaction> TablePostUpdateInterceptor<T>
 	for TransactionalFlowInterceptor<T>
 {
 	fn intercept(&self, ctx: &mut TablePostUpdateContext<T>) -> Result<()> {
-		// Collect update event
-		self.changes.lock().unwrap().push(FlowChange::Update {
+		self.changes.borrow_mut().push(FlowChange::Update {
 			table_id: ctx.table.id,
 			row_id: ctx.id,
 			before: ctx.old_row.to_vec(),
@@ -97,8 +96,7 @@ impl<T: Transaction> TablePostDeleteInterceptor<T>
 	for TransactionalFlowInterceptor<T>
 {
 	fn intercept(&self, ctx: &mut TablePostDeleteContext<T>) -> Result<()> {
-		// Collect delete event
-		self.changes.lock().unwrap().push(FlowChange::Delete {
+		self.changes.borrow_mut().push(FlowChange::Delete {
 			table_id: ctx.table.id,
 			row_id: ctx.id,
 			row: ctx.deleted_row.to_vec(),
@@ -111,12 +109,10 @@ impl<T: Transaction> PreCommitInterceptor<T>
 	for TransactionalFlowInterceptor<T>
 {
 	fn intercept(&self, _ctx: &mut PreCommitContext<T>) -> Result<()> {
-		// Get engine from IoC using lazy resolution (only resolves
-		// once)
-		let _engine = self.engine.get_or_resolve(&self.ioc)?;
+		let engine = self.engine.get_or_resolve(&self.ioc)?;
 
 		// Process all collected changes
-		let mut changes = self.changes.lock().unwrap();
+		let mut changes = self.changes.borrow_mut();
 		for _change in changes.drain(..) {
 			println!("{_change:?}")
 			// TODO: Process with flow engine
