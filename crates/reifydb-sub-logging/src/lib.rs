@@ -14,6 +14,7 @@ mod metrics;
 mod processor;
 mod subsystem;
 
+pub use backend::ConsoleBuilder;
 pub use builder::LoggingBuilder;
 pub use factory::LoggingSubsystemFactory;
 pub use metrics::LoggingMetrics;

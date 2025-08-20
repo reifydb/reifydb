@@ -3,13 +3,12 @@
 
 //! Builder pattern for configuring the logging subsystem
 
-use crate::backend::console::ConsoleBackend;
+use crate::backend::{console::ConsoleBackend, ConsoleBuilder};
 use crate::processor::ProcessorConfig;
 use crate::subsystem::LoggingSubsystem;
 use reifydb_core::interface::subsystem::logging::{init_logger, LogBackend};
 use std::time::Duration;
 
-/// Builder for configuring the logging subsystem
 pub struct LoggingBuilder {
 	backends: Vec<Box<dyn LogBackend>>,
 	buffer_capacity: usize,
@@ -18,9 +17,15 @@ pub struct LoggingBuilder {
 	immediate_on_error: bool,
 }
 
+impl Default for LoggingBuilder {
+	fn default() -> Self {
+		Self::new().with_console(move |_| ConsoleBuilder::new())
+	}
+}
+
 impl LoggingBuilder {
-	/// Create a new logging builder with default settings
-	pub fn new() -> Self {
+
+	pub(crate) fn new() -> Self {
 		Self {
 			backends: Vec::new(),
 			buffer_capacity: 10000,
@@ -30,28 +35,17 @@ impl LoggingBuilder {
 		}
 	}
 
-	/// Add a logging backend
-	pub fn add_backend(mut self, backend: Box<dyn LogBackend>) -> Self {
+	pub fn with_backend(mut self, backend: Box<dyn LogBackend>) -> Self {
 		self.backends.push(backend);
 		self
 	}
 
-	/// Add a console backend with default settings
-	pub fn with_console(self) -> Self {
-		self.add_backend(Box::new(ConsoleBackend::new()))
-	}
-
-	/// Add a console backend with custom settings
-	pub fn with_console_custom(
-		self,
-		use_color: bool,
-		stderr_for_errors: bool,
-	) -> Self {
-		self.add_backend(Box::new(
-			ConsoleBackend::new()
-				.with_color(use_color)
-				.with_stderr_for_errors(stderr_for_errors),
-		))
+	pub fn with_console<F>(self, builder_fn: F) -> Self
+	where
+		F: FnOnce(ConsoleBuilder) -> ConsoleBuilder,
+	{
+		let builder = builder_fn(ConsoleBuilder::new());
+		self.with_backend(Box::new(builder.build()))
 	}
 
 	pub fn buffer_capacity(mut self, capacity: usize) -> Self {
@@ -98,11 +92,5 @@ impl LoggingBuilder {
 		init_logger(subsystem.get_sender());
 
 		subsystem
-	}
-}
-
-impl Default for LoggingBuilder {
-	fn default() -> Self {
-		Self::new()
 	}
 }

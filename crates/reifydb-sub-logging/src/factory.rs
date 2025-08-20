@@ -5,13 +5,15 @@ use std::marker::PhantomData;
 
 use super::LoggingBuilder;
 use reifydb_core::interface::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_core::{
-    interface::Transaction,
-    ioc::IocContainer,
-};
+use reifydb_core::{interface::Transaction, ioc::IocContainer};
+
+/// Configuration function for the logging subsystem
+pub type LoggingConfigurator =
+	Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send>;
 
 /// Factory for creating LoggingSubsystem instances
 pub struct LoggingSubsystemFactory<T: Transaction> {
+	configurator: Option<LoggingConfigurator>,
 	_phantom: PhantomData<T>,
 }
 
@@ -19,6 +21,18 @@ impl<T: Transaction> LoggingSubsystemFactory<T> {
 	/// Create a new factory with default configuration
 	pub fn new() -> Self {
 		Self {
+			configurator: None,
+			_phantom: PhantomData,
+		}
+	}
+
+	/// Create a factory with a custom configurator
+	pub fn with_configurator<F>(configurator: F) -> Self
+	where
+		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
+	{
+		Self {
+			configurator: Some(Box::new(configurator)),
 			_phantom: PhantomData,
 		}
 	}
@@ -35,7 +49,11 @@ impl<T: Transaction> SubsystemFactory<T> for LoggingSubsystemFactory<T> {
 		self: Box<Self>,
 		_ioc: &IocContainer,
 	) -> reifydb_core::Result<Box<dyn Subsystem>> {
-		let builder = LoggingBuilder::new().with_console();
+		let builder = if let Some(configurator) = self.configurator {
+			configurator(LoggingBuilder::new())
+		} else {
+			LoggingBuilder::default()
+		};
 		Ok(Box::new(builder.build()))
 	}
 }

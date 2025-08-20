@@ -7,37 +7,42 @@ use std::{thread, time::Duration};
 
 use reifydb::core::log_info;
 use reifydb::{
-	core::{
-		interceptor::{
-			post_commit, table_post_insert, table_pre_insert,
-		},
-		interface::Params,
-	}, sync,
-	MemoryDatabaseOptimistic,
-	SessionSync,
+	core::interface::Params, sync, LoggingBuilder, MemoryDatabaseOptimistic,
+	SessionSync, WithSubsystem,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
 // pub type DB = SqliteDatabaseOptimistic;
 
+fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
+	logging.with_console(|console| {
+		console.color(true).stderr_for_errors(true)
+	})
+	.buffer_capacity(20000)
+	.batch_size(2000)
+	.flush_interval(Duration::from_millis(50))
+	.immediate_on_error(true)
+}
+
 fn main() {
-	// Example: Using the new unified interceptor API
 	let mut db: DB = sync::memory_optimistic()
-		.intercept(table_pre_insert(|_ctx| {
-			log_info!("Table pre insert interceptor called!");
-			Ok(())
-		}))
-		.intercept(table_post_insert(|_ctx| {
-			log_info!("Table post insert interceptor called!");
-			Ok(())
-		}))
-		.intercept(post_commit(|ctx| {
-			log_info!(
-				"Post-commit interceptor called with version: {:?}",
-				ctx.version
-			);
-			Ok(())
-		}))
+		.with_logging(logger_configuration)
+
+		// .intercept(table_pre_insert(|_ctx| {
+		// 	log_info!("Table pre insert interceptor called!");
+		// 	Ok(())
+		// }))
+		// .intercept(table_post_insert(|_ctx| {
+		// 	log_info!("Table post insert interceptor called!");
+		// 	Ok(())
+		// }))
+		// .intercept(post_commit(|ctx| {
+		// 	log_info!(
+		// 		"Post-commit interceptor called with version: {:?}",
+		// 		ctx.version
+		// 	);
+		// 	Ok(())
+		// }))
 		.build()
 		.unwrap();
 	// let mut db: DB =

@@ -26,12 +26,12 @@ pub use presets::*;
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
 pub use reifydb_core::{
-	hook::Hooks, interface::{
-		StandardTransaction, UnversionedTransaction, VersionedStorage,
-		VersionedTransaction,
-	},
-	Error,
-	Result,
+    hook::Hooks, interface::{
+        StandardTransaction, UnversionedTransaction, VersionedStorage,
+        VersionedTransaction,
+    },
+    Error,
+    Result,
 };
 pub use reifydb_engine as engine;
 #[cfg(feature = "sub_flow")]
@@ -41,26 +41,29 @@ pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
 pub use reifydb_storage::{
-	lmdb::Lmdb,
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+    lmdb::Lmdb,
+    memory::Memory,
+    sqlite::{Sqlite, SqliteConfig},
 };
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
-	mvcc::transaction::{
-		optimistic::Optimistic, serializable::Serializable,
-	},
-	svl::SingleVersionLock,
+    mvcc::transaction::{
+        optimistic::Optimistic, serializable::Serializable,
+    },
+    svl::SingleVersionLock,
 };
 #[cfg(feature = "async")]
 pub use session::SessionAsync;
 pub use session::{CommandSession, QuerySession, Session, SessionSync};
 
+// subsystems
+pub use reifydb_sub_logging::LoggingBuilder;
+
 /// Default configuration values
 pub mod defaults {
-	use super::Duration;
+    use super::Duration;
 
-	/// Default graceful shutdown timeout (30 seconds)
+    /// Default graceful shutdown timeout (30 seconds)
 	pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 	/// Default health check interval (5 seconds)

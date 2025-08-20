@@ -42,30 +42,39 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			.register(unversioned.clone())
 			.register(cdc.clone());
 
-		let mut result = Self {
+		let result = Self {
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
 			ioc,
 		};
 
-		// Add logging subsystem first so it's initialized before other subsystems
-		result = result.add_subsystem_factory(Box::new(
-			LoggingSubsystemFactory::new(),
-		));
+		result
+	}
 
-		result = result.add_subsystem_factory(Box::new(
+	/// Add default subsystems that are always required
+	pub fn with_default_subsystems(mut self) -> Self {
+		// Add default logging subsystem first so it's initialized before other subsystems
+		// Note: This can be overridden by adding a custom logging factory before calling this
+		if self.subsystems.is_empty() {
+			self = self.add_subsystem_factory(Box::new(
+				LoggingSubsystemFactory::new(),
+			));
+		}
+
+		// Always add worker pool subsystem
+		self = self.add_subsystem_factory(Box::new(
 			WorkerPoolSubsystemFactory::new(),
 		));
 
 		#[cfg(feature = "sub_flow")]
 		{
-			result = result.add_subsystem_factory(Box::new(
+			self = self.add_subsystem_factory(Box::new(
 				FlowSubsystemFactory::new(),
 			));
 		}
 
-		result
+		self
 	}
 
 	pub fn with_graceful_shutdown_timeout(
