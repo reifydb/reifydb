@@ -195,19 +195,18 @@ impl ConsoleBackend {
 			let branch_char = if is_last { "└─" } else { "├─" };
 			let continuation = if is_last { "   " } else { "│  "};
 			
-			// Wrap long messages
-			let wrapped_lines = self.wrap_text(&record.message, MAX_WIDTH);
-			
-			for (j, line) in wrapped_lines.iter().enumerate() {
+			// Handle multiline messages
+			let lines: Vec<&str> = record.message.lines().collect();
+			for (j, line) in lines.iter().enumerate() {
 				if j == 0 {
 					// First line with branch - colorize only the branch chars, not the vertical line
 					output.push_str(INDENT);
 					output.push_str(&apply_color(&format!("{} ", branch_char)));
 					output.push_str(&format!("{}\n", line));
 				} else {
-					// Continuation lines - colorize only the continuation chars, not the vertical line
+					// Continuation lines - show vertical continuation line
 					output.push_str(INDENT);
-					output.push_str(&apply_color(&format!("{} ", continuation)));
+					output.push_str(&apply_color(&continuation));
 					output.push_str(&format!("{}\n", line));
 				}
 			}
