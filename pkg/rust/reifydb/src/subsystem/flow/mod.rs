@@ -8,23 +8,20 @@ use std::{any::Any, time::Duration};
 
 pub use factory::FlowSubsystemFactory;
 use reifydb_catalog::Catalog;
+use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
 use reifydb_core::{
-	Result, Value,
 	interface::{
 		CdcChange, CdcConsume, CdcConsumer, CdcEvent,
 		CommandTransaction, ConsumerId, Engine, GetEncodedRowLayout,
 		Identity, Key, Params, SourceId, TableRowKey, Transaction,
-	},
-	value::columnar::Columns,
+	}, value::columnar::Columns,
+	Result,
+	Value,
 };
 use reifydb_engine::{StandardEngine, StandardEvaluator};
 use reifydb_flow::{Change, Diff, Flow, FlowEngine};
 
-use super::{
-	Subsystem,
-	cdc::{PollConsumer, PollConsumerConfig},
-};
-use crate::health::HealthStatus;
+use super::cdc::{PollConsumer, PollConsumerConfig};
 
 #[derive(Clone)]
 struct FlowConsumer<T: Transaction> {

@@ -6,19 +6,18 @@ use std::{
 	any::Any,
 	net::SocketAddr,
 	sync::{
-		Arc,
 		atomic::{AtomicBool, Ordering},
+		Arc,
 	},
 };
 
+use crate::context::RuntimeProvider;
 pub use factory::GrpcSubsystemFactory;
-use reifydb_core::{Result, interface::Transaction};
+use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
+use reifydb_core::{interface::Transaction, Result};
 use reifydb_engine::StandardEngine;
 use reifydb_network::grpc::server::{GrpcConfig, GrpcServer};
 use tokio::{sync::oneshot, task::JoinHandle};
-
-use super::Subsystem;
-use crate::{context::RuntimeProvider, health::HealthStatus};
 
 pub struct GrpcSubsystem<T: Transaction> {
 	/// The wrapped GrpcServer
@@ -164,7 +163,7 @@ impl<T: Transaction> Subsystem for GrpcSubsystem<T> {
 	fn as_any(&self) -> &dyn Any {
 		self
 	}
-	
+
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}

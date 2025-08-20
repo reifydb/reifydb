@@ -3,19 +3,19 @@
 
 //! Lock-free buffer for high-performance log collection
 
-use crate::record::LogRecord;
 use crossbeam_channel::{
 	bounded, Receiver, Sender, TryRecvError, TrySendError,
 };
+use reifydb_core::interface::subsystem::logging::Record;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 /// Lock-free buffer for log records
 #[derive(Debug)]
-pub struct LogBuffer {
+pub(crate) struct Buffer {
 	/// Channel for sending logs
-	sender: Sender<LogRecord>,
+	sender: Sender<Record>,
 	/// Channel for receiving logs
-	receiver: Receiver<LogRecord>,
+	receiver: Receiver<Record>,
 	/// Current buffer size
 	size: AtomicUsize,
 	/// Maximum buffer capacity
@@ -26,7 +26,7 @@ pub struct LogBuffer {
 	total_dropped: AtomicU64,
 }
 
-impl LogBuffer {
+impl Buffer {
 	/// Create a new log buffer with specified capacity
 	pub fn new(capacity: usize) -> Self {
 		let (sender, receiver) = bounded(capacity);
@@ -41,7 +41,7 @@ impl LogBuffer {
 	}
 
 	/// Try to push a log record into the buffer
-	pub fn try_push(&self, record: LogRecord) -> Result<(), LogRecord> {
+	pub fn try_push(&self, record: Record) -> Result<(), Record> {
 		match self.sender.try_send(record) {
 			Ok(()) => {
 				self.size.fetch_add(1, Ordering::Relaxed);
@@ -59,7 +59,7 @@ impl LogBuffer {
 	}
 
 	/// Force push a log record, potentially dropping old logs if buffer is full
-	pub fn force_push(&self, record: LogRecord) {
+	pub fn force_push(&self, record: Record) {
 		// Try normal push first
 		if self.try_push(record.clone()).is_err() {
 			// If buffer is full, try to remove one old item and retry
@@ -74,7 +74,7 @@ impl LogBuffer {
 	}
 
 	/// Drain up to `max_count` records from the buffer
-	pub fn drain(&self, max_count: usize) -> Vec<LogRecord> {
+	pub fn drain(&self, max_count: usize) -> Vec<Record> {
 		let mut records = Vec::with_capacity(
 			max_count.min(self.size.load(Ordering::Relaxed)),
 		);
@@ -97,7 +97,7 @@ impl LogBuffer {
 	}
 
 	/// Drain all available records from the buffer
-	pub fn drain_all(&self) -> Vec<LogRecord> {
+	pub fn drain_all(&self) -> Vec<Record> {
 		self.drain(self.capacity)
 	}
 

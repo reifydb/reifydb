@@ -545,7 +545,7 @@ mod tests {
 		fn test_empty() {
 			let bv = BitVec::from_fn(0, |i| i % 2 == 0);
 			let collected: Vec<bool> = bv.iter().collect();
-			assert_eq!(collected, vec![]);
+			assert_eq!(collected, Vec::<bool>::new());
 		}
 	}
 

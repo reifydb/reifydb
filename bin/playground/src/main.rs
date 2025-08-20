@@ -5,15 +5,16 @@
 
 use std::{thread, time::Duration};
 
+use reifydb::core::log_info;
 use reifydb::{
-	MemoryDatabaseOptimistic, SessionSync, 
 	core::{
 		interceptor::{
 			post_commit, table_post_insert, table_pre_insert,
 		},
 		interface::Params,
-	}, 
-	sync, info,
+	}, sync,
+	MemoryDatabaseOptimistic,
+	SessionSync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -23,16 +24,15 @@ fn main() {
 	// Example: Using the new unified interceptor API
 	let mut db: DB = sync::memory_optimistic()
 		.intercept(table_pre_insert(|_ctx| {
-			info!("Table pre insert interceptor called!");
-
+			log_info!("Table pre insert interceptor called!");
 			Ok(())
 		}))
 		.intercept(table_post_insert(|_ctx| {
-			info!("Table post insert interceptor called!");
+			log_info!("Table post insert interceptor called!");
 			Ok(())
 		}))
 		.intercept(post_commit(|ctx| {
-			info!(
+			log_info!(
 				"Post-commit interceptor called with version: {:?}",
 				ctx.version
 			);
@@ -123,6 +123,6 @@ create deferred view test.basic { name: utf8, age: int1 } with {
 	for frame in
 		db.query_as_root(r#"FROM test.basic"#, Params::None).unwrap()
 	{
-		info!("{}", frame);
+		log_info!("{}", frame);
 	}
 }

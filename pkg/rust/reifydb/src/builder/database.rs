@@ -3,23 +3,20 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::{
-	hook::Hooks, interceptor::StandardInterceptorBuilder,
-	interface::Transaction, ioc::IocContainer,
-};
-use reifydb_engine::StandardEngine;
-
 #[cfg(feature = "sub_flow")]
 use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
-	subsystem::{
-		SubsystemFactory, Subsystems,
-		logging::LoggingSubsystemFactory,
-		worker_pool::WorkerPoolSubsystemFactory,
-	},
+	subsystem::{worker_pool::WorkerPoolSubsystemFactory, Subsystems},
 };
+use reifydb_core::interface::subsystem::SubsystemFactory;
+use reifydb_core::{
+	hook::Hooks, interceptor::StandardInterceptorBuilder,
+	interface::Transaction, ioc::IocContainer,
+};
+use reifydb_engine::StandardEngine;
+use reifydb_sub_logging::LoggingSubsystemFactory;
 
 pub struct DatabaseBuilder<T: Transaction> {
 	config: DatabaseConfig,
@@ -56,7 +53,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		result = result.add_subsystem_factory(Box::new(
 			LoggingSubsystemFactory::new(),
 		));
-		
+
 		result = result.add_subsystem_factory(Box::new(
 			WorkerPoolSubsystemFactory::new(),
 		));

@@ -3,14 +3,12 @@
 
 use std::marker::PhantomData;
 
+use super::LoggingBuilder;
+use reifydb_core::interface::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_core::{
-	Result, interceptor::StandardInterceptorBuilder,
-	interface::Transaction, ioc::IocContainer,
+    interface::Transaction,
+    ioc::IocContainer,
 };
-use reifydb_sub_log::LoggingBuilder;
-
-use super::LoggingSubsystem;
-use crate::subsystem::{Subsystem, SubsystemFactory};
 
 /// Factory for creating LoggingSubsystem instances
 pub struct LoggingSubsystemFactory<T: Transaction> {
@@ -33,18 +31,11 @@ impl<T: Transaction> Default for LoggingSubsystemFactory<T> {
 }
 
 impl<T: Transaction> SubsystemFactory<T> for LoggingSubsystemFactory<T> {
-	fn provide_interceptors(
-		&self,
-		builder: StandardInterceptorBuilder<T>,
+	fn create(
+		self: Box<Self>,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<T> {
-		// Logging doesn't need any interceptors
-		builder
-	}
-
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		// Create a new LoggingBuilder for each instance
+	) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let builder = LoggingBuilder::new().with_console();
-		Ok(Box::new(LoggingSubsystem::from_builder(builder)))
+		Ok(Box::new(builder.build()))
 	}
 }

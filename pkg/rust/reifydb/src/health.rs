@@ -6,47 +6,7 @@ use std::{
 	sync::{Arc, Mutex},
 	time::{Duration, Instant},
 };
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum HealthStatus {
-	Healthy,
-	Warning {
-		description: String,
-	},
-	Degraded {
-		description: String,
-	},
-	Failed {
-		description: String,
-	},
-	Unknown,
-}
-
-impl HealthStatus {
-	pub fn is_healthy(&self) -> bool {
-		matches!(self, HealthStatus::Healthy)
-	}
-
-	pub fn is_failed(&self) -> bool {
-		matches!(self, HealthStatus::Failed { .. })
-	}
-
-	pub fn description(&self) -> &str {
-		match self {
-			HealthStatus::Healthy => "Healthy",
-			HealthStatus::Warning {
-				description: message,
-			} => message,
-			HealthStatus::Degraded {
-				description: message,
-			} => message,
-			HealthStatus::Failed {
-				description: message,
-			} => message,
-			HealthStatus::Unknown => "Unknown",
-		}
-	}
-}
+use reifydb_core::interface::subsystem::HealthStatus;
 
 #[derive(Debug, Clone)]
 pub struct ComponentHealth {

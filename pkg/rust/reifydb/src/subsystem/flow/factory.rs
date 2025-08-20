@@ -3,6 +3,7 @@
 
 use std::{marker::PhantomData, time::Duration};
 
+use reifydb_core::interface::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{ConsumerId, Transaction},
@@ -10,8 +11,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 
-use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
-use crate::subsystem::{Subsystem, factory::SubsystemFactory};
+use super::{intercept::TransactionalFlowInterceptor, FlowSubsystem};
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 #[derive()]

@@ -3,13 +3,12 @@
 
 use std::marker::PhantomData;
 
-use reifydb_core::{
-	Result, interceptor::StandardInterceptorBuilder,
-	interface::Transaction, ioc::IocContainer,
-};
-
 use super::{WorkerPoolConfig, WorkerPoolSubsystem};
-use crate::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_core::interface::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_core::{
+    interceptor::StandardInterceptorBuilder, interface::Transaction,
+    ioc::IocContainer, Result,
+};
 
 /// Factory for creating WorkerPoolSubsystem instances
 pub struct WorkerPoolSubsystemFactory<T: Transaction> {

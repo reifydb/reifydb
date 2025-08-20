@@ -3,6 +3,7 @@
 
 use std::marker::PhantomData;
 
+use reifydb_core::interface::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder, interface::Transaction,
 	ioc::IocContainer,
@@ -11,10 +12,7 @@ use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::WsConfig;
 
 use super::WsSubsystem;
-use crate::{
-	context::RuntimeProvider,
-	subsystem::{Subsystem, factory::SubsystemFactory},
-};
+use crate::context::RuntimeProvider;
 
 /// Factory for creating WsSubsystem
 pub struct WsSubsystemFactory<T: Transaction> {

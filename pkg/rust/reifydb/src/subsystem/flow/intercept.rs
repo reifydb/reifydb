@@ -12,11 +12,11 @@ use reifydb_core::{
 		TablePostUpdateInterceptor,
 	}, interface::{TableId, Transaction},
 	ioc::{IocContainer, SingleThreadLazyResolve},
+	log_debug,
 	Result,
 	RowId,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_log::{debug, info};
 
 /// Event type for flow processing
 #[derive(Debug, Clone)]
@@ -116,7 +116,7 @@ impl<T: Transaction> PreCommitInterceptor<T>
 		// Process all collected changes
 		let mut changes = self.changes.borrow_mut();
 		for _change in changes.drain(..) {
-			debug!("{_change:?}")
+			log_debug!("{_change:?}")
 			// TODO: Process with flow engine
 			// This is where you would process the changes through
 			// the flow system For now, we just have the

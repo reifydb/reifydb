@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::subsystem::SubsystemFactory;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
@@ -17,7 +18,7 @@ use crate::context::{RuntimeProvider, TokioRuntimeProvider};
 use crate::subsystem::GrpcSubsystemFactory;
 #[cfg(feature = "sub_ws")]
 use crate::subsystem::WsSubsystemFactory;
-use crate::{Database, subsystem::SubsystemFactory};
+use crate::Database;
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub struct ServerBuilder<T: Transaction> {

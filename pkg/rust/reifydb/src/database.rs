@@ -12,9 +12,10 @@ use reifydb_core::{
 		CdcTransaction, GetHooks, StandardTransaction, Transaction,
 		UnversionedTransaction, VersionedTransaction,
 	},
+	log_error, log_info, log_warn,
 };
+use reifydb_core::interface::subsystem::HealthStatus;
 use reifydb_engine::StandardEngine;
-use reifydb_sub_log::{info, warn, error};
 
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
@@ -30,7 +31,7 @@ use crate::{
 		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
 		MAX_STARTUP_TIME,
 	},
-	health::{ComponentHealth, HealthMonitor, HealthStatus},
+	health::{ComponentHealth, HealthMonitor},
 	session::{
 		CommandSession, IntoCommandSession, IntoQuerySession,
 		QuerySession, Session, SessionSync,
@@ -148,7 +149,10 @@ impl<T: Transaction> Database<T> {
 
 		self.bootloader.load()?;
 
-		info!("Starting system with {} subsystems", self.subsystem_count());
+		log_info!(
+			"Starting system with {} subsystems",
+			self.subsystem_count()
+		);
 
 		// Initialize engine health monitoring
 		self.health_monitor.update_component_health(
@@ -164,12 +168,12 @@ impl<T: Transaction> Database<T> {
 		match self.subsystems.start_all(self.config.max_startup_time) {
 			Ok(()) => {
 				self.running = true;
-				info!("System started successfully");
+				log_info!("System started successfully");
 				self.update_health_monitoring();
 				Ok(())
 			}
 			Err(e) => {
-				error!("System startup failed: {}", e);
+				log_error!("System startup failed: {}", e);
 				// Update system health to reflect failure
 				self.health_monitor.update_component_health(
 					"system".to_string(),
@@ -191,7 +195,7 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already stopped
 		}
 
-		info!("Stopping system gracefully");
+		log_info!("Stopping system gracefully");
 
 		// Stop all subsystems
 		let result = self
@@ -210,7 +214,7 @@ impl<T: Transaction> Database<T> {
 
 		match result {
 			Ok(()) => {
-				info!("System stopped successfully");
+				log_info!("System stopped successfully");
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Healthy,
@@ -219,7 +223,10 @@ impl<T: Transaction> Database<T> {
 				Ok(())
 			}
 			Err(e) => {
-				warn!("System shutdown completed with errors: {}", e);
+				log_warn!(
+					"System shutdown completed with errors: {}",
+					e
+				);
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Warning {
@@ -297,7 +304,7 @@ impl<T: Transaction> Database<T> {
 impl<T: Transaction> Drop for Database<T> {
 	fn drop(&mut self) {
 		if self.running {
-			warn!(
+			log_warn!(
 				"System being dropped while running, attempting graceful shutdown"
 			);
 			let _ = self.stop();

@@ -18,7 +18,8 @@
 
 use std::io::{Read, Write};
 
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use crate::error::diagnostic::serialization;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// Use the standard Bincode configuration.
 const CONFIG: bincode::config::Configuration = bincode::config::standard();
@@ -59,17 +60,20 @@ pub fn maybe_deserialize_from<R: Read, T: DeserializeOwned>(
 	mut reader: R,
 ) -> crate::Result<Option<T>> {
 	match bincode::serde::decode_from_std_read(&mut reader, CONFIG) {
-        Ok(t) => Ok(Some(t)),
-        Err(bincode::error::DecodeError::Io { inner, .. })
-            if inner.kind() == std::io::ErrorKind::UnexpectedEof
-                || inner.kind() == std::io::ErrorKind::ConnectionReset =>
-        {
-            Ok(None)
-        }
-        Err(err) => {
-            Err(crate::error!(crate::error::diagnostic::serialization::bincode_decode_error(err)))
-        }
-    }
+		Ok(t) => Ok(Some(t)),
+		Err(bincode::error::DecodeError::Io {
+			inner,
+			..
+		}) if inner.kind() == std::io::ErrorKind::UnexpectedEof
+			|| inner.kind()
+				== std::io::ErrorKind::ConnectionReset =>
+		{
+			Ok(None)
+		}
+		Err(err) => Err(crate::error!(
+			serialization::bincode_decode_error(err)
+		)),
+	}
 }
 
 #[cfg(test)]

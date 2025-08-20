@@ -3,22 +3,21 @@
 
 mod factory;
 use std::{
-	any::Any,
-	net::SocketAddr,
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
+    any::Any,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
+use crate::context::RuntimeProvider;
 pub use factory::WsSubsystemFactory;
-use reifydb_core::{Result, interface::Transaction};
+use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
+use reifydb_core::{interface::Transaction, Result};
 use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::{WsConfig, WsServer};
 use tokio::{sync::oneshot, task::JoinHandle};
-
-use super::Subsystem;
-use crate::{context::RuntimeProvider, health::HealthStatus};
 
 pub struct WsSubsystem<T: Transaction> {
 	/// The wrapped WsServer

@@ -3,10 +3,10 @@
 
 //! Builder pattern for configuring the logging subsystem
 
-use crate::backend::{ConsoleBackend, DatabaseBackend, LogBackend};
+use crate::backend::console::ConsoleBackend;
 use crate::processor::ProcessorConfig;
 use crate::subsystem::LoggingSubsystem;
-use std::sync::Arc;
+use reifydb_core::interface::subsystem::logging::{init_logger, LogBackend};
 use std::time::Duration;
 
 /// Builder for configuring the logging subsystem
@@ -54,47 +54,27 @@ impl LoggingBuilder {
 		))
 	}
 
-	/// Add a database backend with default configuration
-	pub fn with_database(self) -> Self {
-		self.add_backend(Box::new(DatabaseBackend::new(
-			Default::default(),
-		)))
-	}
-
-	/// Add a database backend with custom configuration
-	pub fn with_database_custom(
-		self,
-		config: crate::backend::database::DatabaseConfig,
-	) -> Self {
-		self.add_backend(Box::new(DatabaseBackend::new(config)))
-	}
-
-	/// Set the buffer capacity (number of logs that can be buffered)
 	pub fn buffer_capacity(mut self, capacity: usize) -> Self {
 		self.buffer_capacity = capacity;
 		self
 	}
 
-	/// Set the batch size for processing
 	pub fn batch_size(mut self, size: usize) -> Self {
 		self.batch_size = size;
 		self
 	}
 
-	/// Set the flush interval
 	pub fn flush_interval(mut self, interval: Duration) -> Self {
 		self.flush_interval = interval;
 		self
 	}
 
-	/// Set whether to immediately process error logs
 	pub fn immediate_on_error(mut self, immediate: bool) -> Self {
 		self.immediate_on_error = immediate;
 		self
 	}
 
-	/// Build the logging subsystem
-	pub fn build(self) -> Arc<LoggingSubsystem> {
+	pub(crate) fn build(self) -> LoggingSubsystem {
 		// If no backends configured, add console by default
 		let backends = if self.backends.is_empty() {
 			vec![Box::new(ConsoleBackend::new())
@@ -109,14 +89,13 @@ impl LoggingBuilder {
 			immediate_on_error: self.immediate_on_error,
 		};
 
-		let subsystem = Arc::new(LoggingSubsystem::new(
+		let subsystem = LoggingSubsystem::new(
 			self.buffer_capacity,
 			backends,
 			processor_config,
-		));
+		);
 
-		// Initialize the global logger with the channel sender
-		crate::init_logger(subsystem.get_sender());
+		init_logger(subsystem.get_sender());
 
 		subsystem
 	}

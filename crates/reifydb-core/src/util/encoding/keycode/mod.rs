@@ -12,11 +12,11 @@
 mod deserialize;
 mod serialize;
 
-use serde::{Deserialize, Serialize};
-
+use crate::error::diagnostic::serialization;
 use crate::util::encoding::keycode::{
 	deserialize::Deserializer, serialize::Serializer,
 };
+use serde::{Deserialize, Serialize};
 
 #[macro_export]
 macro_rules! key_prefix {
@@ -43,11 +43,11 @@ pub fn deserialize<'a, T: Deserialize<'a>>(
 	let t = T::deserialize(&mut deserializer)?;
 	if !deserializer.input.is_empty() {
 		return Err(crate::error!(
-            crate::error::diagnostic::serialization::keycode_serialization_error(format!(
-                "unexpected trailing bytes {:x?} at end of key {input:x?}",
-                deserializer.input,
-            ))
-        ));
+			serialization::keycode_serialization_error(format!(
+				"unexpected trailing bytes {:x?} at end of key {input:x?}",
+				deserializer.input,
+			))
+		));
 	}
 	Ok(t)
 }
@@ -63,8 +63,8 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		Value,
 		value::{OrderedF32, OrderedF64},
+		Value,
 	};
 
 	#[derive(Debug, Deserialize, Serialize, PartialEq)]

@@ -3,19 +3,17 @@
 
 use std::{
 	sync::{
-		Arc, Mutex,
-		atomic::{AtomicUsize, Ordering},
+		atomic::{AtomicUsize, Ordering}, Arc,
+		Mutex,
 	},
 	thread,
 	time::Duration,
 };
 
-use reifydb::subsystem::{
-	Subsystem,
-	worker_pool::{
-		ClosureTask, Priority, WorkerPoolConfig, WorkerPoolSubsystem,
-	},
+use reifydb::subsystem::worker_pool::{
+	ClosureTask, Priority, WorkerPoolConfig, WorkerPoolSubsystem,
 };
+use reifydb_core::interface::subsystem::Subsystem;
 
 #[test]
 fn test_worker_pool_basic() {
@@ -145,7 +143,12 @@ fn test_worker_pool_periodic_tasks() {
 
 	// Should have executed at least 3 times
 	let count = counter.load(Ordering::Relaxed);
-	assert!(count >= 3, "Expected at least 3 executions, got {} after {} attempts", count, attempts);
+	assert!(
+		count >= 3,
+		"Expected at least 3 executions, got {} after {} attempts",
+		count,
+		attempts
+	);
 
 	// Cancel the task
 	assert!(pool.cancel_task(handle).is_ok());
@@ -266,48 +269,56 @@ fn test_priority_ordering_with_blocking_tasks() {
 	thread::sleep(Duration::from_millis(300));
 
 	let final_results = results.lock().unwrap();
-	
+
 	// With proper queuing, we should see priority ordering
 	// However, we need to be more lenient due to concurrent execution
-	
+
 	// Count tasks by priority in the result
 	let high_tasks = vec![2, 4, 6];
 	let normal_tasks = vec![5];
 	let low_tasks = vec![1, 3, 7];
-	
+
 	// Ensure all tasks were executed
-	assert_eq!(final_results.len(), 7, "All 7 tasks should have been executed");
-	
+	assert_eq!(
+		final_results.len(),
+		7,
+		"All 7 tasks should have been executed"
+	);
+
 	// Find the average position of each priority group
 	let high_avg_pos: f64 = high_tasks
 		.iter()
 		.filter_map(|&id| final_results.iter().position(|&x| x == id))
 		.map(|p| p as f64)
 		.sum::<f64>() / high_tasks.len() as f64;
-		
+
 	let normal_avg_pos: f64 = normal_tasks
 		.iter()
 		.filter_map(|&id| final_results.iter().position(|&x| x == id))
 		.map(|p| p as f64)
 		.sum::<f64>() / normal_tasks.len() as f64;
-		
+
 	let low_avg_pos: f64 = low_tasks
 		.iter()
 		.filter_map(|&id| final_results.iter().position(|&x| x == id))
 		.map(|p| p as f64)
 		.sum::<f64>() / low_tasks.len() as f64;
-	
+
 	// Verify average positions follow priority order
 	assert!(
 		high_avg_pos < normal_avg_pos,
 		"High priority tasks should on average execute before Normal priority tasks. High avg: {}, Normal avg: {}, Results: {:?}",
-		high_avg_pos, normal_avg_pos, *final_results
+		high_avg_pos,
+		normal_avg_pos,
+		*final_results
 	);
-	
+
 	assert!(
 		normal_avg_pos < low_avg_pos,
 		"Normal priority tasks should on average execute before Low priority tasks. Normal avg: {}, Low avg: {}, Results: {:?}",
-		normal_avg_pos, low_avg_pos, *final_results
+		normal_avg_pos,
+		low_avg_pos,
+		*final_results
 	);
 
 	assert!(pool.stop().is_ok());

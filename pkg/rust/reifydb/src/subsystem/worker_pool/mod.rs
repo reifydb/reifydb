@@ -8,22 +8,18 @@
 //! utilization by sharing worker threads between different background tasks
 
 use std::{
-	any::Any,
-	collections::BinaryHeap,
-	sync::{
-		Arc, Condvar, Mutex,
-		atomic::{AtomicBool, AtomicUsize, Ordering},
-	},
-	thread::{self, JoinHandle},
-	time::Duration,
+    any::Any,
+    collections::BinaryHeap,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Condvar,
+        Mutex,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 
-use reifydb_sub_log::{info, warn};
 
-use reifydb_core::{Result, interface::worker_pool::WorkerPool};
-
-use super::Subsystem;
-use crate::health::HealthStatus;
+use reifydb_core::{interface::worker_pool::WorkerPool, log_info, log_warn, Result};
 
 mod factory;
 mod scheduler;
@@ -32,6 +28,7 @@ mod task;
 mod worker;
 
 pub use factory::WorkerPoolSubsystemFactory;
+use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
 pub use reifydb_core::interface::worker_pool::Priority;
 use reifydb_core::interface::worker_pool::TaskHandle;
 pub use scheduler::TaskScheduler;
@@ -234,7 +231,7 @@ impl WorkerPoolSubsystem {
 
                         for task in ready_tasks {
                             if queue.len() >= max_queue_size {
-                                warn!("Scheduler: Queue full, dropping scheduled task");
+                                log_warn!("Scheduler: Queue full, dropping scheduled task");
                                 break;
                             }
 
@@ -288,7 +285,7 @@ impl Subsystem for WorkerPoolSubsystem {
 		// Start scheduler thread
 		self.start_scheduler();
 
-		info!("Started with {} workers", self.config.num_workers);
+		log_info!("Started with {} workers", self.config.num_workers);
 
 		Ok(())
 	}
@@ -298,7 +295,7 @@ impl Subsystem for WorkerPoolSubsystem {
 			return Ok(()); // Already stopped
 		}
 
-		info!("Shutting down...");
+		log_info!("Shutting down...");
 		self.running.store(false, Ordering::Relaxed);
 
 		// Wake scheduler so it can exit
@@ -322,7 +319,7 @@ impl Subsystem for WorkerPoolSubsystem {
 			worker.stop();
 		}
 
-		info!("Shutdown complete");
+		log_info!("Shutdown complete");
 		Ok(())
 	}
 

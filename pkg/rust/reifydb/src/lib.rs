@@ -14,30 +14,24 @@ pub mod subsystem;
 
 use std::time::Duration;
 
-// Re-export logging functionality
-pub use reifydb_sub_log::{
-    debug, error, info, log, trace, warn, critical,
-    LogLevel, LogRecord, LoggingBuilder,
-};
-
 pub use api::*;
 pub use builder::*;
 #[cfg(feature = "async")]
 pub use context::TokioRuntimeProvider;
 pub use context::{AsyncContext, RuntimeProvider, SystemContext, TokioContext};
 pub use database::{Database, DatabaseConfig};
-pub use health::{HealthMonitor, HealthStatus};
+pub use health::HealthMonitor;
 pub use hook::{OnCreateContext, WithHooks};
 pub use presets::*;
 pub use reifydb_auth as auth;
 pub use reifydb_core as core;
 pub use reifydb_core::{
-	Error, Result,
-	hook::Hooks,
-	interface::{
+	hook::Hooks, interface::{
 		StandardTransaction, UnversionedTransaction, VersionedStorage,
 		VersionedTransaction,
 	},
+	Error,
+	Result,
 };
 pub use reifydb_engine as engine;
 #[cfg(feature = "sub_flow")]
@@ -69,7 +63,7 @@ pub mod defaults {
 	/// Default graceful shutdown timeout (30 seconds)
 	pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
-	/// Default health check interval (5 seconds)  
+	/// Default health check interval (5 seconds)
 	pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 	/// Default maximum startup time (60 seconds)

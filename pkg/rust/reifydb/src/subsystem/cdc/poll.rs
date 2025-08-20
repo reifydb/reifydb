@@ -19,13 +19,13 @@ use reifydb_core::{
 		Transaction,
 		VersionedCommandTransaction,
 		VersionedQueryTransaction,
-	}, row::EncodedRow, util::CowVec,
-	EncodedKey,
+	}, log_debug, log_error,
+	log_info,
+	row::EncodedRow, util::CowVec, EncodedKey,
 	Result,
 	Version,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_log::{debug, error, info};
 
 /// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]
@@ -140,25 +140,27 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
-		debug!(
+		log_debug!(
 			"[Consumer {:?}] Started polling with interval {:?}",
-			config.consumer_id, config.poll_interval
+			config.consumer_id,
+			config.poll_interval
 		);
 
 		while state.running.load(Ordering::Acquire) {
 			if let Err(error) =
 				Self::consume_batch(&state, &engine, &consumer)
 			{
-				error!(
+				log_error!(
 					"[Consumer {:?}] Error consuming events: {}",
-					config.consumer_id, error
+					config.consumer_id,
+					error
 				);
 			}
 
 			thread::sleep(config.poll_interval);
 		}
 
-		info!("[Consumer {:?}] Stopped", config.consumer_id);
+		log_info!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 
