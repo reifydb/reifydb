@@ -1,0 +1,25 @@
+[package]
+name = "examples"
+version = "0.1.0"
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "reifydb_examples"
+path = "src/lib.rs"
+
+[dependencies]
+reifydb = { path = "../../pkg/rust/reifydb", features = [] }
+
+tokio = { workspace = true }
+
+# Basic examples (no special features required)
+[[bin]]
+name = "hello-world"
+path = "examples/basic/01_hello_world.rs"
+
+[[bin]]
+name = "basic-tables"
+path = "examples/basic/02_basic_tables.rs"

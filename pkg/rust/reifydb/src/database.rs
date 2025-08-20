@@ -5,16 +5,16 @@
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use reifydb_core::interface::subsystem::HealthStatus;
 use reifydb_core::{
-	Result,
 	hook::lifecycle::OnStartHook,
 	interface::{
 		CdcTransaction, GetHooks, StandardTransaction, Transaction,
 		UnversionedTransaction, VersionedTransaction,
 	},
-	log_error, log_info, log_warn,
+	log_debug,
+	log_error, log_warn, Result,
 };
-use reifydb_core::interface::subsystem::HealthStatus;
 use reifydb_engine::StandardEngine;
 
 #[cfg(feature = "async")]
@@ -149,7 +149,7 @@ impl<T: Transaction> Database<T> {
 
 		self.bootloader.load()?;
 
-		log_info!(
+		log_debug!(
 			"Starting system with {} subsystems",
 			self.subsystem_count()
 		);
@@ -168,7 +168,7 @@ impl<T: Transaction> Database<T> {
 		match self.subsystems.start_all(self.config.max_startup_time) {
 			Ok(()) => {
 				self.running = true;
-				log_info!("System started successfully");
+				log_debug!("System started successfully");
 				self.update_health_monitoring();
 				Ok(())
 			}
@@ -195,7 +195,7 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already stopped
 		}
 
-		log_info!("Stopping system gracefully");
+		log_debug!("Stopping system gracefully");
 
 		// Stop all subsystems
 		let result = self
@@ -214,7 +214,7 @@ impl<T: Transaction> Database<T> {
 
 		match result {
 			Ok(()) => {
-				log_info!("System stopped successfully");
+				log_debug!("System stopped successfully");
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Healthy,

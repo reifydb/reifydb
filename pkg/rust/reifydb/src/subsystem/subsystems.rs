@@ -13,7 +13,7 @@ use std::{
 
 use crate::health::HealthMonitor;
 use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
-use reifydb_core::{log_error, log_info, log_warn, Result};
+use reifydb_core::{log_debug, log_error, log_warn, Result};
 
 pub struct Subsystems {
 	subsystems: Vec<Box<dyn Subsystem>>,
@@ -61,7 +61,7 @@ impl Subsystems {
 			return Ok(()); // Already running
 		}
 
-		log_info!("Starting {} subsystems...", self.subsystems.len());
+		log_debug!("Starting {} subsystems...", self.subsystems.len());
 
 		let start_time = std::time::Instant::now();
 		let mut started_subsystems = Vec::new();
@@ -79,7 +79,7 @@ impl Subsystems {
 			}
 
 			let name = subsystem.name().to_string();
-			log_info!("Starting subsystem: {}", name);
+			log_debug!("Starting subsystem: {}", name);
 
 			match subsystem.start() {
 				Ok(()) => {
@@ -93,7 +93,7 @@ impl Subsystems {
 							subsystem.is_running(),
 						);
 					started_subsystems.push(name.clone());
-					log_info!(
+					log_debug!(
 						"Successfully started: {}",
 						name
 					);
@@ -130,7 +130,7 @@ impl Subsystems {
 		self.wire_subsystems()?;
 
 		self.running.store(true, Ordering::Relaxed);
-		log_info!(
+		log_debug!(
 			"All {} subsystems started successfully",
 			started_subsystems.len()
 		);
@@ -142,12 +142,17 @@ impl Subsystems {
 			return Ok(()); // Already stopped
 		}
 
-		log_info!("Stopping {} subsystems...", self.subsystems.len());
+		log_debug!("Stopping {} subsystems...", self.subsystems.len());
+
+		// First, print all subsystems that will be stopped
+		for subsystem in self.subsystems.iter().rev() {
+			log_debug!("Stopping subsystem: {}", subsystem.name());
+		}
 
 		let start_time = std::time::Instant::now();
 		let mut errors = Vec::new();
 
-		// Stop all subsystems in reverse order
+		// Now actually stop all subsystems in reverse order
 		for subsystem in self.subsystems.iter_mut().rev() {
 			// Check timeout
 			if start_time.elapsed() > shutdown_timeout {
@@ -156,7 +161,6 @@ impl Subsystems {
 			}
 
 			let name = subsystem.name().to_string();
-			log_info!("Stopping subsystem: {}", name);
 
 			match subsystem.shutdown() {
 				Ok(()) => {
@@ -169,7 +173,7 @@ impl Subsystems {
 								),
 							subsystem.is_running(),
 						);
-					log_info!(
+					log_debug!(
 						"Successfully stopped: {}",
 						name
 					);
@@ -200,7 +204,7 @@ impl Subsystems {
 		self.running.store(false, Ordering::Relaxed);
 
 		if errors.is_empty() {
-			log_info!("All subsystems stopped successfully");
+			log_debug!("All subsystems stopped successfully");
 			Ok(())
 		} else {
 			let error_msg = format!(

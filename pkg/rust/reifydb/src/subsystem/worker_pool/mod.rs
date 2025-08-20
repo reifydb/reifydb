@@ -8,7 +8,7 @@
 //! utilization by sharing worker threads between different background tasks
 
 use reifydb_core::{
-	interface::worker_pool::WorkerPool, log_info, log_warn, Result,
+	interface::worker_pool::WorkerPool, log_debug, log_warn, Result,
 };
 use std::{
 	any::Any,
@@ -285,7 +285,7 @@ impl Subsystem for WorkerPoolSubsystem {
 		// Start scheduler thread
 		self.start_scheduler();
 
-		log_info!("Started with {} workers", self.config.num_workers);
+		log_debug!("Started with {} workers", self.config.num_workers);
 
 		Ok(())
 	}
@@ -295,7 +295,7 @@ impl Subsystem for WorkerPoolSubsystem {
 			return Ok(()); // Already stopped
 		}
 
-		log_info!("Shutting down...");
+		log_debug!("Shutting down...");
 		self.running.store(false, Ordering::Relaxed);
 
 		// Wake scheduler so it can exit
@@ -319,7 +319,7 @@ impl Subsystem for WorkerPoolSubsystem {
 			worker.shutdown();
 		}
 
-		log_info!("Shutdown complete");
+		log_debug!("Shutdown complete");
 		Ok(())
 	}
 
