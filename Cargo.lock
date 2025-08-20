@@ -1676,6 +1676,7 @@ dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "reifydb-core",
+ "reifydb-testing",
 ]
 
 [[package]]

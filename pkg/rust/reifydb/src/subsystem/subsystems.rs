@@ -158,7 +158,7 @@ impl Subsystems {
 			let name = subsystem.name().to_string();
 			log_info!("Stopping subsystem: {}", name);
 
-			match subsystem.stop() {
+			match subsystem.shutdown() {
 				Ok(()) => {
 					// Update health monitoring
 					self.health_monitor
@@ -256,7 +256,7 @@ impl Subsystems {
 			// Find and stop the subsystem by name
 			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
-					if let Err(e) = subsystem.stop() {
+					if let Err(e) = subsystem.shutdown() {
 						log_error!(
 							"Error stopping '{}' during rollback: {}",
 							name,

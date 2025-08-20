@@ -3,12 +3,12 @@
 
 mod factory;
 use std::{
-	any::Any,
-	net::SocketAddr,
-	sync::{
-		atomic::{AtomicBool, Ordering},
-		Arc,
-	},
+    any::Any,
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use crate::context::RuntimeProvider;
@@ -132,7 +132,7 @@ impl<T: Transaction> Subsystem for GrpcSubsystem<T> {
 		Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}

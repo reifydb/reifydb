@@ -74,8 +74,8 @@ impl Worker {
 		self.handle = Some(handle);
 	}
 
-	/// Stop the worker thread
-	pub fn stop(mut self) {
+	/// Shutdown the worker thread
+	pub fn shutdown(mut self) {
 		if let Some(handle) = self.handle.take() {
 			// Worker will stop when running becomes false
 			let _ = handle.join();

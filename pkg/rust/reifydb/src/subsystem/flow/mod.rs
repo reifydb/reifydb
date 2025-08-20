@@ -136,7 +136,7 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 		// Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		self.consumer.stop()
 	}
 

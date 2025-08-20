@@ -44,7 +44,7 @@ impl Buffer {
 	pub fn try_push(&self, record: Record) -> Result<(), Record> {
 		match self.sender.try_send(record) {
 			Ok(()) => {
-				self.size.fetch_add(1, Ordering::Relaxed);
+				self.size.fetch_add(1, Ordering::AcqRel);
 				self.total_processed
 					.fetch_add(1, Ordering::Relaxed);
 				Ok(())
@@ -59,24 +59,30 @@ impl Buffer {
 	}
 
 	/// Force push a log record, potentially dropping old logs if buffer is full
-	pub fn force_push(&self, record: Record) {
+	pub fn force_push(&self, mut record: Record) {
 		// Try normal push first
-		if self.try_push(record.clone()).is_err() {
-			// If buffer is full, try to remove one old item and retry
-			if self.receiver.try_recv().is_ok() {
-				self.size.fetch_sub(1, Ordering::Relaxed);
-				self.total_dropped
-					.fetch_add(1, Ordering::Relaxed);
+		match self.try_push(record) {
+			Ok(()) => return,
+			Err(returned_record) => {
+				record = returned_record;
+				// If buffer is full, try to remove one old item and retry
+				if self.receiver.try_recv().is_ok() {
+					self.size.fetch_sub(1, Ordering::AcqRel);
+					self.total_dropped.fetch_add(1, Ordering::Relaxed);
+					// Try again after making space
+					let _ = self.try_push(record);
+				} else {
+					// Couldn't make space, drop the record
+					self.total_dropped.fetch_add(1, Ordering::Relaxed);
+				}
 			}
-			// Try again after making space
-			let _ = self.try_push(record);
 		}
 	}
 
 	/// Drain up to `max_count` records from the buffer
 	pub fn drain(&self, max_count: usize) -> Vec<Record> {
 		let mut records = Vec::with_capacity(
-			max_count.min(self.size.load(Ordering::Relaxed)),
+			max_count.min(self.size.load(Ordering::Acquire)),
 		);
 
 		for _ in 0..max_count {
@@ -84,7 +90,7 @@ impl Buffer {
 				Ok(record) => {
 					self.size.fetch_sub(
 						1,
-						Ordering::Relaxed,
+						Ordering::AcqRel,
 					);
 					records.push(record);
 				}
@@ -103,7 +109,7 @@ impl Buffer {
 
 	/// Get the current number of buffered logs
 	pub fn len(&self) -> usize {
-		self.size.load(Ordering::Relaxed)
+		self.size.load(Ordering::Acquire)
 	}
 
 	/// Check if the buffer is full

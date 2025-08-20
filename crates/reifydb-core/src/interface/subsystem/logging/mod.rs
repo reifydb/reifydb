@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 use std::thread::current;
 
 mod macros;
+pub mod mock;
 
 #[derive(
     Debug,
@@ -161,7 +162,19 @@ pub fn logger() -> Option<&'static Logger> {
 }
 
 /// Send a log record through the global logger
+/// In debug builds, checks for a thread-local mock logger first
 pub fn log(record: Record) {
+    // Check for mock logger in debug builds
+    #[cfg(debug_assertions)]
+    {
+        if let Some(sender) = mock::get_mock_logger() {
+            // Send to mock logger instead of global logger
+            let _ = sender.send(record);
+            return;
+        }
+    }
+    
+    // Normal path: use global logger
     if let Some(logger) = logger() {
         // Ignore send errors - logging should not crash the application
         let _ = logger.log(record);

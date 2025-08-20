@@ -9,6 +9,9 @@ use crate::subsystem::LoggingSubsystem;
 use reifydb_core::interface::subsystem::logging::{init_logger, LogBackend};
 use std::time::Duration;
 
+#[cfg(debug_assertions)]
+use crate::test_utils::TestLoggerHandle;
+
 pub struct LoggingBuilder {
 	backends: Vec<Box<dyn LogBackend>>,
 	buffer_capacity: usize,
@@ -24,8 +27,8 @@ impl Default for LoggingBuilder {
 }
 
 impl LoggingBuilder {
-
-	pub(crate) fn new() -> Self {
+	/// Create a new LoggingBuilder with default settings
+	pub fn new() -> Self {
 		Self {
 			backends: Vec::new(),
 			buffer_capacity: 10000,
@@ -68,7 +71,7 @@ impl LoggingBuilder {
 		self
 	}
 
-	pub(crate) fn build(self) -> LoggingSubsystem {
+	pub fn build(self) -> LoggingSubsystem {
 		// If no backends configured, add console by default
 		let backends = if self.backends.is_empty() {
 			vec![Box::new(ConsoleBackend::new())
@@ -92,5 +95,35 @@ impl LoggingBuilder {
 		init_logger(subsystem.get_sender());
 
 		subsystem
+	}
+	
+	/// Build a logging subsystem for testing
+	/// This version doesn't set the global logger, allowing tests to run in isolation
+	#[cfg(debug_assertions)]
+	pub fn build_for_test(self) -> (LoggingSubsystem, TestLoggerHandle) {
+		// If no backends configured, add console by default
+		let backends = if self.backends.is_empty() {
+			vec![Box::new(ConsoleBackend::new())
+				as Box<dyn LogBackend>]
+		} else {
+			self.backends
+		};
+
+		let processor_config = ProcessorConfig {
+			batch_size: self.batch_size,
+			flush_interval: self.flush_interval,
+			immediate_on_error: self.immediate_on_error,
+		};
+
+		let subsystem = LoggingSubsystem::new(
+			self.buffer_capacity,
+			backends,
+			processor_config,
+		);
+
+		// Create a test handle that sets the mock logger for this thread
+		let handle = TestLoggerHandle::new(subsystem.get_sender());
+
+		(subsystem, handle)
 	}
 }

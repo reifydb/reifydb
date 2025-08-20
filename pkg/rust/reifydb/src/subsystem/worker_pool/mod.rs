@@ -7,19 +7,19 @@
 //! priority-based scheduling. This subsystem provides efficient resource
 //! utilization by sharing worker threads between different background tasks
 
-use std::{
-    any::Any,
-    collections::BinaryHeap,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Condvar,
-        Mutex,
-    },
-    thread::{self, JoinHandle},
-    time::Duration,
+use reifydb_core::{
+	interface::worker_pool::WorkerPool, log_info, log_warn, Result,
 };
-
-
-use reifydb_core::{interface::worker_pool::WorkerPool, log_info, log_warn, Result};
+use std::{
+	any::Any,
+	collections::BinaryHeap,
+	sync::{
+		atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Condvar,
+		Mutex,
+	},
+	thread::{self, JoinHandle},
+	time::Duration,
+};
 
 mod factory;
 mod scheduler;
@@ -290,7 +290,7 @@ impl Subsystem for WorkerPoolSubsystem {
 		Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
@@ -316,7 +316,7 @@ impl Subsystem for WorkerPoolSubsystem {
 
 		// Stop all workers
 		for worker in self.workers.drain(..) {
-			worker.stop();
+			worker.shutdown();
 		}
 
 		log_info!("Shutdown complete");
@@ -359,7 +359,7 @@ impl Subsystem for WorkerPoolSubsystem {
 	fn as_any(&self) -> &dyn Any {
 		self
 	}
-	
+
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
@@ -367,7 +367,7 @@ impl Subsystem for WorkerPoolSubsystem {
 
 impl Drop for WorkerPoolSubsystem {
 	fn drop(&mut self) {
-		let _ = self.stop();
+		let _ = self.shutdown();
 	}
 }
 

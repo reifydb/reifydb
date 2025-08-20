@@ -6,6 +6,7 @@
 use crate::buffer::Buffer;
 use parking_lot::RwLock;
 use reifydb_core::interface::subsystem::logging::LogBackend;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -36,6 +37,8 @@ pub struct LogProcessor {
 	backends: Arc<RwLock<Vec<Box<dyn LogBackend>>>>,
 	config: ProcessorConfig,
 	last_flush: RwLock<Instant>,
+	/// Track backend write errors for monitoring
+	backend_errors: AtomicU64,
 }
 
 impl LogProcessor {
@@ -49,6 +52,7 @@ impl LogProcessor {
 			backends,
 			config,
 			last_flush: RwLock::new(Instant::now()),
+			backend_errors: AtomicU64::new(0),
 		}
 	}
 
@@ -74,8 +78,12 @@ impl LogProcessor {
 		// Write to all backends
 		let backends = self.backends.read();
 		for backend in backends.iter() {
-			// Ignore backend errors to prevent logging failures from affecting the system
-			let _ = backend.write(&records);
+			// Track backend errors while preventing logging failures from affecting the system
+			if let Err(_e) = backend.write(&records) {
+				self.backend_errors.fetch_add(1, Ordering::Relaxed);
+				// In production, might want to log to stderr or a fallback logger
+				// eprintln!("Logging backend error: {:?}", e);
+			}
 		}
 
 		// Update last flush time
@@ -93,11 +101,16 @@ impl LogProcessor {
 
 		let backends = self.backends.read();
 		for backend in backends.iter() {
-			let _ = backend.write(&records);
-			let _ = backend.flush();
+			if let Err(_e) = backend.write(&records) {
+				self.backend_errors.fetch_add(1, Ordering::Relaxed);
+			}
+			if let Err(_e) = backend.flush() {
+				self.backend_errors.fetch_add(1, Ordering::Relaxed);
+			}
 		}
 
 		*self.last_flush.write() = Instant::now();
 		Ok(())
 	}
+
 }

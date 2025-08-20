@@ -10,12 +10,12 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use parking_lot::RwLock;
 use reifydb_core::interface::subsystem::logging::{LogBackend, Record};
 use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
-use reifydb_core::Result;
+use reifydb_core::{return_internal_error, Result};
 use std::any::Any;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Logging subsystem with dedicated thread
 pub struct LoggingSubsystem {
@@ -147,11 +147,9 @@ impl Subsystem for LoggingSubsystem {
 		if receiver.is_none() {
 			// Receiver already taken, restore running flag
 			self.running.store(false, Ordering::Release);
-			// return Err(reifydb_core::Error::Other(
-			// 	"Log receiver already in use".into()
-			// ));
-
-			panic!("Log receiver already in use");
+			return_internal_error!(
+				"Log receiver already in use - logging subsystem may already be running"
+			);
 		}
 		let receiver = receiver.unwrap();
 
@@ -165,8 +163,7 @@ impl Subsystem for LoggingSubsystem {
 		let handle = thread::Builder::new()
 			.name("logging-thread".to_string())
 			.spawn(move || {
-				let mut last_process =
-					std::time::Instant::now();
+				let mut last_process = Instant::now();
 
 				while running.load(Ordering::Acquire) {
 					// Drain channel into buffer
@@ -183,7 +180,7 @@ impl Subsystem for LoggingSubsystem {
 					}
 
 					// Process buffer to backends periodically
-					let now = std::time::Instant::now();
+					let now = Instant::now();
 					if now.duration_since(last_process)
 						>= flush_interval || buffer.is_full()
 					{
@@ -213,8 +210,9 @@ impl Subsystem for LoggingSubsystem {
 		Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		// Try to set running flag from true to false
+		// Note: This is a terminal operation - the subsystem cannot be restarted
 		if self.running
 			.compare_exchange(
 				true,
@@ -224,7 +222,7 @@ impl Subsystem for LoggingSubsystem {
 			)
 			.is_err()
 		{
-			// Already stopped
+			// Already shutdown
 			return Ok(());
 		}
 
@@ -245,7 +243,19 @@ impl Subsystem for LoggingSubsystem {
 	}
 
 	fn health_status(&self) -> HealthStatus {
-		HealthStatus::Unknown
+		if !self.is_running() {
+			// Subsystem is shutdown and cannot be restarted
+			return HealthStatus::Unknown;
+		}
+		
+		let utilization = self.buffer_utilization();
+		if utilization > 90 {
+			HealthStatus::Degraded {
+				description: format!("Buffer utilization high: {}%", utilization),
+			}
+		} else {
+			HealthStatus::Healthy
+		}
 	}
 
 	fn as_any(&self) -> &dyn Any {
@@ -259,7 +269,7 @@ impl Subsystem for LoggingSubsystem {
 
 impl Drop for LoggingSubsystem {
 	fn drop(&mut self) {
-		// Stop the subsystem gracefully
-		let _ = self.stop();
+		// Shutdown the subsystem gracefully
+		let _ = self.shutdown();
 	}
 }

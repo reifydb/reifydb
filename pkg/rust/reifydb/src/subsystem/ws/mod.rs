@@ -134,7 +134,7 @@ impl<T: Transaction> Subsystem for WsSubsystem<T> {
 		Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}

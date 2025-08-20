@@ -14,8 +14,14 @@ mod metrics;
 mod processor;
 mod subsystem;
 
+#[cfg(debug_assertions)]
+mod test_utils;
+
 pub use backend::ConsoleBuilder;
 pub use builder::LoggingBuilder;
 pub use factory::LoggingSubsystemFactory;
 pub use metrics::LoggingMetrics;
 pub use subsystem::LoggingSubsystem;
+
+#[cfg(debug_assertions)]
+pub use test_utils::{TestLoggerHandle, LoggingBuilderTestExt};

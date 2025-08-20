@@ -51,8 +51,8 @@ fn test_worker_pool_basic() {
 	// Check that all tasks were executed
 	assert_eq!(counter.load(Ordering::Relaxed), 10);
 
-	// Stop the pool
-	assert!(pool.stop().is_ok());
+	// shutdown the pool
+	assert!(pool.shutdown().is_ok());
 	assert!(!pool.is_running());
 }
 
@@ -104,7 +104,7 @@ fn test_worker_pool_priority() {
 	// should generally come before low priority
 	println!("Execution order: {:?}", *final_results);
 
-	assert!(pool.stop().is_ok());
+	assert!(pool.shutdown().is_ok());
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn test_worker_pool_periodic_tasks() {
 		count_before, count_after
 	);
 
-	assert!(pool.stop().is_ok());
+	assert!(pool.shutdown().is_ok());
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn test_priority_ordering_with_blocking_tasks() {
 		*final_results
 	);
 
-	assert!(pool.stop().is_ok());
+	assert!(pool.shutdown().is_ok());
 }
 
 #[test]
@@ -430,7 +430,7 @@ fn test_priority_with_all_levels() {
 		"All Normal tasks should execute before Low tasks"
 	);
 
-	assert!(pool.stop().is_ok());
+	assert!(pool.shutdown().is_ok());
 }
 
 #[test]
@@ -497,7 +497,7 @@ fn test_priority_starvation_prevention() {
 		"All low priority tasks should eventually be executed"
 	);
 
-	assert!(pool.stop().is_ok());
+	assert!(pool.shutdown().is_ok());
 }
 
 #[test]
@@ -589,5 +589,5 @@ fn test_priority_with_periodic_tasks() {
 		"Low priority periodic task should execute"
 	);
 
-	assert!(pool.stop().is_ok());
+	assert!(pool.shutdown().is_ok());
 }

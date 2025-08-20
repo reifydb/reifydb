@@ -21,12 +21,14 @@ pub trait Subsystem: Send + Sync + Any {
 	/// threads or processes. It should be idempotent - calling start() on
 	/// an already running subsystem should succeed without side effects.
 	fn start(&mut self) -> crate::Result<()>;
-	/// Stop the subsystem
+	/// Shutdown the subsystem
 	///
 	/// This method should gracefully shut down the subsystem and clean up
-	/// any resources. It should be idempotent - calling stop() on an
-	/// already stopped subsystem should succeed without side effects.
-	fn stop(&mut self) -> crate::Result<()>;
+	/// any resources. This is a terminal operation - once shutdown, the
+	/// subsystem cannot be restarted. It should be idempotent - calling 
+	/// shutdown() on an already shutdown subsystem should succeed without 
+	/// side effects.
+	fn shutdown(&mut self) -> crate::Result<()>;
 
 	/// Check if the subsystem is currently running
 	fn is_running(&self) -> bool;
