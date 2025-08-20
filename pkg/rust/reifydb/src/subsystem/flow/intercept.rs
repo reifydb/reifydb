@@ -116,7 +116,7 @@ impl<T: Transaction> PreCommitInterceptor<T>
 		// Process all collected changes
 		let mut changes = self.changes.borrow_mut();
 		for change in changes.drain(..) {
-			log_debug!("{change:?}")
+			log_debug!("{change:?}");
 			// TODO: Process with flow engine
 			// This is where you would process the changes through
 			// the flow system For now, we just have the
