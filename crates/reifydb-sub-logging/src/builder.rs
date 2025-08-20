@@ -6,7 +6,9 @@
 use crate::backend::{console::ConsoleBackend, ConsoleBuilder};
 use crate::processor::ProcessorConfig;
 use crate::subsystem::LoggingSubsystem;
-use reifydb_core::interface::subsystem::logging::{init_logger, LogBackend};
+use reifydb_core::interface::subsystem::logging::{
+	init_logger, LogBackend, LogLevel,
+};
 use std::time::Duration;
 
 #[cfg(debug_assertions)]
@@ -18,6 +20,7 @@ pub struct LoggingBuilder {
 	batch_size: usize,
 	flush_interval: Duration,
 	immediate_on_error: bool,
+	level: LogLevel,
 }
 
 impl Default for LoggingBuilder {
@@ -35,6 +38,7 @@ impl LoggingBuilder {
 			batch_size: 1000,
 			flush_interval: Duration::from_millis(100),
 			immediate_on_error: true,
+			level: LogLevel::Info,
 		}
 	}
 
@@ -71,6 +75,13 @@ impl LoggingBuilder {
 		self
 	}
 
+	/// Set the minimum log level. Logs below this level will be discarded.
+	/// Default is Info.
+	pub fn level(mut self, level: LogLevel) -> Self {
+		self.level = level;
+		self
+	}
+
 	pub fn build(self) -> LoggingSubsystem {
 		// If no backends configured, add console by default
 		let backends = if self.backends.is_empty() {
@@ -90,13 +101,14 @@ impl LoggingBuilder {
 			self.buffer_capacity,
 			backends,
 			processor_config,
+			self.level,
 		);
 
 		init_logger(subsystem.get_sender());
 
 		subsystem
 	}
-	
+
 	/// Build a logging subsystem for testing
 	/// This version doesn't set the global logger, allowing tests to run in isolation
 	#[cfg(debug_assertions)]
@@ -119,6 +131,7 @@ impl LoggingBuilder {
 			self.buffer_capacity,
 			backends,
 			processor_config,
+			self.level,
 		);
 
 		// Create a test handle that sets the mock logger for this thread

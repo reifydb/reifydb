@@ -8,7 +8,7 @@ use crate::processor::{LogProcessor, ProcessorConfig};
 use crate::LoggingMetrics;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use parking_lot::RwLock;
-use reifydb_core::interface::subsystem::logging::{LogBackend, Record};
+use reifydb_core::interface::subsystem::logging::{LogBackend, LogLevel, Record};
 use reifydb_core::interface::subsystem::{HealthStatus, Subsystem};
 use reifydb_core::{return_internal_error, Result};
 use std::any::Any;
@@ -35,6 +35,8 @@ pub struct LoggingSubsystem {
 	log_receiver: Arc<RwLock<Option<Receiver<Record>>>>,
 	/// Dedicated logging thread handle
 	logging_thread: Arc<RwLock<Option<JoinHandle<()>>>>,
+	/// Minimum log level to process
+	level: LogLevel,
 }
 
 impl LoggingSubsystem {
@@ -43,6 +45,7 @@ impl LoggingSubsystem {
 		buffer_capacity: usize,
 		backends: Vec<Box<dyn LogBackend>>,
 		processor_config: ProcessorConfig,
+		level: LogLevel,
 	) -> Self {
 		let buffer = Arc::new(Buffer::new(buffer_capacity));
 		let backends = Arc::new(RwLock::new(backends));
@@ -64,6 +67,7 @@ impl LoggingSubsystem {
 			log_sender: sender,
 			log_receiver: Arc::new(RwLock::new(Some(receiver))),
 			logging_thread: Arc::new(RwLock::new(None)),
+			level,
 		}
 	}
 
@@ -158,6 +162,7 @@ impl Subsystem for LoggingSubsystem {
 		let processor = Arc::clone(&self.processor);
 		let running = Arc::clone(&self.running);
 		let flush_interval = self.processor_config.flush_interval;
+		let min_level = self.level;
 
 		// Spawn dedicated logging thread
 		let handle = thread::Builder::new()
@@ -171,7 +176,10 @@ impl Subsystem for LoggingSubsystem {
 					while let Ok(record) =
 						receiver.try_recv()
 					{
-						buffer.force_push(record);
+						// Filter out logs below the minimum level
+						if record.level >= min_level {
+							buffer.force_push(record);
+						}
 						received_count += 1;
 						// Process in batches to avoid blocking the channel
 						if received_count >= 100 {
