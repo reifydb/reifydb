@@ -9,7 +9,7 @@ use reifydb_core::{
 	return_error,
 	row::EncodedRow,
 };
-
+use reifydb_core::util::now_millis;
 use crate::{
 	cdc::generate_cdc_event,
 	memory::{Memory, versioned::VersionedRow},
@@ -17,7 +17,7 @@ use crate::{
 
 impl VersionedCommit for Memory {
 	fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
-		let timestamp = self.clock.now_millis();
+		let timestamp = now_millis();
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {

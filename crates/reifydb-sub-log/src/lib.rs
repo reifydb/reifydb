@@ -65,8 +65,3 @@ pub fn log(record: LogRecord) {
 		let _ = logger.log(record);
 	}
 }
-
-/// Strip the "reifydb-" prefix from crate names
-pub fn format_crate_name(name: &str) -> &str {
-	name.strip_prefix("reifydb-").unwrap_or(name)
-}

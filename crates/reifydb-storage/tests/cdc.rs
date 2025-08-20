@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	error::Error as StdError, fmt::Write, ops::Bound, path::Path, sync::Arc,
+	error::Error as StdError, fmt::Write, ops::Bound, path::Path,
 };
 
 use reifydb_core::{
@@ -14,10 +14,12 @@ use reifydb_core::{
 	},
 	row::EncodedRow,
 	util::{
-		MockClock,
 		encoding::{binary::decode_binary, format, format::Formatter},
 	},
 };
+
+#[cfg(debug_assertions)]
+use reifydb_core::util::{mock_time_set, mock_time_advance};
 use reifydb_storage::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
@@ -29,20 +31,19 @@ test_each_path! { in "crates/reifydb-storage/tests/scripts/cdc" as cdc_memory =>
 test_each_path! { in "crates/reifydb-storage/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let clock = Arc::new(MockClock::new(1000));
-	let storage = Memory::with_clock(Box::new(clock.clone()));
-	testscript::run_path(&mut Runner::new(storage, clock), path)
+	#[cfg(debug_assertions)]
+	mock_time_set(1000);
+	let storage = Memory::new();
+	testscript::run_path(&mut Runner::new(storage), path)
 		.expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|db_path| {
-		let clock = Arc::new(MockClock::new(1000));
-		let storage = Sqlite::with_clock(
-			SqliteConfig::fast(db_path),
-			Box::new(clock.clone()),
-		);
-		testscript::run_path(&mut Runner::new(storage, clock), path)
+		#[cfg(debug_assertions)]
+		mock_time_set(1000);
+		let storage = Sqlite::new(SqliteConfig::fast(db_path));
+		testscript::run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
@@ -53,7 +54,6 @@ pub struct Runner<
 > {
 	storage: VS,
 	next_version: Version,
-	clock: Arc<MockClock>,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
@@ -61,11 +61,10 @@ pub struct Runner<
 impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 	Runner<VS>
 {
-	fn new(storage: VS, clock: Arc<MockClock>) -> Self {
+	fn new(storage: VS) -> Self {
 		Self {
 			storage,
 			next_version: 1,
-			clock,
 			deltas: Vec::new(),
 		}
 	}
@@ -617,7 +616,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.map_err(|_| "invalid millis")?;
 				args.reject_rest()?;
 
-				self.clock.advance(millis);
+				#[cfg(debug_assertions)]
+				mock_time_advance(millis);
 				writeln!(output, "ok")?;
 			}
 

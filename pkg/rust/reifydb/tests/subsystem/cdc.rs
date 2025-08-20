@@ -25,7 +25,7 @@ use reifydb_core::{
 		VersionedQueryTransaction, key::TableRowKey,
 	},
 	row::EncodedRow,
-	util::{CowVec, MockClock},
+	util::CowVec,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_storage::memory::Memory;
@@ -451,8 +451,9 @@ type TestTransaction = StandardTransaction<
 >;
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
-	let clock = Arc::new(MockClock::new(1000));
-	let memory = Memory::with_clock(Box::new(clock.clone()));
+	#[cfg(debug_assertions)]
+	reifydb_core::util::mock_time_set(1000);
+	let memory = Memory::new();
 	let hooks = Hooks::new();
 	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
