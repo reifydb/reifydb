@@ -16,6 +16,7 @@ use reifydb_core::{
 	interface::Transaction, ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingSubsystemFactory;
 
 pub struct DatabaseBuilder<T: Transaction> {
@@ -56,6 +57,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 	pub fn with_default_subsystems(mut self) -> Self {
 		// Add default logging subsystem first so it's initialized before other subsystems
 		// Note: This can be overridden by adding a custom logging factory before calling this
+		#[cfg(feature = "sub_logging")]
 		if self.subsystems.is_empty() {
 			self = self.add_subsystem_factory(Box::new(
 				LoggingSubsystemFactory::new(),

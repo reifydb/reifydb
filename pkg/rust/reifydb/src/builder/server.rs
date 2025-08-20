@@ -10,6 +10,7 @@ use reifydb_core::{
 #[cfg(feature = "sub_grpc")]
 use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
+#[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
 use super::{traits::WithSubsystem, DatabaseBuilder};
@@ -112,6 +113,7 @@ impl<T: Transaction> ServerBuilder<T> {
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
+	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,

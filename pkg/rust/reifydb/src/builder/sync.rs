@@ -6,6 +6,7 @@ use reifydb_core::{
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 	interface::{subsystem::SubsystemFactory, Transaction},
 };
+#[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
 use super::{traits::WithSubsystem, DatabaseBuilder};
@@ -71,6 +72,7 @@ impl<T: Transaction> SyncBuilder<T> {
 }
 
 impl<T: Transaction> WithSubsystem<T> for SyncBuilder<T> {
+	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,

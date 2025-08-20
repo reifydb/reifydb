@@ -57,6 +57,7 @@ pub use session::SessionAsync;
 pub use session::{CommandSession, QuerySession, Session, SessionSync};
 
 // subsystems
+#[cfg(feature = "sub_logging")]
 pub use reifydb_sub_logging::LoggingBuilder;
 
 /// Default configuration values
