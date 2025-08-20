@@ -230,14 +230,14 @@ mod tests {
 	fn test_encode_decode() {
 		// Create a simple index key
 		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8, Type::RowId],
+			&[Type::Uint8, Type::RowNumber],
 			&[SortDirection::Asc, SortDirection::Asc],
 		)
 		.unwrap();
 
 		let mut index_key = layout.allocate_key();
 		layout.set_u64(&mut index_key, 0, 100u64);
-		layout.set_row_id(&mut index_key, 1, 1u64);
+		layout.set_row_number(&mut index_key, 1, 1u64);
 
 		let entry = TableIndexEntryKey {
 			table: TableId(42),
@@ -347,14 +347,14 @@ mod tests {
 	#[test]
 	fn test_key_prefix_range() {
 		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8, Type::RowId],
+			&[Type::Uint8, Type::RowNumber],
 			&[SortDirection::Asc, SortDirection::Asc],
 		)
 		.unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);
-		layout.set_row_id(&mut key, 1, 0u64); // Set to 0 to get the minimal key with this prefix
+		layout.set_row_number(&mut key, 1, 0u64); // Set to 0 to get the minimal key with this prefix
 
 		// Use the full encoded key up to the first field as the prefix
 		let prefix = &key.as_slice()[..layout.fields[1].offset]; // Include bitvec and first field
@@ -365,7 +365,7 @@ mod tests {
 		);
 
 		// Now create a full key with the same prefix
-		layout.set_row_id(&mut key, 1, 999u64);
+		layout.set_row_number(&mut key, 1, 999u64);
 		let entry = TableIndexEntryKey {
 			table: TableId(1),
 			index: IndexId(1),
@@ -385,7 +385,7 @@ mod tests {
 		// Create a key with different prefix
 		let mut key2 = layout.allocate_key();
 		layout.set_u64(&mut key2, 0, 200u64); // Different first field
-		layout.set_row_id(&mut key2, 1, 1u64);
+		layout.set_row_number(&mut key2, 1, 1u64);
 
 		let entry2 = TableIndexEntryKey {
 			table: TableId(1),

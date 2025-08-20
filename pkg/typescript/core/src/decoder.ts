@@ -7,7 +7,7 @@
 import {
     BlobValue, BoolValue, DateValue, DateTimeValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
-    RowIdValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
+    RowNumberValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
     Value, TypeValuePair
 } from './value';
@@ -39,8 +39,8 @@ export function decode(pair: TypeValuePair): Value {
             return Int16Value.parse(pair.value);
         case "Interval":
             return IntervalValue.parse(pair.value);
-        case "RowId":
-            return RowIdValue.parse(pair.value);
+        case "RowNumber":
+            return RowNumberValue.parse(pair.value);
         case "Time":
             return TimeValue.parse(pair.value);
         case "Uint1":

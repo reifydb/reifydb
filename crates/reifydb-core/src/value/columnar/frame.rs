@@ -63,8 +63,8 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::Interval(container) => {
 				FrameColumnData::Interval(container)
 			}
-			ColumnData::RowId(container) => {
-				FrameColumnData::RowId(container)
+			ColumnData::RowNumber(container) => {
+				FrameColumnData::RowNumber(container)
 			}
 			ColumnData::IdentityId(container) => {
 				FrameColumnData::IdentityId(container)

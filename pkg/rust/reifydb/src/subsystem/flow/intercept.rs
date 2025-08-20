@@ -14,7 +14,7 @@ use reifydb_core::{
 	ioc::{IocContainer, SingleThreadLazyResolve},
 	log_debug,
 	Result,
-	RowId,
+	RowNumber,
 };
 use reifydb_engine::StandardEngine;
 
@@ -23,18 +23,18 @@ use reifydb_engine::StandardEngine;
 pub enum FlowChange {
 	Insert {
 		table_id: TableId,
-		row_id: RowId,
+		row_number: RowNumber,
 		row: Vec<u8>,
 	},
 	Update {
 		table_id: TableId,
-		row_id: RowId,
+		row_number: RowNumber,
 		before: Vec<u8>,
 		after: Vec<u8>,
 	},
 	Delete {
 		table_id: TableId,
-		row_id: RowId,
+		row_number: RowNumber,
 		row: Vec<u8>,
 	},
 }
@@ -72,7 +72,7 @@ impl<T: Transaction> TablePostInsertInterceptor<T>
 	fn intercept(&self, ctx: &mut TablePostInsertContext<T>) -> Result<()> {
 		self.changes.borrow_mut().push(FlowChange::Insert {
 			table_id: ctx.table.id,
-			row_id: ctx.id,
+			row_number: ctx.id,
 			row: ctx.row.to_vec(),
 		});
 
@@ -86,7 +86,7 @@ impl<T: Transaction> TablePostUpdateInterceptor<T>
 	fn intercept(&self, ctx: &mut TablePostUpdateContext<T>) -> Result<()> {
 		self.changes.borrow_mut().push(FlowChange::Update {
 			table_id: ctx.table.id,
-			row_id: ctx.id,
+			row_number: ctx.id,
 			before: ctx.old_row.to_vec(),
 			after: ctx.row.to_vec(),
 		});
@@ -100,7 +100,7 @@ impl<T: Transaction> TablePostDeleteInterceptor<T>
 	fn intercept(&self, ctx: &mut TablePostDeleteContext<T>) -> Result<()> {
 		self.changes.borrow_mut().push(FlowChange::Delete {
 			table_id: ctx.table.id,
-			row_id: ctx.id,
+			row_number: ctx.id,
 			row: ctx.deleted_row.to_vec(),
 		});
 		Ok(())
@@ -115,8 +115,8 @@ impl<T: Transaction> PreCommitInterceptor<T>
 
 		// Process all collected changes
 		let mut changes = self.changes.borrow_mut();
-		for _change in changes.drain(..) {
-			log_debug!("{_change:?}")
+		for change in changes.drain(..) {
+			log_debug!("{change:?}")
 			// TODO: Process with flow engine
 			// This is where you would process the changes through
 			// the flow system For now, we just have the

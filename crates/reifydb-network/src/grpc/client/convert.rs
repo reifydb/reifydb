@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	BitVec, Date, DateTime, FrameColumnData, Interval, OwnedFragment,
-	RowId, StatementColumn, StatementLine, Time, Type,
+	RowNumber, StatementColumn, StatementLine, Time, Type,
 	interface::Params,
 	result::{
 		Frame, FrameColumn,
@@ -15,7 +15,7 @@ use reifydb_core::{
 		Blob, IdentityId, Value,
 		container::{
 			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowIdContainer, StringContainer,
+			NumberContainer, RowNumberContainer, StringContainer,
 			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 		uuid::{Uuid4, Uuid7},
@@ -542,7 +542,7 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 			Type::Undefined => FrameColumnData::Undefined(
 				UndefinedContainer::new(grpc_col.data.len()),
 			),
-			Type::RowId => {
+			Type::RowNumber => {
 				let mut data =
 					Vec::with_capacity(grpc_col.data.len());
 				let mut bitvec = BitVec::with_capacity(
@@ -550,24 +550,24 @@ pub(crate) fn convert_frame(frame: grpc::Frame) -> Frame {
 				);
 				for v in grpc_col.data {
 					match v.r#type {
-						Some(GrpcType::RowIdValue(
-							row_id,
+						Some(GrpcType::RowNumberValue(
+							row_number,
 						)) => {
-							data.push(RowId::new(
-								row_id,
+							data.push(RowNumber::new(
+								row_number,
 							));
 							bitvec.push(true);
 						}
 						_ => {
 							data.push(
-								RowId::default(
+								RowNumber::default(
 								),
 							);
 							bitvec.push(false);
 						}
 					}
 				}
-				FrameColumnData::RowId(RowIdContainer::new(
+				FrameColumnData::RowNumber(RowNumberContainer::new(
 					data, bitvec,
 				))
 			}
@@ -831,7 +831,7 @@ fn core_value_to_grpc_value(value: &Value) -> grpc::Value {
 			}))
 		}
 		Value::Undefined => Some(GrpcType::UndefinedValue(true)),
-		Value::RowId(id) => Some(GrpcType::RowIdValue(id.value())),
+		Value::RowNumber(id) => Some(GrpcType::RowNumberValue(id.value())),
 		Value::Uuid4(u) => {
 			let std_uuid: uuid::Uuid = (*u).into();
 			Some(GrpcType::Uuid4Value(std_uuid.as_bytes().to_vec()))

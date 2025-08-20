@@ -13,7 +13,7 @@ use std::{
 use Key::TableRow;
 use reifydb::subsystem::cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
-	EncodedKey, Result, RowId,
+	EncodedKey, Result, RowNumber,
 	diagnostic::Diagnostic,
 	hook::Hooks,
 	interceptor::StandardInterceptorFactory,
@@ -87,7 +87,7 @@ fn test_event_processing() {
 	for (i, event) in events.iter().enumerate() {
 		if let Some(TableRow(table_row)) = Key::decode(event.key()) {
 			assert_eq!(table_row.table, TableId(1));
-			assert_eq!(table_row.row, RowId(i as u64));
+			assert_eq!(table_row.row, RowNumber(i as u64));
 		} else {
 			panic!("Expected TableRow key");
 		}
@@ -381,7 +381,7 @@ fn test_non_table_events_filtered() {
 
 	let table_key = TableRowKey {
 		table: TableId(1),
-		row: RowId(1),
+		row: RowNumber(1),
 	};
 	txn.set(
 		&table_key.encode(),
@@ -411,7 +411,7 @@ fn test_non_table_events_filtered() {
 
 	if let Some(TableRow(table_row)) = Key::decode(events[0].key()) {
 		assert_eq!(table_row.table, TableId(1));
-		assert_eq!(table_row.row, RowId(1));
+		assert_eq!(table_row.row, RowNumber(1));
 	} else {
 		panic!("Expected TableRow key");
 	}
@@ -542,7 +542,7 @@ fn insert_test_events(
 		let mut txn = engine.begin_command()?;
 		let key = TableRowKey {
 			table: TableId(1),
-			row: RowId(i as u64),
+			row: RowNumber(i as u64),
 		};
 		let value = format!("value_{}", i);
 		txn.set(

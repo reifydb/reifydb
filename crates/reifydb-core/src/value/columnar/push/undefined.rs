@@ -63,7 +63,7 @@ impl ColumnData {
 			ColumnData::Undefined(container) => {
 				container.push_undefined()
 			}
-			ColumnData::RowId(container) => {
+			ColumnData::RowNumber(container) => {
 				container.push_undefined()
 			}
 			ColumnData::IdentityId(container) => {

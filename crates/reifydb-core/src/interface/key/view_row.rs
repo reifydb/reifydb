@@ -5,7 +5,7 @@ use std::collections::Bound;
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, RowId,
+	EncodedKey, EncodedKeyRange, RowNumber,
 	interface::{EncodableKeyRange, catalog::ViewId},
 	util::encoding::keycode,
 };
@@ -15,7 +15,7 @@ const VERSION: u8 = 1;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewRowKey {
 	pub view: ViewId,
-	pub row: RowId,
+	pub row: RowNumber,
 }
 
 impl EncodableKey for ViewRowKey {
@@ -163,13 +163,13 @@ impl ViewRowKey {
 #[cfg(test)]
 mod tests {
 	use super::{EncodableKey, ViewRowKey};
-	use crate::{RowId, interface::catalog::ViewId};
+	use crate::{RowNumber, interface::catalog::ViewId};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ViewRowKey {
 			view: ViewId(0xABCD),
-			row: RowId(0x123456789ABCDEF0),
+			row: RowNumber(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
@@ -191,15 +191,15 @@ mod tests {
 	fn test_order_preserving() {
 		let key1 = ViewRowKey {
 			view: ViewId(1),
-			row: RowId(100),
+			row: RowNumber(100),
 		};
 		let key2 = ViewRowKey {
 			view: ViewId(1),
-			row: RowId(200),
+			row: RowNumber(200),
 		};
 		let key3 = ViewRowKey {
 			view: ViewId(2),
-			row: RowId(0),
+			row: RowNumber(0),
 		};
 
 		let encoded1 = key1.encode();

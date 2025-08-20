@@ -7,7 +7,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
 	result::frame::{Frame, FrameColumn},
-	value::row_id::ROW_ID_COLUMN_NAME,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 /// Calculate the display width of a string, handling newlines properly.
@@ -27,24 +27,24 @@ fn escape_control_chars(s: &str) -> String {
 	s.replace('\n', "\\n").replace('\t', "\\t")
 }
 
-/// Create a column display order that puts RowId column first if it exists
+/// Create a column display order that puts RowNumber column first if it exists
 fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 	let mut indices: Vec<usize> = (0..frame.len()).collect();
 
-	// Find the RowId column and move it to the front
-	if let Some(row_id_pos) =
-		frame.iter().position(|col| col.name == ROW_ID_COLUMN_NAME)
+	// Find the RowNumber column and move it to the front
+	if let Some(row_number_pos) =
+		frame.iter().position(|col| col.name == ROW_NUMBER_COLUMN_NAME)
 	{
-		indices.remove(row_id_pos);
-		indices.insert(0, row_id_pos);
+		indices.remove(row_number_pos);
+		indices.insert(0, row_number_pos);
 	}
 
 	indices
 }
 
 /// Extract string value from column at given row index, with proper escaping
-fn extract_string_value(col: &FrameColumn, row_idx: usize) -> String {
-	let s = col.data.as_string(row_idx);
+fn extract_string_value(col: &FrameColumn, row_numberx: usize) -> String {
+	let s = col.data.as_string(row_numberx);
 	escape_control_chars(&s)
 }
 
@@ -53,7 +53,7 @@ impl Display for Frame {
 		let row_count = self.first().map_or(0, |c| c.data.len());
 		let col_count = self.len();
 
-		// Get the display order with RowId column first
+		// Get the display order with RowNumber column first
 		let column_order = get_column_display_order(self);
 
 		let mut col_widths = vec![0; col_count];
@@ -64,12 +64,12 @@ impl Display for Frame {
 			col_widths[display_idx] = display_width(&display_name);
 		}
 
-		for row_idx in 0..row_count {
+		for row_numberx in 0..row_count {
 			for (display_idx, &col_idx) in
 				column_order.iter().enumerate()
 			{
 				let col = &self[col_idx];
-				let s = extract_string_value(col, row_idx);
+				let s = extract_string_value(col, row_numberx);
 				col_widths[display_idx] = col_widths
 					[display_idx]
 					.max(display_width(&s));
@@ -115,7 +115,7 @@ impl Display for Frame {
 
 		writeln!(f, "{}", sep)?;
 
-		for row_idx in 0..row_count {
+		for row_numberx in 0..row_count {
 			let row = column_order
 				.iter()
 				.enumerate()
@@ -123,7 +123,7 @@ impl Display for Frame {
 					let col = &self[col_idx];
 					let w = col_widths[display_idx];
 					let s = extract_string_value(
-						col, row_idx,
+						col, row_numberx,
 					);
 					let pad = w - display_width(&s);
 					let l = pad / 2;
@@ -150,12 +150,12 @@ impl Display for Frame {
 mod tests {
 	use super::*;
 	use crate::{
-		BitVec, Date, DateTime, FrameColumnData, Interval, RowId, Time,
+		BitVec, Date, DateTime, FrameColumnData, Interval, RowNumber, Time,
 		value::{
 			Blob,
 			container::{
 				BlobContainer, BoolContainer, NumberContainer,
-				RowIdContainer, StringContainer,
+				RowNumberContainer, StringContainer,
 				TemporalContainer, UndefinedContainer,
 				UuidContainer,
 			},
@@ -494,29 +494,29 @@ mod tests {
 		}
 	}
 
-	fn row_id_column_with_bitvec(
-		data: impl IntoIterator<Item = RowId>,
+	fn row_number_column_with_bitvec(
+		data: impl IntoIterator<Item = RowNumber>,
 		bitvec: BitVec,
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
 			table: None,
 			name: "__ROW__ID__".to_string(),
-			data: FrameColumnData::RowId(RowIdContainer::new(
+			data: FrameColumnData::RowNumber(RowNumberContainer::new(
 				data.into_iter().collect(),
 				bitvec,
 			)),
 		}
 	}
 
-	fn row_id_column(data: impl IntoIterator<Item = RowId>) -> FrameColumn {
-		let data_vec: Vec<RowId> = data.into_iter().collect();
+	fn row_number_column(data: impl IntoIterator<Item = RowNumber>) -> FrameColumn {
+		let data_vec: Vec<RowNumber> = data.into_iter().collect();
 		let bitvec = BitVec::repeat(data_vec.len(), true);
 		FrameColumn {
 			schema: None,
 			table: None,
 			name: "__ROW__ID__".to_string(),
-			data: FrameColumnData::RowId(RowIdContainer::new(
+			data: FrameColumnData::RowNumber(RowNumberContainer::new(
 				data_vec, bitvec,
 			)),
 		}
@@ -950,9 +950,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_row_id() {
-		let ids = vec![RowId(1234), RowId(5678)];
-		let frame = Frame::new(vec![row_id_column_with_bitvec(
+	fn test_row_number() {
+		let ids = vec![RowNumber(1234), RowNumber(5678)];
+		let frame = Frame::new(vec![row_number_column_with_bitvec(
 			ids,
 			BitVec::from_slice(&[true, false]),
 		)]);
@@ -969,8 +969,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_row_id_column_ordering() {
-		// Create a frame with regular columns and a RowId column
+	fn test_row_number_column_ordering() {
+		// Create a frame with regular columns and a RowNumber column
 		let regular_column = utf8_column_with_bitvec(
 			"name",
 			vec!["Alice".to_string(), "Bob".to_string()],
@@ -980,15 +980,15 @@ mod tests {
 		let age_column =
 			int4_column_with_bitvec("age", [25, 30], [true, true]);
 
-		let row_id_column =
-			row_id_column([RowId::new(1), RowId::new(2)]);
+		let row_number_column =
+			row_number_column([RowNumber::new(1), RowNumber::new(2)]);
 
-		// Create frame with RowId column NOT first (it should be
+		// Create frame with RowNumber column NOT first (it should be
 		// reordered)
 		let frame = Frame::new(vec![
 			regular_column,
 			age_column,
-			row_id_column,
+			row_number_column,
 		]);
 		let output = format!("{}", frame);
 
@@ -1001,29 +1001,29 @@ mod tests {
 		assert!(header_line.contains("__ROW__ID__"));
 
 		// Check that the first data value in the first row is from the
-		// RowId column
+		// RowNumber column
 		let first_data_line = lines[3]; // Fourth line contains first data row
-		assert!(first_data_line.contains("1")); // First RowId value
+		assert!(first_data_line.contains("1")); // First RowNumber value
 	}
 
 	#[test]
-	fn test_row_id_undefined_display() {
-		// Create a RowId column with one undefined value
-		let row_id_column = row_id_column_with_bitvec(
-			[RowId::new(1), RowId::new(2)],
+	fn test_row_number_undefined_display() {
+		// Create a RowNumber column with one undefined value
+		let row_number_column = row_number_column_with_bitvec(
+			[RowNumber::new(1), RowNumber::new(2)],
 			BitVec::from_slice(&[true, false]), /* Second value
 			                                     * is undefined */
 		);
 
-		let frame = Frame::new(vec![row_id_column]);
+		let frame = Frame::new(vec![row_number_column]);
 		let output = format!("{}", frame);
 
-		// Verify that undefined RowId displays as "Undefined"
+		// Verify that undefined RowNumber displays as "Undefined"
 		let lines: Vec<&str> = output.lines().collect();
 		let first_data_line = lines[3]; // First data row
 		let second_data_line = lines[4]; // Second data row
 
-		assert!(first_data_line.contains("1")); // First RowId value
+		assert!(first_data_line.contains("1")); // First RowNumber value
 		assert!(second_data_line.contains("Undefined")); // Second value should be undefined
 	}
 

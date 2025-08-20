@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 	return_error,
 	row::EncodedRowLayout,
-	value::row_id::ROW_ID_COLUMN_NAME,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::UpdatePlan;
 
@@ -72,7 +72,7 @@ impl<T: Transaction> Executor<T> {
 				functions: self.functions.clone(),
 				table: Some(table.clone()),
 				batch_size: 1024,
-				preserve_row_ids: true,
+				preserve_row_numbers: true,
 				params: params.clone(),
 			}),
 		);
@@ -84,40 +84,40 @@ impl<T: Transaction> Executor<T> {
 			functions: self.functions.clone(),
 			table: Some(table.clone()),
 			batch_size: 1024,
-			preserve_row_ids: true,
+			preserve_row_numbers: true,
 			params: params.clone(),
 		};
 		while let Some(Batch {
 			columns,
 		}) = input_node.next(&context, txn)?
 		{
-			// Find the RowId column - return error if not found
-			let Some(row_id_column) = columns
+			// Find the RowNumber column - return error if not found
+			let Some(row_number_column) = columns
 				.iter()
-				.find(|col| col.name() == ROW_ID_COLUMN_NAME)
+				.find(|col| col.name() == ROW_NUMBER_COLUMN_NAME)
 			else {
-				return_error!(engine::missing_row_id_column());
+				return_error!(engine::missing_row_number_column());
 			};
 
-			// Extract RowId data - panic if any are undefined
-			let row_ids = match &row_id_column.data() {
-				ColumnData::RowId(container) => {
+			// Extract RowNumber data - panic if any are undefined
+			let row_numbers = match &row_number_column.data() {
+				ColumnData::RowNumber(container) => {
 					// Check that all row IDs are defined
 					for i in 0..container.data().len() {
 						if !container.is_defined(i) {
-							return_error!(engine::invalid_row_id_values());
+							return_error!(engine::invalid_row_number_values());
 						}
 					}
 					container.data()
 				}
 				_ => return_error!(
-					engine::invalid_row_id_values()
+					engine::invalid_row_number_values()
 				),
 			};
 
 			let row_count = columns.row_count();
 
-			for row_idx in 0..row_count {
+			for row_numberx in 0..row_count {
 				let mut row = layout.allocate_row();
 
 				// For each table column, find if it exists in
@@ -135,7 +135,7 @@ impl<T: Transaction> Executor<T> {
 							input_column
 								.data()
 								.get_value(
-									row_idx,
+									row_numberx,
 								)
 						} else {
 							Value::Undefined
@@ -266,7 +266,7 @@ impl<T: Transaction> Executor<T> {
 								&mut row,
 								table_idx, v,
 							),
-						Value::RowId(_v) => {}
+						Value::RowNumber(_v) => {}
 						Value::IdentityId(v) => layout
 							.set_identity_id(
 								&mut row,
@@ -295,13 +295,13 @@ impl<T: Transaction> Executor<T> {
 					}
 				}
 
-				// Update the row using the existing RowId from
+				// Update the row using the existing RowNumber from
 				// the columns
-				let row_id = row_ids[row_idx];
+				let row_number = row_numbers[row_numberx];
 				txn.set(
 					&TableRowKey {
 						table: table.id,
-						row: row_id,
+						row: row_number,
 					}
 					.encode(),
 					row,

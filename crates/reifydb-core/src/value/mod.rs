@@ -21,7 +21,7 @@ mod is;
 pub mod number;
 mod ordered_f32;
 mod ordered_f64;
-pub mod row_id;
+pub mod row_number;
 pub mod temporal;
 mod time;
 mod r#type;
@@ -36,7 +36,7 @@ pub use into::IntoValue;
 pub use is::*;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
-pub use row_id::RowId;
+pub use row_number::RowNumber;
 pub use time::Time;
 pub use r#type::{GetType, Type};
 pub use uuid::{Uuid4, Uuid7};
@@ -82,8 +82,8 @@ pub enum Value {
 	Time(Time),
 	/// An interval representing a duration
 	Interval(Interval),
-	/// A row identifier (8-byte unsigned integer)
-	RowId(RowId),
+	/// A row number (8-byte unsigned integer)
+	RowNumber(RowNumber),
 	/// An identity identifier (UUID v7)
 	IdentityId(IdentityId),
 	/// A UUID version 4 (random)
@@ -138,7 +138,7 @@ impl PartialOrd for Value {
 			(Value::Interval(l), Value::Interval(r)) => {
 				l.partial_cmp(r)
 			}
-			(Value::RowId(l), Value::RowId(r)) => l.partial_cmp(r),
+			(Value::RowNumber(l), Value::RowNumber(r)) => l.partial_cmp(r),
 			(Value::IdentityId(l), Value::IdentityId(r)) => {
 				l.partial_cmp(r)
 			}
@@ -171,7 +171,7 @@ impl Ord for Value {
 			(Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
 			(Value::Time(l), Value::Time(r)) => l.cmp(r),
 			(Value::Interval(l), Value::Interval(r)) => l.cmp(r),
-			(Value::RowId(l), Value::RowId(r)) => l.cmp(r),
+			(Value::RowNumber(l), Value::RowNumber(r)) => l.cmp(r),
 			(Value::IdentityId(l), Value::IdentityId(r)) => {
 				l.cmp(r)
 			}
@@ -205,7 +205,7 @@ impl Display for Value {
 			Value::DateTime(value) => Display::fmt(value, f),
 			Value::Time(value) => Display::fmt(value, f),
 			Value::Interval(value) => Display::fmt(value, f),
-			Value::RowId(value) => Display::fmt(value, f),
+			Value::RowNumber(value) => Display::fmt(value, f),
 			Value::IdentityId(value) => Display::fmt(value, f),
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
@@ -237,7 +237,7 @@ impl Value {
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
 			Value::Interval(_) => Type::Interval,
-			Value::RowId(_) => Type::RowId,
+			Value::RowNumber(_) => Type::RowNumber,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,

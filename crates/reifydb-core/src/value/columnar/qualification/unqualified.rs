@@ -1,7 +1,7 @@
 use super::super::{Column, ColumnData, Unqualified};
 use crate::{
-	BitVec, Date, DateTime, Interval, RowId, Time, Uuid4, Uuid7,
-	value::row_id::ROW_ID_COLUMN_NAME,
+	BitVec, Date, DateTime, Interval, RowNumber, Time, Uuid4, Uuid7,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 impl Unqualified {
@@ -424,20 +424,20 @@ impl Unqualified {
 		})
 	}
 
-	pub fn row_id(data: impl IntoIterator<Item = RowId>) -> Column {
+	pub fn row_number(data: impl IntoIterator<Item = RowNumber>) -> Column {
 		Column::Unqualified(Self {
-			name: ROW_ID_COLUMN_NAME.to_string(),
-			data: ColumnData::row_id(data),
+			name: ROW_NUMBER_COLUMN_NAME.to_string(),
+			data: ColumnData::row_number(data),
 		})
 	}
 
-	pub fn row_id_with_bitvec(
-		data: impl IntoIterator<Item = RowId>,
+	pub fn row_number_with_bitvec(
+		data: impl IntoIterator<Item = RowNumber>,
 		bitvec: impl Into<BitVec>,
 	) -> Column {
 		Column::Unqualified(Self {
-			name: ROW_ID_COLUMN_NAME.to_string(),
-			data: ColumnData::row_id_with_bitvec(data, bitvec),
+			name: ROW_NUMBER_COLUMN_NAME.to_string(),
+			data: ColumnData::row_number_with_bitvec(data, bitvec),
 		})
 	}
 }

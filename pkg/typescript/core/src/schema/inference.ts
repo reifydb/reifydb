@@ -10,7 +10,7 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     IntervalValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    RowIdValue, UndefinedValue, Utf8Value,
+    RowNumberValue, UndefinedValue, Utf8Value,
     Uuid4Value, Uuid7Value, IdentityIdValue,
     Type
 } from '../value';
@@ -42,7 +42,7 @@ export type PrimitiveToTS<T extends Type> =
                                                                                 T extends 'Uuid4' ? string :
                                                                                     T extends 'Uuid7' ? string :
                                                                                         T extends 'Undefined' ? undefined :
-                                                                                            T extends 'RowId' ? bigint :
+                                                                                            T extends 'RowNumber' ? bigint :
                                                                                                 T extends 'IdentityId' ? string :
                                                                                                     never;
 
@@ -69,7 +69,7 @@ export type PrimitiveToValue<T extends Type> =
                                                                                 T extends 'Uuid4' ? Uuid4Value :
                                                                                     T extends 'Uuid7' ? Uuid7Value :
                                                                                         T extends 'Undefined' ? UndefinedValue :
-                                                                                            T extends 'RowId' ? RowIdValue :
+                                                                                            T extends 'RowNumber' ? RowNumberValue :
                                                                                                 T extends 'IdentityId' ? IdentityIdValue :
                                                                                                     never;
 

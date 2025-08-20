@@ -4,7 +4,7 @@
 use std::{collections::HashMap, fmt, str::FromStr};
 
 use reifydb_core::{
-	Blob, OrderedF32, OrderedF64, RowId, Type, Value,
+	Blob, OrderedF32, OrderedF64, RowNumber, Type, Value,
 	value::{
 		boolean::parse_bool,
 		number::{parse_float, parse_int, parse_uint},
@@ -155,8 +155,8 @@ fn parse_typed_value(
 			Type::Interval => parse_interval(fragment.clone())
 				.map(Value::Interval)
 				.unwrap_or(Value::Undefined),
-			Type::RowId => parse_uint::<u64>(fragment.clone())
-				.map(|id| Value::RowId(RowId::from(id)))
+			Type::RowNumber => parse_uint::<u64>(fragment.clone())
+				.map(|id| Value::RowNumber(RowNumber::from(id)))
 				.unwrap_or(Value::Undefined),
 			Type::Uuid4 => parse_uuid4(fragment.clone())
 				.map(Value::Uuid4)
@@ -597,10 +597,10 @@ mod tests {
 	}
 
 	#[test]
-	fn test_row_id() {
+	fn test_row_number() {
 		let params = WsParams::Positional(vec![
-			Value::RowId(RowId::from(12345u64)),
-			Value::RowId(RowId::from(0u64)),
+			Value::RowNumber(RowNumber::from(12345u64)),
+			Value::RowNumber(RowNumber::from(0u64)),
 		]);
 		roundtrip(params);
 	}

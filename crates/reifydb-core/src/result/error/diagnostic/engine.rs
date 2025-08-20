@@ -43,8 +43,8 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 	}
 }
 
-/// Frame missing required ROW_ID column error
-pub fn missing_row_id_column() -> Diagnostic {
+/// Frame missing required ROW_NUMBER column error
+pub fn missing_row_number_column() -> Diagnostic {
 	Diagnostic {
         code: "ENG_003".to_string(),
         statement: None,
@@ -60,18 +60,18 @@ pub fn missing_row_id_column() -> Diagnostic {
     }
 }
 
-/// Invalid or undefined RowId values error
-pub fn invalid_row_id_values() -> Diagnostic {
+/// Invalid or undefined RowNumber values error
+pub fn invalid_row_number_values() -> Diagnostic {
 	Diagnostic {
         code: "ENG_004".to_string(),
         statement: None,
-        message: "All RowId values must be defined for UPDATE operations".to_string(),
+        message: "All RowNumber values must be defined for UPDATE operations".to_string(),
         column: None,
         fragment: OwnedFragment::None,
         label: Some("invalid row identifiers".to_string()),
         help: Some("Check that the input data contains valid row IDs".to_string()),
         notes: vec![
-            "RowId column must contain valid identifiers, not undefined values".to_string(),
+            "RowNumber column must contain valid identifiers, not undefined values".to_string(),
         ],
         cause: None,
     }

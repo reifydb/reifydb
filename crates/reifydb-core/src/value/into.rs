@@ -3,7 +3,7 @@
 
 use crate::{
 	Blob, Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
-	RowId, Time, Uuid4, Uuid7, Value, util::CowVec,
+	RowNumber, Time, Uuid4, Uuid7, Value, util::CowVec,
 };
 
 pub trait IntoValue {
@@ -164,9 +164,9 @@ impl IntoValue for Interval {
 	}
 }
 
-impl IntoValue for RowId {
+impl IntoValue for RowNumber {
 	fn into_value(self) -> Value {
-		Value::RowId(self)
+		Value::RowNumber(self)
 	}
 }
 

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{
 		VersionedQueryTransaction, evaluate::expression::Expression,
 	},
-	value::row_id::ROW_ID_COLUMN_NAME,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::{
@@ -104,14 +104,14 @@ impl ExecutionPlan for MapNode {
 			let mut new_columns =
 				Vec::with_capacity(self.expressions.len());
 
-			// Only preserve RowId column if the execution context
+			// Only preserve RowNumber column if the execution context
 			// requires it
-			if ctx.preserve_row_ids {
-				if let Some(row_id_column) =
+			if ctx.preserve_row_numbers {
+				if let Some(row_number_column) =
 					columns.iter().find(|col| {
-						col.name() == ROW_ID_COLUMN_NAME
+						col.name() == ROW_NUMBER_COLUMN_NAME
 					}) {
-					new_columns.push(row_id_column.clone());
+					new_columns.push(row_number_column.clone());
 				}
 			}
 
@@ -133,7 +133,7 @@ impl ExecutionPlan for MapNode {
 
 			let layout = derive_columns_column_layout(
 				&self.expressions,
-				ctx.preserve_row_ids,
+				ctx.preserve_row_numbers,
 			);
 
 			self.layout = Some(layout);

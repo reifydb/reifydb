@@ -60,7 +60,7 @@ impl<T: Transaction> Executor<T> {
 			functions: self.functions.clone(),
 			table: Some(table.clone()),
 			batch_size: 1024,
-			preserve_row_ids: false,
+			preserve_row_numbers: false,
 			params: params.clone(),
 		});
 
@@ -76,7 +76,7 @@ impl<T: Transaction> Executor<T> {
 		{
 			let row_count = columns.row_count();
 
-			for row_idx in 0..row_count {
+			for row_numberx in 0..row_count {
 				let mut row = layout.allocate_row();
 
 				// For each table column, find if it exists in
@@ -94,7 +94,7 @@ impl<T: Transaction> Executor<T> {
 							input_column
 								.data()
 								.get_value(
-									row_idx,
+									row_numberx,
 								)
 						} else {
 							Value::Undefined
@@ -231,7 +231,7 @@ impl<T: Transaction> Executor<T> {
 								&mut row,
 								table_idx, v,
 							),
-						Value::RowId(_v) => {}
+						Value::RowNumber(_v) => {}
 						Value::IdentityId(v) => layout
 							.set_identity_id(
 								&mut row,
@@ -261,13 +261,13 @@ impl<T: Transaction> Executor<T> {
 				}
 
 				// 	// Insert the row into the database
-				// 	let row_id = TableRowSequence::next_row_id(
+				// 	let row_number = TableRowSequence::next_row_number(
 				// 		txn, table.id,
 				// 	)?;
 				// 	txn.set(
 				// 		&TableRowKey {
 				// 			table: table.id,
-				// 			row: row_id,
+				// 			row: row_number,
 				// 		}
 				// 		.encode(),
 				// 		row.clone(),
@@ -278,7 +278,7 @@ impl<T: Transaction> Executor<T> {
 				// processing
 				// txn.add_pending(Pending::InsertIntoTable {
 				// 		table: table.clone(),
-				// 		row_id,
+				// 		row_number,
 				// 		row: row.clone(),
 				// 	});
 				//

@@ -1,22 +1,22 @@
 use reifydb_core::{
 	interface::evaluate::expression::{ConstantExpression, Expression},
-	value::row_id::ROW_ID_COLUMN_NAME,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
 
 pub fn derive_columns_column_layout(
 	expressions: &[Expression],
-	preserve_row_ids: bool,
+	preserve_row_numbers: bool,
 ) -> ColumnsLayout {
 	let mut columns = Vec::new();
 
-	// Add RowId column if preserved
-	if preserve_row_ids {
+	// Add RowNumber column if preserved
+	if preserve_row_numbers {
 		columns.push(ColumnLayout {
 			schema: None,
 			source: None,
-			name: ROW_ID_COLUMN_NAME.to_string(),
+			name: ROW_NUMBER_COLUMN_NAME.to_string(),
 		});
 	}
 

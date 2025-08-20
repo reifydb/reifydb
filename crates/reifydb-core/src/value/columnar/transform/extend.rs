@@ -134,7 +134,7 @@ impl Columns {
                         BitVec::repeat(size, false),
                     ),
                     Type::Undefined => column.data().clone(),
-                    Type::RowId => ColumnData::row_id_with_bitvec(
+                    Type::RowNumber => ColumnData::row_number_with_bitvec(
                         vec![Default::default(); size],
                         BitVec::repeat(size, false),
                     ),
@@ -492,7 +492,7 @@ mod tests {
 		use uuid::Timestamp;
 
 		use crate::{
-			RowId, Uuid4, Uuid7,
+			RowNumber, Uuid4, Uuid7,
 			value::columnar::{ColumnQualified, Columns},
 		};
 
@@ -971,14 +971,14 @@ mod tests {
 		}
 
 		#[test]
-		fn test_row_id() {
+		fn test_row_number() {
 			let mut test_instance1 = Columns::new(vec![
-				ColumnQualified::row_id([RowId(1), RowId(2)]),
+				ColumnQualified::row_number([RowNumber(1), RowNumber(2)]),
 			]);
 
 			let test_instance2 = Columns::new(vec![
-				ColumnQualified::row_id_with_bitvec(
-					[RowId(3), RowId(4)],
+				ColumnQualified::row_number_with_bitvec(
+					[RowNumber(3), RowNumber(4)],
 					[true, false],
 				),
 			]);
@@ -987,12 +987,12 @@ mod tests {
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::row_id_with_bitvec(
+				ColumnQualified::row_number_with_bitvec(
 					[
-						RowId(1),
-						RowId(2),
-						RowId(3),
-						RowId(4)
+						RowNumber(1),
+						RowNumber(2),
+						RowNumber(3),
+						RowNumber(4)
 					],
 					[true, true, true, false]
 				)

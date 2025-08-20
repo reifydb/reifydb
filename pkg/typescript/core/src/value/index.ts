@@ -22,7 +22,7 @@ export {Uint2Value} from './uint2';
 export {Uint4Value} from './uint4';
 export {Uint8Value} from './uint8';
 export {Uint16Value} from './uint16';
-export {RowIdValue} from './rowid';
+export {RowNumberValue} from './rownumber';
 export {UndefinedValue} from './undefined';
 export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
@@ -39,7 +39,7 @@ export type Type =
     | "Date" | "DateTime" | "Time" | "Interval"
     | "Uuid4" | "Uuid7"
     | "Undefined"
-    | "RowId"
+    | "RowNumber"
     | "IdentityId";
 
 export interface TypeValuePair {

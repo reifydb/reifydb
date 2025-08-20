@@ -305,9 +305,9 @@ impl EncodedIndexLayout {
 		}
 	}
 
-	pub fn get_row_id(&self, key: &EncodedIndexKey, index: usize) -> u64 {
+	pub fn get_row_number(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::RowId);
+		debug_assert_eq!(field.value, Type::RowNumber);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -1037,13 +1037,13 @@ mod tests {
 		}
 	}
 
-	mod row_id {
+	mod row_number {
 		use super::*;
 
 		#[test]
 		fn test_asc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::RowId],
+				&[Type::RowNumber],
 				&[SortDirection::Asc],
 			)
 			.unwrap();
@@ -1051,21 +1051,21 @@ mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_row_id(&mut key1, 0, 1u64);
-			layout.set_row_id(&mut key2, 0, 1000u64);
-			layout.set_row_id(&mut key3, 0, u64::MAX);
+			layout.set_row_number(&mut key1, 0, 1u64);
+			layout.set_row_number(&mut key2, 0, 1000u64);
+			layout.set_row_number(&mut key3, 0, u64::MAX);
 
 			assert!(key1.as_slice() < key2.as_slice());
 			assert!(key2.as_slice() < key3.as_slice());
-			assert_eq!(layout.get_row_id(&key1, 0), 1);
-			assert_eq!(layout.get_row_id(&key2, 0), 1000);
-			assert_eq!(layout.get_row_id(&key3, 0), u64::MAX);
+			assert_eq!(layout.get_row_number(&key1, 0), 1);
+			assert_eq!(layout.get_row_number(&key2, 0), 1000);
+			assert_eq!(layout.get_row_number(&key3, 0), u64::MAX);
 		}
 
 		#[test]
 		fn test_desc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::RowId],
+				&[Type::RowNumber],
 				&[SortDirection::Desc],
 			)
 			.unwrap();
@@ -1073,15 +1073,15 @@ mod tests {
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
 
-			layout.set_row_id(&mut key1, 0, 1u64);
-			layout.set_row_id(&mut key2, 0, 1000u64);
-			layout.set_row_id(&mut key3, 0, u64::MAX);
+			layout.set_row_number(&mut key1, 0, 1u64);
+			layout.set_row_number(&mut key2, 0, 1000u64);
+			layout.set_row_number(&mut key3, 0, u64::MAX);
 
 			assert!(key1.as_slice() > key2.as_slice());
 			assert!(key2.as_slice() > key3.as_slice());
-			assert_eq!(layout.get_row_id(&key1, 0), 1);
-			assert_eq!(layout.get_row_id(&key2, 0), 1000);
-			assert_eq!(layout.get_row_id(&key3, 0), u64::MAX);
+			assert_eq!(layout.get_row_number(&key1, 0), 1);
+			assert_eq!(layout.get_row_number(&key2, 0), 1000);
+			assert_eq!(layout.get_row_number(&key3, 0), u64::MAX);
 		}
 	}
 
@@ -1167,7 +1167,7 @@ mod tests {
 		#[test]
 		fn test_mixed_directions() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::Int4, Type::Uint8, Type::RowId],
+				&[Type::Int4, Type::Uint8, Type::RowNumber],
 				&[
 					SortDirection::Desc,
 					SortDirection::Asc,
@@ -1183,19 +1183,19 @@ mod tests {
 
 			layout.set_i32(&mut key1, 0, 100);
 			layout.set_u64(&mut key1, 1, 1u64);
-			layout.set_row_id(&mut key1, 2, 1u64);
+			layout.set_row_number(&mut key1, 2, 1u64);
 
 			layout.set_i32(&mut key2, 0, 100);
 			layout.set_u64(&mut key2, 1, 2u64);
-			layout.set_row_id(&mut key2, 2, 1u64);
+			layout.set_row_number(&mut key2, 2, 1u64);
 
 			layout.set_i32(&mut key3, 0, 50);
 			layout.set_u64(&mut key3, 1, 1u64);
-			layout.set_row_id(&mut key3, 2, 1u64);
+			layout.set_row_number(&mut key3, 2, 1u64);
 
 			layout.set_i32(&mut key4, 0, 50);
 			layout.set_u64(&mut key4, 1, 1u64);
-			layout.set_row_id(&mut key4, 2, 2u64);
+			layout.set_row_number(&mut key4, 2, 2u64);
 
 			// key1 (100, 1, 1) vs key2 (100, 2, 1): same first
 			// field, second field ascending

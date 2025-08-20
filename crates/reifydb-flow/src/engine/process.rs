@@ -163,7 +163,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 				} => {
 					let row_count = after.row_count();
 
-					for row_idx in 0..row_count {
+					for row_numberx in 0..row_count {
 						let mut row =
 							layout.allocate_row();
 
@@ -178,7 +178,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 							let value = if let Some(input_column) =
                                 after.iter().find(|col| col.name() == view_column.name)
                             {
-                                input_column.data().get_value(row_idx)
+                                input_column.data().get_value(row_numberx)
                             } else {
                                 Value::Undefined
                             };
@@ -202,7 +202,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
                                 Value::DateTime(v) => layout.set_datetime(&mut row, view_idx, v),
                                 Value::Time(v) => layout.set_time(&mut row, view_idx, v),
                                 Value::Interval(v) => layout.set_interval(&mut row, view_idx, v),
-                                Value::RowId(_v) => {}
+                                Value::RowNumber(_v) => {}
                                 Value::IdentityId(v) => layout.set_identity_id(&mut row, view_idx, v),
                                 Value::Uuid4(v) => layout.set_uuid4(&mut row, view_idx, v),
                                 Value::Uuid7(v) => layout.set_uuid7(&mut row, view_idx, v),
@@ -213,12 +213,12 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 
 						// Insert the row into the
 						// database
-						let row_id = ViewRowSequence::next_row_id(txn, view_id)?;
+						let row_number = ViewRowSequence::next_row_number(txn, view_id)?;
 
 						txn.set(
 							&ViewRowKey {
 								view: view_id,
-								row: row_id,
+								row: row_number,
 							}
 							.encode(),
 							row,

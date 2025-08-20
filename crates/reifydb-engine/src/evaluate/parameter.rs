@@ -109,8 +109,8 @@ impl StandardEvaluator {
 			Value::Blob(b) => {
 				ColumnData::blob(vec![b.clone(); ctx.row_count])
 			}
-			Value::RowId(id) => {
-				ColumnData::row_id(vec![*id; ctx.row_count])
+			Value::RowNumber(id) => {
+				ColumnData::row_number(vec![*id; ctx.row_count])
 			}
 			Value::IdentityId(id) => ColumnData::identity_id(vec![
 					*id;
