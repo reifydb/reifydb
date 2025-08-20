@@ -1,6 +1,7 @@
 use reifydb_core::{
 	interface::{
-		EvaluationContext, Evaluator, Params, expression::Expression,
+		EvaluationContext, Evaluator, Params, Transaction,
+		expression::Expression,
 	},
 	value::columnar::Columns,
 };
@@ -23,9 +24,9 @@ impl MapOperator {
 }
 
 impl<E: Evaluator> Operator<E> for MapOperator {
-	fn apply(
+	fn apply<T: Transaction>(
 		&self,
-		ctx: &OperatorContext<E>,
+		ctx: &mut OperatorContext<E, T>,
 		change: &Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();
@@ -77,9 +78,9 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 }
 
 impl MapOperator {
-	fn project<E: Evaluator>(
+	fn project<E: Evaluator, T: Transaction>(
 		&self,
-		ctx: &OperatorContext<E>,
+		ctx: &OperatorContext<E, T>,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
 		if columns.is_empty() {
@@ -103,6 +104,8 @@ impl MapOperator {
 			let column = ctx.evaluate(&eval_ctx, expr)?;
 			projected_columns.push(column);
 		}
+
+		dbg!(&projected_columns);
 
 		Ok(Columns::new(projected_columns))
 	}

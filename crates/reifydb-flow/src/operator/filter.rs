@@ -1,7 +1,8 @@
 use reifydb_core::{
 	BitVec,
 	interface::{
-		EvaluationContext, Evaluator, Params, expression::Expression,
+		EvaluationContext, Evaluator, Params, Transaction,
+		expression::Expression,
 	},
 	value::columnar::{ColumnData, Columns},
 };
@@ -24,9 +25,9 @@ impl FilterOperator {
 }
 
 impl<E: Evaluator> Operator<E> for FilterOperator {
-	fn apply(
+	fn apply<T: Transaction>(
 		&self,
-		ctx: &OperatorContext<E>,
+		ctx: &mut OperatorContext<E, T>,
 		change: &Change,
 	) -> crate::Result<Change> {
 		let mut output = Vec::new();
@@ -86,9 +87,9 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter<E: Evaluator>(
+	fn filter<E: Evaluator, T: Transaction>(
 		&self,
-		ctx: &OperatorContext<E>,
+		ctx: &OperatorContext<E, T>,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
 		let row_count = columns.row_count();

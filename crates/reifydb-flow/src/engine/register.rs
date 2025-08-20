@@ -1,16 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OperatorType::{Filter, Map};
+use OperatorType::{Aggregate, Filter, Map};
 use reifydb_core::interface::{Evaluator, FlowId, FlowNodeId, SourceId};
 
 use crate::{
 	Flow, FlowNodeType, OperatorType,
 	engine::FlowEngine,
-	operator::{FilterOperator, MapOperator, Operator, OperatorContext},
+	operator::{
+		AggregateOperator, FilterOperator, MapOperator, OperatorEnum,
+	},
 };
 
-impl<'a, E: Evaluator> FlowEngine<'a, E> {
+impl<E: Evaluator> FlowEngine<E> {
 	pub fn register(&mut self, flow: Flow) -> crate::Result<()> {
 		debug_assert!(
 			!self.flows.contains_key(&flow.id),
@@ -32,7 +34,9 @@ impl<'a, E: Evaluator> FlowEngine<'a, E> {
 				FlowNodeType::Operator {
 					operator,
 				} => {
-					self.add_operator(node_id, operator)?;
+					self.add_operator(
+						flow.id, node_id, operator,
+					)?;
 				}
 				FlowNodeType::SinkView {
 					view,
@@ -79,10 +83,12 @@ impl<'a, E: Evaluator> FlowEngine<'a, E> {
 
 	fn add_operator(
 		&mut self,
+		flow_id: FlowId,
 		node: FlowNodeId,
 		operator: &OperatorType,
 	) -> crate::Result<()> {
-		let operator = self.create_operator(operator.clone())?;
+		let operator =
+			self.create_operator(flow_id, node, operator.clone())?;
 		debug_assert!(
 			!self.operators.contains_key(&node),
 			"Operator already registered"
@@ -92,26 +98,31 @@ impl<'a, E: Evaluator> FlowEngine<'a, E> {
 		Ok(())
 	}
 
-	fn add_context(&'a mut self, node: FlowNodeId) {
-		debug_assert!(
-			!self.contexts.contains_key(&node),
-			"Context already registered"
-		);
-		self.contexts
-			.insert(node, OperatorContext::new(&self.evaluator));
-	}
-
 	fn create_operator(
 		&self,
+		flow_id: FlowId,
+		node_id: FlowNodeId,
 		operator: OperatorType,
-	) -> crate::Result<Box<dyn Operator<E>>> {
+	) -> crate::Result<OperatorEnum<E>> {
 		match operator {
 			Filter {
 				conditions,
-			} => Ok(Box::new(FilterOperator::new(conditions))),
+			} => Ok(OperatorEnum::Filter(FilterOperator::new(
+				conditions,
+			))),
 			Map {
 				expressions,
-			} => Ok(Box::new(MapOperator::new(expressions))),
+			} => Ok(OperatorEnum::Map(MapOperator::new(
+				expressions,
+			))),
+			Aggregate {
+				by,
+				map,
+			} => Ok(OperatorEnum::Aggregate(
+				AggregateOperator::new(
+					flow_id.0, node_id.0, by, map,
+				),
+			)),
 			operator => unimplemented!("{:?}", operator),
 		}
 	}

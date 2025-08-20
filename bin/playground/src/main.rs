@@ -90,24 +90,24 @@ impl<T: Transaction> RegisterInterceptor<T> for AuditInterceptor {
 fn main() {
 	// Example: Using the new unified interceptor API
 	let mut db: DB = sync::memory_optimistic()
-		.intercept(table_pre_insert(|_ctx| {
-			println!("Table pre insert interceptor called!");
-
-			Ok(())
-		}))
-		.intercept(table_post_insert(|_ctx| {
-			println!("Table post insert interceptor called!");
-			Ok(())
-		}))
-		.intercept(post_commit(|ctx| {
-			println!(
-				"Post-commit interceptor called with version: {:?}",
-				ctx.version
-			);
-			Ok(())
-		}))
-		// Example: Using a multi-trait interceptor
-		.intercept(AuditInterceptor::new("MyAudit"))
+		// .intercept(table_pre_insert(|_ctx| {
+		// 	println!("Table pre insert interceptor called!");
+		//
+		// 	Ok(())
+		// }))
+		// .intercept(table_post_insert(|_ctx| {
+		// 	println!("Table post insert interceptor called!");
+		// 	Ok(())
+		// }))
+		// .intercept(post_commit(|ctx| {
+		// 	println!(
+		// 		"Post-commit interceptor called with version: {:?}",
+		// 		ctx.version
+		// 	);
+		// 	Ok(())
+		// }))
+		// // Example: Using a multi-trait interceptor
+		// .intercept(AuditInterceptor::new("MyAudit"))
 		.build()
 		.unwrap();
 	// let mut db: DB =
@@ -118,7 +118,7 @@ fn main() {
 	db.command_as_root(
 		r#"
 	    create schema test;
-	    create table test.users { name: utf8, age: int1};
+	    create table test.users { value: int8, age: int8};
 	"#,
 		Params::None,
 	)
@@ -126,8 +126,9 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-create deferred view test.basic { name: utf8, age: int1 } with {
+create deferred view test.basic { value: int8, age: int8 } with {
     from test.users
+    aggregate sum(value) by age
 }
 	"#,
 		Params::None,
@@ -137,9 +138,9 @@ create deferred view test.basic { name: utf8, age: int1 } with {
 	db.command_as_root(
 		r#"
     from [
-        { name: "bob", age: 17 },
-        { name: "lucy", age: 20 },
-        { name: "juciy", age: 19 },
+        { value: 1, age: 19 },
+        { value: 1, age: 20 },
+        { value: 1, age: 19 },
     ]
     insert test.users;
 
@@ -148,17 +149,17 @@ create deferred view test.basic { name: utf8, age: int1 } with {
 	)
 	.unwrap();
 
-	db.command_as_root(
-		r#"
-	from [
-	    { name: "dim", age: 40 },
-	]
-	insert test.users;
-
-	"#,
-		Params::None,
-	)
-	.unwrap();
+	// db.command_as_root(
+	// 	r#"
+	// from [
+	//     { value: 1, age: 40 },
+	// ]
+	// insert test.users;
+	//
+	// "#,
+	// 	Params::None,
+	// )
+	// .unwrap();
 
 	// for frame in
 	// 	db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()

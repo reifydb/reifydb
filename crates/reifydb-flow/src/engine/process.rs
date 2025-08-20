@@ -15,9 +15,12 @@ use reifydb_core::{
 	},
 };
 
-use crate::{Change, Diff, Flow, FlowNode, FlowNodeType, engine::FlowEngine};
+use crate::{
+	Change, Diff, Flow, FlowNode, FlowNodeType, engine::FlowEngine,
+	operator::OperatorContext,
+};
 
-impl<E: Evaluator> FlowEngine<'_, E> {
+impl<E: Evaluator> FlowEngine<E> {
 	pub fn process<T: Transaction>(
 		&self,
 		txn: &mut CommandTransaction<T>,
@@ -69,14 +72,15 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 		Ok(())
 	}
 
-	fn apply_operator(
+	fn apply_operator<T: Transaction>(
 		&self,
+		txn: &mut CommandTransaction<T>,
 		node: &FlowNode,
 		change: &Change,
 	) -> crate::Result<Change> {
 		let operator = self.operators.get(&node.id).unwrap();
-		let context = self.contexts.get(&node.id).unwrap();
-		operator.apply(context, change)
+		let mut context = OperatorContext::new(&self.evaluator, txn);
+		operator.apply(&mut context, change)
 	}
 
 	fn process_node<T: Transaction>(
@@ -98,7 +102,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 			}
 			FlowNodeType::Operator {
 				..
-			} => &self.apply_operator(node, &change)?,
+			} => &self.apply_operator(txn, node, &change)?,
 			FlowNodeType::SinkView {
 				view,
 				..
@@ -128,31 +132,7 @@ impl<E: Evaluator> FlowEngine<'_, E> {
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
-		Catalog::get_view(txn, view_id)?;
-
-		// TODO: This is a simplified version - in production we'd get
-		// the actual view definition from the catalog
-		let view = ViewDef {
-			id: view_id,
-			schema: SchemaId(0),
-			name: "view".to_string(),
-			kind: ViewKind::Deferred,
-			columns: vec![
-				ViewColumnDef {
-					id: ViewColumnId(0),
-					name: "name".to_string(),
-					ty: Type::Utf8,
-					index: ColumnIndex(0),
-				},
-				ViewColumnDef {
-					id: ViewColumnId(1),
-					name: "age".to_string(),
-					ty: Type::Int1,
-					index: ColumnIndex(1),
-				},
-			],
-		};
-
+		let view = Catalog::get_view(txn, view_id)?;
 		let layout = view.get_layout();
 
 		for diff in &change.diffs {

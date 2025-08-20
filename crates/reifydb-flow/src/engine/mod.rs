@@ -8,26 +8,21 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::{Evaluator, FlowId, FlowNodeId, SourceId};
 
-use crate::{
-	Flow,
-	operator::{Operator, OperatorContext},
-};
+use crate::{Flow, operator::OperatorEnum};
 
-pub struct FlowEngine<'a, E: Evaluator> {
+pub struct FlowEngine<E: Evaluator> {
 	evaluator: E,
-	operators: HashMap<FlowNodeId, Box<dyn Operator<E>>>,
-	contexts: HashMap<FlowNodeId, OperatorContext<'a, E>>,
+	operators: HashMap<FlowNodeId, OperatorEnum<E>>,
 	flows: HashMap<FlowId, Flow>,
 	sources: HashMap<SourceId, Vec<FlowId>>,
 	sinks: HashMap<SourceId, Vec<FlowId>>,
 }
 
-impl<E: Evaluator> FlowEngine<'_, E> {
+impl<E: Evaluator> FlowEngine<E> {
 	pub fn new(evaluator: E) -> Self {
 		Self {
 			evaluator,
 			operators: HashMap::new(),
-			contexts: HashMap::new(),
 			flows: HashMap::new(),
 			sources: HashMap::new(),
 			sinks: HashMap::new(),
