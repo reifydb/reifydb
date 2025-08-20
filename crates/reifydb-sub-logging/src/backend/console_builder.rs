@@ -30,7 +30,8 @@ impl ConsoleBuilder {
 	///
 	/// # Example
 	/// ```
-	/// ConsoleBuilder::new().color(true)
+	/// # use reifydb_sub_logging::ConsoleBuilder;
+	/// ConsoleBuilder::new().color(true);
 	/// ```
 	pub fn color(mut self, enabled: bool) -> Self {
 		self.use_color = enabled;
@@ -44,7 +45,8 @@ impl ConsoleBuilder {
 	///
 	/// # Example
 	/// ```
-	/// ConsoleBuilder::new().stderr_for_errors(true)
+	/// # use reifydb_sub_logging::ConsoleBuilder;
+	/// ConsoleBuilder::new().stderr_for_errors(true);
 	/// ```
 	pub fn stderr_for_errors(mut self, enabled: bool) -> Self {
 		self.stderr_for_errors = enabled;
@@ -58,7 +60,8 @@ impl ConsoleBuilder {
 	///
 	/// # Example
 	/// ```
-	/// ConsoleBuilder::new().format_style(FormatStyle::Timeline)
+	/// # use reifydb_sub_logging::{ConsoleBuilder, FormatStyle};
+	/// ConsoleBuilder::new().format_style(FormatStyle::Timeline);
 	/// ```
 	pub fn format_style(mut self, style: FormatStyle) -> Self {
 		self.format_style = style;
