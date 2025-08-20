@@ -150,8 +150,6 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					changes.push(change)
 				}
 				CdcChange::Update {
-					before,
-					after,
 					..
 				} => {
 					// Skip Update events on user tables -
@@ -183,7 +181,6 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 
 					changes.push(change)
 				}
-				change => unimplemented!("{change:?}"),
 			};
 		}
 

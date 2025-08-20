@@ -1,20 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, convert::TryFrom};
+use std::collections::HashMap;
 
 use FlowNodeType::SourceTable;
-use reifydb_catalog::{Catalog, row::RowId, sequence::ViewRowSequence};
+use reifydb_catalog::Catalog;
 use reifydb_core::{
-	OrderedF32, OrderedF64, Type, Value,
+	Value,
 	interface::{
-		ColumnIndex, CommandTransaction, EncodableKey, Evaluator,
-		GetEncodedRowLayout, SchemaId, SourceId, SourceId::Table,
-		Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction, ViewColumnDef, ViewColumnId,
-		ViewDef, ViewId, ViewKind, ViewRowKey,
+		CommandTransaction, EncodableKey, Evaluator,
+		GetEncodedRowLayout, SourceId, SourceId::Table, Transaction,
+		VersionedCommandTransaction, ViewId, ViewRowKey,
 	},
-	row::EncodedKeyRange,
 };
 
 use crate::{
@@ -222,7 +219,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				}
 				Diff::Update {
 					row_ids,
-					before,
+					before: _,
 					after,
 					..
 				} => {

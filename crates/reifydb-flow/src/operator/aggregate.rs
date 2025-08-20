@@ -137,38 +137,88 @@ impl GroupState {
 	fn update_insert(
 		&mut self,
 		columns: &Columns,
-		row_idx: usize,
+		row_indices: &[usize],
 		agg_columns: &[String],
 	) {
-		self.count += 1;
-		self.ref_count += 1;
+		let num_rows = row_indices.len();
+		self.count += num_rows as i64;
+		self.ref_count += num_rows;
 
 		for col_name in agg_columns {
 			if let Some(column) =
 				columns.iter().find(|c| c.name() == col_name)
 			{
-				let value = column.data().get_value(row_idx);
+				// Process all rows at once for this column
+				let mut values =
+					Vec::with_capacity(row_indices.len());
+				for &row_idx in row_indices {
+					values.push(column
+						.data()
+						.get_value(row_idx));
+				}
 
-				// Update sum
-				self.sum.entry(col_name.clone())
-					.and_modify(|v| {
-						*v = add_values(v, &value)
-					})
-					.or_insert(value.clone());
+				// Update sum - aggregate all values at once
+				if !values.is_empty() {
+					let aggregated_sum =
+						values.iter().fold(
+							None,
+							|acc: Option<Value>,
+							 val| {
+								match acc {
+							Some(a) => Some(add_values(&a, val)),
+							None => Some(val.clone()),
+						}
+							},
+						);
 
-				// Update min
-				self.min.entry(col_name.clone())
-					.and_modify(|v| {
-						*v = min_value(v, &value)
-					})
-					.or_insert(value.clone());
+					if let Some(new_sum) = aggregated_sum {
+						self.sum.entry(col_name.clone())
+							.and_modify(|v| {
+								*v = add_values(v, &new_sum)
+							})
+							.or_insert(new_sum);
+					}
 
-				// Update max
-				self.max.entry(col_name.clone())
-					.and_modify(|v| {
-						*v = max_value(v, &value)
-					})
-					.or_insert(value.clone());
+					// Update min - find minimum across all
+					// values
+					let new_min = values.iter().fold(
+						None,
+						|acc: Option<Value>, val| {
+							match acc {
+							Some(a) => Some(min_value(&a, val)),
+							None => Some(val.clone()),
+						}
+						},
+					);
+
+					if let Some(new_min) = new_min {
+						self.min.entry(col_name.clone())
+							.and_modify(|v| {
+								*v = min_value(v, &new_min)
+							})
+							.or_insert(new_min);
+					}
+
+					// Update max - find maximum across all
+					// values
+					let new_max = values.iter().fold(
+						None,
+						|acc: Option<Value>, val| {
+							match acc {
+							Some(a) => Some(max_value(&a, val)),
+							None => Some(val.clone()),
+						}
+						},
+					);
+
+					if let Some(new_max) = new_max {
+						self.max.entry(col_name.clone())
+							.and_modify(|v| {
+								*v = max_value(v, &new_max)
+							})
+							.or_insert(new_max);
+					}
+				}
 			}
 		}
 	}
@@ -176,22 +226,48 @@ impl GroupState {
 	fn update_delete(
 		&mut self,
 		columns: &Columns,
-		row_idx: usize,
+		row_indices: &[usize],
 		agg_columns: &[String],
 	) {
-		self.count -= 1;
-		self.ref_count -= 1;
+		let num_rows = row_indices.len();
+		self.count -= num_rows as i64;
+		self.ref_count -= num_rows;
 
 		for col_name in agg_columns {
 			if let Some(column) =
 				columns.iter().find(|c| c.name() == col_name)
 			{
-				let value = column.data().get_value(row_idx);
+				// Process all rows at once for this column
+				let mut values =
+					Vec::with_capacity(row_indices.len());
+				for &row_idx in row_indices {
+					values.push(column
+						.data()
+						.get_value(row_idx));
+				}
 
-				// Update sum (subtract)
-				self.sum.entry(col_name.clone()).and_modify(
-					|v| *v = subtract_values(v, &value),
-				);
+				// Update sum - subtract all values at once
+				if !values.is_empty() {
+					let aggregated_sum =
+						values.iter().fold(
+							None,
+							|acc: Option<Value>,
+							 val| {
+								match acc {
+							Some(a) => Some(add_values(&a, val)),
+							None => Some(val.clone()),
+						}
+							},
+						);
+
+					if let Some(sum_to_subtract) =
+						aggregated_sum
+					{
+						self.sum.entry(col_name.clone()).and_modify(
+							|v| *v = subtract_values(v, &sum_to_subtract),
+						);
+					}
+				}
 
 				// Note: MIN/MAX cannot be incrementally
 				// maintained on delete Would need to store
@@ -250,29 +326,47 @@ impl AggregateOperator {
 		&self,
 		ctx: &OperatorContext<E, T>,
 		columns: &Columns,
-		row_idx: usize,
-	) -> Result<Vec<Value>> {
-		let mut key = Vec::new();
+		row_indices: Option<&[usize]>,
+	) -> Result<HashMap<Vec<Value>, Vec<usize>>> {
+		let mut group_map = HashMap::new();
 		let empty_params = Params::None;
+		let row_count = columns.row_count();
 
+		// Evaluate all grouping expressions once
+		let mut group_columns = Vec::new();
 		for expr in &self.by {
-			// Don't use take, evaluate on the full columns
 			let eval_ctx = EvaluationContext {
 				target_column: None,
 				column_policies: Vec::new(),
 				columns: columns.clone(),
-				row_count: columns.row_count(),
+				row_count,
 				take: None,
 				params: &empty_params,
 			};
 
 			let result = ctx.evaluate(&eval_ctx, expr)?;
-			// Get the value at the specific row index
-			let value = result.data().get_value(row_idx);
-			key.push(value);
+			group_columns.push(result);
 		}
 
-		Ok(key)
+		// Build group keys for all rows
+		let indices: Vec<usize> = if let Some(indices) = row_indices {
+			indices.to_vec()
+		} else {
+			(0..row_count).collect()
+		};
+
+		for &row_idx in &indices {
+			let mut key = Vec::new();
+			for col in &group_columns {
+				key.push(col.data().get_value(row_idx));
+			}
+			group_map
+				.entry(key)
+				.or_insert_with(Vec::new)
+				.push(row_idx);
+		}
+
+		Ok(group_map)
 	}
 
 	fn load_state<T: Transaction>(
@@ -594,14 +688,16 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					after,
 					..
 				} => {
-					let row_count = after.row_count();
-					for row_idx in 0..row_count {
-						let group_key = self
-							.compute_group_key(
-								ctx, after,
-								row_idx,
-							)?;
+					// Compute all group keys at once
+					let group_map = self
+						.compute_group_key(
+							ctx, after, None,
+						)?;
 
+					// Process each group in batch
+					for (group_key, row_indices) in
+						group_map
+					{
 						// Load state from storage
 						let mut state = self
 							.load_state(
@@ -609,10 +705,11 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 								&group_key,
 							)?;
 
-						// Update state
+						// Update state with all rows
+						// for this group
 						state.update_insert(
 							after,
-							row_idx,
+							&row_indices,
 							&self.agg_columns,
 						);
 
@@ -648,14 +745,16 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 						after
 					);
 					// Handle as delete + insert
-					let row_count = before.row_count();
-					for row_idx in 0..row_count {
-						// Delete old
-						let old_key = self
-							.compute_group_key(
-								ctx, before,
-								row_idx,
-							)?;
+					// Compute group keys for old values
+					let old_group_map = self
+						.compute_group_key(
+							ctx, before, None,
+						)?;
+
+					// Process deletions for each group
+					for (old_key, row_indices) in
+						old_group_map
+					{
 						let mut old_state = self
 							.load_state(
 								ctx.txn,
@@ -663,7 +762,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 							)?;
 						old_state.update_delete(
 							before,
-							row_idx,
+							&row_indices,
 							&self.agg_columns,
 						);
 						self.save_state(
@@ -674,17 +773,21 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 						if !changed_groups
 							.contains(&old_key)
 						{
-							changed_groups.push(
-								old_key.clone(),
-							);
+							changed_groups
+								.push(old_key);
 						}
+					}
 
-						// Insert new
-						let new_key = self
-							.compute_group_key(
-								ctx, after,
-								row_idx,
-							)?;
+					// Compute group keys for new values
+					let new_group_map = self
+						.compute_group_key(
+							ctx, after, None,
+						)?;
+
+					// Process insertions for each group
+					for (new_key, row_indices) in
+						new_group_map
+					{
 						let mut new_state = self
 							.load_state(
 								ctx.txn,
@@ -692,7 +795,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 							)?;
 						new_state.update_insert(
 							after,
-							row_idx,
+							&row_indices,
 							&self.agg_columns,
 						);
 						self.save_state(
@@ -712,14 +815,16 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					before,
 					..
 				} => {
-					let row_count = before.row_count();
-					for row_idx in 0..row_count {
-						let group_key = self
-							.compute_group_key(
-								ctx, before,
-								row_idx,
-							)?;
+					// Compute all group keys at once
+					let group_map = self
+						.compute_group_key(
+							ctx, before, None,
+						)?;
 
+					// Process each group in batch
+					for (group_key, row_indices) in
+						group_map
+					{
 						// Load state from storage
 						let mut state = self
 							.load_state(
@@ -727,10 +832,11 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 								&group_key,
 							)?;
 
-						// Update state
+						// Update state with all rows
+						// for this group
 						state.update_delete(
 							before,
-							row_idx,
+							&row_indices,
 							&self.agg_columns,
 						);
 
