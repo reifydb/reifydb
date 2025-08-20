@@ -36,27 +36,55 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 			match diff {
 				Diff::Insert {
 					source,
+					row_ids,
 					after,
 				} => {
-					let filtered_columns =
-						self.filter(ctx, &after)?;
+					let (
+						filtered_columns,
+						filtered_indices,
+					) = self.filter_with_indices(ctx, &after)?;
 					if !filtered_columns.is_empty() {
+						// Extract row_ids for the
+						// filtered rows
+						let mut filtered_row_ids =
+							Vec::new();
+						for idx in &filtered_indices {
+							filtered_row_ids
+								.push(row_ids
+									[*idx]);
+						}
 						output.push(Diff::Insert {
 							source: *source,
+							row_ids:
+								filtered_row_ids,
 							after: filtered_columns,
 						});
 					}
 				}
 				Diff::Update {
 					source,
+					row_ids,
 					before,
 					after,
 				} => {
-					let filtered_new =
-						self.filter(ctx, &after)?;
+					let (filtered_new, filtered_indices) =
+						self.filter_with_indices(
+							ctx, &after,
+						)?;
 					if !filtered_new.is_empty() {
+						// Extract row_ids for the
+						// filtered rows
+						let mut filtered_row_ids =
+							Vec::new();
+						for idx in &filtered_indices {
+							filtered_row_ids
+								.push(row_ids
+									[*idx]);
+						}
 						output.push(Diff::Update {
 							source: *source,
+							row_ids:
+								filtered_row_ids,
 							before: before.clone(),
 							after: filtered_new,
 						});
@@ -65,17 +93,21 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 						// emit remove of old
 						output.push(Diff::Remove {
 							source: *source,
+							row_ids: row_ids
+								.clone(),
 							before: before.clone(),
 						});
 					}
 				}
 				Diff::Remove {
 					source,
+					row_ids,
 					before,
 				} => {
 					// Always pass through removes
 					output.push(Diff::Remove {
 						source: *source,
+						row_ids: row_ids.clone(),
 						before: before.clone(),
 					});
 				}
@@ -92,6 +124,15 @@ impl FilterOperator {
 		ctx: &OperatorContext<E, T>,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
+		let (filtered, _) = self.filter_with_indices(ctx, columns)?;
+		Ok(filtered)
+	}
+
+	fn filter_with_indices<E: Evaluator, T: Transaction>(
+		&self,
+		ctx: &OperatorContext<E, T>,
+		columns: &Columns,
+	) -> crate::Result<(Columns, Vec<usize>)> {
 		let row_count = columns.row_count();
 
 		let empty_params = Params::None;
@@ -138,9 +179,17 @@ impl FilterOperator {
 			}
 		}
 
+		// Collect indices of rows that pass the filter
+		let mut indices = Vec::new();
+		for (idx, bit) in final_bv.iter().enumerate() {
+			if bit {
+				indices.push(idx);
+			}
+		}
+
 		let mut columns = columns.clone();
 		columns.filter(&final_bv)?;
 
-		Ok(columns)
+		Ok((columns, indices))
 	}
 }

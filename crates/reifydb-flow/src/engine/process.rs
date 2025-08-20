@@ -1,18 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 
 use FlowNodeType::SourceTable;
-use reifydb_catalog::{Catalog, sequence::ViewRowSequence};
+use reifydb_catalog::{Catalog, row::RowId, sequence::ViewRowSequence};
 use reifydb_core::{
-	Type, Value,
+	OrderedF32, OrderedF64, Type, Value,
 	interface::{
 		ColumnIndex, CommandTransaction, EncodableKey, Evaluator,
 		GetEncodedRowLayout, SchemaId, SourceId, SourceId::Table,
-		Transaction, VersionedCommandTransaction, ViewColumnDef,
-		ViewColumnId, ViewDef, ViewId, ViewKind, ViewRowKey,
+		Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction, ViewColumnDef, ViewColumnId,
+		ViewDef, ViewId, ViewKind, ViewRowKey,
 	},
+	row::EncodedKeyRange,
 };
 
 use crate::{
@@ -138,12 +140,24 @@ impl<E: Evaluator> FlowEngine<E> {
 		for diff in &change.diffs {
 			match diff {
 				Diff::Insert {
+					row_ids,
 					after,
 					..
 				} => {
 					let row_count = after.row_count();
 
-					for row_idx in 0..row_count {
+					// Ensure row_ids matches row count
+					if row_ids.len() != row_count {
+						panic!(
+							"row_ids length {} doesn't match row count {}",
+							row_ids.len(),
+							row_count
+						);
+					}
+
+					for (row_idx, &row_id) in
+						row_ids.iter().enumerate()
+					{
 						let mut row =
 							layout.allocate_row();
 
@@ -191,35 +205,127 @@ impl<E: Evaluator> FlowEngine<E> {
                             }
 						}
 
-						// Insert the row into the
-						// database
-						let row_id = ViewRowSequence::next_row_id(txn, view_id)?;
+						// Use the row_id from the diff
+						// for consistent addressing
+						// Check if this row already
+						// exists (for idempotent
+						// updates)
+						let key = ViewRowKey {
+							view: view_id,
+							row: row_id,
+						}
+						.encode();
 
-						txn.set(
-							&ViewRowKey {
-								view: view_id,
-								row: row_id,
-							}
-							.encode(),
-							row,
-						)?;
+						// Insert or update the row
+						txn.set(&key, row)?;
 					}
 				}
 				Diff::Update {
+					row_ids,
+					before,
+					after,
 					..
 				} => {
-					// TODO: Implement update logic
-					todo!(
-						"Update logic not yet implemented"
-					)
+					// Use row_ids to directly update the
+					// rows
+					let row_count = after.row_count();
+
+					// Ensure row_ids matches row count
+					if row_ids.len() != row_count {
+						panic!(
+							"row_ids length {} doesn't match row count {}",
+							row_ids.len(),
+							row_count
+						);
+					}
+
+					for (row_idx, &row_id) in
+						row_ids.iter().enumerate()
+					{
+						// Build the new row
+						let mut new_row =
+							layout.allocate_row();
+
+						for (view_idx, view_column) in
+							view.columns
+								.iter()
+								.enumerate()
+						{
+							let value = if let Some(input_column) =
+								after.iter().find(|col| col.name() == view_column.name)
+							{
+								input_column.data().get_value(row_idx)
+							} else {
+								Value::Undefined
+							};
+
+							match value {
+								Value::Bool(v) => layout.set_bool(&mut new_row, view_idx, v),
+								Value::Float4(v) => layout.set_f32(&mut new_row, view_idx, *v),
+								Value::Float8(v) => layout.set_f64(&mut new_row, view_idx, *v),
+								Value::Int1(v) => layout.set_i8(&mut new_row, view_idx, v),
+								Value::Int2(v) => layout.set_i16(&mut new_row, view_idx, v),
+								Value::Int4(v) => layout.set_i32(&mut new_row, view_idx, v),
+								Value::Int8(v) => layout.set_i64(&mut new_row, view_idx, v),
+								Value::Int16(v) => layout.set_i128(&mut new_row, view_idx, v),
+								Value::Utf8(v) => layout.set_utf8(&mut new_row, view_idx, v),
+								Value::Uint1(v) => layout.set_u8(&mut new_row, view_idx, v),
+								Value::Uint2(v) => layout.set_u16(&mut new_row, view_idx, v),
+								Value::Uint4(v) => layout.set_u32(&mut new_row, view_idx, v),
+								Value::Uint8(v) => layout.set_u64(&mut new_row, view_idx, v),
+								Value::Uint16(v) => layout.set_u128(&mut new_row, view_idx, v),
+								Value::Date(v) => layout.set_date(&mut new_row, view_idx, v),
+								Value::DateTime(v) => layout.set_datetime(&mut new_row, view_idx, v),
+								Value::Time(v) => layout.set_time(&mut new_row, view_idx, v),
+								Value::Interval(v) => layout.set_interval(&mut new_row, view_idx, v),
+								Value::RowId(_v) => {},
+								Value::IdentityId(v) => layout.set_identity_id(&mut new_row, view_idx, v),
+								Value::Uuid4(v) => layout.set_uuid4(&mut new_row, view_idx, v),
+								Value::Uuid7(v) => layout.set_uuid7(&mut new_row, view_idx, v),
+								Value::Blob(v) => layout.set_blob(&mut new_row, view_idx, &v),
+								Value::Undefined => layout.set_undefined(&mut new_row, view_idx),
+							}
+						}
+
+						// Directly update the row using
+						// its row_id
+						let key = ViewRowKey {
+							view: view_id,
+							row: row_id,
+						}
+						.encode();
+
+						txn.set(&key, new_row)?;
+					}
 				}
 				Diff::Remove {
+					row_ids,
+					before,
 					..
 				} => {
-					// TODO: Implement remove logic
-					todo!(
-						"Remove logic not yet implemented"
-					)
+					// Use row_ids to directly remove the
+					// rows
+					let row_count = before.row_count();
+
+					// Ensure row_ids matches row count
+					if row_ids.len() != row_count {
+						panic!(
+							"row_ids length {} doesn't match row count {}",
+							row_ids.len(),
+							row_count
+						);
+					}
+
+					// Remove each row by its row_id
+					for &row_id in row_ids {
+						let key = ViewRowKey {
+							view: view_id,
+							row: row_id,
+						}
+						.encode();
+
+						txn.remove(&key)?;
+					}
 				}
 			}
 		}

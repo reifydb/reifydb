@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use reifydb_catalog::row::RowId;
 use reifydb_core::{Value, interface::SourceId, value::columnar::Columns};
 use serde::{Deserialize, Serialize};
 
@@ -7,15 +8,18 @@ use serde::{Deserialize, Serialize};
 pub enum Diff {
 	Insert {
 		source: SourceId,
+		row_ids: Vec<RowId>,
 		after: Columns,
 	},
 	Update {
 		source: SourceId,
+		row_ids: Vec<RowId>,
 		before: Columns,
 		after: Columns,
 	},
 	Remove {
 		source: SourceId,
+		row_ids: Vec<RowId>,
 		before: Columns,
 	},
 }
@@ -36,6 +40,39 @@ impl Diff {
 				..
 			} => *source,
 		}
+	}
+
+	/// Validates that row_ids length matches the row count
+	pub fn validate(&self) -> bool {
+		match self {
+			Diff::Insert {
+				row_ids,
+				after,
+				..
+			} => row_ids.len() == after.row_count(),
+			Diff::Update {
+				row_ids,
+				before,
+				after,
+				..
+			} => {
+				row_ids.len() == before.row_count()
+					&& row_ids.len() == after.row_count()
+			}
+			Diff::Remove {
+				row_ids,
+				before,
+				..
+			} => row_ids.len() == before.row_count(),
+		}
+	}
+
+	#[cfg(debug_assertions)]
+	pub fn assert_valid(&self) {
+		assert!(
+			self.validate(),
+			"Diff invariant violated: row_ids length must match row count"
+		);
 	}
 }
 

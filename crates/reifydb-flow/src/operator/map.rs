@@ -35,17 +35,20 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 			match diff {
 				Diff::Insert {
 					source,
+					row_ids,
 					after,
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
 					output.push(Diff::Insert {
 						source: *source,
+						row_ids: row_ids.clone(),
 						after: projected_columns,
 					});
 				}
 				Diff::Update {
 					source,
+					row_ids,
 					before,
 					after,
 				} => {
@@ -53,12 +56,14 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 						self.project(ctx, &after)?;
 					output.push(Diff::Update {
 						source: *source,
+						row_ids: row_ids.clone(),
 						before: before.clone(),
 						after: projected_columns,
 					});
 				}
 				Diff::Remove {
 					source,
+					row_ids,
 					before,
 				} => {
 					// For removes, we might need to project
@@ -67,6 +72,7 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 						self.project(ctx, &before)?;
 					output.push(Diff::Remove {
 						source: *source,
+						row_ids: row_ids.clone(),
 						before: projected_columns,
 					});
 				}

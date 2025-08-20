@@ -1,12 +1,12 @@
 use std::{collections::HashMap, ops::Bound};
 
+use reifydb_catalog::row::RowId;
 use reifydb_core::{
 	CowVec, Value,
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
-		Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction,
-		expression::{ColumnExpression, Expression},
+		SourceId::View, Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction, ViewId, expression::Expression,
 	},
 	row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
@@ -286,12 +286,29 @@ impl AggregateOperator {
 			group_key.to_vec(),
 		);
 
+		eprintln!(
+			"[AggregateOperator] Loading state for flow_id={}, node_id={}, group_key={:?}",
+			self.flow_id, self.node_id, group_key
+		);
+
 		match txn.get(&key.encode())? {
 			Some(versioned) => {
-				Ok(GroupState::from_encoded_row(&versioned.row)
-					.unwrap_or_else(GroupState::new))
+				let state = GroupState::from_encoded_row(
+					&versioned.row,
+				)
+				.unwrap_or_else(GroupState::new);
+				eprintln!(
+					"[AggregateOperator] Loaded existing state: count={}, sum={:?}, ref_count={}",
+					state.count, state.sum, state.ref_count
+				);
+				Ok(state)
 			}
-			None => Ok(GroupState::new()),
+			None => {
+				eprintln!(
+					"[AggregateOperator] No existing state found, creating new"
+				);
+				Ok(GroupState::new())
+			}
 		}
 	}
 
@@ -307,11 +324,24 @@ impl AggregateOperator {
 			group_key.to_vec(),
 		);
 
+		eprintln!(
+			"[AggregateOperator] Saving state for flow_id={}, node_id={}, group_key={:?}",
+			self.flow_id, self.node_id, group_key
+		);
+		eprintln!(
+			"[AggregateOperator] State to save: count={}, sum={:?}, ref_count={}",
+			state.count, state.sum, state.ref_count
+		);
+
 		if state.ref_count == 0 {
 			// Remove state if no more references
+			eprintln!(
+				"[AggregateOperator] Removing state (ref_count=0)"
+			);
 			txn.remove(&key.encode())?;
 		} else {
 			// Save updated state
+			eprintln!("[AggregateOperator] Persisting state");
 			txn.set(&key.encode(), state.to_encoded_row())?;
 		}
 
@@ -403,9 +433,9 @@ impl AggregateOperator {
 					);
 				} else {
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
-						name: "value".to_string(),
-						data: ColumnData::undefined(1),
-					}));
+                        name: "value".to_string(),
+                        data: ColumnData::undefined(1),
+                    }));
 				}
 
 				// Add group key column (age)
@@ -441,20 +471,72 @@ impl AggregateOperator {
 				}
 				let columns = Columns::new(column_vec);
 
-				// If we had previous output, emit a retraction
-				// first
+				// If we had previous output, emit an Update
+				// diff Otherwise emit an Insert for a new
+				// group
 				if let Some(previous) = &state.previous_output {
-					output_diffs.push(Diff::Remove {
-						source: reifydb_core::interface::SourceId::View(reifydb_core::interface::ViewId(0)),
+					// Generate row_ids for the update
+					let mut update_row_ids = Vec::new();
+					for _ in 0..columns.row_count() {
+						// Generate a unique row_id for
+						// this aggregate group
+						// Using hash of group_key for
+						// deterministic row_id
+						let hash =
+							{
+								use std::collections::hash_map::DefaultHasher;
+                            	use std::hash::{Hash, Hasher};
+								let mut hasher = DefaultHasher::new();
+								group_key.hash(&mut hasher);
+								hasher.finish()
+							};
+						update_row_ids
+							.push(RowId(hash));
+					}
+
+					eprintln!(
+						"[AggregateOperator] Emitting Update diff for group {:?}",
+						group_key
+					);
+					eprintln!(
+						"[AggregateOperator]   Before: {:?}",
+						previous
+					);
+					eprintln!(
+						"[AggregateOperator]   After: {:?}",
+						columns
+					);
+					output_diffs.push(Diff::Update {
+						source: View(ViewId(0)),
+						row_ids: update_row_ids,
 						before: previous.clone(),
+						after: columns.clone(),
+					});
+				} else {
+					// First time seeing this group, emit
+					// Insert
+					let mut insert_row_ids = Vec::new();
+					for _ in 0..columns.row_count() {
+						// Generate a unique row_id for
+						// this aggregate group
+						let hash =
+							{
+								use std::collections::hash_map::DefaultHasher;
+                            use std::hash::{Hash, Hasher};
+								let mut hasher = DefaultHasher::new();
+								group_key.hash(&mut hasher);
+								hasher.finish()
+							};
+						insert_row_ids
+							.push(RowId(hash));
+					}
+
+					output_diffs.push(Diff::Insert {
+						source: View(ViewId(0)),
+						row_ids: insert_row_ids,
+						after: columns.clone(),
 					});
 				}
-
-				// Emit new aggregate values
-				output_diffs.push(Diff::Insert {
-					source: reifydb_core::interface::SourceId::View(reifydb_core::interface::ViewId(0)),
-					after: columns.clone(),
-				});
 
 				// Update state with the new output for next
 				// time
@@ -467,9 +549,29 @@ impl AggregateOperator {
 				)?;
 			} else if state.previous_output.is_some() {
 				// Group was deleted, emit retraction
+				let before_columns =
+					state.previous_output.unwrap();
+				let mut remove_row_ids = Vec::new();
+				for _ in 0..before_columns.row_count() {
+					// Use same hash-based row_id for
+					// consistency
+					let hash = {
+						use std::{
+							collections::hash_map::DefaultHasher,
+							hash::{Hash, Hasher},
+						};
+						let mut hasher =
+							DefaultHasher::new();
+						group_key.hash(&mut hasher);
+						hasher.finish()
+					};
+					remove_row_ids.push(RowId(hash));
+				}
+
 				output_diffs.push(Diff::Remove {
-					source: reifydb_core::interface::SourceId::View(reifydb_core::interface::ViewId(0)),
-					before: state.previous_output.unwrap(),
+					source: View(ViewId(0)),
+					row_ids: remove_row_ids,
+					before: before_columns,
 				});
 			}
 		}
@@ -534,6 +636,17 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					after,
 					..
 				} => {
+					eprintln!(
+						"[AggregateOperator] Processing Update diff"
+					);
+					eprintln!(
+						"[AggregateOperator]   Before columns: {:?}",
+						before
+					);
+					eprintln!(
+						"[AggregateOperator]   After columns: {:?}",
+						after
+					);
 					// Handle as delete + insert
 					let row_count = before.row_count();
 					for row_idx in 0..row_count {
