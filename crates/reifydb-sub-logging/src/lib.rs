@@ -17,7 +17,7 @@ mod subsystem;
 #[cfg(debug_assertions)]
 mod test_utils;
 
-pub use backend::ConsoleBuilder;
+pub use backend::{ConsoleBuilder, FormatStyle};
 pub use builder::LoggingBuilder;
 pub use factory::LoggingSubsystemFactory;
 pub use metrics::LoggingMetrics;

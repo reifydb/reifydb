@@ -7,7 +7,7 @@ use std::{thread, time::Duration};
 
 use reifydb::core::log_info;
 use reifydb::{
-	core::interface::Params, sync, LoggingBuilder, MemoryDatabaseOptimistic,
+	core::interface::Params, sync, FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic,
 	SessionSync, WithSubsystem,
 };
 
@@ -16,7 +16,10 @@ pub type DB = MemoryDatabaseOptimistic;
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	logging.with_console(|console| {
-		console.color(true).stderr_for_errors(true)
+		console
+			.color(true)
+			.stderr_for_errors(true)
+			.format_style(FormatStyle::Timeline)
 	})
 	.buffer_capacity(20000)
 	.batch_size(2000)

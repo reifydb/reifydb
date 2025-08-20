@@ -9,6 +9,15 @@ use reifydb_core::interface::subsystem::logging::{LogBackend, LogLevel, Record};
 use reifydb_core::Result;
 use std::io::{self, Write};
 
+/// Format style for console output
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FormatStyle {
+	/// Box drawing style (original format)
+	Box,
+	/// Timeline with module branching
+	Timeline,
+}
+
 /// Console backend for logging
 #[derive(Debug)]
 pub struct ConsoleBackend {
@@ -16,6 +25,12 @@ pub struct ConsoleBackend {
 	use_color: bool,
 	/// Output stream (stdout or stderr)
 	stderr_for_errors: bool,
+	/// Format style
+	format_style: FormatStyle,
+	/// Last timestamp for timeline format (second precision in seconds since epoch)
+	last_second: Mutex<Option<i64>>,
+	/// Last module for grouping consecutive logs
+	last_module: Mutex<Option<String>>,
 	/// Mutex for synchronized output
 	stdout_lock: Mutex<io::Stdout>,
 	stderr_lock: Mutex<io::Stderr>,
@@ -26,6 +41,9 @@ impl ConsoleBackend {
 		Self {
 			use_color: true,
 			stderr_for_errors: true,
+			format_style: FormatStyle::Box,
+			last_second: Mutex::new(None),
+			last_module: Mutex::new(None),
 			stdout_lock: Mutex::new(io::stdout()),
 			stderr_lock: Mutex::new(io::stderr()),
 		}
@@ -44,6 +62,11 @@ impl ConsoleBackend {
 		self
 	}
 
+	pub fn with_format_style(mut self, format_style: FormatStyle) -> Self {
+		self.format_style = format_style;
+		self
+	}
+
 	fn format_module(&self, module: &str) -> String {
 		// If module contains "::", take everything after the last "::"
 		if let Some(pos) = module.rfind("::") {
@@ -53,6 +76,131 @@ impl ConsoleBackend {
 			// No "::" found, use the module as is
 			module.to_string()
 		}
+	}
+
+	fn format_timeline_records(&self, records: &[Record]) -> Vec<String> {
+		let mut output = Vec::new();
+		let mut last_second = self.last_second.lock();
+		let mut last_module = self.last_module.lock();
+		let mut current_group: Vec<&Record> = Vec::new();
+		let mut current_module: Option<String> = None;
+
+		for record in records {
+			if record.level == LogLevel::Off {
+				continue;
+			}
+
+			let module = self.format_module(&record.module);
+			
+			// Check if this is a new module or we need to flush the current group
+			if current_module.as_ref() != Some(&module) {
+				// Flush the current group if any
+				if !current_group.is_empty() {
+					if let Some(ref mod_name) = current_module {
+						output.push(self.format_timeline_group(&current_group, mod_name, &mut last_second));
+					}
+				}
+				// Start a new group
+				current_module = Some(module.clone());
+				current_group = vec![record];
+			} else {
+				// Add to current group
+				current_group.push(record);
+			}
+		}
+
+		// Flush any remaining group
+		if !current_group.is_empty() {
+			if let Some(ref mod_name) = current_module {
+				output.push(self.format_timeline_group(&current_group, mod_name, &mut last_second));
+			}
+		}
+
+		*last_module = current_module;
+		output
+	}
+
+	fn format_timeline_group(&self, records: &[&Record], module: &str, last_second: &mut Option<i64>) -> String {
+		if records.is_empty() {
+			return String::new();
+		}
+
+		let mut output = String::new();
+		let first_record = records[0];
+		let level = first_record.level;
+		let timestamp = first_record.timestamp;
+		
+		// Get seconds since epoch and milliseconds
+		let total_seconds = timestamp.timestamp();
+		let millis = timestamp.timestamp_subsec_millis();
+		
+		// Determine if we need to show full timestamp or delta
+		let time_str = if last_second.as_ref() != Some(&total_seconds) {
+			*last_second = Some(total_seconds);
+			// Show full second precision
+			format!("{} ─┬─", timestamp.format("%H:%M:%S"))
+		} else {
+			// Show millisecond delta
+			format!("    +{:03}ms├─", millis)
+		};
+
+		// Format level string
+		let level_str = match level {
+			LogLevel::Off => unreachable!(),
+			LogLevel::Trace => "[TRACE]",
+			LogLevel::Debug => "[DEBUG]",
+			LogLevel::Info => "[INFO]",
+			LogLevel::Warn => "[WARN]",
+			LogLevel::Error => "[ERROR]",
+			LogLevel::Critical => "[CRITICAL]",
+		};
+
+		// Apply colors
+		let apply_color = |text: &str| -> String {
+			if self.use_color {
+				match level {
+					LogLevel::Off => unreachable!(),
+					LogLevel::Trace => text.bright_black().to_string(),
+					LogLevel::Debug => text.bright_blue().to_string(),
+					LogLevel::Info => text.green().to_string(),
+					LogLevel::Warn => text.yellow().to_string(),
+					LogLevel::Error => text.red().to_string(),
+					LogLevel::Critical => text.bright_magenta().bold().to_string(),
+				}
+			} else {
+				text.to_string()
+			}
+		};
+
+		// Start the group header
+		output.push_str(&apply_color(&format!("{} {} {}", time_str, level_str, module)));
+		output.push('\n');
+
+		// Format each message in the group
+		for (i, record) in records.iter().enumerate() {
+			let is_last = i == records.len() - 1;
+			let branch_char = if is_last { "└─" } else { "├─" };
+			let continuation = if is_last { "  " } else { "│ " };
+			
+			// Format the message
+			let lines: Vec<&str> = record.message.lines().collect();
+			for (j, line) in lines.iter().enumerate() {
+				if j == 0 {
+					// First line with branch
+					output.push_str(&apply_color(&format!("          │  {}", branch_char)));
+					output.push_str(&format!(" {}\n", line));
+				} else {
+					// Continuation lines
+					output.push_str(&apply_color(&format!("          │  {}", continuation)));
+					output.push_str(&format!(" {}\n", line));
+				}
+			}
+		}
+		
+		// Add separator line
+		output.push_str(&apply_color("          │\n"));
+		
+		output
 	}
 
 	fn format_record(&self, record: &Record) -> String {
@@ -260,19 +408,33 @@ impl LogBackend for ConsoleBackend {
 		let mut stdout_records = Vec::new();
 		let mut stderr_records = Vec::new();
 
-		for record in records {
-			if record.level == LogLevel::Off {
-				continue;
+		match self.format_style {
+			FormatStyle::Timeline => {
+				// Process all records together for timeline formatting
+				let formatted_groups = self.format_timeline_records(records);
+				for formatted in formatted_groups {
+					// Check if any record in this group should go to stderr
+					// For simplicity, we'll send all to stdout for now
+					stdout_records.push(formatted);
+				}
 			}
+			FormatStyle::Box => {
+				// Original box formatting
+				for record in records {
+					if record.level == LogLevel::Off {
+						continue;
+					}
 
-			let formatted =
-				format!("{}\n", self.format_record(record));
-			if self.stderr_for_errors
-				&& record.level >= LogLevel::Error
-			{
-				stderr_records.push(formatted);
-			} else {
-				stdout_records.push(formatted);
+					let formatted =
+						format!("{}\n", self.format_record(record));
+					if self.stderr_for_errors
+						&& record.level >= LogLevel::Error
+					{
+						stderr_records.push(formatted);
+					} else {
+						stdout_records.push(formatted);
+					}
+				}
 			}
 		}
 

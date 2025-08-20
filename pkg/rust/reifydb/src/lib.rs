@@ -58,7 +58,7 @@ pub use session::{CommandSession, QuerySession, Session, SessionSync};
 
 // subsystems
 #[cfg(feature = "sub_logging")]
-pub use reifydb_sub_logging::LoggingBuilder;
+pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};
 
 /// Default configuration values
 pub mod defaults {
