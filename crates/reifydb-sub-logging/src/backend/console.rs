@@ -176,23 +176,28 @@ impl ConsoleBackend {
 		output.push_str(&apply_color(&format!("{} {} {}", time_str, level_str, module)));
 		output.push('\n');
 
+		// Maximum width for content (accounting for the indent and tree characters)
+		const MAX_WIDTH: usize = 120;
+		const INDENT: &str = "          │  ";
+		
 		// Format each message in the group
 		for (i, record) in records.iter().enumerate() {
 			let is_last = i == records.len() - 1;
 			let branch_char = if is_last { "└─" } else { "├─" };
-			let continuation = if is_last { "  " } else { "│ " };
+			let continuation = if is_last { "   " } else { "│  "};
 			
-			// Format the message
-			let lines: Vec<&str> = record.message.lines().collect();
-			for (j, line) in lines.iter().enumerate() {
+			// Wrap long messages
+			let wrapped_lines = self.wrap_text(&record.message, MAX_WIDTH);
+			
+			for (j, line) in wrapped_lines.iter().enumerate() {
 				if j == 0 {
 					// First line with branch
-					output.push_str(&apply_color(&format!("          │  {}", branch_char)));
-					output.push_str(&format!(" {}\n", line));
+					output.push_str(&apply_color(&format!("{}{} ", INDENT, branch_char)));
+					output.push_str(&format!("{}\n", line));
 				} else {
 					// Continuation lines
-					output.push_str(&apply_color(&format!("          │  {}", continuation)));
-					output.push_str(&format!(" {}\n", line));
+					output.push_str(&apply_color(&format!("{}{} ", INDENT, continuation)));
+					output.push_str(&format!("{}\n", line));
 				}
 			}
 		}
@@ -201,6 +206,57 @@ impl ConsoleBackend {
 		output.push_str(&apply_color("          │\n"));
 		
 		output
+	}
+
+	/// Wrap text to fit within the specified width
+	fn wrap_text(&self, text: &str, max_width: usize) -> Vec<String> {
+		let mut result = Vec::new();
+		
+		for line in text.lines() {
+			if line.len() <= max_width {
+				result.push(line.to_string());
+			} else {
+				// Split long lines
+				let mut current = String::new();
+				let mut parts = line.split_whitespace().peekable();
+				
+				while let Some(word) = parts.next() {
+					// If word itself is longer than max width, split it
+					if word.len() > max_width {
+						// Flush current line if not empty
+						if !current.is_empty() {
+							result.push(current);
+							current = String::new();
+						}
+						// Split the long word
+						for chunk in word.chars().collect::<Vec<_>>().chunks(max_width) {
+							result.push(chunk.iter().collect());
+						}
+					} else if current.is_empty() {
+						current = word.to_string();
+					} else if current.len() + 1 + word.len() <= max_width {
+						current.push(' ');
+						current.push_str(word);
+					} else {
+						// Current line is full, start a new one
+						result.push(current);
+						current = word.to_string();
+					}
+				}
+				
+				// Push any remaining content
+				if !current.is_empty() {
+					result.push(current);
+				}
+			}
+		}
+		
+		// If no lines were produced, return the original text as a single line
+		if result.is_empty() {
+			result.push(text.to_string());
+		}
+		
+		result
 	}
 
 	fn format_record(&self, record: &Record) -> String {

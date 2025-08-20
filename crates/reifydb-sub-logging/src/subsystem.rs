@@ -247,11 +247,14 @@ impl Subsystem for LoggingSubsystem {
 			// Subsystem is shutdown and cannot be restarted
 			return HealthStatus::Unknown;
 		}
-		
+
 		let utilization = self.buffer_utilization();
 		if utilization > 90 {
 			HealthStatus::Degraded {
-				description: format!("Buffer utilization high: {}%", utilization),
+				description: format!(
+					"Buffer utilization high: {}%",
+					utilization
+				),
 			}
 		} else {
 			HealthStatus::Healthy

@@ -13,7 +13,7 @@ use reifydb_core::{
 		UnversionedTransaction, VersionedTransaction,
 	},
 	log_debug,
-	log_error, log_warn, Result,
+	log_error, log_timed_trace, log_warn, Result,
 };
 use reifydb_engine::StandardEngine;
 
@@ -147,7 +147,9 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already running
 		}
 
-		self.bootloader.load()?;
+		log_timed_trace!("Bootloader setup", {
+			self.bootloader.load()?
+		});
 
 		log_debug!(
 			"Starting system with {} subsystems",
@@ -162,10 +164,17 @@ impl<T: Transaction> Database<T> {
 			true,
 		);
 
-		self.engine.get_hooks().trigger(OnStartHook {})?;
+		log_timed_trace!("Database initialization", {
+			self.engine.get_hooks().trigger(OnStartHook {})?
+		});
 
 		// Start all subsystems
-		match self.subsystems.start_all(self.config.max_startup_time) {
+		match log_timed_trace!("Starting all subsystems", {
+			let result = self
+				.subsystems
+				.start_all(self.config.max_startup_time);
+			result
+		}) {
 			Ok(()) => {
 				self.running = true;
 				log_debug!("System started successfully");
