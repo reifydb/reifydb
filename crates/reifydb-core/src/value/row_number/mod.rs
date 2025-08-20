@@ -5,18 +5,18 @@ use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-/// Standard column name for RowId columns
-pub static ROW_ID_COLUMN_NAME: &str = "__ROW__ID__";
+/// Standard column name for RowNumber columns
+pub static ROW_NUMBER_COLUMN_NAME: &str = "__ROW__NUMBER__";
 
-/// A row identifier - a unique 64-bit unsigned integer for a table row
+/// A row number - a unique 64-bit unsigned integer for a table row
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
-pub struct RowId(pub u64);
+pub struct RowNumber(pub u64);
 
-impl RowId {
-	/// Create a new RowId from a u64
+impl RowNumber {
+	/// Create a new RowNumber from a u64
 	pub fn new(id: u64) -> Self {
-		RowId(id)
+		RowNumber(id)
 	}
 
 	/// Get the inner u64 value
@@ -25,7 +25,7 @@ impl RowId {
 	}
 }
 
-impl Deref for RowId {
+impl Deref for RowNumber {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -33,31 +33,31 @@ impl Deref for RowId {
 	}
 }
 
-impl PartialEq<u64> for RowId {
+impl PartialEq<u64> for RowNumber {
 	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl From<u64> for RowId {
+impl From<u64> for RowNumber {
 	fn from(id: u64) -> Self {
-		RowId(id)
+		RowNumber(id)
 	}
 }
 
-impl From<RowId> for u64 {
-	fn from(row_id: RowId) -> Self {
-		row_id.0
+impl From<RowNumber> for u64 {
+	fn from(row_number: RowNumber) -> Self {
+		row_number.0
 	}
 }
 
-impl fmt::Display for RowId {
+impl fmt::Display for RowNumber {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }
 
-impl Serialize for RowId {
+impl Serialize for RowNumber {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -66,15 +66,15 @@ impl Serialize for RowId {
 	}
 }
 
-impl<'de> Deserialize<'de> for RowId {
-	fn deserialize<D>(deserializer: D) -> Result<RowId, D::Error>
+impl<'de> Deserialize<'de> for RowNumber {
+	fn deserialize<D>(deserializer: D) -> Result<RowNumber, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U64Visitor;
 
 		impl Visitor<'_> for U64Visitor {
-			type Value = RowId;
+			type Value = RowNumber;
 
 			fn expecting(
 				&self,
@@ -87,7 +87,7 @@ impl<'de> Deserialize<'de> for RowId {
 				self,
 				value: u64,
 			) -> Result<Self::Value, E> {
-				Ok(RowId(value))
+				Ok(RowNumber(value))
 			}
 		}
 		deserializer.deserialize_u64(U64Visitor)

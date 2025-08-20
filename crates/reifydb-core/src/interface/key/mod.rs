@@ -236,7 +236,7 @@ mod tests {
 		TableRowSequenceKey, ViewColumnKey,
 	};
 	use crate::{
-		RowId,
+		RowNumber,
 		interface::{
 			ViewColumnsKey,
 			catalog::{
@@ -442,7 +442,7 @@ mod tests {
 	fn test_table_row() {
 		let key = Key::TableRow(TableRowKey {
 			table: TableId(42),
-			row: RowId(999_999),
+			row: RowNumber(999_999),
 		});
 
 		let encoded = key.encode();

@@ -40,8 +40,8 @@ impl ColumnData {
 			Value::Interval(v) => {
 				ColumnData::interval(vec![v; row_count])
 			}
-			Value::RowId(v) => {
-				ColumnData::row_id(vec![v; row_count])
+			Value::RowNumber(v) => {
+				ColumnData::row_number(vec![v; row_count])
 			}
 			Value::IdentityId(v) => {
 				ColumnData::identity_id(vec![v; row_count])

@@ -57,7 +57,7 @@ pub struct PoolsInner {
 	bool_pool: StdPoolAllocator<BoolContainer>,
 	string_pool: StdPoolAllocator<StringContainer>,
 	blob_pool: StdPoolAllocator<BlobContainer>,
-	row_id_pool: StdPoolAllocator<RowIdContainer>,
+	row_number_pool: StdPoolAllocator<RowNumberContainer>,
 	undefined_pool: StdPoolAllocator<UndefinedContainer>,
 
 	// Numeric pools for all types
@@ -97,7 +97,7 @@ impl Pools {
 			bool_pool: StdPoolAllocator::new(max_pool_size),
 			string_pool: StdPoolAllocator::new(max_pool_size),
 			blob_pool: StdPoolAllocator::new(max_pool_size),
-			row_id_pool: StdPoolAllocator::new(max_pool_size),
+			row_number_pool: StdPoolAllocator::new(max_pool_size),
 			undefined_pool: StdPoolAllocator::new(max_pool_size),
 
 			i8_pool: StdPoolAllocator::new(max_pool_size),
@@ -133,8 +133,8 @@ impl Pools {
 	pub fn blob_pool(&self) -> &StdPoolAllocator<BlobContainer> {
 		&self.blob_pool
 	}
-	pub fn row_id_pool(&self) -> &StdPoolAllocator<RowIdContainer> {
-		&self.row_id_pool
+	pub fn row_number_pool(&self) -> &StdPoolAllocator<RowNumberContainer> {
+		&self.row_number_pool
 	}
 	pub fn undefined_pool(&self) -> &StdPoolAllocator<UndefinedContainer> {
 		&self.undefined_pool
@@ -206,7 +206,7 @@ impl Pools {
 		self.bool_pool.clear();
 		self.string_pool.clear();
 		self.blob_pool.clear();
-		self.row_id_pool.clear();
+		self.row_number_pool.clear();
 		self.undefined_pool.clear();
 
 		self.i8_pool.clear();
@@ -238,7 +238,7 @@ impl Pools {
 		stats.insert("bool".to_string(), self.bool_pool.stats());
 		stats.insert("string".to_string(), self.string_pool.stats());
 		stats.insert("blob".to_string(), self.blob_pool.stats());
-		stats.insert("row_id".to_string(), self.row_id_pool.stats());
+		stats.insert("row_number".to_string(), self.row_number_pool.stats());
 		stats.insert(
 			"undefined".to_string(),
 			self.undefined_pool.stats(),

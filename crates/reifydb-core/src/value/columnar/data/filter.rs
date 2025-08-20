@@ -40,7 +40,7 @@ impl ColumnData {
 			ColumnData::Undefined(container) => {
 				container.filter(mask)
 			}
-			ColumnData::RowId(container) => container.filter(mask),
+			ColumnData::RowNumber(container) => container.filter(mask),
 			ColumnData::IdentityId(container) => {
 				container.filter(mask)
 			}

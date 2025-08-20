@@ -70,8 +70,8 @@ fn grpc_value_to_core_value(grpc_val: grpc::Value) -> Option<Value> {
 			reifydb_core::Interval::new(i.months, i.days, i.nanos),
 		)),
 		GrpcType::UndefinedValue(_) => Some(Value::Undefined),
-		GrpcType::RowIdValue(id) => {
-			Some(Value::RowId(reifydb_core::RowId::new(id)))
+		GrpcType::RowNumberValue(id) => {
+			Some(Value::RowNumber(reifydb_core::RowNumber::new(id)))
 		}
 		GrpcType::Uuid4Value(bytes) => uuid::Uuid::from_slice(&bytes)
 			.ok()
@@ -332,7 +332,7 @@ fn map_frame(frame: Frame) -> grpc::Frame {
                                 nanos: i.get_nanos(),
                             }),
                             Value::Undefined => GrpcType::UndefinedValue(false),
-                            Value::RowId(row_id) => GrpcType::RowIdValue(row_id.value()),
+                            Value::RowNumber(row_number) => GrpcType::RowNumberValue(row_number.value()),
                             Value::Uuid4(uuid) => GrpcType::Uuid4Value(uuid.as_bytes().to_vec()),
                             Value::Uuid7(uuid) => GrpcType::Uuid7Value(uuid.as_bytes().to_vec()),
                             Value::IdentityId(id) => {

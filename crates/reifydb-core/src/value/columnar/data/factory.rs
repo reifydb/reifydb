@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	BitVec, Date, DateTime, Interval, RowId, Time,
+	BitVec, Date, DateTime, Interval, RowNumber, Time,
 	value::{
 		Blob, Uuid4, Uuid7,
 		columnar::ColumnData,
 		container::{
 			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowIdContainer, StringContainer,
+			NumberContainer, RowNumberContainer, StringContainer,
 			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 		identity::IdentityId,
@@ -416,23 +416,23 @@ impl ColumnData {
 		ColumnData::Blob(BlobContainer::new(data, bitvec))
 	}
 
-	pub fn row_id(row_ids: impl IntoIterator<Item = RowId>) -> Self {
-		let data = row_ids.into_iter().collect::<Vec<_>>();
-		ColumnData::RowId(RowIdContainer::from_vec(data))
+	pub fn row_number(row_numbers: impl IntoIterator<Item = RowNumber>) -> Self {
+		let data = row_numbers.into_iter().collect::<Vec<_>>();
+		ColumnData::RowNumber(RowNumberContainer::from_vec(data))
 	}
 
-	pub fn row_id_with_capacity(capacity: usize) -> Self {
-		ColumnData::RowId(RowIdContainer::with_capacity(capacity))
+	pub fn row_number_with_capacity(capacity: usize) -> Self {
+		ColumnData::RowNumber(RowNumberContainer::with_capacity(capacity))
 	}
 
-	pub fn row_id_with_bitvec(
-		row_ids: impl IntoIterator<Item = RowId>,
+	pub fn row_number_with_bitvec(
+		row_numbers: impl IntoIterator<Item = RowNumber>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		let data = row_ids.into_iter().collect::<Vec<_>>();
+		let data = row_numbers.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::RowId(RowIdContainer::new(data, bitvec))
+		ColumnData::RowNumber(RowNumberContainer::new(data, bitvec))
 	}
 
 	pub fn identity_id(

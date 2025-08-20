@@ -29,5 +29,5 @@ pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};
 pub use value::{
 	Blob, Date, DateTime, GetType, IdentityId, Interval, IntoValue,
-	OrderedF32, OrderedF64, RowId, Time, Type, Uuid4, Uuid7, Value,
+	OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7, Value,
 };

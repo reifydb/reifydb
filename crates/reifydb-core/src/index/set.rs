@@ -406,14 +406,14 @@ impl EncodedIndexLayout {
 		}
 	}
 
-	pub fn set_row_id(
+	pub fn set_row_number(
 		&self,
 		key: &mut EncodedIndexKey,
 		index: usize,
 		value: impl Into<u64>,
 	) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::RowId);
+		debug_assert_eq!(field.value, Type::RowNumber);
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -1189,19 +1189,19 @@ mod tests {
 		}
 	}
 
-	mod row_id {
+	mod row_number {
 		use super::*;
 
 		#[test]
 		fn test_asc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::RowId],
+				&[Type::RowNumber],
 				&[SortDirection::Asc],
 			)
 			.unwrap();
 			let mut key = layout.allocate_key();
 
-			layout.set_row_id(&mut key, 0, 0x123456789ABCDEFu64);
+			layout.set_row_number(&mut key, 0, 0x123456789ABCDEFu64);
 
 			let offset = layout.fields[0].offset;
 			assert_eq!(
@@ -1216,13 +1216,13 @@ mod tests {
 		#[test]
 		fn test_desc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::RowId],
+				&[Type::RowNumber],
 				&[SortDirection::Desc],
 			)
 			.unwrap();
 			let mut key = layout.allocate_key();
 
-			layout.set_row_id(&mut key, 0, 0x123456789ABCDEFu64);
+			layout.set_row_number(&mut key, 0, 0x123456789ABCDEFu64);
 
 			let offset = layout.fields[0].offset;
 			// Inverted for DESC

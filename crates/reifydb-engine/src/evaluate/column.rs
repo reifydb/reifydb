@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Date, DateTime, Interval, RowId, Time, Value, error,
+	Date, DateTime, Interval, RowNumber, Time, Value, error,
 	interface::evaluate::expression::ColumnExpression,
 	result::error::diagnostic::query::column_not_found,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
@@ -561,7 +561,7 @@ impl StandardEvaluator {
 					),
 				))
 			}
-			Value::RowId(_) => {
+			Value::RowNumber(_) => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -570,13 +570,13 @@ impl StandardEvaluator {
 						break;
 					}
 					match v {
-						Value::RowId(i) => {
+						Value::RowNumber(i) => {
 							data.push(i.clone());
 							bitvec.push(true);
 						}
 						_ => {
 							data.push(
-								RowId::default(
+								RowNumber::default(
 								),
 							);
 							bitvec.push(false);
@@ -585,7 +585,7 @@ impl StandardEvaluator {
 					count += 1;
 				}
 				Ok(col.with_new_data(
-					ColumnData::row_id_with_bitvec(
+					ColumnData::row_number_with_bitvec(
 						data, bitvec,
 					),
 				))

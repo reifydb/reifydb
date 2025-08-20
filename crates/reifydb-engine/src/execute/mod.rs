@@ -38,7 +38,7 @@ pub struct ExecutionContext {
 	pub functions: Functions,
 	pub table: Option<TableDef>,
 	pub batch_size: usize,
-	pub preserve_row_ids: bool,
+	pub preserve_row_numbers: bool,
 	pub params: Params,
 }
 
@@ -246,7 +246,7 @@ impl<T: Transaction> Executor<T> {
 					functions: self.functions.clone(),
 					table: None,
 					batch_size: 1024,
-					preserve_row_ids: false,
+					preserve_row_numbers: false,
 					params: params.clone(),
 				});
 				let mut node =

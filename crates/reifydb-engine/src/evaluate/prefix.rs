@@ -422,7 +422,7 @@ impl StandardEvaluator {
                 }
                 _ => unimplemented!(),
             },
-            ColumnData::RowId(_) => match prefix.operator {
+            ColumnData::RowNumber(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_number(prefix.fragment()))
                 }

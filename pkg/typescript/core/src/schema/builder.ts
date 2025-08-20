@@ -127,8 +127,8 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Undefined'};
     }
 
-    static rowid(): PrimitiveSchemaNode<'RowId'> {
-        return {kind: 'primitive', type: 'RowId'};
+    static rownumber(): PrimitiveSchemaNode<'RowNumber'> {
+        return {kind: 'primitive', type: 'RowNumber'};
     }
 
     static identityid(): PrimitiveSchemaNode<'IdentityId'> {
@@ -239,8 +239,8 @@ export class SchemaBuilder {
         return {kind: 'value', type: 'Blob'};
     }
 
-    static rowIdValue(): ValueSchemaNode<'RowId'> {
-        return {kind: 'value', type: 'RowId'};
+    static rowIdValue(): ValueSchemaNode<'RowNumber'> {
+        return {kind: 'value', type: 'RowNumber'};
     }
 
     static identityIdValue(): ValueSchemaNode<'IdentityId'> {

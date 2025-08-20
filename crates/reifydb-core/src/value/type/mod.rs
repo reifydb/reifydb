@@ -66,7 +66,7 @@ pub enum Type {
 	/// An interval representing a duration
 	Interval,
 	/// A row identifier (8-byte unsigned integer)
-	RowId,
+	RowNumber,
 	/// An identity identifier (UUID v7)
 	IdentityId,
 	/// A UUID version 4 (random)
@@ -164,7 +164,7 @@ impl Type {
 			Type::DateTime => 0x10,
 			Type::Time => 0x11,
 			Type::Interval => 0x12,
-			Type::RowId => 0x13,
+			Type::RowNumber => 0x13,
 			Type::IdentityId => 0x17,
 			Type::Uuid4 => 0x14,
 			Type::Uuid7 => 0x15,
@@ -196,7 +196,7 @@ impl Type {
 			0x10 => Type::DateTime,
 			0x11 => Type::Time,
 			0x12 => Type::Interval,
-			0x13 => Type::RowId,
+			0x13 => Type::RowNumber,
 			0x14 => Type::Uuid4,
 			0x15 => Type::Uuid7,
 			0x16 => Type::Blob,
@@ -228,7 +228,7 @@ impl Type {
 			Type::Time => 8,
 			Type::Interval => 16, // months: i32 + days: i32 +
 			// nanos: i64
-			Type::RowId => 8,
+			Type::RowNumber => 8,
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
@@ -257,7 +257,7 @@ impl Type {
 			Type::DateTime => 8,
 			Type::Time => 8,
 			Type::Interval => 8,
-			Type::RowId => 8,
+			Type::RowNumber => 8,
 			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
@@ -288,7 +288,7 @@ impl Display for Type {
 			Type::DateTime => f.write_str("DateTime"),
 			Type::Time => f.write_str("Time"),
 			Type::Interval => f.write_str("Interval"),
-			Type::RowId => f.write_str("RowId"),
+			Type::RowNumber => f.write_str("RowNumber"),
 			Type::IdentityId => f.write_str("IdentityId"),
 			Type::Uuid4 => f.write_str("Uuid4"),
 			Type::Uuid7 => f.write_str("Uuid7"),
@@ -320,7 +320,7 @@ impl From<&Value> for Type {
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
 			Value::Interval(_) => Type::Interval,
-			Value::RowId(_) => Type::RowId,
+			Value::RowNumber(_) => Type::RowNumber,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
@@ -352,7 +352,7 @@ impl FromStr for Type {
 			"DATETIME" => Ok(Type::DateTime),
 			"TIME" => Ok(Type::Time),
 			"INTERVAL" => Ok(Type::Interval),
-			"ROWID" => Ok(Type::RowId),
+			"ROWNUMBER" | "ROWID" => Ok(Type::RowNumber),
 			"IDENTITYID" | "IDENTITY_ID" => Ok(Type::IdentityId),
 			"UUID4" => Ok(Type::Uuid4),
 			"UUID7" => Ok(Type::Uuid7),

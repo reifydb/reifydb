@@ -16,7 +16,7 @@ use reifydb_core::{
 		engine,
 	},
 	return_error,
-	value::row_id::ROW_ID_COLUMN_NAME,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 use reifydb_rql::plan::physical::DeletePlan;
 
@@ -67,7 +67,7 @@ impl<T: Transaction> Executor<T> {
 					functions: self.functions.clone(),
 					table: Some(table.clone()),
 					batch_size: 1024,
-					preserve_row_ids: true,
+					preserve_row_numbers: true,
 					params: params.clone(),
 				}),
 			);
@@ -76,7 +76,7 @@ impl<T: Transaction> Executor<T> {
 				functions: self.functions.clone(),
 				table: Some(table.clone()),
 				batch_size: 1024,
-				preserve_row_ids: true,
+				preserve_row_numbers: true,
 				params: params.clone(),
 			};
 
@@ -84,22 +84,22 @@ impl<T: Transaction> Executor<T> {
 				columns,
 			}) = input_node.next(&context, txn)?
 			{
-				// Find the RowId column - return error if not
+				// Find the RowNumber column - return error if not
 				// found
-				let Some(row_id_column) =
+				let Some(row_number_column) =
 					columns.iter().find(|col| {
-						col.name() == ROW_ID_COLUMN_NAME
+						col.name() == ROW_NUMBER_COLUMN_NAME
 					})
 				else {
 					return_error!(
-						engine::missing_row_id_column()
+						engine::missing_row_number_column()
 					);
 				};
 
-				// Extract RowId data - return error if any are
+				// Extract RowNumber data - return error if any are
 				// undefined
-				let row_ids = match &row_id_column.data() {
-					ColumnData::RowId(container) => {
+				let row_numbers = match &row_number_column.data() {
+					ColumnData::RowNumber(container) => {
 						// Check that all row IDs are
 						// defined
 						for i in 0..container
@@ -109,21 +109,21 @@ impl<T: Transaction> Executor<T> {
 							if !container
 								.is_defined(i)
 							{
-								return_error!(engine::invalid_row_id_values());
+								return_error!(engine::invalid_row_number_values());
 							}
 						}
 						container.data()
 					}
 					_ => return_error!(
-						engine::invalid_row_id_values()
+						engine::invalid_row_number_values()
 					),
 				};
 
-				for row_idx in 0..columns.row_count() {
-					let row_id = row_ids[row_idx];
+				for row_numberx in 0..columns.row_count() {
+					let row_number = row_numbers[row_numberx];
 					txn.remove(&TableRowKey {
 						table: table.id,
-						row: row_id,
+						row: row_number,
 					}
 					.encode())?;
 					deleted_count += 1;

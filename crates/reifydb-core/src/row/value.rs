@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	RowId, Type, Value,
+	RowNumber, Type, Value,
 	row::{EncodedRow, EncodedRowLayout},
 	value::{
 		IdentityId, OrderedF32, OrderedF64,
@@ -220,7 +220,7 @@ impl EncodedRowLayout {
 			Type::Interval => {
 				Value::Interval(self.get_interval(row, index))
 			}
-			Type::RowId => Value::RowId(RowId::new(
+			Type::RowNumber => Value::RowNumber(RowNumber::new(
 				self.get_u64(row, index),
 			)),
 			Type::IdentityId => {
@@ -769,7 +769,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_mixed_blob_row_id_uuid_types() {
+	fn test_mixed_blob_row_number_uuid_types() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Blob,
 			Type::Int16,

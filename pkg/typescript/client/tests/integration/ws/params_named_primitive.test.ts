@@ -198,11 +198,11 @@ describe('Named Parameters', () => {
             expectSingleBlobResult(frames, data);
         }, 1000);
 
-        it('RowId', async () => {
+        it('RowNumber', async () => {
             const frames = await wsClient.command(
                 'MAP $value as result',
                 { value: BigInt("123456789") },
-                [Schema.object({result: Schema.rowid()})]
+                [Schema.object({result: Schema.rownumber()})]
             );
 
             expectSingleBigIntResult(frames, BigInt(123456789));
@@ -440,11 +440,11 @@ describe('Named Parameters', () => {
             expectSingleBlobResult(frames, data);
         }, 1000);
 
-        it('RowId', async () => {
+        it('RowNumber', async () => {
             const frames = await wsClient.query(
                 'MAP $value as result',
                 { value: BigInt("123456789") },
-                [Schema.object({result: Schema.rowid()})]
+                [Schema.object({result: Schema.rownumber()})]
             );
 
             expectSingleBigIntResult(frames, BigInt(123456789));

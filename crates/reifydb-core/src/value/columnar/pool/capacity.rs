@@ -4,7 +4,7 @@
 use crate::value::{
 	IsNumber, IsTemporal, IsUuid,
 	container::{
-		BlobContainer, BoolContainer, NumberContainer, RowIdContainer,
+		BlobContainer, BoolContainer, NumberContainer, RowNumberContainer,
 		StringContainer, TemporalContainer, UndefinedContainer,
 		UuidContainer,
 	},
@@ -123,7 +123,7 @@ impl ContainerCapacity for BlobContainer {
 	}
 }
 
-impl ContainerCapacity for RowIdContainer {
+impl ContainerCapacity for RowNumberContainer {
 	fn with_capacity(capacity: usize) -> Self {
 		Self::with_capacity(capacity)
 	}

@@ -60,7 +60,7 @@ impl ColumnData {
 			ColumnData::Interval(container) => {
 				container.get_value(index)
 			}
-			ColumnData::RowId(container) => {
+			ColumnData::RowNumber(container) => {
 				container.get_value(index)
 			}
 			ColumnData::IdentityId(container) => {

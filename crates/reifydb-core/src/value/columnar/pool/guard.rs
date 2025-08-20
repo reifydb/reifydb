@@ -44,9 +44,9 @@ impl Releasable for BlobContainer {
 	}
 }
 
-impl Releasable for RowIdContainer {
+impl Releasable for RowNumberContainer {
 	fn release_to_pool(self, pools: &Pools) {
-		pools.row_id_pool().release(self);
+		pools.row_number_pool().release(self);
 	}
 }
 
@@ -238,10 +238,10 @@ impl PooledGuard<BlobContainer> {
 	}
 }
 
-impl PooledGuard<RowIdContainer> {
-	/// Create a new pooled RowIdContainer with the specified capacity
-	pub fn new_row_id(pools: Pools, capacity: usize) -> Self {
-		let container = pools.row_id_pool().acquire(capacity);
+impl PooledGuard<RowNumberContainer> {
+	/// Create a new pooled RowNumberContainer with the specified capacity
+	pub fn new_row_number(pools: Pools, capacity: usize) -> Self {
+		let container = pools.row_number_pool().acquire(capacity);
 		Self::new(container, pools)
 	}
 }

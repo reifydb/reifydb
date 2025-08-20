@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	RowId, impl_interceptor_method,
+	RowNumber, impl_interceptor_method,
 	interceptor::{
 		InterceptorChain, TablePostDeleteContext,
 		TablePostDeleteInterceptor, TablePostInsertContext,
@@ -29,7 +29,7 @@ pub trait TableInterceptor<T: Transaction> {
 	fn post_insert(
 		&mut self,
 		table: &TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: &EncodedRow,
 	) -> crate::Result<()>;
 
@@ -37,7 +37,7 @@ pub trait TableInterceptor<T: Transaction> {
 	fn pre_update(
 		&mut self,
 		table: &TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: &EncodedRow,
 	) -> crate::Result<()>;
 
@@ -45,7 +45,7 @@ pub trait TableInterceptor<T: Transaction> {
 	fn post_update(
 		&mut self,
 		table: &TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: &EncodedRow,
 		old_row: &EncodedRow,
 	) -> crate::Result<()>;
@@ -54,14 +54,14 @@ pub trait TableInterceptor<T: Transaction> {
 	fn pre_delete(
 		&mut self,
 		table: &TableDef,
-		id: RowId,
+		id: RowNumber,
 	) -> crate::Result<()>;
 
 	/// Intercept table post-delete operations
 	fn post_delete(
 		&mut self,
 		table: &TableDef,
-		id: RowId,
+		id: RowNumber,
 		deleted_row: &EncodedRow,
 	) -> crate::Result<()>;
 }
@@ -80,7 +80,7 @@ impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
 		table_post_insert,
 		TablePostInsertInterceptor,
 		TablePostInsertContext,
-		(table: &TableDef, id: RowId, row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, row: &EncodedRow)
 	);
 
 	impl_interceptor_method!(
@@ -88,7 +88,7 @@ impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
 		table_pre_update,
 		TablePreUpdateInterceptor,
 		TablePreUpdateContext,
-		(table: &TableDef, id: RowId, row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, row: &EncodedRow)
 	);
 
 	impl_interceptor_method!(
@@ -96,7 +96,7 @@ impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
 		table_post_update,
 		TablePostUpdateInterceptor,
 		TablePostUpdateContext,
-		(table: &TableDef, id: RowId, row: &EncodedRow, old_row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, row: &EncodedRow, old_row: &EncodedRow)
 	);
 
 	impl_interceptor_method!(
@@ -104,7 +104,7 @@ impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
 		table_pre_delete,
 		TablePreDeleteInterceptor,
 		TablePreDeleteContext,
-		(table: &TableDef, id: RowId)
+		(table: &TableDef, id: RowNumber)
 	);
 
 	impl_interceptor_method!(
@@ -112,6 +112,6 @@ impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
 		table_post_delete,
 		TablePostDeleteInterceptor,
 		TablePostDeleteContext,
-		(table: &TableDef, id: RowId, deleted_row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, deleted_row: &EncodedRow)
 	);
 }
