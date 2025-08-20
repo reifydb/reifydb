@@ -27,8 +27,8 @@ pub struct ConsoleBackend {
 	stderr_for_errors: bool,
 	/// Format style
 	format_style: FormatStyle,
-	/// Last timestamp for timeline format (second precision in seconds since epoch)
-	last_second: Mutex<Option<i64>>,
+	/// Last timestamp for timeline format (milliseconds since epoch)
+	last_timestamp_ms: Mutex<Option<i64>>,
 	/// Last module for grouping consecutive logs
 	last_module: Mutex<Option<String>>,
 	/// Mutex for synchronized output
@@ -42,7 +42,7 @@ impl ConsoleBackend {
 			use_color: true,
 			stderr_for_errors: true,
 			format_style: FormatStyle::Box,
-			last_second: Mutex::new(None),
+			last_timestamp_ms: Mutex::new(None),
 			last_module: Mutex::new(None),
 			stdout_lock: Mutex::new(io::stdout()),
 			stderr_lock: Mutex::new(io::stderr()),
@@ -80,7 +80,7 @@ impl ConsoleBackend {
 
 	fn format_timeline_records(&self, records: &[Record]) -> Vec<String> {
 		let mut output = Vec::new();
-		let mut last_second = self.last_second.lock();
+		let mut last_timestamp_ms = self.last_timestamp_ms.lock();
 		let mut last_module = self.last_module.lock();
 		let mut current_group: Vec<&Record> = Vec::new();
 		let mut current_module: Option<String> = None;
@@ -97,7 +97,7 @@ impl ConsoleBackend {
 				// Flush the current group if any
 				if !current_group.is_empty() {
 					if let Some(ref mod_name) = current_module {
-						output.push(self.format_timeline_group(&current_group, mod_name, &mut last_second));
+						output.push(self.format_timeline_group(&current_group, mod_name, &mut last_timestamp_ms));
 					}
 				}
 				// Start a new group
@@ -112,7 +112,7 @@ impl ConsoleBackend {
 		// Flush any remaining group
 		if !current_group.is_empty() {
 			if let Some(ref mod_name) = current_module {
-				output.push(self.format_timeline_group(&current_group, mod_name, &mut last_second));
+				output.push(self.format_timeline_group(&current_group, mod_name, &mut last_timestamp_ms));
 			}
 		}
 
@@ -120,7 +120,7 @@ impl ConsoleBackend {
 		output
 	}
 
-	fn format_timeline_group(&self, records: &[&Record], module: &str, last_second: &mut Option<i64>) -> String {
+	fn format_timeline_group(&self, records: &[&Record], module: &str, last_timestamp_ms: &mut Option<i64>) -> String {
 		if records.is_empty() {
 			return String::new();
 		}
@@ -130,19 +130,26 @@ impl ConsoleBackend {
 		let level = first_record.level;
 		let timestamp = first_record.timestamp;
 		
-		// Get seconds since epoch and milliseconds
-		let total_seconds = timestamp.timestamp();
-		let millis = timestamp.timestamp_subsec_millis();
+		// Get timestamp in milliseconds since epoch
+		let timestamp_ms = timestamp.timestamp_millis();
 		
-		// Determine if we need to show full timestamp or delta
-		let time_str = if last_second.as_ref() != Some(&total_seconds) {
-			*last_second = Some(total_seconds);
-			// Show full second precision
-			format!("{} ─┬─", timestamp.format("%H:%M:%S"))
+		// Format the timestamp string
+		let millis = timestamp.timestamp_subsec_millis();
+		let time_str = if let Some(last_ms) = *last_timestamp_ms {
+			// Only show timestamp if it has changed
+			if timestamp_ms != last_ms {
+				format!("{}.{:03} ├─", timestamp.format("%H:%M:%S"), millis)
+			} else {
+				// Same timestamp - just show the connector aligned (12 chars for timestamp)
+				"             ├─".to_string()
+			}
 		} else {
-			// Show millisecond delta
-			format!("    +{:03}ms├─", millis)
+			// First timestamp - show full timestamp with milliseconds
+			format!("{}.{:03} ├─", timestamp.format("%H:%M:%S"), millis)
 		};
+		
+		// Update last timestamp
+		*last_timestamp_ms = Some(timestamp_ms);
 
 		// Format level string
 		let level_str = match level {
@@ -172,13 +179,15 @@ impl ConsoleBackend {
 			}
 		};
 
-		// Start the group header
-		output.push_str(&apply_color(&format!("{} {} {}", time_str, level_str, module)));
+		// Start the group header - don't colorize timestamp or connector, only level and module
+		output.push_str(&time_str);
+		output.push(' ');
+		output.push_str(&apply_color(&format!("{} {}", level_str, module)));
 		output.push('\n');
 
 		// Maximum width for content (accounting for the indent and tree characters)
 		const MAX_WIDTH: usize = 120;
-		const INDENT: &str = "          │  ";
+		const INDENT: &str = "             │  ";
 		
 		// Format each message in the group
 		for (i, record) in records.iter().enumerate() {
@@ -191,19 +200,21 @@ impl ConsoleBackend {
 			
 			for (j, line) in wrapped_lines.iter().enumerate() {
 				if j == 0 {
-					// First line with branch
-					output.push_str(&apply_color(&format!("{}{} ", INDENT, branch_char)));
+					// First line with branch - colorize only the branch chars, not the vertical line
+					output.push_str(INDENT);
+					output.push_str(&apply_color(&format!("{} ", branch_char)));
 					output.push_str(&format!("{}\n", line));
 				} else {
-					// Continuation lines
-					output.push_str(&apply_color(&format!("{}{} ", INDENT, continuation)));
+					// Continuation lines - colorize only the continuation chars, not the vertical line
+					output.push_str(INDENT);
+					output.push_str(&apply_color(&format!("{} ", continuation)));
 					output.push_str(&format!("{}\n", line));
 				}
 			}
 		}
 		
-		// Add separator line
-		output.push_str(&apply_color("          │\n"));
+		// Add separator line - don't colorize
+		output.push_str("             │\n");
 		
 		output
 	}

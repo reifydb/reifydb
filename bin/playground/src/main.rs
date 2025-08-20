@@ -5,7 +5,7 @@
 
 use std::{thread, time::Duration};
 
-use reifydb::core::interface::subsystem::logging::LogLevel::{Info, Trace};
+use reifydb::core::interface::subsystem::logging::LogLevel::Trace;
 use reifydb::core::log_info;
 use reifydb::{
 	core::interface::Params, sync, FormatStyle, LoggingBuilder,
