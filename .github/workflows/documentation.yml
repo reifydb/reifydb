@@ -5,12 +5,12 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'documentation.yml'
+      - '.github/workflows/documentation.yml'
   pull_request:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'documentation.yml'
+      - '.github/workflows/documentation.yml'
 
 permissions:
   contents: write

@@ -15,28 +15,28 @@ importers:
         specifier: 3.8.1
         version: 3.8.1(@algolia/client-search@5.35.0)(@mdx-js/react@3.1.0(@types/react@19.1.10)(react@19.1.1))(@types/react@19.1.10)(acorn@8.15.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(search-insights@2.17.3)(typescript@5.6.3)
       '@mdx-js/react':
-        specifier: ^3.0.0
+        specifier: ^3.1.0
         version: 3.1.0(@types/react@19.1.10)(react@19.1.1)
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.45.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@tanstack/react-table':
-        specifier: ^8.11.0
+        specifier: ^8.21.3
         version: 8.21.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       clsx:
-        specifier: ^2.0.0
+        specifier: ^2.1.1
         version: 2.1.1
       monaco-editor:
         specifier: ^0.45.0
         version: 0.45.0
       prism-react-renderer:
-        specifier: ^2.3.0
+        specifier: ^2.4.1
         version: 2.4.1(react@19.1.1)
       react:
-        specifier: ^19.0.0
+        specifier: ^19.1.1
         version: 19.1.1
       react-dom:
-        specifier: ^19.0.0
+        specifier: ^19.1.1
         version: 19.1.1(react@19.1.1)
       react-resizable-panels:
         specifier: ^3.0.4
@@ -58,28 +58,28 @@ importers:
         specifier: ^19.1.7
         version: 19.1.7(@types/react@19.1.10)
       '@typescript-eslint/eslint-plugin':
-        specifier: ^6.0.0
+        specifier: ^6.21.0
         version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.6.3))(eslint@8.57.1)(typescript@5.6.3)
       '@typescript-eslint/parser':
-        specifier: ^6.0.0
+        specifier: ^6.21.0
         version: 6.21.0(eslint@8.57.1)(typescript@5.6.3)
       eslint:
-        specifier: ^8.56.0
+        specifier: ^8.57.1
         version: 8.57.1
       eslint-config-prettier:
-        specifier: ^9.1.0
+        specifier: ^9.1.2
         version: 9.1.2(eslint@8.57.1)
       eslint-plugin-react:
-        specifier: ^7.33.2
+        specifier: ^7.37.5
         version: 7.37.5(eslint@8.57.1)
       eslint-plugin-react-hooks:
-        specifier: ^4.6.0
+        specifier: ^4.6.2
         version: 4.6.2(eslint@8.57.1)
       prettier:
-        specifier: ^3.1.1
+        specifier: ^3.6.2
         version: 3.6.2
       typescript:
-        specifier: ~5.6.2
+        specifier: ~5.6.3
         version: 5.6.3
 
 packages:
@@ -1976,8 +1976,8 @@ packages:
   caniuse-api@3.0.0:
     resolution: {integrity: sha512-bsTwuIg/BZZK/vreVTYYbSWoe2F+71P7K5QGEX+pT250DZbfU1MQ5prOKpPR+LL6uWKK3KMwMCAS74QB3Um1uw==}
 
-  caniuse-lite@1.0.30001735:
-    resolution: {integrity: sha512-EV/laoX7Wq2J9TQlyIXRxTJqIw4sxfXS4OYgudGxBYRuTv0q7AM6yMEpU/Vo1I94thg9U6EZ2NfZx9GJq83u7w==}
+  caniuse-lite@1.0.30001736:
+    resolution: {integrity: sha512-ImpN5gLEY8gWeqfLUyEF4b7mYWcYoR2Si1VhnrbM4JizRFmfGaAQ12PhNykq6nvI4XvKLrsp8Xde74D5phJOSw==}
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -8166,7 +8166,7 @@ snapshots:
   autoprefixer@10.4.21(postcss@8.5.6):
     dependencies:
       browserslist: 4.25.3
-      caniuse-lite: 1.0.30001735
+      caniuse-lite: 1.0.30001736
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.1.1
@@ -8283,7 +8283,7 @@ snapshots:
 
   browserslist@4.25.3:
     dependencies:
-      caniuse-lite: 1.0.30001735
+      caniuse-lite: 1.0.30001736
       electron-to-chromium: 1.5.207
       node-releases: 2.0.19
       update-browserslist-db: 1.1.3(browserslist@4.25.3)
@@ -8337,11 +8337,11 @@ snapshots:
   caniuse-api@3.0.0:
     dependencies:
       browserslist: 4.25.3
-      caniuse-lite: 1.0.30001735
+      caniuse-lite: 1.0.30001736
       lodash.memoize: 4.1.2
       lodash.uniq: 4.5.0
 
-  caniuse-lite@1.0.30001735: {}
+  caniuse-lite@1.0.30001736: {}
 
   ccount@2.0.1: {}
 
