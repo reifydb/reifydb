@@ -11,6 +11,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -54,7 +67,7 @@ fn main() {
 
 	// Example 1: Simple equality filter
 	log_info!("\nExample 1: Filter by exact match (equality)");
-	log_info!("Query: \x1b[1mfrom hr.employees filter department == \"Engineering\"\x1b[0m");
+	log_query(r#"from hr.employees filter department == "Engineering""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -71,7 +84,7 @@ fn main() {
 
 	// Example 2: Not equal filter
 	log_info!("\nExample 2: Filter by not equal");
-	log_info!("Query: \x1b[1mfrom hr.employees filter department != \"Engineering\"\x1b[0m");
+	log_query(r#"from hr.employees filter department != "Engineering""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -88,7 +101,7 @@ fn main() {
 
 	// Example 3: Greater than filter
 	log_info!("\nExample 3: Filter by greater than");
-	log_info!("Query: \x1b[1mfrom hr.employees filter salary > 100000\x1b[0m");
+	log_query(r#"from hr.employees filter salary > 100000"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -105,7 +118,7 @@ fn main() {
 
 	// Example 4: Less than or equal filter
 	log_info!("\nExample 4: Filter by less than or equal");
-	log_info!("Query: \x1b[1mfrom hr.employees filter years_experience <= 5\x1b[0m");
+	log_query(r#"from hr.employees filter years_experience <= 5"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -122,7 +135,7 @@ fn main() {
 
 	// Example 5: Boolean filter
 	log_info!("\nExample 5: Filter by boolean value");
-	log_info!("Query: \x1b[1mfrom hr.employees filter is_manager == true\x1b[0m");
+	log_query(r#"from hr.employees filter is_manager == true"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -139,8 +152,8 @@ fn main() {
 
 	// Example 6: AND operator
 	log_info!("\nExample 6: Filter with AND operator");
-	log_info!("Query:\n\x1b[1mfrom hr.employees
-filter department == \"Engineering\" and salary > 100000\x1b[0m");
+	log_query(r#"from hr.employees
+filter department == "Engineering" and salary > 100000"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -157,8 +170,8 @@ filter department == \"Engineering\" and salary > 100000\x1b[0m");
 
 	// Example 7: OR operator
 	log_info!("\nExample 7: Filter with OR operator");
-	log_info!("Query:\n\x1b[1mfrom hr.employees
-filter department == \"Sales\" or department == \"Marketing\"\x1b[0m");
+	log_query(r#"from hr.employees
+filter department == "Sales" or department == "Marketing""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -175,9 +188,9 @@ filter department == \"Sales\" or department == \"Marketing\"\x1b[0m");
 
 	// Example 8: Complex filter with parentheses
 	log_info!("\nExample 8: Complex filter with parentheses");
-	log_info!("Query:\n\x1b[1mfrom hr.employees
-filter (department == \"Engineering\" or department == \"Sales\")
-   and salary >= 100000\x1b[0m");
+	log_query(r#"from hr.employees
+filter (department == "Engineering" or department == "Sales")
+   and salary >= 100000"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -195,13 +208,13 @@ filter (department == \"Engineering\" or department == \"Sales\")
 
 	// Example 9: Filter on inline data
 	log_info!("\nExample 9: Filter on inline data");
-	log_info!("Query:\n\x1b[1mfrom [
-  {{ score: 85, grade: \"B\" }},
-  {{ score: 92, grade: \"A\" }},
-  {{ score: 78, grade: \"C\" }},
-  {{ score: 95, grade: \"A\" }}
+	log_query(r#"from [
+  { score: 85, grade: "B" },
+  { score: 92, grade: "A" },
+  { score: 78, grade: "C" },
+  { score: 95, grade: "A" }
 ]
-filter score >= 90\x1b[0m");
+filter score >= 90"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -223,9 +236,9 @@ filter score >= 90\x1b[0m");
 
 	// Example 10: Multiple filters in sequence
 	log_info!("\nExample 10: Multiple filters in sequence");
-	log_info!("Query:\n\x1b[1mfrom hr.employees
+	log_query(r#"from hr.employees
 filter salary > 80000
-filter is_manager == false\x1b[0m");
+filter is_manager == false"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -243,8 +256,8 @@ filter is_manager == false\x1b[0m");
 
 	// Example 11: BETWEEN operator
 	log_info!("\nExample 11: Filter with BETWEEN operator");
-	log_info!("Query:\n\x1b[1mfrom hr.employees
-filter salary between 90000 and 110000\x1b[0m");
+	log_query(r#"from hr.employees
+filter salary between 90000 and 110000"#);
 	for frame in db
 		.query_as_root(
 			r#"

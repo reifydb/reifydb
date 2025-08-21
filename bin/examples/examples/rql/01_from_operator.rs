@@ -10,6 +10,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -17,7 +30,7 @@ fn main() {
 
 	// Example 1: FROM with inline data (single row)
 	log_info!("Example 1: FROM with single inline row");
-	log_info!("Query: \x1b[1mfrom [{{ name: \"Alice\", age: 30 }}]\x1b[0m");
+	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
 	for frame in db
 		.query_as_root(
 			r#"from [{ name: "Alice", age: 30 }]"#,
@@ -36,11 +49,11 @@ fn main() {
 
 	// Example 2: FROM with inline data (multiple rows)
 	log_info!("\nExample 2: FROM with multiple inline rows");
-	log_info!("Query:\n\x1b[1mfrom [
-  {{ name: \"Bob\", age: 25 }},
-  {{ name: \"Carol\", age: 35 }},
-  {{ name: \"Dave\", age: 28 }}
-]\x1b[0m");
+	log_query(r#"from [
+  { name: "Bob", age: 25 },
+  { name: "Carol", age: 35 },
+  { name: "Dave", age: 28 }
+]"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -67,7 +80,7 @@ fn main() {
 
 	// Example 3: FROM with different data types
 	log_info!("\nExample 3: FROM with various data types");
-	log_info!("Query: \x1b[1mfrom [{{ id: 1, active: true, price: 19.99, description: \"Product A\" }}]\x1b[0m");
+	log_query(r#"from [{ id: 1, active: true, price: 19.99, description: "Product A" }]"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -131,7 +144,7 @@ fn main() {
 	.unwrap();
 
 	// Now query from the table
-	log_info!("Query: \x1b[1mfrom demo.users\x1b[0m");
+	log_query(r#"from demo.users"#);
 	for frame in db
 		.query_as_root(
 			r#"from demo.users"#,
@@ -152,7 +165,7 @@ fn main() {
 
 	// Example 5: FROM with empty array
 	log_info!("\nExample 5: FROM with empty array");
-	log_info!("Query: \x1b[1mfrom []\x1b[0m");
+	log_query(r#"from []"#);
 	for frame in db
 		.query_as_root(
 			r#"from []"#,

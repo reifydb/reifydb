@@ -11,6 +11,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -53,8 +66,8 @@ fn main() {
 
 	// Example 1: Sort by single column (ascending - default)
 	log_info!("Example 1: Sort by price (ascending - default)");
-	log_info!("Query:\n\x1b[1mfrom store.products
-sort price\x1b[0m");
+	log_query(r#"from store.products
+sort price"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -70,8 +83,8 @@ sort price\x1b[0m");
 
 	// Example 2: Sort by single column (ascending - explicit)
 	log_info!("\nExample 2: Sort by name (ascending - explicit)");
-	log_info!("Query:\n\x1b[1mfrom store.products
-sort name asc\x1b[0m");
+	log_query(r#"from store.products
+sort name asc"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -87,8 +100,8 @@ sort name asc\x1b[0m");
 
 	// Example 3: Sort by single column (descending)
 	log_info!("\nExample 3: Sort by rating (descending)");
-	log_info!("Query:\n\x1b[1mfrom store.products
-sort rating desc\x1b[0m");
+	log_query(r#"from store.products
+sort rating desc"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -104,8 +117,8 @@ sort rating desc\x1b[0m");
 
 	// Example 4: Sort by multiple columns
 	log_info!("\nExample 4: Sort by category, then by price");
-	log_info!("Query:\n\x1b[1mfrom store.products
-sort {{ category asc, price asc }}\x1b[0m");
+	log_query(r#"from store.products
+sort { category asc, price asc }"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -121,9 +134,9 @@ sort {{ category asc, price asc }}\x1b[0m");
 
 	// Example 5: Sort with filter
 	log_info!("\nExample 5: Filter Electronics, then sort by stock descending");
-	log_info!("Query:\n\x1b[1mfrom store.products
-filter category == \"Electronics\"
-sort stock desc\x1b[0m");
+	log_query(r#"from store.products
+filter category == "Electronics"
+sort stock desc"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -140,13 +153,13 @@ sort stock desc\x1b[0m");
 
 	// Example 6: Sort inline data
 	log_info!("\nExample 6: Sort inline data by score");
-	log_info!("Query:\n\x1b[1mfrom [
-  {{ name: \"Alice\", score: 85 }},
-  {{ name: \"Bob\", score: 92 }},
-  {{ name: \"Carol\", score: 78 }},
-  {{ name: \"Dave\", score: 95 }}
+	log_query(r#"from [
+  { name: "Alice", score: 85 },
+  { name: "Bob", score: 92 },
+  { name: "Carol", score: 78 },
+  { name: "Dave", score: 95 }
 ]
-sort score desc\x1b[0m");
+sort score desc"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -167,9 +180,9 @@ sort score desc\x1b[0m");
 
 	// Example 7: Sort with map (projection)
 	log_info!("\nExample 7: Project specific columns, then sort");
-	log_info!("Query:\n\x1b[1mfrom store.products
-map {{ name, price, rating }}
-sort rating desc\x1b[0m");
+	log_query(r#"from store.products
+map { name, price, rating }
+sort rating desc"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -186,8 +199,8 @@ sort rating desc\x1b[0m");
 
 	// Example 8: Complex sort with mixed directions
 	log_info!("\nExample 8: Sort by category ascending, then rating descending");
-	log_info!("Query:\n\x1b[1mfrom store.products
-sort {{ category asc, rating desc }}\x1b[0m");
+	log_query(r#"from store.products
+sort { category asc, rating desc }"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -203,8 +216,8 @@ sort {{ category asc, rating desc }}\x1b[0m");
 
 	// Example 9: Sort numeric data
 	log_info!("\nExample 9: Sort by id to show original insertion order");
-	log_info!("Query:\n\x1b[1mfrom store.products
-sort id asc\x1b[0m");
+	log_query(r#"from store.products
+sort id asc"#);
 	for frame in db
 		.query_as_root(
 			r#"

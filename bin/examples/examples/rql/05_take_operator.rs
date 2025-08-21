@@ -10,6 +10,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -17,14 +30,14 @@ fn main() {
 
 	// Example 1: Basic take operation
 	log_info!("Example 1: Take first 3 rows from inline data");
-	log_info!("Query:\n\x1b[1mfrom [
-  {{ id: 1, value: \"first\" }},
-  {{ id: 2, value: \"second\" }},
-  {{ id: 3, value: \"third\" }},
-  {{ id: 4, value: \"fourth\" }},
-  {{ id: 5, value: \"fifth\" }}
+	log_query(r#"from [
+  { id: 1, value: "first" },
+  { id: 2, value: "second" },
+  { id: 3, value: "third" },
+  { id: 4, value: "fourth" },
+  { id: 5, value: "fifth" }
 ]
-take 3\x1b[0m");
+take 3"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -82,7 +95,7 @@ take 3\x1b[0m");
 
 	// Example 2: Take from a table
 	log_info!("\nExample 2: Take first 5 events from table");
-	log_info!("Query: \x1b[1mfrom demo.events take 5\x1b[0m");
+	log_query(r#"from demo.events take 5"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -98,9 +111,9 @@ take 3\x1b[0m");
 
 	// Example 3: Take with filter
 	log_info!("\nExample 3: Filter ERROR events, then take first 2");
-	log_info!("Query:\n\x1b[1mfrom demo.events
-filter event_type == \"ERROR\"
-take 2\x1b[0m");
+	log_query(r#"from demo.events
+filter event_type == "ERROR"
+take 2"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -117,9 +130,9 @@ take 2\x1b[0m");
 
 	// Example 4: Sort then take (top-N pattern)
 	log_info!("\nExample 4: Get 3 most recent events (sort by timestamp desc, take 3)");
-	log_info!("Query:\n\x1b[1mfrom demo.events
+	log_query(r#"from demo.events
 sort timestamp desc
-take 3\x1b[0m");
+take 3"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -136,9 +149,9 @@ take 3\x1b[0m");
 
 	// Example 5: Take with projection
 	log_info!("\nExample 5: Project specific columns, then take");
-	log_info!("Query:\n\x1b[1mfrom demo.events
-map {{ event_type, severity, message }}
-take 4\x1b[0m");
+	log_query(r#"from demo.events
+map { event_type, severity, message }
+take 4"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -155,11 +168,11 @@ take 4\x1b[0m");
 
 	// Example 6: Complex pipeline with take
 	log_info!("\nExample 6: Complex pipeline - filter high severity, sort, take top 3");
-	log_info!("Query:\n\x1b[1mfrom demo.events
-filter severity == \"HIGH\" or severity == \"CRITICAL\"
+	log_query(r#"from demo.events
+filter severity == "HIGH" or severity == "CRITICAL"
 sort timestamp desc
-map {{ id, event_type, severity, message }}
-take 3\x1b[0m");
+map { id, event_type, severity, message }
+take 3"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -178,9 +191,9 @@ take 3\x1b[0m");
 
 	// Example 7: Take 1 (getting single row)
 	log_info!("\nExample 7: Take single row (take 1)");
-	log_info!("Query:\n\x1b[1mfrom demo.events
-filter severity == \"CRITICAL\"
-take 1\x1b[0m");
+	log_query(r#"from demo.events
+filter severity == "CRITICAL"
+take 1"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -197,9 +210,9 @@ take 1\x1b[0m");
 
 	// Example 8: Take with no matching results
 	log_info!("\nExample 8: Take when filter returns no results");
-	log_info!("Query:\n\x1b[1mfrom demo.events
-filter severity == \"UNKNOWN\"
-take 5\x1b[0m");
+	log_query(r#"from demo.events
+filter severity == "UNKNOWN"
+take 5"#);
 	for frame in db
 		.query_as_root(
 			r#"

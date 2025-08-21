@@ -13,6 +13,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -20,7 +33,7 @@ fn main() {
 
 	// Example 1: Basic logical operations
 	log_info!("Example 1: Basic logical operations");
-	log_info!("Query: \x1b[1mmap {{
+	log_query(r#"map {
   true and true as and_true,
   true and false as and_false,
   true or false as or_true,
@@ -29,7 +42,7 @@ fn main() {
   not false as not_false,
   true xor false as xor_true,
   true xor true as xor_false
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -90,8 +103,8 @@ fn main() {
 
 	// Example 2: AND operator in filters
 	log_info!("\nExample 2: AND operator - products in stock AND on sale");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter in_stock == true and on_sale == true\x1b[0m");
+	log_query(r#"from inventory.products
+filter in_stock == true and on_sale == true"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -107,8 +120,8 @@ filter in_stock == true and on_sale == true\x1b[0m");
 
 	// Example 3: OR operator in filters
 	log_info!("\nExample 3: OR operator - featured OR on sale");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter featured == true or on_sale == true\x1b[0m");
+	log_query(r#"from inventory.products
+filter featured == true or on_sale == true"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -124,8 +137,8 @@ filter featured == true or on_sale == true\x1b[0m");
 
 	// Example 4: NOT operator
 	log_info!("\nExample 4: NOT operator - products NOT in stock");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter not in_stock\x1b[0m");
+	log_query(r#"from inventory.products
+filter not in_stock"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -141,9 +154,9 @@ filter not in_stock\x1b[0m");
 
 	// Example 5: Complex logical expression with parentheses
 	log_info!("\nExample 5: Complex expression - (Electronics OR Toys) AND on_sale");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter (category == \"Electronics\" or category == \"Toys\")
-   and on_sale == true\x1b[0m");
+	log_query(r#"from inventory.products
+filter (category == "Electronics" or category == "Toys")
+   and on_sale == true"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -160,8 +173,8 @@ filter (category == \"Electronics\" or category == \"Toys\")
 
 	// Example 6: XOR operator
 	log_info!("\nExample 6: XOR operator - either featured OR on_sale (but not both)");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter featured xor on_sale\x1b[0m");
+	log_query(r#"from inventory.products
+filter featured xor on_sale"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -177,8 +190,8 @@ filter featured xor on_sale\x1b[0m");
 
 	// Example 7: Multiple AND conditions
 	log_info!("\nExample 7: Multiple AND conditions");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter category == \"Toys\" and in_stock == true and price < 30\x1b[0m");
+	log_query(r#"from inventory.products
+filter category == "Toys" and in_stock == true and price < 30"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -195,8 +208,8 @@ filter category == \"Toys\" and in_stock == true and price < 30\x1b[0m");
 	// Example 8: Operator precedence (AND before OR)
 	log_info!("\nExample 8: Operator precedence demonstration");
 	log_info!("Without parentheses (AND has higher precedence):");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter on_sale == true or featured == true and category == \"Electronics\"\x1b[0m");
+	log_query(r#"from inventory.products
+filter on_sale == true or featured == true and category == "Electronics""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -211,8 +224,8 @@ filter on_sale == true or featured == true and category == \"Electronics\"\x1b[0
 	}
 
 	log_info!("\nWith parentheses (changing precedence):");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter (on_sale == true or featured == true) and category == \"Electronics\"\x1b[0m");
+	log_query(r#"from inventory.products
+filter (on_sale == true or featured == true) and category == "Electronics""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -228,14 +241,14 @@ filter (on_sale == true or featured == true) and category == \"Electronics\"\x1b
 
 	// Example 9: Logical operators in computed fields
 	log_info!("\nExample 9: Logical operators in computed fields");
-	log_info!("Query: \x1b[1mfrom inventory.products
-map {{
+	log_query(r#"from inventory.products
+map {
   name,
   price,
   in_stock and on_sale as available_deal,
   featured or (price > 500) as premium_item,
   not in_stock or not on_sale as limited_offer
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -257,10 +270,10 @@ map {{
 
 	// Example 10: Complex nested logical expressions
 	log_info!("\nExample 10: Complex nested logical expression");
-	log_info!("Query: \x1b[1mfrom inventory.products
-filter ((category == \"Toys\" and min_age >= 5) or
-        (category == \"Electronics\" and price < 100)) and
-        in_stock == true\x1b[0m");
+	log_query(r#"from inventory.products
+filter ((category == "Toys" and min_age >= 5) or
+        (category == "Electronics" and price < 100)) and
+        in_stock == true"#);
 	for frame in db
 		.query_as_root(
 			r#"

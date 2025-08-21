@@ -11,19 +11,32 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	let mut db = sync::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic arithmetic operations
 	log_info!("Example 1: Basic arithmetic operations");
-	log_info!("Query:\n\x1b[1mmap {{
+	log_query(r#"map {
   10 + 5 as addition,
   10 - 5 as subtraction,
   10 * 5 as multiplication,
   10 / 5 as division,
   10 % 3 as modulo
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -44,10 +57,10 @@ fn main() {
 
 	// Example 2: Operator precedence
 	log_info!("\nExample 2: Operator precedence (multiplication before addition)");
-	log_info!("Query:\n\x1b[1mmap {{
+	log_query(r#"map {
   2 + 3 * 4 as without_parens,
   (2 + 3) * 4 as with_parens
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -65,11 +78,11 @@ fn main() {
 
 	// Example 3: Arithmetic with floating point
 	log_info!("\nExample 3: Floating point arithmetic");
-	log_info!("Query:\n\x1b[1mmap {{
+	log_query(r#"map {
   3.14 * 2.0 as pi_times_two,
   10.5 / 2.5 as decimal_division,
   1.1 + 2.2 as decimal_addition
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -119,8 +132,8 @@ fn main() {
 
 	// Example 4: Arithmetic on table columns
 	log_info!("\nExample 4: Calculate total price (price * quantity)");
-	log_info!("Query:\n\x1b[1mfrom shop.products
-map {{ name, price, quantity, price * quantity as total }}\x1b[0m");
+	log_query(r#"from shop.products
+map { name, price, quantity, price * quantity as total }"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -136,14 +149,14 @@ map {{ name, price, quantity, price * quantity as total }}\x1b[0m");
 
 	// Example 5: Complex calculations with discounts
 	log_info!("\nExample 5: Calculate discount amount and final price");
-	log_info!("Query:\n\x1b[1mfrom shop.products
-map {{
+	log_query(r#"from shop.products
+map {
   name,
   price,
   discount_percent,
   price * (discount_percent / 100) as discount_amount,
   price - (price * discount_percent / 100) as discounted_price
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -165,14 +178,14 @@ map {{
 
 	// Example 6: Tax calculations
 	log_info!("\nExample 6: Calculate price with tax");
-	log_info!("Query:\n\x1b[1mfrom shop.products
-map {{
+	log_query(r#"from shop.products
+map {
   name,
   price,
   tax_rate,
   price * (tax_rate / 100) as tax_amount,
   price + (price * tax_rate / 100) as price_with_tax
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -194,8 +207,8 @@ map {{
 
 	// Example 7: Arithmetic in filter conditions
 	log_info!("\nExample 7: Filter using arithmetic expression");
-	log_info!("Query:\n\x1b[1mfrom shop.products
-filter price * quantity > 100\x1b[0m");
+	log_query(r#"from shop.products
+filter price * quantity > 100"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -211,8 +224,8 @@ filter price * quantity > 100\x1b[0m");
 
 	// Example 8: Complex nested calculations
 	log_info!("\nExample 8: Complete order calculation");
-	log_info!("Query:\n\x1b[1mfrom shop.products
-map {{
+	log_query(r#"from shop.products
+map {
   name,
   quantity,
   price * quantity as subtotal,
@@ -220,7 +233,7 @@ map {{
   (price * quantity) - ((price * quantity) * (discount_percent / 100)) as after_discount,
   ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100) as tax,
   ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100) as final_total
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"

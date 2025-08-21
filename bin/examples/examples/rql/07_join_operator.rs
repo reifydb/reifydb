@@ -11,6 +11,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -106,11 +119,13 @@ fn main() {
 
 	// Example 1: Inner join
 	log_info!("Example 1: Inner join employees with departments");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-inner join {{
+	log_query(
+		r#"from company.employees
+inner join {
   with company.departments
   on employees.dept_id == departments.dept_id
-}}\x1b[0m");
+}"#
+	);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -129,11 +144,13 @@ inner join {{
 
 	// Example 2: Left join (includes all employees, even without department)
 	log_info!("\nExample 2: Left join employees with departments");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-left join {{
+	log_query(
+		r#"from company.employees
+left join {
   with company.departments
   on employees.dept_id == departments.dept_id
-}}\x1b[0m");
+}"#
+	);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -152,8 +169,10 @@ left join {{
 
 	// Example 3: Natural join (joins on common column name)
 	log_info!("\nExample 3: Natural join (automatic on dept_id)");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-natural join {{ with company.departments }}\x1b[0m");
+	log_query(
+		r#"from company.employees
+natural join { with company.departments }"#
+	);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -169,12 +188,14 @@ natural join {{ with company.departments }}\x1b[0m");
 
 	// Example 4: Join with filter
 	log_info!("\nExample 4: Join then filter for specific location");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-inner join {{
+	log_query(
+		r#"from company.employees
+inner join {
   with company.departments
   on employees.dept_id == departments.dept_id
-}}
-filter departments.location == \"Building A\"\x1b[0m");
+}
+filter departments.location == "Building A""#
+	);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -194,12 +215,14 @@ filter departments.location == \"Building A\"\x1b[0m");
 
 	// Example 5: Join with projection
 	log_info!("\nExample 5: Join and select specific columns");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-inner join {{
+	log_query(
+		r#"from company.employees
+inner join {
   with company.departments
   on employees.dept_id == departments.dept_id
-}}
-map {{ employees.name, departments.dept_name, employees.salary }}\x1b[0m");
+}
+map { employees.name, departments.dept_name, employees.salary }"#
+	);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -219,15 +242,17 @@ map {{ employees.name, departments.dept_name, employees.salary }}\x1b[0m");
 
 	// Example 6: Multiple joins
 	log_info!("\nExample 6: Join employees with departments and projects");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-inner join {{
+	log_query(
+		r#"from company.employees
+inner join {
   with company.departments
   on employees.dept_id == departments.dept_id
-}}
-inner join {{
+}
+inner join {
   with company.projects
   on departments.dept_id == projects.dept_id
-}}\x1b[0m");
+}"#
+	);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -250,13 +275,15 @@ inner join {{
 
 	// Example 7: Join with aggregation
 	log_info!("\nExample 7: Join and aggregate - average salary by department");
-	log_info!("Query:\n\x1b[1mfrom company.employees
-inner join {{
+	log_query(
+		r#"from company.employees
+inner join {
   with company.departments
   on employees.dept_id == departments.dept_id
-}}
-aggregate {{ avg(employees.salary), count(employees.emp_id) }}
-  by departments.dept_name\x1b[0m");
+}
+aggregate { avg(employees.salary), count(employees.emp_id) }
+  by departments.dept_name"#
+	);
 	for frame in db
 		.query_as_root(
 			r#"

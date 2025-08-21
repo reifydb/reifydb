@@ -11,6 +11,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -18,7 +31,7 @@ fn main() {
 
 	// Example 1: MAP with constants
 	log_info!("Example 1: MAP with constants");
-	log_info!("Query: \x1b[1mmap {{ 42 as answer, \"hello\" as greeting }}\x1b[0m");
+	log_query(r#"map { 42 as answer, "hello" as greeting }"#);
 	for frame in db
 		.query_as_root(
 			r#"map { 42 as answer, "hello" as greeting }"#,
@@ -37,7 +50,7 @@ fn main() {
 
 	// Example 2: MAP with arithmetic expressions
 	log_info!("\nExample 2: MAP with arithmetic expressions");
-	log_info!("Query: \x1b[1mmap {{ 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }}\x1b[0m");
+	log_query(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#);
 	for frame in db
 		.query_as_root(
 			r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#,
@@ -56,8 +69,8 @@ fn main() {
 
 	// Example 3: MAP to project columns from inline data
 	log_info!("\nExample 3: MAP to project specific columns");
-	log_info!("Query:\n\x1b[1mfrom [{{ id: 1, name: \"Alice\", age: 30, city: \"NYC\" }}]
-map {{ name, age }}\x1b[0m");
+	log_query(r#"from [{ id: 1, name: "Alice", age: 30, city: "NYC" }]
+map { name, age }"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -79,8 +92,8 @@ map {{ name, age }}\x1b[0m");
 
 	// Example 4: MAP with field renaming
 	log_info!("\nExample 4: MAP with field renaming");
-	log_info!("Query:\n\x1b[1mfrom [{{ first_name: \"Bob\", years: 25 }}]
-map {{ first_name as name, years as age }}\x1b[0m");
+	log_query(r#"from [{ first_name: "Bob", years: 25 }]
+map { first_name as name, years as age }"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -105,18 +118,18 @@ map {{ first_name as name, years as age }}\x1b[0m");
 	
 	// Create sample data with prices
 	log_info!("Setting up product data...");
-	log_info!("Query:\n\x1b[1mfrom [
-  {{ product: \"Widget\", price: 100, quantity: 5 }},
-  {{ product: \"Gadget\", price: 200, quantity: 3 }},
-  {{ product: \"Tool\", price: 50, quantity: 10 }}
+	log_query(r#"from [
+  { product: "Widget", price: 100, quantity: 5 },
+  { product: "Gadget", price: 200, quantity: 3 },
+  { product: "Tool", price: 50, quantity: 10 }
 ]
-map {{
+map {
   product,
   price,
   quantity,
   price * quantity as total,
   price * 0.1 as tax
-}}\x1b[0m");
+}"#);
 	
 	for frame in db
 		.query_as_root(
@@ -181,13 +194,13 @@ map {{
 	)
 	.unwrap();
 
-	log_info!("Query:\n\x1b[1mfrom sales.orders
-map {{
+	log_query(r#"from sales.orders
+map {
   customer,
   subtotal,
   subtotal * (discount_percent / 100) as discount_amount,
   subtotal - (subtotal * (discount_percent / 100)) as final_total
-}}\x1b[0m");
+}"#);
 
 	for frame in db
 		.query_as_root(
@@ -217,8 +230,8 @@ map {{
 
 	// Example 7: MAP with boolean expressions
 	log_info!("\nExample 7: MAP with boolean expressions");
-	log_info!("Query:\n\x1b[1mfrom [{{ value: 10 }}, {{ value: 20 }}, {{ value: 5 }}]
-map {{ value, value > 15 as is_high, value <= 10 as is_low }}\x1b[0m");
+	log_query(r#"from [{ value: 10 }, { value: 20 }, { value: 5 }]
+map { value, value > 15 as is_high, value <= 10 as is_low }"#);
 	
 	for frame in db
 		.query_as_root(

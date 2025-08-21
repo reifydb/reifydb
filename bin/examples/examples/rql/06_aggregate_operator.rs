@@ -11,6 +11,19 @@
 use reifydb::log_info;
 use reifydb::{sync, Params, SessionSync};
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -56,8 +69,8 @@ fn main() {
 
 	// Example 1: Simple average
 	log_info!("Example 1: Calculate average price by product");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
-aggregate avg(price) by product\x1b[0m");
+	log_query(r#"from sales.transactions
+aggregate avg(price) by product"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -73,9 +86,9 @@ aggregate avg(price) by product\x1b[0m");
 
 	// Example 2: Group by with average
 	log_info!("\nExample 2: Average price by category");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
+	log_query(r#"from sales.transactions
 aggregate avg(price) by category
-sort category\x1b[0m");
+sort category"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -92,9 +105,9 @@ sort category\x1b[0m");
 
 	// Example 3: Multiple aggregations
 	log_info!("\nExample 3: Multiple aggregations by region");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
-aggregate {{ avg(price), sum(quantity), count(id) }} by region
-sort region\x1b[0m");
+	log_query(r#"from sales.transactions
+aggregate { avg(price), sum(quantity), count(id) } by region
+sort region"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -111,9 +124,9 @@ sort region\x1b[0m");
 
 	// Example 4: Aggregate with filter
 	log_info!("\nExample 4: Average price for Electronics only");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
-filter category == \"Electronics\"
-aggregate {{ avg(price), sum(quantity) }} by product\x1b[0m");
+	log_query(r#"from sales.transactions
+filter category == "Electronics"
+aggregate { avg(price), sum(quantity) } by product"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -130,9 +143,9 @@ aggregate {{ avg(price), sum(quantity) }} by product\x1b[0m");
 
 	// Example 5: Count aggregation
 	log_info!("\nExample 5: Count transactions by month");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
+	log_query(r#"from sales.transactions
 aggregate count(id) by month
-sort month\x1b[0m");
+sort month"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -149,9 +162,9 @@ sort month\x1b[0m");
 
 	// Example 6: Sum aggregation
 	log_info!("\nExample 6: Total revenue (price * quantity) by category");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
-map {{ category, price * quantity as revenue }}
-aggregate sum(revenue) by category\x1b[0m");
+	log_query(r#"from sales.transactions
+map { category, price * quantity as revenue }
+aggregate sum(revenue) by category"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -168,9 +181,9 @@ aggregate sum(revenue) by category\x1b[0m");
 
 	// Example 7: Group by multiple columns
 	log_info!("\nExample 7: Aggregate by category and region");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
-aggregate {{ sum(quantity), avg(price) }} by {{ category, region }}
-sort {{ category, region }}\x1b[0m");
+	log_query(r#"from sales.transactions
+aggregate { sum(quantity), avg(price) } by { category, region }
+sort { category, region }"#);
 	for frame in db
 		.query_as_root(
 			r#"

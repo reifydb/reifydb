@@ -12,6 +12,19 @@
 use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
 
+/// Helper function to log queries with formatting
+/// The query text is displayed in bold for better readability
+fn log_query(query: &str) {
+	log_info!("Query:");
+	// Split the query into lines and format each line with bold
+	let formatted_query = query
+		.lines()
+		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
+		.collect::<Vec<_>>()
+		.join("\n");
+	log_info!("{}", formatted_query);
+}
+
 fn main() {
 	// Create and start an in-memory database
 	let mut db = sync::memory_optimistic().build().unwrap();
@@ -19,7 +32,7 @@ fn main() {
 
 	// Example 1: Basic comparisons with numbers
 	log_info!("Example 1: Numeric comparisons");
-	log_info!("Query: \x1b[1mmap {{
+	log_query(r#"map {
   10 = 10 as equals_true,
   10 = 5 as equals_false,
   10 != 5 as not_equals_true,
@@ -27,7 +40,7 @@ fn main() {
   10 <= 10 as less_equal,
   10 > 5 as greater_than,
   10 >= 10 as greater_equal
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -50,12 +63,12 @@ fn main() {
 
 	// Example 2: String comparisons
 	log_info!("\nExample 2: String comparisons");
-	log_info!("Query: \x1b[1mmap {{
-  \"apple\" == \"apple\" as string_equals,
-  \"apple\" != \"banana\" as string_not_equals,
-  \"apple\" < \"banana\" as string_less_than,
-  \"zebra\" > \"apple\" as string_greater_than
-}}\x1b[0m");
+	log_query(r#"map {
+  "apple" == "apple" as string_equals,
+  "apple" != "banana" as string_not_equals,
+  "apple" < "banana" as string_less_than,
+  "zebra" > "apple" as string_greater_than
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -75,11 +88,11 @@ fn main() {
 
 	// Example 3: Boolean comparisons
 	log_info!("\nExample 3: Boolean comparisons");
-	log_info!("Query: \x1b[1mmap {{
+	log_query(r#"map {
   true == true as bool_equals_true,
   true == false as bool_equals_false,
   true != false as bool_not_equals
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -133,7 +146,7 @@ fn main() {
 
 	// Example 4: Equality comparisons in filters
 	log_info!("\nExample 4: Filter with equality (exact match)");
-	log_info!("Query: \x1b[1mfrom test.scores filter grade == \"A\"\x1b[0m");
+	log_query(r#"from test.scores filter grade == "A""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -149,7 +162,7 @@ fn main() {
 
 	// Example 5: Inequality comparisons
 	log_info!("\nExample 5: Filter with inequality (not equal)");
-	log_info!("Query: \x1b[1mfrom test.scores filter grade != \"F\"\x1b[0m");
+	log_query(r#"from test.scores filter grade != "F""#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -165,7 +178,7 @@ fn main() {
 
 	// Example 6: Greater than comparison
 	log_info!("\nExample 6: Filter scores greater than 85");
-	log_info!("Query: \x1b[1mfrom test.scores filter score > 85\x1b[0m");
+	log_query(r#"from test.scores filter score > 85"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -181,7 +194,7 @@ fn main() {
 
 	// Example 7: Less than or equal comparison
 	log_info!("\nExample 7: Filter scores less than or equal to 70");
-	log_info!("Query: \x1b[1mfrom test.scores filter score <= 70\x1b[0m");
+	log_query(r#"from test.scores filter score <= 70"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -197,7 +210,7 @@ fn main() {
 
 	// Example 8: BETWEEN operator
 	log_info!("\nExample 8: Filter scores between 70 and 90 (inclusive)");
-	log_info!("Query: \x1b[1mfrom test.scores filter score between 70 and 90\x1b[0m");
+	log_query(r#"from test.scores filter score between 70 and 90"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -213,14 +226,14 @@ fn main() {
 
 	// Example 9: Comparisons in computed fields
 	log_info!("\nExample 9: Create computed boolean fields");
-	log_info!("Query: \x1b[1mfrom test.scores
-map {{
+	log_query(r#"from test.scores
+map {
   student,
   score,
   score >= 90 as is_excellent,
   score >= 70 as is_passing,
   score < 60 as needs_help
-}}\x1b[0m");
+}"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -242,8 +255,8 @@ map {{
 
 	// Example 10: Chained comparisons
 	log_info!("\nExample 10: Multiple comparisons in filter");
-	log_info!("Query: \x1b[1mfrom test.scores
-filter score >= 80 and score < 95\x1b[0m");
+	log_query(r#"from test.scores
+filter score >= 80 and score < 95"#);
 	for frame in db
 		.query_as_root(
 			r#"
