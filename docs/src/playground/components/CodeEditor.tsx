@@ -64,7 +64,15 @@ const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
       // Register ReifyDB SQL language configuration
       monaco.languages.registerCompletionItemProvider('sql', {
-        provideCompletionItems: () => {
+        provideCompletionItems: (model, position) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
+
           const suggestions = [
             // ReifyDB specific keywords
             ...['REIFY', 'FLOW', 'STREAM', 'MATERIALIZE'].map((keyword) => ({
@@ -72,6 +80,7 @@ const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               kind: monaco.languages.CompletionItemKind.Keyword,
               insertText: keyword,
               documentation: `ReifyDB keyword: ${keyword}`,
+              range,
             })),
             // Common SQL keywords
             ...[
@@ -102,12 +111,14 @@ const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               label: keyword,
               kind: monaco.languages.CompletionItemKind.Keyword,
               insertText: keyword,
+              range,
             })),
             // Functions
             ...['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'NOW', 'CURRENT_TIMESTAMP'].map((func) => ({
               label: func,
               kind: monaco.languages.CompletionItemKind.Function,
               insertText: `${func}()`,
+              range,
             })),
           ];
 

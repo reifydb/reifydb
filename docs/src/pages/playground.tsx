@@ -16,7 +16,7 @@ function PlaygroundContent() {
   );
 }
 
-export default function PlaygroundPage(): JSX.Element {
+export default function PlaygroundPage(): React.JSX.Element {
   return (
     <Layout
       title="Playground"

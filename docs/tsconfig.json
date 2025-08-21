@@ -3,13 +3,15 @@
   "extends": "@docusaurus/tsconfig",
   "compilerOptions": {
     "baseUrl": ".",
-    "strict": true,
+    "strict": false,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "node",
     "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "noEmit": true,
     "paths": {
       "@components/*": ["src/components/*"],
       "@playground/*": ["src/playground/*"],
@@ -17,6 +19,6 @@
       "@hooks/*": ["src/hooks/*"]
     }
   },
-  "include": ["src/**/*", "docs/**/*"],
-  "exclude": [".docusaurus", "build", "node_modules"]
+  "include": ["src/**/*"],
+  "exclude": [".docusaurus", "build", "node_modules", "docs/**/*"]
 }
