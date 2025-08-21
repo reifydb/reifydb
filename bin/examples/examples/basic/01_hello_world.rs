@@ -12,6 +12,7 @@ use reifydb::QuerySessionSync;
 use reifydb::{Identity, Params};
 use reifydb::log_info;
 use reifydb::{sync, MemoryDatabaseOptimistic, Session, SessionSync};
+use reifydb_examples::log_query;
 
 // Type alias for our in-memory optimistic database
 // This uses optimistic concurrency control for better performance
@@ -32,7 +33,7 @@ fn main() {
 	// Step 2: Execute a COMMAND (write operation) as root user
 	// Commands can modify the database state and return results
 	// The MAP command creates a result set with computed values
-	log_info!("Command: \x1b[1mMAP {{ 42 as answer }}\x1b[0m");
+	log_query("MAP { 42 as answer }");
 	for frame in
 		db.command_as_root("MAP { 42 as answer}", Params::None).unwrap()
 	{
@@ -42,7 +43,7 @@ fn main() {
 	// Step 3: Execute a QUERY (read operation) as root user
 	// Queries are read-only operations that cannot modify database state
 	// They're useful for retrieving and computing data without side effects
-	log_info!("Query: \x1b[1mMap {{ 40 + 2 as another_answer }}\x1b[0m");
+	log_query("Map { 40 + 2 as another_answer }");
 	for frame in db
 		.query_as_root("Map { 40 + 2 as another_answer}", Params::None)
 		.unwrap()
@@ -59,7 +60,7 @@ fn main() {
 
 	// Execute a query within the session context
 	// Sessions can maintain state across multiple operations
-	log_info!("Session query: \x1b[1mmap {{ 20 * 2 + 2 as yet_another_answer}}\x1b[0m");
+	log_query("map { 20 * 2 + 2 as yet_another_answer}");
 	for frame in session
 		.query(
 			"map { 20 * 2 + 2 as yet_another_answer}",
