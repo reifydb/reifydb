@@ -52,9 +52,20 @@ pub use reifydb_transaction::{
     },
     svl::SingleVersionLock,
 };
+pub use session::{
+    CommandSession, CommandSessionSync, QuerySession, QuerySessionSync,
+    Session, SessionSync,
+};
+
+pub use reifydb_core::interface::{Identity, Params};
+pub use reifydb_core::{
+    log, log_critical, log_debug, log_error, log_info, log_timed_critical,
+    log_timed_debug, log_timed_error, log_timed_info, log_timed_trace,
+    log_timed_warn, log_trace, log_warn,
+};
+
 #[cfg(feature = "async")]
-pub use session::SessionAsync;
-pub use session::{CommandSession, QuerySession, Session, SessionSync};
+pub use session::{CommandSessionAsync, QuerySessionAsync, SessionAsync};
 
 // subsystems
 #[cfg(feature = "sub_logging")]

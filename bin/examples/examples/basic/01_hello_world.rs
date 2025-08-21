@@ -8,8 +8,9 @@
 //!
 //! Run with: `make hello-world` or `cargo run --bin hello-world`
 
-use reifydb::core::interface::{Identity, Params};
-use reifydb::core::log_info;
+use reifydb::QuerySessionSync;
+use reifydb::{Identity, Params};
+use reifydb::log_info;
 use reifydb::{sync, MemoryDatabaseOptimistic, Session, SessionSync};
 
 // Type alias for our in-memory optimistic database
@@ -62,7 +63,7 @@ fn main() {
 	// Sessions can maintain state across multiple operations
 	log_info!("Session query: \x1b[1mmap {{ 20 * 2 + 2 as yet_another_answer}}\x1b[0m");
 	for frame in session
-		.query_sync(
+		.query(
 			"map { 20 * 2 + 2 as yet_another_answer}",
 			Params::None,
 		)
