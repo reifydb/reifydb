@@ -4,19 +4,12 @@
  * See license.md file for full license text
  */
 
-import { Params, Frame } from "@reifydb/core";
+import type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
+import { ReifyError } from "@reifydb/core";
 
-// Re-export common types from core
-export {
-    Params,
-    Frame,
-    DiagnosticColumn,
-    Span,
-    Diagnostic,
-    Column,
-    ErrorResponse,
-    ReifyError
-} from "@reifydb/core";
+// Re-export types that are actually available in core
+export type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
+export { ReifyError } from "@reifydb/core";
 
 export interface CommandRequest {
     id: string;

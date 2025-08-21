@@ -1,7 +1,7 @@
 {
   "name": "reifydb",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.1-alpha.3",
   "scripts": {
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
@@ -11,10 +11,7 @@
     "test:coverage": "pnpm -r --stream test:coverage",
     "test:watch": "pnpm -r --stream test:unit:watch",
     "publish:all": "pnpm publish:core && pnpm publish:client",
-    "publish:core": "pnpm --filter @reifydb/core publish:npm",
-    "publish:client": "pnpm --filter @reifydb/client publish:npm",
-    "version:patch": "pnpm -r version patch",
-    "version:minor": "pnpm -r version minor",
-    "version:major": "pnpm -r version major"
+    "publish:core": "pnpm --filter @reifydb/core publish:npm --tag alpha",
+    "publish:client": "pnpm --filter @reifydb/client publish:npm --tag alpha"
   }
 }

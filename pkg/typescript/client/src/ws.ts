@@ -5,21 +5,25 @@
  */
 import {
     decode,
-    Value,
+    Value
+} from "@reifydb/core";
+import type {
     SchemaNode,
     InferSchemas,
     FrameResults
 } from "@reifydb/core";
 
-import {
+import type {
     CommandRequest,
     CommandResponse,
-    ErrorResponse,
     QueryRequest,
     QueryResponse,
-    ReifyError,
     Column,
-    Params
+    Params,
+    ErrorResponse
+} from "./types";
+import {
+    ReifyError
 } from "./types";
 import {encodeParams} from "./encoder";
 
