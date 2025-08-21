@@ -8,7 +8,7 @@ import {describe, expect, it} from 'vitest';
 import {
     BlobValue, BoolValue, DateValue, DateTimeValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
-    RowIdValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
+    RowNumberValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, decode
 } from '../../src';
 import {UNDEFINED_VALUE} from '../../src/constant';
@@ -295,12 +295,12 @@ describe('Value encode method', () => {
         });
     });
 
-    describe('RowIdValue', () => {
-        it('should encode RowId and be parseable', () => {
-            const value = new RowIdValue(42);
+    describe('RowNumberValue', () => {
+        it('should encode RowNumber and be parseable', () => {
+            const value = new RowNumberValue(42);
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('RowId');
+            expect(encoded.type).toBe('RowNumber');
             expect(encoded.value).toBe('42');
 
             const decoded = decode(encoded);
@@ -389,8 +389,8 @@ describe('Value encode method', () => {
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined RowIdValue', () => {
-            const value = new RowIdValue(undefined);
+        it('should encode undefined RowNumberValue', () => {
+            const value = new RowNumberValue(undefined);
             const encoded = value.encode();
             expect(encoded.value).toBe(UNDEFINED_VALUE);
             const decoded = decode(encoded);

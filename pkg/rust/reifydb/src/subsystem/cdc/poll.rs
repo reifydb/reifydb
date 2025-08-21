@@ -21,6 +21,7 @@ use reifydb_core::{
 		key::{CdcConsumerKey, EncodableKey},
 		worker_pool::Priority,
 	},
+	log_debug, log_error,
 	row::EncodedRow,
 	util::CowVec,
 };
@@ -139,25 +140,27 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
-		println!(
+		log_debug!(
 			"[Consumer {:?}] Started polling with interval {:?}",
-			config.consumer_id, config.poll_interval
+			config.consumer_id,
+			config.poll_interval
 		);
 
 		while state.running.load(Ordering::Acquire) {
 			if let Err(error) =
 				Self::consume_batch(&state, &engine, &consumer)
 			{
-				eprintln!(
+				log_error!(
 					"[Consumer {:?}] Error consuming events: {}",
-					config.consumer_id, error
+					config.consumer_id,
+					error
 				);
 			}
 
 			thread::sleep(config.poll_interval);
 		}
 
-		println!("[Consumer {:?}] Stopped", config.consumer_id);
+		log_debug!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 

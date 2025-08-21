@@ -32,6 +32,27 @@ ReifyDB takes stored procedures to the next level, allowing you to deploy your w
 
 ---
 
+## 📚 Examples
+
+Learn ReifyDB through practical, working examples in [`bin/examples`](bin/examples):
+
+### Quick Start
+
+```bash
+# Run all examples
+make test-examples
+```
+
+```bash
+# Run individual examples
+cd bin/examples && make hello-world
+```
+
+
+📖 See the [examples README](bin/examples/README.md) for the complete list and detailed instructions.
+
+---
+
 </div>
 <h2>🔧 What Makes ReifyDB Unique (Boiled Down)</h2>
 

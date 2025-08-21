@@ -4,17 +4,18 @@
 use std::marker::PhantomData;
 
 use reifydb_core::{
-	interceptor::StandardInterceptorBuilder, interface::Transaction,
+	interceptor::StandardInterceptorBuilder,
+	interface::{
+		Transaction,
+		subsystem::{Subsystem, SubsystemFactory},
+	},
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_network::grpc::server::GrpcConfig;
 
 use super::GrpcSubsystem;
-use crate::{
-	context::RuntimeProvider,
-	subsystem::{Subsystem, factory::SubsystemFactory},
-};
+use crate::context::RuntimeProvider;
 
 /// Factory for creating GrpcSubsystem
 pub struct GrpcSubsystemFactory<T: Transaction> {

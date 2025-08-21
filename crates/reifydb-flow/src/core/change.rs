@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use reifydb_catalog::row::RowId;
+use reifydb_catalog::row::RowNumber;
 use reifydb_core::{Value, interface::SourceId, value::columnar::Columns};
 use serde::{Deserialize, Serialize};
 
@@ -8,18 +8,18 @@ use serde::{Deserialize, Serialize};
 pub enum Diff {
 	Insert {
 		source: SourceId,
-		row_ids: Vec<RowId>,
+		row_ids: Vec<RowNumber>,
 		after: Columns,
 	},
 	Update {
 		source: SourceId,
-		row_ids: Vec<RowId>,
+		row_ids: Vec<RowNumber>,
 		before: Columns,
 		after: Columns,
 	},
 	Remove {
 		source: SourceId,
-		row_ids: Vec<RowId>,
+		row_ids: Vec<RowNumber>,
 		before: Columns,
 	},
 }

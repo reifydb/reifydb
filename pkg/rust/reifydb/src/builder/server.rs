@@ -4,20 +4,22 @@
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::Transaction,
+	interface::{Transaction, subsystem::SubsystemFactory},
 };
 #[cfg(feature = "sub_grpc")]
 use reifydb_network::grpc::server::GrpcConfig;
 use reifydb_network::ws::server::WsConfig;
+#[cfg(feature = "sub_logging")]
+use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
-use super::DatabaseBuilder;
+use super::{DatabaseBuilder, traits::WithSubsystem};
+use crate::Database;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 use crate::context::{RuntimeProvider, TokioRuntimeProvider};
 #[cfg(feature = "sub_grpc")]
 use crate::subsystem::GrpcSubsystemFactory;
 #[cfg(feature = "sub_ws")]
 use crate::subsystem::WsSubsystemFactory;
-use crate::{Database, subsystem::SubsystemFactory};
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub struct ServerBuilder<T: Transaction> {
@@ -101,6 +103,33 @@ impl<T: Transaction> ServerBuilder<T> {
 				database_builder.add_subsystem_factory(factory);
 		}
 
+		// Add default subsystems
+		database_builder = database_builder.with_default_subsystems();
+
 		database_builder.build()
+	}
+}
+
+#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
+	#[cfg(feature = "sub_logging")]
+	fn with_logging<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
+	{
+		self.subsystem_factories.push(Box::new(
+			LoggingSubsystemFactory::with_configurator(
+				configurator,
+			),
+		));
+		self
+	}
+
+	fn with_subsystem(
+		mut self,
+		factory: Box<dyn SubsystemFactory<T>>,
+	) -> Self {
+		self.subsystem_factories.push(factory);
+		self
 	}
 }

@@ -3,7 +3,7 @@
 
 use PendingWrite::InsertIntoTable;
 use reifydb_core::{
-	RowId,
+	RowNumber,
 	hook::table::{TablePostInsertHook, TablePreInsertHook},
 	interface::{
 		CommandTransaction, EncodableKey, PendingWrite, TableDef,
@@ -25,14 +25,14 @@ pub trait TableOperations {
 	fn update_table(
 		&mut self,
 		table: TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: EncodedRow,
 	) -> crate::Result<()>;
 
 	fn remove_from_table(
 		&mut self,
 		table: TableDef,
-		id: RowId,
+		id: RowNumber,
 	) -> crate::Result<()>;
 }
 
@@ -42,7 +42,8 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 		table: TableDef,
 		row: EncodedRow,
 	) -> crate::Result<()> {
-		let row_id = TableRowSequence::next_row_id(self, table.id)?;
+		let row_number =
+			TableRowSequence::next_row_number(self, table.id)?;
 
 		TableInterceptor::pre_insert(self, &table, &row)?;
 
@@ -57,26 +58,26 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 		self.set(
 			&TableRowKey {
 				table: table.id,
-				row: row_id,
+				row: row_number,
 			}
 			.encode(),
 			row.clone(),
 		)?;
 
-		TableInterceptor::post_insert(self, &table, row_id, &row)?;
+		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
 		// Still trigger hooks for backward compatibility
 		self.hooks()
 			.trigger(TablePostInsertHook {
 				table: table.clone(),
-				id: row_id,
+				id: row_number,
 				row: row.clone(),
 			})
 			.unwrap();
 
 		self.add_pending(InsertIntoTable {
 			table,
-			id: row_id,
+			id: row_number,
 			row,
 		});
 
@@ -86,7 +87,7 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 	fn update_table(
 		&mut self,
 		table: TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: EncodedRow,
 	) -> crate::Result<()> {
 		let key = TableRowKey {
@@ -120,7 +121,7 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 	fn remove_from_table(
 		&mut self,
 		table: TableDef,
-		id: RowId,
+		id: RowNumber,
 	) -> crate::Result<()> {
 		let key = TableRowKey {
 			table: table.id,

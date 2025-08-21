@@ -63,7 +63,7 @@ impl ColumnData {
 			ColumnData::Undefined(container) => {
 				container.reorder(indices)
 			}
-			ColumnData::RowId(container) => {
+			ColumnData::RowNumber(container) => {
 				container.reorder(indices)
 			}
 			ColumnData::IdentityId(container) => {

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_catalog::row::RowId;
+use reifydb_catalog::row::RowNumber;
 use reifydb_core::{
 	CowVec, Value,
 	interface::{
@@ -585,7 +585,7 @@ impl AggregateOperator {
 								hasher.finish()
 							};
 						update_row_ids
-							.push(RowId(hash));
+							.push(RowNumber(hash));
 					}
 
 					eprintln!(
@@ -622,7 +622,7 @@ impl AggregateOperator {
 								hasher.finish()
 							};
 						insert_row_ids
-							.push(RowId(hash));
+							.push(RowNumber(hash));
 					}
 
 					output_diffs.push(Diff::Insert {
@@ -659,7 +659,7 @@ impl AggregateOperator {
 						group_key.hash(&mut hasher);
 						hasher.finish()
 					};
-					remove_row_ids.push(RowId(hash));
+					remove_row_ids.push(RowNumber(hash));
 				}
 
 				output_diffs.push(Diff::Remove {

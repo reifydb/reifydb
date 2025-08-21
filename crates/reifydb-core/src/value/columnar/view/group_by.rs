@@ -40,15 +40,15 @@ impl Columns {
 
 		let mut result = GroupByView::new();
 
-		for row_idx in 0..row_count {
+		for row_numberx in 0..row_count {
 			let mut values = Vec::with_capacity(keys.len());
 
 			for col in &key_columns {
-				let value = col.get_value(row_idx);
+				let value = col.get_value(row_numberx);
 				values.push(value);
 			}
 
-			result.entry(values).or_default().push(row_idx);
+			result.entry(values).or_default().push(row_numberx);
 		}
 
 		Ok(result)

@@ -5,7 +5,7 @@ use std::collections::Bound;
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, RowId,
+	EncodedKey, EncodedKeyRange, RowNumber,
 	interface::{EncodableKeyRange, catalog::TableId},
 	util::encoding::keycode,
 };
@@ -15,7 +15,7 @@ const VERSION: u8 = 1;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TableRowKey {
 	pub table: TableId,
-	pub row: RowId,
+	pub row: RowNumber,
 }
 
 impl EncodableKey for TableRowKey {
@@ -164,13 +164,13 @@ impl TableRowKey {
 #[cfg(test)]
 mod tests {
 	use super::{EncodableKey, TableRowKey};
-	use crate::{RowId, interface::catalog::TableId};
+	use crate::{RowNumber, interface::catalog::TableId};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = TableRowKey {
 			table: TableId(0xABCD),
-			row: RowId(0x123456789ABCDEF0),
+			row: RowNumber(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
@@ -192,15 +192,15 @@ mod tests {
 	fn test_order_preserving() {
 		let key1 = TableRowKey {
 			table: TableId(1),
-			row: RowId(100),
+			row: RowNumber(100),
 		};
 		let key2 = TableRowKey {
 			table: TableId(1),
-			row: RowId(200),
+			row: RowNumber(200),
 		};
 		let key3 = TableRowKey {
 			table: TableId(2),
-			row: RowId(0),
+			row: RowNumber(0),
 		};
 
 		let encoded1 = key1.encode();

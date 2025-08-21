@@ -26,7 +26,6 @@ use reifydb_core::{
 		UnversionedStorage, VersionedStorage,
 	},
 	row::EncodedRow,
-	util::{Clock, SystemClock},
 };
 
 use crate::memory::versioned::VersionedRow;
@@ -38,7 +37,6 @@ pub struct MemoryInner {
 	versioned: SkipMap<EncodedKey, VersionedRow>,
 	unversioned: SkipMap<EncodedKey, EncodedRow>,
 	cdc_events: SkipMap<CdcEventKey, CdcEvent>,
-	clock: Box<dyn Clock>,
 }
 
 impl Deref for Memory {
@@ -57,15 +55,10 @@ impl Default for Memory {
 
 impl Memory {
 	pub fn new() -> Self {
-		Self::with_clock(Box::new(SystemClock))
-	}
-
-	pub fn with_clock(clock: Box<dyn Clock>) -> Self {
 		Self(Arc::new(MemoryInner {
 			versioned: SkipMap::new(),
 			unversioned: SkipMap::new(),
 			cdc_events: SkipMap::new(),
-			clock,
 		}))
 	}
 }

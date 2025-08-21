@@ -38,7 +38,7 @@ pub struct ExecutionContext {
 	pub functions: Functions,
 	pub table: Option<TableDef>,
 	pub batch_size: usize,
-	pub preserve_row_ids: bool,
+	pub preserve_row_numbers: bool,
 	pub params: Params,
 }
 
@@ -89,6 +89,10 @@ impl
 				.register_aggregate(
 					"avg",
 					math::aggregate::Avg::new,
+				)
+				.register_aggregate(
+					"count",
+					math::aggregate::Count::new,
 				)
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
@@ -246,7 +250,7 @@ impl<T: Transaction> Executor<T> {
 					functions: self.functions.clone(),
 					table: None,
 					batch_size: 1024,
-					preserve_row_ids: false,
+					preserve_row_numbers: false,
 					params: params.clone(),
 				});
 				let mut node =

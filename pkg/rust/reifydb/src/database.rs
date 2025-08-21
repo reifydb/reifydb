@@ -11,7 +11,9 @@ use reifydb_core::{
 	interface::{
 		CdcTransaction, GetHooks, StandardTransaction, Transaction,
 		UnversionedTransaction, VersionedTransaction,
+		subsystem::HealthStatus,
 	},
+	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::StandardEngine;
 
@@ -29,7 +31,7 @@ use crate::{
 		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
 		MAX_STARTUP_TIME,
 	},
-	health::{ComponentHealth, HealthMonitor, HealthStatus},
+	health::{ComponentHealth, HealthMonitor},
 	session::{
 		CommandSession, IntoCommandSession, IntoQuerySession,
 		QuerySession, Session, SessionSync,
@@ -145,10 +147,12 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already running
 		}
 
-		self.bootloader.load()?;
+		log_timed_trace!("Bootloader setup", {
+			self.bootloader.load()?
+		});
 
-		println!(
-			"[Database] Starting system with {} subsystems",
+		log_debug!(
+			"Starting system with {} subsystems",
 			self.subsystem_count()
 		);
 
@@ -160,23 +164,25 @@ impl<T: Transaction> Database<T> {
 			true,
 		);
 
-		self.engine.get_hooks().trigger(OnStartHook {})?;
+		log_timed_trace!("Database initialization", {
+			self.engine.get_hooks().trigger(OnStartHook {})?
+		});
 
 		// Start all subsystems
-		match self.subsystems.start_all(self.config.max_startup_time) {
+		match log_timed_trace!("Starting all subsystems", {
+			let result = self
+				.subsystems
+				.start_all(self.config.max_startup_time);
+			result
+		}) {
 			Ok(()) => {
 				self.running = true;
-				println!(
-					"[Database] System started successfully"
-				);
+				log_debug!("System started successfully");
 				self.update_health_monitoring();
 				Ok(())
 			}
 			Err(e) => {
-				println!(
-					"[Database] System startup failed: {}",
-					e
-				);
+				log_error!("System startup failed: {}", e);
 				// Update system health to reflect failure
 				self.health_monitor.update_component_health(
 					"system".to_string(),
@@ -198,7 +204,7 @@ impl<T: Transaction> Database<T> {
 			return Ok(()); // Already stopped
 		}
 
-		println!("[Database] Stopping system gracefully");
+		log_debug!("Stopping system gracefully");
 
 		// Stop all subsystems
 		let result = self
@@ -217,9 +223,7 @@ impl<T: Transaction> Database<T> {
 
 		match result {
 			Ok(()) => {
-				println!(
-					"[Database] System stopped successfully"
-				);
+				log_debug!("System stopped successfully");
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Healthy,
@@ -228,8 +232,8 @@ impl<T: Transaction> Database<T> {
 				Ok(())
 			}
 			Err(e) => {
-				println!(
-					"[Database] System shutdown completed with errors: {}",
+				log_warn!(
+					"System shutdown completed with errors: {}",
 					e
 				);
 				self.health_monitor.update_component_health(
@@ -309,8 +313,8 @@ impl<T: Transaction> Database<T> {
 impl<T: Transaction> Drop for Database<T> {
 	fn drop(&mut self) {
 		if self.running {
-			println!(
-				"[Database] System being dropped while running, attempting graceful shutdown"
+			log_warn!(
+				"System being dropped while running, attempting graceful shutdown"
 			);
 			let _ = self.stop();
 		}

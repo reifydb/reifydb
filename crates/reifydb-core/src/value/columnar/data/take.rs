@@ -63,8 +63,8 @@ impl ColumnData {
 			ColumnData::Undefined(container) => {
 				ColumnData::Undefined(container.take(num))
 			}
-			ColumnData::RowId(container) => {
-				ColumnData::RowId(container.take(num))
+			ColumnData::RowNumber(container) => {
+				ColumnData::RowNumber(container.take(num))
 			}
 			ColumnData::IdentityId(container) => {
 				ColumnData::IdentityId(container.take(num))

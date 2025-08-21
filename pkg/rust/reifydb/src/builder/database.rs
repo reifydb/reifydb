@@ -4,20 +4,21 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{
-	hook::Hooks, interceptor::StandardInterceptorBuilder,
-	interface::Transaction, ioc::IocContainer,
+	hook::Hooks,
+	interceptor::StandardInterceptorBuilder,
+	interface::{Transaction, subsystem::SubsystemFactory},
+	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_logging")]
+use reifydb_sub_logging::LoggingSubsystemFactory;
 
 #[cfg(feature = "sub_flow")]
 use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
-	subsystem::{
-		SubsystemFactory, Subsystems,
-		worker_pool::WorkerPoolSubsystemFactory,
-	},
+	subsystem::{Subsystems, worker_pool::WorkerPoolSubsystemFactory},
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
@@ -44,25 +45,41 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			.register(unversioned.clone())
 			.register(cdc.clone());
 
-		let mut result = Self {
+		let result = Self {
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
 			ioc,
 		};
 
-		result = result.add_subsystem_factory(Box::new(
+		result
+	}
+
+	/// Add default subsystems that are always required
+	pub fn with_default_subsystems(mut self) -> Self {
+		// Add default logging subsystem first so it's initialized
+		// before other subsystems Note: This can be overridden by
+		// adding a custom logging factory before calling this
+		#[cfg(feature = "sub_logging")]
+		if self.subsystems.is_empty() {
+			self = self.add_subsystem_factory(Box::new(
+				LoggingSubsystemFactory::new(),
+			));
+		}
+
+		// Always add worker pool subsystem
+		self = self.add_subsystem_factory(Box::new(
 			WorkerPoolSubsystemFactory::new(),
 		));
 
 		#[cfg(feature = "sub_flow")]
 		{
-			result = result.add_subsystem_factory(Box::new(
+			self = self.add_subsystem_factory(Box::new(
 				FlowSubsystemFactory::new(),
 			));
 		}
 
-		result
+		self
 	}
 
 	pub fn with_graceful_shutdown_timeout(

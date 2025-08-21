@@ -4,10 +4,12 @@
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::Transaction,
+	interface::{Transaction, subsystem::SubsystemFactory},
 };
+#[cfg(feature = "sub_logging")]
+use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
-use super::DatabaseBuilder;
+use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct SyncBuilder<T: Transaction> {
@@ -16,6 +18,7 @@ pub struct SyncBuilder<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	interceptors: StandardInterceptorBuilder<T>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<T>>>,
 }
 
 impl<T: Transaction> SyncBuilder<T> {
@@ -31,6 +34,7 @@ impl<T: Transaction> SyncBuilder<T> {
 			cdc,
 			hooks,
 			interceptors: StandardInterceptorBuilder::new(),
+			subsystem_factories: Vec::new(),
 		}
 	}
 
@@ -46,13 +50,46 @@ impl<T: Transaction> SyncBuilder<T> {
 	}
 
 	pub fn build(self) -> crate::Result<Database<T>> {
-		DatabaseBuilder::new(
+		let mut builder = DatabaseBuilder::new(
 			self.versioned,
 			self.unversioned,
 			self.cdc,
 			self.hooks,
 		)
-		.with_interceptor_builder(self.interceptors)
-		.build()
+		.with_interceptor_builder(self.interceptors);
+
+		// Add any custom subsystem factories configured via fluent API
+		for factory in self.subsystem_factories {
+			builder = builder.add_subsystem_factory(factory);
+		}
+
+		// Add default subsystems (worker pool, flow, etc.)
+		// This will only add logging if no subsystems were configured
+		builder = builder.with_default_subsystems();
+
+		builder.build()
+	}
+}
+
+impl<T: Transaction> WithSubsystem<T> for SyncBuilder<T> {
+	#[cfg(feature = "sub_logging")]
+	fn with_logging<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
+	{
+		self.subsystem_factories.push(Box::new(
+			LoggingSubsystemFactory::with_configurator(
+				configurator,
+			),
+		));
+		self
+	}
+
+	fn with_subsystem(
+		mut self,
+		factory: Box<dyn SubsystemFactory<T>>,
+	) -> Self {
+		self.subsystem_factories.push(factory);
+		self
 	}
 }

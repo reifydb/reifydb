@@ -193,7 +193,7 @@ impl<E: Evaluator> FlowEngine<E> {
                                 Value::DateTime(v) => layout.set_datetime(&mut row, view_idx, v),
                                 Value::Time(v) => layout.set_time(&mut row, view_idx, v),
                                 Value::Interval(v) => layout.set_interval(&mut row, view_idx, v),
-                                Value::RowId(_v) => {}
+                                Value::RowNumber(_v) => {}
                                 Value::IdentityId(v) => layout.set_identity_id(&mut row, view_idx, v),
                                 Value::Uuid4(v) => layout.set_uuid4(&mut row, view_idx, v),
                                 Value::Uuid7(v) => layout.set_uuid7(&mut row, view_idx, v),
@@ -275,7 +275,7 @@ impl<E: Evaluator> FlowEngine<E> {
 								Value::DateTime(v) => layout.set_datetime(&mut new_row, view_idx, v),
 								Value::Time(v) => layout.set_time(&mut new_row, view_idx, v),
 								Value::Interval(v) => layout.set_interval(&mut new_row, view_idx, v),
-								Value::RowId(_v) => {},
+								Value::RowNumber(_v) => {},
 								Value::IdentityId(v) => layout.set_identity_id(&mut new_row, view_idx, v),
 								Value::Uuid4(v) => layout.set_uuid4(&mut new_row, view_idx, v),
 								Value::Uuid7(v) => layout.set_uuid7(&mut new_row, view_idx, v),

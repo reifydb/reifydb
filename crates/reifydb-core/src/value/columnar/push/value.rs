@@ -421,14 +421,14 @@ impl ColumnData {
 			},
 
 			Value::Undefined => self.push_undefined(),
-			Value::RowId(row_id) => match self {
-				ColumnData::RowId(container) => {
-					container.push(row_id)
+			Value::RowNumber(row_number) => match self {
+				ColumnData::RowNumber(container) => {
+					container.push(row_number)
 				}
 				ColumnData::Undefined(container) => {
 					let mut new_container =
-						ColumnData::row_id(vec![]);
-					if let ColumnData::RowId(
+						ColumnData::row_number(vec![]);
+					if let ColumnData::RowNumber(
 						new_container,
 					) = &mut new_container
 					{
@@ -437,7 +437,7 @@ impl ColumnData {
 								.push_undefined(
 								);
 						}
-						new_container.push(row_id);
+						new_container.push(row_number);
 					}
 					*self = new_container;
 				}
@@ -497,7 +497,7 @@ mod tests {
 
 	use crate::{
 		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
-		RowId, Time, Value,
+		RowNumber, Time, Value,
 		value::{
 			columnar::data::ColumnData,
 			uuid::{Uuid4, Uuid7},
@@ -1175,44 +1175,47 @@ mod tests {
 	}
 
 	#[test]
-	fn test_row_id() {
-		let row_id1 = RowId::new(1);
-		let row_id2 = RowId::new(2);
-		let mut col = ColumnData::row_id(vec![row_id1]);
-		col.push_value(Value::RowId(row_id2));
-		let ColumnData::RowId(container) = col else {
-			panic!("Expected RowId");
+	fn test_row_number() {
+		let row_number1 = RowNumber::new(1);
+		let row_number2 = RowNumber::new(2);
+		let mut col = ColumnData::row_number(vec![row_number1]);
+		col.push_value(Value::RowNumber(row_number2));
+		let ColumnData::RowNumber(container) = col else {
+			panic!("Expected RowNumber");
 		};
-		assert_eq!(container.data().as_slice(), &[row_id1, row_id2]);
+		assert_eq!(
+			container.data().as_slice(),
+			&[row_number1, row_number2]
+		);
 		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
 	}
 
 	#[test]
-	fn test_undefined_row_id() {
-		let row_id1 = RowId::new(1);
-		let mut col = ColumnData::row_id(vec![row_id1]);
+	fn test_undefined_row_number() {
+		let row_number1 = RowNumber::new(1);
+		let mut col = ColumnData::row_number(vec![row_number1]);
 		col.push_value(Value::Undefined);
-		let ColumnData::RowId(container) = col else {
-			panic!("Expected RowId");
+		let ColumnData::RowNumber(container) = col else {
+			panic!("Expected RowNumber");
 		};
 		assert_eq!(
 			container.data().as_slice(),
-			&[row_id1, RowId::default()]
+			&[row_number1, RowNumber::default()]
 		);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
 	#[test]
-	fn test_push_value_to_undefined_row_id() {
-		let row_id = RowId::new(42);
+	fn test_push_value_to_undefined_row_number() {
+		let row_number = RowNumber::new(42);
 		let mut col = ColumnData::undefined(1);
-		col.push_value(Value::RowId(row_id));
-		let ColumnData::RowId(container) = col else {
-			panic!("Expected RowId");
+		col.push_value(Value::RowNumber(row_number));
+		let ColumnData::RowNumber(container) = col else {
+			panic!("Expected RowNumber");
 		};
 		assert_eq!(
 			container.data().as_slice(),
-			&[RowId::default(), row_id]
+			&[RowNumber::default(), row_number]
 		);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}

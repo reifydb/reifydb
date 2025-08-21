@@ -126,7 +126,7 @@ impl ExecutionPlan for AggregateNode {
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment().to_string(),
-                        data: ColumnData::int2_with_capacity(group_key_order.len()),
+                        data: ColumnData::undefined(0),
                     });
 					for key in &group_key_order {
 						c.data_mut().push_value(
@@ -193,10 +193,25 @@ fn parse_keys_and_aggregates<'a>(
 					column: c.0.fragment().to_string(),
 					alias: c.fragment(),
 				})
-			} // _ => return
+			}
+			Expression::AccessSource(access) => {
+				// Handle qualified column references like
+				// departments.dept_name
+				keys.push(access.column.fragment());
+				projections.push(Projection::Group {
+					column: access
+						.column
+						.fragment()
+						.to_string(),
+					alias: access.fragment(),
+				})
+			}
+			// _ => return
 			// Err(reifydb_core::Error::Unsupported("Non-column
 			// group by not supported".into())),
-			_ => panic!("Non-column group by not supported"),
+			expr => panic!(
+				"Non-column group by not supported: {expr:#?}"
+			),
 		}
 	}
 
@@ -219,11 +234,32 @@ fn parse_keys_and_aggregates<'a>(
 							function,
 						});
 					}
+					Some(Expression::AccessSource(
+						access,
+					)) => {
+						// Handle qualified column
+						// references in aggregate
+						// functions
+						let function = functions
+							.get_aggregate(func)
+							.unwrap();
+						projections
+							.push(Projection::Aggregate {
+							column: access
+								.column
+								.fragment()
+								.to_string(),
+							alias: p.fragment(),
+							function,
+						});
+					}
 					// _ => return
 					// Err(reifydb_core::Error::Unsupported("
 					// Aggregate args must be
 					// columns".into())),
-					_ => panic!(),
+					_ => panic!(
+						"Aggregate args must be columns"
+					),
 				}
 			}
 			// _ => return

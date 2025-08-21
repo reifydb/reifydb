@@ -4,12 +4,16 @@
 use std::marker::PhantomData;
 
 use reifydb_core::{
-	Result, interceptor::StandardInterceptorBuilder,
-	interface::Transaction, ioc::IocContainer,
+	Result,
+	interceptor::StandardInterceptorBuilder,
+	interface::{
+		Transaction,
+		subsystem::{Subsystem, SubsystemFactory},
+	},
+	ioc::IocContainer,
 };
 
 use super::{WorkerPoolConfig, WorkerPoolSubsystem};
-use crate::subsystem::{Subsystem, SubsystemFactory};
 
 /// Factory for creating WorkerPoolSubsystem instances
 pub struct WorkerPoolSubsystemFactory<T: Transaction> {

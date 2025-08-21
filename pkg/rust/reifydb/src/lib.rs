@@ -20,7 +20,7 @@ pub use builder::*;
 pub use context::TokioRuntimeProvider;
 pub use context::{AsyncContext, RuntimeProvider, SystemContext, TokioContext};
 pub use database::{Database, DatabaseConfig};
-pub use health::{HealthMonitor, HealthStatus};
+pub use health::HealthMonitor;
 pub use hook::{OnCreateContext, WithHooks};
 pub use presets::*;
 pub use reifydb_auth as auth;
@@ -29,9 +29,12 @@ pub use reifydb_core::{
 	Error, Result,
 	hook::Hooks,
 	interface::{
-		StandardTransaction, UnversionedTransaction, VersionedStorage,
-		VersionedTransaction,
+		Identity, Params, StandardTransaction, UnversionedTransaction,
+		VersionedStorage, VersionedTransaction,
 	},
+	log, log_critical, log_debug, log_error, log_info, log_timed_critical,
+	log_timed_debug, log_timed_error, log_timed_info, log_timed_trace,
+	log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_engine as engine;
 #[cfg(feature = "sub_flow")]
@@ -45,6 +48,9 @@ pub use reifydb_storage::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
+// subsystems
+#[cfg(feature = "sub_logging")]
+pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
 	mvcc::transaction::{
@@ -52,9 +58,12 @@ pub use reifydb_transaction::{
 	},
 	svl::SingleVersionLock,
 };
+pub use session::{
+	CommandSession, CommandSessionSync, QuerySession, QuerySessionSync,
+	Session, SessionSync,
+};
 #[cfg(feature = "async")]
-pub use session::SessionAsync;
-pub use session::{CommandSession, QuerySession, Session, SessionSync};
+pub use session::{CommandSessionAsync, QuerySessionAsync, SessionAsync};
 
 /// Default configuration values
 pub mod defaults {
@@ -63,7 +72,7 @@ pub mod defaults {
 	/// Default graceful shutdown timeout (30 seconds)
 	pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
-	/// Default health check interval (5 seconds)  
+	/// Default health check interval (5 seconds)
 	pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 	/// Default maximum startup time (60 seconds)

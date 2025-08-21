@@ -154,3 +154,15 @@ macro_rules! unreachable_internal {
         $crate::internal_err!(concat!("Reached unreachable code: ", $fmt), $($arg)*)
     };
 }
+
+/// Macro to return an internal error with automatic source location capture
+/// This combines return_error! and internal_error! for convenience
+#[macro_export]
+macro_rules! return_internal_error {
+    ($reason:expr) => {
+        return Err($crate::error::Error($crate::internal_error!($reason)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return Err($crate::error::Error($crate::internal_error!($fmt, $($arg)*)))
+    };
+}

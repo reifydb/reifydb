@@ -13,7 +13,7 @@ use reifydb_core::{
 		TableRowKeyRange, VersionedQueryTransaction,
 	},
 	row::EncodedRowLayout,
-	value::row_id::ROW_ID_COLUMN_NAME,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::{
@@ -93,7 +93,7 @@ impl ExecutionPlan for TableScanNode {
 		};
 
 		let mut batch_rows = Vec::new();
-		let mut row_ids = Vec::new();
+		let mut row_numbers = Vec::new();
 		let mut rows_collected = 0;
 		let mut new_last_key = None;
 
@@ -103,7 +103,7 @@ impl ExecutionPlan for TableScanNode {
 		for versioned in versioned_rows.into_iter() {
 			if let Some(key) = TableRowKey::decode(&versioned.key) {
 				batch_rows.push(versioned.row);
-				row_ids.push(key.row);
+				row_numbers.push(key.row);
 				new_last_key = Some(versioned.key);
 				rows_collected += 1;
 
@@ -123,15 +123,18 @@ impl ExecutionPlan for TableScanNode {
 		let mut columns = Columns::from_table_def(&self.table);
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
-		// Add the RowId column to the columns if requested
-		if ctx.preserve_row_ids {
-			let row_id_column =
+		// Add the RowNumber column to the columns if requested
+		if ctx.preserve_row_numbers {
+			let row_number_column =
 				Column::SourceQualified(SourceQualified {
 					source: self.table.name.clone(),
-					name: ROW_ID_COLUMN_NAME.to_string(),
-					data: ColumnData::row_id(row_ids),
+					name: ROW_NUMBER_COLUMN_NAME
+						.to_string(),
+					data: ColumnData::row_number(
+						row_numbers,
+					),
 				});
-			columns.0.push(row_id_column);
+			columns.0.push(row_number_column);
 		}
 
 		Ok(Some(Batch {

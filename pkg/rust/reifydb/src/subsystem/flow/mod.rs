@@ -9,22 +9,19 @@ use std::{any::Any, time::Duration};
 pub use factory::FlowSubsystemFactory;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
-	Result,
+	Result, Value,
 	interface::{
 		CdcChange, CdcConsume, CdcConsumer, CdcEvent,
 		CommandTransaction, ConsumerId, Engine, GetEncodedRowLayout,
 		Identity, Key, Params, SourceId, TableRowKey, Transaction,
+		subsystem::{HealthStatus, Subsystem},
 	},
 	value::columnar::Columns,
 };
 use reifydb_engine::{StandardEngine, StandardEvaluator};
 use reifydb_flow::{Change, Diff, Flow, FlowEngine};
 
-use super::{
-	Subsystem,
-	cdc::{PollConsumer, PollConsumerConfig},
-};
-use crate::health::HealthStatus;
+use super::cdc::{PollConsumer, PollConsumerConfig};
 
 #[derive(Clone)]
 struct FlowConsumer<T: Transaction> {
@@ -245,7 +242,7 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 		// Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		self.consumer.stop()
 	}
 
@@ -262,6 +259,10 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 	}
 
 	fn as_any(&self) -> &dyn Any {
+		self
+	}
+
+	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

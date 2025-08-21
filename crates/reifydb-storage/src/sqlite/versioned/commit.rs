@@ -29,7 +29,7 @@ impl VersionedCommit for Sqlite {
 		let mut conn = self.get_conn();
 		let tx = conn.transaction().unwrap();
 
-		let timestamp = self.clock.now_millis();
+		let timestamp = reifydb_core::util::now_millis();
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {

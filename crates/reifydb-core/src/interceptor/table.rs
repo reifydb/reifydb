@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-	RowId, define_api_function, define_closure_interceptor,
+	RowNumber, define_api_function, define_closure_interceptor,
 	define_interceptor, impl_register_interceptor,
 	interface::{CommandTransaction, TableDef, Transaction},
 	row::EncodedRow,
@@ -38,7 +38,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut CommandTransaction<T>,
 		table: &'a TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: &'a EncodedRow,
 	}
 );
@@ -63,7 +63,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut CommandTransaction<T>,
 		table: &'a TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: &'a EncodedRow,
 	}
 );
@@ -88,7 +88,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut CommandTransaction<T>,
 		table: &'a TableDef,
-		id: RowId,
+		id: RowNumber,
 		row: &'a EncodedRow,
 		old_row: &'a EncodedRow,
 	}
@@ -114,7 +114,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut CommandTransaction<T>,
 		table: &'a TableDef,
-		id: RowId,
+		id: RowNumber,
 	}
 );
 
@@ -138,7 +138,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut CommandTransaction<T>,
 		table: &'a TableDef,
-		id: RowId,
+		id: RowNumber,
 		deleted_row: &'a EncodedRow,
 	}
 );

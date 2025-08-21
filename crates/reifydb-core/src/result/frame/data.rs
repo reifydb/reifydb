@@ -8,7 +8,7 @@ use crate::{
 	value::{
 		container::{
 			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowIdContainer, StringContainer,
+			NumberContainer, RowNumberContainer, StringContainer,
 			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 		uuid::{Uuid4, Uuid7},
@@ -35,7 +35,7 @@ pub enum FrameColumnData {
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),
 	Interval(TemporalContainer<Interval>),
-	RowId(RowIdContainer),
+	RowNumber(RowNumberContainer),
 	IdentityId(IdentityIdContainer),
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
@@ -65,7 +65,7 @@ impl FrameColumnData {
 			FrameColumnData::DateTime(_) => Type::DateTime,
 			FrameColumnData::Time(_) => Type::Time,
 			FrameColumnData::Interval(_) => Type::Interval,
-			FrameColumnData::RowId(_) => Type::RowId,
+			FrameColumnData::RowNumber(_) => Type::RowNumber,
 			FrameColumnData::IdentityId(_) => Type::IdentityId,
 			FrameColumnData::Uuid4(_) => Type::Uuid4,
 			FrameColumnData::Uuid7(_) => Type::Uuid7,
@@ -130,7 +130,7 @@ impl FrameColumnData {
 			FrameColumnData::Interval(container) => {
 				container.is_defined(idx)
 			}
-			FrameColumnData::RowId(container) => {
+			FrameColumnData::RowNumber(container) => {
 				container.is_defined(idx)
 			}
 			FrameColumnData::IdentityId(container) => {
@@ -216,7 +216,9 @@ impl FrameColumnData {
 			FrameColumnData::DateTime(container) => container.len(),
 			FrameColumnData::Time(container) => container.len(),
 			FrameColumnData::Interval(container) => container.len(),
-			FrameColumnData::RowId(container) => container.len(),
+			FrameColumnData::RowNumber(container) => {
+				container.len()
+			}
 			FrameColumnData::IdentityId(container) => {
 				container.len()
 			}
@@ -285,7 +287,7 @@ impl FrameColumnData {
 			FrameColumnData::Interval(container) => {
 				container.as_string(index)
 			}
-			FrameColumnData::RowId(container) => {
+			FrameColumnData::RowNumber(container) => {
 				container.as_string(index)
 			}
 			FrameColumnData::IdentityId(container) => {
@@ -364,7 +366,7 @@ impl FrameColumnData {
 			FrameColumnData::Interval(container) => {
 				container.get_value(index)
 			}
-			FrameColumnData::RowId(container) => {
+			FrameColumnData::RowNumber(container) => {
 				container.get_value(index)
 			}
 			FrameColumnData::IdentityId(container) => {

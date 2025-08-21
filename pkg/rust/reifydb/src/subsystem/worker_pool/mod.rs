@@ -18,10 +18,9 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{Result, interface::worker_pool::WorkerPool};
-
-use super::Subsystem;
-use crate::health::HealthStatus;
+use reifydb_core::{
+	Result, interface::worker_pool::WorkerPool, log_debug, log_warn,
+};
 
 mod factory;
 mod scheduler;
@@ -31,7 +30,10 @@ mod worker;
 
 pub use factory::WorkerPoolSubsystemFactory;
 pub use reifydb_core::interface::worker_pool::Priority;
-use reifydb_core::interface::worker_pool::TaskHandle;
+use reifydb_core::interface::{
+	subsystem::{HealthStatus, Subsystem},
+	worker_pool::TaskHandle,
+};
 pub use scheduler::TaskScheduler;
 pub use task::{ClosureTask, PoolTask, PrioritizedTask, TaskContext};
 pub use worker::Worker;
@@ -232,7 +234,7 @@ impl WorkerPoolSubsystem {
 
                         for task in ready_tasks {
                             if queue.len() >= max_queue_size {
-                                println!("[WorkerPool] Scheduler: Queue full, dropping scheduled task");
+                                log_warn!("Scheduler: Queue full, dropping scheduled task");
                                 break;
                             }
 
@@ -286,20 +288,17 @@ impl Subsystem for WorkerPoolSubsystem {
 		// Start scheduler thread
 		self.start_scheduler();
 
-		println!(
-			"[WorkerPool] Started with {} workers",
-			self.config.num_workers
-		);
+		log_debug!("Started with {} workers", self.config.num_workers);
 
 		Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
 
-		println!("[WorkerPool] Shutting down...");
+		log_debug!("Shutting down...");
 		self.running.store(false, Ordering::Relaxed);
 
 		// Wake scheduler so it can exit
@@ -320,10 +319,10 @@ impl Subsystem for WorkerPoolSubsystem {
 
 		// Stop all workers
 		for worker in self.workers.drain(..) {
-			worker.stop();
+			worker.shutdown();
 		}
 
-		println!("[WorkerPool] Shutdown complete");
+		log_debug!("Shutdown complete");
 		Ok(())
 	}
 
@@ -363,11 +362,15 @@ impl Subsystem for WorkerPoolSubsystem {
 	fn as_any(&self) -> &dyn Any {
 		self
 	}
+
+	fn as_any_mut(&mut self) -> &mut dyn Any {
+		self
+	}
 }
 
 impl Drop for WorkerPoolSubsystem {
 	fn drop(&mut self) {
-		let _ = self.stop();
+		let _ = self.shutdown();
 	}
 }
 

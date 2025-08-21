@@ -11,12 +11,13 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::Result;
-
-use crate::{
-	health::{HealthMonitor, HealthStatus},
-	subsystem::Subsystem,
+use reifydb_core::{
+	Result,
+	interface::subsystem::{HealthStatus, Subsystem},
+	log_debug, log_error, log_warn,
 };
+
+use crate::health::HealthMonitor;
 
 pub struct Subsystems {
 	subsystems: Vec<Box<dyn Subsystem>>,
@@ -64,10 +65,7 @@ impl Subsystems {
 			return Ok(()); // Already running
 		}
 
-		println!(
-			"[Subsystem] Starting {} subsystems...",
-			self.subsystems.len()
-		);
+		log_debug!("Starting {} subsystems...", self.subsystems.len());
 
 		let start_time = std::time::Instant::now();
 		let mut started_subsystems = Vec::new();
@@ -75,9 +73,7 @@ impl Subsystems {
 		for subsystem in &mut self.subsystems {
 			// Check timeout
 			if start_time.elapsed() > startup_timeout {
-				println!(
-					"[Subsystem] Startup timeout exceeded"
-				);
+				log_error!("Startup timeout exceeded");
 				// Rollback: stop all previously started
 				// subsystems
 				self.stop_started_subsystems(
@@ -87,7 +83,7 @@ impl Subsystems {
 			}
 
 			let name = subsystem.name().to_string();
-			println!("[Subsystem] Starting subsystem: {}", name);
+			log_debug!("Starting subsystem: {}", name);
 
 			match subsystem.start() {
 				Ok(()) => {
@@ -101,15 +97,16 @@ impl Subsystems {
 							subsystem.is_running(),
 						);
 					started_subsystems.push(name.clone());
-					println!(
-						"[Subsystem] Successfully started: {}",
+					log_debug!(
+						"Successfully started: {}",
 						name
 					);
 				}
 				Err(e) => {
-					println!(
-						"[Subsystem] Failed to start subsystem '{}': {}",
-						name, e
+					log_error!(
+						"Failed to start subsystem '{}': {}",
+						name,
+						e
 					);
 					// Update health monitoring with failure
 					self.health_monitor
@@ -133,9 +130,12 @@ impl Subsystems {
 			}
 		}
 
+		// Wire subsystems together after all are started
+		self.wire_subsystems()?;
+
 		self.running.store(true, Ordering::Relaxed);
-		println!(
-			"[Subsystem] All {} subsystems started successfully",
+		log_debug!(
+			"All {} subsystems started successfully",
 			started_subsystems.len()
 		);
 		Ok(())
@@ -146,28 +146,27 @@ impl Subsystems {
 			return Ok(()); // Already stopped
 		}
 
-		println!(
-			"[Subsystem] Stopping {} subsystems...",
-			self.subsystems.len()
-		);
+		log_debug!("Stopping {} subsystems...", self.subsystems.len());
+
+		// First, print all subsystems that will be stopped
+		for subsystem in self.subsystems.iter().rev() {
+			log_debug!("Stopping subsystem: {}", subsystem.name());
+		}
 
 		let start_time = std::time::Instant::now();
 		let mut errors = Vec::new();
 
-		// Stop all subsystems in reverse order
+		// Now actually stop all subsystems in reverse order
 		for subsystem in self.subsystems.iter_mut().rev() {
 			// Check timeout
 			if start_time.elapsed() > shutdown_timeout {
-				println!(
-					"[Subsystem] Shutdown timeout exceeded"
-				);
+				log_warn!("Shutdown timeout exceeded");
 				break;
 			}
 
 			let name = subsystem.name().to_string();
-			println!("[Subsystem] Stopping subsystem: {}", name);
 
-			match subsystem.stop() {
+			match subsystem.shutdown() {
 				Ok(()) => {
 					// Update health monitoring
 					self.health_monitor
@@ -178,15 +177,16 @@ impl Subsystems {
 								),
 							subsystem.is_running(),
 						);
-					println!(
-						"[Subsystem] Successfully stopped: {}",
+					log_debug!(
+						"Successfully stopped: {}",
 						name
 					);
 				}
 				Err(e) => {
-					println!(
-						"[Subsystem] Error stopping subsystem '{}': {}",
-						name, e
+					log_error!(
+						"Error stopping subsystem '{}': {}",
+						name,
+						e
 					);
 					// Update health monitoring with failure
 					self.health_monitor
@@ -208,9 +208,7 @@ impl Subsystems {
 		self.running.store(false, Ordering::Relaxed);
 
 		if errors.is_empty() {
-			println!(
-				"[Subsystem] All subsystems stopped successfully"
-			);
+			log_debug!("All subsystems stopped successfully");
 			Ok(())
 		} else {
 			let error_msg = format!(
@@ -218,7 +216,7 @@ impl Subsystems {
 				errors.len(),
 				errors
 			);
-			println!("[Subsystem] {}", error_msg);
+			log_error!("{}", error_msg);
 			panic!("Errors occurred during shutdown: {:?}", errors)
 		}
 	}
@@ -246,6 +244,15 @@ impl Subsystems {
 		self.subsystems.get(index)?.as_any().downcast_ref::<T>()
 	}
 
+	/// Wire subsystems together after they're all started
+	fn wire_subsystems(&mut self) -> Result<()> {
+		// For now, we'll handle this differently - the logging
+		// subsystem will get the worker pool reference during the
+		// factory phase or we need a different architecture where
+		// subsystems can discover each other through a registry
+		Ok(())
+	}
+
 	fn stop_started_subsystems(
 		&mut self,
 		started_names: &[String],
@@ -257,10 +264,11 @@ impl Subsystems {
 			// Find and stop the subsystem by name
 			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
-					if let Err(e) = subsystem.stop() {
-						println!(
-							"[Subsystem] Error stopping '{}' during rollback: {}",
-							name, e
+					if let Err(e) = subsystem.shutdown() {
+						log_error!(
+							"Error stopping '{}' during rollback: {}",
+							name,
+							e
 						);
 						errors.push((name.clone(), e));
 					}

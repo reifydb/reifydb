@@ -11,12 +11,9 @@ use std::{ops::Deref, sync::Arc};
 pub use config::*;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::{
-	interface::{
-		CdcStorage, UnversionedInsert, UnversionedRemove,
-		UnversionedStorage, VersionedStorage,
-	},
-	util::{Clock, SystemClock},
+use reifydb_core::interface::{
+	CdcStorage, UnversionedInsert, UnversionedRemove, UnversionedStorage,
+	VersionedStorage,
 };
 
 #[derive(Clone)]
@@ -24,7 +21,6 @@ pub struct Sqlite(Arc<SqliteInner>);
 
 pub struct SqliteInner {
 	pool: Arc<Pool<SqliteConnectionManager>>,
-	clock: Box<dyn Clock>,
 }
 
 impl Deref for Sqlite {
@@ -37,11 +33,6 @@ impl Deref for Sqlite {
 impl Sqlite {
 	/// Create a new Sqlite storage with the given configuration
 	pub fn new(config: SqliteConfig) -> Self {
-		Self::with_clock(config, Box::new(SystemClock))
-	}
-
-	/// Create a new Sqlite storage with the given configuration and clock
-	pub fn with_clock(config: SqliteConfig, clock: Box<dyn Clock>) -> Self {
 		let db_path = if config.path.is_dir() {
 			config.path.join("reify.reifydb")
 		} else {
@@ -104,7 +95,6 @@ impl Sqlite {
 
 		Self(Arc::new(SqliteInner {
 			pool: Arc::new(pool),
-			clock,
 		}))
 	}
 

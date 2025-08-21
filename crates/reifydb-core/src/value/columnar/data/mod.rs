@@ -18,7 +18,7 @@ use crate::{
 		Uuid4, Uuid7,
 		container::{
 			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowIdContainer, StringContainer,
+			NumberContainer, RowNumberContainer, StringContainer,
 			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 	},
@@ -44,7 +44,7 @@ pub enum ColumnData {
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),
 	Interval(TemporalContainer<Interval>),
-	RowId(RowIdContainer),
+	RowNumber(RowNumberContainer),
 	IdentityId(IdentityIdContainer),
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
@@ -74,7 +74,7 @@ impl ColumnData {
 			ColumnData::DateTime(_) => Type::DateTime,
 			ColumnData::Time(_) => Type::Time,
 			ColumnData::Interval(_) => Type::Interval,
-			ColumnData::RowId(_) => Type::RowId,
+			ColumnData::RowNumber(_) => Type::RowNumber,
 			ColumnData::IdentityId(_) => Type::IdentityId,
 			ColumnData::Uuid4(_) => Type::Uuid4,
 			ColumnData::Uuid7(_) => Type::Uuid7,
@@ -139,7 +139,7 @@ impl ColumnData {
 			ColumnData::Interval(container) => {
 				container.is_defined(idx)
 			}
-			ColumnData::RowId(container) => {
+			ColumnData::RowNumber(container) => {
 				container.is_defined(idx)
 			}
 			ColumnData::IdentityId(container) => {
@@ -221,7 +221,7 @@ impl ColumnData {
 			ColumnData::DateTime(container) => container.bitvec(),
 			ColumnData::Time(container) => container.bitvec(),
 			ColumnData::Interval(container) => container.bitvec(),
-			ColumnData::RowId(container) => container.bitvec(),
+			ColumnData::RowNumber(container) => container.bitvec(),
 			ColumnData::IdentityId(container) => container.bitvec(),
 			ColumnData::Uuid4(container) => container.bitvec(),
 			ColumnData::Uuid7(container) => container.bitvec(),
@@ -256,7 +256,9 @@ impl ColumnData {
 			Type::Interval => {
 				Self::interval_with_capacity(capacity)
 			}
-			Type::RowId => Self::row_id_with_capacity(capacity),
+			Type::RowNumber => {
+				Self::row_number_with_capacity(capacity)
+			}
 			Type::IdentityId => {
 				Self::identity_id_with_capacity(capacity)
 			}
@@ -293,7 +295,7 @@ impl ColumnData {
 			ColumnData::DateTime(container) => container.len(),
 			ColumnData::Time(container) => container.len(),
 			ColumnData::Interval(container) => container.len(),
-			ColumnData::RowId(container) => container.len(),
+			ColumnData::RowNumber(container) => container.len(),
 			ColumnData::IdentityId(container) => container.len(),
 			ColumnData::Uuid4(container) => container.len(),
 			ColumnData::Uuid7(container) => container.len(),
@@ -322,7 +324,9 @@ impl ColumnData {
 			ColumnData::DateTime(container) => container.capacity(),
 			ColumnData::Time(container) => container.capacity(),
 			ColumnData::Interval(container) => container.capacity(),
-			ColumnData::RowId(container) => container.capacity(),
+			ColumnData::RowNumber(container) => {
+				container.capacity()
+			}
 			ColumnData::IdentityId(container) => {
 				container.capacity()
 			}
@@ -391,7 +395,7 @@ impl ColumnData {
 			ColumnData::Interval(container) => {
 				container.as_string(index)
 			}
-			ColumnData::RowId(container) => {
+			ColumnData::RowNumber(container) => {
 				container.as_string(index)
 			}
 			ColumnData::IdentityId(container) => {

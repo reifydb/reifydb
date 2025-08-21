@@ -47,14 +47,45 @@ impl AggregateFunction for Sum {
 				}
 				Ok(())
 			}
+			ColumnData::Int4(container) => {
+				for (group, indices) in groups.iter() {
+					let sum: i32 = indices
+						.iter()
+						.filter_map(|&i| {
+							container.get(i)
+						})
+						.sum();
+
+					self.sums.insert(
+						group.clone(),
+						Value::Int4(sum),
+					);
+				}
+				Ok(())
+			}
+			ColumnData::Int8(container) => {
+				for (group, indices) in groups.iter() {
+					let sum: i64 = indices
+						.iter()
+						.filter_map(|&i| {
+							container.get(i)
+						})
+						.sum();
+
+					self.sums.insert(
+						group.clone(),
+						Value::Int8(sum),
+					);
+				}
+				Ok(())
+			}
 			_ => unimplemented!(),
 		}
 	}
 
 	fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data =
-			ColumnData::float8_with_capacity(self.sums.len());
+		let mut data = ColumnData::undefined(0);
 
 		for (key, sum) in std::mem::take(&mut self.sums) {
 			keys.push(key);

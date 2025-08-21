@@ -12,13 +12,18 @@ use std::{
 };
 
 pub use factory::WsSubsystemFactory;
-use reifydb_core::{Result, interface::Transaction};
+use reifydb_core::{
+	Result,
+	interface::{
+		Transaction,
+		subsystem::{HealthStatus, Subsystem},
+	},
+};
 use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::{WsConfig, WsServer};
 use tokio::{sync::oneshot, task::JoinHandle};
 
-use super::Subsystem;
-use crate::{context::RuntimeProvider, health::HealthStatus};
+use crate::context::RuntimeProvider;
 
 pub struct WsSubsystem<T: Transaction> {
 	/// The wrapped WsServer
@@ -135,7 +140,7 @@ impl<T: Transaction> Subsystem for WsSubsystem<T> {
 		Ok(())
 	}
 
-	fn stop(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
@@ -179,6 +184,10 @@ impl<T: Transaction> Subsystem for WsSubsystem<T> {
 	}
 
 	fn as_any(&self) -> &dyn Any {
+		self
+	}
+
+	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

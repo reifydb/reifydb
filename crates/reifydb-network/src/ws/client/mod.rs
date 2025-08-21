@@ -14,7 +14,7 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
-	Date, DateTime, Error, Interval, RowId, Time, Type, err,
+	Date, DateTime, Error, Interval, RowNumber, Time, Type, err,
 	interface::{Params, fragment::OwnedFragment},
 	result::{
 		Frame, FrameColumn, FrameColumnData,
@@ -24,7 +24,7 @@ use reifydb_core::{
 		Blob,
 		container::{
 			BlobContainer, BoolContainer, NumberContainer,
-			RowIdContainer, StringContainer, TemporalContainer,
+			RowNumberContainer, StringContainer, TemporalContainer,
 			UndefinedContainer, UuidContainer,
 		},
 		temporal::parse_interval,
@@ -555,23 +555,23 @@ fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
 		Type::Undefined => FrameColumnData::Undefined(
 			UndefinedContainer::new(data.len()),
 		),
-		Type::RowId => {
+		Type::RowNumber => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
 					if s == "⟪undefined⟫" {
-						RowId::default()
+						RowNumber::default()
 					} else {
 						if let Ok(id) = s.parse::<u64>()
 						{
-							RowId::new(id)
+							RowNumber::new(id)
 						} else {
-							RowId::default()
+							RowNumber::default()
 						}
 					}
 				})
 				.collect();
-			FrameColumnData::RowId(RowIdContainer::new(
+			FrameColumnData::RowNumber(RowNumberContainer::new(
 				values,
 				bitvec.into(),
 			))

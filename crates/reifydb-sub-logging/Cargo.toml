@@ -1,0 +1,19 @@
+[package]
+name = "reifydb-sub-logging"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+reifydb-core = { workspace = true }
+
+# Performance
+crossbeam-channel = { workspace = true }
+parking_lot = { workspace = true }
+
+# For colored console output
+colored = { workspace = true }
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }

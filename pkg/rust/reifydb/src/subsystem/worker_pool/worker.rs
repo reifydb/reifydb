@@ -11,6 +11,8 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use reifydb_core::{log_debug, log_warn};
+
 use super::{PoolStats, PoolTask, PrioritizedTask, TaskContext};
 
 /// A worker thread in the pool
@@ -74,8 +76,8 @@ impl Worker {
 		self.handle = Some(handle);
 	}
 
-	/// Stop the worker thread
-	pub fn stop(mut self) {
+	/// Shutdown the worker thread
+	pub fn shutdown(mut self) {
 		if let Some(handle) = self.handle.take() {
 			// Worker will stop when running becomes false
 			let _ = handle.join();
@@ -94,7 +96,7 @@ impl Worker {
 	) {
 		stats.active_workers.fetch_add(1, Ordering::Relaxed);
 
-		println!("[WorkerPool] Worker {} started", id);
+		log_debug!("Worker {} started", id);
 
 		while running.load(Ordering::Relaxed) {
 			// Get task from priority queue
@@ -159,7 +161,7 @@ impl Worker {
 		}
 
 		stats.active_workers.fetch_sub(1, Ordering::Relaxed);
-		println!("[WorkerPool] Worker {} stopped", id);
+		log_debug!("Worker {} stopped", id);
 	}
 
 	/// Execute a single task
@@ -200,9 +202,10 @@ impl Worker {
 
 					let elapsed = start_time.elapsed();
 					if elapsed > timeout_warning {
-						println!(
-							"[WorkerPool] Task '{}' took {:?} (exceeded warning threshold)",
-							task_name, elapsed
+						log_warn!(
+							"Task '{}' took {:?} (exceeded warning threshold)",
+							task_name,
+							elapsed
 						);
 					}
 
@@ -211,8 +214,8 @@ impl Worker {
 				Err(e) => {
 					if retries < max_retries {
 						retries += 1;
-						println!(
-							"[WorkerPool] Task '{}' failed, retrying ({}/{}): {}",
+						log_warn!(
+							"Task '{}' failed, retrying ({}/{}): {}",
 							task_name,
 							retries,
 							max_retries,
@@ -230,9 +233,11 @@ impl Worker {
 							1,
 							Ordering::Relaxed,
 						);
-						println!(
-							"[WorkerPool] Task '{}' failed after {} retries: {}",
-							task_name, retries, e
+						log_warn!(
+							"Task '{}' failed after {} retries: {}",
+							task_name,
+							retries,
+							e
 						);
 						break;
 					}

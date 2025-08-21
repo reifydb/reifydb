@@ -6,14 +6,52 @@
 use std::{thread, time::Duration};
 
 use reifydb::{
-	MemoryDatabaseOptimistic, SessionSync, core::interface::Params, sync,
+	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
+	WithSubsystem,
+	core::{
+		interface::{Params, subsystem::logging::LogLevel::Trace},
+		log_info,
+	},
+	sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
+// pub type DB = SqliteDatabaseOptimistic;
+
+fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
+	logging.with_console(|console| {
+		console.color(true)
+			.stderr_for_errors(true)
+			.format_style(FormatStyle::Timeline)
+	})
+	.buffer_capacity(20000)
+	.batch_size(2000)
+	.flush_interval(Duration::from_millis(50))
+	.immediate_on_error(true)
+	.level(Trace)
+}
 
 fn main() {
-	// Example: Using the new unified interceptor API
-	let mut db: DB = sync::memory_optimistic().build().unwrap();
+	let mut db: DB = sync::memory_optimistic()
+		.with_logging(logger_configuration)
+
+		// .intercept(table_pre_insert(|_ctx| {
+		// 	log_info!("Table pre insert interceptor called!");
+		// 	Ok(())
+		// }))
+		// .intercept(table_post_insert(|_ctx| {
+		// 	log_info!("Table post insert interceptor called!");
+		// 	Ok(())
+		// }))
+		// .intercept(post_commit(|ctx| {
+		// 	log_info!(
+		// 		"Post-commit interceptor called with version: {:?}",
+		// 		ctx.version
+		// 	);
+		// 	Ok(())
+		// }))
+		.build()
+		.unwrap();
 	// let mut db: DB =
 	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
@@ -114,6 +152,6 @@ create deferred view test.basic { value: int8, age: int8 } with {
 	for frame in
 		db.query_as_root(r#"FROM test.basic"#, Params::None).unwrap()
 	{
-		println!("{}", frame);
+		log_info!("{}", frame);
 	}
 }

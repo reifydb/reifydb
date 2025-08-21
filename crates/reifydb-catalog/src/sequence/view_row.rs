@@ -6,15 +6,15 @@ use reifydb_core::interface::{
 	ViewRowSequenceKey,
 };
 
-use crate::{row::RowId, sequence::generator::u64::GeneratorU64};
+use crate::{row::RowNumber, sequence::generator::u64::GeneratorU64};
 
 pub struct ViewRowSequence {}
 
 impl ViewRowSequence {
-	pub fn next_row_id<T: Transaction>(
+	pub fn next_row_number<T: Transaction>(
 		txn: &mut CommandTransaction<T>,
 		view: ViewId,
-	) -> crate::Result<RowId> {
+	) -> crate::Result<RowNumber> {
 		GeneratorU64::next(
 			txn,
 			&ViewRowSequenceKey {
@@ -23,6 +23,6 @@ impl ViewRowSequence {
 			.encode(),
 			None,
 		)
-		.map(RowId)
+		.map(RowNumber)
 	}
 }
