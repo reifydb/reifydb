@@ -1,16 +1,22 @@
-name: Documentation CI/CD
+name: Documentation
 
 on:
   push:
     branches: [main]
     paths:
       - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - 'documentation.yml'
   pull_request:
     branches: [main]
     paths:
       - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - 'documentation.yml'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 
 jobs:
   test:
