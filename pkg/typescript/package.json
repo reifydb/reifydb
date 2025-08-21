@@ -9,6 +9,12 @@
     "test:unit": "pnpm -r --stream test:unit",
     "test:integration": "pnpm -r --stream test:integration",
     "test:coverage": "pnpm -r --stream test:coverage",
-    "test:watch": "pnpm -r --stream test:unit:watch"
+    "test:watch": "pnpm -r --stream test:unit:watch",
+    "publish:all": "pnpm publish:core && pnpm publish:client",
+    "publish:core": "pnpm --filter @reifydb/core publish:npm",
+    "publish:client": "pnpm --filter @reifydb/client publish:npm",
+    "version:patch": "pnpm -r version patch",
+    "version:minor": "pnpm -r version minor",
+    "version:major": "pnpm -r version major"
   }
 }

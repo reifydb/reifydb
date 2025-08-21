@@ -10,7 +10,9 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
     "test:unit:coverage": "vitest run --coverage --config vitest.config.ts",
-    "test:coverage": "pnpm test:unit:coverage"
+    "test:coverage": "pnpm test:unit:coverage",
+    "prepublishOnly": "pnpm build && pnpm test",
+    "publish:npm": "pnpm publish --access public"
   },
   "dependencies": {
     "uuid": "^11.1.0"
@@ -40,5 +42,14 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reifydb/reifydb.git",
+    "directory": "pkg/typescript/core"
+  },
+  "homepage": "https://github.com/reifydb/reifydb#readme",
+  "bugs": {
+    "url": "https://github.com/reifydb/reifydb/issues"
+  }
 }
