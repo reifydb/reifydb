@@ -17,7 +17,7 @@ use reifydb::{sync, MemoryDatabaseOptimistic, Session, SessionSync};
 pub type DB = MemoryDatabaseOptimistic;
 
 fn main() {
-	println!("=== ReifyDB Hello World Example ===");
+	log_info!("=== ReifyDB Hello World Example ===");
 
 	// Step 1: Create and start a synchronous in-memory database
 	// The sync::memory_optimistic() builder creates a database that:
@@ -25,7 +25,7 @@ fn main() {
 	// - Uses optimistic concurrency control
 	// - Operates synchronously (blocking operations)
 	let mut db: DB = sync::memory_optimistic().build().unwrap();
-	
+
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries
 	db.start().unwrap();
@@ -33,22 +33,22 @@ fn main() {
 	// Step 2: Execute a COMMAND (write operation) as root user
 	// Commands can modify the database state and return results
 	// The MAP command creates a result set with computed values
-	log_info!("Executing command as root");
+	log_info!("Command: \x1b[1mMAP {{ 42 as answer }}\x1b[0m");
 	for frame in
 		db.command_as_root("MAP { 42 as answer}", Params::None).unwrap()
 	{
-		log_info!("Command result:\n{}", frame);
+		log_info!("{}", frame);
 	}
 
 	// Step 3: Execute a QUERY (read operation) as root user
 	// Queries are read-only operations that cannot modify database state
 	// They're useful for retrieving and computing data without side effects
-	log_info!("\nExecuting query as root");
+	log_info!("Query: \x1b[1mMap {{ 40 + 2 as another_answer }}\x1b[0m");
 	for frame in db
 		.query_as_root("Map { 40 + 2 as another_answer}", Params::None)
 		.unwrap()
 	{
-		log_info!("Query result:\n{}", frame);
+		log_info!("{}", frame);
 	}
 
 	// Step 4: Create a SESSION for isolated operations
@@ -60,21 +60,21 @@ fn main() {
 
 	// Execute a query within the session context
 	// Sessions can maintain state across multiple operations
-	log_info!("Executing query in session");
+	log_info!("Session query: \x1b[1mmap {{ 20 * 2 + 2 as yet_another_answer}}\x1b[0m");
 	for frame in session
 		.query_sync(
-			"map { 20 * 20 + 2 as yet_another_answer}",
+			"map { 20 * 2 + 2 as yet_another_answer}",
 			Params::None,
 		)
 		.unwrap()
 	{
-		log_info!("Session query result:\n{}", frame);
+		log_info!("{}", frame);
 	}
 
 	// Clean shutdown - the database is automatically closed when dropped
 	// This ensures all resources are properly released
 	log_info!("Shutting down database...");
 	drop(db);
-	
-	println!("===Hello World example completed successfully!===");
+
+	log_info!("=== Hello World example completed successfully! ===");
 }

@@ -5,7 +5,9 @@
 
 use colored::*;
 use parking_lot::Mutex;
-use reifydb_core::interface::subsystem::logging::{LogBackend, LogLevel, Record};
+use reifydb_core::interface::subsystem::logging::{
+	LogBackend, LogLevel, Record,
+};
 use reifydb_core::Result;
 use std::io::{self, Write};
 
@@ -91,13 +93,20 @@ impl ConsoleBackend {
 			}
 
 			let module = self.format_module(&record.module);
-			
+
 			// Check if this is a new module or we need to flush the current group
 			if current_module.as_ref() != Some(&module) {
 				// Flush the current group if any
 				if !current_group.is_empty() {
-					if let Some(ref mod_name) = current_module {
-						output.push(self.format_timeline_group(&current_group, mod_name, &mut last_timestamp_ms));
+					if let Some(ref mod_name) =
+						current_module
+					{
+						output.push(self
+							.format_timeline_group(
+							&current_group,
+							mod_name,
+							&mut last_timestamp_ms,
+						));
 					}
 				}
 				// Start a new group
@@ -112,7 +121,11 @@ impl ConsoleBackend {
 		// Flush any remaining group
 		if !current_group.is_empty() {
 			if let Some(ref mod_name) = current_module {
-				output.push(self.format_timeline_group(&current_group, mod_name, &mut last_timestamp_ms));
+				output.push(self.format_timeline_group(
+					&current_group,
+					mod_name,
+					&mut last_timestamp_ms,
+				));
 			}
 		}
 
@@ -120,7 +133,12 @@ impl ConsoleBackend {
 		output
 	}
 
-	fn format_timeline_group(&self, records: &[&Record], module: &str, last_timestamp_ms: &mut Option<i64>) -> String {
+	fn format_timeline_group(
+		&self,
+		records: &[&Record],
+		module: &str,
+		last_timestamp_ms: &mut Option<i64>,
+	) -> String {
 		if records.is_empty() {
 			return String::new();
 		}
@@ -129,25 +147,33 @@ impl ConsoleBackend {
 		let first_record = records[0];
 		let level = first_record.level;
 		let timestamp = first_record.timestamp;
-		
+
 		// Get timestamp in milliseconds since epoch
 		let timestamp_ms = timestamp.timestamp_millis();
-		
+
 		// Format the timestamp string
 		let millis = timestamp.timestamp_subsec_millis();
 		let time_str = if let Some(last_ms) = *last_timestamp_ms {
 			// Only show timestamp if it has changed
 			if timestamp_ms != last_ms {
-				format!("{}.{:03} ├─", timestamp.format("%H:%M:%S"), millis)
+				format!(
+					"{}.{:03} ├─",
+					timestamp.format("%H:%M:%S"),
+					millis
+				)
 			} else {
 				// Same timestamp - just show the connector aligned (12 chars for timestamp)
 				"             ├─".to_string()
 			}
 		} else {
 			// First timestamp - show full timestamp with milliseconds
-			format!("{}.{:03} ├─", timestamp.format("%H:%M:%S"), millis)
+			format!(
+				"{}.{:03} ├─",
+				timestamp.format("%H:%M:%S"),
+				millis
+			)
 		};
-		
+
 		// Update last timestamp
 		*last_timestamp_ms = Some(timestamp_ms);
 
@@ -167,12 +193,25 @@ impl ConsoleBackend {
 			if self.use_color {
 				match level {
 					LogLevel::Off => unreachable!(),
-					LogLevel::Trace => text.bright_black().to_string(),
-					LogLevel::Debug => text.bright_blue().to_string(),
-					LogLevel::Info => text.green().to_string(),
-					LogLevel::Warn => text.yellow().to_string(),
-					LogLevel::Error => text.red().to_string(),
-					LogLevel::Critical => text.bright_magenta().bold().to_string(),
+					LogLevel::Trace => {
+						text.bright_black().to_string()
+					}
+					LogLevel::Debug => {
+						text.bright_blue().to_string()
+					}
+					LogLevel::Info => {
+						text.green().to_string()
+					}
+					LogLevel::Warn => {
+						text.yellow().to_string()
+					}
+					LogLevel::Error => {
+						text.red().to_string()
+					}
+					LogLevel::Critical => text
+						.bright_magenta()
+						.bold()
+						.to_string(),
 				}
 			} else {
 				text.to_string()
@@ -182,91 +221,54 @@ impl ConsoleBackend {
 		// Start the group header - don't colorize timestamp or connector, only level and module
 		output.push_str(&time_str);
 		output.push(' ');
-		output.push_str(&apply_color(&format!("{} {}", level_str, module)));
+		output.push_str(&apply_color(&format!(
+			"{} {}",
+			level_str, module
+		)));
 		output.push('\n');
 
 		// Maximum width for content (accounting for the indent and tree characters)
-		const MAX_WIDTH: usize = 120;
 		const INDENT: &str = "             │  ";
-		
+
 		// Format each message in the group
 		for (i, record) in records.iter().enumerate() {
 			let is_last = i == records.len() - 1;
-			let branch_char = if is_last { "└─" } else { "├─" };
-			let continuation = if is_last { "   " } else { "│  "};
-			
+			let branch_char = if is_last {
+				"└─"
+			} else {
+				"├─"
+			};
+			let continuation = if is_last {
+				"   "
+			} else {
+				"│  "
+			};
+
 			// Handle multiline messages
 			let lines: Vec<&str> = record.message.lines().collect();
 			for (j, line) in lines.iter().enumerate() {
 				if j == 0 {
 					// First line with branch - colorize only the branch chars, not the vertical line
 					output.push_str(INDENT);
-					output.push_str(&apply_color(&format!("{} ", branch_char)));
+					output.push_str(&apply_color(
+						&format!("{} ", branch_char),
+					));
 					output.push_str(&format!("{}\n", line));
 				} else {
 					// Continuation lines - show vertical continuation line
 					output.push_str(INDENT);
-					output.push_str(&apply_color(&continuation));
+					output.push_str(&apply_color(
+						&continuation,
+					));
 					output.push_str(&format!("{}\n", line));
 				}
 			}
 		}
-		
+
 		// Add separator line - don't colorize
 		output.push_str("             │\n");
-		
-		output
-	}
 
-	/// Wrap text to fit within the specified width
-	fn wrap_text(&self, text: &str, max_width: usize) -> Vec<String> {
-		let mut result = Vec::new();
-		
-		for line in text.lines() {
-			if line.len() <= max_width {
-				result.push(line.to_string());
-			} else {
-				// Split long lines
-				let mut current = String::new();
-				let mut parts = line.split_whitespace().peekable();
-				
-				while let Some(word) = parts.next() {
-					// If word itself is longer than max width, split it
-					if word.len() > max_width {
-						// Flush current line if not empty
-						if !current.is_empty() {
-							result.push(current);
-							current = String::new();
-						}
-						// Split the long word
-						for chunk in word.chars().collect::<Vec<_>>().chunks(max_width) {
-							result.push(chunk.iter().collect());
-						}
-					} else if current.is_empty() {
-						current = word.to_string();
-					} else if current.len() + 1 + word.len() <= max_width {
-						current.push(' ');
-						current.push_str(word);
-					} else {
-						// Current line is full, start a new one
-						result.push(current);
-						current = word.to_string();
-					}
-				}
-				
-				// Push any remaining content
-				if !current.is_empty() {
-					result.push(current);
-				}
-			}
-		}
-		
-		// If no lines were produced, return the original text as a single line
-		if result.is_empty() {
-			result.push(text.to_string());
-		}
-		
-		result
+		output
 	}
 
 	fn format_record(&self, record: &Record) -> String {
@@ -477,7 +479,8 @@ impl LogBackend for ConsoleBackend {
 		match self.format_style {
 			FormatStyle::Timeline => {
 				// Process all records together for timeline formatting
-				let formatted_groups = self.format_timeline_records(records);
+				let formatted_groups =
+					self.format_timeline_records(records);
 				for formatted in formatted_groups {
 					// Check if any record in this group should go to stderr
 					// For simplicity, we'll send all to stdout for now
@@ -491,10 +494,13 @@ impl LogBackend for ConsoleBackend {
 						continue;
 					}
 
-					let formatted =
-						format!("{}\n", self.format_record(record));
+					let formatted = format!(
+						"{}\n",
+						self.format_record(record)
+					);
 					if self.stderr_for_errors
-						&& record.level >= LogLevel::Error
+						&& record.level
+							>= LogLevel::Error
 					{
 						stderr_records.push(formatted);
 					} else {
