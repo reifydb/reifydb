@@ -434,6 +434,7 @@ fn test_different_log_levels() {
 	let (mut subsystem, _handle) = LoggingBuilder::new()
 		.with_backend(Box::new(backend))
 		.buffer_capacity(100)
+		.level(LogLevel::Trace)
 		.build_for_test();
 
 	subsystem.start().expect("Failed to start");

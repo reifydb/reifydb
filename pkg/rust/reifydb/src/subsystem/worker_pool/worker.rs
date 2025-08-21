@@ -2,15 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{PoolStats, PoolTask, PrioritizedTask, TaskContext};
-use reifydb_core::{log_info, log_trace, log_warn};
+use reifydb_core::{log_debug, log_warn};
 use std::{
-    collections::BinaryHeap,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering}, Arc, Condvar,
-        Mutex,
-    },
-    thread::{self, JoinHandle},
-    time::{Duration, Instant},
+	collections::BinaryHeap,
+	sync::{
+		atomic::{AtomicBool, AtomicU64, Ordering}, Arc, Condvar,
+		Mutex,
+	},
+	thread::{self, JoinHandle},
+	time::{Duration, Instant},
 };
 
 /// A worker thread in the pool
@@ -94,7 +94,7 @@ impl Worker {
 	) {
 		stats.active_workers.fetch_add(1, Ordering::Relaxed);
 
-		log_trace!("Worker {} started", id);
+		log_debug!("Worker {} started", id);
 
 		while running.load(Ordering::Relaxed) {
 			// Get task from priority queue
@@ -159,7 +159,7 @@ impl Worker {
 		}
 
 		stats.active_workers.fetch_sub(1, Ordering::Relaxed);
-		log_info!("Worker {} stopped", id);
+		log_debug!("Worker {} stopped", id);
 	}
 
 	/// Execute a single task
@@ -202,7 +202,8 @@ impl Worker {
 					if elapsed > timeout_warning {
 						log_warn!(
 							"Task '{}' took {:?} (exceeded warning threshold)",
-							task_name, elapsed
+							task_name,
+							elapsed
 						);
 					}
 
@@ -232,7 +233,9 @@ impl Worker {
 						);
 						log_warn!(
 							"Task '{}' failed after {} retries: {}",
-							task_name, retries, e
+							task_name,
+							retries,
+							e
 						);
 						break;
 					}

@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
+#[cfg(feature = "async")]
+use crate::session::CommandSessionAsync;
+use crate::session::CommandSessionSync;
 use reifydb_core::{
 	interface::{Engine as EngineInterface, Identity, Params, Transaction},
 	result::Frame,
@@ -24,23 +26,10 @@ impl<T: Transaction> CommandSession<T> {
 			identity,
 		}
 	}
+}
 
-	pub fn query_sync(
-		&self,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> crate::Result<Vec<Frame>> {
-		let rql = rql.to_string();
-		let params = params.into();
-		self.engine.query_as(&self.identity, &rql, params).map_err(
-			|mut err| {
-				err.with_statement(rql);
-				err
-			},
-		)
-	}
-
-	pub fn command_sync(
+impl<T: Transaction> CommandSessionSync<T> for CommandSession<T> {
+	fn command(
 		&self,
 		rql: &str,
 		params: impl Into<Params>,
@@ -54,12 +43,14 @@ impl<T: Transaction> CommandSession<T> {
 			},
 		)
 	}
+}
 
-	#[cfg(feature = "async")]
-	pub async fn command_async(
+#[cfg(feature = "async")]
+impl<T: Transaction> CommandSessionAsync<T> for CommandSession<T> {
+	async fn command(
 		&self,
 		rql: &str,
-		params: impl Into<Params>,
+		params: impl Into<Params> + Send,
 	) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();
@@ -75,29 +66,6 @@ impl<T: Transaction> CommandSession<T> {
 			)
 		})
 		.await
-		.unwrap()
-	}
-
-	#[cfg(feature = "async")]
-	pub async fn query_async(
-		&self,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> crate::Result<Vec<Frame>> {
-		let rql = rql.to_string();
-		let params = params.into();
-
-		let identity = self.identity.clone();
-		let engine = self.engine.clone();
-		spawn_blocking(move || {
-			engine.query_as(&identity, &rql, params).map_err(
-				|mut err| {
-					err.with_statement(rql.to_string());
-					err
-				},
-			)
-		})
-		.await
-		.unwrap()
+			.unwrap()
 	}
 }

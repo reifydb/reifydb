@@ -5,10 +5,11 @@
 
 use std::{thread, time::Duration};
 
+use reifydb::core::interface::subsystem::logging::LogLevel::Trace;
 use reifydb::core::log_info;
 use reifydb::{
-	core::interface::Params, sync, FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic,
-	SessionSync, WithSubsystem,
+	core::interface::Params, sync, FormatStyle, LoggingBuilder,
+	MemoryDatabaseOptimistic, SessionSync, WithSubsystem,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -16,8 +17,7 @@ pub type DB = MemoryDatabaseOptimistic;
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	logging.with_console(|console| {
-		console
-			.color(true)
+		console.color(true)
 			.stderr_for_errors(true)
 			.format_style(FormatStyle::Timeline)
 	})
@@ -25,6 +25,7 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	.batch_size(2000)
 	.flush_interval(Duration::from_millis(50))
 	.immediate_on_error(true)
+	.level(Trace)
 }
 
 fn main() {

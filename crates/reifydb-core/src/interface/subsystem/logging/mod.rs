@@ -14,6 +14,7 @@ use std::thread::current;
 
 mod macros;
 pub mod mock;
+pub mod timed;
 
 #[derive(
 	Debug,

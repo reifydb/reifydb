@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+#[cfg(feature = "async")]
+use crate::session::QuerySessionAsync;
+use crate::session::QuerySessionSync;
 use reifydb_core::{
-	interface::{Engine as EngineInterface, Identity, Params, Transaction},
-	result::Frame,
+    interface::{Engine as EngineInterface, Identity, Params, Transaction},
+    result::Frame,
 };
 use reifydb_engine::StandardEngine;
 #[cfg(feature = "async")]
@@ -15,19 +18,8 @@ pub struct QuerySession<T: Transaction> {
 	pub(crate) identity: Identity,
 }
 
-impl<T: Transaction> QuerySession<T> {
-	pub(crate) fn new(
-		engine: StandardEngine<T>,
-		identity: Identity,
-	) -> Self {
-		Self {
-			engine,
-			identity,
-		}
-	}
-
-	/// Execute a synchronous query
-	pub fn query_sync(
+impl<T: Transaction> QuerySessionSync<T> for QuerySession<T> {
+	fn query(
 		&self,
 		rql: &str,
 		params: impl Into<Params>,
@@ -41,13 +33,14 @@ impl<T: Transaction> QuerySession<T> {
 			},
 		)
 	}
+}
 
-	/// Execute an asynchronous query
-	#[cfg(feature = "async")]
-	pub async fn query_async(
+#[cfg(feature = "async")]
+impl<T: Transaction> QuerySessionAsync<T> for QuerySession<T> {
+	async fn query(
 		&self,
 		rql: &str,
-		params: impl Into<Params>,
+		params: impl Into<Params> + Send,
 	) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();
@@ -63,6 +56,6 @@ impl<T: Transaction> QuerySession<T> {
 			)
 		})
 		.await
-		.unwrap()
+			.unwrap()
 	}
 }

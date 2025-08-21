@@ -24,4 +24,4 @@ pub use metrics::LoggingMetrics;
 pub use subsystem::LoggingSubsystem;
 
 #[cfg(debug_assertions)]
-pub use test_utils::{TestLoggerHandle, LoggingBuilderTestExt};
+pub use test_utils::{LoggingBuilderTestExt, TestLoggerHandle};

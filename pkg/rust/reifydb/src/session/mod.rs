@@ -14,8 +14,8 @@ mod query;
 pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
-	Frame,
 	interface::{Identity, Params, Transaction},
+	Frame,
 };
 use reifydb_engine::StandardEngine;
 
@@ -38,7 +38,7 @@ pub trait SessionSync<T: Transaction>: Session<T> {
 		params: impl Into<Params>,
 	) -> crate::Result<Vec<Frame>> {
 		let session = self.command_session(Identity::root())?;
-		session.command_sync(rql, params)
+		CommandSessionSync::command(&session, rql, params)
 	}
 
 	fn query_as_root(
@@ -47,8 +47,24 @@ pub trait SessionSync<T: Transaction>: Session<T> {
 		params: impl Into<Params>,
 	) -> crate::Result<Vec<Frame>> {
 		let session = self.query_session(Identity::root())?;
-		session.query_sync(rql, params)
+		QuerySessionSync::query(&session, rql, params)
 	}
+}
+
+pub trait CommandSessionSync<T: Transaction> {
+	fn command(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> crate::Result<Vec<Frame>>;
+}
+
+pub trait QuerySessionSync<T: Transaction> {
+	fn query(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> crate::Result<Vec<Frame>>;
 }
 
 #[cfg(feature = "async")]
@@ -60,7 +76,8 @@ pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
 	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
 		async {
 			let session = self.command_session(Identity::root())?;
-			session.command_async(rql, params).await
+			CommandSessionAsync::command(&session, rql, params)
+				.await
 		}
 	}
 
@@ -71,7 +88,37 @@ pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
 	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
 		async {
 			let session = self.query_session(Identity::root())?;
-			session.query_async(rql, params).await
+			QuerySessionAsync::query(&session, rql, params).await
+		}
+	}
+}
+
+#[cfg(feature = "async")]
+pub trait CommandSessionAsync<T: Transaction> {
+	fn command(
+		&self,
+		rql: &str,
+		params: impl Into<Params> + Send,
+	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send;
+}
+
+#[cfg(feature = "async")]
+pub trait QuerySessionAsync<T: Transaction> {
+	fn query(
+		&self,
+		rql: &str,
+		params: impl Into<Params> + Send,
+	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send;
+}
+
+impl<T: Transaction> QuerySession<T> {
+	pub(crate) fn new(
+		engine: StandardEngine<T>,
+		identity: Identity,
+	) -> Self {
+		Self {
+			engine,
+			identity,
 		}
 	}
 }

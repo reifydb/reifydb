@@ -2,28 +2,27 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	ops::Bound,
-	sync::{
-		atomic::{AtomicBool, Ordering},
-		Arc,
-	},
-	thread::{self, JoinHandle},
-	time::Duration,
+    ops::Bound,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 
 use reifydb_core::{
-	interface::{
-		key::{CdcConsumerKey, EncodableKey}, worker_pool::Priority, CdcConsume, CdcConsumer,
-		CdcEvent, CdcTransaction, CommandTransaction, ConsumerId,
-		Engine as EngineInterface, Key,
-		Transaction,
-		VersionedCommandTransaction,
-		VersionedQueryTransaction,
-	}, log_debug, log_error,
-	log_info,
-	row::EncodedRow, util::CowVec, EncodedKey,
-	Result,
-	Version,
+    interface::{
+        key::{CdcConsumerKey, EncodableKey}, worker_pool::Priority, CdcConsume, CdcConsumer,
+        CdcEvent, CdcTransaction, CommandTransaction, ConsumerId,
+        Engine as EngineInterface, Key,
+        Transaction,
+        VersionedCommandTransaction,
+        VersionedQueryTransaction,
+    }, log_debug, log_error,
+    row::EncodedRow, util::CowVec, EncodedKey,
+    Result,
+    Version,
 };
 use reifydb_engine::StandardEngine;
 
@@ -160,7 +159,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			thread::sleep(config.poll_interval);
 		}
 
-		log_info!("[Consumer {:?}] Stopped", config.consumer_id);
+		log_debug!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 

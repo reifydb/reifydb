@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
     #    "bin/cli",
+    "bin/examples",
     "bin/playground",
     "bin/server",
     "bin/testcontainer",
@@ -26,6 +27,7 @@ members = [
 
 default-members = [
     #    "bin/cli",
+    "bin/examples",
     "bin/playground",
     "bin/server",
     "bin/testcontainer",

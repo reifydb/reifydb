@@ -23,28 +23,31 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
       
       - name: Install dependencies
         working-directory: ./docs
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Run linter
         working-directory: ./docs
-        run: npm run lint
+        run: pnpm run lint
       
       - name: Check formatting
         working-directory: ./docs
-        run: npm run format:check
+        run: pnpm run format:check
       
       - name: Type check
         working-directory: ./docs
-        run: npm run typecheck
+        run: pnpm run typecheck
       
       - name: Build documentation
         working-directory: ./docs
-        run: npm run build
+        run: pnpm run build
 
   deploy:
     needs: test
@@ -58,16 +61,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
       
       - name: Install dependencies
         working-directory: ./docs
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Build documentation
         working-directory: ./docs
-        run: npm run build
+        run: pnpm run build
       
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
