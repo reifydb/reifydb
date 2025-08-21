@@ -1,0 +1,65 @@
+.playground {
+  height: calc(100vh - var(--ifm-navbar-height));
+  display: flex;
+  flex-direction: column;
+  background: var(--ifm-background-color);
+}
+
+.content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.resizeHandle {
+  background: var(--ifm-color-emphasis-200);
+  transition: background-color 0.2s;
+}
+
+.resizeHandle:hover {
+  background: var(--ifm-color-primary);
+}
+
+.resizeHandle[data-resize-handle-active] {
+  background: var(--ifm-color-primary);
+}
+
+.resultPanel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ifm-background-surface-color);
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  background: var(--ifm-background-color);
+}
+
+.tab {
+  padding: 0.75rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ifm-color-content-secondary);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  color: var(--ifm-color-content);
+  background: var(--ifm-hover-overlay);
+}
+
+.tab.active {
+  color: var(--ifm-color-primary);
+  border-bottom-color: var(--ifm-color-primary);
+}
+
+.tabContent {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}

@@ -1,0 +1,101 @@
+.schemaExplorer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ifm-background-surface-color);
+  border-right: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ifm-color-content);
+}
+
+.tableList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.emptyState {
+  padding: 1rem;
+  text-align: center;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.875rem;
+}
+
+.table {
+  margin-bottom: 0.25rem;
+  border: 1px solid var(--ifm-color-emphasis-100);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.tableHeader {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--ifm-background-color);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.tableHeader:hover {
+  background: var(--ifm-hover-overlay);
+}
+
+.expandIcon {
+  margin-right: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ifm-color-content-secondary);
+}
+
+.tableName {
+  flex: 1;
+  font-weight: 500;
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+
+.tableName:hover {
+  text-decoration: underline;
+}
+
+.rowCount {
+  font-size: 0.75rem;
+  color: var(--ifm-color-content-secondary);
+}
+
+.columnList {
+  padding: 0.5rem;
+  background: var(--ifm-background-color);
+  border-top: 1px solid var(--ifm-color-emphasis-100);
+}
+
+.column {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+.column:hover {
+  background: var(--ifm-hover-overlay);
+  border-radius: 2px;
+}
+
+.columnName {
+  color: var(--ifm-color-content);
+}
+
+.columnType {
+  font-size: 0.75rem;
+  color: var(--ifm-color-content-secondary);
+}
