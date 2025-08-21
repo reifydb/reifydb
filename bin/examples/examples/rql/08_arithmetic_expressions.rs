@@ -1,0 +1,244 @@
+//! # Arithmetic Expressions Example
+//!
+//! Demonstrates arithmetic operations in ReifyDB's RQL:
+//! - Basic arithmetic operators (+, -, *, /)
+//! - Modulo operator (%)
+//! - Parentheses for operation precedence
+//! - Arithmetic in different contexts
+//!
+//! Run with: `make rql-arithmetic` or `cargo run --bin rql-arithmetic`
+
+use reifydb::{sync, Params, SessionSync};
+use reifydb::log_info;
+
+fn main() {
+	let mut db = sync::memory_optimistic().build().unwrap();
+	db.start().unwrap();
+
+	// Example 1: Basic arithmetic operations
+	log_info!("Example 1: Basic arithmetic operations");
+	log_info!("Query:\n\x1b[1mmap {{
+  10 + 5 as addition,
+  10 - 5 as subtraction,
+  10 * 5 as multiplication,
+  10 / 5 as division,
+  10 % 3 as modulo
+}}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			map {
+				10 + 5 as addition,
+				10 - 5 as subtraction,
+				10 * 5 as multiplication,
+				10 / 5 as division,
+				10 % 3 as modulo
+			}
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 2: Operator precedence
+	log_info!("\nExample 2: Operator precedence (multiplication before addition)");
+	log_info!("Query:\n\x1b[1mmap {{
+  2 + 3 * 4 as without_parens,
+  (2 + 3) * 4 as with_parens
+}}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			map {
+				2 + 3 * 4 as without_parens,
+				(2 + 3) * 4 as with_parens
+			}
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 3: Arithmetic with floating point
+	log_info!("\nExample 3: Floating point arithmetic");
+	log_info!("Query:\n\x1b[1mmap {{
+  3.14 * 2.0 as pi_times_two,
+  10.5 / 2.5 as decimal_division,
+  1.1 + 2.2 as decimal_addition
+}}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			map {
+				3.14 * 2.0 as pi_times_two,
+				10.5 / 2.5 as decimal_division,
+				1.1 + 2.2 as decimal_addition
+			}
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Set up sample data for more complex examples
+	db.command_as_root("create schema shop", Params::None).unwrap();
+	db.command_as_root(
+		r#"
+		create table shop.products {
+			id: int4,
+			name: utf8,
+			price: float8,
+			quantity: int4,
+			discount_percent: float8,
+			tax_rate: float8
+		}
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	db.command_as_root(
+		r#"
+		from [
+			{ id: 1, name: "Widget", price: 29.99, quantity: 5, discount_percent: 10.0, tax_rate: 8.5 },
+			{ id: 2, name: "Gadget", price: 49.99, quantity: 3, discount_percent: 15.0, tax_rate: 8.5 },
+			{ id: 3, name: "Tool", price: 99.99, quantity: 2, discount_percent: 20.0, tax_rate: 8.5 },
+			{ id: 4, name: "Device", price: 149.99, quantity: 1, discount_percent: 5.0, tax_rate: 8.5 }
+		]
+		insert shop.products
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Example 4: Arithmetic on table columns
+	log_info!("\nExample 4: Calculate total price (price * quantity)");
+	log_info!("Query:\n\x1b[1mfrom shop.products
+map {{ name, price, quantity, price * quantity as total }}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			from shop.products
+			map { name, price, quantity, price * quantity as total }
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 5: Complex calculations with discounts
+	log_info!("\nExample 5: Calculate discount amount and final price");
+	log_info!("Query:\n\x1b[1mfrom shop.products
+map {{
+  name,
+  price,
+  discount_percent,
+  price * (discount_percent / 100) as discount_amount,
+  price - (price * discount_percent / 100) as discounted_price
+}}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			from shop.products
+			map {
+				name,
+				price,
+				discount_percent,
+				price * (discount_percent / 100) as discount_amount,
+				price - (price * discount_percent / 100) as discounted_price
+			}
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 6: Tax calculations
+	log_info!("\nExample 6: Calculate price with tax");
+	log_info!("Query:\n\x1b[1mfrom shop.products
+map {{
+  name,
+  price,
+  tax_rate,
+  price * (tax_rate / 100) as tax_amount,
+  price + (price * tax_rate / 100) as price_with_tax
+}}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			from shop.products
+			map {
+				name,
+				price,
+				tax_rate,
+				price * (tax_rate / 100) as tax_amount,
+				price + (price * tax_rate / 100) as price_with_tax
+			}
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 7: Arithmetic in filter conditions
+	log_info!("\nExample 7: Filter using arithmetic expression");
+	log_info!("Query:\n\x1b[1mfrom shop.products
+filter price * quantity > 100\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			from shop.products
+			filter price * quantity > 100
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 8: Complex nested calculations
+	log_info!("\nExample 8: Complete order calculation");
+	log_info!("Query:\n\x1b[1mfrom shop.products
+map {{
+  name,
+  quantity,
+  price * quantity as subtotal,
+  (price * quantity) * (discount_percent / 100) as discount,
+  (price * quantity) - ((price * quantity) * (discount_percent / 100)) as after_discount,
+  ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100) as tax,
+  ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100) as final_total
+}}\x1b[0m");
+	for frame in db
+		.query_as_root(
+			r#"
+			from shop.products
+			map {
+				name,
+				quantity,
+				price * quantity as subtotal,
+				(price * quantity) * (discount_percent / 100) as discount,
+				(price * quantity) - ((price * quantity) * (discount_percent / 100)) as after_discount,
+				((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100) as tax,
+				((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100) as final_total
+			}
+			"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+}

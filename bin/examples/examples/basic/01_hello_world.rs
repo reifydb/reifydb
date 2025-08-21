@@ -18,8 +18,6 @@ use reifydb::{sync, MemoryDatabaseOptimistic, Session, SessionSync};
 pub type DB = MemoryDatabaseOptimistic;
 
 fn main() {
-	log_info!("=== ReifyDB Hello World Example ===");
-
 	// Step 1: Create and start a synchronous in-memory database
 	// The sync::memory_optimistic() builder creates a database that:
 	// - Stores all data in memory (no persistence)
@@ -76,6 +74,4 @@ fn main() {
 	// This ensures all resources are properly released
 	log_info!("Shutting down database...");
 	drop(db);
-
-	log_info!("=== Hello World example completed successfully! ===");
 }

@@ -11,6 +11,8 @@ use reifydb_core::interface::subsystem::logging::{
 use reifydb_core::Result;
 use std::io::{self, Write};
 
+const MAX_LINE_WIDTH: usize = 160;
+
 /// Format style for console output
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FormatStyle {
@@ -81,6 +83,7 @@ impl ConsoleBackend {
 	}
 
 	fn format_timeline_records(&self, records: &[Record]) -> Vec<String> {
+
 		let mut output = Vec::new();
 		let mut last_timestamp_ms = self.last_timestamp_ms.lock();
 		let mut last_module = self.last_module.lock();
@@ -229,7 +232,6 @@ impl ConsoleBackend {
 
 		// Maximum width for content (accounting for the indent and tree characters)
 		const INDENT: &str = "             │  ";
-		const MAX_LINE_WIDTH: usize = 100; // Maximum width for content lines
 
 		// Format each message in the group
 		for (i, record) in records.iter().enumerate() {
@@ -419,7 +421,7 @@ impl ConsoleBackend {
 
 			// Message content with colored left border and wrapping
 			if !record.message.is_empty() {
-				const MAX_LINE_WIDTH: usize = 120;
+
 
 				for line in record.message.lines() {
 					if line.len() <= MAX_LINE_WIDTH {

@@ -6,10 +6,10 @@ A collection of executable examples demonstrating ReifyDB's capabilities.
 
 ```bash
 # Run the simplest example using make
-make hello-world
+make basic-hello-world
 
 # Or use cargo directly
-cargo run --bin hello-world
+cargo run --bin basic-hello-world
 ```
 
 ## Available Examples
@@ -18,8 +18,23 @@ cargo run --bin hello-world
 
 | Make Command | Description | Required Features |
 |--------------|-------------|-------------------|
-| `make hello-world` | Simple hello world example with in-memory database | None |
+| `make basic-hello-world` | Simple hello world example with in-memory database | None |
 | `make basic-tables` | Table creation and schema definition example | None |
+
+### RQL (Query Language) Examples
+
+| Make Command | Description | Required Features |
+|--------------|-------------|-------------------|
+| `make rql-from` | FROM operator: loading data from inline arrays and tables | None |
+| `make rql-map` | MAP operator: projection and computed fields | None |
+| `make rql-filter` | FILTER operator: filtering data with conditions | None |
+| `make rql-sort` | SORT operator: sorting results | None |
+| `make rql-take` | TAKE operator: limiting results | None |
+| `make rql-aggregate` | AGGREGATE operator: aggregation functions (avg, sum, count) | None |
+| `make rql-join` | JOIN operator: inner, left, and natural joins | None |
+| `make rql-arithmetic` | Arithmetic expressions in queries | None |
+| `make rql-comparison` | Comparison operators (==, !=, <, >, <=, >=, between) | None |
+| `make rql-logical` | Logical operators (and, or, not, xor) | None |
 
 ## Project Structure
 
@@ -31,9 +46,20 @@ bin/examples/
 ├── src/
 │   └── lib.rs          # Shared utilities
 └── examples/
-    └── basic/          # Basic operations
-        ├── 01_hello_world.rs
-        └── 02_basic_tables.rs
+    ├── basic/          # Basic operations
+    │   ├── 01_hello_world.rs
+    │   └── 02_basic_tables.rs
+    └── rql/            # RQL query language examples
+        ├── 01_from_operator.rs         # FROM operator
+        ├── 02_map_operator.rs          # MAP operator
+        ├── 03_filter_operator.rs       # FILTER operator
+        ├── 04_sort_operator.rs         # SORT operator
+        ├── 05_take_operator.rs         # TAKE operator
+        ├── 06_aggregate_operator.rs    # AGGREGATE operator
+        ├── 07_join_operator.rs         # JOIN operator
+        ├── 08_arithmetic_expressions.rs # Arithmetic operations
+        ├── 09_comparison_operators.rs  # Comparison operators
+        └── 10_logical_operators.rs     # Logical operators
 ```
 
 ## Running Examples

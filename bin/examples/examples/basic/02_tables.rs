@@ -201,6 +201,4 @@ fn main() {
 	for frame in results {
 		log_info!("{}", frame);
 	}
-
-	log_info!("Example completed successfully!");
 }
