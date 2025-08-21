@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { QueryResult, TableInfo, QueryHistoryItem } from '../types';
 
 // Mock data for demonstration - will be replaced with WebSocket connection
@@ -36,35 +36,41 @@ const MOCK_USERS_DATA = [
 ];
 
 const MOCK_POSTS_DATA = [
-  [1, 1, 'Getting Started with ReifyDB', 'ReifyDB is a modern database...', true, '2024-01-20 11:00:00'],
+  [
+    1,
+    1,
+    'Getting Started with ReifyDB',
+    'ReifyDB is a modern database...',
+    true,
+    '2024-01-20 11:00:00',
+  ],
   [2, 1, 'Advanced Query Optimization', 'In this post we explore...', true, '2024-01-22 15:30:00'],
   [3, 2, 'Building Real-time Apps', 'Learn how to build...', true, '2024-01-23 10:45:00'],
   [4, 3, 'Draft Post', 'This is a work in progress...', false, '2024-01-24 16:20:00'],
 ];
 
 export function usePlaygroundConnection() {
-  const [connected, setConnected] = useState(true);
+  const [connected] = useState(true);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [schema, setSchema] = useState<TableInfo[]>(MOCK_SCHEMA);
   const [history, setHistory] = useState<QueryHistoryItem[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
 
   // Mock execute query for demonstration
   const executeQuery = useCallback(async (query: string) => {
     const startTime = Date.now();
     setError(null);
-    
+
     try {
       // Simulate query execution
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
       const queryLower = query.toLowerCase().trim();
-      
+
       // Mock SELECT queries
       if (queryLower.startsWith('select')) {
         let mockResult: QueryResult;
-        
+
         if (queryLower.includes('from users')) {
           mockResult = {
             columns: MOCK_SCHEMA[0].columns,
@@ -97,9 +103,9 @@ export function usePlaygroundConnection() {
             executionTimeMs: Date.now() - startTime,
           };
         }
-        
+
         setResult(mockResult);
-        
+
         // Add to history
         const historyItem: QueryHistoryItem = {
           id: Date.now().toString(),
@@ -108,21 +114,23 @@ export function usePlaygroundConnection() {
           executionTimeMs: mockResult.executionTimeMs,
           success: true,
         };
-        setHistory(prev => [...prev, historyItem]);
+        setHistory((prev) => [...prev, historyItem]);
       }
       // Mock INSERT/UPDATE/DELETE
-      else if (queryLower.startsWith('insert') || 
-               queryLower.startsWith('update') || 
-               queryLower.startsWith('delete')) {
+      else if (
+        queryLower.startsWith('insert') ||
+        queryLower.startsWith('update') ||
+        queryLower.startsWith('delete')
+      ) {
         const mockResult: QueryResult = {
           columns: [],
           rows: [],
           executionTimeMs: Date.now() - startTime,
           rowsAffected: 1,
         };
-        
+
         setResult(mockResult);
-        
+
         // Add to history
         const historyItem: QueryHistoryItem = {
           id: Date.now().toString(),
@@ -131,14 +139,16 @@ export function usePlaygroundConnection() {
           executionTimeMs: mockResult.executionTimeMs,
           success: true,
         };
-        setHistory(prev => [...prev, historyItem]);
+        setHistory((prev) => [...prev, historyItem]);
       }
       // Mock CREATE/DROP/ALTER
-      else if (queryLower.startsWith('create') || 
-               queryLower.startsWith('drop') || 
-               queryLower.startsWith('alter')) {
+      else if (
+        queryLower.startsWith('create') ||
+        queryLower.startsWith('drop') ||
+        queryLower.startsWith('alter')
+      ) {
         setError('DDL operations are not allowed in the playground');
-        
+
         // Add to history
         const historyItem: QueryHistoryItem = {
           id: Date.now().toString(),
@@ -148,11 +158,10 @@ export function usePlaygroundConnection() {
           success: false,
           error: 'DDL operations are not allowed in the playground',
         };
-        setHistory(prev => [...prev, historyItem]);
-      }
-      else {
+        setHistory((prev) => [...prev, historyItem]);
+      } else {
         setError('Unsupported query type');
-        
+
         // Add to history
         const historyItem: QueryHistoryItem = {
           id: Date.now().toString(),
@@ -162,12 +171,12 @@ export function usePlaygroundConnection() {
           success: false,
           error: 'Unsupported query type',
         };
-        setHistory(prev => [...prev, historyItem]);
+        setHistory((prev) => [...prev, historyItem]);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
-      
+
       // Add to history
       const historyItem: QueryHistoryItem = {
         id: Date.now().toString(),
@@ -177,7 +186,7 @@ export function usePlaygroundConnection() {
         success: false,
         error: errorMessage,
       };
-      setHistory(prev => [...prev, historyItem]);
+      setHistory((prev) => [...prev, historyItem]);
     }
   }, []);
 
@@ -198,7 +207,7 @@ export function usePlaygroundConnection() {
     // TODO: Implement WebSocket connection when backend is ready
     // const ws = new WebSocket('ws://localhost:8080/playground');
     // wsRef.current = ws;
-    // 
+    //
     // ws.onopen = () => setConnected(true);
     // ws.onclose = () => setConnected(false);
     // ws.onerror = () => setConnected(false);
@@ -206,7 +215,7 @@ export function usePlaygroundConnection() {
     //   const response = JSON.parse(event.data);
     //   // Handle response
     // };
-    // 
+    //
     // return () => {
     //   ws.close();
     // };

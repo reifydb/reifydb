@@ -11,10 +11,26 @@ interface ToolbarProps {
 
 const EXAMPLES = [
   { id: 'basic-select', name: 'Basic SELECT', query: 'SELECT * FROM users LIMIT 10;' },
-  { id: 'join', name: 'JOIN Example', query: 'SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id;' },
-  { id: 'aggregate', name: 'Aggregation', query: 'SELECT user_id, COUNT(*) as post_count FROM posts GROUP BY user_id;' },
-  { id: 'insert', name: 'INSERT Data', query: "INSERT INTO users (name, email) VALUES ('New User', 'new@example.com');" },
-  { id: 'update', name: 'UPDATE Data', query: "UPDATE posts SET published = true WHERE title LIKE '%ReifyDB%';" },
+  {
+    id: 'join',
+    name: 'JOIN Example',
+    query: 'SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id;',
+  },
+  {
+    id: 'aggregate',
+    name: 'Aggregation',
+    query: 'SELECT user_id, COUNT(*) as post_count FROM posts GROUP BY user_id;',
+  },
+  {
+    id: 'insert',
+    name: 'INSERT Data',
+    query: "INSERT INTO users (name, email) VALUES ('New User', 'new@example.com');",
+  },
+  {
+    id: 'update',
+    name: 'UPDATE Data',
+    query: "UPDATE posts SET published = true WHERE title LIKE '%ReifyDB%';",
+  },
 ];
 
 export default function Toolbar({
@@ -36,17 +52,14 @@ export default function Toolbar({
         >
           {isExecuting ? 'Executing...' : 'Run Query'}
         </button>
-        
+
         <div className={styles.dropdown}>
-          <button
-            className={styles.button}
-            onClick={() => setShowExamples(!showExamples)}
-          >
+          <button className={styles.button} onClick={() => setShowExamples(!showExamples)}>
             Examples ▼
           </button>
           {showExamples && (
             <div className={styles.dropdownMenu}>
-              {EXAMPLES.map(example => (
+              {EXAMPLES.map((example) => (
                 <button
                   key={example.id}
                   className={styles.dropdownItem}
@@ -61,19 +74,17 @@ export default function Toolbar({
             </div>
           )}
         </div>
-        
-        <button
-          className={styles.button}
-          onClick={onReset}
-          disabled={!connected}
-        >
+
+        <button className={styles.button} onClick={onReset} disabled={!connected}>
           Reset Database
         </button>
       </div>
-      
+
       <div className={styles.toolbarRight}>
         <div className={styles.connectionStatus}>
-          <span className={`${styles.statusDot} ${connected ? styles.connected : styles.disconnected}`} />
+          <span
+            className={`${styles.statusDot} ${connected ? styles.connected : styles.disconnected}`}
+          />
           <span>{connected ? 'Connected' : 'Disconnected'}</span>
         </div>
       </div>

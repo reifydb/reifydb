@@ -12,6 +12,7 @@ Welcome to the ReifyDB API Reference. This section provides comprehensive docume
 ## Available APIs
 
 ### [Rust API](./rust)
+
 The Rust API provides native integration with ReifyDB, offering high-performance access to all database features.
 
 ## Getting Started

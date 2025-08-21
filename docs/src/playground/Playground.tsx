@@ -6,7 +6,7 @@ import SchemaExplorer from './components/SchemaExplorer';
 import QueryHistory from './components/QueryHistory';
 import Toolbar from './components/Toolbar';
 import { usePlaygroundConnection } from './hooks/usePlaygroundConnection';
-import { QueryResult, TableInfo } from './types';
+import type { CodeEditorRef } from './components/CodeEditor';
 import styles from './Playground.module.css';
 
 const DEFAULT_QUERY = `-- Welcome to ReifyDB Playground!
@@ -18,25 +18,17 @@ export default function Playground() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [activeTab, setActiveTab] = useState<'result' | 'history'>('result');
   const [editorTheme, setEditorTheme] = useState('vs'); // Default to light theme
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<CodeEditorRef | null>(null);
 
-  const {
-    connected,
-    result,
-    error,
-    schema,
-    history,
-    executeQuery,
-    resetDatabase,
-    loadExample,
-  } = usePlaygroundConnection();
+  const { connected, result, error, schema, history, executeQuery, resetDatabase, loadExample } =
+    usePlaygroundConnection();
 
   const handleExecute = useCallback(async () => {
     if (!query.trim() || isExecuting) return;
-    
+
     setIsExecuting(true);
     setActiveTab('result');
-    
+
     try {
       await executeQuery(query);
     } finally {
@@ -44,12 +36,15 @@ export default function Playground() {
     }
   }, [query, isExecuting, executeQuery]);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleExecute();
-    }
-  }, [handleExecute]);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleExecute();
+      }
+    },
+    [handleExecute]
+  );
 
   React.useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -62,7 +57,7 @@ export default function Playground() {
       // Docusaurus adds data-theme attribute to the html element
       const htmlTheme = document.documentElement.getAttribute('data-theme');
       const isDark = htmlTheme === 'dark';
-      
+
       // Update editor theme
       setEditorTheme(isDark ? 'vs-dark' : 'vs');
     };
@@ -74,7 +69,7 @@ export default function Playground() {
     const observer = new MutationObserver(detectTheme);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-theme']
+      attributeFilter: ['data-theme'],
     });
 
     return () => observer.disconnect();
@@ -96,7 +91,7 @@ export default function Playground() {
         onReset={resetDatabase}
         onLoadExample={loadExample}
       />
-      
+
       <div className={styles.content}>
         <PanelGroup direction="horizontal">
           <Panel defaultSize={20} minSize={15} maxSize={30}>
@@ -108,9 +103,9 @@ export default function Playground() {
               }}
             />
           </Panel>
-          
+
           <PanelResizeHandle className={styles.resizeHandle} />
-          
+
           <Panel defaultSize={80}>
             <PanelGroup direction="vertical">
               <Panel defaultSize={40} minSize={20}>
@@ -123,9 +118,9 @@ export default function Playground() {
                   theme={editorTheme}
                 />
               </Panel>
-              
+
               <PanelResizeHandle className={styles.resizeHandle} />
-              
+
               <Panel defaultSize={60} minSize={20}>
                 <div className={styles.resultPanel}>
                   <div className={styles.tabs}>
@@ -142,19 +137,12 @@ export default function Playground() {
                       History
                     </button>
                   </div>
-                  
+
                   <div className={styles.tabContent}>
                     {activeTab === 'result' ? (
-                      <ResultViewer
-                        result={result}
-                        error={error}
-                        isLoading={isExecuting}
-                      />
+                      <ResultViewer result={result} error={error} isLoading={isExecuting} />
                     ) : (
-                      <QueryHistory
-                        history={history}
-                        onQuerySelect={handleExampleLoad}
-                      />
+                      <QueryHistory history={history} onQuerySelect={handleExampleLoad} />
                     )}
                   </div>
                 </div>

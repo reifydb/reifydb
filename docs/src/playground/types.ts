@@ -4,9 +4,11 @@ export interface ColumnInfo {
   nullable: boolean;
 }
 
+export type RowValue = string | number | boolean | null;
+
 export interface QueryResult {
   columns: ColumnInfo[];
-  rows: any[][];
+  rows: RowValue[][];
   executionTimeMs: number;
   rowsAffected?: number;
 }

@@ -63,11 +63,9 @@ export default function ResultViewer({ result, error, isLoading }: ResultViewerP
         <span className={styles.rowCount}>
           {result.rows.length} row{result.rows.length !== 1 ? 's' : ''}
         </span>
-        <span className={styles.executionTime}>
-          {result.executionTimeMs}ms
-        </span>
+        <span className={styles.executionTime}>{result.executionTimeMs}ms</span>
       </div>
-      
+
       <div className={styles.tableWrapper}>
         <table className={styles.resultTable}>
           <thead>

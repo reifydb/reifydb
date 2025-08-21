@@ -1,14 +1,17 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import Layout from '@theme/Layout';
 import BrowserOnly from '@docusaurus/BrowserOnly';
+
+const Playground = lazy(() => import('../playground/Playground'));
 
 function PlaygroundContent() {
   return (
     <BrowserOnly fallback={<div>Loading...</div>}>
-      {() => {
-        const Playground = require('../playground/Playground').default;
-        return <Playground />;
-      }}
+      {() => (
+        <Suspense fallback={<div>Loading playground...</div>}>
+          <Playground />
+        </Suspense>
+      )}
     </BrowserOnly>
   );
 }

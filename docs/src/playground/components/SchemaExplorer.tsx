@@ -25,21 +25,18 @@ export default function SchemaExplorer({ schema, onTableClick }: SchemaExplorerP
       <div className={styles.header}>
         <h3>Database Schema</h3>
       </div>
-      
+
       <div className={styles.tableList}>
         {schema.length === 0 ? (
           <div className={styles.emptyState}>No tables found</div>
         ) : (
-          schema.map(table => (
+          schema.map((table) => (
             <div key={table.name} className={styles.table}>
-              <div 
-                className={styles.tableHeader}
-                onClick={() => toggleTable(table.name)}
-              >
+              <div className={styles.tableHeader} onClick={() => toggleTable(table.name)}>
                 <span className={styles.expandIcon}>
                   {expandedTables.has(table.name) ? '▼' : '▶'}
                 </span>
-                <span 
+                <span
                   className={styles.tableName}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -49,19 +46,15 @@ export default function SchemaExplorer({ schema, onTableClick }: SchemaExplorerP
                   {table.name}
                 </span>
                 {table.rowCount !== undefined && (
-                  <span className={styles.rowCount}>
-                    {table.rowCount} rows
-                  </span>
+                  <span className={styles.rowCount}>{table.rowCount} rows</span>
                 )}
               </div>
-              
+
               {expandedTables.has(table.name) && (
                 <div className={styles.columnList}>
                   {table.columns.map((column, index) => (
                     <div key={index} className={styles.column}>
-                      <span className={styles.columnName}>
-                        {column.name}
-                      </span>
+                      <span className={styles.columnName}>{column.name}</span>
                       <span className={styles.columnType}>
                         {column.dataType}
                         {!column.nullable && ' NOT NULL'}

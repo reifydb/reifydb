@@ -30,27 +30,24 @@ export default function QueryHistory({ history, onQuerySelect }: QueryHistoryPro
 
   return (
     <div className={styles.historyContainer}>
-      {history.slice().reverse().map((item) => (
-        <div
-          key={item.id}
-          className={`${styles.historyItem} ${!item.success ? styles.error : ''}`}
-          onClick={() => onQuerySelect?.(item.query)}
-        >
-          <div className={styles.queryHeader}>
-            <span className={styles.timestamp}>{formatTime(item.timestamp)}</span>
-            <span className={styles.executionTime}>{item.executionTimeMs}ms</span>
-            {!item.success && <span className={styles.errorBadge}>Error</span>}
-          </div>
-          <div className={styles.queryText}>
-            {truncateQuery(item.query)}
-          </div>
-          {item.error && (
-            <div className={styles.errorMessage}>
-              {item.error}
+      {history
+        .slice()
+        .reverse()
+        .map((item) => (
+          <div
+            key={item.id}
+            className={`${styles.historyItem} ${!item.success ? styles.error : ''}`}
+            onClick={() => onQuerySelect?.(item.query)}
+          >
+            <div className={styles.queryHeader}>
+              <span className={styles.timestamp}>{formatTime(item.timestamp)}</span>
+              <span className={styles.executionTime}>{item.executionTimeMs}ms</span>
+              {!item.success && <span className={styles.errorBadge}>Error</span>}
             </div>
-          )}
-        </div>
-      ))}
+            <div className={styles.queryText}>{truncateQuery(item.query)}</div>
+            {item.error && <div className={styles.errorMessage}>{item.error}</div>}
+          </div>
+        ))}
     </div>
   );
 }

@@ -28,7 +28,7 @@ use reifydb::Client;
 #[tokio::main]
 async fn main() {
     let client = Client::connect("reifydb://localhost:5432").await?;
-    
+
     // Create a table
     client.execute("
         CREATE TABLE users (
@@ -37,13 +37,13 @@ async fn main() {
             email TEXT UNIQUE
         )
     ").await?;
-    
+
     // Insert data
     client.execute("
-        INSERT INTO users (name, email) 
+        INSERT INTO users (name, email)
         VALUES ('Alice', 'alice@example.com')
     ").await?;
-    
+
     // Query data
     let rows = client.query("SELECT * FROM users").await?;
     for row in rows {
