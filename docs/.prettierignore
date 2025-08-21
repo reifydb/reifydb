@@ -1,0 +1,9 @@
+build/
+.docusaurus/
+node_modules/
+*.min.js
+*.min.css
+coverage/
+dist/
+.next/
+out/

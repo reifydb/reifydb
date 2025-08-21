@@ -1,0 +1,26 @@
+.editorContainer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ifm-background-color);
+}
+
+.editorHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--ifm-background-surface-color);
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+.editorTitle {
+  color: var(--ifm-font-color-base);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.shortcutHint {
+  color: var(--ifm-font-color-secondary);
+  font-size: 0.75rem;
+}
