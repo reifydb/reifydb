@@ -93,11 +93,11 @@ run-all:
 	echo ""; \
 	for example in $(BASIC_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if output=$$(cargo run --bin $$example 2>&1); then \
-			echo "$$output"; \
+		if cargo run --bin $$example; then \
+			true; \
 		else \
 			exit_code=$$?; \
-			echo "$$output"; \
+			output=$$(cargo run --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -109,11 +109,11 @@ run-all:
 	echo ""; \
 	for example in $(RQL_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if output=$$(cargo run --bin $$example 2>&1); then \
-			echo "$$output"; \
+		if cargo run --bin $$example; then \
+			true; \
 		else \
 			exit_code=$$?; \
-			echo "$$output"; \
+			output=$$(cargo run --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \

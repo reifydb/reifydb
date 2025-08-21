@@ -161,6 +161,10 @@ impl<T: Transaction> StandardEngine<T> {
 						"avg",
 						math::aggregate::Avg::new,
 					)
+					.register_aggregate(
+						"count",
+						math::aggregate::Count::new,
+					)
 					.register_scalar(
 						"abs",
 						math::scalar::Abs::new,

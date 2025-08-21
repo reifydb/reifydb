@@ -90,6 +90,10 @@ impl
 					"avg",
 					math::aggregate::Avg::new,
 				)
+				.register_aggregate(
+					"count",
+					math::aggregate::Count::new,
+				)
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
 				.build(),

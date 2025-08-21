@@ -126,7 +126,7 @@ impl ExecutionPlan for AggregateNode {
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment().to_string(),
-                        data: ColumnData::int2_with_capacity(group_key_order.len()),
+                        data: ColumnData::undefined(0),
                     });
 					for key in &group_key_order {
 						c.data_mut().push_value(

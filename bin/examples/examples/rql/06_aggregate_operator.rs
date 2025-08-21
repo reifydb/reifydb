@@ -8,8 +8,8 @@
 //!
 //! Run with: `make rql-aggregate` or `cargo run --bin rql-aggregate`
 
-use reifydb::{sync, Params, SessionSync};
 use reifydb::log_info;
+use reifydb::{sync, Params, SessionSync};
 
 fn main() {
 	// Create and start an in-memory database
@@ -55,9 +55,9 @@ fn main() {
 	.unwrap();
 
 	// Example 1: Simple average
-	log_info!("Example 1: Calculate average price");
+	log_info!("Example 1: Calculate average price by product");
 	log_info!("Query:\n\x1b[1mfrom sales.transactions
-aggregate avg(price)\x1b[0m");
+aggregate avg(price) by product\x1b[0m");
 	for frame in db
 		.query_as_root(
 			r#"
@@ -169,31 +169,14 @@ aggregate sum(revenue) by category\x1b[0m");
 	// Example 7: Group by multiple columns
 	log_info!("\nExample 7: Aggregate by category and region");
 	log_info!("Query:\n\x1b[1mfrom sales.transactions
-aggregate {{ sum(quantity), avg(price) }} by category, region
+aggregate {{ sum(quantity), avg(price) }} by {{ category, region }}
 sort {{ category, region }}\x1b[0m");
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
-			aggregate { sum(quantity), avg(price) } by category, region
+			aggregate { sum(quantity), avg(price) } by { category, region }
 			sort { category, region }
-			"#,
-			Params::None,
-		)
-		.unwrap()
-	{
-		log_info!("{}", frame);
-	}
-
-	// Example 8: Aggregate without group by (global aggregation)
-	log_info!("\nExample 8: Global aggregations (no group by)");
-	log_info!("Query:\n\x1b[1mfrom sales.transactions
-aggregate {{ count(id), sum(quantity), avg(price) }}\x1b[0m");
-	for frame in db
-		.query_as_root(
-			r#"
-			from sales.transactions
-			aggregate { count(id), sum(quantity), avg(price) }
 			"#,
 			Params::None,
 		)
