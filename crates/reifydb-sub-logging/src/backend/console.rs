@@ -229,6 +229,7 @@ impl ConsoleBackend {
 
 		// Maximum width for content (accounting for the indent and tree characters)
 		const INDENT: &str = "             │  ";
+		const MAX_LINE_WIDTH: usize = 100; // Maximum width for content lines
 
 		// Format each message in the group
 		for (i, record) in records.iter().enumerate() {
@@ -244,23 +245,65 @@ impl ConsoleBackend {
 				"│  "
 			};
 
-			// Handle multiline messages
+			// Handle multiline messages and wrap long lines
 			let lines: Vec<&str> = record.message.lines().collect();
 			for (j, line) in lines.iter().enumerate() {
-				if j == 0 {
-					// First line with branch - colorize only the branch chars, not the vertical line
-					output.push_str(INDENT);
-					output.push_str(&apply_color(
-						&format!("{} ", branch_char),
-					));
-					output.push_str(&format!("{}\n", line));
+				// Check if line needs wrapping
+				if line.len() <= MAX_LINE_WIDTH {
+					// Line fits within max width
+					if j == 0 {
+						// First line with branch - colorize only the branch chars, not the vertical line
+						output.push_str(INDENT);
+						output.push_str(&apply_color(
+							&format!("{} ", branch_char),
+						));
+						output.push_str(&format!("{}\n", line));
+					} else {
+						// Continuation lines - show vertical continuation line
+						output.push_str(INDENT);
+						output.push_str(&apply_color(
+							&continuation,
+						));
+						output.push_str(&format!("{}\n", line));
+					}
 				} else {
-					// Continuation lines - show vertical continuation line
-					output.push_str(INDENT);
-					output.push_str(&apply_color(
-						&continuation,
-					));
-					output.push_str(&format!("{}\n", line));
+					// Line needs wrapping
+					let mut remaining = *line;
+					let mut is_first_chunk = j == 0;
+					
+					while !remaining.is_empty() {
+						// Find a good break point
+						let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
+							let mut break_point = MAX_LINE_WIDTH;
+							// Try to break at word boundaries
+							for (idx, ch) in remaining[..MAX_LINE_WIDTH].char_indices().rev() {
+								if ch == ' ' || ch == ',' || ch == ';' || ch == ':' || ch == ']' || ch == '}' {
+									break_point = idx + 1;
+									break;
+								}
+							}
+							break_point
+						} else {
+							remaining.len()
+						};
+
+						// Output the chunk
+						output.push_str(INDENT);
+						if is_first_chunk {
+							output.push_str(&apply_color(
+								&format!("{} ", branch_char),
+							));
+							is_first_chunk = false;
+						} else {
+							output.push_str(&apply_color(
+								&continuation,
+							));
+						}
+						output.push_str(&remaining[..chunk_end].trim_end());
+						output.push('\n');
+						
+						remaining = &remaining[chunk_end..].trim_start();
+					}
 				}
 			}
 		}
