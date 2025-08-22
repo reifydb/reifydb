@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::execute::{
@@ -25,7 +25,7 @@ use crate::execute::{
 
 pub(crate) fn compile(
 	plan: PhysicalPlan,
-	rx: &mut impl UnderlyingQueryTransaction,
+	rx: &mut impl QueryTransaction,
 	context: Arc<ExecutionContext>,
 ) -> Box<dyn ExecutionPlan> {
 	match plan {

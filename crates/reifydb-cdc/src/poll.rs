@@ -21,7 +21,7 @@ use reifydb_core::{
         key::{CdcConsumerKey, EncodableKey},
         worker_pool::Priority,
 	},
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 	log_debug, log_error,
 	row::EncodedRow,
 	util::CowVec,
@@ -215,7 +215,7 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 }
 
 fn fetch_checkpoint<T: Transaction>(
-	transaction: &mut CommandTransaction<T>,
+	transaction: &mut StandardCommandTransaction<T>,
 	consumer_key: &EncodedKey,
 ) -> Result<Version> {
 	transaction
@@ -234,7 +234,7 @@ fn fetch_checkpoint<T: Transaction>(
 }
 
 fn persist_checkpoint<T: Transaction>(
-	transaction: &mut CommandTransaction<T>,
+	transaction: &mut StandardCommandTransaction<T>,
 	consumer_key: &EncodedKey,
 	version: Version,
 ) -> Result<()> {
@@ -243,7 +243,7 @@ fn persist_checkpoint<T: Transaction>(
 }
 
 fn fetch_events_since<T: Transaction>(
-	transaction: &mut CommandTransaction<T>,
+	transaction: &mut StandardCommandTransaction<T>,
 	since_version: Version,
 ) -> Result<Vec<CdcEvent>> {
 	Ok(transaction

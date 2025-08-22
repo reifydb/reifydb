@@ -5,7 +5,7 @@ use crate::{
 	schema::{convert_schema, layout::schema},
 	Catalog,
 };
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{SchemaDef, SchemaKey, VersionedQueryTransaction},
 	row::EncodedRow,
@@ -14,7 +14,7 @@ use reifydb_core::{
 impl Catalog {
 	pub fn find_schema_by_name(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<SchemaDef>> {
 		let name = name.as_ref();

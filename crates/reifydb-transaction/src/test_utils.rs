@@ -6,7 +6,7 @@ use reifydb_core::{
 	hook::Hooks,
 	interceptor::Interceptors,
 	interface::StandardTransaction,
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 };
 use reifydb_storage::memory::Memory;
 
@@ -14,7 +14,7 @@ use crate::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
 
-pub fn create_test_command_transaction() -> CommandTransaction<
+pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	StandardTransaction<
 		Serializable<Memory, SingleVersionLock<Memory>>,
 		SingleVersionLock<Memory>,
@@ -25,7 +25,7 @@ pub fn create_test_command_transaction() -> CommandTransaction<
 	let hooks = Hooks::new();
 	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
-	CommandTransaction::new(
+	StandardCommandTransaction::new(
 		Serializable::new(memory, unversioned.clone(), hooks.clone())
 			.begin_command()
 			.unwrap(),

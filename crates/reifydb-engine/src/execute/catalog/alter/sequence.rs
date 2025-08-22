@@ -10,7 +10,7 @@ use reifydb_core::{
 	}, interface::{
 		EvaluationContext, Params, Transaction,
 	},
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 	return_error,
 	ColumnDescriptor,
 	Value,
@@ -22,7 +22,7 @@ use crate::{columnar::Columns, evaluate::evaluate, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn alter_table_sequence(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();

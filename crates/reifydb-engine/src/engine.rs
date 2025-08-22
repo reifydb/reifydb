@@ -12,7 +12,7 @@ use reifydb_core::{
 		ExecuteCommand, ExecuteQuery, GetHooks, Identity, Params,
 		Query, Transaction, VersionedTransaction,
 	},
-	transaction::{CommandTransaction, QueryTransaction},
+	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
 
 use crate::{
@@ -29,9 +29,9 @@ impl<T: Transaction> GetHooks for StandardEngine<T> {
 }
 
 impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
-	fn begin_command(&self) -> crate::Result<CommandTransaction<T>> {
+	fn begin_command(&self) -> crate::Result<StandardCommandTransaction<T>> {
 		let interceptors = self.interceptors.create();
-		Ok(CommandTransaction::new(
+		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
@@ -40,8 +40,8 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		))
 	}
 
-	fn begin_query(&self) -> crate::Result<QueryTransaction<T>> {
-		Ok(QueryTransaction::new(
+	fn begin_query(&self) -> crate::Result<StandardQueryTransaction<T>> {
+		Ok(StandardQueryTransaction::new(
 			self.versioned.begin_query()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
@@ -90,7 +90,7 @@ impl<T: Transaction> ExecuteCommand<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		cmd: Command<'a>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)
@@ -101,7 +101,7 @@ impl<T: Transaction> ExecuteQuery<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_query<'a>(
 		&'a self,
-		txn: &mut QueryTransaction<T>,
+		txn: &mut StandardQueryTransaction<T>,
 		qry: Query<'a>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)

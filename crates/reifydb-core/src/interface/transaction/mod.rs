@@ -3,7 +3,7 @@
 
 mod cdc;
 pub mod interceptor;
-mod underlying;
+mod transaction;
 mod unversioned;
 mod versioned;
 
@@ -15,8 +15,8 @@ pub use cdc::{
 	CdcQueryTransaction, CdcTransaction, StandardCdcQueryTransaction,
 	StandardCdcTransaction,
 };
-pub use underlying::{
-	UnderlyingCommandTransaction, UnderlyingQueryTransaction,
+pub use transaction::{
+	CommandTransaction, QueryTransaction,
 };
 pub use unversioned::*;
 pub use versioned::*;

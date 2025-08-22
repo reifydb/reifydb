@@ -11,7 +11,7 @@ use reifydb_core::{
 		TableRowKey, TableRowKeyRange, Transaction,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 	},
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
@@ -29,7 +29,7 @@ use crate::{
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn delete(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

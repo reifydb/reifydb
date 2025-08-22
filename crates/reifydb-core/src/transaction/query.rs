@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use crate::{
 	interface::{
 		BoxedVersionedIter, CdcTransaction, Transaction,
-		UnderlyingQueryTransaction, UnversionedTransaction, Versioned,
+		QueryTransaction, UnversionedTransaction, Versioned,
 		VersionedQueryTransaction, VersionedTransaction,
 	}, EncodedKey,
 	EncodedKeyRange,
@@ -14,7 +14,7 @@ use crate::{
 
 /// An active query transaction that holds a versioned query transaction
 /// and provides query-only access to unversioned storage.
-pub struct QueryTransaction<T: Transaction> {
+pub struct StandardQueryTransaction<T: Transaction> {
 	versioned: <T::Versioned as VersionedTransaction>::Query,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
@@ -22,7 +22,7 @@ pub struct QueryTransaction<T: Transaction> {
 	_not_send_sync: PhantomData<*const ()>,
 }
 
-impl<T: Transaction> QueryTransaction<T> {
+impl<T: Transaction> StandardQueryTransaction<T> {
 	/// Creates a new active query transaction
 	pub fn new(
 		versioned: <T::Versioned as VersionedTransaction>::Query,
@@ -66,7 +66,7 @@ impl<T: Transaction> QueryTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedQueryTransaction for QueryTransaction<T> {
+impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	#[inline]
 	fn get(
 		&mut self,
@@ -123,7 +123,9 @@ impl<T: Transaction> VersionedQueryTransaction for QueryTransaction<T> {
 	}
 }
 
-impl<T: Transaction> UnderlyingQueryTransaction for QueryTransaction<T> {
+impl<T: Transaction> QueryTransaction
+	for StandardQueryTransaction<T>
+{
 	type UnversionedQuery<'a> =
 		<T::Unversioned as UnversionedTransaction>::Query<'a>;
 	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;

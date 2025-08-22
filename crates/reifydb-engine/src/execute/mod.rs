@@ -5,7 +5,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use query::compile::compile;
 use reifydb_core::interface::{
-	StandardCdcTransaction, UnderlyingQueryTransaction,
+	StandardCdcTransaction, QueryTransaction,
 };
 use reifydb_core::{
 	interface::{
@@ -14,7 +14,7 @@ use reifydb_core::{
 		StandardTransaction, TableDef, Transaction,
 		VersionedQueryTransaction,
 	},
-	transaction::{CommandTransaction, QueryTransaction},
+	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 	Frame,
 };
 use reifydb_rql::{
@@ -109,7 +109,7 @@ impl
 impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		cmd: Command<'a>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -133,7 +133,7 @@ impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
 impl<T: Transaction> ExecuteQuery<T> for Executor<T> {
 	fn execute_query<'a>(
 		&'a self,
-		txn: &mut QueryTransaction<T>,
+		txn: &mut StandardQueryTransaction<T>,
 		qry: Query<'a>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -159,7 +159,7 @@ impl<T: Transaction> Execute<T> for Executor<T> {}
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn execute_query_plan(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -190,7 +190,7 @@ impl<T: Transaction> Executor<T> {
 
 	pub(crate) fn execute_command_plan(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -236,7 +236,7 @@ impl<T: Transaction> Executor<T> {
 
 	fn query(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {

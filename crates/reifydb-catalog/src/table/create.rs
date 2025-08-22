@@ -7,7 +7,7 @@ use crate::{
 	table_column::ColumnIndex,
 	Catalog,
 };
-use reifydb_core::interface::UnderlyingCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		ColumnPolicyKind, EncodableKey, Key, SchemaId, SchemaTableKey,
@@ -40,7 +40,7 @@ pub struct TableToCreate {
 impl Catalog {
 	pub fn create_table(
 		&self,
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
@@ -80,7 +80,7 @@ impl Catalog {
 
 	fn store_table(
 		&self,
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		table: TableId,
 		schema: SchemaId,
 		to_create: &TableToCreate,
@@ -103,7 +103,7 @@ impl Catalog {
 
 	fn link_table_to_schema(
 		&self,
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		schema: SchemaId,
 		table: TableId,
 		name: &str,
@@ -128,7 +128,7 @@ impl Catalog {
 
 	fn insert_columns(
 		&self,
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {

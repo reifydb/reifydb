@@ -6,7 +6,7 @@ use crate::plan::{
 	physical::{Compiler, CreateDeferredViewPlan, PhysicalPlan},
 };
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	diagnostic::catalog::schema_not_found
 	, return_error,
@@ -15,7 +15,7 @@ use PhysicalPlan::CreateDeferredView;
 
 impl Compiler {
 	pub(crate) fn compile_create_deferred(
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		create: CreateDeferredViewNode,
 	) -> crate::Result<PhysicalPlan> {
 		let catalog = Catalog::new();

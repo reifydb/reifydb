@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{view::layout::view, Catalog};
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, SchemaId, VersionedQueryTransaction, ViewDef,
@@ -15,7 +15,7 @@ use reifydb_core::{
 impl Catalog {
 	pub fn get_view(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		view: ViewId,
 	) -> crate::Result<ViewDef> {
 		let versioned = rx

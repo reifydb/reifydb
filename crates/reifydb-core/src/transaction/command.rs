@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::interface::{
-	GetHooks, PendingWrite, UnderlyingCommandTransaction,
-	UnderlyingQueryTransaction,
+	GetHooks, PendingWrite, CommandTransaction,
+	QueryTransaction,
 };
 use crate::{
 	diagnostic::transaction, hook::Hooks,
@@ -26,7 +26,7 @@ use crate::{
 /// and provides query/command access to unversioned storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct CommandTransaction<T: Transaction> {
+pub struct StandardCommandTransaction<T: Transaction> {
 	versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
@@ -46,7 +46,7 @@ enum TransactionState {
 	RolledBack,
 }
 
-impl<T: Transaction> CommandTransaction<T> {
+impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Creates a new active command transaction with a pre-commit callback
 	pub fn new(
 		versioned: <T::Versioned as VersionedTransaction>::Command,
@@ -212,7 +212,7 @@ impl<T: Transaction> CommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedQueryTransaction for CommandTransaction<T> {
+impl<T: Transaction> VersionedQueryTransaction for StandardCommandTransaction<T> {
 	#[inline]
 	fn get(
 		&mut self,
@@ -277,7 +277,7 @@ impl<T: Transaction> VersionedQueryTransaction for CommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedCommandTransaction for CommandTransaction<T> {
+impl<T: Transaction> VersionedCommandTransaction for StandardCommandTransaction<T> {
 	#[inline]
 	fn set(
 		&mut self,
@@ -309,13 +309,13 @@ impl<T: Transaction> VersionedCommandTransaction for CommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> GetHooks for CommandTransaction<T> {
+impl<T: Transaction> GetHooks for StandardCommandTransaction<T> {
 	fn get_hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }
 
-impl<T: Transaction> UnderlyingQueryTransaction for CommandTransaction<T> {
+impl<T: Transaction> QueryTransaction for StandardCommandTransaction<T> {
 	type UnversionedQuery<'a> =
 		<T::Unversioned as UnversionedTransaction>::Query<'a>;
 
@@ -334,7 +334,7 @@ impl<T: Transaction> UnderlyingQueryTransaction for CommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> UnderlyingCommandTransaction for CommandTransaction<T> {
+impl<T: Transaction> CommandTransaction for StandardCommandTransaction<T> {
 	type UnversionedCommand<'a> =
 		<T::Unversioned as UnversionedTransaction>::Command<'a>;
 
@@ -346,7 +346,7 @@ impl<T: Transaction> UnderlyingCommandTransaction for CommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> Drop for CommandTransaction<T> {
+impl<T: Transaction> Drop for StandardCommandTransaction<T> {
 	fn drop(&mut self) {
 		if let Some(versioned) = self.versioned.take() {
 			// Auto-rollback if still active (not committed or

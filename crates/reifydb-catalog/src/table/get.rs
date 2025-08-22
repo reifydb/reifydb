@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{table::layout::table, Catalog};
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, SchemaId, TableDef, TableId, TableKey,
@@ -15,7 +15,7 @@ use reifydb_core::{
 impl Catalog {
 	pub fn get_table(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		table: TableId,
 	) -> crate::Result<TableDef> {
 		let versioned = rx

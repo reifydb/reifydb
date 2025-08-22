@@ -11,11 +11,11 @@ use crate::{
 		physical::{compile_physical, PhysicalPlan},
 	},
 };
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::JoinType;
 
 pub fn explain_physical_plan(
-	rx: &mut impl UnderlyingQueryTransaction,
+	rx: &mut impl QueryTransaction,
 	query: &str,
 ) -> crate::Result<String> {
 	let statements = parse(query)?;

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{
 	SchemaId, SchemaTableKey, TableDef, TableId,
-	UnderlyingQueryTransaction, Versioned, VersionedQueryTransaction,
+	QueryTransaction, Versioned, VersionedQueryTransaction,
 };
 
 use crate::{table::layout::table_schema, Catalog};
@@ -11,7 +11,7 @@ use crate::{table::layout::table_schema, Catalog};
 impl Catalog {
 	pub fn find_table_by_name(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {

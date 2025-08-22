@@ -11,7 +11,7 @@ use crate::{
 	Catalog,
 };
 use reifydb_core::interface::{
-	UnderlyingCommandTransaction, VersionedCommandTransaction,
+	CommandTransaction, VersionedCommandTransaction,
 };
 use reifydb_core::{
 	interface::{
@@ -25,7 +25,7 @@ pub struct ViewColumnSequence {}
 
 impl ViewColumnSequence {
 	pub fn next_value(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		view: ViewId,
 		column: ViewColumnId,
 	) -> crate::Result<Value> {
@@ -73,7 +73,7 @@ impl ViewColumnSequence {
 	}
 
 	pub fn set_value(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		view: ViewId,
 		column: ViewColumnId,
 		value: Value,

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-use reifydb_core::interface::{UnderlyingCommandTransaction, VersionedCommandTransaction};
+use reifydb_core::interface::{CommandTransaction, VersionedCommandTransaction};
 use reifydb_core::{
     diagnostic::sequence::sequence_exhausted, interface::{
         Transaction, UnversionedCommandTransaction,
@@ -21,7 +21,7 @@ pub(crate) struct GeneratorI64 {}
 
 impl GeneratorI64 {
 	pub(crate) fn next(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		key: &EncodedKey,
 		default: Option<i64>,
 	) -> crate::Result<i64>
@@ -54,7 +54,7 @@ impl GeneratorI64 {
 	}
 
 	pub(crate) fn set(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		key: &EncodedKey,
 		value: i64,
 	) -> crate::Result<()>

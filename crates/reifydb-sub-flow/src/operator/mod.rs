@@ -8,12 +8,12 @@ pub use aggregate::AggregateOperator;
 pub use filter::FilterOperator;
 pub use map::MapOperator;
 use reifydb_core::{
-	interface::{
+    interface::{
 		EvaluationContext, Evaluator, Transaction,
 		expression::Expression,
 	},
-	transaction::CommandTransaction,
-	value::columnar::Column,
+    transaction::StandardCommandTransaction,
+    value::columnar::Column,
 };
 
 use crate::core::Change;
@@ -51,13 +51,13 @@ impl<E: Evaluator> OperatorEnum<E> {
 
 pub struct OperatorContext<'a, E: Evaluator, T: Transaction> {
 	pub evaluator: &'a E,
-	pub txn: &'a mut CommandTransaction<T>,
+	pub txn: &'a mut StandardCommandTransaction<T>,
 }
 
 impl<'a, E: Evaluator, T: Transaction> OperatorContext<'a, E, T> {
 	pub fn new(
-		evaluator: &'a E,
-		txn: &'a mut CommandTransaction<T>,
+        evaluator: &'a E,
+        txn: &'a mut StandardCommandTransaction<T>,
 	) -> Self {
 		Self {
 			evaluator,

@@ -11,8 +11,8 @@ mod command;
 mod interceptor;
 mod query;
 
-pub use command::CommandTransaction;
-pub use query::QueryTransaction;
+pub use command::StandardCommandTransaction;
+pub use query::StandardQueryTransaction;
 
 pub trait Transaction: Send + Sync + Clone + 'static {
 	type Versioned: VersionedTransaction;

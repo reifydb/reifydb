@@ -10,7 +10,7 @@ use reifydb_core::{
 		Transaction, VersionedCommandTransaction,
 	},
 	row::EncodedRow,
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 	RowNumber,
 };
 use reifydb_core::interface::PendingWrite;
@@ -36,7 +36,7 @@ pub trait TableOperations {
 	) -> crate::Result<()>;
 }
 
-impl<T: Transaction> TableOperations for CommandTransaction<T> {
+impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 	fn insert_into_table(
 		&mut self,
 		table: TableDef,

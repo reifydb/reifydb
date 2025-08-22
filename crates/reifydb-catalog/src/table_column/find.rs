@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	TableColumnKey, TableId, UnderlyingQueryTransaction,
+	TableColumnKey, TableId, QueryTransaction,
 	VersionedQueryTransaction,
 };
 
@@ -14,7 +14,7 @@ use crate::{
 impl Catalog {
 	pub fn find_table_column_by_name(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		table: TableId,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {

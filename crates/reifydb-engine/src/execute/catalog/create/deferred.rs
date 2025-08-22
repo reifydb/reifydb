@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::Transaction,
 	result::error::diagnostic::catalog::view_already_exists,
 	return_error,
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 };
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
@@ -16,7 +16,7 @@ use crate::{columnar::Columns, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_deferred_view(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();

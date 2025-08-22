@@ -14,7 +14,7 @@ use crate::interceptor::{
 use crate::interface::interceptor::{TableInterceptor, TransactionInterceptor};
 use crate::interface::{TableDef, Transaction};
 use crate::row::EncodedRow;
-use crate::transaction::CommandTransaction;
+use crate::transaction::StandardCommandTransaction;
 use crate::RowNumber;
 
 /// Macro to generate interceptor execution methods
@@ -52,7 +52,7 @@ macro_rules! impl_interceptor_method {
 	};
 }
 
-impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
+impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
 	impl_interceptor_method!(
 		pre_insert,
 		table_pre_insert,
@@ -102,7 +102,7 @@ impl<T: Transaction> TableInterceptor<T> for CommandTransaction<T> {
 	);
 }
 
-impl<T: Transaction> TransactionInterceptor<T> for CommandTransaction<T> {
+impl<T: Transaction> TransactionInterceptor<T> for StandardCommandTransaction<T> {
 	impl_interceptor_method!(
 		pre_commit,
 		pre_commit,

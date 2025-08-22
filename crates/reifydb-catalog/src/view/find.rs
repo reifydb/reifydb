@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	SchemaId, SchemaViewKey, UnderlyingQueryTransaction, Versioned,
+	SchemaId, SchemaViewKey, QueryTransaction, Versioned,
 	VersionedQueryTransaction, ViewDef, ViewId,
 };
 
@@ -11,7 +11,7 @@ use crate::{view::layout::view_schema, Catalog};
 impl Catalog {
 	pub fn find_view_by_name(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {

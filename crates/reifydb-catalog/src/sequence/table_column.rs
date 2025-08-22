@@ -10,7 +10,7 @@ use crate::{
     },
     Catalog,
 };
-use reifydb_core::interface::UnderlyingCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
     interface::{
         EncodableKey, TableColumnId, TableColumnSequenceKey, TableId,
@@ -22,7 +22,7 @@ pub struct TableColumnSequence {}
 
 impl TableColumnSequence {
 	pub fn next_value(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		table: TableId,
 		column: TableColumnId,
 	) -> crate::Result<Value> {
@@ -70,7 +70,7 @@ impl TableColumnSequence {
 	}
 
 	pub fn set_value(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		table: TableId,
 		column: TableColumnId,
 		value: Value,

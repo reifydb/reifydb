@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::interface::{
-    CdcQueryTransaction, UnversionedCommandTransaction,
-    UnversionedQueryTransaction, VersionedCommandTransaction,
-    VersionedQueryTransaction,
+	CdcQueryTransaction, UnversionedCommandTransaction,
+	UnversionedQueryTransaction, VersionedCommandTransaction,
+	VersionedQueryTransaction,
 };
 
-pub trait UnderlyingCommandTransaction:
-	VersionedCommandTransaction + UnderlyingQueryTransaction
+pub trait CommandTransaction:
+	VersionedCommandTransaction + QueryTransaction
 {
 	type UnversionedCommand<'a>: UnversionedCommandTransaction
 	where
@@ -31,7 +31,7 @@ pub trait UnderlyingCommandTransaction:
 	}
 }
 
-pub trait UnderlyingQueryTransaction: VersionedQueryTransaction {
+pub trait QueryTransaction: VersionedQueryTransaction {
 	type UnversionedQuery<'a>: UnversionedQueryTransaction
 	where
 		Self: 'a;

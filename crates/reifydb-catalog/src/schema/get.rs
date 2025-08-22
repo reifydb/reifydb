@@ -5,7 +5,7 @@ use crate::{
     schema::convert_schema,
     Catalog,
 };
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
     interface::{EncodableKey, SchemaDef, SchemaId, SchemaKey, VersionedQueryTransaction},
     internal_error,
@@ -15,7 +15,7 @@ use reifydb_core::{
 impl Catalog {
 	pub fn get_schema(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		schema: SchemaId,
 	) -> crate::Result<SchemaDef> {
 		let versioned = rx

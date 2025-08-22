@@ -11,7 +11,7 @@ use crate::plan::{
 use reifydb_catalog::{
 	table::TableColumnToCreate, view::ViewColumnToCreate, Catalog,
 };
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
 		evaluate::expression::{AliasExpression, Expression}, SchemaDef, TableDef, VersionedQueryTransaction,
@@ -25,7 +25,7 @@ use reifydb_core::{
 struct Compiler {}
 
 pub fn compile_physical(
-	rx: &mut impl UnderlyingQueryTransaction,
+	rx: &mut impl QueryTransaction,
 	logical: Vec<LogicalPlan>,
 ) -> crate::Result<Option<PhysicalPlan>> {
 	Compiler::compile(rx, logical)
@@ -33,7 +33,7 @@ pub fn compile_physical(
 
 impl Compiler {
 	fn compile(
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		logical: Vec<LogicalPlan>,
 	) -> crate::Result<Option<PhysicalPlan>> {
 		if logical.is_empty() {

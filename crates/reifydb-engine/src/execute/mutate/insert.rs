@@ -8,14 +8,14 @@ use reifydb_catalog::{
 	table::operation::TableOperations,
 };
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedFragment, Type, Value,
-	interface::{
+    ColumnDescriptor, IntoOwnedFragment, Type, Value,
+    interface::{
 		ColumnPolicyKind, Params, Transaction,
 	},
-	transaction::CommandTransaction,
-	result::error::diagnostic::catalog::table_not_found,
-	return_error,
-	row::EncodedRowLayout,
+    transaction::StandardCommandTransaction,
+    result::error::diagnostic::catalog::table_not_found,
+    return_error,
+    row::EncodedRowLayout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 
@@ -29,10 +29,10 @@ use crate::{
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn insert(
-		&self,
-		txn: &mut CommandTransaction<T>,
-		plan: InsertPlan,
-		params: Params,
+        &self,
+        txn: &mut StandardCommandTransaction<T>,
+        plan: InsertPlan,
+        params: Params,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
 		let schema_name =

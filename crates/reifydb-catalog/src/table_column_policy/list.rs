@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{
 	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, TableColumnPolicyKey,
-	UnderlyingQueryTransaction, VersionedQueryTransaction,
+	QueryTransaction, VersionedQueryTransaction,
 };
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
 impl Catalog {
 	pub fn list_table_column_policies(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		Ok(rx.range(TableColumnPolicyKey::full_scan(column))?

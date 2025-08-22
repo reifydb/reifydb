@@ -9,7 +9,7 @@ use crate::{
 	},
 	Catalog,
 };
-use reifydb_core::interface::UnderlyingCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	diagnostic::catalog::{
 		auto_increment_invalid_type, table_column_already_exists,
@@ -38,7 +38,7 @@ pub struct TableColumnToCreate<'a> {
 impl Catalog {
 	pub(crate) fn create_table_column(
 		&self,
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		table: TableId,
 		column_to_create: TableColumnToCreate,
 	) -> crate::Result<ColumnDef> {

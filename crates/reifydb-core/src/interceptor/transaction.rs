@@ -4,10 +4,10 @@
 use std::marker::PhantomData;
 
 use crate::{
-	Version, define_api_function, define_closure_interceptor,
-	define_interceptor,
-	interface::Transaction,
-	transaction::CommandTransaction,
+    Version, define_api_function, define_closure_interceptor,
+    define_interceptor,
+    interface::Transaction,
+    transaction::StandardCommandTransaction,
 };
 
 // PRE COMMIT
@@ -15,7 +15,7 @@ define_interceptor!(
 	context: PreCommitContext<T>,
 	trait: PreCommitInterceptor,
 	fields: {
-		txn: &'a mut CommandTransaction<T>,
+		txn: &'a mut StandardCommandTransaction<T>,
 	}
 );
 

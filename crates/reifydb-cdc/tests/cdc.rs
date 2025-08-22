@@ -22,7 +22,7 @@ use reifydb_core::{
 		VersionedCommandTransaction, VersionedQueryTransaction,
 	},
 	row::EncodedRow,
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 	util::CowVec,
 	EncodedKey,
 	Result,
@@ -512,7 +512,7 @@ impl Clone for TestConsumer {
 impl CdcConsume<TestTransaction> for TestConsumer {
 	fn consume(
 		&self,
-		_txn: &mut CommandTransaction<TestTransaction>,
+		_txn: &mut StandardCommandTransaction<TestTransaction>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{schema::layout::schema, sequence::SystemSequence, Catalog};
-use reifydb_core::interface::UnderlyingCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{EncodableKey, SchemaDef, SchemaKey},
 	result::error::diagnostic::catalog::schema_already_exists,
@@ -19,7 +19,7 @@ pub struct SchemaToCreate {
 impl Catalog {
 	pub fn create_schema(
 		&self,
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =

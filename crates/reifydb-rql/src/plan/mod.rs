@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	evaluate::expression::Expression, UnderlyingQueryTransaction,
+	evaluate::expression::Expression, QueryTransaction,
 	VersionedQueryTransaction,
 };
 
@@ -20,7 +20,7 @@ pub mod physical;
 pub type RowToInsert = Vec<Expression>;
 
 pub fn plan(
-	rx: &mut impl UnderlyingQueryTransaction,
+	rx: &mut impl QueryTransaction,
 	statement: AstStatement,
 ) -> crate::Result<Option<PhysicalPlan>> {
 	let logical = compile_logical(statement)?;

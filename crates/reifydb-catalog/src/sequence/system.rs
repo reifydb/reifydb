@@ -4,7 +4,7 @@
 use crate::sequence::generator::u64::GeneratorU64;
 use once_cell::sync::Lazy;
 pub use reifydb_core::interface::SystemSequenceId;
-use reifydb_core::interface::UnderlyingCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		ColumnPolicyId, EncodableKey, SchemaId, SystemSequenceKey,
@@ -82,38 +82,38 @@ pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
 	pub(crate) fn next_schema_id(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 	) -> crate::Result<SchemaId> {
 		GeneratorU64::next(txn, &SCHEMA_KEY, Some(1025)).map(SchemaId)
 	}
 
 	pub(crate) fn next_table_id(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 	) -> crate::Result<TableId> {
 		GeneratorU64::next(txn, &TABLE_KEY, Some(1025)).map(TableId)
 	}
 
 	pub(crate) fn next_column_id(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 	) -> crate::Result<TableColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, None).map(TableColumnId)
 	}
 
 	pub(crate) fn next_view_column_id(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ViewColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ViewColumnId)
 	}
 
 	pub(crate) fn next_column_policy_id(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ColumnPolicyId> {
 		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, None)
 			.map(ColumnPolicyId)
 	}
 
 	pub(crate) fn next_view_id(
-		txn: &mut impl UnderlyingCommandTransaction,
+		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ViewId> {
 		GeneratorU64::next(txn, &VIEW_KEY, Some(1025)).map(ViewId)
 	}

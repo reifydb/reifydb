@@ -7,7 +7,7 @@ use crate::{
 		Identity, Params,
 		Transaction,
 	},
-	transaction::{CommandTransaction, QueryTransaction},
+	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub trait Execute<T: Transaction>: ExecuteCommand<T> + ExecuteQuery<T> {}
 pub trait ExecuteCommand<T: Transaction> {
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		cmd: Command<'a>,
 	) -> crate::Result<Vec<Frame>>;
 }
@@ -37,7 +37,7 @@ pub trait ExecuteCommand<T: Transaction> {
 pub trait ExecuteQuery<T: Transaction> {
 	fn execute_query<'a>(
 		&'a self,
-		txn: &mut QueryTransaction<T>,
+		txn: &mut StandardQueryTransaction<T>,
 		qry: Query<'a>,
 	) -> crate::Result<Vec<Frame>>;
 }

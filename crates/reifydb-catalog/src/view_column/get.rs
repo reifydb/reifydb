@@ -5,7 +5,7 @@ use crate::{
 	view_column::{layout::view_column, ColumnDef, ColumnId, ColumnIndex},
 	Catalog,
 };
-use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{EncodableKey, VersionedQueryTransaction, ViewColumnsKey}, internal_error,
 	Error,
@@ -15,7 +15,7 @@ use reifydb_core::{
 impl Catalog {
 	pub fn get_view_column(
 		&self,
-		rx: &mut impl UnderlyingQueryTransaction,
+		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
 		let versioned = rx

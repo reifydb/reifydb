@@ -10,7 +10,7 @@ use reifydb_core::{
 		ColumnPolicyKind, EncodableKey, Params,
 		TableRowKey, Transaction, VersionedCommandTransaction,
 	},
-	transaction::CommandTransaction,
+	transaction::StandardCommandTransaction,
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
@@ -32,7 +32,7 @@ use crate::{
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn update(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

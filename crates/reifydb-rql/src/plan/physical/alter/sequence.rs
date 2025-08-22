@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	UnderlyingQueryTransaction, VersionedQueryTransaction,
+	QueryTransaction, VersionedQueryTransaction,
 };
 
 use crate::plan::{
@@ -12,7 +12,7 @@ use crate::plan::{
 
 impl Compiler {
 	pub(crate) fn compile_alter_sequence(
-		_rx: &mut impl UnderlyingQueryTransaction,
+		_rx: &mut impl QueryTransaction,
 		alter: AlterSequenceNode,
 	) -> crate::Result<PhysicalPlan> {
 		// For ALTER SEQUENCE, we just pass through the logical plan
