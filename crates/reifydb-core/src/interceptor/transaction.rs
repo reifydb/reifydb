@@ -6,7 +6,8 @@ use std::marker::PhantomData;
 use crate::{
 	Version, define_api_function, define_closure_interceptor,
 	define_interceptor,
-	interface::{CommandTransaction, Transaction},
+	interface::Transaction,
+	transaction::CommandTransaction,
 };
 
 // PRE COMMIT

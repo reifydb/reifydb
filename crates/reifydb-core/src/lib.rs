@@ -12,6 +12,7 @@ pub mod interface;
 pub mod result;
 pub mod row;
 mod sort;
+pub mod transaction;
 pub mod util;
 pub mod value;
 

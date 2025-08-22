@@ -4,9 +4,10 @@
 use crate::{
 	Frame,
 	interface::{
-		CommandTransaction, Identity, Params, QueryTransaction,
+		Identity, Params,
 		Transaction,
 	},
+	transaction::{CommandTransaction, QueryTransaction},
 };
 
 #[derive(Debug)]

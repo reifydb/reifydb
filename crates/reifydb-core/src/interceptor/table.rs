@@ -3,8 +3,9 @@ use std::marker::PhantomData;
 use crate::{
 	RowNumber, define_api_function, define_closure_interceptor,
 	define_interceptor, impl_register_interceptor,
-	interface::{CommandTransaction, TableDef, Transaction},
+	interface::{TableDef, Transaction},
 	row::EncodedRow,
+	transaction::CommandTransaction,
 };
 
 // PRE INSERT

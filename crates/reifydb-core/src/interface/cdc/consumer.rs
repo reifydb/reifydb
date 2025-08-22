@@ -3,7 +3,8 @@
 
 use crate::{
 	Result,
-	interface::{CdcEvent, CommandTransaction, Transaction},
+	interface::{CdcEvent, Transaction},
+	transaction::CommandTransaction,
 };
 
 /// Trait for CDC event processing functions

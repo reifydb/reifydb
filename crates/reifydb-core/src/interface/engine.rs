@@ -1,9 +1,10 @@
 use crate::{
 	interface::{
-		CommandTransaction, GetHooks, Identity, Params,
-		QueryTransaction, Transaction,
+		GetHooks, Identity, Params,
+		Transaction,
 	},
 	result::frame::Frame,
+	transaction::{CommandTransaction, QueryTransaction},
 };
 
 pub trait Engine<T: Transaction>:

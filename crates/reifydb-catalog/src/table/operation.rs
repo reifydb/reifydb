@@ -1,19 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use PendingWrite::InsertIntoTable;
+use crate::sequence::TableRowSequence;
+use reifydb_core::interface::PendingWrite::TableInsert;
 use reifydb_core::{
-	RowNumber,
 	hook::table::{TablePostInsertHook, TablePreInsertHook},
 	interface::{
-		CommandTransaction, EncodableKey, PendingWrite, TableDef,
-		TableRowKey, Transaction, VersionedCommandTransaction,
-		interceptor::TableInterceptor,
+		interceptor::TableInterceptor, EncodableKey, TableDef, TableRowKey,
+		Transaction, VersionedCommandTransaction,
 	},
 	row::EncodedRow,
+	transaction::CommandTransaction,
+	RowNumber,
 };
-
-use crate::sequence::TableRowSequence;
+use reifydb_core::interface::PendingWrite;
 
 pub trait TableOperations {
 	fn insert_into_table(
@@ -75,7 +75,7 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 			})
 			.unwrap();
 
-		self.add_pending(InsertIntoTable {
+		self.add_pending(TableInsert {
 			table,
 			id: row_number,
 			row,
@@ -109,7 +109,7 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 		// 	TableInterceptor::post_update(self, &table, id, &row, old)?;
 		// }
 
-		self.add_pending(PendingWrite::Update {
+		self.add_pending(PendingWrite::TableUpdate {
 			table,
 			id,
 			row,
@@ -144,7 +144,7 @@ impl<T: Transaction> TableOperations for CommandTransaction<T> {
 		// }
 
 		// Track the removal for flow processing
-		self.add_pending(PendingWrite::Remove {
+		self.add_pending(PendingWrite::TableRemove {
 			table,
 			id,
 		});

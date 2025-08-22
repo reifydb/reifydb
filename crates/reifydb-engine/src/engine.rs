@@ -8,10 +8,11 @@ use reifydb_core::{
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
-		Command, CommandTransaction, Engine as EngineInterface,
+		Command, Engine as EngineInterface,
 		ExecuteCommand, ExecuteQuery, GetHooks, Identity, Params,
-		Query, QueryTransaction, Transaction, VersionedTransaction,
+		Query, Transaction, VersionedTransaction,
 	},
+	transaction::{CommandTransaction, QueryTransaction},
 };
 
 use crate::{

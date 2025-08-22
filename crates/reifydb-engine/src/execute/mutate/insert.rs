@@ -10,8 +10,9 @@ use reifydb_catalog::{
 use reifydb_core::{
 	ColumnDescriptor, IntoOwnedFragment, Type, Value,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, Params, Transaction,
+		ColumnPolicyKind, Params, Transaction,
 	},
+	transaction::CommandTransaction,
 	result::error::diagnostic::catalog::table_not_found,
 	return_error,
 	row::EncodedRowLayout,

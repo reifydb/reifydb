@@ -7,10 +7,11 @@ use reifydb_catalog::Catalog;
 use reifydb_core::{
 	EncodedKeyRange, IntoOwnedFragment, Value,
 	interface::{
-		CommandTransaction, EncodableKey, EncodableKeyRange, Params,
+		EncodableKey, EncodableKeyRange, Params,
 		TableRowKey, TableRowKeyRange, Transaction,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 	},
+	transaction::CommandTransaction,
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,

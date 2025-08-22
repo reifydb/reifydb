@@ -8,8 +8,9 @@ use reifydb_core::{
 		catalog, catalog::table_not_found, query::column_not_found,
 		sequence::can_not_alter_not_auto_increment,
 	}, interface::{
-		CommandTransaction, EvaluationContext, Params, Transaction,
+		EvaluationContext, Params, Transaction,
 	},
+	transaction::CommandTransaction,
 	return_error,
 	ColumnDescriptor,
 	Value,

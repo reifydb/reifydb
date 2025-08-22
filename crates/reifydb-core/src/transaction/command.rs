@@ -4,22 +4,22 @@
 use std::marker::PhantomData;
 
 use crate::interface::{
-    GetHooks, UnderlyingCommandTransaction, UnderlyingQueryTransaction,
+	GetHooks, PendingWrite, UnderlyingCommandTransaction,
+	UnderlyingQueryTransaction,
 };
 use crate::{
-    diagnostic::transaction, hook::Hooks,
-    interceptor::Interceptors,
-    interface::{
-        interceptor::TransactionInterceptor, transaction::pending::PendingWrite, BoxedVersionedIter,
-        CdcTransaction, Transaction, UnversionedTransaction,
-        Versioned, VersionedCommandTransaction,
-        VersionedQueryTransaction,
-        VersionedTransaction,
-    },
-    return_error,
-    row::EncodedRow,
-    EncodedKey,
-    EncodedKeyRange,
+	diagnostic::transaction, hook::Hooks,
+	interceptor::Interceptors,
+	interface::{
+		interceptor::TransactionInterceptor, BoxedVersionedIter, CdcTransaction,
+		Transaction, UnversionedTransaction, Versioned,
+		VersionedCommandTransaction, VersionedQueryTransaction,
+		VersionedTransaction,
+	},
+	return_error,
+	row::EncodedRow,
+	EncodedKey,
+	EncodedKeyRange,
 };
 
 /// An active command transaction that holds a versioned command transaction
@@ -316,7 +316,8 @@ impl<T: Transaction> GetHooks for CommandTransaction<T> {
 }
 
 impl<T: Transaction> UnderlyingQueryTransaction for CommandTransaction<T> {
-	type UnversionedQuery<'a> =	<T::Unversioned as UnversionedTransaction>::Query<'a>;
+	type UnversionedQuery<'a> =
+		<T::Unversioned as UnversionedTransaction>::Query<'a>;
 
 	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;
 

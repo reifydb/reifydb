@@ -5,7 +5,8 @@ use reifydb_core::interface::StandardCdcTransaction;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::Interceptors,
-	interface::{CommandTransaction, StandardTransaction},
+	interface::StandardTransaction,
+	transaction::CommandTransaction,
 };
 use reifydb_storage::memory::Memory;
 

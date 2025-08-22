@@ -9,11 +9,12 @@ use reifydb_core::interface::{
 };
 use reifydb_core::{
 	interface::{
-		Command, CommandTransaction, Execute, ExecuteCommand,
-		ExecuteQuery, Params, Query, QueryTransaction,
+		Command, Execute, ExecuteCommand,
+		ExecuteQuery, Params, Query,
 		StandardTransaction, TableDef, Transaction,
 		VersionedQueryTransaction,
 	},
+	transaction::{CommandTransaction, QueryTransaction},
 	Frame,
 };
 use reifydb_rql::{

@@ -4,9 +4,10 @@
 use reifydb_catalog::{Catalog, schema::SchemaToCreate};
 use reifydb_core::{
 	Value,
-	interface::{CommandTransaction, Transaction},
+	interface::Transaction,
 	result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
+	transaction::CommandTransaction,
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 

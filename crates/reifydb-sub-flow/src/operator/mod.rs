@@ -9,9 +9,10 @@ pub use filter::FilterOperator;
 pub use map::MapOperator;
 use reifydb_core::{
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Transaction,
+		EvaluationContext, Evaluator, Transaction,
 		expression::Expression,
 	},
+	transaction::CommandTransaction,
 	value::columnar::Column,
 };
 
