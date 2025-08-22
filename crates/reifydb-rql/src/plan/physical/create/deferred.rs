@@ -1,28 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use PhysicalPlan::CreateDeferredView;
-use reifydb_catalog::Catalog;
-use reifydb_core::{
-	diagnostic::catalog::schema_not_found,
-	interface::VersionedQueryTransaction, return_error,
-};
-
 use crate::plan::{
 	logical::CreateDeferredViewNode,
 	physical::{Compiler, CreateDeferredViewPlan, PhysicalPlan},
 };
+use reifydb_catalog::Catalog;
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::{
+	diagnostic::catalog::schema_not_found
+	, return_error,
+};
+use PhysicalPlan::CreateDeferredView;
 
 impl Compiler {
 	pub(crate) fn compile_create_deferred(
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		create: CreateDeferredViewNode,
 	) -> crate::Result<PhysicalPlan> {
 		let catalog = Catalog::new();
-		let Some(schema) = catalog.find_schema_by_name(
-			rx,
-			&create.schema.fragment(),
-		)?
+		let Some(schema) = catalog
+			.find_schema_by_name(rx, &create.schema.fragment())?
 		else {
 			return_error!(schema_not_found(
 				Some(create.schema.clone()),

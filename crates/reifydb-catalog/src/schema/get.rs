@@ -1,21 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Error,
-	interface::{EncodableKey, SchemaKey, SchemaDef, SchemaId, VersionedQueryTransaction},
-	internal_error,
-};
-
 use crate::{
-	Catalog,
-	schema::convert_schema,
+    schema::convert_schema,
+    Catalog,
+};
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::{
+    interface::{EncodableKey, SchemaDef, SchemaId, SchemaKey, VersionedQueryTransaction},
+    internal_error,
+    Error,
 };
 
 impl Catalog {
 	pub fn get_schema(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		schema: SchemaId,
 	) -> crate::Result<SchemaDef> {
 		let versioned = rx
@@ -35,11 +35,11 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{Catalog, schema::SchemaId, test_utils::create_schema};
+    use crate::{schema::SchemaId, test_utils::create_schema, Catalog};
 
-	#[test]
+    #[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		let catalog = Catalog::new();

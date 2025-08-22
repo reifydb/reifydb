@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::interface::{
-	LiteCommandTransaction, VersionedCommandTransaction,
+	UnderlyingCommandTransaction, VersionedCommandTransaction,
 };
 use reifydb_core::{
 	diagnostic::sequence::sequence_exhausted, interface::{
@@ -23,7 +23,7 @@ pub(crate) struct GeneratorU8 {}
 
 impl GeneratorU8 {
 	pub(crate) fn next(
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		key: &EncodedKey,
 		default: Option<u8>,
 	) -> crate::Result<u8> {
@@ -55,7 +55,7 @@ impl GeneratorU8 {
 	}
 
 	pub(crate) fn set(
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		key: &EncodedKey,
 		value: u8,
 	) -> crate::Result<()> {

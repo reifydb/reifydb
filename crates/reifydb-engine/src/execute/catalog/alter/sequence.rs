@@ -2,17 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use catalog::schema_not_found;
-use reifydb_catalog::{Catalog, sequence::TableColumnSequence};
+use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
 use reifydb_core::{
-	ColumnDescriptor, Value,
 	diagnostic::{
 		catalog, catalog::table_not_found, query::column_not_found,
 		sequence::can_not_alter_not_auto_increment,
-	},
-	interface::{
+	}, interface::{
 		CommandTransaction, EvaluationContext, Params, Transaction,
 	},
 	return_error,
+	ColumnDescriptor,
+	Value,
 };
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
@@ -111,19 +111,19 @@ impl<T: Transaction> Executor<T> {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::{
-		Catalog,
 		table::{TableColumnToCreate, TableToCreate},
 		test_utils::ensure_test_schema,
+		Catalog,
 	};
 	use reifydb_core::{
-		OwnedFragment, Type, Value,
 		interface::{
-			Params,
 			expression::{
 				ConstantExpression::Number,
 				Expression::Constant,
 			},
-		},
+			Params,
+		}, OwnedFragment, Type,
+		Value,
 	};
 	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
 	use reifydb_transaction::test_utils::create_test_command_transaction;

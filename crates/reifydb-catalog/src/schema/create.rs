@@ -1,20 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-    schema::layout::schema,
-    sequence::SystemSequence,
-    Catalog,
-};
-use reifydb_core::interface::LiteCommandTransaction;
+use crate::{schema::layout::schema, sequence::SystemSequence, Catalog};
+use reifydb_core::interface::UnderlyingCommandTransaction;
 use reifydb_core::{
-    interface::{
-        EncodableKey, SchemaDef, SchemaKey, Transaction,
-        VersionedCommandTransaction,
-    },
-    result::error::diagnostic::catalog::schema_already_exists,
-    return_error,
-    OwnedFragment,
+	interface::{EncodableKey, SchemaDef, SchemaKey},
+	result::error::diagnostic::catalog::schema_already_exists,
+	return_error,
+	OwnedFragment,
 };
 
 #[derive(Debug, Clone)]
@@ -26,7 +19,7 @@ pub struct SchemaToCreate {
 impl Catalog {
 	pub fn create_schema(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =
@@ -62,12 +55,12 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::interface::SchemaId;
-    use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_core::interface::SchemaId;
+	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-    use crate::{schema::create::SchemaToCreate, Catalog};
+	use crate::{schema::create::SchemaToCreate, Catalog};
 
-    #[test]
+	#[test]
 	fn test_create_schema() {
 		let mut txn = create_test_command_transaction();
 		let catalog = Catalog::new();
@@ -78,16 +71,16 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result =
-			catalog.create_schema(&mut txn, to_create.clone())
-				.unwrap();
+		let result = catalog
+			.create_schema(&mut txn, to_create.clone())
+			.unwrap();
 		assert_eq!(result.id, SchemaId(1025));
 		assert_eq!(result.name, "test_schema");
 
 		// Creating the same schema again with `if_not_exists = false`
 		// should return error
-		let err = catalog.create_schema(&mut txn, to_create)
-			.unwrap_err();
+		let err =
+			catalog.create_schema(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}
 }

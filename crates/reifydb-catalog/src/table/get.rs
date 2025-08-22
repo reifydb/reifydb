@@ -1,21 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::{table::layout::table, Catalog};
+use reifydb_core::interface::UnderlyingQueryTransaction;
 use reifydb_core::{
-	Error,
 	interface::{
 		EncodableKey, SchemaId, TableDef, TableId, TableKey,
 		VersionedQueryTransaction,
 	},
 	internal_error,
+	Error,
 };
-
-use crate::{Catalog, table::layout::table};
 
 impl Catalog {
 	pub fn get_table(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		table: TableId,
 	) -> crate::Result<TableDef> {
 		let versioned = rx
@@ -49,8 +49,8 @@ mod tests {
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog,
 		test_utils::{create_schema, create_table, ensure_test_schema},
+		Catalog,
 	};
 
 	#[test]
@@ -87,8 +87,7 @@ mod tests {
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
 		let catalog = Catalog::new();
-		let err =
-			catalog.get_table(&mut txn, TableId(42)).unwrap_err();
+		let err = catalog.get_table(&mut txn, TableId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("TableId(42)"));

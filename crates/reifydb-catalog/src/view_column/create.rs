@@ -9,7 +9,7 @@ use crate::{
 	},
 	Catalog,
 };
-use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::interface::UnderlyingCommandTransaction;
 use reifydb_core::{
 	diagnostic::catalog::view_column_already_exists, interface::{
 		EncodableKey, Key, VersionedCommandTransaction, ViewColumnKey,
@@ -34,7 +34,7 @@ pub struct ViewColumnToCreate<'a> {
 impl Catalog {
 	pub(crate) fn create_view_column(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		view: ViewId,
 		column_to_create: ViewColumnToCreate,
 	) -> crate::Result<ColumnDef> {

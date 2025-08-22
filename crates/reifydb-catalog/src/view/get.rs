@@ -1,21 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::{view::layout::view, Catalog};
+use reifydb_core::interface::UnderlyingQueryTransaction;
 use reifydb_core::{
-	Error,
 	interface::{
 		EncodableKey, SchemaId, VersionedQueryTransaction, ViewDef,
 		ViewId, ViewKey, ViewKind,
 	},
 	internal_error,
+	Error,
 };
-
-use crate::{Catalog, view::layout::view};
 
 impl Catalog {
 	pub fn get_view(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		view: ViewId,
 	) -> crate::Result<ViewDef> {
 		let versioned = rx
@@ -54,8 +54,8 @@ mod tests {
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog,
 		test_utils::{create_schema, create_view, ensure_test_schema},
+		Catalog,
 	};
 
 	#[test]

@@ -2,18 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	TableColumnKey, TableId, VersionedQueryTransaction,
+	TableColumnKey, TableId, UnderlyingQueryTransaction,
+	VersionedQueryTransaction,
 };
 
 use crate::{
+	table_column::{layout::table_column, ColumnDef, ColumnId},
 	Catalog,
-	table_column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl Catalog {
 	pub fn find_table_column_by_name(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		table: TableId,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
@@ -46,10 +47,10 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{Type, interface::TableId};
+	use reifydb_core::{interface::TableId, Type};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{Catalog, test_utils::create_test_table_column};
+	use crate::{test_utils::create_test_table_column, Catalog};
 
 	#[test]
 	fn test_ok() {
@@ -59,13 +60,14 @@ mod tests {
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
 		let catalog = Catalog::new();
-		let result = catalog.find_table_column_by_name(
-			&mut txn,
-			TableId(1),
-			"col_3",
-		)
-		.unwrap()
-		.unwrap();
+		let result = catalog
+			.find_table_column_by_name(
+				&mut txn,
+				TableId(1),
+				"col_3",
+			)
+			.unwrap()
+			.unwrap();
 
 		assert_eq!(result.id, 3);
 		assert_eq!(result.name, "col_3");
@@ -79,12 +81,13 @@ mod tests {
 		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
 
 		let catalog = Catalog::new();
-		let result = catalog.find_table_column_by_name(
-			&mut txn,
-			TableId(1),
-			"not_found",
-		)
-		.unwrap();
+		let result = catalog
+			.find_table_column_by_name(
+				&mut txn,
+				TableId(1),
+				"not_found",
+			)
+			.unwrap();
 
 		assert!(result.is_none());
 	}

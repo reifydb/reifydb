@@ -1,21 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Error, Type,
-	interface::{EncodableKey, VersionedQueryTransaction, ViewColumnsKey},
-	internal_error,
-};
-
 use crate::{
+	view_column::{layout::view_column, ColumnDef, ColumnId, ColumnIndex},
 	Catalog,
-	view_column::{ColumnDef, ColumnId, ColumnIndex, layout::view_column},
+};
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::{
+	interface::{EncodableKey, VersionedQueryTransaction, ViewColumnsKey}, internal_error,
+	Error,
+	Type,
 };
 
 impl Catalog {
 	pub fn get_view_column(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
 		let versioned = rx

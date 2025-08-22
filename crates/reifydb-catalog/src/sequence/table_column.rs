@@ -2,29 +2,27 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	sequence::generator::{
-		i128::GeneratorI128, i16::GeneratorI16, i32::GeneratorI32,
-		i64::GeneratorI64, i8::GeneratorI8, u128::GeneratorU128,
-		u16::GeneratorU16, u32::GeneratorU32, u64::GeneratorU64,
-		u8::GeneratorU8,
-	},
-	Catalog,
+    sequence::generator::{
+        i128::GeneratorI128, i16::GeneratorI16, i32::GeneratorI32,
+        i64::GeneratorI64, i8::GeneratorI8, u128::GeneratorU128,
+        u16::GeneratorU16, u32::GeneratorU32, u64::GeneratorU64,
+        u8::GeneratorU8,
+    },
+    Catalog,
 };
-use reifydb_core::interface::{
-	LiteCommandTransaction, VersionedCommandTransaction,
-};
+use reifydb_core::interface::UnderlyingCommandTransaction;
 use reifydb_core::{
-	interface::{
-		EncodableKey, TableColumnId, TableColumnSequenceKey, TableId,
-	}, Type,
-	Value,
+    interface::{
+        EncodableKey, TableColumnId, TableColumnSequenceKey, TableId,
+    }, Type,
+    Value,
 };
 
 pub struct TableColumnSequence {}
 
 impl TableColumnSequence {
 	pub fn next_value(
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		table: TableId,
 		column: TableColumnId,
 	) -> crate::Result<Value> {
@@ -72,7 +70,7 @@ impl TableColumnSequence {
 	}
 
 	pub fn set_value(
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		table: TableId,
 		column: TableColumnId,
 		value: Value,

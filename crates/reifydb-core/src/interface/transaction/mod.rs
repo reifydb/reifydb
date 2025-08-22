@@ -6,6 +6,7 @@ mod command;
 pub mod interceptor;
 mod pending;
 mod query;
+mod underlying;
 mod unversioned;
 mod versioned;
 
@@ -18,6 +19,9 @@ pub use cdc::{
 pub use command::CommandTransaction;
 pub use pending::PendingWrite;
 pub use query::QueryTransaction;
+pub use underlying::{
+	UnderlyingCommandTransaction, UnderlyingQueryTransaction,
+};
 pub use unversioned::*;
 pub use versioned::*;
 
@@ -42,62 +46,4 @@ where
 	type Versioned = V;
 	type Unversioned = U;
 	type Cdc = C;
-}
-
-pub trait LiteCommandTransaction: VersionedCommandTransaction {
-	type UnversionedCommand<'a>: UnversionedCommandTransaction
-	where
-		Self: 'a;
-
-	type UnversionedQuery<'a>: UnversionedQueryTransaction
-	where
-		Self: 'a;
-
-	fn begin_unversioned_command(
-		&self,
-	) -> crate::Result<Self::UnversionedCommand<'_>>;
-
-	fn begin_unversioned_query(
-		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>>;
-
-	fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(
-			&mut Self::UnversionedCommand<'_>,
-		) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_unversioned_command()?;
-		let result = f(&mut tx)?;
-		tx.commit()?;
-		Ok(result)
-	}
-
-	fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(&mut Self::UnversionedQuery<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_unversioned_query()?;
-		let result = f(&mut tx)?;
-		Ok(result)
-	}
-}
-
-pub trait LiteQueryTransaction: VersionedQueryTransaction {
-	type UnversionedQuery<'a>: UnversionedQueryTransaction
-	where
-		Self: 'a;
-
-	fn begin_unversioned_query(
-		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>>;
-
-	fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(&mut Self::UnversionedQuery<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_unversioned_query()?;
-		let result = f(&mut tx)?;
-		Ok(result)
-	}
 }

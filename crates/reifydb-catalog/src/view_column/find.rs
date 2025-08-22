@@ -2,18 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	VersionedQueryTransaction, ViewColumnKey, ViewId,
+	UnderlyingQueryTransaction, VersionedQueryTransaction, ViewColumnKey,
+	ViewId,
 };
 
 use crate::{
+	view_column::{layout::view_column_link, ColumnDef, ColumnId},
 	Catalog,
-	view_column::{ColumnDef, ColumnId, layout::view_column_link},
 };
 
 impl Catalog {
 	pub fn find_view_column_by_name(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		view: ViewId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ColumnDef>> {

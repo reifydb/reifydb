@@ -5,7 +5,7 @@ use crate::{
 	sequence::SystemSequence, table_column::ColumnId, table_column_policy::layout::column_policy,
 	Catalog,
 };
-use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::interface::UnderlyingCommandTransaction;
 use reifydb_core::{
 	interface::{
 		ColumnPolicy, ColumnPolicyKind, EncodableKey,
@@ -18,7 +18,7 @@ use reifydb_core::{
 impl Catalog {
 	pub(crate) fn create_table_column_policy(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {

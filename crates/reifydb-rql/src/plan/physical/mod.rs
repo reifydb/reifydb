@@ -4,29 +4,28 @@
 mod alter;
 mod create;
 
-use reifydb_catalog::{
-	Catalog, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
-};
-use reifydb_core::{
-	JoinType, OwnedFragment, SortKey,
-	interface::{
-		SchemaDef, TableDef, VersionedQueryTransaction, ViewDef,
-		evaluate::expression::{AliasExpression, Expression},
-	},
-	result::error::diagnostic::catalog::schema_not_found,
-	return_error,
-};
-
 use crate::plan::{
 	logical::LogicalPlan,
 	physical::PhysicalPlan::{TableScan, ViewScan},
+};
+use reifydb_catalog::{
+	table::TableColumnToCreate, view::ViewColumnToCreate, Catalog,
+};
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::{
+	interface::{
+		evaluate::expression::{AliasExpression, Expression}, SchemaDef, TableDef, VersionedQueryTransaction,
+		ViewDef,
+	}, result::error::diagnostic::catalog::schema_not_found, return_error,
+	JoinType,
+	OwnedFragment,
+	SortKey,
 };
 
 struct Compiler {}
 
 pub fn compile_physical(
-	rx: &mut impl VersionedQueryTransaction,
+	rx: &mut impl UnderlyingQueryTransaction,
 	logical: Vec<LogicalPlan>,
 ) -> crate::Result<Option<PhysicalPlan>> {
 	Compiler::compile(rx, logical)
@@ -34,7 +33,7 @@ pub fn compile_physical(
 
 impl Compiler {
 	fn compile(
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		logical: Vec<LogicalPlan>,
 	) -> crate::Result<Option<PhysicalPlan>> {
 		if logical.is_empty() {
@@ -214,8 +213,8 @@ impl Compiler {
 				}
 
 				LogicalPlan::SourceScan(scan) => {
-					let Some(schema) =
-						catalog.find_schema_by_name(
+					let Some(schema) = catalog
+						.find_schema_by_name(
 							rx,
 							&scan.schema.fragment(),
 						)?
@@ -233,8 +232,8 @@ impl Compiler {
 						);
 					};
 
-					if let Some(table) =
-						catalog.find_table_by_name(
+					if let Some(table) = catalog
+						.find_table_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment(),
@@ -245,8 +244,8 @@ impl Compiler {
 								table,
 							},
 						));
-					} else if let Some(view) =
-						catalog.find_view_by_name(
+					} else if let Some(view) = catalog
+						.find_view_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment(),

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::VersionedQueryTransaction;
+use reifydb_core::interface::UnderlyingQueryTransaction;
 
 use crate::plan::{
 	logical::CreateSchemaNode,
@@ -10,7 +10,7 @@ use crate::plan::{
 
 impl Compiler {
 	pub(crate) fn compile_create_schema(
-		_rx: &mut impl VersionedQueryTransaction,
+		_rx: &mut impl UnderlyingQueryTransaction,
 		create: CreateSchemaNode,
 	) -> crate::Result<PhysicalPlan> {
 		// FIXME validate catalog

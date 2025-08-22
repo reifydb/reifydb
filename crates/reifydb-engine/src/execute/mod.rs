@@ -4,31 +4,33 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use query::compile::compile;
-use reifydb_core::interface::StandardCdcTransaction;
+use reifydb_core::interface::{
+	StandardCdcTransaction, UnderlyingQueryTransaction,
+};
 use reifydb_core::{
-    interface::{
-        Command, CommandTransaction, Execute, ExecuteCommand,
-        ExecuteQuery, Params, Query, QueryTransaction
-        , StandardTransaction, TableDef,
-        Transaction, VersionedQueryTransaction,
-    },
-    Frame,
+	interface::{
+		Command, CommandTransaction, Execute, ExecuteCommand,
+		ExecuteQuery, Params, Query, QueryTransaction,
+		StandardTransaction, TableDef, Transaction,
+		VersionedQueryTransaction,
+	},
+	Frame,
 };
 use reifydb_rql::{
-    ast,
-    plan::{physical::PhysicalPlan, plan},
+	ast,
+	plan::{physical::PhysicalPlan, plan},
 };
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
-    mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
+	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
 
 use crate::{
-    columnar::{
-        layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
-        SourceQualified,
-    },
-    function::{math, Functions},
+	columnar::{
+		layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
+		SourceQualified,
+	},
+	function::{math, Functions},
 };
 
 mod catalog;
@@ -156,7 +158,7 @@ impl<T: Transaction> Execute<T> for Executor<T> {}
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn execute_query_plan(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -233,7 +235,7 @@ impl<T: Transaction> Executor<T> {
 
 	fn query(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {

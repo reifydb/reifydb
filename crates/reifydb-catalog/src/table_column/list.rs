@@ -2,18 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	TableColumnKey, TableId, VersionedQueryTransaction,
+	TableColumnKey, TableId, UnderlyingQueryTransaction,
+	VersionedQueryTransaction,
 };
 
 use crate::{
+	table_column::{layout::table_column, ColumnDef, ColumnId},
 	Catalog,
-	table_column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl Catalog {
 	pub fn list_table_columns(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		table: TableId,
 	) -> crate::Result<Vec<ColumnDef>> {
 		let mut result = vec![];
@@ -41,13 +42,13 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{Type, interface::TableId};
+	use reifydb_core::{interface::TableId, Type};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog,
 		table_column::{ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
+		Catalog,
 	};
 
 	#[test]
@@ -93,7 +94,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns = catalog.list_table_columns(&mut txn, TableId(1))
+		let columns = catalog
+			.list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert_eq!(columns.len(), 2);
 
@@ -112,7 +114,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 		let catalog = Catalog::new();
-		let columns = catalog.list_table_columns(&mut txn, TableId(1))
+		let columns = catalog
+			.list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert!(columns.is_empty());
 	}
@@ -121,7 +124,8 @@ mod tests {
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
 		let catalog = Catalog::new();
-		let columns = catalog.list_table_columns(&mut txn, TableId(1))
+		let columns = catalog
+			.list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert!(columns.is_empty());
 	}

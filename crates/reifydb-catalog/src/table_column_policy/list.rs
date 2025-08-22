@@ -3,18 +3,18 @@
 
 use reifydb_core::interface::{
 	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, TableColumnPolicyKey,
-	VersionedQueryTransaction,
+	UnderlyingQueryTransaction, VersionedQueryTransaction,
 };
 
 use crate::{
-	Catalog, table_column::ColumnId,
-	table_column_policy::layout::column_policy,
+	table_column::ColumnId, table_column_policy::layout::column_policy,
+	Catalog,
 };
 
 impl Catalog {
 	pub fn list_table_column_policies(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		Ok(rx.range(TableColumnPolicyKey::full_scan(column))?
@@ -56,20 +56,20 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	use ColumnPolicyKind::Saturation;
-	use ColumnSaturationPolicy::Undefined;
 	use reifydb_core::{
-		Type,
 		interface::{
 			ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 		},
+		Type,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
+	use ColumnPolicyKind::Saturation;
+	use ColumnSaturationPolicy::Undefined;
 
 	use crate::{
-		Catalog,
 		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
+		Catalog,
 	};
 
 	#[test]
@@ -96,13 +96,13 @@ mod tests {
 		)
 		.unwrap();
 
-		let column = catalog.get_table_column(&mut txn, ColumnId(1))
+		let column = catalog
+			.get_table_column(&mut txn, ColumnId(1))
 			.unwrap();
 
-		let policies = catalog.list_table_column_policies(
-			&mut txn, column.id,
-		)
-		.unwrap();
+		let policies = catalog
+			.list_table_column_policies(&mut txn, column.id)
+			.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);
 		assert!(matches!(policies[0].policy, Saturation(Undefined)));

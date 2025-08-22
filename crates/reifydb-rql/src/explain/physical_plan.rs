@@ -3,19 +3,19 @@
 
 use std::fmt::Write;
 
-use reifydb_core::{JoinType, interface::VersionedQueryTransaction};
-
 use crate::{
 	ast::parse,
 	plan::{
 		logical::compile_logical,
 		physical,
-		physical::{PhysicalPlan, compile_physical},
+		physical::{compile_physical, PhysicalPlan},
 	},
 };
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::JoinType;
 
 pub fn explain_physical_plan(
-	rx: &mut impl VersionedQueryTransaction,
+	rx: &mut impl UnderlyingQueryTransaction,
 	query: &str,
 ) -> crate::Result<String> {
 	let statements = parse(query)?;

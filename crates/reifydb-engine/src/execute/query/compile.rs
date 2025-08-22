@@ -3,11 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::VersionedQueryTransaction;
+use reifydb_core::interface::UnderlyingQueryTransaction;
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::execute::{
-	ExecutionContext, ExecutionPlan,
 	query::{
 		aggregate::AggregateNode,
 		filter::FilterNode,
@@ -20,12 +19,13 @@ use crate::execute::{
 		table_scan::TableScanNode,
 		take::TakeNode,
 		view_scan::ViewScanNode,
-	},
+	}, ExecutionContext,
+	ExecutionPlan,
 };
 
 pub(crate) fn compile(
 	plan: PhysicalPlan,
-	rx: &mut impl VersionedQueryTransaction,
+	rx: &mut impl UnderlyingQueryTransaction,
 	context: Arc<ExecutionContext>,
 ) -> Box<dyn ExecutionPlan> {
 	match plan {

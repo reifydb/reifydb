@@ -1,21 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Error, Type,
-	interface::{EncodableKey, TableColumnsKey, VersionedQueryTransaction},
-	internal_error,
-};
-
 use crate::{
+	table_column::{layout::column, ColumnDef, ColumnId, ColumnIndex},
 	Catalog,
-	table_column::{ColumnDef, ColumnId, ColumnIndex, layout::column},
+};
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::{
+	interface::{EncodableKey, TableColumnsKey, VersionedQueryTransaction}, internal_error,
+	Error,
+	Type,
 };
 
 impl Catalog {
 	pub fn get_table_column(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
 		let versioned = rx
@@ -60,8 +60,8 @@ mod tests {
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog, table_column::ColumnId,
-		test_utils::create_test_table_column,
+		table_column::ColumnId, test_utils::create_test_table_column,
+		Catalog,
 	};
 
 	#[test]
@@ -72,7 +72,8 @@ mod tests {
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
 		let catalog = Catalog::new();
-		let result = catalog.get_table_column(&mut txn, ColumnId(2))
+		let result = catalog
+			.get_table_column(&mut txn, ColumnId(2))
 			.unwrap();
 
 		assert_eq!(result.id, 2);
@@ -89,7 +90,8 @@ mod tests {
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
 		let catalog = Catalog::new();
-		let err = catalog.get_table_column(&mut txn, ColumnId(4))
+		let err = catalog
+			.get_table_column(&mut txn, ColumnId(4))
 			.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));

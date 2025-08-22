@@ -7,7 +7,7 @@ use crate::{
 	view_column::ColumnIndex,
 	Catalog,
 };
-use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::interface::UnderlyingCommandTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, Key, SchemaId, SchemaViewKey,
@@ -40,7 +40,7 @@ pub struct ViewToCreate {
 impl Catalog {
 	pub fn create_deferred_view(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		self.create_view(txn, to_create, Deferred)
@@ -48,7 +48,7 @@ impl Catalog {
 
 	pub fn create_transactional_view(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		self.create_view(txn, to_create, Transactional)
@@ -56,7 +56,7 @@ impl Catalog {
 
 	fn create_view(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		to_create: ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<ViewDef> {
@@ -95,7 +95,7 @@ impl Catalog {
 
 	fn store_view(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		view: ViewId,
 		schema: SchemaId,
 		to_create: &ViewToCreate,
@@ -127,7 +127,7 @@ impl Catalog {
 
 	fn link_view_to_schema(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		schema: SchemaId,
 		view: ViewId,
 		name: &str,
@@ -148,7 +148,7 @@ impl Catalog {
 
 	fn insert_columns_for_view(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		view: ViewId,
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {

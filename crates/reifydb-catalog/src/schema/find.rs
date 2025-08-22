@@ -1,20 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{SchemaKey, SchemaDef, VersionedQueryTransaction},
-	row::EncodedRow,
-};
-
 use crate::{
-	Catalog,
 	schema::{convert_schema, layout::schema},
+	Catalog,
+};
+use reifydb_core::interface::UnderlyingQueryTransaction;
+use reifydb_core::{
+	interface::{SchemaDef, SchemaKey, VersionedQueryTransaction},
+	row::EncodedRow,
 };
 
 impl Catalog {
 	pub fn find_schema_by_name(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<SchemaDef>> {
 		let name = name.as_ref();
@@ -35,7 +35,7 @@ impl Catalog {
 mod tests {
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{Catalog, schema::SchemaId, test_utils::create_schema};
+	use crate::{schema::SchemaId, test_utils::create_schema, Catalog};
 
 	#[test]
 	fn test_ok() {
@@ -43,10 +43,10 @@ mod tests {
 		let catalog = Catalog::new();
 		create_schema(&mut txn, "test_schema");
 
-		let schema =
-			catalog.find_schema_by_name(&mut txn, "test_schema")
-				.unwrap()
-				.unwrap();
+		let schema = catalog
+			.find_schema_by_name(&mut txn, "test_schema")
+			.unwrap()
+			.unwrap();
 
 		assert_eq!(schema.id, SchemaId(1025));
 		assert_eq!(schema.name, "test_schema");
@@ -56,9 +56,9 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 		let catalog = Catalog::new();
-		let result =
-			catalog.find_schema_by_name(&mut txn, "test_schema")
-				.unwrap();
+		let result = catalog
+			.find_schema_by_name(&mut txn, "test_schema")
+			.unwrap();
 
 		assert_eq!(result, None);
 	}
@@ -69,9 +69,9 @@ mod tests {
 		let catalog = Catalog::new();
 		create_schema(&mut txn, "another_schema");
 
-		let result =
-			catalog.find_schema_by_name(&mut txn, "test_schema")
-				.unwrap();
+		let result = catalog
+			.find_schema_by_name(&mut txn, "test_schema")
+			.unwrap();
 		assert_eq!(result, None);
 	}
 }

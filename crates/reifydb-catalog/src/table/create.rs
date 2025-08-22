@@ -2,23 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-    sequence::SystemSequence,
-    table::layout::{table, table_schema},
-    table_column::ColumnIndex,
-    Catalog,
+	sequence::SystemSequence,
+	table::layout::{table, table_schema},
+	table_column::ColumnIndex,
+	Catalog,
 };
-use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::interface::UnderlyingCommandTransaction;
 use reifydb_core::{
-    interface::{
-        ColumnPolicyKind, EncodableKey, Key,
-        SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
-        Transaction, VersionedCommandTransaction,
-    }, result::error::diagnostic::catalog::{
-        schema_not_found, table_already_exists,
-    },
-    return_error,
-    OwnedFragment,
-    Type,
+	interface::{
+		ColumnPolicyKind, EncodableKey, Key, SchemaId, SchemaTableKey,
+		TableDef, TableId, TableKey,
+	}, result::error::diagnostic::catalog::{
+		schema_not_found, table_already_exists,
+	},
+	return_error,
+	OwnedFragment,
+	Type,
 };
 
 #[derive(Debug, Clone)]
@@ -41,7 +40,7 @@ pub struct TableToCreate {
 impl Catalog {
 	pub fn create_table(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
@@ -81,7 +80,7 @@ impl Catalog {
 
 	fn store_table(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		table: TableId,
 		schema: SchemaId,
 		to_create: &TableToCreate,
@@ -104,7 +103,7 @@ impl Catalog {
 
 	fn link_table_to_schema(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		schema: SchemaId,
 		table: TableId,
 		name: &str,
@@ -129,7 +128,7 @@ impl Catalog {
 
 	fn insert_columns(
 		&self,
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {
@@ -164,18 +163,18 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::interface::{
-        SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
-    };
-    use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_core::interface::{
+		SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
+	};
+	use reifydb_transaction::test_utils::create_test_command_transaction;
 
-    use crate::{
-        table::{layout::table_schema, TableToCreate},
-        test_utils::ensure_test_schema,
-        Catalog,
-    };
+	use crate::{
+		table::{layout::table_schema, TableToCreate},
+		test_utils::ensure_test_schema,
+		Catalog,
+	};
 
-    #[test]
+	#[test]
 	fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 

@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	SchemaId, SchemaTableKey, TableDef, TableId, Versioned,
-	VersionedQueryTransaction,
+	SchemaId, SchemaTableKey, TableDef, TableId,
+	UnderlyingQueryTransaction, Versioned, VersionedQueryTransaction,
 };
 
-use crate::{Catalog, table::layout::table_schema};
+use crate::{table::layout::table_schema, Catalog};
 
 impl Catalog {
 	pub fn find_table_by_name(
 		&self,
-		rx: &mut impl VersionedQueryTransaction,
+		rx: &mut impl UnderlyingQueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
@@ -46,8 +46,8 @@ mod tests {
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog,
 		test_utils::{create_schema, create_table, ensure_test_schema},
+		Catalog,
 	};
 
 	#[test]
@@ -63,13 +63,14 @@ mod tests {
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
 		let catalog = Catalog::new();
-		let result = catalog.find_table_by_name(
-			&mut txn,
-			SchemaId(1027),
-			"table_two",
-		)
-		.unwrap()
-		.unwrap();
+		let result = catalog
+			.find_table_by_name(
+				&mut txn,
+				SchemaId(1027),
+				"table_two",
+			)
+			.unwrap()
+			.unwrap();
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.schema, SchemaId(1027));
 		assert_eq!(result.name, "table_two");
@@ -79,12 +80,13 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 		let catalog = Catalog::new();
-		let result = catalog.find_table_by_name(
-			&mut txn,
-			SchemaId(1025),
-			"some_table",
-		)
-		.unwrap();
+		let result = catalog
+			.find_table_by_name(
+				&mut txn,
+				SchemaId(1025),
+				"some_table",
+			)
+			.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -101,12 +103,13 @@ mod tests {
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
 		let catalog = Catalog::new();
-		let result = catalog.find_table_by_name(
-			&mut txn,
-			SchemaId(1025),
-			"table_four_two",
-		)
-		.unwrap();
+		let result = catalog
+			.find_table_by_name(
+				&mut txn,
+				SchemaId(1025),
+				"table_four_two",
+			)
+			.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -123,12 +126,9 @@ mod tests {
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
 		let catalog = Catalog::new();
-		let result = catalog.find_table_by_name(
-			&mut txn,
-			SchemaId(2),
-			"table_two",
-		)
-		.unwrap();
+		let result = catalog
+			.find_table_by_name(&mut txn, SchemaId(2), "table_two")
+			.unwrap();
 		assert!(result.is_none());
 	}
 }

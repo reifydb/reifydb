@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, LiteCommandTransaction, TableId, TableRowSequenceKey
+	EncodableKey, UnderlyingCommandTransaction, TableId, TableRowSequenceKey
 	,
 };
 
@@ -12,7 +12,7 @@ pub struct TableRowSequence {}
 
 impl TableRowSequence {
 	pub fn next_row_number(
-		txn: &mut impl LiteCommandTransaction,
+		txn: &mut impl UnderlyingCommandTransaction,
 		table: TableId,
 	) -> crate::Result<RowNumber> {
 		GeneratorU64::next(

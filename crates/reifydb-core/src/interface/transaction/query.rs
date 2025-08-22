@@ -4,11 +4,12 @@
 use std::marker::PhantomData;
 
 use crate::{
-	EncodedKey, EncodedKeyRange,
 	interface::{
-		BoxedVersionedIter, Transaction, UnversionedTransaction,
-		Versioned, VersionedQueryTransaction, VersionedTransaction,
-	},
+		BoxedVersionedIter, CdcTransaction, Transaction,
+		UnderlyingQueryTransaction, UnversionedTransaction, Versioned,
+		VersionedQueryTransaction, VersionedTransaction,
+	}, EncodedKey,
+	EncodedKeyRange,
 };
 
 /// An active query transaction that holds a versioned query transaction
@@ -119,5 +120,21 @@ impl<T: Transaction> VersionedQueryTransaction for QueryTransaction<T> {
 		prefix: &EncodedKey,
 	) -> crate::Result<BoxedVersionedIter> {
 		self.versioned.prefix_rev(prefix)
+	}
+}
+
+impl<T: Transaction> UnderlyingQueryTransaction for QueryTransaction<T> {
+	type UnversionedQuery<'a> =
+		<T::Unversioned as UnversionedTransaction>::Query<'a>;
+	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;
+
+	fn begin_unversioned_query(
+		&self,
+	) -> crate::Result<Self::UnversionedQuery<'_>> {
+		self.unversioned.begin_query()
+	}
+
+	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+		self.cdc.begin_query()
 	}
 }
