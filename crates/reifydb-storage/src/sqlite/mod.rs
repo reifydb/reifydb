@@ -6,7 +6,11 @@ mod config;
 mod unversioned;
 mod versioned;
 
-use std::{ops::Deref, sync::Arc};
+use std::{
+	ops::Deref,
+	path::{Path, PathBuf},
+	sync::Arc,
+};
 
 pub use config::*;
 use r2d2::{Pool, PooledConnection};
@@ -33,11 +37,7 @@ impl Deref for Sqlite {
 impl Sqlite {
 	/// Create a new Sqlite storage with the given configuration
 	pub fn new(config: SqliteConfig) -> Self {
-		let db_path = if config.path.is_dir() {
-			config.path.join("reify.reifydb")
-		} else {
-			config.path.clone()
-		};
+		let db_path = Self::resolve_db_path(&config.path);
 
 		let manager = SqliteConnectionManager::file(db_path)
 			.with_flags(Self::convert_flags(&config.flags));
@@ -140,6 +140,21 @@ impl Sqlite {
 	fn get_conn(&self) -> PooledConnection<SqliteConnectionManager> {
 		self.pool.get().unwrap()
 	}
+
+	fn resolve_db_path(config_path: &Path) -> PathBuf {
+		if config_path.extension().is_none() {
+			// Path is a directory, ensure it exists and create db
+			// file inside
+			std::fs::create_dir_all(config_path).ok();
+			config_path.join("reify.db")
+		} else {
+			// Path is a file, ensure parent directory exists
+			if let Some(parent) = config_path.parent() {
+				std::fs::create_dir_all(parent).ok();
+			}
+			config_path.to_path_buf()
+		}
+	}
 }
 
 impl VersionedStorage for Sqlite {}
@@ -153,6 +168,123 @@ mod tests {
 	use reifydb_testing::tempdir::temp_dir;
 
 	use super::*;
+
+	#[test]
+	fn test_resolve_db_path_with_directory() {
+		temp_dir(|temp_path| {
+			let dir_path = temp_path.join("mydb");
+
+			// Test with directory path (no extension)
+			let result = Sqlite::resolve_db_path(&dir_path);
+
+			// Should append reify.db to directory
+			assert_eq!(result, dir_path.join("reify.db"));
+
+			// Directory should be created
+			assert!(dir_path.exists());
+			assert!(dir_path.is_dir());
+
+			Ok(())
+		})
+		.expect("test failed");
+	}
+
+	#[test]
+	fn test_resolve_db_path_with_file() {
+		temp_dir(|temp_path| {
+			let file_path = temp_path.join("custom.db");
+
+			// Test with file path (has extension)
+			let result = Sqlite::resolve_db_path(&file_path);
+
+			// Should use the exact path provided
+			assert_eq!(result, file_path);
+
+			// Parent directory should exist
+			assert!(temp_path.exists());
+
+			Ok(())
+		})
+		.expect("test failed");
+	}
+
+	#[test]
+	fn test_resolve_db_path_nested_directory() {
+		temp_dir(|temp_path| {
+			let nested_path = temp_path
+				.join("level1")
+				.join("level2")
+				.join("mydb");
+
+			// Test with nested directory path
+			let result = Sqlite::resolve_db_path(&nested_path);
+
+			// Should create nested directories and append reify.db
+			assert_eq!(result, nested_path.join("reify.db"));
+			assert!(nested_path.exists());
+			assert!(nested_path.is_dir());
+
+			Ok(())
+		})
+		.expect("test failed");
+	}
+
+	#[test]
+	fn test_resolve_db_path_nested_file() {
+		temp_dir(|temp_path| {
+			let nested_file = temp_path
+				.join("level1")
+				.join("level2")
+				.join("database.sqlite");
+
+			// Test with nested file path
+			let result = Sqlite::resolve_db_path(&nested_file);
+
+			// Should create parent directories and use exact
+			// filename
+			assert_eq!(result, nested_file);
+			assert!(temp_path
+				.join("level1")
+				.join("level2")
+				.exists());
+
+			Ok(())
+		})
+		.expect("test failed");
+	}
+
+	#[test]
+	fn test_resolve_db_path_with_various_extensions() {
+		temp_dir(|temp_path| {
+			// Test with .db extension
+			let db_file = temp_path.join("test.db");
+			assert_eq!(Sqlite::resolve_db_path(&db_file), db_file);
+
+			// Test with .sqlite extension
+			let sqlite_file = temp_path.join("test.sqlite");
+			assert_eq!(
+				Sqlite::resolve_db_path(&sqlite_file),
+				sqlite_file
+			);
+
+			// Test with .reifydb extension
+			let reifydb_file = temp_path.join("test.reifydb");
+			assert_eq!(
+				Sqlite::resolve_db_path(&reifydb_file),
+				reifydb_file
+			);
+
+			// Test with no extension (directory)
+			let no_ext = temp_path.join("testdb");
+			assert_eq!(
+				Sqlite::resolve_db_path(&no_ext),
+				no_ext.join("reify.db")
+			);
+
+			Ok(())
+		})
+		.expect("test failed");
+	}
 
 	#[test]
 	fn test_sqlite_creation_with_new_config() {
@@ -201,16 +333,12 @@ mod tests {
 	#[test]
 	fn test_directory_path_handling() {
 		temp_dir(|db_path| {
-			// Test with directory path - should create
-			// reify.reifydb inside
 			let config = SqliteConfig::new(db_path);
 			let storage = Sqlite::new(config);
 
-			// Verify we can get a connection
 			let _conn = storage.get_conn();
 
-			// Verify the database file was created
-			assert!(db_path.join("reify.reifydb").exists());
+			assert!(db_path.join("reify.db").exists());
 			Ok(())
 		})
 		.expect("test failed");

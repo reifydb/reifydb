@@ -6,7 +6,7 @@ test-examples: build-examples run-examples
 .PHONY: build-examples
 build-examples:
 	@echo "Building examples (release mode)..."
-	cd bin/examples && cargo build --release --bins
+	cd bin/examples && cargo build --bins
 
 # Run all examples in release mode (in order by directory, then by filename)
 .PHONY: run-examples

@@ -64,3 +64,11 @@ path = "examples/rql/09_comparison_operators.rs"
 [[bin]]
 name = "rql-logical"
 path = "examples/rql/10_logical_operators.rs"
+
+[[bin]]
+name = "storage-memory"
+path = "examples/storage/01_memory_storage.rs"
+
+[[bin]]
+name = "storage-sqlite"
+path = "examples/storage/02_sqlite_storage.rs"

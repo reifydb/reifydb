@@ -9,19 +9,7 @@
 //! Run with: `make rql-arithmetic` or `cargo run --bin rql-arithmetic`
 
 use reifydb::{log_info, sync, Params, SessionSync};
-
-/// Helper function to log queries with formatting
-/// The query text is displayed in bold for better readability
-fn log_query(query: &str) {
-	log_info!("Query:");
-	// Split the query into lines and format each line with bold
-	let formatted_query = query
-		.lines()
-		.map(|line| format!("\x1b[1m{}\x1b[0m", line))
-		.collect::<Vec<_>>()
-		.join("\n");
-	log_info!("{}", formatted_query);
-}
+use reifydb_examples::log_query;
 
 fn main() {
 	let mut db = sync::memory_optimistic().build().unwrap();
