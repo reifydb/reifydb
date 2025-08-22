@@ -5,15 +5,16 @@
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use reifydb_core::interface::CdcTransaction;
 use reifydb_core::{
-	Result,
-	hook::lifecycle::OnStartHook,
-	interface::{
-		CdcTransaction, GetHooks, StandardTransaction, Transaction,
-		UnversionedTransaction, VersionedTransaction,
-		subsystem::HealthStatus,
-	},
-	log_debug, log_error, log_timed_trace, log_warn,
+    hook::lifecycle::OnStartHook,
+    interface::{
+        subsystem::HealthStatus, CdcQueryTransaction, GetHooks, StandardTransaction,
+        Transaction, UnversionedTransaction,
+        VersionedTransaction,
+    },
+    log_debug,
+    log_error, log_timed_trace, log_warn, Result,
 };
 use reifydb_engine::StandardEngine;
 
@@ -24,17 +25,17 @@ use crate::subsystem::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
 use crate::subsystem::WsSubsystem;
 use crate::{
-	boot::Bootloader,
-	defaults::{
-		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
-		MAX_STARTUP_TIME,
-	},
-	health::{ComponentHealth, HealthMonitor},
-	session::{
-		CommandSession, IntoCommandSession, IntoQuerySession,
-		QuerySession, Session, SessionSync,
-	},
-	subsystem::Subsystems,
+    boot::Bootloader,
+    defaults::{
+        GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
+        MAX_STARTUP_TIME,
+    },
+    health::{ComponentHealth, HealthMonitor},
+    session::{
+        CommandSession, IntoCommandSession, IntoQuerySession,
+        QuerySession, Session, SessionSync,
+    },
+    subsystem::Subsystems,
 };
 
 #[derive(Debug, Clone)]

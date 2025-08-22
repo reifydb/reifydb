@@ -11,7 +11,10 @@ mod versioned;
 
 use std::marker::PhantomData;
 
-pub use cdc::{CdcTransaction, StandardCdcTransaction};
+pub use cdc::{
+	CdcQueryTransaction, CdcTransaction, StandardCdcQueryTransaction,
+	StandardCdcTransaction,
+};
 pub use command::CommandTransaction;
 pub use pending::PendingWrite;
 pub use query::QueryTransaction;
@@ -46,9 +49,17 @@ pub trait LiteCommandTransaction: VersionedCommandTransaction {
 	where
 		Self: 'a;
 
+	type UnversionedQuery<'a>: UnversionedQueryTransaction
+	where
+		Self: 'a;
+
 	fn begin_unversioned_command(
 		&self,
 	) -> crate::Result<Self::UnversionedCommand<'_>>;
+
+	fn begin_unversioned_query(
+		&self,
+	) -> crate::Result<Self::UnversionedQuery<'_>>;
 
 	fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
 	where
@@ -61,9 +72,32 @@ pub trait LiteCommandTransaction: VersionedCommandTransaction {
 		tx.commit()?;
 		Ok(result)
 	}
+
+	fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
+	where
+		F: FnOnce(&mut Self::UnversionedQuery<'_>) -> crate::Result<R>,
+	{
+		let mut tx = self.begin_unversioned_query()?;
+		let result = f(&mut tx)?;
+		Ok(result)
+	}
 }
 
-pub trait LiteQueryTransaction:
-	VersionedQueryTransaction + UnversionedQueryTransaction
-{
+pub trait LiteQueryTransaction: VersionedQueryTransaction {
+	type UnversionedQuery<'a>: UnversionedQueryTransaction
+	where
+		Self: 'a;
+
+	fn begin_unversioned_query(
+		&self,
+	) -> crate::Result<Self::UnversionedQuery<'_>>;
+
+	fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
+	where
+		F: FnOnce(&mut Self::UnversionedQuery<'_>) -> crate::Result<R>,
+	{
+		let mut tx = self.begin_unversioned_query()?;
+		let result = f(&mut tx)?;
+		Ok(result)
+	}
 }

@@ -3,22 +3,24 @@
 
 use std::marker::PhantomData;
 
+use crate::interface::{
+	GetHooks, LiteCommandTransaction,
+};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	diagnostic::transaction,
-	hook::Hooks,
+	diagnostic::transaction, hook::Hooks,
 	interceptor::Interceptors,
 	interface::{
-		BoxedVersionedIter, Transaction, UnversionedTransaction,
+		interceptor::TransactionInterceptor, transaction::pending::PendingWrite, BoxedVersionedIter,
+		Transaction, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
-		VersionedQueryTransaction, VersionedTransaction,
-		interceptor::TransactionInterceptor,
-		transaction::pending::PendingWrite,
+		VersionedQueryTransaction,
+		VersionedTransaction,
 	},
 	return_error,
 	row::EncodedRow,
+	EncodedKey,
+	EncodedKeyRange,
 };
-use crate::interface::{GetHooks, LiteCommandTransaction};
 
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
@@ -36,7 +38,6 @@ pub struct CommandTransaction<T: Transaction> {
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
-
 
 #[derive(Clone, Copy, PartialEq)]
 enum TransactionState {
@@ -79,7 +80,8 @@ impl<T: Transaction> CommandTransaction<T> {
 				return_error!(transaction::transaction_already_committed())
 			}
 			TransactionState::RolledBack => {
-				return_error!(transaction::transaction_already_rolled_back()) }
+				return_error!(transaction::transaction_already_rolled_back())
+			}
 		}
 	}
 
@@ -314,9 +316,21 @@ impl<T: Transaction> GetHooks for CommandTransaction<T> {
 }
 
 impl<T: Transaction> LiteCommandTransaction for CommandTransaction<T> {
-	type UnversionedCommand<'a> = <T::Unversioned as UnversionedTransaction>::Command<'a>;
-	
-	fn begin_unversioned_command(&self) -> crate::Result<Self::UnversionedCommand<'_>> {
+	type UnversionedCommand<'a> =
+		<T::Unversioned as UnversionedTransaction>::Command<'a>;
+	type UnversionedQuery<'a> =
+		<T::Unversioned as UnversionedTransaction>::Query<'a>;
+
+	fn begin_unversioned_query(
+		&self,
+	) -> crate::Result<Self::UnversionedQuery<'_>> {
+		self.check_active()?;
+		self.unversioned.begin_query()
+	}
+
+	fn begin_unversioned_command(
+		&self,
+	) -> crate::Result<Self::UnversionedCommand<'_>> {
 		self.check_active()?;
 		self.unversioned.begin_command()
 	}

@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::StandardCdcTransaction;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::Interceptors,
-	interface::{
-		CommandTransaction, StandardCdcTransaction, StandardTransaction,
-	},
+	interface::{CommandTransaction, StandardTransaction},
 };
 use reifydb_storage::memory::Memory;
 

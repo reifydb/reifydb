@@ -14,17 +14,18 @@ use std::{
 use reifydb_core::{
 	EncodedKey, Result, Version,
 	interface::{
-		CdcConsume, CdcConsumer, CdcEvent, CdcTransaction,
-		CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
-		Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction,
-		key::{CdcConsumerKey, EncodableKey},
-		worker_pool::Priority,
+        CdcConsume, CdcConsumer, CdcEvent, CdcQueryTransaction,
+        CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
+        Transaction, VersionedCommandTransaction,
+        VersionedQueryTransaction,
+        key::{CdcConsumerKey, EncodableKey},
+        worker_pool::Priority,
 	},
 	log_debug, log_error,
 	row::EncodedRow,
 	util::CowVec,
 };
+use reifydb_core::interface::CdcTransaction;
 use reifydb_engine::StandardEngine;
 
 /// Configuration for a CDC poll consumer
@@ -246,6 +247,7 @@ fn fetch_events_since<T: Transaction>(
 ) -> Result<Vec<CdcEvent>> {
 	Ok(transaction
 		.cdc()
+		.begin_query()?
 		.range(Bound::Excluded(since_version), Bound::Unbounded)?
 		.collect())
 }

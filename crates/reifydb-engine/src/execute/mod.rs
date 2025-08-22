@@ -4,30 +4,31 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use query::compile::compile;
+use reifydb_core::interface::StandardCdcTransaction;
 use reifydb_core::{
-	Frame,
-	interface::{
-		Command, CommandTransaction, Execute, ExecuteCommand,
-		ExecuteQuery, Params, Query, QueryTransaction,
-		StandardCdcTransaction, StandardTransaction, TableDef,
-		Transaction, VersionedQueryTransaction,
-	},
+    interface::{
+        Command, CommandTransaction, Execute, ExecuteCommand,
+        ExecuteQuery, Params, Query, QueryTransaction
+        , StandardTransaction, TableDef,
+        Transaction, VersionedQueryTransaction,
+    },
+    Frame,
 };
 use reifydb_rql::{
-	ast,
-	plan::{physical::PhysicalPlan, plan},
+    ast,
+    plan::{physical::PhysicalPlan, plan},
 };
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
-	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
+    mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
 
 use crate::{
-	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
-	},
-	function::{Functions, math},
+    columnar::{
+        layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
+        SourceQualified,
+    },
+    function::{math, Functions},
 };
 
 mod catalog;

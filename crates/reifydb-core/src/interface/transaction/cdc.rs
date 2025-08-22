@@ -4,11 +4,25 @@
 use std::ops::Bound;
 
 use crate::{
-	Result, Version,
-	interface::{CdcEvent, CdcStorage},
+    interface::{CdcEvent, CdcStorage}, Result,
+    Version,
 };
 
 pub trait CdcTransaction: Send + Sync + Clone + 'static {
+	type Query<'a>: CdcQueryTransaction;
+
+	fn begin_query(&self) -> Result<Self::Query<'_>>;
+
+	fn with_query<F, R>(&self, f: F) -> Result<R>
+	where
+		F: FnOnce(&mut Self::Query<'_>) -> Result<R>,
+	{
+		let mut tx = self.begin_query()?;
+		f(&mut tx)
+	}
+}
+
+pub trait CdcQueryTransaction: Send + Sync + Clone + 'static {
 	fn get(&self, version: Version) -> Result<Vec<CdcEvent>>;
 
 	fn range(
@@ -22,7 +36,6 @@ pub trait CdcTransaction: Send + Sync + Clone + 'static {
 	fn count(&self, version: Version) -> Result<usize>;
 }
 
-/// CDC transaction wrapper for storage that implements CdcQuery
 #[derive(Clone)]
 pub struct StandardCdcTransaction<S: CdcStorage> {
 	storage: S,
@@ -36,7 +49,31 @@ impl<S: CdcStorage> StandardCdcTransaction<S> {
 	}
 }
 
+
 impl<S: CdcStorage> CdcTransaction for StandardCdcTransaction<S> {
+	type Query<'a> = StandardCdcQueryTransaction<S> where Self: 'a;
+
+	fn begin_query(&self) -> Result<Self::Query<'_>> {
+		Ok(StandardCdcQueryTransaction::new(self.storage.clone()))
+	}
+}
+
+
+/// CDC transaction wrapper for storage that implements CdcQuery
+#[derive(Clone)]
+pub struct StandardCdcQueryTransaction<S: CdcStorage> {
+	storage: S,
+}
+
+impl<S: CdcStorage> StandardCdcQueryTransaction<S> {
+	pub fn new(storage: S) -> Self {
+		Self {
+			storage,
+		}
+	}
+}
+
+impl<S: CdcStorage> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
 	fn get(&self, version: Version) -> Result<Vec<CdcEvent>> {
 		self.storage.get(version)
 	}
