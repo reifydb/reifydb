@@ -1,0 +1,14 @@
+[package]
+name = "reifydb-sub-grpc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-network = { workspace = true, features = ["grpc", "server"] }
+
+tokio = { workspace = true }
+
