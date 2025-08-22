@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-sub-ws"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-network = { workspace = true, features = ["websocket", "server"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }

@@ -15,23 +15,17 @@ use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::WsConfig;
 
 use super::WsSubsystem;
-use crate::context::RuntimeProvider;
 
 /// Factory for creating WsSubsystem
 pub struct WsSubsystemFactory<T: Transaction> {
 	config: WsConfig,
-	runtime_provider: RuntimeProvider,
 	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> WsSubsystemFactory<T> {
-	pub fn new(
-		config: WsConfig,
-		runtime_provider: RuntimeProvider,
-	) -> Self {
+	pub fn new(config: WsConfig) -> Self {
 		Self {
 			config,
-			runtime_provider,
 			_phantom: PhantomData,
 		}
 	}
@@ -50,13 +44,9 @@ impl<T: Transaction> SubsystemFactory<T> for WsSubsystemFactory<T> {
 	fn create(
 		self: Box<Self>,
 		ioc: &IocContainer,
-	) -> crate::Result<Box<dyn Subsystem>> {
+	) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		Ok(Box::new(WsSubsystem::new(
-			self.config,
-			engine,
-			&self.runtime_provider,
-		)))
+		Ok(Box::new(WsSubsystem::new(self.config, engine)))
 	}
 }

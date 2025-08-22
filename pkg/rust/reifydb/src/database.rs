@@ -17,13 +17,13 @@ use reifydb_core::{
     log_error, log_timed_trace, log_warn, Result,
 };
 use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_grpc")]
+use reifydb_sub_grpc::GrpcSubsystem;
+#[cfg(feature = "sub_ws")]
+use reifydb_sub_ws::WsSubsystem;
 
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
-#[cfg(feature = "sub_grpc")]
-use crate::subsystem::GrpcSubsystem;
-#[cfg(feature = "sub_ws")]
-use crate::subsystem::WsSubsystem;
 use crate::{
     boot::Bootloader,
     defaults::{

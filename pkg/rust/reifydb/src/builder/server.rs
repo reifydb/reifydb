@@ -7,19 +7,14 @@ use reifydb_core::{
 	interface::{Transaction, subsystem::SubsystemFactory},
 };
 #[cfg(feature = "sub_grpc")]
-use reifydb_network::grpc::server::GrpcConfig;
-use reifydb_network::ws::server::WsConfig;
+use reifydb_sub_grpc::{GrpcConfig, GrpcSubsystemFactory};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
+#[cfg(feature = "sub_ws")]
+use reifydb_sub_ws::{WsConfig, WsSubsystemFactory};
 
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
-use crate::context::{RuntimeProvider, TokioRuntimeProvider};
-#[cfg(feature = "sub_grpc")]
-use crate::subsystem::GrpcSubsystemFactory;
-#[cfg(feature = "sub_ws")]
-use crate::subsystem::WsSubsystemFactory;
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub struct ServerBuilder<T: Transaction> {
@@ -29,7 +24,6 @@ pub struct ServerBuilder<T: Transaction> {
 	hooks: Hooks,
 	interceptors: StandardInterceptorBuilder<T>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory<T>>>,
-	runtime_provider: RuntimeProvider,
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
@@ -40,12 +34,6 @@ impl<T: Transaction> ServerBuilder<T> {
 		cdc: T::Cdc,
 		hooks: Hooks,
 	) -> Self {
-		let runtime_provider = RuntimeProvider::Tokio(
-			TokioRuntimeProvider::new().expect(
-				"Failed to create Tokio runtime for server",
-			),
-		);
-
 		Self {
 			versioned,
 			unversioned,
@@ -53,7 +41,6 @@ impl<T: Transaction> ServerBuilder<T> {
 			hooks,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
-			runtime_provider,
 		}
 	}
 
@@ -70,20 +57,14 @@ impl<T: Transaction> ServerBuilder<T> {
 
 	#[cfg(feature = "sub_ws")]
 	pub fn with_ws(mut self, config: WsConfig) -> Self {
-		let factory = WsSubsystemFactory::new(
-			config,
-			self.runtime_provider.clone(),
-		);
+		let factory = WsSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 
 	#[cfg(feature = "sub_grpc")]
 	pub fn with_grpc(mut self, config: GrpcConfig) -> Self {
-		let factory = GrpcSubsystemFactory::new(
-			config,
-			self.runtime_provider.clone(),
-		);
+		let factory = GrpcSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}

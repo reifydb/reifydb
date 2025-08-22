@@ -15,23 +15,17 @@ use reifydb_engine::StandardEngine;
 use reifydb_network::grpc::server::GrpcConfig;
 
 use super::GrpcSubsystem;
-use crate::context::RuntimeProvider;
 
 /// Factory for creating GrpcSubsystem
 pub struct GrpcSubsystemFactory<T: Transaction> {
 	config: GrpcConfig,
-	runtime_provider: RuntimeProvider,
 	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> GrpcSubsystemFactory<T> {
-	pub fn new(
-		config: GrpcConfig,
-		runtime_provider: RuntimeProvider,
-	) -> Self {
+	pub fn new(config: GrpcConfig) -> Self {
 		Self {
 			config,
-			runtime_provider,
 			_phantom: PhantomData,
 		}
 	}
@@ -50,13 +44,9 @@ impl<T: Transaction> SubsystemFactory<T> for GrpcSubsystemFactory<T> {
 	fn create(
 		self: Box<Self>,
 		ioc: &IocContainer,
-	) -> crate::Result<Box<dyn Subsystem>> {
+	) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		Ok(Box::new(GrpcSubsystem::new(
-			self.config,
-			engine,
-			&self.runtime_provider,
-		)))
+		Ok(Box::new(GrpcSubsystem::new(self.config, engine)))
 	}
 }

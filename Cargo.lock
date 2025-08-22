@@ -1528,8 +1528,10 @@ dependencies = [
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-sub-flow",
+ "reifydb-sub-grpc",
  "reifydb-sub-logging",
  "reifydb-sub-workerpool",
+ "reifydb-sub-ws",
  "reifydb-transaction",
  "tokio",
 ]
@@ -1689,6 +1691,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-sub-grpc"
+version = "0.0.1"
+dependencies = [
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-network",
+ "tokio",
+]
+
+[[package]]
 name = "reifydb-sub-logging"
 version = "0.0.1"
 dependencies = [
@@ -1707,6 +1719,17 @@ dependencies = [
  "parking_lot",
  "reifydb-core",
  "reifydb-testing",
+]
+
+[[package]]
+name = "reifydb-sub-ws"
+version = "0.0.1"
+dependencies = [
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-network",
+ "reifydb-testing",
+ "tokio",
 ]
 
 [[package]]

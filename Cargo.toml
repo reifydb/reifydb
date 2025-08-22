@@ -18,8 +18,10 @@ members = [
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
     "crates/reifydb-sub-flow",
+    "crates/reifydb-sub-grpc",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
+    "crates/reifydb-sub-ws",
     "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -44,8 +46,10 @@ default-members = [
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
     "crates/reifydb-sub-flow",
+    "crates/reifydb-sub-grpc",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
+    "crates/reifydb-sub-ws",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
@@ -97,8 +101,10 @@ reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
 #subsystems
+reifydb-sub-grpc = { path = "crates/reifydb-sub-grpc", version = "0.0.1" }
 reifydb-sub-logging = { path = "crates/reifydb-sub-logging", version = "0.0.1" }
 reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.0.1" }
+reifydb-sub-ws = { path = "crates/reifydb-sub-ws", version = "0.0.1" }
 
 # util
 chrono = { version = "0.4.41", features = ["serde"] }
