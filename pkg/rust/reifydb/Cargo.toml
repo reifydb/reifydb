@@ -19,7 +19,7 @@ reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 reifydb-sub-logging = { workspace = true, optional = true }
-serde_json = { workspace = true }
+reifydb-sub-workerpool = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 
 [features]
@@ -30,5 +30,6 @@ async = ["dep:tokio"]
 sub_flow = ["dep:reifydb-sub-flow"]
 sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server"]
 sub_logging = ["dep:reifydb-sub-logging"]
+sub_workerpool = ["dep:reifydb-sub-workerpool"]
 sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server"]
 

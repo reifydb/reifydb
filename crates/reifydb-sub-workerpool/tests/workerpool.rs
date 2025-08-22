@@ -10,10 +10,10 @@ use std::{
 	time::Duration,
 };
 
-use reifydb::subsystem::worker_pool::{
+use reifydb_core::interface::subsystem::Subsystem;
+use reifydb_sub_workerpool::{
 	ClosureTask, Priority, WorkerPoolConfig, WorkerPoolSubsystem,
 };
-use reifydb_core::interface::subsystem::Subsystem;
 
 #[test]
 fn test_worker_pool_basic() {

@@ -18,25 +18,21 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result, interface::worker_pool::WorkerPool, log_debug, log_warn,
-};
-
-mod factory;
-mod scheduler;
-#[allow(dead_code)]
-mod task;
-mod worker;
-
-pub use factory::WorkerPoolSubsystemFactory;
 pub use reifydb_core::interface::worker_pool::Priority;
-use reifydb_core::interface::{
-	subsystem::{HealthStatus, Subsystem},
-	worker_pool::TaskHandle,
+use reifydb_core::{
+	Result,
+	interface::{
+		subsystem::{HealthStatus, Subsystem},
+		worker_pool::{TaskHandle, WorkerPool},
+	},
+	log_debug, log_warn,
 };
-pub use scheduler::TaskScheduler;
-pub use task::{ClosureTask, PoolTask, PrioritizedTask, TaskContext};
-pub use worker::Worker;
+
+use crate::{
+	scheduler::TaskScheduler,
+	task::{ClosureTask, PoolTask, PrioritizedTask},
+	worker::Worker,
+};
 
 /// Configuration for the worker pool
 #[derive(Debug, Clone)]
@@ -378,9 +374,9 @@ impl WorkerPool for WorkerPoolSubsystem {
 	fn schedule_periodic(
 		&self,
 		name: String,
-		task: Box<dyn Fn() -> crate::Result<bool> + Send + Sync>,
+		task: Box<dyn Fn() -> Result<bool> + Send + Sync>,
 		interval: Duration,
-	) -> crate::Result<TaskHandle> {
+	) -> Result<TaskHandle> {
 		// Create a closure task that wraps the provided function
 		let closure_task = Box::new(ClosureTask::new(
 			name,
@@ -401,7 +397,7 @@ impl WorkerPool for WorkerPoolSubsystem {
 		self.schedule_periodic(closure_task, interval, Priority::Normal)
 	}
 
-	fn cancel(&self, handle: TaskHandle) -> crate::Result<()> {
+	fn cancel(&self, handle: TaskHandle) -> Result<()> {
 		self.cancel_task(handle)
 	}
 }

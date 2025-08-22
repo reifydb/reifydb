@@ -4,16 +4,12 @@
 #[cfg(feature = "sub_grpc")]
 pub mod grpc;
 mod subsystems;
-pub mod worker_pool;
 #[cfg(feature = "sub_ws")]
 pub mod ws;
 
 #[cfg(feature = "sub_grpc")]
 pub use grpc::{GrpcSubsystem, GrpcSubsystemFactory};
-#[cfg(feature = "sub_flow")]
-pub use reifydb_sub_flow::{FlowSubsystem, FlowSubsystemFactory};
 pub(crate) use subsystems::Subsystems;
-pub use worker_pool::{WorkerPoolSubsystem, WorkerPoolSubsystemFactory};
 #[cfg(feature = "sub_ws")]
 pub use ws::{WsSubsystem, WsSubsystemFactory};
 

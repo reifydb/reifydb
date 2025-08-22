@@ -1529,8 +1529,8 @@ dependencies = [
  "reifydb-storage",
  "reifydb-sub-flow",
  "reifydb-sub-logging",
+ "reifydb-sub-workerpool",
  "reifydb-transaction",
- "serde_json",
  "tokio",
 ]
 
@@ -1558,6 +1558,8 @@ version = "0.0.1"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-storage",
+ "reifydb-transaction",
 ]
 
 [[package]]
@@ -1691,6 +1693,16 @@ name = "reifydb-sub-logging"
 version = "0.0.1"
 dependencies = [
  "colored",
+ "crossbeam-channel",
+ "parking_lot",
+ "reifydb-core",
+ "reifydb-testing",
+]
+
+[[package]]
+name = "reifydb-sub-workerpool"
+version = "0.0.1"
+dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "reifydb-core",
