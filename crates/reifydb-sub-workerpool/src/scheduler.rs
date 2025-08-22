@@ -11,7 +11,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::interface::worker_pool::{Priority, TaskHandle};
+use reifydb_core::interface::subsystem::workerpool::{Priority, TaskHandle};
 
 use super::task::{PoolTask, ScheduledTask};
 

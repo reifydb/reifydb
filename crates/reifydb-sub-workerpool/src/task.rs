@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_core::{
 	Result,
-	interface::worker_pool::{Priority, TaskHandle},
+	interface::subsystem::workerpool::{Priority, TaskHandle},
 };
 
 /// Context provided to tasks during execution

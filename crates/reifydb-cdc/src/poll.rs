@@ -19,7 +19,7 @@ use reifydb_core::{
 		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 		key::{CdcConsumerKey, EncodableKey},
-		worker_pool::Priority,
+		subsystem::workerpool::Priority,
 	},
 	log_debug, log_error,
 	row::EncodedRow,

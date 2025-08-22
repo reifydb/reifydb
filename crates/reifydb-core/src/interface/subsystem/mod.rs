@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub mod logging;
+pub mod workerpool;
 
 /// Uniform interface that all subsystems must implement
 ///
