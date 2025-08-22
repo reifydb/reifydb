@@ -10,15 +10,17 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingSubsystemFactory;
+#[cfg(feature = "sub_workerpool")]
+use reifydb_sub_workerpool::WorkerPoolSubsystemFactory;
 
-#[cfg(feature = "sub_flow")]
-use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
-	subsystem::{Subsystems, worker_pool::WorkerPoolSubsystemFactory},
+	subsystem::Subsystems,
 };
 
 pub struct DatabaseBuilder<T: Transaction> {
@@ -67,10 +69,13 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			));
 		}
 
-		// Always add worker pool subsystem
-		self = self.add_subsystem_factory(Box::new(
-			WorkerPoolSubsystemFactory::new(),
-		));
+		// Add worker pool subsystem if feature enabled
+		#[cfg(feature = "sub_workerpool")]
+		{
+			self = self.add_subsystem_factory(Box::new(
+				WorkerPoolSubsystemFactory::new(),
+			));
+		}
 
 		#[cfg(feature = "sub_flow")]
 		{

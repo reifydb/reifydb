@@ -1521,15 +1521,16 @@ version = "0.0.1"
 dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
+ "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-flow",
  "reifydb-network",
  "reifydb-rql",
  "reifydb-storage",
+ "reifydb-sub-flow",
  "reifydb-sub-logging",
+ "reifydb-sub-workerpool",
  "reifydb-transaction",
- "serde_json",
  "tokio",
 ]
 
@@ -1549,6 +1550,16 @@ dependencies = [
  "reifydb-storage",
  "reifydb-transaction",
  "serde",
+]
+
+[[package]]
+name = "reifydb-cdc"
+version = "0.0.1"
+dependencies = [
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-storage",
+ "reifydb-transaction",
 ]
 
 [[package]]
@@ -1588,7 +1599,6 @@ dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-flow",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-testing",
@@ -1597,22 +1607,6 @@ dependencies = [
  "serde_json",
  "unicode-width",
  "uuid",
-]
-
-[[package]]
-name = "reifydb-flow"
-version = "0.0.1"
-dependencies = [
- "bincode 1.3.3",
- "reifydb",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-rql",
- "reifydb-storage",
- "reifydb-testing",
- "reifydb-transaction",
- "serde",
- "test_each_file",
 ]
 
 [[package]]
@@ -1678,10 +1672,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-sub-flow"
+version = "0.0.1"
+dependencies = [
+ "bincode 1.3.3",
+ "reifydb",
+ "reifydb-catalog",
+ "reifydb-cdc",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-rql",
+ "reifydb-testing",
+ "serde",
+ "serde_json",
+ "test_each_file",
+]
+
+[[package]]
 name = "reifydb-sub-logging"
 version = "0.0.1"
 dependencies = [
  "colored",
+ "crossbeam-channel",
+ "parking_lot",
+ "reifydb-core",
+ "reifydb-testing",
+]
+
+[[package]]
+name = "reifydb-sub-workerpool"
+version = "0.0.1"
+dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "reifydb-core",

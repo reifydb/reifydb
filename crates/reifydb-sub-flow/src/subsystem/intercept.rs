@@ -14,7 +14,6 @@ use reifydb_core::{
 	},
 	interface::{TableId, Transaction},
 	ioc::{IocContainer, LazyResolveRc},
-	log_debug,
 };
 use reifydb_engine::StandardEngine;
 
@@ -111,16 +110,18 @@ impl<T: Transaction> PreCommitInterceptor<T>
 	for TransactionalFlowInterceptor<T>
 {
 	fn intercept(&self, _ctx: &mut PreCommitContext<T>) -> Result<()> {
-		let engine = self.engine.get_or_resolve(&self.ioc)?;
+		let _engine = self.engine.get_or_resolve(&self.ioc)?;
 
-		// Process all collected changes
-		let mut changes = self.changes.borrow_mut();
-		for change in changes.drain(..) {
-			log_debug!("{change:?}");
-			// TODO: Process with flow engine
-			// This is where you would process the changes through
-			// the flow system For now, we just have the
-			// infrastructure in place
+		// Process all collected changes through flow engine
+		let changes = self.changes.borrow_mut();
+		if !changes.is_empty() {
+			// TODO: Convert FlowChange to flow engine Change format
+			// and process through flow engine
+			// for change in changes.drain(..) {
+			// 	log_debug!("Intercepted change: {:?}", change);
+			// 	// The flow engine will be accessed via the
+			// engine/subsystem 	// This interceptor collects
+			// changes for the flow engine }
 		}
 
 		Ok(())

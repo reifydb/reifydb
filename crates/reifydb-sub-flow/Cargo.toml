@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-flow"
+name = "reifydb-sub-flow"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -8,12 +8,13 @@ repository.workspace = true
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-cdc = { workspace = true }
 reifydb-catalog = { workspace = true }
+reifydb-engine = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb-storage = { workspace = true }
-reifydb-transaction = { workspace = true }
 
 serde = { workspace = true }
+serde_json = { workspace = true }
 bincode = "1.3"
 
 [dev-dependencies]

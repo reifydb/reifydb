@@ -9,16 +9,17 @@ repository.workspace = true
 [dependencies]
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
+reifydb-cdc = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-flow = { workspace = true, optional = true }
+reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 
 reifydb-sub-logging = { workspace = true, optional = true }
-serde_json = { workspace = true }
+reifydb-sub-workerpool = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 
 [features]
@@ -26,8 +27,9 @@ default = ["sub_logging"]
 async = ["dep:tokio"]
 
 # Subsystem features
-sub_flow = ["dep:reifydb-flow"]
+sub_flow = ["dep:reifydb-sub-flow"]
 sub_grpc = ["async", "dep:reifydb-network", "reifydb-network/grpc", "reifydb-network/server"]
 sub_logging = ["dep:reifydb-sub-logging"]
+sub_workerpool = ["dep:reifydb-sub-workerpool"]
 sub_ws = ["async", "dep:reifydb-network", "reifydb-network/websocket", "reifydb-network/server"]
 

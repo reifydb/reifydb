@@ -19,8 +19,6 @@ use reifydb_engine::StandardEngine;
 
 #[cfg(feature = "async")]
 use crate::session::SessionAsync;
-#[cfg(feature = "sub_flow")]
-use crate::subsystem::FlowSubsystem;
 #[cfg(feature = "sub_grpc")]
 use crate::subsystem::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
@@ -93,10 +91,11 @@ pub struct Database<T: Transaction> {
 }
 
 impl<T: Transaction> Database<T> {
-	#[cfg(feature = "sub_flow")]
-	pub fn subsystem_flow(&self) -> Option<&FlowSubsystem<T>> {
-		self.subsystem::<FlowSubsystem<T>>()
-	}
+	// Note: FlowSubsystem is now generic over the engine type
+	// #[cfg(feature = "sub_flow")]
+	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
+	// Option<&FlowSubsystem<T, E>> { 	self.subsystem::<FlowSubsystem<T,
+	// E>>() }
 
 	#[cfg(feature = "sub_grpc")]
 	pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystem<T>> {
