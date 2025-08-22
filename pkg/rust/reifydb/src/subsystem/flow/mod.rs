@@ -237,9 +237,9 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		self.consumer.start()
-		// println!("FLOW SUBSYSTEM DISABLED FOR NOW");
-		// Ok(())
+		// self.consumer.start()
+		println!("FLOW SUBSYSTEM DISABLED FOR NOW");
+		Ok(())
 	}
 
 	fn shutdown(&mut self) -> Result<()> {

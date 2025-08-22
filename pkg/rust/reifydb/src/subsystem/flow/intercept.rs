@@ -13,7 +13,7 @@ use reifydb_core::{
 		TablePostUpdateInterceptor,
 	},
 	interface::{TableId, Transaction},
-	ioc::{IocContainer, SingleThreadLazyResolve},
+	ioc::{IocContainer, LazyResolveRc},
 	log_debug,
 };
 use reifydb_engine::StandardEngine;
@@ -40,7 +40,7 @@ pub enum FlowChange {
 }
 
 pub struct TransactionalFlowInterceptor<T: Transaction> {
-	engine: SingleThreadLazyResolve<StandardEngine<T>>,
+	engine: LazyResolveRc<StandardEngine<T>>,
 	ioc: IocContainer,
 	// Transaction-scoped change buffer
 	changes: Rc<RefCell<Vec<FlowChange>>>,
@@ -49,7 +49,7 @@ pub struct TransactionalFlowInterceptor<T: Transaction> {
 impl<T: Transaction> TransactionalFlowInterceptor<T> {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			engine: SingleThreadLazyResolve::new(),
+			engine: LazyResolveRc::new(),
 			ioc,
 			changes: Rc::new(RefCell::new(Vec::new())),
 		}

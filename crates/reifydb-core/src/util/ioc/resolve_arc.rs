@@ -3,31 +3,30 @@
 
 use std::{
 	any::{Any, type_name},
-	cell::OnceCell,
-	rc::Rc,
+	sync::{Arc, OnceLock},
 };
 
 use super::IocContainer;
 use crate::{Result, diagnostic::internal, error};
 
-/// Single-threaded lazy resolution wrapper using OnceCell
-/// Can be cheaply cloned as it uses Rc internally
-pub struct SingleThreadLazyResolve<T> {
-	inner: Rc<LazyResolveInner<T>>,
+/// Thread-safe lazy resolution wrapper using OnceLock
+/// Can be cheaply cloned as it uses Arc internally
+pub struct LazyResolveArc<T> {
+	inner: Arc<LazyResolveInner<T>>,
 }
 
-/// Inner storage for lazy resolution (single-threaded)
+/// Inner storage for lazy resolution
 struct LazyResolveInner<T> {
-	value: OnceCell<T>,
+	value: OnceLock<T>,
 }
 
 #[allow(dead_code)]
-impl<T: Clone> SingleThreadLazyResolve<T> {
+impl<T: Clone> LazyResolveArc<T> {
 	/// Create a new lazy resolver
 	pub fn new() -> Self {
 		Self {
-			inner: Rc::new(LazyResolveInner {
-				value: OnceCell::new(),
+			inner: Arc::new(LazyResolveInner {
+				value: OnceLock::new(),
 			}),
 		}
 	}
@@ -50,18 +49,20 @@ impl<T: Clone> SingleThreadLazyResolve<T> {
 				// We successfully set it, return a reference
 				self.inner.value.get().ok_or_else(|| {
 					error!(internal(format!(
-						"Failed to get value after setting in OnceCell for type {}",
+						"Failed to get value after setting in OnceLock for type {}",
 						type_name::<T>()
 					)))
 				})
 			}
 			Err(_) => {
-				// This shouldn't happen in single-threaded
-				// context
-				Err(error!(internal(format!(
-					"Failed to set value in OnceCell for type {}",
-					type_name::<T>()
-				))))
+				// Someone else set it in the meantime, use
+				// their value
+				self.inner.value.get().ok_or_else(|| {
+					error!(internal(format!(
+						"Failed to get value from OnceLock for type {}",
+						type_name::<T>()
+					)))
+				})
 			}
 		}
 	}
@@ -79,16 +80,25 @@ impl<T: Clone> SingleThreadLazyResolve<T> {
 	}
 }
 
-impl<T: Clone> Clone for SingleThreadLazyResolve<T> {
+impl<T: Clone> Clone for LazyResolveArc<T> {
 	fn clone(&self) -> Self {
 		Self {
-			inner: Rc::clone(&self.inner),
+			inner: Arc::clone(&self.inner),
 		}
 	}
 }
 
-impl<T: Clone> Default for SingleThreadLazyResolve<T> {
+impl<T: Clone> Default for LazyResolveArc<T> {
 	fn default() -> Self {
 		Self::new()
 	}
+}
+
+/// Helper function to create a resolver closure for a specific type
+#[allow(dead_code)]
+pub fn resolver<T>(ioc: &IocContainer) -> impl FnOnce() -> Result<T> + '_
+where
+	T: Clone + Any + Send + Sync + 'static,
+{
+	move || ioc.resolve::<T>()
 }

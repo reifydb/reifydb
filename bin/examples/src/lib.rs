@@ -95,7 +95,7 @@
 //                     print!(" | ");
 //                 }
 //                 let value =
-// row.get(col.name()).unwrap_or(&reifydb::Value::Null);                 
+// row.get(col.name()).unwrap_or(&reifydb::Value::Null);
 // print!("{:15}", format_value(value));             }
 //             println!();
 //         }

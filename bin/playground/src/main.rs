@@ -8,10 +8,7 @@ use std::{thread, time::Duration};
 use reifydb::{
 	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
 	WithSubsystem,
-	core::{
-		interface::{Params, subsystem::logging::LogLevel::Trace},
-		log_info,
-	},
+	core::interface::{Params, subsystem::logging::LogLevel::Trace},
 	sync,
 };
 
@@ -66,16 +63,16 @@ fn main() {
 	)
 	.unwrap();
 
-	db.command_as_root(
-		r#"
-create deferred view test.basic { value: int8, age: int8 } with {
-    from test.users
-    aggregate sum(value) by age
-}
-	"#,
-		Params::None,
-	)
-	.unwrap();
+	// 	db.command_as_root(
+	// 		r#"
+	// create deferred view test.basic { value: int8, age: int8 } with {
+	//     from test.users
+	//     aggregate sum(value) by age
+	// }
+	// 	"#,
+	// 		Params::None,
+	// 	)
+	// 	.unwrap();
 
 	db.command_as_root(
 		r#"
@@ -149,9 +146,9 @@ create deferred view test.basic { value: int8, age: int8 } with {
 	// println!("Basic database operations completed successfully!");
 	// rql_to_flow_example(&mut db);
 
-	for frame in
-		db.query_as_root(r#"FROM test.basic"#, Params::None).unwrap()
-	{
-		log_info!("{}", frame);
-	}
+	// for frame in
+	// 	db.query_as_root(r#"FROM test.basic"#, Params::None).unwrap()
+	// {
+	// 	log_info!("{}", frame);
+	// }
 }

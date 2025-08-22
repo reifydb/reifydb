@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod resolve;
-mod single_thread;
+mod resolve_arc;
+mod resolve_rc;
 
 use std::{
 	any::{Any, TypeId, type_name},
@@ -11,8 +11,8 @@ use std::{
 };
 
 #[allow(unused_imports)]
-pub use resolve::LazyResolve;
-pub use single_thread::SingleThreadLazyResolve;
+pub use resolve_arc::LazyResolveArc;
+pub use resolve_rc::LazyResolveRc;
 
 use crate::{Result, diagnostic::internal, error};
 
