@@ -7,7 +7,7 @@ use crate::{
 };
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	interface::{SchemaDef, SchemaKey, VersionedQueryTransaction},
+	interface::{SchemaDef, SchemaKey},
 	row::EncodedRow,
 };
 

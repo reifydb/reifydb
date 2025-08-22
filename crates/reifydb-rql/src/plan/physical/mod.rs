@@ -14,7 +14,7 @@ use reifydb_catalog::{
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
-		evaluate::expression::{AliasExpression, Expression}, SchemaDef, TableDef, VersionedQueryTransaction,
+		evaluate::expression::{AliasExpression, Expression}, SchemaDef, TableDef,
 		ViewDef,
 	}, result::error::diagnostic::catalog::schema_not_found, return_error,
 	JoinType,

@@ -5,7 +5,7 @@ use crate::{view::layout::view, Catalog};
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
-		EncodableKey, SchemaId, VersionedQueryTransaction, ViewDef,
+		EncodableKey, SchemaId, ViewDef,
 		ViewId, ViewKey, ViewKind,
 	},
 	internal_error,

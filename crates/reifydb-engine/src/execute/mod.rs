@@ -4,15 +4,12 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use query::compile::compile;
-use reifydb_core::interface::{
-	StandardCdcTransaction, QueryTransaction,
-};
+use reifydb_core::interface::{QueryTransaction, StandardCdcTransaction};
+use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
 	interface::{
-		Command, Execute, ExecuteCommand,
-		ExecuteQuery, Params, Query,
-		StandardTransaction, TableDef, Transaction,
-		VersionedQueryTransaction,
+		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
+		TableDef, Transaction, VersionedQueryTransaction,
 	},
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 	Frame,

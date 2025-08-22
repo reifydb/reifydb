@@ -3,37 +3,37 @@
 
 use std::{
 	sync::{
-		atomic::{AtomicBool, AtomicUsize, Ordering}, Arc,
-		Mutex,
+		Arc, Mutex,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	thread,
 	time::Duration,
 };
 
+use Key::TableRow;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::interface::StandardCdcTransaction;
+use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
-	diagnostic::Diagnostic, hook::Hooks, interceptor::StandardInterceptorFactory,
+	EncodedKey, Result, RowNumber,
+	diagnostic::Diagnostic,
+	hook::Hooks,
+	interceptor::StandardInterceptorFactory,
 	interface::{
-		key::TableRowKey, CdcConsume, CdcConsumer, CdcConsumerKey,
-		CdcEvent, ConsumerId,
-		EncodableKey, Engine as EngineInterface,
-		Key, StandardTransaction, TableId,
+		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent, ConsumerId,
+		EncodableKey, Engine as EngineInterface, Key, TableId,
 		VersionedCommandTransaction, VersionedQueryTransaction,
+		key::TableRowKey,
 	},
 	row::EncodedRow,
 	transaction::StandardCommandTransaction,
 	util::CowVec,
-	EncodedKey,
-	Result,
-	RowNumber,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
-use Key::TableRow;
 
 #[test]
 fn test_consumer_lifecycle() {

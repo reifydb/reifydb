@@ -3,26 +3,26 @@
 
 use std::collections::HashMap;
 
-use FlowNodeType::SourceTable;
+use crate::{
+	engine::FlowEngine, operator::OperatorContext, Change, Diff, Flow, FlowNode,
+	FlowNodeType,
+};
 use reifydb_catalog::Catalog;
+use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_core::{
-	Value,
 	interface::{
-		CommandTransaction, EncodableKey, Evaluator,
+		EncodableKey, Evaluator,
 		GetEncodedRowLayout, SourceId, SourceId::Table, Transaction,
 		VersionedCommandTransaction, ViewId, ViewRowKey,
 	},
+	Value,
 };
-
-use crate::{
-	Change, Diff, Flow, FlowNode, FlowNodeType, engine::FlowEngine,
-	operator::OperatorContext,
-};
+use FlowNodeType::SourceTable;
 
 impl<E: Evaluator> FlowEngine<E> {
 	pub fn process<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		change: Change,
 	) -> crate::Result<()> {
 		let mut diffs_by_source = HashMap::new();
@@ -73,7 +73,7 @@ impl<E: Evaluator> FlowEngine<E> {
 
 	fn apply_operator<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		node: &FlowNode,
 		change: &Change,
 	) -> crate::Result<Change> {
@@ -84,7 +84,7 @@ impl<E: Evaluator> FlowEngine<E> {
 
 	fn process_node<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		flow: &Flow,
 		node: &FlowNode,
 		change: &Change,
@@ -127,7 +127,7 @@ impl<E: Evaluator> FlowEngine<E> {
 
 	fn apply_to_view<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{
 	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, TableColumnPolicyKey,
-	QueryTransaction, VersionedQueryTransaction,
+	QueryTransaction,
 };
 
 use crate::{

@@ -11,7 +11,7 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, Key, SchemaId, SchemaViewKey,
-		VersionedCommandTransaction, ViewDef, ViewId, ViewKey,
+		ViewDef, ViewId, ViewKey,
 		ViewKind,
 	}, result::error::diagnostic::catalog::{
 		schema_not_found, view_already_exists,

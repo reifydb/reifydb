@@ -3,11 +3,11 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::interface::{
-	CommandTransaction, VersionedCommandTransaction,
+	CommandTransaction,
 };
 use reifydb_core::{
     diagnostic::sequence::sequence_exhausted, interface::{
-        Transaction, UnversionedCommandTransaction,
+        UnversionedCommandTransaction,
         UnversionedQueryTransaction,
     },
     return_error,

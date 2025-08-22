@@ -15,7 +15,7 @@ use reifydb_core::{
 		auto_increment_invalid_type, table_column_already_exists,
 	}, interface::{
 		ColumnPolicyKind, EncodableKey, Key, TableColumnKey,
-		TableColumnsKey, TableId, VersionedCommandTransaction,
+		TableColumnsKey, TableId,
 	},
 	return_error,
 	OwnedFragment,

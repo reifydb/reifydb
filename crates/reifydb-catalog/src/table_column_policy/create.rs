@@ -9,7 +9,7 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		ColumnPolicy, ColumnPolicyKind, EncodableKey,
-		TableColumnPolicyKey, VersionedCommandTransaction,
+		TableColumnPolicyKey,
 	},
 	result::error::diagnostic::catalog::table_column_policy_already_exists,
 	return_error,

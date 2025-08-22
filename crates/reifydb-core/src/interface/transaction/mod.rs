@@ -9,15 +9,12 @@ mod versioned;
 
 use crate::interface::TableDef;
 use crate::row::EncodedRow;
-pub use crate::transaction::{StandardTransaction, Transaction};
 use crate::RowNumber;
 pub use cdc::{
 	CdcQueryTransaction, CdcTransaction, StandardCdcQueryTransaction,
 	StandardCdcTransaction,
 };
-pub use transaction::{
-	CommandTransaction, QueryTransaction,
-};
+pub use transaction::{CommandTransaction, QueryTransaction};
 pub use unversioned::*;
 pub use versioned::*;
 
@@ -37,4 +34,10 @@ pub enum PendingWrite {
 		table: TableDef,
 		id: RowNumber,
 	},
+}
+
+pub trait Transaction: Send + Sync + Clone + 'static {
+	type Versioned: VersionedTransaction;
+	type Unversioned: UnversionedTransaction;
+	type Cdc: CdcTransaction;
 }

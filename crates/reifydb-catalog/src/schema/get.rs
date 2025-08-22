@@ -7,7 +7,7 @@ use crate::{
 };
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-    interface::{EncodableKey, SchemaDef, SchemaId, SchemaKey, VersionedQueryTransaction},
+    interface::{EncodableKey, SchemaDef, SchemaId, SchemaKey},
     internal_error,
     Error,
 };

@@ -1,10 +1,16 @@
 use std::{collections::HashMap, ops::Bound};
 
+use crate::{
+	Result,
+	core::{Change, Diff},
+	operator::{Operator, OperatorContext},
+};
 use reifydb_catalog::row::RowNumber;
+use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_core::{
 	CowVec, Value,
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
+		EvaluationContext, Evaluator, Params,
 		SourceId::View, Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction, ViewId, expression::Expression,
 	},
@@ -12,12 +18,6 @@ use reifydb_core::{
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
 use serde::{Deserialize, Serialize};
-
-use crate::{
-	Result,
-	core::{Change, Diff},
-	operator::{Operator, OperatorContext},
-};
 
 // ============================================================================
 // Key Implementation for Aggregate State Storage
@@ -371,7 +371,7 @@ impl AggregateOperator {
 
 	fn load_state<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		group_key: &[Value],
 	) -> Result<GroupState> {
 		let key = FlowAggregateStateKey::new(
@@ -408,7 +408,7 @@ impl AggregateOperator {
 
 	fn save_state<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		group_key: &[Value],
 		state: &GroupState,
 	) -> Result<()> {
@@ -444,7 +444,7 @@ impl AggregateOperator {
 
 	fn load_all_states<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 	) -> Result<HashMap<Vec<Value>, GroupState>> {
 		let mut states = HashMap::new();
 		let (start, end) = FlowAggregateStateKey::range_for_node(
@@ -480,7 +480,7 @@ impl AggregateOperator {
 
 	fn emit_group_changes<T: Transaction>(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		changed_groups: Vec<Vec<Value>>,
 	) -> Result<Change> {
 		let mut output_diffs = Vec::new();

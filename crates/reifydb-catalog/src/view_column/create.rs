@@ -12,7 +12,7 @@ use crate::{
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	diagnostic::catalog::view_column_already_exists, interface::{
-		EncodableKey, Key, VersionedCommandTransaction, ViewColumnKey,
+		EncodableKey, Key, ViewColumnKey,
 		ViewColumnsKey, ViewId,
 	},
 	return_error,

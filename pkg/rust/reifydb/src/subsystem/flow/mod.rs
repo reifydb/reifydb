@@ -31,7 +31,7 @@ struct FlowConsumer<T: Transaction> {
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(
 		&self,
-		txn: &mut CommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		let catalog = Catalog::new();

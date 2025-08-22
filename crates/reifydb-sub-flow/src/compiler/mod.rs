@@ -11,12 +11,10 @@ mod builder;
 mod operator;
 mod source;
 
-use reifydb_catalog::sequence::flow::{
-	next_flow_edge_id, next_flow_id, next_flow_node_id,
-};
 use reifydb_core::interface::{
-	CommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
+	FlowEdgeId, FlowNodeId, Transaction, ViewDef,
 };
+use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_rql::plan::physical::PhysicalPlan;
 
 use crate::{
@@ -36,7 +34,7 @@ use crate::{
 
 /// Public API for compiling logical plans to Flows
 pub fn compile_flow<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
+	txn: &mut StandardCommandTransaction<T>,
 	plan: PhysicalPlan,
 	sink: &ViewDef,
 ) -> crate::Result<Flow> {
@@ -49,12 +47,14 @@ pub(crate) struct FlowCompiler<'a, T: Transaction> {
 	/// The flow graph being built
 	flow: Flow,
 	/// Transaction for accessing catalog and sequences
-	txn: &'a mut CommandTransaction<T>,
+	txn: &'a mut StandardCommandTransaction<T>,
 }
 
 impl<'a, T: Transaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
-	pub fn new(txn: &'a mut CommandTransaction<T>) -> crate::Result<Self> {
+	pub fn new(
+		txn: &'a mut StandardCommandTransaction<T>,
+	) -> crate::Result<Self> {
 		todo!()
 		// Ok(Self {
 		// 	flow: Flow::new(next_flow_id(txn)?),

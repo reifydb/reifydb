@@ -7,7 +7,6 @@ use reifydb_core::interface::{CdcTransaction, StandardCdcTransaction};
 use reifydb_core::{
     hook::Hooks,
     interface::{
-        CdcQueryTransaction,
         UnversionedTransaction, VersionedStorage,
     },
 };

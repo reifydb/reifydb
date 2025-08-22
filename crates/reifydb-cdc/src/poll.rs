@@ -4,29 +4,27 @@
 use std::{
 	ops::Bound,
 	sync::{
-		Arc,
 		atomic::{AtomicBool, Ordering},
+		Arc,
 	},
 	thread::{self, JoinHandle},
 	time::Duration,
 };
 
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	EncodedKey, Result, Version,
 	interface::{
-        CdcConsume, CdcConsumer, CdcEvent, CdcQueryTransaction,
-        ConsumerId, Engine as EngineInterface, Key,
-        Transaction, VersionedCommandTransaction,
-        VersionedQueryTransaction,
-        key::{CdcConsumerKey, EncodableKey},
-        worker_pool::Priority,
-	},
-	transaction::StandardCommandTransaction,
-	log_debug, log_error,
+		key::{CdcConsumerKey, EncodableKey}, worker_pool::Priority, CdcConsume, CdcConsumer,
+		CdcEvent, CdcQueryTransaction, ConsumerId, Engine as EngineInterface,
+		Key,
+		Transaction,
+		VersionedCommandTransaction,
+	}, log_debug, log_error,
 	row::EncodedRow,
-	util::CowVec,
+	util::CowVec, EncodedKey,
+	Result,
+	Version,
 };
-use reifydb_core::interface::CdcTransaction;
 use reifydb_engine::StandardEngine;
 
 /// Configuration for a CDC poll consumer
@@ -214,12 +212,11 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 	}
 }
 
-fn fetch_checkpoint<T: Transaction>(
-	transaction: &mut StandardCommandTransaction<T>,
+fn fetch_checkpoint(
+	txn: &mut impl CommandTransaction,
 	consumer_key: &EncodedKey,
 ) -> Result<Version> {
-	transaction
-		.get(consumer_key)?
+	txn.get(consumer_key)?
 		.and_then(|record| {
 			if record.row.len() >= 8 {
 				let mut buffer = [0u8; 8];
@@ -233,22 +230,20 @@ fn fetch_checkpoint<T: Transaction>(
 		.unwrap_or(Ok(1))
 }
 
-fn persist_checkpoint<T: Transaction>(
-	transaction: &mut StandardCommandTransaction<T>,
+fn persist_checkpoint(
+	txn: &mut impl CommandTransaction,
 	consumer_key: &EncodedKey,
 	version: Version,
 ) -> Result<()> {
 	let version_bytes = version.to_be_bytes().to_vec();
-	transaction.set(consumer_key, EncodedRow(CowVec::new(version_bytes)))
+	txn.set(consumer_key, EncodedRow(CowVec::new(version_bytes)))
 }
 
-fn fetch_events_since<T: Transaction>(
-	transaction: &mut StandardCommandTransaction<T>,
+fn fetch_events_since(
+	txn: &mut impl CommandTransaction,
 	since_version: Version,
 ) -> Result<Vec<CdcEvent>> {
-	Ok(transaction
-		.cdc()
-		.begin_query()?
+	Ok(txn.begin_cdc_query()?
 		.range(Bound::Excluded(since_version), Bound::Unbounded)?
 		.collect())
 }

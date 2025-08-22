@@ -11,7 +11,7 @@ use crate::{
 	Catalog,
 };
 use reifydb_core::interface::{
-	CommandTransaction, VersionedCommandTransaction,
+	CommandTransaction,
 };
 use reifydb_core::{
 	interface::{

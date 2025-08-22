@@ -6,7 +6,6 @@ use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, SchemaId, TableDef, TableId, TableKey,
-		VersionedQueryTransaction,
 	},
 	internal_error,
 	Error,

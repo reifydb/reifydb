@@ -2,10 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::StandardCdcTransaction;
+use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
-	hook::Hooks,
-	interceptor::Interceptors,
-	interface::StandardTransaction,
+	hook::Hooks, interceptor::Interceptors,
 	transaction::StandardCommandTransaction,
 };
 use reifydb_storage::memory::Memory;

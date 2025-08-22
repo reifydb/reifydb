@@ -3,7 +3,6 @@
 
 use reifydb_core::interface::{
 	evaluate::expression::Expression, QueryTransaction,
-	VersionedQueryTransaction,
 };
 
 use crate::{

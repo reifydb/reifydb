@@ -4,7 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::interface::{
-	CdcTransaction, UnversionedTransaction, VersionedTransaction,
+	CdcTransaction, Transaction, UnversionedTransaction,
+	VersionedTransaction,
 };
 
 mod command;
@@ -13,12 +14,6 @@ mod query;
 
 pub use command::StandardCommandTransaction;
 pub use query::StandardQueryTransaction;
-
-pub trait Transaction: Send + Sync + Clone + 'static {
-	type Versioned: VersionedTransaction;
-	type Unversioned: UnversionedTransaction;
-	type Cdc: CdcTransaction;
-}
 
 /// A concrete implementation combining versioned and unversioned transactions
 #[derive(Clone)]

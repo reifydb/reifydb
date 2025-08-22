@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{
 	SchemaId, SchemaViewKey, QueryTransaction, Versioned,
-	VersionedQueryTransaction, ViewDef, ViewId,
+	ViewDef, ViewId,
 };
 
 use crate::{view::layout::view_schema, Catalog};
