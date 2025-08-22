@@ -3,15 +3,15 @@
 
 use std::marker::PhantomData;
 
+use super::LoggingBuilder;
 use reifydb_core::{
 	interface::{
-		Transaction,
 		subsystem::{Subsystem, SubsystemFactory},
+		Transaction,
 	},
 	ioc::IocContainer,
+	transaction::StandardCommandTransaction,
 };
-
-use super::LoggingBuilder;
 
 /// Configuration function for the logging subsystem
 pub type LoggingConfigurator =
@@ -50,7 +50,16 @@ impl<T: Transaction> Default for LoggingSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<T> for LoggingSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for LoggingSubsystemFactory<T> {
+	fn provide_interceptors(
+		&self,
+		builder: reifydb_core::interceptor::StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+		_ioc: &IocContainer,
+	) -> reifydb_core::interceptor::StandardInterceptorBuilder<StandardCommandTransaction<T>> {
+		// Logging subsystem doesn't need any special interceptors
+		builder
+	}
+
 	fn create(
 		self: Box<Self>,
 		_ioc: &IocContainer,

@@ -11,6 +11,7 @@ use reifydb_core::{
 		subsystem::{Subsystem, SubsystemFactory},
 	},
 	ioc::IocContainer,
+	transaction::StandardCommandTransaction,
 };
 
 use super::{WorkerPoolConfig, WorkerPoolSubsystem};
@@ -42,12 +43,12 @@ impl<T: Transaction> Default for WorkerPoolSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<T> for WorkerPoolSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerPoolSubsystemFactory<T> {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<T>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<T> {
+	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		// WorkerPool doesn't need any interceptors
 		builder
 	}

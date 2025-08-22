@@ -224,7 +224,7 @@ impl<T: Transaction> Subsystem for WsSubsystem<T> {
 		// Request shutdown from the server using shared runtime
 		if let Some(server) = &self.server {
 			let server_close = server.close();
-			let close_result = if let Some(rt) = &self.runtime {
+			let _close_result = if let Some(rt) = &self.runtime {
 				rt.block_on(async {
 					if let Err(e) = server_close.await {
 						println!(

@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
 use crate::{
-	RowNumber, define_api_function, define_closure_interceptor,
-	define_interceptor, impl_register_interceptor,
-	interface::{TableDef, Transaction},
+	define_api_function, define_closure_interceptor, define_interceptor,
+	impl_register_interceptor, interface::TableDef,
 	row::EncodedRow,
-	transaction::StandardCommandTransaction,
+	RowNumber
+	,
 };
 
 // PRE INSERT
@@ -13,7 +13,7 @@ define_interceptor!(
 	context: TablePreInsertContext<T>,
 	trait: TablePreInsertInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 		table: &'a TableDef,
 		row: &'a EncodedRow,
 	}
@@ -37,7 +37,7 @@ define_interceptor!(
 	context: TablePostInsertContext<T>,
 	trait: TablePostInsertInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
 		row: &'a EncodedRow,
@@ -62,7 +62,7 @@ define_interceptor!(
 	context: TablePreUpdateContext<T>,
 	trait: TablePreUpdateInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
 		row: &'a EncodedRow,
@@ -87,7 +87,7 @@ define_interceptor!(
 	context: TablePostUpdateContext<T>,
 	trait: TablePostUpdateInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
 		row: &'a EncodedRow,
@@ -113,7 +113,7 @@ define_interceptor!(
 	context: TablePreDeleteContext<T>,
 	trait: TablePreDeleteInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
 	}
@@ -137,7 +137,7 @@ define_interceptor!(
 	context: TablePostDeleteContext<T>,
 	trait: TablePostDeleteInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
 		deleted_row: &'a EncodedRow,

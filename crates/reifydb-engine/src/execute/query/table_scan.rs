@@ -17,7 +17,7 @@ use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, EncodableKeyRange, TableDef, TableRowKey,
-		TableRowKeyRange, VersionedQueryTransaction,
+		TableRowKeyRange,
 	}, row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 	EncodedKey,

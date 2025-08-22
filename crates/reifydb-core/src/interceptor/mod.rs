@@ -15,7 +15,7 @@ pub use interceptors::Interceptors;
 pub use table::*;
 pub use transaction::*;
 
-type Chain<T, I> = InterceptorChain<T, I>;
+pub(crate) type Chain<T, I> = InterceptorChain<T, I>;
 
 /// Generic macro to define interceptor contexts, traits, and chain execution
 #[macro_export]
@@ -29,11 +29,11 @@ macro_rules! define_interceptor {
 		}
 	) => {
 		/// Context for interceptors
-		pub struct $context_name<'a, T: $crate::interface::Transaction> {
+		pub struct $context_name<'a, T: $crate::interface::CommandTransaction> {
 			$(pub $field_name: $field_type,)*
 		}
 
-		impl<'a, T: $crate::interface::Transaction> $context_name<'a, T> {
+		impl<'a, T: $crate::interface::CommandTransaction> $context_name<'a, T> {
 			pub fn new(
 				$($field_name: $field_type,)*
 			) -> Self {
@@ -43,14 +43,14 @@ macro_rules! define_interceptor {
 			}
 		}
 
-		pub trait $trait_name<T: $crate::interface::Transaction> {
+		pub trait $trait_name<T: $crate::interface::CommandTransaction> {
 			fn intercept(
 				&self,
 				ctx: &mut $context_name<T>,
 			) -> $crate::Result<()>;
 		}
 
-		impl<T: $crate::interface::Transaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
+		impl<T: $crate::interface::CommandTransaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
 			pub fn execute(
 				&self,
 				mut ctx: $context_name<T>,
@@ -86,14 +86,14 @@ macro_rules! define_interceptor {
 			}
 		}
 
-		pub trait $trait_name<T: $crate::interface::Transaction> {
+		pub trait $trait_name<T: $crate::interface::CommandTransaction> {
 			fn intercept(
 				&self,
 				ctx: &mut $context_name,
 			) -> $crate::Result<()>;
 		}
 
-		impl<T: $crate::interface::Transaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
+		impl<T: $crate::interface::CommandTransaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
 			pub fn execute(
 				&self,
 				mut ctx: $context_name,
@@ -117,7 +117,7 @@ macro_rules! define_closure_interceptor {
 		$context_type:ident,
 		with_transaction
 	) => {
-		pub struct $wrapper_name<T: Transaction, F>
+		pub struct $wrapper_name<T: crate::interface::CommandTransaction, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
@@ -125,7 +125,7 @@ macro_rules! define_closure_interceptor {
 			_phantom: PhantomData<T>,
 		}
 
-		impl<T: Transaction, F> $wrapper_name<T, F>
+		impl<T: crate::interface::CommandTransaction, F> $wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
@@ -137,7 +137,7 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: Transaction, F> Clone for $wrapper_name<T, F>
+		impl<T: crate::interface::CommandTransaction, F> Clone for $wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
 				+ Clone,
@@ -150,7 +150,7 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<T, F>
+		impl<T: crate::interface::CommandTransaction, F> $trait_name<T> for $wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
@@ -200,7 +200,7 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: Transaction, F> $trait_name<T> for $wrapper_name<F>
+		impl<T: crate::interface::CommandTransaction, F> $trait_name<T> for $wrapper_name<F>
 		where
 			F: Fn(&mut $context_type) -> crate::Result<()>,
 		{
@@ -223,7 +223,7 @@ macro_rules! define_api_function {
 		$closure_type:ident<T, F>,
 		$context_type:ident<T>
 	) => {
-		pub fn $fn_name<T: Transaction, F>(f: F) -> $closure_type<T, F>
+		pub fn $fn_name<T: crate::interface::CommandTransaction, F>(f: F) -> $closure_type<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
 				+ Send
@@ -257,7 +257,7 @@ macro_rules! define_api_function {
 /// Trait for self-registering interceptors
 /// This allows interceptors that implement multiple interceptor traits
 /// to register themselves in all appropriate chains with a single Rc instance
-pub trait RegisterInterceptor<T: crate::interface::Transaction> {
+pub trait RegisterInterceptor<T: crate::interface::CommandTransaction> {
 	fn register(
 		self: std::rc::Rc<Self>,
 		interceptors: &mut Interceptors<T>,
@@ -275,7 +275,7 @@ macro_rules! impl_register_interceptor {
 		impl<T, F> $crate::interceptor::RegisterInterceptor<T>
 			for $closure_type<T, F>
 		where
-			T: $crate::interface::Transaction,
+			T: $crate::interface::CommandTransaction + 'static,
 			F: Fn(&mut $context_type<T>) -> $crate::Result<()>
 				+ 'static,
 		{
@@ -298,7 +298,7 @@ macro_rules! impl_register_interceptor {
 		impl<T, F> $crate::interceptor::RegisterInterceptor<T>
 			for $closure_type<F>
 		where
-			T: $crate::interface::Transaction,
+			T: $crate::interface::CommandTransaction,
 			F: Fn(&mut $context_type) -> $crate::Result<()>
 				+ 'static,
 		{

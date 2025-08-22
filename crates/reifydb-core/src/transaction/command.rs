@@ -1,14 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
-
+use crate::interceptor::{
+	TablePostInsertInterceptor, TablePreInsertInterceptor,
+	TablePreUpdateInterceptor,
+};
+use crate::interface::interceptor::WithInterceptors;
 use crate::interface::{
-	GetHooks, PendingWrite, CommandTransaction,
-	QueryTransaction,
+	CommandTransaction, GetHooks, PendingWrite, QueryTransaction,
 };
 use crate::{
 	diagnostic::transaction, hook::Hooks,
+	interceptor,
 	interceptor::Interceptors,
 	interface::{
 		interceptor::TransactionInterceptor, BoxedVersionedIter, CdcTransaction,
@@ -21,6 +24,11 @@ use crate::{
 	EncodedKey,
 	EncodedKeyRange,
 };
+use interceptor::{
+	Chain, PostCommitInterceptor, PreCommitInterceptor,
+	TablePostDeleteInterceptor, TablePreDeleteInterceptor,
+};
+use std::marker::PhantomData;
 
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
@@ -34,7 +42,7 @@ pub struct StandardCommandTransaction<T: Transaction> {
 	pending: Vec<PendingWrite>,
 	hooks: Hooks,
 
-	pub(crate) interceptors: Interceptors<T>,
+	pub(crate) interceptors: Interceptors<Self>,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
@@ -53,7 +61,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		hooks: Hooks,
-		interceptors: Interceptors<T>,
+		interceptors: Interceptors<Self>,
 	) -> Self {
 		Self {
 			versioned: Some(versioned),
@@ -212,7 +220,9 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	}
 }
 
-impl<T: Transaction> VersionedQueryTransaction for StandardCommandTransaction<T> {
+impl<T: Transaction> VersionedQueryTransaction
+	for StandardCommandTransaction<T>
+{
 	#[inline]
 	fn get(
 		&mut self,
@@ -277,7 +287,9 @@ impl<T: Transaction> VersionedQueryTransaction for StandardCommandTransaction<T>
 	}
 }
 
-impl<T: Transaction> VersionedCommandTransaction for StandardCommandTransaction<T> {
+impl<T: Transaction> VersionedCommandTransaction
+	for StandardCommandTransaction<T>
+{
 	#[inline]
 	fn set(
 		&mut self,
@@ -343,6 +355,84 @@ impl<T: Transaction> CommandTransaction for StandardCommandTransaction<T> {
 	) -> crate::Result<Self::UnversionedCommand<'_>> {
 		self.check_active()?;
 		self.unversioned.begin_command()
+	}
+}
+
+impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
+	for StandardCommandTransaction<T>
+{
+	fn table_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn TablePreInsertInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.table_pre_insert
+	}
+
+	fn table_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn TablePostInsertInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.table_post_insert
+	}
+
+	fn table_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn TablePreUpdateInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.table_pre_update
+	}
+
+	fn table_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn interceptor::TablePostUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
+	> {
+		&mut self.interceptors.table_post_update
+	}
+
+	fn table_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn TablePreDeleteInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.table_pre_delete
+	}
+
+	fn table_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn TablePostDeleteInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.table_post_delete
+	}
+
+	fn pre_commit_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn PreCommitInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.pre_commit
+	}
+
+	fn post_commit_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction<T>,
+		dyn PostCommitInterceptor<StandardCommandTransaction<T>>,
+	> {
+		&mut self.interceptors.post_commit
 	}
 }
 

@@ -8,8 +8,7 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, TableRowKey,
-		TableRowKeyRange, Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction,
+		TableRowKeyRange, Transaction,
 	}, result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,

@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::{Transaction, subsystem::SubsystemFactory},
 	ioc::IocContainer,
 };
+use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_engine::StandardEngine;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystemFactory;
@@ -25,8 +26,8 @@ use crate::{
 
 pub struct DatabaseBuilder<T: Transaction> {
 	config: DatabaseConfig,
-	interceptors: StandardInterceptorBuilder<T>,
-	subsystems: Vec<Box<dyn SubsystemFactory<T>>>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>>,
 	ioc: IocContainer,
 }
 
@@ -116,7 +117,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 
 	pub fn add_subsystem_factory(
 		mut self,
-		factory: Box<dyn SubsystemFactory<T>>,
+		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
 	) -> Self {
 		self.subsystems.push(factory);
 		self
@@ -125,7 +126,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 	/// Add interceptors directly to the builder
 	pub fn with_interceptor_builder(
 		mut self,
-		builder: StandardInterceptorBuilder<T>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 	) -> Self {
 		self.interceptors = builder;
 		self

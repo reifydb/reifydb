@@ -3,38 +3,36 @@
 
 use std::{marker::PhantomData, rc::Rc};
 
-use crate::{
-	interceptor::{
-		Chain, InterceptorChain, PostCommitInterceptor,
-		PreCommitInterceptor, TablePostDeleteInterceptor,
-		TablePostInsertInterceptor, TablePostUpdateInterceptor,
-		TablePreDeleteInterceptor, TablePreInsertInterceptor,
-		TablePreUpdateInterceptor,
-	},
-	interface::Transaction,
+use crate::interface::CommandTransaction;
+use crate::interceptor::{
+	Chain, InterceptorChain, PostCommitInterceptor,
+	PreCommitInterceptor, TablePostDeleteInterceptor,
+	TablePostInsertInterceptor, TablePostUpdateInterceptor,
+	TablePreDeleteInterceptor, TablePreInsertInterceptor,
+	TablePreUpdateInterceptor,
 };
 
 /// Container for all interceptor chains
-pub struct Interceptors<T: Transaction> {
-	pub table_pre_insert: Chain<T, dyn TablePreInsertInterceptor<T>>,
-	pub table_post_insert: Chain<T, dyn TablePostInsertInterceptor<T>>,
-	pub table_pre_update: Chain<T, dyn TablePreUpdateInterceptor<T>>,
-	pub table_post_update: Chain<T, dyn TablePostUpdateInterceptor<T>>,
-	pub table_pre_delete: Chain<T, dyn TablePreDeleteInterceptor<T>>,
-	pub table_post_delete: Chain<T, dyn TablePostDeleteInterceptor<T>>,
-	pub pre_commit: Chain<T, dyn PreCommitInterceptor<T>>,
-	pub post_commit: Chain<T, dyn PostCommitInterceptor<T>>,
+pub struct Interceptors<CT: CommandTransaction> {
+	pub table_pre_insert: Chain<CT, dyn TablePreInsertInterceptor<CT>>,
+	pub table_post_insert: Chain<CT, dyn TablePostInsertInterceptor<CT>>,
+	pub table_pre_update: Chain<CT, dyn TablePreUpdateInterceptor<CT>>,
+	pub table_post_update: Chain<CT, dyn TablePostUpdateInterceptor<CT>>,
+	pub table_pre_delete: Chain<CT, dyn TablePreDeleteInterceptor<CT>>,
+	pub table_post_delete: Chain<CT, dyn TablePostDeleteInterceptor<CT>>,
+	pub pre_commit: Chain<CT, dyn PreCommitInterceptor<CT>>,
+	pub post_commit: Chain<CT, dyn PostCommitInterceptor<CT>>,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
 
-impl<T: Transaction> Default for Interceptors<T> {
+impl<CT: CommandTransaction> Default for Interceptors<CT> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: Transaction> Interceptors<T> {
+impl<CT: CommandTransaction> Interceptors<CT> {
 	pub fn new() -> Self {
 		Self {
 			table_pre_insert: InterceptorChain::new(),
@@ -50,7 +48,7 @@ impl<T: Transaction> Interceptors<T> {
 	}
 }
 
-impl<T: Transaction> Clone for Interceptors<T> {
+impl<CT: CommandTransaction> Clone for Interceptors<CT> {
 	fn clone(&self) -> Self {
 		Self {
 			table_pre_insert: self.table_pre_insert.clone(),
@@ -66,12 +64,12 @@ impl<T: Transaction> Clone for Interceptors<T> {
 	}
 }
 
-impl<T: Transaction> Interceptors<T> {
+impl<CT: CommandTransaction> Interceptors<CT> {
 	/// Register any interceptor - it will be added to all appropriate
 	/// chains based on which traits it implements
 	pub fn register<I>(&mut self, interceptor: I)
 	where
-		I: super::RegisterInterceptor<T> + 'static,
+		I: super::RegisterInterceptor<CT> + 'static,
 	{
 		Rc::new(interceptor).register(self);
 	}

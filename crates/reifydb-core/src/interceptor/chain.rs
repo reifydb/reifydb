@@ -3,15 +3,15 @@
 
 use std::{marker::PhantomData, rc::Rc};
 
-use crate::interface::Transaction;
+use crate::interface::CommandTransaction;
 
 /// Chain for a specific interceptor type
-pub struct InterceptorChain<T: Transaction, I: ?Sized> {
+pub struct InterceptorChain<T: CommandTransaction, I: ?Sized> {
 	pub(crate) interceptors: Vec<Rc<I>>,
 	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction, I: ?Sized> InterceptorChain<T, I> {
+impl<T: CommandTransaction, I: ?Sized> InterceptorChain<T, I> {
 	pub fn new() -> Self {
 		Self {
 			interceptors: Vec::new(),
@@ -36,13 +36,13 @@ impl<T: Transaction, I: ?Sized> InterceptorChain<T, I> {
 	}
 }
 
-impl<T: Transaction, I: ?Sized> Default for InterceptorChain<T, I> {
+impl<T: CommandTransaction, I: ?Sized> Default for InterceptorChain<T, I> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: Transaction, I: ?Sized> Clone for InterceptorChain<T, I> {
+impl<T: CommandTransaction, I: ?Sized> Clone for InterceptorChain<T, I> {
 	fn clone(&self) -> Self {
 		Self {
 			interceptors: self.interceptors.clone(),

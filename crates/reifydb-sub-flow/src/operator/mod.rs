@@ -12,7 +12,6 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		expression::Expression, EvaluationContext, Evaluator,
-		Transaction,
 	},
 	value::columnar::Column,
 };

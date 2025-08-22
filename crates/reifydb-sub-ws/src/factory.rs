@@ -10,6 +10,7 @@ use reifydb_core::{
 		subsystem::{Subsystem, SubsystemFactory},
 	},
 	ioc::IocContainer,
+	transaction::StandardCommandTransaction,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_network::ws::server::WsConfig;
@@ -31,12 +32,12 @@ impl<T: Transaction> WsSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<T> for WsSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WsSubsystemFactory<T> {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<T>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<T> {
+	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		// WS subsystem doesn't need any special interceptors
 		builder
 	}

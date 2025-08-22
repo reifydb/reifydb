@@ -18,7 +18,6 @@ use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
 		evaluate::expression::AliasExpression, TableDef,
-		VersionedQueryTransaction,
 	}, ColumnDescriptor, Type,
 	Value,
 };

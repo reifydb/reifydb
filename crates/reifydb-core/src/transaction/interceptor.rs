@@ -11,17 +11,16 @@ use crate::interceptor::{
 	TablePreInsertInterceptor, TablePreUpdateContext,
 	TablePreUpdateInterceptor,
 };
-use crate::interface::interceptor::{TableInterceptor, TransactionInterceptor};
-use crate::interface::{TableDef, Transaction};
+use crate::interface::interceptor::{TableInterceptor, TransactionInterceptor, WithInterceptors};
+use crate::interface::{CommandTransaction, TableDef};
 use crate::row::EncodedRow;
-use crate::transaction::StandardCommandTransaction;
 use crate::RowNumber;
 
-/// Macro to generate interceptor execution methods
+/// Macro to generate interceptor execution methods  
 macro_rules! impl_interceptor_method {
 	(
 		$method_name:ident,
-		$field:ident,
+		$accessor_method:ident,
 		$interceptor_trait:ident,
 		$context_type:ident,
 		($($param:ident: $type:ty),*)
@@ -30,7 +29,7 @@ macro_rules! impl_interceptor_method {
 			&mut self,
 			$($param: $type),*
 		) -> crate::Result<()> {
-			if self.interceptors.$field.is_empty() {
+			if self.$accessor_method().is_empty() {
 				return Ok(());
 			}
 			// We need to use unsafe here to work around the borrow checker
@@ -41,9 +40,9 @@ macro_rules! impl_interceptor_method {
 			// 3. We're only borrowing different parts of self
 			unsafe {
 				let chain_ptr: *mut InterceptorChain<
-					T,
-					dyn $interceptor_trait<T>,
-				> = &mut self.interceptors.$field as *mut _;
+					CT,
+					dyn $interceptor_trait<CT>,
+				> = self.$accessor_method() as *mut _;
 				let ctx = $context_type::new(self, $($param),*);
 				(*chain_ptr).execute(ctx)?
 			}
@@ -52,10 +51,10 @@ macro_rules! impl_interceptor_method {
 	};
 }
 
-impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
+impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		pre_insert,
-		table_pre_insert,
+		table_pre_insert_interceptors,
 		TablePreInsertInterceptor,
 		TablePreInsertContext,
 		(table: &TableDef, row: &EncodedRow)
@@ -63,7 +62,7 @@ impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
 
 	impl_interceptor_method!(
 		post_insert,
-		table_post_insert,
+		table_post_insert_interceptors,
 		TablePostInsertInterceptor,
 		TablePostInsertContext,
 		(table: &TableDef, id: RowNumber, row: &EncodedRow)
@@ -71,7 +70,7 @@ impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
 
 	impl_interceptor_method!(
 		pre_update,
-		table_pre_update,
+		table_pre_update_interceptors,
 		TablePreUpdateInterceptor,
 		TablePreUpdateContext,
 		(table: &TableDef, id: RowNumber, row: &EncodedRow)
@@ -79,7 +78,7 @@ impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
 
 	impl_interceptor_method!(
 		post_update,
-		table_post_update,
+		table_post_update_interceptors,
 		TablePostUpdateInterceptor,
 		TablePostUpdateContext,
 		(table: &TableDef, id: RowNumber, row: &EncodedRow, old_row: &EncodedRow)
@@ -87,7 +86,7 @@ impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
 
 	impl_interceptor_method!(
 		pre_delete,
-		table_pre_delete,
+		table_pre_delete_interceptors,
 		TablePreDeleteInterceptor,
 		TablePreDeleteContext,
 		(table: &TableDef, id: RowNumber)
@@ -95,17 +94,17 @@ impl<T: Transaction> TableInterceptor<T> for StandardCommandTransaction<T> {
 
 	impl_interceptor_method!(
 		post_delete,
-		table_post_delete,
+		table_post_delete_interceptors,
 		TablePostDeleteInterceptor,
 		TablePostDeleteContext,
 		(table: &TableDef, id: RowNumber, deleted_row: &EncodedRow)
 	);
 }
 
-impl<T: Transaction> TransactionInterceptor<T> for StandardCommandTransaction<T> {
+impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		pre_commit,
-		pre_commit,
+		pre_commit_interceptors,
 		PreCommitInterceptor,
 		PreCommitContext,
 		()
@@ -115,7 +114,7 @@ impl<T: Transaction> TransactionInterceptor<T> for StandardCommandTransaction<T>
 		&mut self,
 		version: crate::Version,
 	) -> crate::Result<()> {
-		if self.interceptors.post_commit.is_empty() {
+		if self.post_commit_interceptors().is_empty() {
 			return Ok(());
 		}
 		// We need to use unsafe here to work around the borrow checker
@@ -126,9 +125,9 @@ impl<T: Transaction> TransactionInterceptor<T> for StandardCommandTransaction<T>
 		// 3. We're only borrowing different parts of self
 		unsafe {
 			let chain_ptr: *mut InterceptorChain<
-				T,
-				dyn PostCommitInterceptor<T>,
-			> = &mut self.interceptors.post_commit as *mut _;
+				CT,
+				dyn PostCommitInterceptor<CT>,
+			> = self.post_commit_interceptors() as *mut _;
 			let ctx = PostCommitContext::new(version);
 			(*chain_ptr).execute(ctx)?
 		}

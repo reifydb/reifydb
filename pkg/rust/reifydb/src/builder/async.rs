@@ -5,6 +5,7 @@ use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 	interface::{Transaction, subsystem::SubsystemFactory},
+	transaction::StandardCommandTransaction,
 };
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
@@ -18,8 +19,8 @@ pub struct AsyncBuilder<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	hooks: Hooks,
-	interceptors: StandardInterceptorBuilder<T>,
-	subsystem_factories: Vec<Box<dyn SubsystemFactory<T>>>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>>,
 }
 
 #[cfg(feature = "async")]
@@ -42,7 +43,7 @@ impl<T: Transaction> AsyncBuilder<T> {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<T> + Send + Sync + Clone + 'static,
+		I: RegisterInterceptor<StandardCommandTransaction<T>> + Send + Sync + Clone + 'static,
 	{
 		self.interceptors =
 			self.interceptors.add_factory(move |interceptors| {
@@ -90,7 +91,7 @@ impl<T: Transaction> WithSubsystem<T> for AsyncBuilder<T> {
 
 	fn with_subsystem(
 		mut self,
-		factory: Box<dyn SubsystemFactory<T>>,
+		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
 	) -> Self {
 		self.subsystem_factories.push(factory);
 		self

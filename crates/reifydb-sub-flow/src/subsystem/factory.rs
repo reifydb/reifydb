@@ -11,6 +11,7 @@ use reifydb_core::{
 		subsystem::{Subsystem, SubsystemFactory},
 	},
 	ioc::IocContainer,
+	transaction::StandardCommandTransaction,
 };
 use reifydb_engine::StandardEngine;
 
@@ -39,16 +40,16 @@ impl<T: Transaction> FlowSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for FlowSubsystemFactory<T> {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<T>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 		ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<T> {
+	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		let ioc = ioc.clone();
 		builder.add_factory(move |interceptors| {
 			interceptors.register(
-				TransactionalFlowInterceptor::new(ioc.clone()),
+				TransactionalFlowInterceptor::<T>::new(ioc.clone()),
 			);
 		})
 	}

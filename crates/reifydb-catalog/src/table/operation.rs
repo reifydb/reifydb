@@ -2,18 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::sequence::TableRowSequence;
-use reifydb_core::interface::PendingWrite::TableInsert;
+use reifydb_core::interface::interceptor::WithInterceptors;
+use reifydb_core::interface::{CommandTransaction, GetHooks};
 use reifydb_core::{
+	RowNumber,
 	hook::table::{TablePostInsertHook, TablePreInsertHook},
 	interface::{
-		interceptor::TableInterceptor, EncodableKey, TableDef, TableRowKey,
-		Transaction, VersionedCommandTransaction,
+		EncodableKey, TableDef, TableRowKey,
+		interceptor::TableInterceptor,
 	},
 	row::EncodedRow,
-	transaction::StandardCommandTransaction,
-	RowNumber,
 };
-use reifydb_core::interface::PendingWrite;
 
 pub trait TableOperations {
 	fn insert_into_table(
@@ -36,7 +35,9 @@ pub trait TableOperations {
 	) -> crate::Result<()>;
 }
 
-impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
+impl<T: CommandTransaction + GetHooks + WithInterceptors<T>> TableOperations
+	for T
+{
 	fn insert_into_table(
 		&mut self,
 		table: TableDef,
@@ -48,7 +49,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		TableInterceptor::pre_insert(self, &table, &row)?;
 
 		// Still trigger hooks for backward compatibility
-		self.hooks()
+		self.get_hooks()
 			.trigger(TablePreInsertHook {
 				table: table.clone(),
 				row: row.clone(),
@@ -67,7 +68,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
 		// Still trigger hooks for backward compatibility
-		self.hooks()
+		self.get_hooks()
 			.trigger(TablePostInsertHook {
 				table: table.clone(),
 				id: row_number,
@@ -75,11 +76,11 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 			})
 			.unwrap();
 
-		self.add_pending(TableInsert {
-			table,
-			id: row_number,
-			row,
-		});
+		// self.add_pending(TableInsert {
+		// 	table,
+		// 	id: row_number,
+		// 	row,
+		// });
 
 		Ok(())
 	}
@@ -109,11 +110,11 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		// 	TableInterceptor::post_update(self, &table, id, &row, old)?;
 		// }
 
-		self.add_pending(PendingWrite::TableUpdate {
-			table,
-			id,
-			row,
-		});
+		// self.add_pending(PendingWrite::TableUpdate {
+		// 	table,
+		// 	id,
+		// 	row,
+		// });
 
 		Ok(())
 	}
@@ -144,10 +145,10 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		// }
 
 		// Track the removal for flow processing
-		self.add_pending(PendingWrite::TableRemove {
-			table,
-			id,
-		});
+		// self.add_pending(PendingWrite::TableRemove {
+		// 	table,
+		// 	id,
+		// });
 
 		Ok(())
 	}

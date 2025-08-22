@@ -4,15 +4,18 @@ use crate::{
 		Transaction,
 	},
 	result::frame::Frame,
-	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
+use crate::interface::{CommandTransaction, QueryTransaction};
 
 pub trait Engine<T: Transaction>:
 	GetHooks + Send + Sync + Clone + 'static
 {
-	fn begin_command(&self) -> crate::Result<StandardCommandTransaction<T>>;
+	type Command: CommandTransaction;
+	type Query: QueryTransaction;
 
-	fn begin_query(&self) -> crate::Result<StandardQueryTransaction<T>>;
+	fn begin_command(&self) -> crate::Result<Self::Command>;
+
+	fn begin_query(&self) -> crate::Result<Self::Query>;
 
 	fn command_as(
 		&self,

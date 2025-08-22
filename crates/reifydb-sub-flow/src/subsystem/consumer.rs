@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::CommandTransaction;
-use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_core::{
 	interface::{CdcChange, CdcConsume, CdcEvent, Key, Transaction},
 	log_debug,

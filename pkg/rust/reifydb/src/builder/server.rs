@@ -5,6 +5,7 @@ use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 	interface::{Transaction, subsystem::SubsystemFactory},
+	transaction::StandardCommandTransaction,
 };
 #[cfg(feature = "sub_grpc")]
 use reifydb_sub_grpc::{GrpcConfig, GrpcSubsystemFactory};
@@ -22,8 +23,8 @@ pub struct ServerBuilder<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	hooks: Hooks,
-	interceptors: StandardInterceptorBuilder<T>,
-	subsystem_factories: Vec<Box<dyn SubsystemFactory<T>>>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>>,
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
@@ -46,7 +47,7 @@ impl<T: Transaction> ServerBuilder<T> {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<T> + Send + Sync + Clone + 'static,
+		I: RegisterInterceptor<StandardCommandTransaction<T>> + Send + Sync + Clone + 'static,
 	{
 		self.interceptors =
 			self.interceptors.add_factory(move |interceptors| {
@@ -108,7 +109,7 @@ impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
 
 	fn with_subsystem(
 		mut self,
-		factory: Box<dyn SubsystemFactory<T>>,
+		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
 	) -> Self {
 		self.subsystem_factories.push(factory);
 		self

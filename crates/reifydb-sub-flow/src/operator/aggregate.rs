@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::{
 		expression::Expression, EvaluationContext, Evaluator, Params,
 		SourceId::View, Transaction,
-		VersionedCommandTransaction, VersionedQueryTransaction, ViewId,
+		ViewId,
 	}, row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 	CowVec,

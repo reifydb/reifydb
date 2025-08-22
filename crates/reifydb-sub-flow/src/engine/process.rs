@@ -12,7 +12,7 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
     interface::{
         EncodableKey, Evaluator, GetEncodedRowLayout, SourceId,
-        SourceId::Table, VersionedCommandTransaction,
+        SourceId::Table,
         ViewId, ViewRowKey,
     },
     Value,

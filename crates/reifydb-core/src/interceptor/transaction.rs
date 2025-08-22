@@ -4,10 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Version, define_api_function, define_closure_interceptor,
-    define_interceptor,
-    interface::Transaction,
-    transaction::StandardCommandTransaction,
+	define_api_function, define_closure_interceptor, define_interceptor,
+	Version,
 };
 
 // PRE COMMIT
@@ -15,7 +13,7 @@ define_interceptor!(
 	context: PreCommitContext<T>,
 	trait: PreCommitInterceptor,
 	fields: {
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut T,
 	}
 );
 
@@ -31,12 +29,6 @@ define_api_function!(
 	ClosurePreCommitInterceptor<T, F>,
 	PreCommitContext<T>
 );
-
-// impl_add_to_builder!(
-// 	ClosurePreCommitInterceptor<T, F>,
-// 	PreCommitContext<T>,
-// 	add_pre_commit
-// );
 
 // POST COMMIT
 define_interceptor!(
@@ -59,11 +51,6 @@ define_api_function!(
 	ClosurePostCommitInterceptor<F>,
 	PostCommitContext
 );
-// impl_add_to_builder!(
-// 	ClosurePostCommitInterceptor<F>,
-// 	PostCommitContext,
-// 	add_post_commit
-// );
 
 use crate::impl_register_interceptor;
 

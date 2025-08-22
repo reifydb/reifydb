@@ -29,9 +29,10 @@ impl<T: Transaction> GetHooks for StandardEngine<T> {
 }
 
 impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
-	fn begin_command(
-		&self,
-	) -> crate::Result<StandardCommandTransaction<T>> {
+	type Command = StandardCommandTransaction<T>;
+	type Query = StandardQueryTransaction<T>;
+
+	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let interceptors = self.interceptors.create();
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -42,7 +43,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		))
 	}
 
-	fn begin_query(&self) -> crate::Result<StandardQueryTransaction<T>> {
+	fn begin_query(&self) -> crate::Result<Self::Query> {
 		Ok(StandardQueryTransaction::new(
 			self.versioned.begin_query()?,
 			self.unversioned.clone(),
@@ -130,7 +131,8 @@ pub struct EngineInner<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	executor: Executor<T>,
-	interceptors: Box<dyn InterceptorFactory<T>>,
+	interceptors:
+		Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
 }
 
 impl<T: Transaction> StandardEngine<T> {
@@ -139,7 +141,9 @@ impl<T: Transaction> StandardEngine<T> {
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		hooks: Hooks,
-		interceptors: Box<dyn InterceptorFactory<T>>,
+		interceptors: Box<
+			dyn InterceptorFactory<StandardCommandTransaction<T>>,
+		>,
 	) -> Self {
 		Self(Arc::new(EngineInner {
 			versioned: versioned.clone(),

@@ -2,24 +2,24 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	interceptor::{Interceptors, factory::StandardInterceptorFactory},
-	interface::Transaction,
+	interceptor::{factory::StandardInterceptorFactory, Interceptors},
+	interface::CommandTransaction,
 };
 
 /// Builder for configuring interceptors using factory functions
 /// This allows building a Send+Sync factory that creates non-Send/Sync
 /// interceptors
-pub struct StandardInterceptorBuilder<T: Transaction> {
-	factory: StandardInterceptorFactory<T>,
+pub struct StandardInterceptorBuilder<CT: CommandTransaction> {
+	factory: StandardInterceptorFactory<CT>,
 }
 
-impl<T: Transaction> Default for StandardInterceptorBuilder<T> {
+impl<CT: CommandTransaction> Default for StandardInterceptorBuilder<CT> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: Transaction> StandardInterceptorBuilder<T> {
+impl<CT: CommandTransaction> StandardInterceptorBuilder<CT> {
 	pub fn new() -> Self {
 		Self {
 			factory: StandardInterceptorFactory::default(),
@@ -27,13 +27,13 @@ impl<T: Transaction> StandardInterceptorBuilder<T> {
 	}
 	pub fn add_factory<F>(mut self, factory: F) -> Self
 	where
-		F: Fn(&mut Interceptors<T>) + Send + Sync + 'static,
+		F: Fn(&mut Interceptors<CT>) + Send + Sync + 'static,
 	{
 		self.factory.add(Box::new(factory));
 		self
 	}
 
-	pub fn build(self) -> StandardInterceptorFactory<T> {
+	pub fn build(self) -> StandardInterceptorFactory<CT> {
 		self.factory
 	}
 }

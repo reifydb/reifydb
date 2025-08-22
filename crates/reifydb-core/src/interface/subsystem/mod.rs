@@ -3,10 +3,8 @@
 
 use std::any::Any;
 
-use crate::{
-	interceptor::StandardInterceptorBuilder, interface::Transaction,
-	ioc::IocContainer,
-};
+use crate::interface::CommandTransaction;
+use crate::{interceptor::StandardInterceptorBuilder, ioc::IocContainer};
 
 pub mod logging;
 
@@ -49,12 +47,12 @@ pub trait Subsystem: Send + Sync + Any {
 }
 
 /// Factory trait for creating subsystems with IoC support
-pub trait SubsystemFactory<T: Transaction> {
+pub trait SubsystemFactory<CT: CommandTransaction> {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<T>,
+		builder: StandardInterceptorBuilder<CT>,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<T> {
+	) -> StandardInterceptorBuilder<CT> {
 		builder
 	}
 

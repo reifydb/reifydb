@@ -9,7 +9,7 @@ use crate::{
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
-		evaluate::expression::Expression, VersionedQueryTransaction,
+		evaluate::expression::Expression,
 	},
 	BitVec,
 };
