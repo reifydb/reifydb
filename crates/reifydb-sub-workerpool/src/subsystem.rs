@@ -18,12 +18,12 @@ use std::{
 	time::Duration,
 };
 
-pub use reifydb_core::interface::worker_pool::Priority;
+pub use reifydb_core::interface::subsystem::workerpool::Priority;
 use reifydb_core::{
 	Result,
-	interface::{
-		subsystem::{HealthStatus, Subsystem},
-		worker_pool::{TaskHandle, WorkerPool},
+	interface::subsystem::{
+		HealthStatus, Subsystem,
+		workerpool::{TaskHandle, WorkerPool},
 	},
 	log_debug, log_warn,
 };

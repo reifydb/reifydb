@@ -14,12 +14,13 @@ use std::{
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
-		key::{CdcConsumerKey, EncodableKey}, worker_pool::Priority, CdcConsume, CdcConsumer,
-		CdcEvent, CdcQueryTransaction, ConsumerId, Engine as EngineInterface,
-		Key,
-		Transaction,
-		VersionedCommandTransaction,
-	}, log_debug, log_error,
+		CdcConsume, CdcConsumer, CdcEvent, CdcQueryTransaction,
+		ConsumerId, Engine as EngineInterface, Key,
+		Transaction, VersionedCommandTransaction,
+		key::{CdcConsumerKey, EncodableKey},
+		subsystem::workerpool::Priority,
+	},
+	log_debug, log_error,
 	row::EncodedRow,
 	util::CowVec, EncodedKey,
 	Result,

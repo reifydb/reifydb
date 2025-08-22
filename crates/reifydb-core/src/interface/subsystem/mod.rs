@@ -7,6 +7,7 @@ use crate::interface::CommandTransaction;
 use crate::{interceptor::StandardInterceptorBuilder, ioc::IocContainer};
 
 pub mod logging;
+pub mod workerpool;
 
 /// Uniform interface that all subsystems must implement
 ///

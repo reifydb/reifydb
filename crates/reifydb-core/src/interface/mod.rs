@@ -13,7 +13,6 @@ mod params;
 mod storage;
 pub mod subsystem;
 mod transaction;
-pub mod worker_pool;
 
 pub use auth::*;
 pub use catalog::*;
