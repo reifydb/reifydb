@@ -1,14 +1,14 @@
-use reifydb_core::{
-	interface::{
-		EvaluationContext, Evaluator, Params, Transaction,
-		expression::Expression,
-	},
-	value::columnar::Columns,
-};
-
 use crate::{
 	core::{Change, Diff},
 	operator::{Operator, OperatorContext},
+};
+use reifydb_core::interface::CommandTransaction;
+use reifydb_core::{
+	interface::{
+		expression::Expression, EvaluationContext, Evaluator,
+		Params,
+	},
+	value::columnar::Columns,
 };
 
 pub struct MapOperator {
@@ -24,7 +24,7 @@ impl MapOperator {
 }
 
 impl<E: Evaluator> Operator<E> for MapOperator {
-	fn apply<T: Transaction>(
+	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
 		change: &Change,
@@ -84,7 +84,7 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 }
 
 impl MapOperator {
-	fn project<E: Evaluator, T: Transaction>(
+	fn project<E: Evaluator, T: CommandTransaction>(
 		&self,
 		ctx: &OperatorContext<E, T>,
 		columns: &Columns,

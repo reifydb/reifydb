@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
+use reifydb_rql::plan::physical::{PhysicalPlan, TakeNode};
 use FlowNodeType::Operator;
 use OperatorType::Take;
-use reifydb_core::interface::{FlowNodeId, Transaction};
-use reifydb_rql::plan::physical::{PhysicalPlan, TakeNode};
 
 use crate::{
-	FlowNodeType, OperatorType, Result,
-	compiler::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
+	Result,
 };
 
 pub(crate) struct TakeCompiler {
@@ -25,7 +25,7 @@ impl From<TakeNode> for TakeCompiler {
 	}
 }
 
-impl<T: Transaction> CompileOperator<T> for TakeCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for TakeCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(*self.input)?;
 

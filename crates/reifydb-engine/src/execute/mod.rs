@@ -3,15 +3,30 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use query::compile::compile;
-use reifydb_core::interface::{QueryTransaction, StandardCdcTransaction};
+use query::{
+	compile::compile,
+	aggregate::AggregateNode,
+	filter::FilterNode,
+	inline::InlineDataNode,
+	join_inner::InnerJoinNode,
+	join_left::LeftJoinNode,
+	join_natural::NaturalJoinNode,
+	map::{MapNode, MapWithoutInputNode},
+	sort::SortNode,
+	table_scan::TableScanNode,
+	take::TakeNode,
+	view_scan::ViewScanNode,
+};
+use reifydb_core::interface::{
+	CommandTransaction, QueryTransaction, StandardCdcTransaction,
+};
 use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
 	interface::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		TableDef, Transaction, VersionedQueryTransaction,
+		TableDef, Transaction,
 	},
-	transaction::{StandardCommandTransaction, StandardQueryTransaction},
+	transaction::StandardQueryTransaction,
 	Frame,
 };
 use reifydb_rql::{
@@ -48,13 +63,59 @@ pub(crate) struct Batch {
 	pub columns: Columns,
 }
 
-pub(crate) trait ExecutionPlan {
-	fn next(
+pub(crate) enum ExecutionPlan {
+	Aggregate(AggregateNode),
+	Filter(FilterNode),
+	InlineData(InlineDataNode),
+	InnerJoin(InnerJoinNode),
+	LeftJoin(LeftJoinNode),
+	NaturalJoin(NaturalJoinNode),
+	Map(MapNode),
+	MapWithoutInput(MapWithoutInputNode),
+	Sort(SortNode),
+	TableScan(TableScanNode),
+	Take(TakeNode),
+	ViewScan(ViewScanNode),
+}
+
+impl ExecutionPlan {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
-	) -> crate::Result<Option<Batch>>;
-	fn layout(&self) -> Option<ColumnsLayout>;
+		rx: &mut impl QueryTransaction,
+	) -> crate::Result<Option<Batch>> {
+		match self {
+			ExecutionPlan::Aggregate(node) => node.next(ctx, rx),
+			ExecutionPlan::Filter(node) => node.next(ctx, rx),
+			ExecutionPlan::InlineData(node) => node.next(ctx, rx),
+			ExecutionPlan::InnerJoin(node) => node.next(ctx, rx),
+			ExecutionPlan::LeftJoin(node) => node.next(ctx, rx),
+			ExecutionPlan::NaturalJoin(node) => node.next(ctx, rx),
+			ExecutionPlan::Map(node) => node.next(ctx, rx),
+			ExecutionPlan::MapWithoutInput(node) => node.next(ctx, rx),
+			ExecutionPlan::Sort(node) => node.next(ctx, rx),
+			ExecutionPlan::TableScan(node) => node.next(ctx, rx),
+			ExecutionPlan::Take(node) => node.next(ctx, rx),
+			ExecutionPlan::ViewScan(node) => node.next(ctx, rx),
+		}
+	}
+
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+		match self {
+			ExecutionPlan::Aggregate(node) => node.layout(),
+			ExecutionPlan::Filter(node) => node.layout(),
+			ExecutionPlan::InlineData(node) => node.layout(),
+			ExecutionPlan::InnerJoin(node) => node.layout(),
+			ExecutionPlan::LeftJoin(node) => node.layout(),
+			ExecutionPlan::NaturalJoin(node) => node.layout(),
+			ExecutionPlan::Map(node) => node.layout(),
+			ExecutionPlan::MapWithoutInput(node) => node.layout(),
+			ExecutionPlan::Sort(node) => node.layout(),
+			ExecutionPlan::TableScan(node) => node.layout(),
+			ExecutionPlan::Take(node) => node.layout(),
+			ExecutionPlan::ViewScan(node) => node.layout(),
+		}
+	}
 }
 
 pub(crate) struct Executor<T: Transaction> {
@@ -106,7 +167,7 @@ impl
 impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		cmd: Command<'a>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -187,7 +248,7 @@ impl<T: Transaction> Executor<T> {
 
 	pub(crate) fn execute_command_plan(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {

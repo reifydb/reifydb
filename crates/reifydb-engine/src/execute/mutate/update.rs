@@ -4,35 +4,36 @@
 use std::sync::Arc;
 
 use reifydb_catalog::Catalog;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedFragment, Type, Value,
 	interface::{
-		ColumnPolicyKind, EncodableKey, Params,
-		TableRowKey, Transaction, VersionedCommandTransaction,
-	},
-	transaction::StandardCommandTransaction,
-	result::error::diagnostic::{
+		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
+		Transaction, VersionedCommandTransaction,
+	}, result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
-	},
-	return_error,
-	row::EncodedRowLayout,
+	}, return_error, row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
+	ColumnDescriptor,
+	IntoOwnedFragment,
+	Type
+	,
+	Value,
 };
 use reifydb_rql::plan::physical::UpdatePlan;
 
 use crate::{
 	columnar::{ColumnData, Columns},
 	execute::{
-		Batch, ExecutionContext, Executor, compile,
-		mutate::coerce::coerce_value_to_column_type,
+		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
+		Executor,
 	},
 };
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn update(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -45,8 +46,8 @@ impl<T: Transaction> Executor<T> {
 		};
 		let schema_name = schema_ref.fragment();
 
-		let schema = catalog.find_schema_by_name(txn, schema_name)?
-			.unwrap();
+		let schema =
+			catalog.find_schema_by_name(txn, schema_name)?.unwrap();
 		let Some(table) = catalog.find_table_by_name(
 			txn,
 			schema.id,

@@ -12,13 +12,11 @@ mod operator;
 mod source;
 
 use reifydb_core::interface::{
-	FlowEdgeId, FlowNodeId, Transaction, ViewDef,
+	CommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
 };
-use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_rql::plan::physical::PhysicalPlan;
 
 use crate::{
-	Flow, FlowEdge, FlowNode, FlowNodeType,
 	compiler::{
 		operator::{
 			aggregate::AggregateCompiler, filter::FilterCompiler,
@@ -29,12 +27,13 @@ use crate::{
 			inline_data::InlineDataCompiler,
 			table_scan::TableScanCompiler,
 		},
-	},
+	}, Flow, FlowEdge, FlowNode,
+	FlowNodeType,
 };
 
 /// Public API for compiling logical plans to Flows
 pub fn compile_flow<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+	txn: &mut impl CommandTransaction,
 	plan: PhysicalPlan,
 	sink: &ViewDef,
 ) -> crate::Result<Flow> {
@@ -43,18 +42,16 @@ pub fn compile_flow<T: Transaction>(
 }
 
 /// Compiler for converting RQL plans into executable Flows
-pub(crate) struct FlowCompiler<'a, T: Transaction> {
+pub(crate) struct FlowCompiler<'a, T: CommandTransaction> {
 	/// The flow graph being built
 	flow: Flow,
 	/// Transaction for accessing catalog and sequences
-	txn: &'a mut StandardCommandTransaction<T>,
+	txn: &'a mut T,
 }
 
-impl<'a, T: Transaction> FlowCompiler<'a, T> {
+impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
-	pub fn new(
-		txn: &'a mut StandardCommandTransaction<T>,
-	) -> crate::Result<Self> {
+	pub fn new(txn: &'a mut T) -> crate::Result<Self> {
 		todo!()
 		// Ok(Self {
 		// 	flow: Flow::new(next_flow_id(txn)?),
@@ -174,7 +171,7 @@ impl<'a, T: Transaction> FlowCompiler<'a, T> {
 }
 
 /// Trait for compiling operator from physical plans to flow nodes
-pub(crate) trait CompileOperator<T: Transaction> {
+pub(crate) trait CompileOperator<T: CommandTransaction> {
 	/// Compiles this operator into a flow node
 	fn compile(
 		self,

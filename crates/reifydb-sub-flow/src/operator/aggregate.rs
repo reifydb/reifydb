@@ -1,24 +1,23 @@
 use std::{collections::HashMap, ops::Bound};
 
 use crate::{
-	Result,
 	core::{Change, Diff},
 	operator::{Operator, OperatorContext},
+	Result,
 };
 use reifydb_catalog::row::RowNumber;
-use reifydb_core::transaction::StandardCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	CowVec, Value,
 	interface::{
-		EvaluationContext, Evaluator, Params,
-		SourceId::View, Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction, ViewId, expression::Expression,
-	},
-	row::{EncodedKey, EncodedKeyRange, EncodedRow},
+		expression::Expression, EvaluationContext, Evaluator, Params,
+		SourceId::View, Transaction,
+		VersionedCommandTransaction, VersionedQueryTransaction, ViewId,
+	}, row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
+	CowVec,
+	Value,
 };
 use serde::{Deserialize, Serialize};
-
 // ============================================================================
 // Key Implementation for Aggregate State Storage
 // ============================================================================
@@ -322,7 +321,7 @@ impl AggregateOperator {
 		}
 	}
 
-	fn compute_group_key<E: Evaluator, T: Transaction>(
+	fn compute_group_key<E: Evaluator, T: CommandTransaction>(
 		&self,
 		ctx: &OperatorContext<E, T>,
 		columns: &Columns,
@@ -369,9 +368,9 @@ impl AggregateOperator {
 		Ok(group_map)
 	}
 
-	fn load_state<T: Transaction>(
+	fn load_state<T: CommandTransaction>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut T,
 		group_key: &[Value],
 	) -> Result<GroupState> {
 		let key = FlowAggregateStateKey::new(
@@ -406,9 +405,9 @@ impl AggregateOperator {
 		}
 	}
 
-	fn save_state<T: Transaction>(
+	fn save_state<T: CommandTransaction>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut T,
 		group_key: &[Value],
 		state: &GroupState,
 	) -> Result<()> {
@@ -444,7 +443,7 @@ impl AggregateOperator {
 
 	fn load_all_states<T: Transaction>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 	) -> Result<HashMap<Vec<Value>, GroupState>> {
 		let mut states = HashMap::new();
 		let (start, end) = FlowAggregateStateKey::range_for_node(
@@ -478,9 +477,9 @@ impl AggregateOperator {
 		Ok(states)
 	}
 
-	fn emit_group_changes<T: Transaction>(
+	fn emit_group_changes<T: CommandTransaction>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut T,
 		changed_groups: Vec<Vec<Value>>,
 	) -> Result<Change> {
 		let mut output_diffs = Vec::new();
@@ -675,7 +674,7 @@ impl AggregateOperator {
 }
 
 impl<E: Evaluator> Operator<E> for AggregateOperator {
-	fn apply<T: Transaction>(
+	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
 		change: &Change,

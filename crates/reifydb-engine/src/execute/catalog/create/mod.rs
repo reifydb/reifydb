@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{interface::{Transaction, ViewDef}, transaction::StandardCommandTransaction};
+use reifydb_core::interface::CommandTransaction;
+use reifydb_core::interface::{Transaction, ViewDef};
 use reifydb_rql::plan::physical::PhysicalPlan;
 
 use crate::execute::Executor;
@@ -15,10 +16,10 @@ mod transactional;
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_flow(
-        &self,
-        _txn: &mut StandardCommandTransaction<T>,
-        _view: &ViewDef,
-        plan: Option<Box<PhysicalPlan>>,
+		&self,
+		_txn: &mut impl CommandTransaction,
+		_view: &ViewDef,
+		plan: Option<Box<PhysicalPlan>>,
 	) -> crate::Result<()> {
 		let Some(_plan) = plan else {
 			return Ok(());

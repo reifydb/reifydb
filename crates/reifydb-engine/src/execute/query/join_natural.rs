@@ -3,27 +3,27 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::{JoinType, Value, interface::VersionedQueryTransaction};
-
 use crate::{
-	columnar::{
-		Column, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
-	},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+    columnar::{
+        layout::ColumnsLayout, Column, ColumnQualified, Columns,
+        SourceQualified,
+    },
+    execute::{Batch, ExecutionContext, ExecutionPlan},
 };
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{JoinType, Value};
 
 pub(crate) struct NaturalJoinNode {
-	left: Box<dyn ExecutionPlan>,
-	right: Box<dyn ExecutionPlan>,
+	left: Box<ExecutionPlan>,
+	right: Box<ExecutionPlan>,
 	join_type: JoinType,
 	layout: Option<ColumnsLayout>,
 }
 
 impl NaturalJoinNode {
 	pub fn new(
-		left: Box<dyn ExecutionPlan>,
-		right: Box<dyn ExecutionPlan>,
+		left: Box<ExecutionPlan>,
+		right: Box<ExecutionPlan>,
 		join_type: JoinType,
 	) -> Self {
 		Self {
@@ -35,9 +35,9 @@ impl NaturalJoinNode {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<dyn ExecutionPlan>,
+		node: &mut Box<ExecutionPlan>,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -80,11 +80,11 @@ impl NaturalJoinNode {
 	}
 }
 
-impl ExecutionPlan for NaturalJoinNode {
-	fn next(
+impl NaturalJoinNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -230,7 +230,7 @@ impl ExecutionPlan for NaturalJoinNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

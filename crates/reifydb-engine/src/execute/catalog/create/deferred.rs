@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{Catalog, view::ViewToCreate};
+use reifydb_catalog::{view::ViewToCreate, Catalog};
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	Value,
-	interface::Transaction,
-	result::error::diagnostic::catalog::view_already_exists,
-	return_error,
-	transaction::StandardCommandTransaction,
+	interface::Transaction, result::error::diagnostic::catalog::view_already_exists,
+	return_error, Value
+	,
 };
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
@@ -16,7 +15,7 @@ use crate::{columnar::Columns, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_deferred_view(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
@@ -74,12 +73,10 @@ impl<T: Transaction> Executor<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::{
-		test_utils::{create_schema, ensure_test_schema},
-	};
+	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
 	use reifydb_core::{
-		OwnedFragment, Value,
-		interface::{Params, SchemaId, SchemaDef},
+		interface::{Params, SchemaDef, SchemaId}, OwnedFragment,
+		Value,
 	};
 	use reifydb_rql::plan::physical::{
 		CreateDeferredViewPlan, PhysicalPlan,

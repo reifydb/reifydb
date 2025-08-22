@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use FlowNodeType::Operator;
-use OperatorType::Aggregate;
 use reifydb_core::interface::{
-	FlowNodeId, Transaction, expression::Expression,
+	expression::Expression, CommandTransaction, FlowNodeId,
 };
 use reifydb_rql::plan::physical::{AggregateNode, PhysicalPlan};
+use FlowNodeType::Operator;
+use OperatorType::Aggregate;
 
 use crate::{
-	FlowNodeType, OperatorType, Result,
-	compiler::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
+	Result,
 };
 
 pub(crate) struct AggregateCompiler {
@@ -29,7 +29,7 @@ impl From<AggregateNode> for AggregateCompiler {
 	}
 }
 
-impl<T: Transaction> CompileOperator<T> for AggregateCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for AggregateCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(*self.input)?;
 

@@ -3,12 +3,10 @@
 
 use std::sync::Arc;
 
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_core::{
-	interface::{
-		CdcChange, CdcConsume, CdcEvent, Key,
-		Transaction,
-	},
+	interface::{CdcChange, CdcConsume, CdcEvent, Key, Transaction},
 	log_debug,
 	Result,
 };
@@ -29,9 +27,9 @@ impl FlowConsumer {
 		}
 	}
 
-	fn process_changes<T: Transaction>(
+	fn process_changes<T: CommandTransaction>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut T,
 		changes: Vec<FlowChange>,
 	) -> Result<()> {
 		use reifydb_core::{
@@ -123,7 +121,7 @@ impl FlowConsumer {
 impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 	fn consume(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		let mut changes = Vec::new();

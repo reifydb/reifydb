@@ -3,7 +3,7 @@
 
 //! Builder pattern for constructing flow nodes with edges
 
-use reifydb_core::interface::FlowNodeId;
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 
 use super::FlowCompiler;
 use crate::{FlowNodeType, Result};
@@ -11,7 +11,7 @@ use crate::{FlowNodeType, Result};
 /// Builder for creating flow nodes with automatic edge management
 pub(crate) struct FlowNodeBuilder<'a, 'b, T>
 where
-	T: reifydb_core::interface::Transaction,
+	T: CommandTransaction,
 {
 	compiler: &'a mut FlowCompiler<'b, T>,
 	node_type: FlowNodeType,
@@ -20,7 +20,7 @@ where
 
 impl<'a, 'b, T> FlowNodeBuilder<'a, 'b, T>
 where
-	T: reifydb_core::interface::Transaction,
+	T: CommandTransaction,
 {
 	/// Creates a new FlowNodeBuilder
 	pub fn new(
@@ -66,7 +66,7 @@ where
 /// Extension trait to provide builder methods on FlowCompiler
 impl<'a, T> FlowCompiler<'a, T>
 where
-	T: reifydb_core::interface::Transaction,
+	T: CommandTransaction,
 {
 	/// Creates a new FlowNodeBuilder for this compiler
 	pub(crate) fn build_node(

@@ -3,21 +3,21 @@
 
 use std::{marker::PhantomData, ops::Deref, sync::Arc};
 
+use crate::{
+	execute::Executor,
+	function::{math, Functions},
+};
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	Frame,
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
-		Command, Engine as EngineInterface,
-		ExecuteCommand, ExecuteQuery, GetHooks, Identity, Params,
-		Query, Transaction, VersionedTransaction,
+		Command, Engine as EngineInterface, ExecuteCommand,
+		ExecuteQuery, GetHooks, Identity, Params, Query, Transaction,
+		VersionedTransaction,
 	},
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
-};
-
-use crate::{
-	execute::Executor,
-	function::{Functions, math},
+	Frame,
 };
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
@@ -29,7 +29,9 @@ impl<T: Transaction> GetHooks for StandardEngine<T> {
 }
 
 impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
-	fn begin_command(&self) -> crate::Result<StandardCommandTransaction<T>> {
+	fn begin_command(
+		&self,
+	) -> crate::Result<StandardCommandTransaction<T>> {
 		let interceptors = self.interceptors.create();
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -90,7 +92,7 @@ impl<T: Transaction> ExecuteCommand<T> for StandardEngine<T> {
 	#[inline]
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		cmd: Command<'a>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)

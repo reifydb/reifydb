@@ -6,22 +6,22 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	interface::{
-		EncodableKey, EncodableKeyRange, VersionedQueryTransaction,
-		ViewDef, ViewRowKey, ViewRowKeyRange,
-	},
-	row::EncodedRowLayout,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
-};
-
 use crate::{
 	columnar::{
-		Column, ColumnData, Columns, SourceQualified,
-		layout::{ColumnLayout, ColumnsLayout},
+		layout::{ColumnLayout, ColumnsLayout}, Column, ColumnData, Columns,
+		SourceQualified,
 	},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+	interface::{
+		EncodableKey, EncodableKeyRange,
+		ViewDef, ViewRowKey, ViewRowKeyRange,
+	}, row::EncodedRowLayout,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
+	EncodedKey,
+	EncodedKeyRange,
 };
 
 pub(crate) struct ViewScanNode {
@@ -65,11 +65,11 @@ impl ViewScanNode {
 	}
 }
 
-impl ExecutionPlan for ViewScanNode {
-	fn next(
+impl ViewScanNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
@@ -142,7 +142,7 @@ impl ExecutionPlan for ViewScanNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		Some(self.layout.clone())
 	}
 }

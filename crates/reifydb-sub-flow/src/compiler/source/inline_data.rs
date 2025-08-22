@@ -3,12 +3,12 @@
 
 //! Compilation of inline data operations
 
-use reifydb_core::interface::{FlowNodeId, Transaction};
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 use reifydb_rql::plan::physical::InlineDataNode;
 
 use crate::{
-	Result,
 	compiler::{CompileOperator, FlowCompiler},
+	Result,
 };
 
 pub(crate) struct InlineDataCompiler {
@@ -23,7 +23,7 @@ impl From<InlineDataNode> for InlineDataCompiler {
 	}
 }
 
-impl<T: Transaction> CompileOperator<T> for InlineDataCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for InlineDataCompiler {
 	fn compile(
 		self,
 		_compiler: &mut FlowCompiler<T>,

@@ -1,33 +1,31 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Value,
-	interface::{
-		VersionedQueryTransaction, evaluate::expression::Expression,
-	},
-};
-
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
+		layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
+		SourceQualified,
 	},
-	evaluate::{EvaluationContext, evaluate},
+	evaluate::{evaluate, EvaluationContext},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+	interface::evaluate::expression::Expression,
+	Value,
 };
 
 pub(crate) struct InnerJoinNode {
-	left: Box<dyn ExecutionPlan>,
-	right: Box<dyn ExecutionPlan>,
+	left: Box<ExecutionPlan>,
+	right: Box<ExecutionPlan>,
 	on: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
 }
 
 impl InnerJoinNode {
 	pub fn new(
-		left: Box<dyn ExecutionPlan>,
-		right: Box<dyn ExecutionPlan>,
+		left: Box<ExecutionPlan>,
+		right: Box<ExecutionPlan>,
 		on: Vec<Expression>,
 	) -> Self {
 		Self {
@@ -39,9 +37,9 @@ impl InnerJoinNode {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<dyn ExecutionPlan>,
+		node: &mut Box<ExecutionPlan>,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -61,11 +59,11 @@ impl InnerJoinNode {
 	}
 }
 
-impl ExecutionPlan for InnerJoinNode {
-	fn next(
+impl InnerJoinNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -187,7 +185,7 @@ impl ExecutionPlan for InnerJoinNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

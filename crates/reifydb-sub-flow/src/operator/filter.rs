@@ -1,15 +1,15 @@
-use reifydb_core::{
-	BitVec,
-	interface::{
-		EvaluationContext, Evaluator, Params, Transaction,
-		expression::Expression,
-	},
-	value::columnar::{ColumnData, Columns},
-};
-
 use crate::{
 	core::{Change, Diff},
 	operator::{Operator, OperatorContext},
+};
+use reifydb_core::interface::CommandTransaction;
+use reifydb_core::{
+	interface::{
+		expression::Expression, EvaluationContext, Evaluator,
+		Params,
+	},
+	value::columnar::{ColumnData, Columns},
+	BitVec,
 };
 
 pub struct FilterOperator {
@@ -25,7 +25,7 @@ impl FilterOperator {
 }
 
 impl<E: Evaluator> Operator<E> for FilterOperator {
-	fn apply<T: Transaction>(
+	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
 		change: &Change,
@@ -119,7 +119,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter<E: Evaluator, T: Transaction>(
+	fn filter<E: Evaluator, T: CommandTransaction>(
 		&self,
 		ctx: &OperatorContext<E, T>,
 		columns: &Columns,
@@ -128,7 +128,7 @@ impl FilterOperator {
 		Ok(filtered)
 	}
 
-	fn filter_with_indices<E: Evaluator, T: Transaction>(
+	fn filter_with_indices<E: Evaluator, T: CommandTransaction>(
 		&self,
 		ctx: &OperatorContext<E, T>,
 		columns: &Columns,

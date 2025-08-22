@@ -1,27 +1,27 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	BitVec,
-	interface::{
-		VersionedQueryTransaction, evaluate::expression::Expression,
-	},
-};
-
 use crate::{
-	columnar::{ColumnData, layout::ColumnsLayout},
-	evaluate::{EvaluationContext, evaluate},
+	columnar::{layout::ColumnsLayout, ColumnData},
+	evaluate::{evaluate, EvaluationContext},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+	interface::{
+		evaluate::expression::Expression, VersionedQueryTransaction,
+	},
+	BitVec,
 };
 
 pub(crate) struct FilterNode {
-	input: Box<dyn ExecutionPlan>,
+	input: Box<ExecutionPlan>,
 	expressions: Vec<Expression>,
 }
 
 impl FilterNode {
 	pub fn new(
-		input: Box<dyn ExecutionPlan>,
+		input: Box<ExecutionPlan>,
 		expressions: Vec<Expression>,
 	) -> Self {
 		Self {
@@ -31,11 +31,11 @@ impl FilterNode {
 	}
 }
 
-impl ExecutionPlan for FilterNode {
-	fn next(
+impl FilterNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,
@@ -96,7 +96,7 @@ impl ExecutionPlan for FilterNode {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

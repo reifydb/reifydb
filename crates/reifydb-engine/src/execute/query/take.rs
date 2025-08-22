@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::VersionedQueryTransaction;
+use reifydb_core::interface::QueryTransaction;
 
 use crate::{
 	columnar::layout::ColumnsLayout,
@@ -9,12 +9,12 @@ use crate::{
 };
 
 pub(crate) struct TakeNode {
-	input: Box<dyn ExecutionPlan>,
+	input: Box<ExecutionPlan>,
 	remaining: usize,
 }
 
 impl TakeNode {
-	pub(crate) fn new(input: Box<dyn ExecutionPlan>, take: usize) -> Self {
+	pub(crate) fn new(input: Box<ExecutionPlan>, take: usize) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -22,11 +22,11 @@ impl TakeNode {
 	}
 }
 
-impl ExecutionPlan for TakeNode {
-	fn next(
+impl TakeNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,
@@ -52,7 +52,7 @@ impl ExecutionPlan for TakeNode {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

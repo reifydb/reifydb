@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use FlowNodeType::Operator;
-use OperatorType::Map;
 use reifydb_core::interface::{
-	FlowNodeId, Transaction, expression::Expression,
+	expression::Expression, CommandTransaction, FlowNodeId,
 };
 use reifydb_rql::plan::physical::{MapNode, PhysicalPlan};
+use FlowNodeType::Operator;
+use OperatorType::Map;
 
 use crate::{
-	FlowNodeType, OperatorType, Result,
-	compiler::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
+	Result,
 };
 
 pub(crate) struct MapCompiler {
@@ -27,7 +27,7 @@ impl From<MapNode> for MapCompiler {
 	}
 }
 
-impl<T: Transaction> CompileOperator<T> for MapCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(*input)?)

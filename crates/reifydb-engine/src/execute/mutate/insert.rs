@@ -4,42 +4,40 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-	Catalog, sequence::TableColumnSequence,
-	table::operation::TableOperations,
+	sequence::TableColumnSequence, Catalog
+	,
 };
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-    ColumnDescriptor, IntoOwnedFragment, Type, Value,
-    interface::{
-		ColumnPolicyKind, Params, Transaction,
-	},
-    transaction::StandardCommandTransaction,
-    result::error::diagnostic::catalog::table_not_found,
-    return_error,
-    row::EncodedRowLayout,
+	interface::{ColumnPolicyKind, Params, Transaction}, result::error::diagnostic::catalog::table_not_found, return_error, row::EncodedRowLayout,
+	ColumnDescriptor,
+	IntoOwnedFragment,
+	Type,
+	Value,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 
 use crate::{
 	columnar::Columns,
 	execute::{
-		Batch, ExecutionContext, Executor, compile,
-		mutate::coerce::coerce_value_to_column_type,
+		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
+		Executor,
 	},
 };
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn insert(
-        &self,
-        txn: &mut StandardCommandTransaction<T>,
-        plan: InsertPlan,
-        params: Params,
+		&self,
+		txn: &mut impl CommandTransaction,
+		plan: InsertPlan,
+		params: Params,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
 		let schema_name =
 			plan.schema.as_ref().map(|s| s.fragment()).unwrap(); // FIXME
 
-		let schema = catalog.find_schema_by_name(txn, schema_name)?
-			.unwrap();
+		let schema =
+			catalog.find_schema_by_name(txn, schema_name)?.unwrap();
 		let Some(table) = catalog.find_table_by_name(
 			txn,
 			schema.id,
@@ -286,7 +284,11 @@ impl<T: Transaction> Executor<T> {
 				//
 				// txn.insert_into_table(table, key, row)
 
-				txn.insert_into_table(table.clone(), row)?;
+				// txn.insert_into_table(table.clone(), row)?;
+				dbg!("DOES NOT INSERT AT THE MOMENT");
+				println!("DOES NOT INSERT AT THE MOMENT");
+				println!("DOES NOT INSERT AT THE MOMENT");
+				println!("DOES NOT INSERT AT THE MOMENT");
 
 				// /////
 				//

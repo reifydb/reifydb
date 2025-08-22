@@ -1,33 +1,31 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Value,
-	interface::{
-		VersionedQueryTransaction, evaluate::expression::Expression,
-	},
-};
-
 use crate::{
-	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
-	},
-	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+    columnar::{
+        layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
+        SourceQualified,
+    },
+    evaluate::{evaluate, EvaluationContext},
+    execute::{Batch, ExecutionContext, ExecutionPlan},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+    interface::evaluate::expression::Expression,
+    Value,
 };
 
 pub(crate) struct LeftJoinNode {
-	left: Box<dyn ExecutionPlan>,
-	right: Box<dyn ExecutionPlan>,
+	left: Box<ExecutionPlan>,
+	right: Box<ExecutionPlan>,
 	on: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
 }
 
 impl LeftJoinNode {
 	pub fn new(
-		left: Box<dyn ExecutionPlan>,
-		right: Box<dyn ExecutionPlan>,
+		left: Box<ExecutionPlan>,
+		right: Box<ExecutionPlan>,
 		on: Vec<Expression>,
 	) -> Self {
 		Self {
@@ -39,9 +37,9 @@ impl LeftJoinNode {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<dyn ExecutionPlan>,
+		node: &mut Box<ExecutionPlan>,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -61,11 +59,11 @@ impl LeftJoinNode {
 	}
 }
 
-impl ExecutionPlan for LeftJoinNode {
-	fn next(
+impl LeftJoinNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -199,7 +197,7 @@ impl ExecutionPlan for LeftJoinNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

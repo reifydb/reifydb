@@ -1,32 +1,30 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	ColumnDescriptor,
-	interface::{
-		VersionedQueryTransaction, evaluate::expression::Expression,
-	},
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
-};
-
 use crate::{
-	columnar::{Columns, layout::ColumnsLayout},
-	evaluate::{EvaluationContext, evaluate},
-	execute::{
-		Batch, ExecutionContext, ExecutionPlan,
-		query::layout::derive_columns_column_layout,
-	},
+    columnar::{layout::ColumnsLayout, Columns},
+    evaluate::{evaluate, EvaluationContext},
+    execute::{
+        query::layout::derive_columns_column_layout, Batch, ExecutionContext,
+        ExecutionPlan,
+    },
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+    interface::evaluate::expression::Expression,
+    value::row_number::ROW_NUMBER_COLUMN_NAME,
+    ColumnDescriptor,
 };
 
 pub(crate) struct MapNode {
-	input: Box<dyn ExecutionPlan>,
+	input: Box<ExecutionPlan>,
 	expressions: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
 }
 
 impl MapNode {
 	pub fn new(
-		input: Box<dyn ExecutionPlan>,
+		input: Box<ExecutionPlan>,
 		expressions: Vec<Expression>,
 	) -> Self {
 		Self {
@@ -91,11 +89,11 @@ impl MapNode {
 	}
 }
 
-impl ExecutionPlan for MapNode {
-	fn next(
+impl MapNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
@@ -147,7 +145,7 @@ impl ExecutionPlan for MapNode {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone().or(self.input.layout())
 	}
 }
@@ -166,11 +164,11 @@ impl MapWithoutInputNode {
 	}
 }
 
-impl ExecutionPlan for MapWithoutInputNode {
-	fn next(
+impl MapWithoutInputNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		_rx: &mut dyn VersionedQueryTransaction,
+		_rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -201,7 +199,7 @@ impl ExecutionPlan for MapWithoutInputNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

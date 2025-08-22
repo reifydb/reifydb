@@ -6,21 +6,21 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	ColumnDescriptor, Type, Value,
-	interface::{
-		TableDef, VersionedQueryTransaction,
-		evaluate::expression::AliasExpression,
-	},
-};
-
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns,
-		layout::{ColumnLayout, ColumnsLayout},
+		layout::{ColumnLayout, ColumnsLayout}, Column, ColumnData, ColumnQualified,
+		Columns,
 	},
-	evaluate::{EvaluationContext, cast::cast_column_data, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	evaluate::{cast::cast_column_data, evaluate, EvaluationContext},
+	execute::{Batch, ExecutionContext},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+	interface::{
+		evaluate::expression::AliasExpression, TableDef,
+		VersionedQueryTransaction,
+	}, ColumnDescriptor, Type,
+	Value,
 };
 
 pub(crate) struct InlineDataNode {
@@ -64,11 +64,11 @@ impl InlineDataNode {
 	}
 }
 
-impl ExecutionPlan for InlineDataNode {
-	fn next(
+impl InlineDataNode {
+	pub(crate) fn next(
 		&mut self,
 		_ctx: &ExecutionContext,
-		_rx: &mut dyn VersionedQueryTransaction,
+		_rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.executed {
 			return Ok(None);
@@ -96,7 +96,7 @@ impl ExecutionPlan for InlineDataNode {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

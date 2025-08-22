@@ -1,18 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::interface::CommandTransaction;
 use crate::{
-    Result,
-    interface::{CdcEvent, Transaction},
-    transaction::StandardCommandTransaction,
+	interface::{CdcEvent, Transaction},
+	Result
+	,
 };
 
 /// Trait for CDC event processing functions
 pub trait CdcConsume<T: Transaction>: Send + Sync + 'static {
 	fn consume(
-        &self,
-        txn: &mut StandardCommandTransaction<T>,
-        events: Vec<CdcEvent>,
+		&self,
+		txn: &mut impl CommandTransaction,
+		events: Vec<CdcEvent>,
 	) -> Result<()>;
 }
 

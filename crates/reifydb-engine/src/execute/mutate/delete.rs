@@ -4,32 +4,33 @@
 use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::Catalog;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	EncodedKeyRange, IntoOwnedFragment, Value,
 	interface::{
-		EncodableKey, EncodableKeyRange, Params,
-		TableRowKey, TableRowKeyRange, Transaction,
-		VersionedCommandTransaction, VersionedQueryTransaction,
-	},
-	transaction::StandardCommandTransaction,
-	result::error::diagnostic::{
+		EncodableKey, EncodableKeyRange, Params, TableRowKey,
+		TableRowKeyRange, Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction,
+	}, result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
-	},
-	return_error,
+	}, return_error,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
+	EncodedKeyRange,
+	IntoOwnedFragment
+	,
+	Value,
 };
 use reifydb_rql::plan::physical::DeletePlan;
 
 use crate::{
 	columnar::{ColumnData, Columns},
-	execute::{Batch, ExecutionContext, Executor, compile},
+	execute::{compile, Batch, ExecutionContext, Executor},
 };
 
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn delete(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -42,8 +43,8 @@ impl<T: Transaction> Executor<T> {
 		};
 		let schema_name = schema_ref.fragment();
 
-		let schema = catalog.find_schema_by_name(txn, schema_name)?
-			.unwrap();
+		let schema =
+			catalog.find_schema_by_name(txn, schema_name)?.unwrap();
 		let Some(table) = catalog.find_table_by_name(
 			txn,
 			schema.id,

@@ -1,17 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use FlowNodeType::Operator;
-use OperatorType::Sort;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	interface::FlowNodeId,
 	SortKey,
-	interface::{FlowNodeId, Transaction},
 };
 use reifydb_rql::plan::physical::{PhysicalPlan, SortNode};
+use FlowNodeType::Operator;
+use OperatorType::Sort;
 
 use crate::{
-	FlowNodeType, OperatorType, Result,
-	compiler::{CompileOperator, FlowCompiler},
+	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
+	Result,
 };
 
 pub(crate) struct SortCompiler {
@@ -28,7 +29,7 @@ impl From<SortNode> for SortCompiler {
 	}
 }
 
-impl<T: Transaction> CompileOperator<T> for SortCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for SortCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(*self.input)?;
 

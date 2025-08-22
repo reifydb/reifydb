@@ -3,26 +3,26 @@
 
 use std::cmp::Ordering::Equal;
 
-use reifydb_core::{
-	SortDirection::{Asc, Desc},
-	SortKey, error,
-	interface::VersionedQueryTransaction,
-	result::error::diagnostic::query,
-};
-
 use crate::{
-	columnar::{Columns, layout::ColumnsLayout},
+	columnar::{layout::ColumnsLayout, Columns},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+	error,
+	result::error::diagnostic::query, SortDirection::{Asc, Desc}
+	,
+	SortKey,
 };
 
 pub(crate) struct SortNode {
-	input: Box<dyn ExecutionPlan>,
+	input: Box<ExecutionPlan>,
 	by: Vec<SortKey>,
 }
 
 impl SortNode {
 	pub(crate) fn new(
-		input: Box<dyn ExecutionPlan>,
+		input: Box<ExecutionPlan>,
 		by: Vec<SortKey>,
 	) -> Self {
 		Self {
@@ -32,11 +32,11 @@ impl SortNode {
 	}
 }
 
-impl ExecutionPlan for SortNode {
-	fn next(
+impl SortNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		let mut columns_opt: Option<Columns> = None;
 
@@ -112,7 +112,7 @@ impl ExecutionPlan for SortNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

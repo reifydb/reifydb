@@ -4,22 +4,21 @@ mod map;
 
 use std::marker::PhantomData;
 
+use crate::core::Change;
 pub use aggregate::AggregateOperator;
 pub use filter::FilterOperator;
 pub use map::MapOperator;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-    interface::{
-		EvaluationContext, Evaluator, Transaction,
-		expression::Expression,
+	interface::{
+		expression::Expression, EvaluationContext, Evaluator,
+		Transaction,
 	},
-    transaction::StandardCommandTransaction,
-    value::columnar::Column,
+	value::columnar::Column,
 };
 
-use crate::core::Change;
-
 pub trait Operator<E: Evaluator>: Send + Sync + 'static {
-	fn apply<T: Transaction>(
+	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
 		change: &Change,
@@ -35,7 +34,7 @@ pub enum OperatorEnum<E: Evaluator> {
 }
 
 impl<E: Evaluator> OperatorEnum<E> {
-	pub fn apply<T: Transaction>(
+	pub fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
 		change: &Change,
@@ -49,16 +48,13 @@ impl<E: Evaluator> OperatorEnum<E> {
 	}
 }
 
-pub struct OperatorContext<'a, E: Evaluator, T: Transaction> {
+pub struct OperatorContext<'a, E: Evaluator, T: CommandTransaction> {
 	pub evaluator: &'a E,
-	pub txn: &'a mut StandardCommandTransaction<T>,
+	pub txn: &'a mut T,
 }
 
-impl<'a, E: Evaluator, T: Transaction> OperatorContext<'a, E, T> {
-	pub fn new(
-        evaluator: &'a E,
-        txn: &'a mut StandardCommandTransaction<T>,
-	) -> Self {
+impl<'a, E: Evaluator, T: CommandTransaction> OperatorContext<'a, E, T> {
+	pub fn new(evaluator: &'a E, txn: &'a mut T) -> Self {
 		Self {
 			evaluator,
 			txn,

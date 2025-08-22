@@ -27,15 +27,15 @@ pub(crate) fn compile(
 	plan: PhysicalPlan,
 	rx: &mut impl QueryTransaction,
 	context: Arc<ExecutionContext>,
-) -> Box<dyn ExecutionPlan> {
+) -> ExecutionPlan {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
 			map,
 			input,
 		}) => {
-			let input_node = compile(*input, rx, context.clone());
-			Box::new(AggregateNode::new(
+			let input_node = Box::new(compile(*input, rx, context.clone()));
+			ExecutionPlan::Aggregate(AggregateNode::new(
 				input_node, by, map, context,
 			))
 		}
@@ -44,24 +44,24 @@ pub(crate) fn compile(
 			conditions,
 			input,
 		}) => {
-			let input_node = compile(*input, rx, context);
-			Box::new(FilterNode::new(input_node, conditions))
+			let input_node = Box::new(compile(*input, rx, context));
+			ExecutionPlan::Filter(FilterNode::new(input_node, conditions))
 		}
 
 		PhysicalPlan::Take(physical::TakeNode {
 			take,
 			input,
 		}) => {
-			let input_node = compile(*input, rx, context);
-			Box::new(TakeNode::new(input_node, take))
+			let input_node = Box::new(compile(*input, rx, context));
+			ExecutionPlan::Take(TakeNode::new(input_node, take))
 		}
 
 		PhysicalPlan::Sort(physical::SortNode {
 			by,
 			input,
 		}) => {
-			let input_node = compile(*input, rx, context);
-			Box::new(SortNode::new(input_node, by))
+			let input_node = Box::new(compile(*input, rx, context));
+			ExecutionPlan::Sort(SortNode::new(input_node, by))
 		}
 
 		PhysicalPlan::Map(physical::MapNode {
@@ -69,10 +69,10 @@ pub(crate) fn compile(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = compile(*input, rx, context);
-				Box::new(MapNode::new(input_node, map))
+				let input_node = Box::new(compile(*input, rx, context));
+				ExecutionPlan::Map(MapNode::new(input_node, map))
 			} else {
-				Box::new(MapWithoutInputNode::new(map))
+				ExecutionPlan::MapWithoutInput(MapWithoutInputNode::new(map))
 			}
 		}
 
@@ -81,9 +81,9 @@ pub(crate) fn compile(
 			right,
 			on,
 		}) => {
-			let left_node = compile(*left, rx, context.clone());
-			let right_node = compile(*right, rx, context.clone());
-			Box::new(InnerJoinNode::new(left_node, right_node, on))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on))
 		}
 
 		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
@@ -91,9 +91,9 @@ pub(crate) fn compile(
 			right,
 			on,
 		}) => {
-			let left_node = compile(*left, rx, context.clone());
-			let right_node = compile(*right, rx, context.clone());
-			Box::new(LeftJoinNode::new(left_node, right_node, on))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on))
 		}
 
 		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
@@ -101,26 +101,26 @@ pub(crate) fn compile(
 			right,
 			join_type,
 		}) => {
-			let left_node = compile(*left, rx, context.clone());
-			let right_node = compile(*right, rx, context.clone());
-			Box::new(NaturalJoinNode::new(
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(
 				left_node, right_node, join_type,
 			))
 		}
 
 		PhysicalPlan::InlineData(physical::InlineDataNode {
 			rows,
-		}) => Box::new(InlineDataNode::new(rows, context)),
+		}) => ExecutionPlan::InlineData(InlineDataNode::new(rows, context)),
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
 			schema: _,
 			table,
-		}) => Box::new(TableScanNode::new(table, context).unwrap()),
+		}) => ExecutionPlan::TableScan(TableScanNode::new(table, context).unwrap()),
 
 		PhysicalPlan::ViewScan(physical::ViewScanNode {
 			schema: _,
 			view,
-		}) => Box::new(ViewScanNode::new(view, context).unwrap()),
+		}) => ExecutionPlan::ViewScan(ViewScanNode::new(view, context).unwrap()),
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::CreateDeferredView(_)

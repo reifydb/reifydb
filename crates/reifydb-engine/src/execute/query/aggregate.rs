@@ -6,20 +6,20 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	OwnedFragment, Value,
-	interface::{
-		VersionedQueryTransaction, evaluate::expression::Expression,
-	},
-};
-
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns,
-		layout::ColumnsLayout,
+		layout::ColumnsLayout, Column, ColumnData, ColumnQualified,
+		Columns,
 	},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 	function::{AggregateFunction, AggregateFunctionContext, Functions},
+};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_core::{
+	interface::{
+		evaluate::expression::Expression, VersionedQueryTransaction,
+	}, OwnedFragment,
+	Value,
 };
 
 enum Projection {
@@ -35,7 +35,7 @@ enum Projection {
 }
 
 pub(crate) struct AggregateNode {
-	input: Box<dyn ExecutionPlan>,
+	input: Box<ExecutionPlan>,
 	by: Vec<Expression>,
 	map: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
@@ -44,7 +44,7 @@ pub(crate) struct AggregateNode {
 
 impl AggregateNode {
 	pub fn new(
-		input: Box<dyn ExecutionPlan>,
+		input: Box<ExecutionPlan>,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 		context: Arc<ExecutionContext>,
@@ -59,11 +59,11 @@ impl AggregateNode {
 	}
 }
 
-impl ExecutionPlan for AggregateNode {
-	fn next(
+impl AggregateNode {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut dyn VersionedQueryTransaction,
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -172,7 +172,7 @@ impl ExecutionPlan for AggregateNode {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone().or(self.input.layout())
 	}
 }

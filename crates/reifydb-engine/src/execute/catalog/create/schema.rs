@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{Catalog, schema::SchemaToCreate};
+use reifydb_catalog::{schema::SchemaToCreate, Catalog};
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	Value,
-	interface::Transaction,
-	result::error::diagnostic::catalog::schema_already_exists,
+	interface::Transaction, result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
-	transaction::StandardCommandTransaction,
+	Value,
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
@@ -16,7 +15,7 @@ use crate::{columnar::Columns, execute::Executor};
 impl<T: Transaction> Executor<T> {
 	pub(crate) fn create_schema(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
@@ -58,7 +57,7 @@ impl<T: Transaction> Executor<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{OwnedFragment, Value, interface::Params};
+	use reifydb_core::{interface::Params, OwnedFragment, Value};
 	use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 

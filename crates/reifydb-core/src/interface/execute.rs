@@ -1,13 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::interface::CommandTransaction;
 use crate::{
-	Frame,
-	interface::{
-		Identity, Params,
-		Transaction,
-	},
-	transaction::{StandardCommandTransaction, StandardQueryTransaction},
+    interface::{
+        Identity, Params,
+        Transaction,
+    },
+    transaction::StandardQueryTransaction,
+    Frame,
 };
 
 #[derive(Debug)]
@@ -29,7 +30,7 @@ pub trait Execute<T: Transaction>: ExecuteCommand<T> + ExecuteQuery<T> {}
 pub trait ExecuteCommand<T: Transaction> {
 	fn execute_command<'a>(
 		&'a self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut impl CommandTransaction,
 		cmd: Command<'a>,
 	) -> crate::Result<Vec<Frame>>;
 }
