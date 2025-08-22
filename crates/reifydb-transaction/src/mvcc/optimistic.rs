@@ -5,10 +5,10 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Error, Version,
 	hook::Hooks,
 	interface::{
-		BoxedVersionedIter, GetHooks, UnversionedTransaction,
-		Versioned, VersionedCommandTransaction,
-		VersionedQueryTransaction, VersionedStorage,
-		VersionedTransaction,
+        BoxedVersionedIter, WithHooks, UnversionedTransaction,
+        Versioned, VersionedCommandTransaction,
+        VersionedQueryTransaction, VersionedStorage,
+        VersionedTransaction,
 	},
 	row::EncodedRow,
 };
@@ -17,10 +17,10 @@ use crate::mvcc::transaction::optimistic::{
 	CommandTransaction, Optimistic, QueryTransaction,
 };
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> GetHooks
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WithHooks
 	for Optimistic<VS, UT>
 {
-	fn get_hooks(&self) -> &Hooks {
+	fn hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }

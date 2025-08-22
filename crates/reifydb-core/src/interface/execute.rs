@@ -1,14 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::CommandTransaction;
+use crate::interface::interceptor::WithInterceptors;
+use crate::interface::{CommandTransaction, WithHooks, QueryTransaction};
 use crate::{
-    interface::{
-        Identity, Params,
-        Transaction,
-    },
-    transaction::StandardQueryTransaction,
-    Frame,
+	interface::{Identity, Params},
+	Frame,
 };
 
 #[derive(Debug)]
@@ -25,20 +22,22 @@ pub struct Query<'a> {
 	pub identity: &'a Identity,
 }
 
-pub trait Execute<T: Transaction>: ExecuteCommand<T> + ExecuteQuery<T> {}
+pub trait Execute: ExecuteCommand + ExecuteQuery {}
 
-pub trait ExecuteCommand<T: Transaction> {
-	fn execute_command<'a>(
-		&'a self,
-		txn: &mut impl CommandTransaction,
-		cmd: Command<'a>,
+pub trait ExecuteCommand {
+	fn execute_command<
+		CT: CommandTransaction + WithInterceptors<CT> + WithHooks,
+	>(
+		&self,
+		txn: &mut CT,
+		cmd: Command<'_>,
 	) -> crate::Result<Vec<Frame>>;
 }
 
-pub trait ExecuteQuery<T: Transaction> {
-	fn execute_query<'a>(
-		&'a self,
-		txn: &mut StandardQueryTransaction<T>,
-		qry: Query<'a>,
+pub trait ExecuteQuery {
+	fn execute_query(
+		&self,
+		txn: &mut impl QueryTransaction,
+		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>>;
 }

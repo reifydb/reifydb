@@ -4,7 +4,7 @@
 use reifydb_catalog::{schema::SchemaToCreate, Catalog};
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	interface::Transaction, result::error::diagnostic::catalog::schema_already_exists,
+	result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
 	Value,
 };
@@ -12,7 +12,7 @@ use reifydb_rql::plan::physical::CreateSchemaPlan;
 
 use crate::{columnar::Columns, execute::Executor};
 
-impl<T: Transaction> Executor<T> {
+impl Executor {
 	pub(crate) fn create_schema(
 		&self,
 		txn: &mut impl CommandTransaction,

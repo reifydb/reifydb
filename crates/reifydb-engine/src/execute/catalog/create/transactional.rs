@@ -4,21 +4,18 @@
 use reifydb_catalog::{view::ViewToCreate, Catalog};
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-    interface::Transaction,
-    result::error::diagnostic::catalog::view_already_exists,
-    return_error,
-    Value
-    ,
+	result::error::diagnostic::catalog::view_already_exists,
+	return_error, Value,
 };
 use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
 
 use crate::{columnar::Columns, execute::Executor};
 
-impl<T: Transaction> Executor<T> {
+impl Executor {
 	pub(crate) fn create_transactional_view(
-        &self,
-        txn: &mut impl CommandTransaction,
-        plan: CreateTransactionalViewPlan,
+		&self,
+		txn: &mut impl CommandTransaction,
+		plan: CreateTransactionalViewPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
 		if let Some(view) = catalog.find_view_by_name(

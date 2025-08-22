@@ -29,6 +29,6 @@ pub use transaction::*;
 
 use crate::hook::Hooks;
 
-pub trait GetHooks {
-	fn get_hooks(&self) -> &Hooks;
+pub trait WithHooks {
+	fn hooks(&self) -> &Hooks;
 }

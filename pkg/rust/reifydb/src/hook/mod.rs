@@ -5,8 +5,8 @@ mod lifecycle;
 
 pub use lifecycle::*;
 use reifydb_core::{
-	hook::lifecycle::OnCreateHook,
-	interface::{GetHooks, Transaction},
+    hook::lifecycle::OnCreateHook,
+    interface::{Transaction, WithHooks as _},
 };
 use reifydb_engine::StandardEngine;
 
@@ -26,7 +26,7 @@ pub trait WithHooks<T: Transaction> {
 			engine: self.engine().clone(),
 		};
 
-		self.engine().get_hooks().register::<OnCreateHook, _>(callback);
+		self.engine().hooks().register::<OnCreateHook, _>(callback);
 		self
 	}
 }

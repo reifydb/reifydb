@@ -3,7 +3,7 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{GetHooks, Versioned},
+	interface::{WithHooks, Versioned},
 	row::EncodedRow,
 };
 
@@ -11,7 +11,7 @@ pub type BoxedVersionedIter<'a> =
 	Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
 pub trait VersionedTransaction:
-	GetHooks + Send + Sync + Clone + 'static
+WithHooks + Send + Sync + Clone + 'static
 {
 	type Query: VersionedQueryTransaction;
 	type Command: VersionedCommandTransaction;

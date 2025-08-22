@@ -7,7 +7,7 @@ use crate::interceptor::{
 };
 use crate::interface::interceptor::WithInterceptors;
 use crate::interface::{
-	CommandTransaction, GetHooks, PendingWrite, QueryTransaction,
+	CommandTransaction, WithHooks, PendingWrite, QueryTransaction,
 };
 use crate::{
 	diagnostic::transaction, hook::Hooks,
@@ -321,8 +321,8 @@ impl<T: Transaction> VersionedCommandTransaction
 	}
 }
 
-impl<T: Transaction> GetHooks for StandardCommandTransaction<T> {
-	fn get_hooks(&self) -> &Hooks {
+impl<T: Transaction> WithHooks for StandardCommandTransaction<T> {
+	fn hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }

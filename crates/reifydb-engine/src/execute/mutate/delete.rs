@@ -8,7 +8,7 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, TableRowKey,
-		TableRowKeyRange, Transaction,
+		TableRowKeyRange,
 	}, result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
@@ -26,7 +26,7 @@ use crate::{
 	execute::{compile, Batch, ExecutionContext, Executor},
 };
 
-impl<T: Transaction> Executor<T> {
+impl Executor {
 	pub(crate) fn delete(
 		&self,
 		txn: &mut impl CommandTransaction,

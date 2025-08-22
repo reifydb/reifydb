@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use query::{
-	compile::compile,
 	aggregate::AggregateNode,
+	compile::compile,
 	filter::FilterNode,
 	inline::InlineDataNode,
 	join_inner::InnerJoinNode,
@@ -17,25 +17,20 @@ use query::{
 	take::TakeNode,
 	view_scan::ViewScanNode,
 };
+use reifydb_core::interface::interceptor::WithInterceptors;
 use reifydb_core::interface::{
-	CommandTransaction, QueryTransaction, StandardCdcTransaction,
+	CommandTransaction, QueryTransaction, WithHooks,
 };
-use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
 	interface::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		TableDef, Transaction,
+		TableDef,
 	},
-	transaction::StandardQueryTransaction,
 	Frame,
 };
 use reifydb_rql::{
 	ast,
 	plan::{physical::PhysicalPlan, plan},
-};
-use reifydb_storage::memory::Memory;
-use reifydb_transaction::{
-	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
 
 use crate::{
@@ -45,6 +40,16 @@ use crate::{
 	},
 	function::{math, Functions},
 };
+
+pub trait FullCommandTransaction<CT: CommandTransaction>:
+	CommandTransaction + WithInterceptors<CT> + WithHooks
+{
+}
+
+impl<CT> FullCommandTransaction<CT> for CT where
+	CT: CommandTransaction + WithInterceptors<CT> + WithHooks
+{
+}
 
 mod catalog;
 mod mutate;
@@ -92,7 +97,9 @@ impl ExecutionPlan {
 			ExecutionPlan::LeftJoin(node) => node.next(ctx, rx),
 			ExecutionPlan::NaturalJoin(node) => node.next(ctx, rx),
 			ExecutionPlan::Map(node) => node.next(ctx, rx),
-			ExecutionPlan::MapWithoutInput(node) => node.next(ctx, rx),
+			ExecutionPlan::MapWithoutInput(node) => {
+				node.next(ctx, rx)
+			}
 			ExecutionPlan::Sort(node) => node.next(ctx, rx),
 			ExecutionPlan::TableScan(node) => node.next(ctx, rx),
 			ExecutionPlan::Take(node) => node.next(ctx, rx),
@@ -118,20 +125,11 @@ impl ExecutionPlan {
 	}
 }
 
-pub(crate) struct Executor<T: Transaction> {
+pub(crate) struct Executor {
 	pub functions: Functions,
-	pub _phantom: PhantomData<T>,
 }
 
-impl
-	Executor<
-		StandardTransaction<
-			Serializable<Memory, SingleVersionLock<Memory>>,
-			SingleVersionLock<Memory>,
-			StandardCdcTransaction<Memory>,
-		>,
-	>
-{
+impl Executor {
 	#[allow(dead_code)]
 	pub(crate) fn testing() -> Self {
 		Self {
@@ -159,16 +157,15 @@ impl
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
 				.build(),
-			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
-	fn execute_command<'a>(
-		&'a self,
-		txn: &mut impl CommandTransaction,
-		cmd: Command<'a>,
+impl ExecuteCommand for Executor {
+	fn execute_command<CT: FullCommandTransaction<CT>>(
+		&self,
+		txn: &mut CT,
+		cmd: Command<'_>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse(cmd.rql)?;
@@ -188,11 +185,11 @@ impl<T: Transaction> ExecuteCommand<T> for Executor<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<T> for Executor<T> {
-	fn execute_query<'a>(
-		&'a self,
-		txn: &mut StandardQueryTransaction<T>,
-		qry: Query<'a>,
+impl ExecuteQuery for Executor {
+	fn execute_query(
+		&self,
+		txn: &mut impl QueryTransaction,
+		qry: Query<'_>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse(qry.rql)?;
@@ -212,9 +209,9 @@ impl<T: Transaction> ExecuteQuery<T> for Executor<T> {
 	}
 }
 
-impl<T: Transaction> Execute<T> for Executor<T> {}
+impl Execute for Executor {}
 
-impl<T: Transaction> Executor<T> {
+impl Executor {
 	pub(crate) fn execute_query_plan(
 		&self,
 		rx: &mut impl QueryTransaction,
@@ -246,9 +243,9 @@ impl<T: Transaction> Executor<T> {
 		}
 	}
 
-	pub(crate) fn execute_command_plan(
+	pub(crate) fn execute_command_plan<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {

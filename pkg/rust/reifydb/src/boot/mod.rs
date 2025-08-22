@@ -4,7 +4,7 @@
 mod create;
 mod start;
 
-use reifydb_core::interface::{GetHooks, Transaction};
+use reifydb_core::interface::{WithHooks, Transaction};
 use reifydb_engine::StandardEngine;
 
 use crate::boot::{create::CreateCallback, start::StartCallback};
@@ -24,7 +24,7 @@ impl<T: Transaction> Bootloader<T> {
 impl<T: Transaction> Bootloader<T> {
 	pub fn load(&self) -> crate::Result<()> {
 		let engine = self.engine.clone();
-		let hooks = engine.get_hooks();
+		let hooks = engine.hooks();
 
 		hooks.register(StartCallback::new(engine.unversioned_owned()));
 		hooks.register(CreateCallback::new(engine.clone()));

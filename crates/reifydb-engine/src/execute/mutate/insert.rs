@@ -3,13 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{
-	sequence::TableColumnSequence, Catalog
-	,
-};
-use reifydb_core::interface::CommandTransaction;
+use reifydb_catalog::table::operation::TableOperations;
+use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
 use reifydb_core::{
-	interface::{ColumnPolicyKind, Params, Transaction}, result::error::diagnostic::catalog::table_not_found, return_error, row::EncodedRowLayout,
+	interface::{ColumnPolicyKind, Params}, result::error::diagnostic::catalog::table_not_found, return_error, row::EncodedRowLayout,
 	ColumnDescriptor,
 	IntoOwnedFragment,
 	Type,
@@ -17,6 +14,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::InsertPlan;
 
+use crate::execute::FullCommandTransaction;
 use crate::{
 	columnar::Columns,
 	execute::{
@@ -25,10 +23,10 @@ use crate::{
 	},
 };
 
-impl<T: Transaction> Executor<T> {
-	pub(crate) fn insert(
+impl Executor {
+	pub(crate) fn insert<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -284,11 +282,7 @@ impl<T: Transaction> Executor<T> {
 				//
 				// txn.insert_into_table(table, key, row)
 
-				// txn.insert_into_table(table.clone(), row)?;
-				dbg!("DOES NOT INSERT AT THE MOMENT");
-				println!("DOES NOT INSERT AT THE MOMENT");
-				println!("DOES NOT INSERT AT THE MOMENT");
-				println!("DOES NOT INSERT AT THE MOMENT");
+				txn.insert_into_table(table.clone(), row)?;
 
 				// /////
 				//

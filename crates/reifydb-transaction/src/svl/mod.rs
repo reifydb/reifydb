@@ -7,7 +7,7 @@ use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	interface::{
-		GetHooks, Unversioned, UnversionedStorage,
+		WithHooks, Unversioned, UnversionedStorage,
 		UnversionedTransaction,
 	},
 	row::EncodedRow,
@@ -48,11 +48,11 @@ where
 	}
 }
 
-impl<US> GetHooks for SingleVersionLock<US>
+impl<US> WithHooks for SingleVersionLock<US>
 where
 	US: UnversionedStorage,
 {
-	fn get_hooks(&self) -> &Hooks {
+	fn hooks(&self) -> &Hooks {
 		&self.inner.hooks
 	}
 }

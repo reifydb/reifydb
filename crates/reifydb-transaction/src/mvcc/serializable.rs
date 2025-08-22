@@ -5,7 +5,7 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Error, Version,
 	hook::Hooks,
 	interface::{
-		BoxedVersionedIter, GetHooks, UnversionedTransaction,
+		BoxedVersionedIter, WithHooks, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
 		VersionedQueryTransaction, VersionedStorage,
 		VersionedTransaction,
@@ -17,10 +17,10 @@ use crate::mvcc::transaction::serializable::{
 	CommandTransaction, QueryTransaction, Serializable,
 };
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> GetHooks
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WithHooks
 	for Serializable<VS, UT>
 {
-	fn get_hooks(&self) -> &Hooks {
+	fn hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }

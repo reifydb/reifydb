@@ -86,6 +86,6 @@ where
 	UT: UnversionedTransaction,
 {
 	fn trigger_database_creation(&self) -> crate::Result<()> {
-		self.unversioned.get_hooks().trigger(OnCreateHook {})
+		self.unversioned.hooks().trigger(OnCreateHook {})
 	}
 }

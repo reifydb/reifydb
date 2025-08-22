@@ -8,7 +8,6 @@ use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
-		Transaction,
 	}, result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
@@ -30,7 +29,7 @@ use crate::{
 	},
 };
 
-impl<T: Transaction> Executor<T> {
+impl Executor {
 	pub(crate) fn update(
 		&self,
 		txn: &mut impl CommandTransaction,

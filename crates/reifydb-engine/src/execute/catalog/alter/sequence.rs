@@ -8,7 +8,7 @@ use reifydb_core::{
 	diagnostic::{
 		catalog, catalog::table_not_found, query::column_not_found,
 		sequence::can_not_alter_not_auto_increment,
-	}, interface::{EvaluationContext, Params, Transaction},
+	}, interface::{EvaluationContext, Params},
 	return_error,
 	ColumnDescriptor,
 	Value
@@ -18,7 +18,7 @@ use reifydb_rql::plan::physical::AlterSequencePlan;
 
 use crate::{columnar::Columns, evaluate::evaluate, execute::Executor};
 
-impl<T: Transaction> Executor<T> {
+impl Executor {
 	pub(crate) fn alter_table_sequence(
 		&self,
 		txn: &mut impl CommandTransaction,
@@ -136,7 +136,8 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		// Create a table with an auto-increment column
-		Catalog::create_table(
+		let catalog = Catalog::new();
+		catalog.create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
@@ -195,7 +196,8 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		// Create a table with a non-auto-increment column
-		Catalog::create_table(
+		let catalog = Catalog::new();
+		catalog.create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
@@ -291,7 +293,8 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		// Create a table
-		Catalog::create_table(
+		let catalog = Catalog::new();
+		catalog.create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	interface::{GetHooks, Unversioned}, row::EncodedRow,
+	interface::{WithHooks, Unversioned}, row::EncodedRow,
 	EncodedKey,
 	EncodedKeyRange,
 };
@@ -11,7 +11,7 @@ pub type BoxedUnversionedIter<'a> =
 	Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
 pub trait UnversionedTransaction:
-	GetHooks + Send + Sync + Clone + 'static
+WithHooks + Send + Sync + Clone + 'static
 {
 	type Query<'a>: UnversionedQueryTransaction;
 	type Command<'a>: UnversionedCommandTransaction;

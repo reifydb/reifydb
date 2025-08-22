@@ -10,7 +10,7 @@ use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
 	hook::lifecycle::OnStartHook,
 	interface::{
-		subsystem::HealthStatus, GetHooks,
+		subsystem::HealthStatus, WithHooks,
 		Transaction, UnversionedTransaction,
 		VersionedTransaction,
 	},
@@ -166,7 +166,7 @@ impl<T: Transaction> Database<T> {
 		);
 
 		log_timed_trace!("Database initialization", {
-			self.engine.get_hooks().trigger(OnStartHook {})?
+			self.engine.hooks().trigger(OnStartHook {})?
 		});
 
 		// Start all subsystems

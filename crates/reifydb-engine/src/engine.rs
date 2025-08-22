@@ -1,29 +1,32 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use crate::{
 	execute::Executor,
 	function::{math, Functions},
 };
-use reifydb_core::interface::CommandTransaction;
+use reifydb_core::interface::{
+	QueryTransaction,
+};
 use reifydb_core::{
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, GetHooks, Identity, Params, Query, Transaction,
+		ExecuteQuery, WithHooks, Identity, Params, Query, Transaction,
 		VersionedTransaction,
 	},
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 	Frame,
 };
+use crate::execute::FullCommandTransaction;
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
-impl<T: Transaction> GetHooks for StandardEngine<T> {
-	fn get_hooks(&self) -> &Hooks {
+impl<T: Transaction> WithHooks for StandardEngine<T> {
+	fn hooks(&self) -> &Hooks {
 		&self.hooks
 	}
 }
@@ -58,14 +61,15 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
 		let mut txn = self.begin_command()?;
-		let result = self.execute_command(
-			&mut txn,
-			Command {
-				rql,
-				params,
-				identity,
-			},
-		)?;
+		let result = self
+			.execute_command::<StandardCommandTransaction<T>>(
+				&mut txn,
+				Command {
+					rql,
+					params,
+					identity,
+				},
+			)?;
 		txn.commit()?;
 		Ok(result)
 	}
@@ -89,23 +93,23 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<T> for StandardEngine<T> {
+impl<T: Transaction> ExecuteCommand for StandardEngine<T> {
 	#[inline]
-	fn execute_command<'a>(
-		&'a self,
-		txn: &mut impl CommandTransaction,
-		cmd: Command<'a>,
+	fn execute_command<CT: FullCommandTransaction<CT>>(
+		&self,
+		txn: &mut CT,
+		cmd: Command<'_>,
 	) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_command(txn, cmd)
+		self.executor.execute_command::<CT>(txn, cmd)
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<T> for StandardEngine<T> {
+impl<T: Transaction> ExecuteQuery for StandardEngine<T> {
 	#[inline]
-	fn execute_query<'a>(
-		&'a self,
-		txn: &mut StandardQueryTransaction<T>,
-		qry: Query<'a>,
+	fn execute_query(
+		&self,
+		txn: &mut impl QueryTransaction,
+		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)
 	}
@@ -130,7 +134,7 @@ pub struct EngineInner<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	hooks: Hooks,
-	executor: Executor<T>,
+	executor: Executor,
 	interceptors:
 		Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
 }
@@ -181,7 +185,6 @@ impl<T: Transaction> StandardEngine<T> {
 						math::scalar::Avg::new,
 					)
 					.build(),
-				_phantom: PhantomData,
 			},
 			interceptors,
 		}))

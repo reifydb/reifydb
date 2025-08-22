@@ -1,6 +1,6 @@
 use crate::{
 	interface::{
-		GetHooks, Identity, Params,
+		WithHooks, Identity, Params,
 		Transaction,
 	},
 	result::frame::Frame,
@@ -8,7 +8,7 @@ use crate::{
 use crate::interface::{CommandTransaction, QueryTransaction};
 
 pub trait Engine<T: Transaction>:
-	GetHooks + Send + Sync + Clone + 'static
+WithHooks + Send + Sync + Clone + 'static
 {
 	type Command: CommandTransaction;
 	type Query: QueryTransaction;

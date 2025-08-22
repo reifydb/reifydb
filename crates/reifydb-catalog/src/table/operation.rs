@@ -3,15 +3,15 @@
 
 use crate::sequence::TableRowSequence;
 use reifydb_core::interface::interceptor::WithInterceptors;
-use reifydb_core::interface::{CommandTransaction, GetHooks};
+use reifydb_core::interface::{CommandTransaction, WithHooks};
 use reifydb_core::{
-	RowNumber,
-	hook::table::{TablePostInsertHook, TablePreInsertHook},
-	interface::{
-		EncodableKey, TableDef, TableRowKey,
-		interceptor::TableInterceptor,
-	},
-	row::EncodedRow,
+    hook::table::{TablePostInsertHook, TablePreInsertHook},
+    interface::{
+        interceptor::TableInterceptor, EncodableKey, TableDef,
+        TableRowKey,
+    },
+    row::EncodedRow,
+    RowNumber,
 };
 
 pub trait TableOperations {
@@ -35,8 +35,7 @@ pub trait TableOperations {
 	) -> crate::Result<()>;
 }
 
-impl<T: CommandTransaction + GetHooks + WithInterceptors<T>> TableOperations
-	for T
+impl<CT: CommandTransaction + WithHooks + WithInterceptors<CT>> TableOperations for CT
 {
 	fn insert_into_table(
 		&mut self,
@@ -49,7 +48,7 @@ impl<T: CommandTransaction + GetHooks + WithInterceptors<T>> TableOperations
 		TableInterceptor::pre_insert(self, &table, &row)?;
 
 		// Still trigger hooks for backward compatibility
-		self.get_hooks()
+		self.hooks()
 			.trigger(TablePreInsertHook {
 				table: table.clone(),
 				row: row.clone(),
@@ -68,7 +67,7 @@ impl<T: CommandTransaction + GetHooks + WithInterceptors<T>> TableOperations
 		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
 		// Still trigger hooks for backward compatibility
-		self.get_hooks()
+		self.hooks()
 			.trigger(TablePostInsertHook {
 				table: table.clone(),
 				id: row_number,
