@@ -1,18 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::sequence::generator::u64::GeneratorU64;
 use once_cell::sync::Lazy;
 pub use reifydb_core::interface::SystemSequenceId;
+use reifydb_core::interface::LiteCommandTransaction;
 use reifydb_core::{
-	EncodedKey,
 	interface::{
-		ColumnPolicyId, CommandTransaction, EncodableKey, SchemaId,
-		SystemSequenceKey, TableColumnId, TableId, Transaction,
-		ViewColumnId, ViewId,
+		ColumnPolicyId, EncodableKey, SchemaId, SystemSequenceKey,
+		TableColumnId, TableId, ViewColumnId, ViewId,
 	},
+	EncodedKey,
 };
-
-use crate::sequence::generator::u64::GeneratorU64;
 
 pub(crate) const SCHEMA_SEQ_ID: SystemSequenceId = SystemSequenceId(1);
 pub(crate) const TABLE_SEQ_ID: SystemSequenceId = SystemSequenceId(2);
@@ -82,39 +81,39 @@ pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
-	pub(crate) fn next_schema_id<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next_schema_id(
+		txn: &mut impl LiteCommandTransaction,
 	) -> crate::Result<SchemaId> {
 		GeneratorU64::next(txn, &SCHEMA_KEY, Some(1025)).map(SchemaId)
 	}
 
-	pub(crate) fn next_table_id<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next_table_id(
+		txn: &mut impl LiteCommandTransaction,
 	) -> crate::Result<TableId> {
 		GeneratorU64::next(txn, &TABLE_KEY, Some(1025)).map(TableId)
 	}
 
-	pub(crate) fn next_column_id<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next_column_id(
+		txn: &mut impl LiteCommandTransaction,
 	) -> crate::Result<TableColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, None).map(TableColumnId)
 	}
 
-	pub(crate) fn next_view_column_id<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next_view_column_id(
+		txn: &mut impl LiteCommandTransaction,
 	) -> crate::Result<ViewColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ViewColumnId)
 	}
 
-	pub(crate) fn next_column_policy_id<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next_column_policy_id(
+		txn: &mut impl LiteCommandTransaction,
 	) -> crate::Result<ColumnPolicyId> {
 		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, None)
 			.map(ColumnPolicyId)
 	}
 
-	pub(crate) fn next_view_id<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next_view_id(
+		txn: &mut impl LiteCommandTransaction,
 	) -> crate::Result<ViewId> {
 		GeneratorU64::next(txn, &VIEW_KEY, Some(1025)).map(ViewId)
 	}

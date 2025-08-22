@@ -34,6 +34,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 		txn: &mut CommandTransaction<T>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
+		let catalog = Catalog::new();
 		eprintln!(
 			"[FlowConsumer] Starting consume with {} events",
 			events.len()
@@ -81,7 +82,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 			};
 
 			// Get table to check its type
-			let table = match Catalog::get_table(txn, table_id) {
+			let table = match catalog.get_table(txn, table_id) {
 				Ok(t) => t,
 				Err(_) => {
 					// Not a table, might be a view - skip

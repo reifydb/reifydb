@@ -18,8 +18,9 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut CommandTransaction<T>,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
+		let catalog = Catalog::new();
 		if let Some(schema) =
-			Catalog::find_schema_by_name(txn, &plan.schema)?
+			catalog.find_schema_by_name(txn, &plan.schema)?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -39,7 +40,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		Catalog::create_schema(
+		catalog.create_schema(
 			txn,
 			SchemaToCreate {
 				schema_fragment: Some(plan.schema.clone()),

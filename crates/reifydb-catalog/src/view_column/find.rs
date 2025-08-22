@@ -12,6 +12,7 @@ use crate::{
 
 impl Catalog {
 	pub fn find_view_column_by_name(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		view: ViewId,
 		name: impl AsRef<str>,
@@ -40,6 +41,6 @@ impl Catalog {
 			return Ok(None);
 		};
 
-		Ok(Some(Catalog::get_view_column(rx, id)?))
+		Ok(Some(self.get_view_column(rx, id)?))
 	}
 }

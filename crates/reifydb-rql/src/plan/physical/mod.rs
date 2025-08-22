@@ -5,13 +5,13 @@ mod alter;
 mod create;
 
 use reifydb_catalog::{
-	Catalog, schema::SchemaDef, table::TableColumnToCreate,
+	Catalog, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	JoinType, OwnedFragment, SortKey,
 	interface::{
-		TableDef, VersionedQueryTransaction, ViewDef,
+		SchemaDef, TableDef, VersionedQueryTransaction, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::schema_not_found,
@@ -41,6 +41,7 @@ impl Compiler {
 			return Ok(None);
 		}
 
+		let catalog = Catalog::new();
 		let mut stack: Vec<PhysicalPlan> = Vec::new();
 		for plan in logical {
 			match plan {
@@ -214,7 +215,7 @@ impl Compiler {
 
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) =
-						Catalog::find_schema_by_name(
+						catalog.find_schema_by_name(
 							rx,
 							&scan.schema.fragment(),
 						)?
@@ -233,7 +234,7 @@ impl Compiler {
 					};
 
 					if let Some(table) =
-						Catalog::find_table_by_name(
+						catalog.find_table_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment(),
@@ -245,7 +246,7 @@ impl Compiler {
 							},
 						));
 					} else if let Some(view) =
-						Catalog::find_view_by_name(
+						catalog.find_view_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment(),

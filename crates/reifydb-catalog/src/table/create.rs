@@ -1,24 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	OwnedFragment, Type,
-	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
-		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
-		Transaction, VersionedCommandTransaction,
-	},
-	result::error::diagnostic::catalog::{
-		schema_not_found, table_already_exists,
-	},
-	return_error,
-};
-
 use crate::{
-	Catalog,
-	sequence::SystemSequence,
-	table::layout::{table, table_schema},
-	table_column::ColumnIndex,
+    sequence::SystemSequence,
+    table::layout::{table, table_schema},
+    table_column::ColumnIndex,
+    Catalog,
+};
+use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::{
+    interface::{
+        ColumnPolicyKind, EncodableKey, Key,
+        SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
+        Transaction, VersionedCommandTransaction,
+    }, result::error::diagnostic::catalog::{
+        schema_not_found, table_already_exists,
+    },
+    return_error,
+    OwnedFragment,
+    Type,
 };
 
 #[derive(Debug, Clone)]
@@ -39,12 +39,13 @@ pub struct TableToCreate {
 }
 
 impl Catalog {
-	pub fn create_table<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub fn create_table(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
-			Catalog::find_schema_by_name(txn, &to_create.schema)?
+			self.find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
 				to_create.fragment,
@@ -52,7 +53,7 @@ impl Catalog {
 			));
 		};
 
-		if let Some(table) = Catalog::find_table_by_name(
+		if let Some(table) = self.find_table_by_name(
 			txn,
 			schema.id,
 			&to_create.table,
@@ -65,21 +66,22 @@ impl Catalog {
 		}
 
 		let table_id = SystemSequence::next_table_id(txn)?;
-		Self::store_table(txn, table_id, schema.id, &to_create)?;
-		Self::link_table_to_schema(
+		self.store_table(txn, table_id, schema.id, &to_create)?;
+		self.link_table_to_schema(
 			txn,
 			schema.id,
 			table_id,
 			&to_create.table,
 		)?;
 
-		Catalog::insert_columns(txn, table_id, to_create)?;
+		self.insert_columns(txn, table_id, to_create)?;
 
-		Ok(Catalog::get_table(txn, table_id)?)
+		Ok(self.get_table(txn, table_id)?)
 	}
 
-	fn store_table<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	fn store_table(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		table: TableId,
 		schema: SchemaId,
 		to_create: &TableToCreate,
@@ -100,8 +102,9 @@ impl Catalog {
 		Ok(())
 	}
 
-	fn link_table_to_schema<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	fn link_table_to_schema(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		schema: SchemaId,
 		table: TableId,
 		name: &str,
@@ -124,15 +127,16 @@ impl Catalog {
 		Ok(())
 	}
 
-	fn insert_columns<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	fn insert_columns(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
-			Catalog::create_table_column(
+			self.create_table_column(
 				txn,
 				table,
 				crate::table_column::TableColumnToCreate {
@@ -160,18 +164,18 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
-	};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+    use reifydb_core::interface::{
+        SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
+    };
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{
-		Catalog,
-		table::{TableToCreate, layout::table_schema},
-		test_utils::ensure_test_schema,
-	};
+    use crate::{
+        table::{layout::table_schema, TableToCreate},
+        test_utils::ensure_test_schema,
+        Catalog,
+    };
 
-	#[test]
+    #[test]
 	fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 
@@ -185,7 +189,9 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = Catalog::create_table(&mut txn, to_create.clone())
+		let catalog = Catalog::new();
+		let result = catalog
+			.create_table(&mut txn, to_create.clone())
 			.unwrap();
 		assert_eq!(result.id, TableId(1025));
 		assert_eq!(result.schema, SchemaId(1025));
@@ -194,7 +200,7 @@ mod tests {
 		// Creating the same table again with `if_not_exists = false`
 		// should return error
 		let err =
-			Catalog::create_table(&mut txn, to_create).unwrap_err();
+			catalog.create_table(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
@@ -210,7 +216,8 @@ mod tests {
 			fragment: None,
 		};
 
-		Catalog::create_table(&mut txn, to_create).unwrap();
+		let catalog = Catalog::new();
+		catalog.create_table(&mut txn, to_create).unwrap();
 
 		let to_create = TableToCreate {
 			schema: "test_schema".to_string(),
@@ -219,7 +226,7 @@ mod tests {
 			fragment: None,
 		};
 
-		Catalog::create_table(&mut txn, to_create).unwrap();
+		catalog.create_table(&mut txn, to_create).unwrap();
 
 		let links = txn
 			.range(SchemaTableKey::full_scan(schema.id))
@@ -261,8 +268,9 @@ mod tests {
 			fragment: None,
 		};
 
+		let catalog = Catalog::new();
 		let err =
-			Catalog::create_table(&mut txn, to_create).unwrap_err();
+			catalog.create_table(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_002");
 	}
 }

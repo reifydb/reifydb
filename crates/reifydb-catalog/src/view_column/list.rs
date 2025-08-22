@@ -12,6 +12,7 @@ use crate::{
 
 impl Catalog {
 	pub fn list_view_columns(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		view: ViewId,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -31,7 +32,7 @@ impl Catalog {
 			.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(Catalog::get_view_column(rx, id)?);
+			result.push(self.get_view_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);

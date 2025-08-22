@@ -40,3 +40,30 @@ where
 	type Unversioned = U;
 	type Cdc = C;
 }
+
+pub trait LiteCommandTransaction: VersionedCommandTransaction {
+	type UnversionedCommand<'a>: UnversionedCommandTransaction
+	where
+		Self: 'a;
+
+	fn begin_unversioned_command(
+		&self,
+	) -> crate::Result<Self::UnversionedCommand<'_>>;
+
+	fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
+	where
+		F: FnOnce(
+			&mut Self::UnversionedCommand<'_>,
+		) -> crate::Result<R>,
+	{
+		let mut tx = self.begin_unversioned_command()?;
+		let result = f(&mut tx)?;
+		tx.commit()?;
+		Ok(result)
+	}
+}
+
+pub trait LiteQueryTransaction:
+	VersionedQueryTransaction + UnversionedQueryTransaction
+{
+}

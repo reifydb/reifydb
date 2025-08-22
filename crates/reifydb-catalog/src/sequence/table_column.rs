@@ -1,33 +1,35 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Type, Value,
-	interface::{
-		CommandTransaction, EncodableKey, TableColumnId,
-		TableColumnSequenceKey, TableId, Transaction,
-	},
-};
-
 use crate::{
-	Catalog,
 	sequence::generator::{
-		i8::GeneratorI8, i16::GeneratorI16, i32::GeneratorI32,
-		i64::GeneratorI64, i128::GeneratorI128, u8::GeneratorU8,
+		i128::GeneratorI128, i16::GeneratorI16, i32::GeneratorI32,
+		i64::GeneratorI64, i8::GeneratorI8, u128::GeneratorU128,
 		u16::GeneratorU16, u32::GeneratorU32, u64::GeneratorU64,
-		u128::GeneratorU128,
+		u8::GeneratorU8,
 	},
+	Catalog,
+};
+use reifydb_core::interface::{
+	LiteCommandTransaction, VersionedCommandTransaction,
+};
+use reifydb_core::{
+	interface::{
+		EncodableKey, TableColumnId, TableColumnSequenceKey, TableId,
+	}, Type,
+	Value,
 };
 
 pub struct TableColumnSequence {}
 
 impl TableColumnSequence {
-	pub fn next_value<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub fn next_value(
+		txn: &mut impl LiteCommandTransaction,
 		table: TableId,
 		column: TableColumnId,
 	) -> crate::Result<Value> {
-		let column = Catalog::get_table_column(txn, column)?;
+		let catalog = Catalog::new();
+		let column = catalog.get_table_column(txn, column)?;
 		let key = TableColumnSequenceKey {
 			table,
 			column: column.id,
@@ -69,14 +71,15 @@ impl TableColumnSequence {
 		})
 	}
 
-	pub fn set_value<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub fn set_value(
+		txn: &mut impl LiteCommandTransaction,
 		table: TableId,
 		column: TableColumnId,
 		value: Value,
 	) -> crate::Result<()> {
-		let table = Catalog::get_table(txn, table)?;
-		let column = Catalog::get_table_column(txn, column)?;
+		let catalog = Catalog::new();
+		let table = catalog.get_table(txn, table)?;
+		let column = catalog.get_table_column(txn, column)?;
 
 		if !column.auto_increment {
 			// return_error!(can_not_alter_not_auto_increment(plan.

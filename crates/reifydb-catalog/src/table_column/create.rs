@@ -1,26 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	OwnedFragment, Type,
-	diagnostic::catalog::{
-		auto_increment_invalid_type, table_column_already_exists,
-	},
-	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
-		TableColumnKey, TableColumnsKey, TableId, Transaction,
-		VersionedCommandTransaction,
-	},
-	return_error,
-};
-
 use crate::{
-	Catalog,
 	sequence::SystemSequence,
 	table_column::{
-		ColumnDef, ColumnIndex,
-		layout::{column, table_column},
+		layout::{column, table_column}, ColumnDef,
+		ColumnIndex,
 	},
+	Catalog,
+};
+use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::{
+	diagnostic::catalog::{
+		auto_increment_invalid_type, table_column_already_exists,
+	}, interface::{
+		ColumnPolicyKind, EncodableKey, Key, TableColumnKey,
+		TableColumnsKey, TableId, VersionedCommandTransaction,
+	},
+	return_error,
+	OwnedFragment,
+	Type,
 };
 
 pub struct TableColumnToCreate<'a> {
@@ -37,13 +36,14 @@ pub struct TableColumnToCreate<'a> {
 }
 
 impl Catalog {
-	pub(crate) fn create_table_column<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn create_table_column(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		table: TableId,
 		column_to_create: TableColumnToCreate,
 	) -> crate::Result<ColumnDef> {
 		// FIXME policies
-		if let Some(column) = Catalog::find_table_column_by_name(
+		if let Some(column) = self.find_table_column_by_name(
 			txn,
 			table,
 			&column_to_create.column,
@@ -131,7 +131,7 @@ impl Catalog {
 		)?;
 
 		for policy in column_to_create.policies {
-			Catalog::create_table_column_policy(txn, id, policy)?;
+			self.create_table_column_policy(txn, id, policy)?;
 		}
 
 		Ok(ColumnDef {
@@ -139,7 +139,7 @@ impl Catalog {
 			name: column_to_create.column,
 			ty: column_to_create.value,
 			index: column_to_create.index,
-			policies: Catalog::list_table_column_policies(txn, id)?,
+			policies: self.list_table_column_policies(txn, id)?,
 			auto_increment: column_to_create.auto_increment,
 		})
 	}
@@ -148,15 +148,15 @@ impl Catalog {
 #[cfg(test)]
 mod test {
 	use reifydb_core::{
-		Type,
 		interface::{TableColumnId, TableId},
+		Type,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
-		Catalog,
 		table_column::{ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
+		Catalog,
 	};
 
 	#[test]
@@ -164,7 +164,8 @@ mod test {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -182,7 +183,8 @@ mod test {
 		)
 		.unwrap();
 
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -200,18 +202,18 @@ mod test {
 		)
 		.unwrap();
 
-		let column_1 =
-			Catalog::get_table_column(&mut txn, TableColumnId(1))
-				.unwrap();
+		let column_1 = catalog
+			.get_table_column(&mut txn, TableColumnId(1))
+			.unwrap();
 
 		assert_eq!(column_1.id, 1);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.ty, Type::Bool);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 =
-			Catalog::get_table_column(&mut txn, TableColumnId(2))
-				.unwrap();
+		let column_2 = catalog
+			.get_table_column(&mut txn, TableColumnId(2))
+			.unwrap();
 
 		assert_eq!(column_2.id, 2);
 		assert_eq!(column_2.name, "col_2");
@@ -224,7 +226,8 @@ mod test {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -242,9 +245,9 @@ mod test {
 		)
 		.unwrap();
 
-		let column =
-			Catalog::get_table_column(&mut txn, TableColumnId(1))
-				.unwrap();
+		let column = catalog
+			.get_table_column(&mut txn, TableColumnId(1))
+			.unwrap();
 
 		assert_eq!(column.id, 1);
 		assert_eq!(column.name, "id");
@@ -258,23 +261,25 @@ mod test {
 		ensure_test_table(&mut txn);
 
 		// Try to create a text column with auto_increment
-		let err = Catalog::create_table_column(
-			&mut txn,
-			TableId(1),
-			TableColumnToCreate {
-				fragment: None,
-				schema_name: "test_schema",
-				table: TableId(1),
-				table_name: "test_table",
-				column: "name".to_string(),
-				value: Type::Utf8,
-				if_not_exists: false,
-				policies: vec![],
-				index: ColumnIndex(0),
-				auto_increment: true,
-			},
-		)
-		.unwrap_err();
+		let catalog = Catalog::new();
+		let err = catalog
+			.create_table_column(
+				&mut txn,
+				TableId(1),
+				TableColumnToCreate {
+					fragment: None,
+					schema_name: "test_schema",
+					table: TableId(1),
+					table_name: "test_table",
+					column: "name".to_string(),
+					value: Type::Utf8,
+					if_not_exists: false,
+					policies: vec![],
+					index: ColumnIndex(0),
+					auto_increment: true,
+				},
+			)
+			.unwrap_err();
 
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_006");
@@ -283,44 +288,46 @@ mod test {
 			.contains("auto increment is not supported for type"));
 
 		// Try with bool type
-		let err = Catalog::create_table_column(
-			&mut txn,
-			TableId(1),
-			TableColumnToCreate {
-				fragment: None,
-				schema_name: "test_schema",
-				table: TableId(1),
-				table_name: "test_table",
-				column: "is_active".to_string(),
-				value: Type::Bool,
-				if_not_exists: false,
-				policies: vec![],
-				index: ColumnIndex(0),
-				auto_increment: true,
-			},
-		)
-		.unwrap_err();
+		let err = catalog
+			.create_table_column(
+				&mut txn,
+				TableId(1),
+				TableColumnToCreate {
+					fragment: None,
+					schema_name: "test_schema",
+					table: TableId(1),
+					table_name: "test_table",
+					column: "is_active".to_string(),
+					value: Type::Bool,
+					if_not_exists: false,
+					policies: vec![],
+					index: ColumnIndex(0),
+					auto_increment: true,
+				},
+			)
+			.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "CA_006");
 
 		// Try with float type
-		let err = Catalog::create_table_column(
-			&mut txn,
-			TableId(1),
-			TableColumnToCreate {
-				fragment: None,
-				schema_name: "test_schema",
-				table: TableId(1),
-				table_name: "test_table",
-				column: "price".to_string(),
-				value: Type::Float8,
-				if_not_exists: false,
-				policies: vec![],
-				index: ColumnIndex(0),
-				auto_increment: true,
-			},
-		)
-		.unwrap_err();
+		let err = catalog
+			.create_table_column(
+				&mut txn,
+				TableId(1),
+				TableColumnToCreate {
+					fragment: None,
+					schema_name: "test_schema",
+					table: TableId(1),
+					table_name: "test_table",
+					column: "price".to_string(),
+					value: Type::Float8,
+					if_not_exists: false,
+					policies: vec![],
+					index: ColumnIndex(0),
+					auto_increment: true,
+				},
+			)
+			.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
@@ -330,7 +337,8 @@ mod test {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -349,23 +357,24 @@ mod test {
 		.unwrap();
 
 		// Tries to create a column with the same name again
-		let err = Catalog::create_table_column(
-			&mut txn,
-			TableId(1),
-			TableColumnToCreate {
-				fragment: None,
-				schema_name: "test_schema",
-				table: TableId(1),
-				table_name: "test_table",
-				column: "col_1".to_string(),
-				value: Type::Bool,
-				if_not_exists: false,
-				policies: vec![],
-				index: ColumnIndex(1),
-				auto_increment: false,
-			},
-		)
-		.unwrap_err();
+		let err = catalog
+			.create_table_column(
+				&mut txn,
+				TableId(1),
+				TableColumnToCreate {
+					fragment: None,
+					schema_name: "test_schema",
+					table: TableId(1),
+					table_name: "test_table",
+					column: "col_1".to_string(),
+					value: Type::Bool,
+					if_not_exists: false,
+					policies: vec![],
+					index: ColumnIndex(1),
+					auto_increment: false,
+				},
+			)
+			.unwrap_err();
 
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_005");

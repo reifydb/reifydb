@@ -33,12 +33,13 @@ impl<T: Transaction> Executor<T> {
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
+		let catalog = Catalog::new();
 		let schema_name =
 			plan.schema.as_ref().map(|s| s.fragment()).unwrap(); // FIXME
 
-		let schema = Catalog::find_schema_by_name(txn, schema_name)?
+		let schema = catalog.find_schema_by_name(txn, schema_name)?
 			.unwrap();
-		let Some(table) = Catalog::find_table_by_name(
+		let Some(table) = catalog.find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table.fragment(),

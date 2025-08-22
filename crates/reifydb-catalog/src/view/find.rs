@@ -10,6 +10,7 @@ use crate::{Catalog, view::layout::view_schema};
 
 impl Catalog {
 	pub fn find_view_by_name(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
@@ -32,7 +33,7 @@ impl Catalog {
 			return Ok(None);
 		};
 
-		Ok(Some(Catalog::get_view(rx, view)?))
+		Ok(Some(self.get_view(rx, view)?))
 	}
 }
 
@@ -58,7 +59,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let result = Catalog::find_view_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_view_by_name(
 			&mut txn,
 			SchemaId(1027),
 			"view_two",
@@ -73,7 +75,8 @@ mod tests {
 	#[test]
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
-		let result = Catalog::find_view_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_view_by_name(
 			&mut txn,
 			SchemaId(1025),
 			"some_view",
@@ -94,7 +97,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let result = Catalog::find_view_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_view_by_name(
 			&mut txn,
 			SchemaId(1025),
 			"view_four_two",
@@ -115,7 +119,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let result = Catalog::find_view_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_view_by_name(
 			&mut txn,
 			SchemaId(2),
 			"view_two",

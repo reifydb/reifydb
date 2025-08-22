@@ -18,7 +18,8 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut CommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(view) = Catalog::find_view_by_name(
+		let catalog = Catalog::new();
+		if let Some(view) = catalog.find_view_by_name(
 			txn,
 			plan.schema.id,
 			&plan.view,
@@ -50,7 +51,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		let result = Catalog::create_deferred_view(
+		let result = catalog.create_deferred_view(
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone()),
@@ -73,12 +74,11 @@ impl<T: Transaction> Executor<T> {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::{
-		schema::SchemaDef,
 		test_utils::{create_schema, ensure_test_schema},
 	};
 	use reifydb_core::{
 		OwnedFragment, Value,
-		interface::{Params, SchemaId},
+		interface::{Params, SchemaId, SchemaDef},
 	};
 	use reifydb_rql::plan::physical::{
 		CreateDeferredViewPlan, PhysicalPlan,

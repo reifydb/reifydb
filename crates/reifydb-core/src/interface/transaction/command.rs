@@ -18,6 +18,7 @@ use crate::{
 	return_error,
 	row::EncodedRow,
 };
+use crate::interface::{GetHooks, LiteCommandTransaction};
 
 /// An active command transaction that holds a versioned command transaction
 /// and provides query/command access to unversioned storage.
@@ -30,10 +31,12 @@ pub struct CommandTransaction<T: Transaction> {
 	state: TransactionState,
 	pending: Vec<PendingWrite>,
 	hooks: Hooks,
+
 	pub(crate) interceptors: Interceptors<T>,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
+
 
 #[derive(Clone, Copy, PartialEq)]
 enum TransactionState {
@@ -76,8 +79,7 @@ impl<T: Transaction> CommandTransaction<T> {
 				return_error!(transaction::transaction_already_committed())
 			}
 			TransactionState::RolledBack => {
-				return_error!(transaction::transaction_already_rolled_back())
-			}
+				return_error!(transaction::transaction_already_rolled_back()) }
 		}
 	}
 
@@ -302,6 +304,21 @@ impl<T: Transaction> VersionedCommandTransaction for CommandTransaction<T> {
 		self.check_active()?;
 		self.state = TransactionState::RolledBack;
 		self.versioned.take().unwrap().rollback()
+	}
+}
+
+impl<T: Transaction> GetHooks for CommandTransaction<T> {
+	fn get_hooks(&self) -> &Hooks {
+		&self.hooks
+	}
+}
+
+impl<T: Transaction> LiteCommandTransaction for CommandTransaction<T> {
+	type UnversionedCommand<'a> = <T::Unversioned as UnversionedTransaction>::Command<'a>;
+	
+	fn begin_unversioned_command(&self) -> crate::Result<Self::UnversionedCommand<'_>> {
+		self.check_active()?;
+		self.unversioned.begin_command()
 	}
 }
 

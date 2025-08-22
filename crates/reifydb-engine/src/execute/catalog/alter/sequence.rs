@@ -24,13 +24,14 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut CommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
+		let catalog = Catalog::new();
 		let schema_name = match &plan.schema {
 			Some(schema) => schema.as_ref(),
 			None => unimplemented!(),
 		};
 
 		let Some(schema) =
-			Catalog::find_schema_by_name(txn, schema_name)?
+			catalog.find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(schema_not_found(
 				plan.schema.clone(),
@@ -38,7 +39,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		};
 
-		let Some(table) = Catalog::find_table_by_name(
+		let Some(table) = catalog.find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table,
@@ -51,7 +52,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		};
 
-		let Some(column) = Catalog::find_table_column_by_name(
+		let Some(column) = catalog.find_table_column_by_name(
 			txn,
 			table.id,
 			plan.column.as_ref(),

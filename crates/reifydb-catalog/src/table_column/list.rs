@@ -12,6 +12,7 @@ use crate::{
 
 impl Catalog {
 	pub fn list_table_columns(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -29,7 +30,7 @@ impl Catalog {
 				.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(Catalog::get_table_column(rx, id)?);
+			result.push(self.get_table_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -55,7 +56,8 @@ mod tests {
 		ensure_test_table(&mut txn);
 
 		// Create columns out of order
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -73,7 +75,7 @@ mod tests {
 		)
 		.unwrap();
 
-		Catalog::create_table_column(
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -91,7 +93,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns = Catalog::list_table_columns(&mut txn, TableId(1))
+		let columns = catalog.list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert_eq!(columns.len(), 2);
 
@@ -109,7 +111,8 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
-		let columns = Catalog::list_table_columns(&mut txn, TableId(1))
+		let catalog = Catalog::new();
+		let columns = catalog.list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert!(columns.is_empty());
 	}
@@ -117,7 +120,8 @@ mod tests {
 	#[test]
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
-		let columns = Catalog::list_table_columns(&mut txn, TableId(1))
+		let catalog = Catalog::new();
+		let columns = catalog.list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert!(columns.is_empty());
 	}

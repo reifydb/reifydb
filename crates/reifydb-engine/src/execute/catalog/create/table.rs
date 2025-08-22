@@ -18,7 +18,8 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut CommandTransaction<T>,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
-		if let Some(table) = Catalog::find_table_by_name(
+		let catalog = Catalog::new();
+		if let Some(table) = catalog.find_table_by_name(
 			txn,
 			plan.schema.id,
 			&plan.table,
@@ -50,7 +51,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		Catalog::create_table(
+		catalog.create_table(
 			txn,
 			TableToCreate {
 				fragment: Some(plan.table.clone()),
@@ -71,12 +72,11 @@ impl<T: Transaction> Executor<T> {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::{
-		schema::SchemaDef,
 		test_utils::{create_schema, ensure_test_schema},
 	};
 	use reifydb_core::{
 		OwnedFragment, Value,
-		interface::{Params, SchemaId},
+		interface::{Params, SchemaId, SchemaDef},
 	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_transaction::test_utils::create_test_command_transaction;

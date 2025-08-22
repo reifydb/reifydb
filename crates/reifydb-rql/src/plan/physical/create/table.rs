@@ -18,7 +18,8 @@ impl Compiler {
 		rx: &mut impl VersionedQueryTransaction,
 		create: CreateTableNode,
 	) -> crate::Result<PhysicalPlan> {
-		let Some(schema) = Catalog::find_schema_by_name(
+		let catalog = Catalog::new();
+		let Some(schema) = catalog.find_schema_by_name(
 			rx,
 			&create.schema.fragment(),
 		)?

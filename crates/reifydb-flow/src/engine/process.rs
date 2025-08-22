@@ -131,7 +131,8 @@ impl<E: Evaluator> FlowEngine<E> {
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
-		let view = Catalog::get_view(txn, view_id)?;
+		let catalog = Catalog::new();
+		let view = catalog.get_view(txn, view_id)?;
 		let layout = view.get_layout();
 
 		for diff in &change.diffs {

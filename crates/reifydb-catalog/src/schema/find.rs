@@ -2,17 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{SchemaKey, VersionedQueryTransaction},
+	interface::{SchemaKey, SchemaDef, VersionedQueryTransaction},
 	row::EncodedRow,
 };
 
 use crate::{
 	Catalog,
-	schema::{SchemaDef, convert_schema, layout::schema},
+	schema::{convert_schema, layout::schema},
 };
 
 impl Catalog {
 	pub fn find_schema_by_name(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<SchemaDef>> {
@@ -39,10 +40,11 @@ mod tests {
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
+		let catalog = Catalog::new();
 		create_schema(&mut txn, "test_schema");
 
 		let schema =
-			Catalog::find_schema_by_name(&mut txn, "test_schema")
+			catalog.find_schema_by_name(&mut txn, "test_schema")
 				.unwrap()
 				.unwrap();
 
@@ -53,8 +55,9 @@ mod tests {
 	#[test]
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
+		let catalog = Catalog::new();
 		let result =
-			Catalog::find_schema_by_name(&mut txn, "test_schema")
+			catalog.find_schema_by_name(&mut txn, "test_schema")
 				.unwrap();
 
 		assert_eq!(result, None);
@@ -63,10 +66,11 @@ mod tests {
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
+		let catalog = Catalog::new();
 		create_schema(&mut txn, "another_schema");
 
 		let result =
-			Catalog::find_schema_by_name(&mut txn, "test_schema")
+			catalog.find_schema_by_name(&mut txn, "test_schema")
 				.unwrap();
 		assert_eq!(result, None);
 	}

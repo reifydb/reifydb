@@ -35,6 +35,7 @@ impl<T: Transaction> Executor<T> {
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
+		let catalog = Catalog::new();
 		let Some(schema_ref) = plan.schema.as_ref() else {
 			return_error!(schema_not_found(
 				None::<reifydb_core::OwnedFragment>,
@@ -43,9 +44,9 @@ impl<T: Transaction> Executor<T> {
 		};
 		let schema_name = schema_ref.fragment();
 
-		let schema = Catalog::find_schema_by_name(txn, schema_name)?
+		let schema = catalog.find_schema_by_name(txn, schema_name)?
 			.unwrap();
-		let Some(table) = Catalog::find_table_by_name(
+		let Some(table) = catalog.find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table.fragment(),

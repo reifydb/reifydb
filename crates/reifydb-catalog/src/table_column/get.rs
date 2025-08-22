@@ -14,6 +14,7 @@ use crate::{
 
 impl Catalog {
 	pub fn get_table_column(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
@@ -40,7 +41,7 @@ impl Catalog {
 		let auto_increment =
 			column::LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
 
-		let policies = Catalog::list_table_column_policies(rx, id)?;
+		let policies = self.list_table_column_policies(rx, id)?;
 
 		Ok(ColumnDef {
 			id,
@@ -70,7 +71,8 @@ mod tests {
 		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let result = Catalog::get_table_column(&mut txn, ColumnId(2))
+		let catalog = Catalog::new();
+		let result = catalog.get_table_column(&mut txn, ColumnId(2))
 			.unwrap();
 
 		assert_eq!(result.id, 2);
@@ -86,7 +88,8 @@ mod tests {
 		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let err = Catalog::get_table_column(&mut txn, ColumnId(4))
+		let catalog = Catalog::new();
+		let err = catalog.get_table_column(&mut txn, ColumnId(4))
 			.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));

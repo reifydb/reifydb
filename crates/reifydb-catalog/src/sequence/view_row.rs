@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	CommandTransaction, EncodableKey, Transaction, ViewId,
-	ViewRowSequenceKey,
+	EncodableKey, LiteCommandTransaction
+	, ViewId, ViewRowSequenceKey,
 };
 
 use crate::{row::RowNumber, sequence::generator::u64::GeneratorU64};
@@ -11,8 +11,8 @@ use crate::{row::RowNumber, sequence::generator::u64::GeneratorU64};
 pub struct ViewRowSequence {}
 
 impl ViewRowSequence {
-	pub fn next_row_number<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub fn next_row_number(
+		txn: &mut impl LiteCommandTransaction,
 		view: ViewId,
 	) -> crate::Result<RowNumber> {
 		GeneratorU64::next(

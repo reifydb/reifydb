@@ -10,6 +10,7 @@ use crate::{Catalog, table::layout::table_schema};
 
 impl Catalog {
 	pub fn find_table_by_name(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
@@ -35,7 +36,7 @@ impl Catalog {
 			return Ok(None);
 		};
 
-		Ok(Some(Catalog::get_table(rx, table)?))
+		Ok(Some(self.get_table(rx, table)?))
 	}
 }
 
@@ -61,7 +62,8 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
-		let result = Catalog::find_table_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_table_by_name(
 			&mut txn,
 			SchemaId(1027),
 			"table_two",
@@ -76,7 +78,8 @@ mod tests {
 	#[test]
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
-		let result = Catalog::find_table_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_table_by_name(
 			&mut txn,
 			SchemaId(1025),
 			"some_table",
@@ -97,7 +100,8 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
-		let result = Catalog::find_table_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_table_by_name(
 			&mut txn,
 			SchemaId(1025),
 			"table_four_two",
@@ -118,7 +122,8 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
-		let result = Catalog::find_table_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_table_by_name(
 			&mut txn,
 			SchemaId(2),
 			"table_two",

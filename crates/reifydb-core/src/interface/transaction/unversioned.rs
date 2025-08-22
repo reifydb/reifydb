@@ -2,9 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{GetHooks, Unversioned},
-	row::EncodedRow,
+	interface::{GetHooks, Unversioned}, row::EncodedRow,
+	EncodedKey,
+	EncodedKeyRange,
 };
 
 pub type BoxedUnversionedIter<'a> =

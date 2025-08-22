@@ -2,15 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
+use reifydb_core::interface::{
+    LiteCommandTransaction, VersionedCommandTransaction,
+};
 use reifydb_core::{
-	EncodedKey, Type,
-	diagnostic::sequence::sequence_exhausted,
-	interface::{
-		CommandTransaction, Transaction, UnversionedCommandTransaction,
-		UnversionedQueryTransaction,
-	},
-	return_error,
-	row::EncodedRowLayout,
+    diagnostic::sequence::sequence_exhausted, interface::{
+        Transaction, UnversionedCommandTransaction,
+        UnversionedQueryTransaction,
+    },
+    return_error,
+    row::EncodedRowLayout,
+    EncodedKey,
+    Type,
 };
 
 static LAYOUT: Lazy<EncodedRowLayout> =
@@ -19,12 +22,13 @@ static LAYOUT: Lazy<EncodedRowLayout> =
 pub(crate) struct GeneratorI8 {}
 
 impl GeneratorI8 {
-	pub(crate) fn next<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn next(
+		txn: &mut impl LiteCommandTransaction,
 		key: &EncodedKey,
 		default: Option<i8>,
-	) -> crate::Result<i8>
-where {
+	) -> crate::Result<i8> {
+
+
 		txn.with_unversioned_command(|tx| match tx.get(key)? {
 			Some(unversioned_row) => {
 				let mut row = unversioned_row.row;
@@ -52,12 +56,11 @@ where {
 		})
 	}
 
-	pub(crate) fn set<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn set(
+		txn: &mut impl LiteCommandTransaction,
 		key: &EncodedKey,
 		value: i8,
-	) -> crate::Result<()>
-where {
+	) -> crate::Result<()> {
 		txn.with_unversioned_command(|tx| {
 			let mut row = match tx.get(key)? {
 				Some(unversioned_row) => unversioned_row.row,
@@ -72,19 +75,19 @@ where {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		EncodedKey, Type,
-		interface::{
-			Unversioned, UnversionedCommandTransaction,
-			UnversionedQueryTransaction,
-		},
-		result::error::diagnostic::sequence::sequence_exhausted,
-	};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+    use reifydb_core::{
+        interface::{
+            Unversioned, UnversionedCommandTransaction,
+            UnversionedQueryTransaction,
+        }, result::error::diagnostic::sequence::sequence_exhausted,
+        EncodedKey,
+        Type,
+    };
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::sequence::generator::i8::{GeneratorI8, LAYOUT};
+    use crate::sequence::generator::i8::{GeneratorI8, LAYOUT};
 
-	#[test]
+    #[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		for expected in 1..100 {

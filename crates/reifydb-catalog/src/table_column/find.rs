@@ -12,6 +12,7 @@ use crate::{
 
 impl Catalog {
 	pub fn find_table_column_by_name(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
 		column_name: &str,
@@ -36,7 +37,7 @@ impl Catalog {
 			});
 
 		if let Some(id) = maybe_id {
-			Ok(Some(Catalog::get_table_column(rx, id)?))
+			Ok(Some(self.get_table_column(rx, id)?))
 		} else {
 			Ok(None)
 		}
@@ -57,7 +58,8 @@ mod tests {
 		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let result = Catalog::find_table_column_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_table_column_by_name(
 			&mut txn,
 			TableId(1),
 			"col_3",
@@ -76,7 +78,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
 
-		let result = Catalog::find_table_column_by_name(
+		let catalog = Catalog::new();
+		let result = catalog.find_table_column_by_name(
 			&mut txn,
 			TableId(1),
 			"not_found",

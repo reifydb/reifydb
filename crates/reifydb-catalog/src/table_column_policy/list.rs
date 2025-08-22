@@ -13,6 +13,7 @@ use crate::{
 
 impl Catalog {
 	pub fn list_table_column_policies(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
@@ -76,7 +77,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -94,10 +96,10 @@ mod tests {
 		)
 		.unwrap();
 
-		let column = Catalog::get_table_column(&mut txn, ColumnId(1))
+		let column = catalog.get_table_column(&mut txn, ColumnId(1))
 			.unwrap();
 
-		let policies = Catalog::list_table_column_policies(
+		let policies = catalog.list_table_column_policies(
 			&mut txn, column.id,
 		)
 		.unwrap();

@@ -18,7 +18,8 @@ impl<T: Transaction> Executor<T> {
 		txn: &mut CommandTransaction<T>,
 		plan: CreateTransactionalViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(view) = Catalog::find_view_by_name(
+		let catalog = Catalog::new();
+		if let Some(view) = catalog.find_view_by_name(
 			txn,
 			plan.schema.id,
 			&plan.view,
@@ -50,7 +51,7 @@ impl<T: Transaction> Executor<T> {
 			));
 		}
 
-		let result = Catalog::create_transactional_view(
+		let result = catalog.create_transactional_view(
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone()),

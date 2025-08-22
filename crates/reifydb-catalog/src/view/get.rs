@@ -14,6 +14,7 @@ use crate::{Catalog, view::layout::view};
 
 impl Catalog {
 	pub fn get_view(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		view: ViewId,
 	) -> crate::Result<ViewDef> {
@@ -42,7 +43,7 @@ impl Catalog {
 			name,
 			schema,
 			kind,
-			columns: Catalog::list_view_columns(rx, id)?,
+			columns: self.list_view_columns(rx, id)?,
 		})
 	}
 }
@@ -69,7 +70,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let result = Catalog::get_view(&mut txn, ViewId(1026)).unwrap();
+		let catalog = Catalog::new();
+		let result = catalog.get_view(&mut txn, ViewId(1026)).unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.schema, SchemaId(1027));
@@ -88,7 +90,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let err = Catalog::get_view(&mut txn, ViewId(42)).unwrap_err();
+		let catalog = Catalog::new();
+		let err = catalog.get_view(&mut txn, ViewId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ViewId(42)"));

@@ -14,6 +14,7 @@ use crate::{
 
 impl Catalog {
 	pub fn get_view_column(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {

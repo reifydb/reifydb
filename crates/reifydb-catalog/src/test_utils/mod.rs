@@ -1,29 +1,30 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Type,
-	interface::{
-		ColumnPolicyKind, CommandTransaction, TableDef, TableId,
-		Transaction, ViewDef,
-	},
-};
-
 use crate::{
-	Catalog,
-	schema::{SchemaDef, SchemaToCreate},
+	schema::SchemaToCreate,
 	table,
 	table::TableToCreate,
 	table_column::{ColumnIndex, TableColumnToCreate},
 	view,
 	view::ViewToCreate,
+	Catalog,
+};
+use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::{
+	interface::{
+		ColumnPolicyKind, SchemaDef, TableDef, TableId
+		, ViewDef,
+	},
+	Type,
 };
 
-pub fn create_schema<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
+pub fn create_schema(
+	txn: &mut impl LiteCommandTransaction,
 	schema: &str,
 ) -> SchemaDef {
-	Catalog::create_schema(
+	let catalog = Catalog::new();
+	catalog.create_schema(
 		txn,
 		SchemaToCreate {
 			schema_fragment: None,
@@ -33,37 +34,36 @@ pub fn create_schema<T: Transaction>(
 	.unwrap()
 }
 
-pub fn ensure_test_schema<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
-) -> SchemaDef {
+pub fn ensure_test_schema(txn: &mut impl LiteCommandTransaction) -> SchemaDef {
+	let catalog = Catalog::new();
 	if let Some(result) =
-		Catalog::find_schema_by_name(txn, "test_schema").unwrap()
+		catalog.find_schema_by_name(txn, "test_schema").unwrap()
 	{
 		return result;
 	}
 	create_schema(txn, "test_schema")
 }
 
-pub fn ensure_test_table<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
-) -> TableDef {
+pub fn ensure_test_table(txn: &mut impl LiteCommandTransaction) -> TableDef {
 	let schema = ensure_test_schema(txn);
-	if let Some(result) =
-		Catalog::find_table_by_name(txn, schema.id, "test_table")
-			.unwrap()
+	let catalog = Catalog::new();
+	if let Some(result) = catalog
+		.find_table_by_name(txn, schema.id, "test_table")
+		.unwrap()
 	{
 		return result;
 	}
 	create_table(txn, "test_schema", "test_table", &[])
 }
 
-pub fn create_table<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
+pub fn create_table(
+	txn: &mut impl LiteCommandTransaction,
 	schema: &str,
 	table: &str,
 	columns: &[table::TableColumnToCreate],
 ) -> TableDef {
-	Catalog::create_table(
+	let catalog = Catalog::new();
+	catalog.create_table(
 		txn,
 		TableToCreate {
 			fragment: None,
@@ -75,17 +75,18 @@ pub fn create_table<T: Transaction>(
 	.unwrap()
 }
 
-pub fn create_test_table_column<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
+pub fn create_test_table_column(
+	txn: &mut impl LiteCommandTransaction,
 	name: &str,
 	value: Type,
 	policies: Vec<ColumnPolicyKind>,
 ) {
 	ensure_test_table(txn);
 
-	let columns = Catalog::list_table_columns(txn, TableId(1)).unwrap();
+	let catalog = Catalog::new();
+	let columns = catalog.list_table_columns(txn, TableId(1)).unwrap();
 
-	Catalog::create_table_column(
+	catalog.create_table_column(
 		txn,
 		TableId(1),
 		TableColumnToCreate {
@@ -104,13 +105,14 @@ pub fn create_test_table_column<T: Transaction>(
 	.unwrap();
 }
 
-pub fn create_view<T: Transaction>(
-	txn: &mut CommandTransaction<T>,
+pub fn create_view(
+	txn: &mut impl LiteCommandTransaction,
 	schema: &str,
 	view: &str,
 	columns: &[view::ViewColumnToCreate],
 ) -> ViewDef {
-	Catalog::create_deferred_view(
+	let catalog = Catalog::new();
+	catalog.create_deferred_view(
 		txn,
 		ViewToCreate {
 			fragment: None,

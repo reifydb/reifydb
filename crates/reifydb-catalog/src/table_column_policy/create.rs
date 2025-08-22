@@ -1,35 +1,33 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::{
+	sequence::SystemSequence, table_column::ColumnId, table_column_policy::layout::column_policy,
+	Catalog,
+};
+use reifydb_core::interface::LiteCommandTransaction;
 use reifydb_core::{
 	interface::{
-		ColumnPolicy, ColumnPolicyKind, CommandTransaction,
-		EncodableKey, TableColumnPolicyKey, Transaction,
-		VersionedCommandTransaction,
+		ColumnPolicy, ColumnPolicyKind, EncodableKey,
+		TableColumnPolicyKey, VersionedCommandTransaction,
 	},
 	result::error::diagnostic::catalog::table_column_policy_already_exists,
 	return_error,
 };
 
-use crate::{
-	Catalog, sequence::SystemSequence, table_column::ColumnId,
-	table_column_policy::layout::column_policy,
-};
-
 impl Catalog {
-	pub(crate) fn create_table_column_policy<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn create_table_column_policy(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {
 		let (policy_kind, _value_kind) = policy.to_u8();
-		for existing in
-			Catalog::list_table_column_policies(txn, column)?
-		{
+		for existing in self.list_table_column_policies(txn, column)? {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
 				let column =
-					Catalog::get_table_column(txn, column)?;
+					self.get_table_column(txn, column)?;
 
 				return_error!(
 					table_column_policy_already_exists(
@@ -83,20 +81,20 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
-	use ColumnPolicyKind::Saturation;
-	use ColumnSaturationPolicy::Error;
 	use reifydb_core::{
-		Type,
 		interface::{
 			ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 		},
+		Type,
 	};
 	use reifydb_transaction::test_utils::create_test_command_transaction;
+	use ColumnPolicyKind::Saturation;
+	use ColumnSaturationPolicy::Error;
 
 	use crate::{
-		Catalog,
 		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
 		test_utils::{create_test_table_column, ensure_test_table},
+		Catalog,
 	};
 
 	#[test]
@@ -106,12 +104,14 @@ mod tests {
 		create_test_table_column(&mut txn, "col_1", Type::Int2, vec![]);
 
 		let policy = Saturation(Error);
-		let result = Catalog::create_table_column_policy(
-			&mut txn,
-			ColumnId(1),
-			policy.clone(),
-		)
-		.unwrap();
+		let catalog = Catalog::new();
+		let result = catalog
+			.create_table_column_policy(
+				&mut txn,
+				ColumnId(1),
+				policy.clone(),
+			)
+			.unwrap();
 		assert_eq!(result.column, ColumnId(1));
 		assert_eq!(result.policy, policy);
 	}
@@ -121,7 +121,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		Catalog::create_table_column(
+		let catalog = Catalog::new();
+		catalog.create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -140,19 +141,20 @@ mod tests {
 		.unwrap();
 
 		let policy = Saturation(ColumnSaturationPolicy::Undefined);
-		Catalog::create_table_column_policy(
+		catalog.create_table_column_policy(
 			&mut txn,
 			ColumnId(1),
 			policy.clone(),
 		)
 		.unwrap();
 
-		let err = Catalog::create_table_column_policy(
-			&mut txn,
-			ColumnId(1),
-			policy.clone(),
-		)
-		.unwrap_err();
+		let err = catalog
+			.create_table_column_policy(
+				&mut txn,
+				ColumnId(1),
+				policy.clone(),
+			)
+			.unwrap_err();
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_008");
 	}

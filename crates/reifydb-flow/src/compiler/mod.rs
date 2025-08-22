@@ -55,20 +55,23 @@ pub(crate) struct FlowCompiler<'a, T: Transaction> {
 impl<'a, T: Transaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
 	pub fn new(txn: &'a mut CommandTransaction<T>) -> crate::Result<Self> {
-		Ok(Self {
-			flow: Flow::new(next_flow_id(txn)?),
-			txn,
-		})
+		todo!()
+		// Ok(Self {
+		// 	flow: Flow::new(next_flow_id(txn)?),
+		// 	txn,
+		// })
 	}
 
 	/// Gets the next available node ID
 	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
-		next_flow_node_id(self.txn)
+		// next_flow_node_id(self.txn)
+		todo!()
 	}
 
 	/// Gets the next available edge ID
 	fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
-		next_flow_edge_id(self.txn)
+		// next_flow_edge_id(self.txn)
+		todo!()
 	}
 
 	/// Adds an edge between two nodes

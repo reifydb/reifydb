@@ -3,17 +3,18 @@
 
 use reifydb_core::{
 	Error,
-	interface::{EncodableKey, SchemaKey, VersionedQueryTransaction},
+	interface::{EncodableKey, SchemaKey, SchemaDef, SchemaId, VersionedQueryTransaction},
 	internal_error,
 };
 
 use crate::{
 	Catalog,
-	schema::{SchemaDef, SchemaId, convert_schema},
+	schema::convert_schema,
 };
 
 impl Catalog {
 	pub fn get_schema(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		schema: SchemaId,
 	) -> crate::Result<SchemaDef> {
@@ -41,12 +42,13 @@ mod tests {
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
+		let catalog = Catalog::new();
 		create_schema(&mut txn, "schema_one");
 		create_schema(&mut txn, "schema_two");
 		create_schema(&mut txn, "schema_three");
 
 		let result =
-			Catalog::get_schema(&mut txn, SchemaId(1026)).unwrap();
+			catalog.get_schema(&mut txn, SchemaId(1026)).unwrap();
 
 		assert_eq!(result.id, SchemaId(1026));
 		assert_eq!(result.name, "schema_two");
@@ -55,11 +57,12 @@ mod tests {
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
+		let catalog = Catalog::new();
 		create_schema(&mut txn, "schema_one");
 		create_schema(&mut txn, "schema_two");
 		create_schema(&mut txn, "schema_three");
 
-		let err = Catalog::get_schema(&mut txn, SchemaId(23))
+		let err = catalog.get_schema(&mut txn, SchemaId(23))
 			.unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");

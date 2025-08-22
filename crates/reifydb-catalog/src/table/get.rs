@@ -14,6 +14,7 @@ use crate::{Catalog, table::layout::table};
 
 impl Catalog {
 	pub fn get_table(
+		&self,
 		rx: &mut impl VersionedQueryTransaction,
 		table: TableId,
 	) -> crate::Result<TableDef> {
@@ -37,7 +38,7 @@ impl Catalog {
 			id,
 			name,
 			schema,
-			columns: Catalog::list_table_columns(rx, id)?,
+			columns: self.list_table_columns(rx, id)?,
 		})
 	}
 }
@@ -64,8 +65,9 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
+		let catalog = Catalog::new();
 		let result =
-			Catalog::get_table(&mut txn, TableId(1026)).unwrap();
+			catalog.get_table(&mut txn, TableId(1026)).unwrap();
 
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.schema, SchemaId(1027));
@@ -84,8 +86,9 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
+		let catalog = Catalog::new();
 		let err =
-			Catalog::get_table(&mut txn, TableId(42)).unwrap_err();
+			catalog.get_table(&mut txn, TableId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("TableId(42)"));

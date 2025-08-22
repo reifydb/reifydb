@@ -1,24 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	OwnedFragment, Type,
-	diagnostic::catalog::view_column_already_exists,
-	interface::{
-		CommandTransaction, EncodableKey, Key, Transaction,
-		VersionedCommandTransaction, ViewColumnKey, ViewColumnsKey,
-		ViewId,
-	},
-	return_error,
-};
-
 use crate::{
-	Catalog,
 	sequence::SystemSequence,
 	view_column::{
-		ColumnDef, ColumnIndex,
-		layout::{view_column, view_column_link},
+		layout::{view_column, view_column_link}, ColumnDef,
+		ColumnIndex,
 	},
+	Catalog,
+};
+use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::{
+	diagnostic::catalog::view_column_already_exists, interface::{
+		EncodableKey, Key, VersionedCommandTransaction, ViewColumnKey,
+		ViewColumnsKey, ViewId,
+	},
+	return_error,
+	OwnedFragment,
+	Type,
 };
 
 pub struct ViewColumnToCreate<'a> {
@@ -33,12 +32,13 @@ pub struct ViewColumnToCreate<'a> {
 }
 
 impl Catalog {
-	pub(crate) fn create_view_column<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub(crate) fn create_view_column(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		view: ViewId,
 		column_to_create: ViewColumnToCreate,
 	) -> crate::Result<ColumnDef> {
-		if let Some(column) = Catalog::find_view_column_by_name(
+		if let Some(column) = self.find_view_column_by_name(
 			txn,
 			view,
 			&column_to_create.column,

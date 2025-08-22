@@ -1,20 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	OwnedFragment,
-	interface::{
-		CommandTransaction, EncodableKey, SchemaKey, Transaction,
-		VersionedCommandTransaction,
-	},
-	result::error::diagnostic::catalog::schema_already_exists,
-	return_error,
-};
-
 use crate::{
-	Catalog,
-	schema::{SchemaDef, layout::schema},
-	sequence::SystemSequence,
+    schema::layout::schema,
+    sequence::SystemSequence,
+    Catalog,
+};
+use reifydb_core::interface::LiteCommandTransaction;
+use reifydb_core::{
+    interface::{
+        EncodableKey, SchemaDef, SchemaKey, Transaction,
+        VersionedCommandTransaction,
+    },
+    result::error::diagnostic::catalog::schema_already_exists,
+    return_error,
+    OwnedFragment,
 };
 
 #[derive(Debug, Clone)]
@@ -24,12 +24,13 @@ pub struct SchemaToCreate {
 }
 
 impl Catalog {
-	pub fn create_schema<T: Transaction>(
-		txn: &mut CommandTransaction<T>,
+	pub fn create_schema(
+		&self,
+		txn: &mut impl LiteCommandTransaction,
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =
-			Catalog::find_schema_by_name(txn, &to_create.name)?
+			self.find_schema_by_name(txn, &to_create.name)?
 		{
 			return_error!(schema_already_exists(
 				to_create.schema_fragment,
@@ -55,20 +56,21 @@ impl Catalog {
 			row,
 		)?;
 
-		Ok(Catalog::get_schema(txn, schema_id)?)
+		Ok(self.get_schema(txn, schema_id)?)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::SchemaId;
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+    use reifydb_core::interface::SchemaId;
+    use reifydb_transaction::test_utils::create_test_command_transaction;
 
-	use crate::{Catalog, schema::create::SchemaToCreate};
+    use crate::{schema::create::SchemaToCreate, Catalog};
 
-	#[test]
+    #[test]
 	fn test_create_schema() {
 		let mut txn = create_test_command_transaction();
+		let catalog = Catalog::new();
 
 		let to_create = SchemaToCreate {
 			schema_fragment: None,
@@ -77,14 +79,14 @@ mod tests {
 
 		// First creation should succeed
 		let result =
-			Catalog::create_schema(&mut txn, to_create.clone())
+			catalog.create_schema(&mut txn, to_create.clone())
 				.unwrap();
 		assert_eq!(result.id, SchemaId(1025));
 		assert_eq!(result.name, "test_schema");
 
 		// Creating the same schema again with `if_not_exists = false`
 		// should return error
-		let err = Catalog::create_schema(&mut txn, to_create)
+		let err = catalog.create_schema(&mut txn, to_create)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}
