@@ -24,6 +24,7 @@ pub use health::HealthMonitor;
 pub use hook::{OnCreateContext, WithHooks};
 pub use presets::*;
 pub use reifydb_auth as auth;
+pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
 pub use reifydb_core::{
 	Error, Result,
@@ -37,8 +38,6 @@ pub use reifydb_core::{
 	log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_engine as engine;
-#[cfg(feature = "sub_flow")]
-pub use reifydb_flow as flow;
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;
@@ -48,6 +47,8 @@ pub use reifydb_storage::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
+#[cfg(feature = "sub_flow")]
+pub use reifydb_sub_flow as flow;
 // subsystems
 #[cfg(feature = "sub_logging")]
 pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};

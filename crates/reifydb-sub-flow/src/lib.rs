@@ -11,9 +11,11 @@ mod core;
 mod engine;
 #[allow(dead_code, unused_variables)]
 mod operator;
+pub mod subsystem;
 
 pub use core::*;
 
 pub use compiler::compile_flow;
 pub use engine::*;
 pub use reifydb_core::Result;
+pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};

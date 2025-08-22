@@ -3,6 +3,7 @@
 
 use std::{marker::PhantomData, time::Duration};
 
+use reifydb_cdc::PollConsumerConfig;
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
@@ -57,6 +58,14 @@ impl<T: Transaction> SubsystemFactory<T> for FlowSubsystemFactory<T> {
 		ioc: &IocContainer,
 	) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
-		Ok(Box::new(FlowSubsystem::new(engine)))
+		let poll_config = PollConsumerConfig::new(
+			self.consumer_id.clone(),
+			self.poll_interval,
+		);
+		Ok(Box::new(FlowSubsystem::with_config(
+			engine,
+			self.consumer_id,
+			poll_config,
+		)))
 	}
 }

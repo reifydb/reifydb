@@ -9,8 +9,8 @@
 // use runner::FlowTestRunner;
 // use test_each_file::test_each_path;
 //
-// test_each_path! { in "crates/reifydb-flow/tests/scripts/smoke" as smoke =>
-// test_flow }
+// test_each_path! { in "crates/reifydb-sub-flow/tests/scripts/smoke" as smoke
+// => test_flow }
 //
 // fn test_flow(path: &Path) {
 // 	testscript::run_path(&mut FlowTestRunner::new(), path)

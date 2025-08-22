@@ -11,7 +11,7 @@ use std::{
 };
 
 use Key::TableRow;
-use reifydb::subsystem::cdc::{PollConsumer, PollConsumerConfig};
+use reifydb::cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	EncodedKey, Result, RowNumber,
 	diagnostic::Diagnostic,

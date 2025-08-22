@@ -9,14 +9,15 @@ members = [
     "bin/testcontainer",
     "crates/reifydb-auth",
     "crates/reifydb-catalog",
+    "crates/reifydb-cdc",
     "crates/reifydb-core",
     "crates/reifydb-engine",
-    "crates/reifydb-flow",
     "crates/reifydb-network",
     "crates/reifydb-rql",
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
+    "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
@@ -33,14 +34,15 @@ default-members = [
     "bin/testcontainer",
     "crates/reifydb-auth",
     "crates/reifydb-catalog",
+    "crates/reifydb-cdc",
     "crates/reifydb-core",
     "crates/reifydb-engine",
-    "crates/reifydb-flow",
     "crates/reifydb-network",
     "crates/reifydb-rql",
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
+    "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -83,9 +85,10 @@ reifydb = { path = "pkg/rust/reifydb", version = "0.0.1" }
 #internal
 reifydb-auth = { path = "crates/reifydb-auth", version = "0.0.1" }
 reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
+reifydb-cdc = { path = "crates/reifydb-cdc", version = "0.0.1" }
 reifydb-core = { path = "crates/reifydb-core", version = "0.0.1" }
 reifydb-engine = { path = "crates/reifydb-engine", version = "0.0.1" }
-reifydb-flow = { path = "crates/reifydb-flow", version = "0.0.1" }
+reifydb-sub-flow = { path = "crates/reifydb-sub-flow", version = "0.0.1" }
 reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
 reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
 reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }

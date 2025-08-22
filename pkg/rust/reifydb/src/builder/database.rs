@@ -10,11 +10,11 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingSubsystemFactory;
 
-#[cfg(feature = "sub_flow")]
-use crate::subsystem::FlowSubsystemFactory;
 use crate::{
 	database::{Database, DatabaseConfig},
 	health::HealthMonitor,
