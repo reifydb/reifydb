@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 pub use command::*;
 use oracle::*;
-use reifydb_core::Version;
+use reifydb_core::{interface::TransactionId, Version};
 use version::VersionProvider;
 
 pub use crate::mvcc::types::*;
@@ -64,6 +64,7 @@ where
 		&self,
 	) -> Result<TransactionManagerCommand<L>, reifydb_core::Error> {
 		Ok(TransactionManagerCommand {
+			id: TransactionId::generate(),
 			oracle: self.inner.clone(),
 			version: self.inner.version()?,
 			size: 0,
@@ -118,11 +119,13 @@ where
 	) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			TransactionManagerQuery::new_time_travel(
+				TransactionId::generate(),
 				self.clone(),
 				version,
 			)
 		} else {
 			TransactionManagerQuery::new_current(
+				TransactionId::generate(),
 				self.clone(),
 				self.inner.version()?,
 			)

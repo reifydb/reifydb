@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	hook::Hooks, interface::{
-		BoxedVersionedIter, UnversionedTransaction, Versioned,
+		BoxedVersionedIter, TransactionId, UnversionedTransaction, Versioned,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		VersionedStorage, VersionedTransaction, WithHooks,
 	}, row::EncodedRow, EncodedKey,
@@ -44,6 +44,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 {
 	fn version(&self) -> Version {
 		self.tm.version()
+	}
+
+	fn id(&self) -> TransactionId {
+		self.tm.id()
 	}
 
 	fn get(
@@ -109,6 +113,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 {
 	fn version(&self) -> Version {
 		self.tm.version()
+	}
+
+	fn id(&self) -> TransactionId {
+		self.tm.id()
 	}
 
 	fn get(

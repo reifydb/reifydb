@@ -3,10 +3,11 @@
 
 use std::marker::PhantomData;
 
+use crate::interface::TransactionId;
 use crate::{
 	interface::{
-		BoxedVersionedIter, CdcTransaction, Transaction,
-		QueryTransaction, UnversionedTransaction, Versioned,
+		BoxedVersionedIter, CdcTransaction, QueryTransaction,
+		Transaction, UnversionedTransaction, Versioned,
 		VersionedQueryTransaction, VersionedTransaction,
 	}, EncodedKey,
 	EncodedKeyRange,
@@ -71,6 +72,12 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	fn version(&self) -> crate::Version {
 		self.versioned.version()
 	}
+
+	#[inline]
+	fn id(&self) -> TransactionId {
+		self.versioned.id()
+	}
+
 	#[inline]
 	fn get(
 		&mut self,
@@ -127,9 +134,7 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	}
 }
 
-impl<T: Transaction> QueryTransaction
-	for StandardQueryTransaction<T>
-{
+impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 	type UnversionedQuery<'a> =
 		<T::Unversioned as UnversionedTransaction>::Query<'a>;
 	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;

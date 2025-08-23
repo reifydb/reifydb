@@ -3,7 +3,7 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange, Version,
-	interface::{WithHooks, Versioned},
+	interface::{WithHooks, Versioned, TransactionId},
 	row::EncodedRow,
 };
 
@@ -41,6 +41,8 @@ WithHooks + Send + Sync + Clone + 'static
 
 pub trait VersionedQueryTransaction {
 	fn version(&self) -> Version;
+	
+	fn id(&self) -> TransactionId;
 
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
 

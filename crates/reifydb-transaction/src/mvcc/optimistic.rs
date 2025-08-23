@@ -5,10 +5,10 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Error, Version,
 	hook::Hooks,
 	interface::{
-        BoxedVersionedIter, WithHooks, UnversionedTransaction,
+        BoxedVersionedIter, TransactionId, UnversionedTransaction,
         Versioned, VersionedCommandTransaction,
         VersionedQueryTransaction, VersionedStorage,
-        VersionedTransaction,
+        VersionedTransaction, WithHooks,
 	},
 	row::EncodedRow,
 };
@@ -45,6 +45,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 {
 	fn version(&self) -> Version {
 		self.tm.version()
+	}
+
+	fn id(&self) -> TransactionId {
+		self.tm.id()
 	}
 
 	fn get(
@@ -110,6 +114,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 {
 	fn version(&self) -> Version {
 		self.tm.version()
+	}
+
+	fn id(&self) -> TransactionId {
+		self.tm.id()
 	}
 
 	fn get(

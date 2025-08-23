@@ -11,7 +11,7 @@
 
 use reifydb_core::{
 	EncodedKey, Version, delta::Delta, diagnostic::transaction, error,
-	return_error, row::EncodedRow,
+	interface::TransactionId, return_error, row::EncodedRow,
 };
 
 use super::*;
@@ -24,6 +24,7 @@ pub struct TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
+	pub(super) id: TransactionId,
 	pub(super) version: Version,
 	pub(super) size: u64,
 	pub(super) count: u64,
@@ -52,6 +53,11 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
+	/// Returns the unique ID of the transaction.
+	pub fn id(&self) -> TransactionId {
+		self.id
+	}
+
 	/// Returns the version of the transaction.
 	pub fn version(&self) -> Version {
 		self.version

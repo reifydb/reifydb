@@ -6,7 +6,7 @@ use crate::interceptor::{
 	TablePreUpdateInterceptor,
 };
 use crate::interface::interceptor::WithInterceptors;
-use crate::interface::{CommandTransaction, QueryTransaction, WithHooks};
+use crate::interface::{CommandTransaction, QueryTransaction, TransactionId, WithHooks};
 use crate::{
 	catalog::MaterializedCatalog, diagnostic::transaction,
 	hook::Hooks,
@@ -184,10 +184,11 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		TransactionInterceptor::pre_commit(self)?;
 
 		if let Some(versioned) = self.versioned.take() {
+			let id = versioned.id();
 			self.state = TransactionState::Committed;
 			let version = versioned.commit()?;
 
-			TransactionInterceptor::post_commit(self, version)?;
+			TransactionInterceptor::post_commit(self, id, version)?;
 
 			Ok(version)
 		} else {
@@ -221,6 +222,12 @@ impl<T: Transaction> VersionedQueryTransaction
 	fn version(&self) -> crate::Version {
 		self.versioned.as_ref().unwrap().version()
 	}
+
+	#[inline]
+	fn id(&self) -> TransactionId {
+		self.versioned.as_ref().unwrap().id()
+	}
+
 	#[inline]
 	fn get(
 		&mut self,

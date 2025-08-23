@@ -27,9 +27,9 @@ use crate::interface::interceptor::{
 	SchemaDefInterceptor, TableDefInterceptor, TableInterceptor, 
 	TransactionInterceptor, ViewDefInterceptor, WithInterceptors
 };
-use crate::interface::{CommandTransaction, SchemaDef, TableDef, ViewDef};
+use crate::interface::{CommandTransaction, SchemaDef, TableDef, TransactionId, ViewDef};
 use crate::row::EncodedRow;
-use crate::RowNumber;
+use crate::{RowNumber, Version};
 
 /// Macro to generate interceptor execution methods  
 macro_rules! impl_interceptor_method {
@@ -229,7 +229,8 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 
 	fn post_commit(
 		&mut self,
-		version: crate::Version,
+		id: TransactionId,
+		version: Version,
 	) -> crate::Result<()> {
 		if self.post_commit_interceptors().is_empty() {
 			return Ok(());
@@ -245,7 +246,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 				CT,
 				dyn PostCommitInterceptor<CT>,
 			> = self.post_commit_interceptors() as *mut _;
-			let ctx = PostCommitContext::new(version);
+			let ctx = PostCommitContext::new(id, version);
 			(*chain_ptr).execute(ctx)?
 		}
 		Ok(())

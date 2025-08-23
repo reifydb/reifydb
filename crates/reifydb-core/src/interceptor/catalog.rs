@@ -42,8 +42,10 @@ impl<CT: CommandTransaction> SchemaDefPostCreateInterceptor<CT>
     ) -> crate::Result<()> {
         // Add the schema to the materialized catalog
         let schema = ctx.post.clone();
-        // TODO: Get version from transaction
+        // Use read version for now - final version assigned at commit
         let version: Version = ctx.txn.version();
+
+        dbg!(&ctx.txn.id());
 
         self.catalog.schemas
             .get_or_insert_with(schema.id, || crate::catalog::versioned::VersionedSchemaDef::new())
@@ -81,8 +83,8 @@ impl<CT: CommandTransaction> SchemaDefPostUpdateInterceptor<CT>
         let new_schema = ctx.post.clone();
         
         // Update the versioned schema
-        // TODO: Get version from transaction
-        let version: Version = 0;
+        // Use read version for now - final version assigned at commit
+        let version: Version = ctx.txn.version();
         if let Some(entry) = self.catalog.schemas.get(&new_schema.id) {
             entry.value().insert(version, Some(new_schema.clone()));
         }
@@ -335,7 +337,7 @@ impl<CT: CommandTransaction> PostCommitInterceptor<CT>
         // The actual updates have already been done by the definition interceptors
         // This is just a placeholder if we need post-commit finalization
         let version = _ctx.version;
-        dbg!(&version);
+        dbg!(&version, _ctx.id);
         Ok(())
     }
 }

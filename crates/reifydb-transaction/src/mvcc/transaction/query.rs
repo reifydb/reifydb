@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::Version;
+use reifydb_core::{interface::TransactionId, Version};
 
 use crate::mvcc::transaction::{version::VersionProvider, *};
 
@@ -23,6 +23,7 @@ pub struct TransactionManagerQuery<L>
 where
 	L: VersionProvider,
 {
+	id: TransactionId,
 	engine: TransactionManager<L>,
 	transaction: TransactionKind,
 }
@@ -32,23 +33,31 @@ where
 	L: VersionProvider,
 {
 	pub fn new_current(
+		id: TransactionId,
 		engine: TransactionManager<L>,
 		version: Version,
 	) -> Self {
 		Self {
+			id,
 			engine,
 			transaction: TransactionKind::Current(version),
 		}
 	}
 
 	pub fn new_time_travel(
+		id: TransactionId,
 		engine: TransactionManager<L>,
 		version: Version,
 	) -> Self {
 		Self {
+			id,
 			engine,
 			transaction: TransactionKind::TimeTravel(version),
 		}
+	}
+
+	pub fn id(&self) -> TransactionId {
+		self.id
 	}
 
 	pub fn version(&self) -> Version {
