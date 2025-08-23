@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::catalog::TransactionalChanges;
 use crate::interceptor::{
 	InterceptorChain, PostCommitContext, PostCommitInterceptor,
 	PreCommitContext, PreCommitInterceptor, 
@@ -231,6 +232,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 		&mut self,
 		id: TransactionId,
 		version: Version,
+		catalog_changes: Option<TransactionalChanges>,
 	) -> crate::Result<()> {
 		if self.post_commit_interceptors().is_empty() {
 			return Ok(());
@@ -246,7 +248,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 				CT,
 				dyn PostCommitInterceptor<CT>,
 			> = self.post_commit_interceptors() as *mut _;
-			let ctx = PostCommitContext::new(id, version);
+			let ctx = PostCommitContext::new(id, version, catalog_changes);
 			(*chain_ptr).execute(ctx)?
 		}
 		Ok(())

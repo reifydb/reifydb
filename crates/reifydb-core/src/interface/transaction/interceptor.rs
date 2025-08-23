@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::catalog::TransactionalChanges;
 use crate::interface::{CommandTransaction, TableDef, SchemaDef, ViewDef, TransactionId};
 use crate::interceptor::{
 	Chain, PostCommitInterceptor, PreCommitInterceptor,
@@ -113,7 +114,7 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 	fn pre_commit(&mut self) -> crate::Result<()>;
 
 	/// Intercept post-commit operations
-	fn post_commit(&mut self, id: TransactionId, version: crate::Version)
+	fn post_commit(&mut self, id: TransactionId, version: crate::Version, catalog_changes: Option<TransactionalChanges>)
 	-> crate::Result<()>;
 }
 

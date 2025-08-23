@@ -4,6 +4,7 @@
 use std::marker::PhantomData;
 
 use crate::{
+	catalog::TransactionalChanges,
 	define_api_function, define_closure_interceptor, define_interceptor,
 	interface::TransactionId, Version,
 };
@@ -37,6 +38,7 @@ define_interceptor!(
 	fields: {
 		id: TransactionId,
 		version: Version,
+		catalog_changes: Option<TransactionalChanges>,
 	}
 );
 

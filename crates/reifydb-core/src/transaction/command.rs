@@ -6,9 +6,11 @@ use crate::interceptor::{
 	TablePreUpdateInterceptor,
 };
 use crate::interface::interceptor::WithInterceptors;
-use crate::interface::{CommandTransaction, QueryTransaction, TransactionId, WithHooks};
+use crate::interface::{
+	CommandTransaction, QueryTransaction, TransactionId, WithHooks,
+};
 use crate::{
-	catalog::MaterializedCatalog, diagnostic::transaction,
+	catalog::{MaterializedCatalog, TransactionalChanges}, diagnostic::transaction,
 	hook::Hooks,
 	interceptor,
 	interceptor::Interceptors,
@@ -40,6 +42,7 @@ pub struct StandardCommandTransaction<T: Transaction> {
 	state: TransactionState,
 	hooks: Hooks,
 	catalog: MaterializedCatalog,
+	changes: TransactionalChanges,
 
 	pub(crate) interceptors: Interceptors<Self>,
 	// Marker to prevent Send and Sync
@@ -63,6 +66,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		interceptors: Interceptors<Self>,
 		catalog: MaterializedCatalog,
 	) -> Self {
+		let txn_id = versioned.id();
 		Self {
 			versioned: Some(versioned),
 			unversioned,
@@ -71,6 +75,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			hooks,
 			interceptors,
 			catalog,
+			changes: TransactionalChanges::new(txn_id),
 			_not_send_sync: PhantomData,
 		}
 	}
@@ -81,6 +86,49 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 
 	pub fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
+	}
+
+	/// Get a schema by ID, checking transaction-local changes first
+	pub fn get_schema(
+		&self,
+		id: crate::interface::SchemaId,
+	) -> Option<crate::interface::SchemaDef> {
+		// First check transaction-local changes
+		if let Some(schema) = self.changes.get_schema(id) {
+			return Some(schema.clone());
+		}
+
+		// Fall back to MaterializedCatalog
+		// Note: We use the transaction's version for consistency
+		self.catalog.get_schema(id, self.version())
+	}
+
+	/// Get a table by ID, checking transaction-local changes first
+	pub fn get_table(
+		&self,
+		id: crate::interface::TableId,
+	) -> Option<crate::interface::TableDef> {
+		// First check transaction-local changes
+		if let Some(table) = self.changes.get_table(id) {
+			return Some(table.clone());
+		}
+
+		// Fall back to MaterializedCatalog
+		self.catalog.get_table(id, self.version())
+	}
+
+	/// Get a view by ID, checking transaction-local changes first
+	pub fn get_view(
+		&self,
+		id: crate::interface::ViewId,
+	) -> Option<crate::interface::ViewDef> {
+		// First check transaction-local changes
+		if let Some(view) = self.changes.get_view(id) {
+			return Some(view.clone());
+		}
+
+		// Fall back to MaterializedCatalog
+		self.catalog.get_view(id, self.version())
 	}
 
 	/// Check if transaction is still active and return appropriate error if
@@ -188,7 +236,19 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			self.state = TransactionState::Committed;
 			let version = versioned.commit()?;
 
-			TransactionInterceptor::post_commit(self, id, version)?;
+			// Pass catalog changes if there are any
+			let catalog_changes = if self.changes.has_changes() {
+				Some(self.changes.clone())
+			} else {
+				None
+			};
+
+			TransactionInterceptor::post_commit(
+				self,
+				id,
+				version,
+				catalog_changes,
+			)?;
 
 			Ok(version)
 		} else {
@@ -360,6 +420,14 @@ impl<T: Transaction> CommandTransaction for StandardCommandTransaction<T> {
 	) -> crate::Result<Self::UnversionedCommand<'_>> {
 		self.check_active()?;
 		self.unversioned.begin_command()
+	}
+
+	fn get_changes(&self) -> &TransactionalChanges {
+		&self.changes
+	}
+
+	fn get_changes_mut(&mut self) -> &mut TransactionalChanges {
+		&mut self.changes
 	}
 }
 
