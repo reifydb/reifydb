@@ -18,5 +18,5 @@ pub use evaluate::StandardEvaluator;
 pub use reifydb_core::Result;
 pub use transaction::{
     StandardCommandTransaction, StandardQueryTransaction,
-    StandardTransaction,
+    StandardTransaction, StandardCdcTransaction, StandardCdcQueryTransaction,
 };

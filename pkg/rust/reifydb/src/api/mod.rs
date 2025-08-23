@@ -3,7 +3,8 @@
 
 use std::path::Path;
 
-use reifydb_core::interface::{CdcTransaction, StandardCdcTransaction};
+use reifydb_core::interface::CdcTransaction;
+use reifydb_engine::StandardCdcTransaction;
 use reifydb_core::{
     hook::Hooks,
     interface::{

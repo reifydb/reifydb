@@ -8,10 +8,12 @@ use reifydb_core::interface::{
 	VersionedTransaction,
 };
 
+mod cdc;
 mod command;
 pub(crate) mod operation;
 mod query;
 
+pub use cdc::{StandardCdcQueryTransaction, StandardCdcTransaction};
 pub use command::StandardCommandTransaction;
 pub use query::StandardQueryTransaction;
 

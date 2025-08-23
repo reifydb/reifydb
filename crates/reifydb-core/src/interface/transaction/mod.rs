@@ -10,8 +10,7 @@ mod versioned;
 
 use crate::value::uuid::Uuid7;
 pub use cdc::{
-	CdcQueryTransaction, CdcTransaction, StandardCdcQueryTransaction,
-	StandardCdcTransaction,
+	CdcQueryTransaction, CdcTransaction,
 };
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;

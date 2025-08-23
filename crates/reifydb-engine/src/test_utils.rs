@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::transaction::StandardCdcTransaction;
 use crate::{StandardCommandTransaction, StandardTransaction};
 use reifydb_core::catalog::MaterializedCatalog;
-use reifydb_core::interface::StandardCdcTransaction;
 use reifydb_core::{hook::Hooks, interceptor::Interceptors};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;

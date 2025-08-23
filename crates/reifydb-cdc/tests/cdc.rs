@@ -13,8 +13,7 @@ use std::{
 use Key::TableRow;
 use reifydb_catalog::Catalog;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
-use reifydb_core::interface::StandardCdcTransaction;
-use reifydb_engine::transaction::StandardTransaction;
+use reifydb_engine::{StandardTransaction, StandardCdcTransaction};
 use reifydb_core::{
 	EncodedKey, Result, RowNumber,
 	diagnostic::Diagnostic,
