@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::interface::interceptor::WithInterceptors;
-use crate::interface::{CommandTransaction, WithHooks, QueryTransaction};
+use crate::interface::{CommandTransaction, QueryTransaction, WithHooks};
 use crate::{
 	interface::{Identity, Params},
 	Frame,
@@ -22,12 +22,16 @@ pub struct Query<'a> {
 	pub identity: &'a Identity,
 }
 
-pub trait Execute: ExecuteCommand + ExecuteQuery {}
+pub trait Execute<CT: CommandTransaction + WithInterceptors<CT> + WithHooks>:
+	ExecuteCommand<CT> + ExecuteQuery
+{
+}
 
-pub trait ExecuteCommand {
-	fn execute_command<
-		CT: CommandTransaction + WithInterceptors<CT> + WithHooks,
-	>(
+pub trait ExecuteCommand<
+	CT: CommandTransaction + WithInterceptors<CT> + WithHooks,
+>
+{
+	fn execute_command(
 		&self,
 		txn: &mut CT,
 		cmd: Command<'_>,

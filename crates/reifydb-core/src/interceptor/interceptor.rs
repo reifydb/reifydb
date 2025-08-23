@@ -1,38 +1,40 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::change::TransactionalChanges;
+use crate::catalog::TransactionalChanges;
 use crate::interceptor::{
 	InterceptorChain, PostCommitContext, PostCommitInterceptor,
-	PreCommitContext, PreCommitInterceptor, 
-	SchemaDefPostCreateContext, SchemaDefPostCreateInterceptor,
-	SchemaDefPreUpdateContext, SchemaDefPreUpdateInterceptor,
-	SchemaDefPostUpdateContext, SchemaDefPostUpdateInterceptor,
-	SchemaDefPreDeleteContext, SchemaDefPreDeleteInterceptor,
-	TableDefPostCreateContext, TableDefPostCreateInterceptor,
-	TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
-	TableDefPostUpdateContext, TableDefPostUpdateInterceptor,
-	TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
-	TablePostDeleteContext, TablePostDeleteInterceptor, 
-	TablePostInsertContext, TablePostInsertInterceptor, 
-	TablePostUpdateContext, TablePostUpdateInterceptor, 
-	TablePreDeleteContext, TablePreDeleteInterceptor, 
-	TablePreInsertContext, TablePreInsertInterceptor, 
-	TablePreUpdateContext, TablePreUpdateInterceptor,
-	ViewDefPostCreateContext, ViewDefPostCreateInterceptor,
-	ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor,
-	ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor,
-	ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
+	PreCommitContext, PreCommitInterceptor, SchemaDefPostCreateContext,
+	SchemaDefPostCreateInterceptor, SchemaDefPostUpdateContext,
+	SchemaDefPostUpdateInterceptor, SchemaDefPreDeleteContext,
+	SchemaDefPreDeleteInterceptor, SchemaDefPreUpdateContext,
+	SchemaDefPreUpdateInterceptor, TableDefPostCreateContext,
+	TableDefPostCreateInterceptor, TableDefPostUpdateContext,
+	TableDefPostUpdateInterceptor, TableDefPreDeleteContext,
+	TableDefPreDeleteInterceptor, TableDefPreUpdateContext,
+	TableDefPreUpdateInterceptor, TablePostDeleteContext,
+	TablePostDeleteInterceptor, TablePostInsertContext,
+	TablePostInsertInterceptor, TablePostUpdateContext,
+	TablePostUpdateInterceptor, TablePreDeleteContext,
+	TablePreDeleteInterceptor, TablePreInsertContext,
+	TablePreInsertInterceptor, TablePreUpdateContext,
+	TablePreUpdateInterceptor, ViewDefPostCreateContext,
+	ViewDefPostCreateInterceptor, ViewDefPostUpdateContext,
+	ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext,
+	ViewDefPreDeleteInterceptor, ViewDefPreUpdateContext,
+	ViewDefPreUpdateInterceptor,
 };
 use crate::interface::interceptor::{
-	SchemaDefInterceptor, TableDefInterceptor, TableInterceptor, 
-	TransactionInterceptor, ViewDefInterceptor, WithInterceptors
+	SchemaDefInterceptor, TableDefInterceptor, TableInterceptor,
+	TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
 };
-use crate::interface::{CommandTransaction, SchemaDef, TableDef, TransactionId, ViewDef};
+use crate::interface::{
+	CommandTransaction, SchemaDef, TableDef, TransactionId, ViewDef,
+};
 use crate::row::EncodedRow;
 use crate::{RowNumber, Version};
 
-/// Macro to generate interceptor execution methods  
+/// Macro to generate interceptor execution methods
 macro_rules! impl_interceptor_method {
 	(
 		$method_name:ident,
@@ -67,7 +69,9 @@ macro_rules! impl_interceptor_method {
 	};
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT {
+impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT>
+	for CT
+{
 	impl_interceptor_method!(
 		pre_insert,
 		table_pre_insert_interceptors,
@@ -117,7 +121,9 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> SchemaDefInterceptor<CT> for CT {
+impl<CT: CommandTransaction + WithInterceptors<CT>> SchemaDefInterceptor<CT>
+	for CT
+{
 	impl_interceptor_method!(
 		post_create,
 		schema_def_post_create_interceptors,
@@ -151,7 +157,9 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> SchemaDefInterceptor<CT> for
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT> for CT {
+impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT>
+	for CT
+{
 	impl_interceptor_method!(
 		post_create,
 		table_def_post_create_interceptors,
@@ -185,7 +193,9 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT> for 
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT> for CT {
+impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT>
+	for CT
+{
 	impl_interceptor_method!(
 		post_create,
 		view_def_post_create_interceptors,
@@ -219,7 +229,9 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT> for C
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> for CT {
+impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT>
+	for CT
+{
 	impl_interceptor_method!(
 		pre_commit,
 		pre_commit_interceptors,
@@ -232,7 +244,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 		&mut self,
 		id: TransactionId,
 		version: Version,
-		catalog_changes: Option<TransactionalChanges>,
+		changes: Option<TransactionalChanges>,
 	) -> crate::Result<()> {
 		if self.post_commit_interceptors().is_empty() {
 			return Ok(());
@@ -248,7 +260,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 				CT,
 				dyn PostCommitInterceptor<CT>,
 			> = self.post_commit_interceptors() as *mut _;
-			let ctx = PostCommitContext::new(id, version, catalog_changes);
+			let ctx = PostCommitContext::new(id, version, changes);
 			(*chain_ptr).execute(ctx)?
 		}
 		Ok(())

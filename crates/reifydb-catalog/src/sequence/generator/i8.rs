@@ -2,18 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-use reifydb_core::interface::{
-	CommandTransaction,
-};
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-    diagnostic::sequence::sequence_exhausted, interface::{
-        UnversionedCommandTransaction,
-        UnversionedQueryTransaction,
-    },
-    return_error,
-    row::EncodedRowLayout,
-    EncodedKey,
-    Type,
+	diagnostic::sequence::sequence_exhausted, interface::{
+		UnversionedCommandTransaction, UnversionedQueryTransaction,
+	},
+	return_error,
+	row::EncodedRowLayout,
+	EncodedKey,
+	Type,
 };
 
 static LAYOUT: Lazy<EncodedRowLayout> =
@@ -27,8 +24,6 @@ impl GeneratorI8 {
 		key: &EncodedKey,
 		default: Option<i8>,
 	) -> crate::Result<i8> {
-
-
 		txn.with_unversioned_command(|tx| match tx.get(key)? {
 			Some(unversioned_row) => {
 				let mut row = unversioned_row.row;
@@ -75,19 +70,19 @@ impl GeneratorI8 {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::{
-        interface::{
-            Unversioned, UnversionedCommandTransaction,
-            UnversionedQueryTransaction,
-        }, result::error::diagnostic::sequence::sequence_exhausted,
-        EncodedKey,
-        Type,
-    };
-    use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_core::{
+		interface::{
+			Unversioned, UnversionedCommandTransaction,
+			UnversionedQueryTransaction,
+		}, result::error::diagnostic::sequence::sequence_exhausted,
+		EncodedKey,
+		Type,
+	};
+	use reifydb_engine::test_utils::create_test_command_transaction;
 
-    use crate::sequence::generator::i8::{GeneratorI8, LAYOUT};
+	use crate::sequence::generator::i8::{GeneratorI8, LAYOUT};
 
-    #[test]
+	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		for expected in 1..100 {

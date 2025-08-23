@@ -10,7 +10,13 @@ mod evaluate;
 mod execute;
 #[allow(dead_code)]
 mod function;
+pub mod test_utils;
+pub mod transaction;
 
 pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;
 pub use reifydb_core::Result;
+pub use transaction::{
+    StandardCommandTransaction, StandardQueryTransaction,
+    StandardTransaction,
+};

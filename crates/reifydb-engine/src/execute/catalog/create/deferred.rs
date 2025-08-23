@@ -3,18 +3,22 @@
 
 use reifydb_catalog::{view::ViewToCreate, Catalog};
 use reifydb_core::{
-	result::error::diagnostic::catalog::view_already_exists,
-	return_error, Value
-	,
+	result::error::diagnostic::catalog::view_already_exists, return_error,
+	Value,
 };
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
-use crate::{columnar::Columns, execute::{Executor, FullCommandTransaction}};
+use reifydb_core::interface::Transaction;
+use crate::{
+	columnar::Columns,
+	execute::Executor,
+	StandardCommandTransaction,
+};
 
 impl Executor {
-	pub(crate) fn create_deferred_view<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn create_deferred_view<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
@@ -72,6 +76,7 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
+	use crate::test_utils::create_test_command_transaction;
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
 	use reifydb_core::{
 		interface::{Params, SchemaDef, SchemaId}, OwnedFragment,
@@ -80,7 +85,6 @@ mod tests {
 	use reifydb_rql::plan::physical::{
 		CreateDeferredViewPlan, PhysicalPlan,
 	};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::execute::Executor;
 

@@ -3,6 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
+use reifydb::engine::StandardTransaction;
 use reifydb::{
 	core::{
 		hook::Hooks,
@@ -11,7 +12,6 @@ use reifydb::{
 			VersionedTransaction,
 		},
 		retry,
-		transaction::StandardTransaction,
 	}, memory,
 	network::grpc::{client::GrpcClient, server::GrpcConfig},
 	optimistic,

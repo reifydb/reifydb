@@ -1,26 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::execute::FullCommandTransaction;
 use crate::{
-	execute::Executor,
-	function::{math, Functions},
+	execute::Executor, function::{math, Functions},
+	StandardCommandTransaction,
+	StandardQueryTransaction,
 };
 use reifydb_catalog::Catalog;
+use reifydb_core::catalog::MaterializedCatalog;
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
-		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, Identity, Params, Query, Transaction,
-		VersionedTransaction, WithHooks,
+		Command, Engine as EngineInterface,
+		ExecuteCommand, ExecuteQuery, Identity, Params, Query,
+		Transaction, VersionedTransaction, WithHooks
+		,
 	},
-	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 	Frame,
 };
 use std::{ops::Deref, sync::Arc};
-use reifydb_core::catalog::MaterializedCatalog;
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
@@ -37,54 +37,54 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let catalog = MaterializedCatalog::new();
 		let mut interceptors = self.interceptors.create();
-		
+
 		// Register the materialized catalog interceptors
 		use reifydb_core::interceptor::catalog::{
+			CatalogCommitInterceptor,
 			MaterializedSchemaInterceptor,
 			MaterializedTableInterceptor,
 			MaterializedViewInterceptor,
-			CatalogCommitInterceptor,
 		};
 		use std::rc::Rc;
-		
+
 		// Schema interceptors
 		interceptors.schema_def_post_create.add(Rc::new(
-			MaterializedSchemaInterceptor::new(catalog.clone())
+			MaterializedSchemaInterceptor::new(catalog.clone()),
 		));
 		interceptors.schema_def_post_update.add(Rc::new(
-			MaterializedSchemaInterceptor::new(catalog.clone())
+			MaterializedSchemaInterceptor::new(catalog.clone()),
 		));
 		interceptors.schema_def_pre_delete.add(Rc::new(
-			MaterializedSchemaInterceptor::new(catalog.clone())
+			MaterializedSchemaInterceptor::new(catalog.clone()),
 		));
-		
+
 		// Table interceptors
 		interceptors.table_def_post_create.add(Rc::new(
-			MaterializedTableInterceptor::new(catalog.clone())
+			MaterializedTableInterceptor::new(catalog.clone()),
 		));
 		interceptors.table_def_post_update.add(Rc::new(
-			MaterializedTableInterceptor::new(catalog.clone())
+			MaterializedTableInterceptor::new(catalog.clone()),
 		));
 		interceptors.table_def_pre_delete.add(Rc::new(
-			MaterializedTableInterceptor::new(catalog.clone())
+			MaterializedTableInterceptor::new(catalog.clone()),
 		));
-		
+
 		// View interceptors
 		interceptors.view_def_post_create.add(Rc::new(
-			MaterializedViewInterceptor::new(catalog.clone())
+			MaterializedViewInterceptor::new(catalog.clone()),
 		));
 		interceptors.view_def_post_update.add(Rc::new(
-			MaterializedViewInterceptor::new(catalog.clone())
+			MaterializedViewInterceptor::new(catalog.clone()),
 		));
 		interceptors.view_def_pre_delete.add(Rc::new(
-			MaterializedViewInterceptor::new(catalog.clone())
+			MaterializedViewInterceptor::new(catalog.clone()),
 		));
-		
+
 		// Post-commit interceptor
 		interceptors.post_commit.add(Rc::new(
-			CatalogCommitInterceptor::new(catalog.clone())
+			CatalogCommitInterceptor::new(catalog.clone()),
 		));
-		
+
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
@@ -110,15 +110,14 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
 		let mut txn = self.begin_command()?;
-		let result = self
-			.execute_command::<StandardCommandTransaction<T>>(
-				&mut txn,
-				Command {
-					rql,
-					params,
-					identity,
-				},
-			)?;
+		let result = self.execute_command(
+			&mut txn,
+			Command {
+				rql,
+				params,
+				identity,
+			},
+		)?;
 		txn.commit()?;
 		Ok(result)
 	}
@@ -142,14 +141,15 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand for StandardEngine<T> {
+impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>  for StandardEngine<T>
+{
 	#[inline]
-	fn execute_command<CT: FullCommandTransaction<CT>>(
+	fn execute_command(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		cmd: Command<'_>,
 	) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_command::<CT>(txn, cmd)
+		self.executor.execute_command(txn, cmd)
 	}
 }
 

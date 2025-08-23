@@ -20,15 +20,17 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::DeletePlan;
 
+use reifydb_core::interface::{Transaction, VersionedCommandTransaction, VersionedQueryTransaction};
 use crate::{
 	columnar::{ColumnData, Columns},
-	execute::{compile, Batch, ExecutionContext, Executor, FullCommandTransaction},
+	execute::{compile, Batch, ExecutionContext, Executor},
+	StandardCommandTransaction,
 };
 
 impl Executor {
-	pub(crate) fn delete<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn delete<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

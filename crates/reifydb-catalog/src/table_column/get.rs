@@ -57,7 +57,7 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::Type;
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		table_column::ColumnId, test_utils::create_test_table_column,

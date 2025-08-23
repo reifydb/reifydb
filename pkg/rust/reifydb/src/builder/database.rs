@@ -2,14 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::Catalog;
-use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::StandardInterceptorBuilder,
 	interface::{subsystem::SubsystemFactory, Transaction},
 	ioc::IocContainer,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]

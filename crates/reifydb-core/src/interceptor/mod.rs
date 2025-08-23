@@ -11,6 +11,7 @@ mod table;
 mod table_def;
 mod transaction;
 mod view_def;
+mod interceptor;
 
 pub use builder::*;
 pub use chain::InterceptorChain;
@@ -22,7 +23,7 @@ pub use table_def::*;
 pub use transaction::*;
 pub use view_def::*;
 
-pub(crate) type Chain<T, I> = InterceptorChain<T, I>;
+pub type Chain<T, I> = InterceptorChain<T, I>;
 
 /// Generic macro to define interceptor contexts, traits, and chain execution
 #[macro_export]

@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	QueryTransaction,
-};
+use reifydb_core::interface::QueryTransaction;
 
 use crate::plan::{
 	logical::AlterSequenceNode,
@@ -28,10 +26,10 @@ impl Compiler {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_core::interface::evaluate::expression::{
 		ConstantExpression, Expression,
 	};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::{
 		ast::{lex::lex, parse::parse},

@@ -3,18 +3,17 @@
 
 use std::marker::PhantomData;
 
+use super::{WorkerPoolConfig, WorkerPoolSubsystem};
 use reifydb_core::{
-	Result,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		Transaction,
 		subsystem::{Subsystem, SubsystemFactory},
+		Transaction,
 	},
 	ioc::IocContainer,
-	transaction::StandardCommandTransaction,
+	Result,
 };
-
-use super::{WorkerPoolConfig, WorkerPoolSubsystem};
+use reifydb_engine::StandardCommandTransaction;
 
 /// Factory for creating WorkerPoolSubsystem instances
 pub struct WorkerPoolSubsystemFactory<T: Transaction> {
@@ -43,10 +42,14 @@ impl<T: Transaction> Default for WorkerPoolSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerPoolSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
+	for WorkerPoolSubsystemFactory<T>
+{
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+		builder: StandardInterceptorBuilder<
+			StandardCommandTransaction<T>,
+		>,
 		_ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		// WorkerPool doesn't need any interceptors

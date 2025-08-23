@@ -4,9 +4,9 @@
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{Transaction, subsystem::SubsystemFactory},
-	transaction::StandardCommandTransaction,
+	interface::{subsystem::SubsystemFactory, Transaction},
 };
+use reifydb_engine::StandardCommandTransaction;
 #[cfg(feature = "sub_grpc")]
 use reifydb_sub_grpc::{GrpcConfig, GrpcSubsystemFactory};
 #[cfg(feature = "sub_logging")]
@@ -14,7 +14,7 @@ use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_ws")]
 use reifydb_sub_ws::{WsConfig, WsSubsystemFactory};
 
-use super::{DatabaseBuilder, traits::WithSubsystem};
+use super::{traits::WithSubsystem, DatabaseBuilder};
 use crate::Database;
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
@@ -24,7 +24,9 @@ pub struct ServerBuilder<T: Transaction> {
 	cdc: T::Cdc,
 	hooks: Hooks,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
-	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>>,
+	subsystem_factories: Vec<
+		Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
+	>,
 }
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
@@ -47,7 +49,11 @@ impl<T: Transaction> ServerBuilder<T> {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<StandardCommandTransaction<T>> + Send + Sync + Clone + 'static,
+		I: RegisterInterceptor<StandardCommandTransaction<T>>
+			+ Send
+			+ Sync
+			+ Clone
+			+ 'static,
 	{
 		self.interceptors =
 			self.interceptors.add_factory(move |interceptors| {
@@ -109,7 +115,9 @@ impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
 
 	fn with_subsystem(
 		mut self,
-		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
+		factory: Box<
+			dyn SubsystemFactory<StandardCommandTransaction<T>>,
+		>,
 	) -> Self {
 		self.subsystem_factories.push(factory);
 		self

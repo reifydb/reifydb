@@ -3,8 +3,8 @@
 
 use std::marker::PhantomData;
 
-use crate::interface::TransactionId;
-use crate::{
+use reifydb_core::interface::TransactionId;
+use reifydb_core::{
 	interface::{
 		BoxedVersionedIter, CdcTransaction, QueryTransaction,
 		Transaction, UnversionedTransaction, Versioned,
@@ -39,24 +39,24 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 	}
 
 	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_unversioned_query<F, R>(&self, f: F) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Unversioned as UnversionedTransaction>::Query<
 				'_,
 			>,
-		) -> crate::Result<R>,
+		) -> reifydb_core::Result<R>,
 	{
 		self.unversioned.with_query(f)
 	}
 
 	/// Execute a function with access to the versioned query transaction.
 	/// This operates within the same transaction context.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
+	pub fn with_versioned_query<F, R>(&mut self, f: F) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Versioned as VersionedTransaction>::Query,
-		) -> crate::Result<R>,
+		) -> reifydb_core::Result<R>,
 	{
 		f(&mut self.versioned)
 	}
@@ -69,7 +69,7 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 
 impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	#[inline]
-	fn version(&self) -> crate::Version {
+	fn version(&self) -> reifydb_core::Version {
 		self.versioned.version()
 	}
 
@@ -82,22 +82,22 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	fn get(
 		&mut self,
 		key: &EncodedKey,
-	) -> crate::Result<Option<Versioned>> {
+	) -> reifydb_core::Result<Option<Versioned>> {
 		self.versioned.get(key)
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
 		self.versioned.contains_key(key)
 	}
 
 	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan(&mut self) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.versioned.scan()
 	}
 
 	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan_rev(&mut self) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.versioned.scan_rev()
 	}
 
@@ -105,7 +105,7 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	fn range(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.versioned.range(range)
 	}
 
@@ -113,7 +113,7 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.versioned.range_rev(range)
 	}
 
@@ -121,7 +121,7 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	fn prefix(
 		&mut self,
 		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.versioned.prefix(prefix)
 	}
 
@@ -129,7 +129,7 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	fn prefix_rev(
 		&mut self,
 		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.versioned.prefix_rev(prefix)
 	}
 }
@@ -141,11 +141,11 @@ impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 
 	fn begin_unversioned_query(
 		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>> {
+	) -> reifydb_core::Result<Self::UnversionedQuery<'_>> {
 		self.unversioned.begin_query()
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+	fn begin_cdc_query(&self) -> reifydb_core::Result<Self::CdcQuery<'_>> {
 		self.cdc.begin_query()
 	}
 }

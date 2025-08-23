@@ -8,12 +8,13 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
 
-use crate::{columnar::Columns, execute::{Executor, FullCommandTransaction}};
+use reifydb_core::interface::Transaction;
+use crate::{columnar::Columns, execute::Executor, StandardCommandTransaction};
 
 impl Executor {
-	pub(crate) fn create_transactional_view<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn create_transactional_view<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTransactionalViewPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();

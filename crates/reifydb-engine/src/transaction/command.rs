@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interceptor::{
+use reifydb_core::interceptor::{
 	TablePostInsertInterceptor, TablePreInsertInterceptor,
 	TablePreUpdateInterceptor,
 };
-use crate::interface::interceptor::WithInterceptors;
-use crate::interface::{
+use reifydb_core::interface::interceptor::WithInterceptors;
+use reifydb_core::interface::{
 	CommandTransaction, QueryTransaction, TransactionId, WithHooks,
 };
-use crate::{
+use reifydb_core::{
 	catalog::MaterializedCatalog, 
 	interface::change::TransactionalChanges,
 	diagnostic::transaction,
@@ -27,7 +27,7 @@ use crate::{
 	EncodedKey,
 	EncodedKeyRange,
 };
-use interceptor::{
+use reifydb_core::interceptor::{
 	Chain, PostCommitInterceptor, PreCommitInterceptor,
 	TablePostDeleteInterceptor, TablePreDeleteInterceptor,
 };
@@ -93,8 +93,8 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Get a schema by ID, checking transaction-local changes first
 	pub fn get_schema(
 		&self,
-		id: crate::interface::SchemaId,
-	) -> Option<crate::interface::SchemaDef> {
+		id: reifydb_core::interface::SchemaId,
+	) -> Option<reifydb_core::interface::SchemaDef> {
 		// First check transaction-local changes
 		if let Some(schema) = self.changes.get_schema(id) {
 			return Some(schema.clone());
@@ -108,8 +108,8 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Get a table by ID, checking transaction-local changes first
 	pub fn get_table(
 		&self,
-		id: crate::interface::TableId,
-	) -> Option<crate::interface::TableDef> {
+		id: reifydb_core::interface::TableId,
+	) -> Option<reifydb_core::interface::TableDef> {
 		// First check transaction-local changes
 		if let Some(table) = self.changes.get_table(id) {
 			return Some(table.clone());
@@ -122,8 +122,8 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Get a view by ID, checking transaction-local changes first
 	pub fn get_view(
 		&self,
-		id: crate::interface::ViewId,
-	) -> Option<crate::interface::ViewDef> {
+		id: reifydb_core::interface::ViewId,
+	) -> Option<reifydb_core::interface::ViewDef> {
 		// First check transaction-local changes
 		if let Some(view) = self.changes.get_view(id) {
 			return Some(view.clone());
@@ -135,7 +135,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 
 	/// Check if transaction is still active and return appropriate error if
 	/// not
-	fn check_active(&self) -> crate::Result<()> {
+	fn check_active(&self) -> reifydb_core::Result<()> {
 		match self.state {
 			TransactionState::Active => Ok(()),
 			TransactionState::Committed => {
@@ -148,13 +148,13 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	}
 
 	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_unversioned_query<F, R>(&self, f: F) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Unversioned as UnversionedTransaction>::Query<
 				'_,
 			>,
-		) -> crate::Result<R>,
+		) -> reifydb_core::Result<R>,
 	{
 		self.check_active()?;
 		self.unversioned.with_query(f)
@@ -166,13 +166,13 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Note: If this operation fails, the versioned transaction is NOT
 	/// automatically rolled back. The caller should handle transaction
 	/// rollback if needed.
-	pub fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_unversioned_command<F, R>(&self, f: F) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Unversioned as UnversionedTransaction>::Command<
 				'_,
 			>,
-		) -> crate::Result<R>,
+		) -> reifydb_core::Result<R>,
 	{
 		self.check_active()?;
 		self.unversioned.with_command(f)
@@ -180,11 +180,11 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 
 	/// Execute a function with access to the versioned command transaction.
 	/// This operates within the same transaction context.
-	pub fn with_versioned_command<F, R>(&mut self, f: F) -> crate::Result<R>
+	pub fn with_versioned_command<F, R>(&mut self, f: F) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Versioned as VersionedTransaction>::Command,
-		) -> crate::Result<R>,
+		) -> reifydb_core::Result<R>,
 	{
 		self.check_active()?;
 		let result = f(self.versioned.as_mut().unwrap());
@@ -203,11 +203,11 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Execute a function with access to the versioned query capabilities.
 	/// This operates within the same transaction context and provides
 	/// read-only access.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
+	pub fn with_versioned_query<F, R>(&mut self, f: F) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Versioned as VersionedTransaction>::Command,
-		) -> crate::Result<R>,
+		) -> reifydb_core::Result<R>,
 		<T::Versioned as VersionedTransaction>::Command:
 			VersionedQueryTransaction,
 	{
@@ -228,7 +228,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Commit the transaction.
 	/// Since unversioned transactions are short-lived and auto-commit,
 	/// this only commits the versioned transaction.
-	pub fn commit(&mut self) -> crate::Result<crate::Version> {
+	pub fn commit(&mut self) -> reifydb_core::Result<reifydb_core::Version> {
 		self.check_active()?;
 
 		TransactionInterceptor::pre_commit(self)?;
@@ -260,7 +260,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	}
 
 	/// Rollback the transaction.
-	pub fn rollback(&mut self) -> crate::Result<()> {
+	pub fn rollback(&mut self) -> reifydb_core::Result<()> {
 		self.check_active()?;
 		if let Some(versioned) = self.versioned.take() {
 			self.state = TransactionState::RolledBack;
@@ -281,7 +281,7 @@ impl<T: Transaction> VersionedQueryTransaction
 	for StandardCommandTransaction<T>
 {
 	#[inline]
-	fn version(&self) -> crate::Version {
+	fn version(&self) -> reifydb_core::Version {
 		self.versioned.as_ref().unwrap().version()
 	}
 
@@ -294,25 +294,25 @@ impl<T: Transaction> VersionedQueryTransaction
 	fn get(
 		&mut self,
 		key: &EncodedKey,
-	) -> crate::Result<Option<Versioned>> {
+	) -> reifydb_core::Result<Option<Versioned>> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().get(key)
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().contains_key(key)
 	}
 
 	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan(&mut self) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().scan()
 	}
 
 	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan_rev(&mut self) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().scan_rev()
 	}
@@ -321,7 +321,7 @@ impl<T: Transaction> VersionedQueryTransaction
 	fn range(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().range(range)
 	}
@@ -330,7 +330,7 @@ impl<T: Transaction> VersionedQueryTransaction
 	fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().range_rev(range)
 	}
@@ -339,7 +339,7 @@ impl<T: Transaction> VersionedQueryTransaction
 	fn prefix(
 		&mut self,
 		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().prefix(prefix)
 	}
@@ -348,7 +348,7 @@ impl<T: Transaction> VersionedQueryTransaction
 	fn prefix_rev(
 		&mut self,
 		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	) -> reifydb_core::Result<BoxedVersionedIter> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().prefix_rev(prefix)
 	}
@@ -362,26 +362,26 @@ impl<T: Transaction> VersionedCommandTransaction
 		&mut self,
 		key: &EncodedKey,
 		row: EncodedRow,
-	) -> crate::Result<()> {
+	) -> reifydb_core::Result<()> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().set(key, row)
 	}
 
 	#[inline]
-	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	fn remove(&mut self, key: &EncodedKey) -> reifydb_core::Result<()> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().remove(key)
 	}
 
 	#[inline]
-	fn commit(mut self) -> crate::Result<crate::Version> {
+	fn commit(mut self) -> reifydb_core::Result<reifydb_core::Version> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
 		self.versioned.take().unwrap().commit()
 	}
 
 	#[inline]
-	fn rollback(mut self) -> crate::Result<()> {
+	fn rollback(mut self) -> reifydb_core::Result<()> {
 		self.check_active()?;
 		self.state = TransactionState::RolledBack;
 		self.versioned.take().unwrap().rollback()
@@ -402,12 +402,12 @@ impl<T: Transaction> QueryTransaction for StandardCommandTransaction<T> {
 
 	fn begin_unversioned_query(
 		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>> {
+	) -> reifydb_core::Result<Self::UnversionedQuery<'_>> {
 		self.check_active()?;
 		self.unversioned.begin_query()
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+	fn begin_cdc_query(&self) -> reifydb_core::Result<Self::CdcQuery<'_>> {
 		self.check_active()?;
 		self.cdc.begin_query()
 	}
@@ -419,7 +419,7 @@ impl<T: Transaction> CommandTransaction for StandardCommandTransaction<T> {
 
 	fn begin_unversioned_command(
 		&self,
-	) -> crate::Result<Self::UnversionedCommand<'_>> {
+	) -> reifydb_core::Result<Self::UnversionedCommand<'_>> {
 		self.check_active()?;
 		self.unversioned.begin_command()
 	}

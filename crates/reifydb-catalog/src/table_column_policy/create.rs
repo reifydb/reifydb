@@ -87,7 +87,7 @@ mod tests {
 		},
 		Type,
 	};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_command_transaction;
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Error;
 

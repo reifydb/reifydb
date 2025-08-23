@@ -18,16 +18,13 @@ use query::{
 	view_scan::ViewScanNode,
 };
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::interceptor::WithInterceptors;
-use reifydb_core::interface::{
-	CommandTransaction, QueryTransaction, WithHooks,
-};
+use reifydb_core::interface::{QueryTransaction, Transaction};
 use reifydb_core::{
-	Frame,
 	interface::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
 		TableDef,
 	},
+	Frame,
 };
 use reifydb_rql::{
 	ast,
@@ -36,21 +33,12 @@ use reifydb_rql::{
 
 use crate::{
 	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
+		layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
+		SourceQualified,
 	},
-	function::{Functions, math},
+	function::{math, Functions},
+	StandardCommandTransaction,
 };
-
-pub trait FullCommandTransaction<CT: CommandTransaction>:
-	CommandTransaction + WithInterceptors<CT> + WithHooks
-{
-}
-
-impl<CT> FullCommandTransaction<CT> for CT where
-	CT: CommandTransaction + WithInterceptors<CT> + WithHooks
-{
-}
 
 mod catalog;
 mod mutate;
@@ -164,10 +152,12 @@ impl Executor {
 	}
 }
 
-impl ExecuteCommand for Executor {
-	fn execute_command<CT: FullCommandTransaction<CT>>(
+impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
+	for Executor
+{
+	fn execute_command(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		cmd: Command<'_>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -212,7 +202,7 @@ impl ExecuteQuery for Executor {
 	}
 }
 
-impl Execute for Executor {}
+impl<T: Transaction> Execute<StandardCommandTransaction<T>> for Executor {}
 
 impl Executor {
 	pub(crate) fn execute_query_plan(
@@ -246,9 +236,9 @@ impl Executor {
 		}
 	}
 
-	pub(crate) fn execute_command_plan<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn execute_command_plan<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {

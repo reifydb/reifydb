@@ -19,4 +19,5 @@ crossbeam-channel = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
+reifydb-engine = { workspace = true }
 test_each_file = { workspace = true }

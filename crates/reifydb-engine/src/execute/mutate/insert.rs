@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::table::operation::TableOperations;
 use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
+use reifydb_core::interface::Transaction;
 use reifydb_core::{
 	interface::{ColumnPolicyKind, Params}, result::error::diagnostic::catalog::table_not_found, return_error, row::EncodedRowLayout,
 	ColumnDescriptor,
@@ -14,19 +14,20 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::InsertPlan;
 
-use crate::execute::FullCommandTransaction;
+use crate::transaction::operation::table::TableOperations;
 use crate::{
 	columnar::Columns,
 	execute::{
 		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
 		Executor,
 	},
+	StandardCommandTransaction,
 };
 
 impl Executor {
-	pub(crate) fn insert<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn insert<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {

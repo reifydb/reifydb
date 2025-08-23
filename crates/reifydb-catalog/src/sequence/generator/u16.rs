@@ -81,7 +81,7 @@ mod tests {
         EncodedKey,
         Type,
     };
-    use reifydb_transaction::test_utils::create_test_command_transaction;
+    use reifydb_engine::test_utils::create_test_command_transaction;
 
     use crate::sequence::generator::u16::{GeneratorU16, LAYOUT};
 

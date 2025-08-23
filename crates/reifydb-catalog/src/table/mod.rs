@@ -5,6 +5,5 @@ mod create;
 mod find;
 mod get;
 mod layout;
-pub mod operation;
 
 pub use create::{TableColumnToCreate, TableToCreate};

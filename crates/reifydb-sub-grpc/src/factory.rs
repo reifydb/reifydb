@@ -6,13 +6,12 @@ use std::marker::PhantomData;
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		Transaction,
 		subsystem::{Subsystem, SubsystemFactory},
+		Transaction,
 	},
 	ioc::IocContainer,
-	transaction::StandardCommandTransaction,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_network::grpc::server::GrpcConfig;
 
 use super::GrpcSubsystem;
@@ -32,10 +31,14 @@ impl<T: Transaction> GrpcSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for GrpcSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
+	for GrpcSubsystemFactory<T>
+{
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+		builder: StandardInterceptorBuilder<
+			StandardCommandTransaction<T>,
+		>,
 		_ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		// GRPC subsystem doesn't need any special interceptors

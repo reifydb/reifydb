@@ -7,10 +7,6 @@ authors.workspace = true
 
 [dependencies]
 reifydb-core = { workspace = true }
-
-# Performance
-crossbeam-channel = { workspace = true }
-parking_lot = { workspace = true }
+reifydb-engine = { workspace = true }
 
 [dev-dependencies]
-reifydb-testing = { workspace = true }

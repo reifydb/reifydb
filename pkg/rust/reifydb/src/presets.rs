@@ -7,7 +7,7 @@
 //! without having to specify the transaction types.
 
 use reifydb_core::interface::StandardCdcTransaction;
-use reifydb_core::transaction::StandardTransaction;
+use reifydb_engine::StandardTransaction;
 use reifydb_storage::{memory::Memory, sqlite::Sqlite};
 use reifydb_transaction::{
 	mvcc::transaction::{

@@ -9,12 +9,17 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
-use crate::{columnar::Columns, execute::{Executor, FullCommandTransaction}};
+use reifydb_core::interface::Transaction;
+use crate::{
+	columnar::Columns,
+	execute::Executor,
+	StandardCommandTransaction,
+};
 
 impl Executor {
-	pub(crate) fn create_schema<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn create_schema<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
 		if let Some(schema) =
@@ -57,9 +62,9 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
+	use crate::test_utils::create_test_command_transaction;
 	use reifydb_core::{interface::Params, OwnedFragment, Value};
 	use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
 
 	use crate::execute::Executor;
 

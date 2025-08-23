@@ -166,7 +166,7 @@ mod tests {
 	use reifydb_core::interface::{
 		SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
 	};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		table::{layout::table_schema, TableToCreate},

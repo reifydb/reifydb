@@ -5,17 +5,14 @@ use std::sync::Arc;
 
 use reifydb_catalog::Catalog;
 use reifydb_core::{
-	interface::{
-		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
-	}, result::error::diagnostic::{
+	interface::{ColumnPolicyKind, EncodableKey, Params, TableRowKey}, result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
 	}, return_error, row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 	ColumnDescriptor,
 	IntoOwnedFragment,
-	Type
-	,
+	Type,
 	Value,
 };
 use reifydb_rql::plan::physical::UpdatePlan;
@@ -24,14 +21,16 @@ use crate::{
 	columnar::{ColumnData, Columns},
 	execute::{
 		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
-		Executor, FullCommandTransaction,
+		Executor,
 	},
+	StandardCommandTransaction,
 };
+use reifydb_core::interface::{Transaction, VersionedCommandTransaction};
 
 impl Executor {
-	pub(crate) fn update<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn update<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

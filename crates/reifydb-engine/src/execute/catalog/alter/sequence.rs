@@ -4,23 +4,24 @@
 use catalog::schema_not_found;
 use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
 use reifydb_core::{
-	diagnostic::{
-		catalog, catalog::table_not_found, query::column_not_found,
-		sequence::can_not_alter_not_auto_increment,
-	}, interface::{EvaluationContext, Params},
-	return_error,
-	ColumnDescriptor,
-	Value
-	,
+    diagnostic::{
+        catalog, catalog::table_not_found, query::column_not_found,
+        sequence::can_not_alter_not_auto_increment,
+    }, interface::{EvaluationContext, Params},
+    return_error,
+    ColumnDescriptor,
+    Value
+    ,
 };
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
-use crate::{columnar::Columns, evaluate::evaluate, execute::{Executor, FullCommandTransaction}};
+use reifydb_core::interface::Transaction;
+use crate::{columnar::Columns, evaluate::evaluate, execute::Executor, StandardCommandTransaction};
 
 impl Executor {
-	pub(crate) fn alter_table_sequence<CT: FullCommandTransaction<CT>>(
+	pub(crate) fn alter_table_sequence<T: Transaction>(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
@@ -109,27 +110,27 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::{
-		table::{TableColumnToCreate, TableToCreate},
-		test_utils::ensure_test_schema,
-		Catalog,
-	};
-	use reifydb_core::{
-		interface::{
-			expression::{
-				ConstantExpression::Number,
-				Expression::Constant,
-			},
-			Params,
-		}, OwnedFragment, Type,
-		Value,
-	};
-	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
-	use reifydb_transaction::test_utils::create_test_command_transaction;
+    use crate::test_utils::create_test_command_transaction;
+    use reifydb_catalog::{
+        table::{TableColumnToCreate, TableToCreate},
+        test_utils::ensure_test_schema,
+        Catalog,
+    };
+    use reifydb_core::{
+        interface::{
+            expression::{
+                ConstantExpression::Number,
+                Expression::Constant,
+            },
+            Params,
+        }, OwnedFragment, Type,
+        Value,
+    };
+    use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
 
-	use crate::execute::Executor;
+    use crate::execute::Executor;
 
-	#[test]
+    #[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_schema(&mut txn);

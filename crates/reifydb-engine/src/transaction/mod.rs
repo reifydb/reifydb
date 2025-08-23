@@ -3,13 +3,13 @@
 
 use std::marker::PhantomData;
 
-use crate::interface::{
+use reifydb_core::interface::{
 	CdcTransaction, Transaction, UnversionedTransaction,
 	VersionedTransaction,
 };
 
 mod command;
-mod interceptor;
+pub(crate) mod operation;
 mod query;
 
 pub use command::StandardCommandTransaction;

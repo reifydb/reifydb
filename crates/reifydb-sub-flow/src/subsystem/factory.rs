@@ -7,15 +7,14 @@ use reifydb_cdc::PollConsumerConfig;
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		ConsumerId, Transaction,
-		subsystem::{Subsystem, SubsystemFactory},
+		subsystem::{Subsystem, SubsystemFactory}, ConsumerId,
+		Transaction,
 	},
 	ioc::IocContainer,
-	transaction::StandardCommandTransaction,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 
-use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
+use super::{intercept::TransactionalFlowInterceptor, FlowSubsystem};
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 #[derive()]
@@ -40,16 +39,22 @@ impl<T: Transaction> FlowSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for FlowSubsystemFactory<T> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
+	for FlowSubsystemFactory<T>
+{
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+		builder: StandardInterceptorBuilder<
+			StandardCommandTransaction<T>,
+		>,
 		ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		let ioc = ioc.clone();
 		builder.add_factory(move |interceptors| {
 			interceptors.register(
-				TransactionalFlowInterceptor::<T>::new(ioc.clone()),
+				TransactionalFlowInterceptor::<T>::new(
+					ioc.clone(),
+				),
 			);
 		})
 	}

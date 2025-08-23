@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::sequence::TableRowSequence;
-use reifydb_core::interface::interceptor::WithInterceptors;
-use reifydb_core::interface::{CommandTransaction, WithHooks};
+use crate::StandardCommandTransaction;
+use reifydb_catalog::sequence::TableRowSequence;
+use reifydb_core::interface::{Transaction, VersionedCommandTransaction};
 use reifydb_core::{
     hook::table::{TablePostInsertHook, TablePreInsertHook},
     interface::{
@@ -35,8 +35,7 @@ pub trait TableOperations {
 	) -> crate::Result<()>;
 }
 
-impl<CT: CommandTransaction + WithHooks + WithInterceptors<CT>> TableOperations for CT
-{
+impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 	fn insert_into_table(
 		&mut self,
 		table: TableDef,

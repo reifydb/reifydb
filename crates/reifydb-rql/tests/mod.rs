@@ -8,7 +8,7 @@ use reifydb_rql::explain::{
 	explain_ast, explain_lex, explain_logical_plan, explain_physical_plan,
 };
 use reifydb_testing::{testscript, testscript::Command};
-use reifydb_transaction::test_utils::create_test_command_transaction;
+use reifydb_engine::test_utils::create_test_command_transaction;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/reifydb-rql/tests/scripts/lex" as lex => run_test }

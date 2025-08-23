@@ -11,12 +11,12 @@ use reifydb::{
             CdcTransaction, Params,
             UnversionedTransaction, VersionedTransaction,
 		},
-		transaction::StandardTransaction,
 	},
 	memory, optimistic,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use reifydb::engine::StandardTransaction;
 
 pub struct Runner<VT, UT, C>
 where

@@ -1549,6 +1549,7 @@ version = "0.0.1"
 dependencies = [
  "once_cell",
  "reifydb-core",
+ "reifydb-engine",
  "reifydb-storage",
  "reifydb-transaction",
  "serde",
@@ -1654,10 +1655,9 @@ dependencies = [
  "nom_locate",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-storage",
+ "reifydb-engine",
  "reifydb-testing",
  "reifydb-transaction",
- "serde",
  "test_each_file",
 ]
 
@@ -1710,6 +1710,7 @@ dependencies = [
  "crossbeam-channel",
  "parking_lot",
  "reifydb-core",
+ "reifydb-engine",
  "reifydb-testing",
 ]
 
@@ -1717,10 +1718,8 @@ dependencies = [
 name = "reifydb-sub-workerpool"
 version = "0.0.1"
 dependencies = [
- "crossbeam-channel",
- "parking_lot",
  "reifydb-core",
- "reifydb-testing",
+ "reifydb-engine",
 ]
 
 [[package]]
@@ -1753,6 +1752,7 @@ version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
+ "reifydb-engine",
  "reifydb-storage",
  "reifydb-testing",
  "test_each_file",
