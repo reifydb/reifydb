@@ -218,6 +218,10 @@ impl<T: Transaction> VersionedQueryTransaction
 	for StandardCommandTransaction<T>
 {
 	#[inline]
+	fn version(&self) -> crate::Version {
+		self.versioned.as_ref().unwrap().version()
+	}
+	#[inline]
 	fn get(
 		&mut self,
 		key: &EncodedKey,

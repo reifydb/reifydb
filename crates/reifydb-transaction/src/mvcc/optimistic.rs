@@ -43,6 +43,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	for QueryTransaction<VS, UT>
 {
+	fn version(&self) -> Version {
+		self.tm.version()
+	}
+
 	fn get(
 		&mut self,
 		key: &EncodedKey,
@@ -104,6 +108,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	for CommandTransaction<VS, UT>
 {
+	fn version(&self) -> Version {
+		self.tm.version()
+	}
+
 	fn get(
 		&mut self,
 		key: &EncodedKey,

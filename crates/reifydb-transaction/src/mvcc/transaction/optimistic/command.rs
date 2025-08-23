@@ -28,7 +28,7 @@ use crate::mvcc::{
 pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction>
 {
 	engine: Optimistic<VS, UT>,
-	tm: TransactionManagerCommand<StdVersionProvider<UT>>,
+	pub(crate) tm: TransactionManagerCommand<StdVersionProvider<UT>>,
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction>

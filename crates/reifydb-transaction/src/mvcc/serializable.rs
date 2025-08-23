@@ -2,15 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Error, Version,
-	hook::Hooks,
-	interface::{
-		BoxedVersionedIter, WithHooks, UnversionedTransaction,
-		Versioned, VersionedCommandTransaction,
-		VersionedQueryTransaction, VersionedStorage,
-		VersionedTransaction,
-	},
-	row::EncodedRow,
+	hook::Hooks, interface::{
+		BoxedVersionedIter, UnversionedTransaction, Versioned,
+		VersionedCommandTransaction, VersionedQueryTransaction,
+		VersionedStorage, VersionedTransaction, WithHooks,
+	}, row::EncodedRow, EncodedKey,
+	EncodedKeyRange,
+	Error,
+	Version,
 };
 
 use crate::mvcc::transaction::serializable::{
@@ -43,6 +42,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	for QueryTransaction<VS, UT>
 {
+	fn version(&self) -> Version {
+		self.tm.version()
+	}
+
 	fn get(
 		&mut self,
 		key: &EncodedKey,
@@ -104,6 +107,10 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	for CommandTransaction<VS, UT>
 {
+	fn version(&self) -> Version {
+		self.tm.version()
+	}
+
 	fn get(
 		&mut self,
 		key: &EncodedKey,

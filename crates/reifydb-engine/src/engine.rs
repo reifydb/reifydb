@@ -43,6 +43,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 			MaterializedSchemaInterceptor,
 			MaterializedTableInterceptor,
 			MaterializedViewInterceptor,
+			CatalogCommitInterceptor,
 		};
 		use std::rc::Rc;
 		
@@ -77,6 +78,11 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		));
 		interceptors.view_def_pre_delete.add(Rc::new(
 			MaterializedViewInterceptor::new(catalog.clone())
+		));
+		
+		// Post-commit interceptor
+		interceptors.post_commit.add(Rc::new(
+			CatalogCommitInterceptor::new(catalog.clone())
 		));
 		
 		Ok(StandardCommandTransaction::new(

@@ -68,6 +68,10 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 
 impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	#[inline]
+	fn version(&self) -> crate::Version {
+		self.versioned.version()
+	}
+	#[inline]
 	fn get(
 		&mut self,
 		key: &EncodedKey,
