@@ -2,19 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::schema::SchemaToCreate;
-use reifydb_core::interface::CommandTransaction;
+use reifydb_core::interface::interceptor::SchemaDefInterceptor;
 use reifydb_core::{
 	result::error::diagnostic::catalog::schema_already_exists, return_error,
 	Value,
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
-use crate::{columnar::Columns, execute::Executor};
+use crate::{columnar::Columns, execute::{Executor, FullCommandTransaction}};
 
 impl Executor {
-	pub(crate) fn create_schema(
+	pub(crate) fn create_schema<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
 		if let Some(schema) =
@@ -38,13 +38,15 @@ impl Executor {
 			));
 		}
 
-		self.catalog.create_schema(
+		let result = self.catalog.create_schema(
 			txn,
 			SchemaToCreate {
 				schema_fragment: Some(plan.schema.clone()),
 				name: plan.schema.to_string(),
 			},
 		)?;
+
+		SchemaDefInterceptor::post_create(txn, &result)?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.to_string())),

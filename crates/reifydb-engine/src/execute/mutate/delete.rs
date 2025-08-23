@@ -4,7 +4,6 @@
 use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, TableRowKey,
@@ -23,13 +22,13 @@ use reifydb_rql::plan::physical::DeletePlan;
 
 use crate::{
 	columnar::{ColumnData, Columns},
-	execute::{compile, Batch, ExecutionContext, Executor},
+	execute::{compile, Batch, ExecutionContext, Executor, FullCommandTransaction},
 };
 
 impl Executor {
-	pub(crate) fn delete(
+	pub(crate) fn delete<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

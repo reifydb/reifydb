@@ -20,6 +20,7 @@ use reifydb_core::{
 	Frame,
 };
 use std::{ops::Deref, sync::Arc};
+use reifydb_core::catalog::MaterializedCatalog;
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
@@ -34,13 +35,57 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	type Query = StandardQueryTransaction<T>;
 
 	fn begin_command(&self) -> crate::Result<Self::Command> {
-		let interceptors = self.interceptors.create();
+		let catalog = MaterializedCatalog::new();
+		let mut interceptors = self.interceptors.create();
+		
+		// Register the materialized catalog interceptors
+		use reifydb_core::interceptor::catalog::{
+			MaterializedSchemaInterceptor,
+			MaterializedTableInterceptor,
+			MaterializedViewInterceptor,
+		};
+		use std::rc::Rc;
+		
+		// Schema interceptors
+		interceptors.schema_def_post_create.add(Rc::new(
+			MaterializedSchemaInterceptor::new(catalog.clone())
+		));
+		interceptors.schema_def_post_update.add(Rc::new(
+			MaterializedSchemaInterceptor::new(catalog.clone())
+		));
+		interceptors.schema_def_pre_delete.add(Rc::new(
+			MaterializedSchemaInterceptor::new(catalog.clone())
+		));
+		
+		// Table interceptors
+		interceptors.table_def_post_create.add(Rc::new(
+			MaterializedTableInterceptor::new(catalog.clone())
+		));
+		interceptors.table_def_post_update.add(Rc::new(
+			MaterializedTableInterceptor::new(catalog.clone())
+		));
+		interceptors.table_def_pre_delete.add(Rc::new(
+			MaterializedTableInterceptor::new(catalog.clone())
+		));
+		
+		// View interceptors
+		interceptors.view_def_post_create.add(Rc::new(
+			MaterializedViewInterceptor::new(catalog.clone())
+		));
+		interceptors.view_def_post_update.add(Rc::new(
+			MaterializedViewInterceptor::new(catalog.clone())
+		));
+		interceptors.view_def_pre_delete.add(Rc::new(
+			MaterializedViewInterceptor::new(catalog.clone())
+		));
+		
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
 			self.hooks.clone(),
 			interceptors,
+			catalog,
 		))
 	}
 

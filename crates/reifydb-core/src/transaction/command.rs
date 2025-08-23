@@ -6,12 +6,10 @@ use crate::interceptor::{
 	TablePreUpdateInterceptor,
 };
 use crate::interface::interceptor::WithInterceptors;
-use crate::interface::{
-	CommandTransaction, WithHooks, PendingWrite, QueryTransaction,
-};
+use crate::interface::{CommandTransaction, QueryTransaction, WithHooks};
 use crate::{
-	catalog::MaterializedCatalog,
-	diagnostic::transaction, hook::Hooks,
+	catalog::MaterializedCatalog, diagnostic::transaction,
+	hook::Hooks,
 	interceptor,
 	interceptor::Interceptors,
 	interface::{
@@ -40,7 +38,6 @@ pub struct StandardCommandTransaction<T: Transaction> {
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
 	state: TransactionState,
-	pending: Vec<PendingWrite>,
 	hooks: Hooks,
 	catalog: MaterializedCatalog,
 
@@ -72,7 +69,6 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			cdc,
 			state: TransactionState::Active,
 			hooks,
-			pending: Vec::new(),
 			interceptors,
 			catalog,
 			_not_send_sync: PhantomData,
@@ -215,21 +211,6 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Get access to the CDC transaction interface
 	pub fn cdc(&self) -> &T::Cdc {
 		&self.cdc
-	}
-
-	/// Add a pending change to be processed at commit time
-	pub fn add_pending(&mut self, pending: PendingWrite) {
-		self.pending.push(pending);
-	}
-
-	/// Get all pending changes
-	pub fn take_pending(&mut self) -> Vec<PendingWrite> {
-		std::mem::take(&mut self.pending)
-	}
-
-	/// Get a reference to pending changes
-	pub fn pending(&self) -> &[PendingWrite] {
-		&self.pending
 	}
 }
 
@@ -453,7 +434,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPostCreateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::SchemaDefPostCreateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.schema_def_post_create
 	}
@@ -462,7 +445,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPreUpdateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::SchemaDefPreUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.schema_def_pre_update
 	}
@@ -471,7 +456,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPostUpdateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::SchemaDefPostUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.schema_def_post_update
 	}
@@ -480,7 +467,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPreDeleteInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::SchemaDefPreDeleteInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.schema_def_pre_delete
 	}
@@ -490,7 +479,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::TableDefPostCreateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::TableDefPostCreateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.table_def_post_create
 	}
@@ -499,7 +490,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::TableDefPreUpdateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::TableDefPreUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.table_def_pre_update
 	}
@@ -508,7 +501,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::TableDefPostUpdateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::TableDefPostUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.table_def_post_update
 	}
@@ -517,7 +512,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::TableDefPreDeleteInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::TableDefPreDeleteInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.table_def_pre_delete
 	}
@@ -527,7 +524,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::ViewDefPostCreateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::ViewDefPostCreateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.view_def_post_create
 	}
@@ -536,7 +535,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::ViewDefPreUpdateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::ViewDefPreUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.view_def_pre_update
 	}
@@ -545,7 +546,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::ViewDefPostUpdateInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::ViewDefPostUpdateInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.view_def_post_update
 	}
@@ -554,7 +557,9 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction<T>>,
+		dyn interceptor::ViewDefPreDeleteInterceptor<
+				StandardCommandTransaction<T>,
+			>,
 	> {
 		&mut self.interceptors.view_def_pre_delete
 	}

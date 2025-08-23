@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_catalog::Catalog;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
 		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
@@ -25,14 +24,14 @@ use crate::{
 	columnar::{ColumnData, Columns},
 	execute::{
 		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
-		Executor,
+		Executor, FullCommandTransaction,
 	},
 };
 
 impl Executor {
-	pub(crate) fn update(
+	pub(crate) fn update<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {

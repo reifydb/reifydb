@@ -20,17 +20,18 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 		StandardCdcTransaction<Memory>,
 	>,
 > {
-	let memory = Memory::new();
-	let hooks = Hooks::new();
-	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
-	let cdc = StandardCdcTransaction::new(memory.clone());
-	StandardCommandTransaction::new(
-		Serializable::new(memory, unversioned.clone(), hooks.clone())
-			.begin_command()
-			.unwrap(),
-		unversioned,
-		cdc,
-		hooks,
-		Interceptors::new(),
-	)
+	// let memory = Memory::new();
+	// let hooks = Hooks::new();
+	// let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
+	// let cdc = StandardCdcTransaction::new(memory.clone());
+	// StandardCommandTransaction::new(
+	// 	Serializable::new(memory, unversioned.clone(), hooks.clone())
+	// 		.begin_command()
+	// 		.unwrap(),
+	// 	unversioned,
+	// 	cdc,
+	// 	hooks,
+	// 	Interceptors::new(),
+	// )
+	todo!()
 }

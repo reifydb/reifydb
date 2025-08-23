@@ -3,16 +3,31 @@
 
 use crate::interceptor::{
 	InterceptorChain, PostCommitContext, PostCommitInterceptor,
-	PreCommitContext, PreCommitInterceptor, TablePostDeleteContext,
-	TablePostDeleteInterceptor, TablePostInsertContext,
-	TablePostInsertInterceptor, TablePostUpdateContext,
-	TablePostUpdateInterceptor, TablePreDeleteContext,
-	TablePreDeleteInterceptor, TablePreInsertContext,
-	TablePreInsertInterceptor, TablePreUpdateContext,
-	TablePreUpdateInterceptor,
+	PreCommitContext, PreCommitInterceptor, 
+	SchemaDefPostCreateContext, SchemaDefPostCreateInterceptor,
+	SchemaDefPreUpdateContext, SchemaDefPreUpdateInterceptor,
+	SchemaDefPostUpdateContext, SchemaDefPostUpdateInterceptor,
+	SchemaDefPreDeleteContext, SchemaDefPreDeleteInterceptor,
+	TableDefPostCreateContext, TableDefPostCreateInterceptor,
+	TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
+	TableDefPostUpdateContext, TableDefPostUpdateInterceptor,
+	TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
+	TablePostDeleteContext, TablePostDeleteInterceptor, 
+	TablePostInsertContext, TablePostInsertInterceptor, 
+	TablePostUpdateContext, TablePostUpdateInterceptor, 
+	TablePreDeleteContext, TablePreDeleteInterceptor, 
+	TablePreInsertContext, TablePreInsertInterceptor, 
+	TablePreUpdateContext, TablePreUpdateInterceptor,
+	ViewDefPostCreateContext, ViewDefPostCreateInterceptor,
+	ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor,
+	ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor,
+	ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
 };
-use crate::interface::interceptor::{TableInterceptor, TransactionInterceptor, WithInterceptors};
-use crate::interface::{CommandTransaction, TableDef};
+use crate::interface::interceptor::{
+	SchemaDefInterceptor, TableDefInterceptor, TableInterceptor, 
+	TransactionInterceptor, ViewDefInterceptor, WithInterceptors
+};
+use crate::interface::{CommandTransaction, SchemaDef, TableDef, ViewDef};
 use crate::row::EncodedRow;
 use crate::RowNumber;
 
@@ -98,6 +113,108 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		TablePostDeleteInterceptor,
 		TablePostDeleteContext,
 		(table: &TableDef, id: RowNumber, deleted_row: &EncodedRow)
+	);
+}
+
+impl<CT: CommandTransaction + WithInterceptors<CT>> SchemaDefInterceptor<CT> for CT {
+	impl_interceptor_method!(
+		post_create,
+		schema_def_post_create_interceptors,
+		SchemaDefPostCreateInterceptor,
+		SchemaDefPostCreateContext,
+		(post: &SchemaDef)
+	);
+
+	impl_interceptor_method!(
+		pre_update,
+		schema_def_pre_update_interceptors,
+		SchemaDefPreUpdateInterceptor,
+		SchemaDefPreUpdateContext,
+		(pre: &SchemaDef)
+	);
+
+	impl_interceptor_method!(
+		post_update,
+		schema_def_post_update_interceptors,
+		SchemaDefPostUpdateInterceptor,
+		SchemaDefPostUpdateContext,
+		(pre: &SchemaDef, post: &SchemaDef)
+	);
+
+	impl_interceptor_method!(
+		pre_delete,
+		schema_def_pre_delete_interceptors,
+		SchemaDefPreDeleteInterceptor,
+		SchemaDefPreDeleteContext,
+		(pre: &SchemaDef)
+	);
+}
+
+impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT> for CT {
+	impl_interceptor_method!(
+		post_create,
+		table_def_post_create_interceptors,
+		TableDefPostCreateInterceptor,
+		TableDefPostCreateContext,
+		(post: &TableDef)
+	);
+
+	impl_interceptor_method!(
+		pre_update,
+		table_def_pre_update_interceptors,
+		TableDefPreUpdateInterceptor,
+		TableDefPreUpdateContext,
+		(pre: &TableDef)
+	);
+
+	impl_interceptor_method!(
+		post_update,
+		table_def_post_update_interceptors,
+		TableDefPostUpdateInterceptor,
+		TableDefPostUpdateContext,
+		(pre: &TableDef, post: &TableDef)
+	);
+
+	impl_interceptor_method!(
+		pre_delete,
+		table_def_pre_delete_interceptors,
+		TableDefPreDeleteInterceptor,
+		TableDefPreDeleteContext,
+		(pre: &TableDef)
+	);
+}
+
+impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT> for CT {
+	impl_interceptor_method!(
+		post_create,
+		view_def_post_create_interceptors,
+		ViewDefPostCreateInterceptor,
+		ViewDefPostCreateContext,
+		(post: &ViewDef)
+	);
+
+	impl_interceptor_method!(
+		pre_update,
+		view_def_pre_update_interceptors,
+		ViewDefPreUpdateInterceptor,
+		ViewDefPreUpdateContext,
+		(pre: &ViewDef)
+	);
+
+	impl_interceptor_method!(
+		post_update,
+		view_def_post_update_interceptors,
+		ViewDefPostUpdateInterceptor,
+		ViewDefPostUpdateContext,
+		(pre: &ViewDef, post: &ViewDef)
+	);
+
+	impl_interceptor_method!(
+		pre_delete,
+		view_def_pre_delete_interceptors,
+		ViewDefPreDeleteInterceptor,
+		ViewDefPreDeleteContext,
+		(pre: &ViewDef)
 	);
 }
 

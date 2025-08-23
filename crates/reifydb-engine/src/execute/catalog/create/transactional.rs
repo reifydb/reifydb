@@ -2,19 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{view::ViewToCreate, Catalog};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	result::error::diagnostic::catalog::view_already_exists,
 	return_error, Value,
 };
 use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
 
-use crate::{columnar::Columns, execute::Executor};
+use crate::{columnar::Columns, execute::{Executor, FullCommandTransaction}};
 
 impl Executor {
-	pub(crate) fn create_transactional_view(
+	pub(crate) fn create_transactional_view<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: CreateTransactionalViewPlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();

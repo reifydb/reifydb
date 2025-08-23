@@ -3,7 +3,6 @@
 
 use catalog::schema_not_found;
 use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	diagnostic::{
 		catalog, catalog::table_not_found, query::column_not_found,
@@ -16,12 +15,12 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
-use crate::{columnar::Columns, evaluate::evaluate, execute::Executor};
+use crate::{columnar::Columns, evaluate::evaluate, execute::{Executor, FullCommandTransaction}};
 
 impl Executor {
-	pub(crate) fn alter_table_sequence(
+	pub(crate) fn alter_table_sequence<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();

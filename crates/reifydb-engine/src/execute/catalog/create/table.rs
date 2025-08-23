@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{table::TableToCreate, Catalog};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	result::error::diagnostic::catalog::table_already_exists,
 	return_error, Value
@@ -10,12 +9,12 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::CreateTablePlan;
 
-use crate::{columnar::Columns, execute::Executor};
+use crate::{columnar::Columns, execute::{Executor, FullCommandTransaction}};
 
 impl Executor {
-	pub(crate) fn create_table(
+	pub(crate) fn create_table<CT: FullCommandTransaction<CT>>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut CT,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
 		let catalog = Catalog::new();
