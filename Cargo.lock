@@ -1585,6 +1585,7 @@ dependencies = [
  "bincode 2.0.1",
  "chrono",
  "crossbeam-channel",
+ "crossbeam-skiplist",
  "hex",
  "once_cell",
  "regex",

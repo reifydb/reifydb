@@ -9,11 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use core::ops::Deref;
 use core::sync::atomic::{AtomicU8, Ordering};
 use std::fmt::Debug;
 
 use crossbeam_skiplist::SkipMap;
-use reifydb_core::{Version, row::EncodedRow};
+use reifydb_core::{row::EncodedRow, Version};
 
 const UNINITIALIZED: u8 = 0;
 const LOCKED: u8 = 1;
@@ -66,7 +67,7 @@ impl VersionedRow {
 	}
 }
 
-impl core::ops::Deref for VersionedRow {
+impl Deref for VersionedRow {
 	type Target = SkipMap<u64, Option<EncodedRow>>;
 
 	fn deref(&self) -> &Self::Target {

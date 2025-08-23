@@ -7,7 +7,7 @@ mod transaction;
 mod unversioned;
 mod versioned;
 
-use crate::interface::TableDef;
+use crate::interface::{TableDef, SchemaDef, ViewDef, SchemaId, TableId, ViewId};
 use crate::row::EncodedRow;
 use crate::RowNumber;
 pub use cdc::{
@@ -33,6 +33,34 @@ pub enum PendingWrite {
 	TableRemove {
 		table: TableDef,
 		id: RowNumber,
+	},
+	// Catalog operations
+	SchemaCreate {
+		def: SchemaDef,
+	},
+	SchemaUpdate {
+		def: SchemaDef,
+	},
+	SchemaDelete {
+		id: SchemaId,
+	},
+	TableCreate {
+		def: TableDef,
+	},
+	TableMetadataUpdate {
+		def: TableDef,
+	},
+	TableDelete {
+		id: TableId,
+	},
+	ViewCreate {
+		def: ViewDef,
+	},
+	ViewUpdate {
+		def: ViewDef,
+	},
+	ViewDelete {
+		id: ViewId,
 	},
 }
 

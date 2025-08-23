@@ -2,18 +2,25 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod builder;
+pub mod catalog;
 mod chain;
 mod factory;
 mod interceptors;
+mod schema_def;
 mod table;
+mod table_def;
 mod transaction;
+mod view_def;
 
 pub use builder::*;
 pub use chain::InterceptorChain;
 pub use factory::{InterceptorFactory, StandardInterceptorFactory};
 pub use interceptors::Interceptors;
+pub use schema_def::*;
 pub use table::*;
+pub use table_def::*;
 pub use transaction::*;
+pub use view_def::*;
 
 pub(crate) type Chain<T, I> = InterceptorChain<T, I>;
 
