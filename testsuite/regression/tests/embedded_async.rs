@@ -8,9 +8,10 @@ use reifydb::{
 	core::{
 		hook::Hooks,
 		interface::{
-            CdcQueryTransaction, Params, StandardTransaction,
+            CdcTransaction, Params,
             UnversionedTransaction, VersionedTransaction,
 		},
+		transaction::StandardTransaction,
 	},
 	memory, optimistic,
 };

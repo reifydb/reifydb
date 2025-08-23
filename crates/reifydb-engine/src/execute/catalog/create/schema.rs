@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{schema::SchemaToCreate, Catalog};
+use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	result::error::diagnostic::catalog::schema_already_exists,
-	return_error,
+	result::error::diagnostic::catalog::schema_already_exists, return_error,
 	Value,
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
@@ -18,9 +17,8 @@ impl Executor {
 		txn: &mut impl CommandTransaction,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
-		let catalog = Catalog::new();
 		if let Some(schema) =
-			catalog.find_schema_by_name(txn, &plan.schema)?
+			self.catalog.find_schema_by_name(txn, &plan.schema)?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -40,7 +38,7 @@ impl Executor {
 			));
 		}
 
-		catalog.create_schema(
+		self.catalog.create_schema(
 			txn,
 			SchemaToCreate {
 				schema_fragment: Some(plan.schema.clone()),

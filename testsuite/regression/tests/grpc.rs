@@ -4,18 +4,19 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
-	Database, ServerBuilder,
 	core::{
 		hook::Hooks,
 		interface::{
-            CdcQueryTransaction, Params, StandardTransaction,
-            UnversionedTransaction, VersionedTransaction,
+			CdcTransaction, Params, UnversionedTransaction,
+			VersionedTransaction,
 		},
 		retry,
-	},
-	memory,
+		transaction::StandardTransaction,
+	}, memory,
 	network::grpc::{client::GrpcClient, server::GrpcConfig},
 	optimistic,
+	Database,
+	ServerBuilder,
 };
 use reifydb_testing::{network::busy_wait, testscript, testscript::Command};
 use test_each_file::test_each_path;

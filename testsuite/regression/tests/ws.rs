@@ -9,10 +9,11 @@ use reifydb::{
 		Error as ReifyDBError,
 		hook::Hooks,
 		interface::{
-            CdcQueryTransaction, Params, StandardTransaction,
-            UnversionedTransaction, VersionedTransaction,
+			CdcTransaction, Params, UnversionedTransaction,
+			VersionedTransaction,
 		},
 		retry,
+		transaction::StandardTransaction,
 	},
 	memory,
 	network::ws::{client::WsClient, server::WsConfig},

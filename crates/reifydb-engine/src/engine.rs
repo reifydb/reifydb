@@ -1,27 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{ops::Deref, sync::Arc};
-
+use crate::execute::FullCommandTransaction;
 use crate::{
 	execute::Executor,
 	function::{math, Functions},
 };
-use reifydb_core::interface::{
-	QueryTransaction,
-};
+use reifydb_catalog::Catalog;
+use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, WithHooks, Identity, Params, Query, Transaction,
-		VersionedTransaction,
+		ExecuteQuery, Identity, Params, Query, Transaction,
+		VersionedTransaction, WithHooks,
 	},
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 	Frame,
 };
-use crate::execute::FullCommandTransaction;
+use std::{ops::Deref, sync::Arc};
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
@@ -144,6 +142,7 @@ impl<T: Transaction> StandardEngine<T> {
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
+		catalog: Catalog,
 		hooks: Hooks,
 		interceptors: Box<
 			dyn InterceptorFactory<StandardCommandTransaction<T>>,
@@ -155,6 +154,7 @@ impl<T: Transaction> StandardEngine<T> {
 			cdc: cdc.clone(),
 			hooks,
 			executor: Executor {
+				catalog,
 				functions: Functions::builder()
 					.register_aggregate(
 						"sum",

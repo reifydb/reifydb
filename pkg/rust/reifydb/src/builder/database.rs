@@ -1,15 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{sync::Arc, time::Duration};
-
+use reifydb_catalog::Catalog;
+use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::StandardInterceptorBuilder,
-	interface::{Transaction, subsystem::SubsystemFactory},
+	interface::{subsystem::SubsystemFactory, Transaction},
 	ioc::IocContainer,
 };
-use reifydb_core::transaction::StandardCommandTransaction;
 use reifydb_engine::StandardEngine;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystemFactory;
@@ -17,6 +16,7 @@ use reifydb_sub_flow::FlowSubsystemFactory;
 use reifydb_sub_logging::LoggingSubsystemFactory;
 #[cfg(feature = "sub_workerpool")]
 use reifydb_sub_workerpool::WorkerPoolSubsystemFactory;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
 	database::{Database, DatabaseConfig},
@@ -27,13 +27,13 @@ use crate::{
 pub struct DatabaseBuilder<T: Transaction> {
 	config: DatabaseConfig,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
-	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>>,
+	subsystems: Vec<
+		Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
+	>,
 	ioc: IocContainer,
 }
 
 impl<T: Transaction> DatabaseBuilder<T> {
-	/// Create a new builder with engine components (new factory-based
-	/// approach)
 	#[allow(unused_mut)]
 	pub fn new(
 		versioned: T::Versioned,
@@ -41,8 +41,8 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		cdc: T::Cdc,
 		hooks: Hooks,
 	) -> Self {
-		// Create IoC container and register initial dependencies
 		let ioc = IocContainer::new()
+			.register(Catalog::new())
 			.register(hooks.clone())
 			.register(versioned.clone())
 			.register(unversioned.clone())
@@ -117,16 +117,19 @@ impl<T: Transaction> DatabaseBuilder<T> {
 
 	pub fn add_subsystem_factory(
 		mut self,
-		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
+		factory: Box<
+			dyn SubsystemFactory<StandardCommandTransaction<T>>,
+		>,
 	) -> Self {
 		self.subsystems.push(factory);
 		self
 	}
 
-	/// Add interceptors directly to the builder
 	pub fn with_interceptor_builder(
 		mut self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+		builder: StandardInterceptorBuilder<
+			StandardCommandTransaction<T>,
+		>,
 	) -> Self {
 		self.interceptors = builder;
 		self
@@ -141,8 +144,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 	}
 
 	pub fn build(mut self) -> crate::Result<Database<T>> {
-		// Phase 1: Collect interceptors from all factories (passing
-		// IoC)
+		// Collect interceptors from all factories
 		for factory in &self.subsystems {
 			self.interceptors = factory.provide_interceptors(
 				self.interceptors,
@@ -150,8 +152,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			);
 		}
 
-		// Phase 2: Create engine with all interceptors
-		// Retrieve components from IoC container
+		let catalog = self.ioc.resolve::<Catalog>()?;
 		let versioned = self.ioc.resolve::<T::Versioned>()?;
 		let unversioned = self.ioc.resolve::<T::Unversioned>()?;
 		let cdc = self.ioc.resolve::<T::Cdc>()?;
@@ -161,14 +162,14 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			versioned,
 			unversioned,
 			cdc,
+			catalog,
 			hooks,
 			Box::new(self.interceptors.build()),
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
 
-		// Phase 3: Create subsystems from factories (they get engine
-		// from IoC)
+		// Create subsystems from factories
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems =
 			Subsystems::new(Arc::clone(&health_monitor));

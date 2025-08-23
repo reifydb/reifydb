@@ -11,6 +11,7 @@ use std::{
 };
 
 use Key::TableRow;
+use reifydb_catalog::Catalog;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::interface::StandardCdcTransaction;
 use reifydb_core::transaction::StandardTransaction;
@@ -20,13 +21,12 @@ use reifydb_core::{
 	hook::Hooks,
 	interceptor::StandardInterceptorFactory,
 	interface::{
-		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent, ConsumerId,
+		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent, CommandTransaction, ConsumerId,
 		EncodableKey, Engine as EngineInterface, Key, TableId,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		key::TableRowKey,
 	},
 	row::EncodedRow,
-	transaction::StandardCommandTransaction,
 	util::CowVec,
 };
 use reifydb_engine::StandardEngine;
@@ -461,11 +461,13 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	let versioned =
 		Serializable::new(memory, unversioned.clone(), hooks.clone());
+	let catalog = Catalog::new();
 
 	StandardEngine::new(
 		versioned,
 		unversioned,
 		cdc,
+		catalog,
 		hooks,
 		Box::new(StandardInterceptorFactory::default()),
 	)
@@ -512,7 +514,7 @@ impl Clone for TestConsumer {
 impl CdcConsume<TestTransaction> for TestConsumer {
 	fn consume(
 		&self,
-		_txn: &mut StandardCommandTransaction<TestTransaction>,
+		_txn: &mut impl CommandTransaction,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {

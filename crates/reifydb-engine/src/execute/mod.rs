@@ -17,16 +17,17 @@ use query::{
 	take::TakeNode,
 	view_scan::ViewScanNode,
 };
+use reifydb_catalog::Catalog;
 use reifydb_core::interface::interceptor::WithInterceptors;
 use reifydb_core::interface::{
 	CommandTransaction, QueryTransaction, WithHooks,
 };
 use reifydb_core::{
+	Frame,
 	interface::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
 		TableDef,
 	},
-	Frame,
 };
 use reifydb_rql::{
 	ast,
@@ -35,10 +36,10 @@ use reifydb_rql::{
 
 use crate::{
 	columnar::{
-		layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
-		SourceQualified,
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
+		layout::ColumnsLayout,
 	},
-	function::{math, Functions},
+	function::{Functions, math},
 };
 
 pub trait FullCommandTransaction<CT: CommandTransaction>:
@@ -126,6 +127,7 @@ impl ExecutionPlan {
 }
 
 pub(crate) struct Executor {
+	pub catalog: Catalog,
 	pub functions: Functions,
 }
 
@@ -133,6 +135,7 @@ impl Executor {
 	#[allow(dead_code)]
 	pub(crate) fn testing() -> Self {
 		Self {
+			catalog: Catalog::new(),
 			functions: Functions::builder()
 				.register_aggregate(
 					"sum",

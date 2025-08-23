@@ -1558,6 +1558,7 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.0.1"
 dependencies = [
+ "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-storage",
