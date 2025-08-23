@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	catalog::{MaterializedCatalog, OperationType},
+	catalog::MaterializedCatalog,
+	interface::change::OperationType,
 	interceptor::{
 		PostCommitContext, PostCommitInterceptor,
 		SchemaDefPostCreateContext, SchemaDefPostCreateInterceptor,

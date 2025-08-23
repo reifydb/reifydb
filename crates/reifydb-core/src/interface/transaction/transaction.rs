@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	catalog::TransactionalChanges,
 	interface::{
 		CdcQueryTransaction, UnversionedCommandTransaction,
 		UnversionedQueryTransaction, VersionedCommandTransaction,
@@ -34,10 +33,10 @@ pub trait CommandTransaction:
 	}
 
 	/// Get reference to catalog changes for this transaction
-	fn get_changes(&self) -> &TransactionalChanges;
+	fn get_changes(&self) -> &super::change::TransactionalChanges;
 
 	/// Get mutable reference to catalog changes for this transaction
-	fn get_changes_mut(&mut self) -> &mut TransactionalChanges;
+	fn get_changes_mut(&mut self) -> &mut super::change::TransactionalChanges;
 }
 
 pub trait QueryTransaction: VersionedQueryTransaction {

@@ -10,7 +10,9 @@ use crate::interface::{
 	CommandTransaction, QueryTransaction, TransactionId, WithHooks,
 };
 use crate::{
-	catalog::{MaterializedCatalog, TransactionalChanges}, diagnostic::transaction,
+	catalog::MaterializedCatalog, 
+	interface::change::TransactionalChanges,
+	diagnostic::transaction,
 	hook::Hooks,
 	interceptor,
 	interceptor::Interceptors,

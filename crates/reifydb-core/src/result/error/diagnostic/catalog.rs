@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	interface::fragment::{IntoFragment, OwnedFragment},
-	result::error::diagnostic::Diagnostic,
-};
+use crate::{interface::fragment::{IntoFragment, OwnedFragment}, result::error::diagnostic::Diagnostic, Fragment};
 
 pub fn schema_already_exists(
 	fragment: impl IntoFragment,
@@ -233,6 +230,207 @@ pub fn index_types_directions_mismatch(
         help: Some("each indexed field must have a corresponding sort direction".to_string()),
         column: None,
         notes: vec![],
+        cause: None,
+    }
+}
+
+pub fn schema_already_pending_in_transaction(
+	schema_name: impl IntoFragment,
+) -> Diagnostic {
+	let fragment = schema_name.into_fragment();
+	let name = fragment.value();
+	Diagnostic {
+        code: "CA_011".to_string(),
+        statement: None,
+        message: format!("schema `{}` already has pending changes in this transaction", name),
+        fragment,
+        label: Some("duplicate schema modification in transaction".to_string()),
+        help: Some("a schema can only be created, updated, or deleted once per transaction".to_string()),
+        column: None,
+        notes: vec![
+            "This usually indicates a programming error in transaction management".to_string(),
+            "Consider reviewing the transaction logic for duplicate operations".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn table_already_pending_in_transaction(
+	schema_name: impl IntoFragment,
+	table_name: impl IntoFragment,
+) -> Diagnostic {
+	let schema_fragment = schema_name.into_fragment();
+	let table_fragment = table_name.into_fragment();
+	let schema = schema_fragment.value();
+	let table = table_fragment.value();
+	Diagnostic {
+        code: "CA_012".to_string(),
+        statement: None,
+        message: format!("table `{}.{}` already has pending changes in this transaction", schema, table),
+        fragment: table_fragment,
+        label: Some("duplicate table modification in transaction".to_string()),
+        help: Some("a table can only be created, updated, or deleted once per transaction".to_string()),
+        column: None,
+        notes: vec![
+            "This usually indicates a programming error in transaction management".to_string(),
+            "Consider reviewing the transaction logic for duplicate operations".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn view_already_pending_in_transaction(
+	schema_name: impl IntoFragment,
+	view_name: impl IntoFragment,
+) -> Diagnostic {
+	let schema_fragment = schema_name.into_fragment();
+	let view_fragment = view_name.into_fragment();
+	let schema = schema_fragment.value();
+	let view = view_fragment.value();
+	Diagnostic {
+        code: "CA_013".to_string(),
+        statement: None,
+        message: format!("view `{}.{}` already has pending changes in this transaction", schema, view),
+        fragment: view_fragment,
+        label: Some("duplicate view modification in transaction".to_string()),
+        help: Some("a view can only be created, updated, or deleted once per transaction".to_string()),
+        column: None,
+        notes: vec![
+            "This usually indicates a programming error in transaction management".to_string(),
+            "Consider reviewing the transaction logic for duplicate operations".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn cannot_update_deleted_schema(
+	schema_name: impl IntoFragment,
+) -> Diagnostic {
+	let fragment = schema_name.into_fragment();
+	let name = fragment.value();
+	Diagnostic {
+        code: "CA_014".to_string(),
+        statement: None,
+        message: format!("cannot update schema `{}` as it is marked for deletion in this transaction", name),
+        fragment,
+        label: Some("attempted update on deleted schema".to_string()),
+        help: Some("remove the delete operation or skip the update".to_string()),
+        column: None,
+        notes: vec![
+            "A schema marked for deletion cannot be updated in the same transaction".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn cannot_update_deleted_table(
+	schema_name: impl IntoFragment,
+	table_name: impl IntoFragment,
+) -> Diagnostic {
+	let schema_fragment = schema_name.into_fragment();
+	let table_fragment = table_name.into_fragment();
+	let schema = schema_fragment.value();
+	let table = table_fragment.value();
+	Diagnostic {
+        code: "CA_015".to_string(),
+        statement: None,
+        message: format!("cannot update table `{}.{}` as it is marked for deletion in this transaction", schema, table),
+        fragment: table_fragment,
+        label: Some("attempted update on deleted table".to_string()),
+        help: Some("remove the delete operation or skip the update".to_string()),
+        column: None,
+        notes: vec![
+            "A table marked for deletion cannot be updated in the same transaction".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn cannot_update_deleted_view(
+	schema_name: impl IntoFragment,
+	view_name: impl IntoFragment,
+) -> Diagnostic {
+	let schema_fragment = schema_name.into_fragment();
+	let view_fragment = view_name.into_fragment();
+	let schema = schema_fragment.value();
+	let view = view_fragment.value();
+	Diagnostic {
+        code: "CA_016".to_string(),
+        statement: None,
+        message: format!("cannot update view `{}.{}` as it is marked for deletion in this transaction", schema, view),
+        fragment: view_fragment,
+        label: Some("attempted update on deleted view".to_string()),
+        help: Some("remove the delete operation or skip the update".to_string()),
+        column: None,
+        notes: vec![
+            "A view marked for deletion cannot be updated in the same transaction".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn cannot_delete_already_deleted_schema(
+	schema_name: impl IntoFragment,
+) -> Diagnostic {
+	let fragment = schema_name.into_fragment();
+	let name = fragment.value();
+	Diagnostic {
+        code: "CA_017".to_string(),
+        statement: None,
+        message: format!("schema `{}` is already marked for deletion in this transaction", name),
+        fragment,
+        label: Some("duplicate schema deletion".to_string()),
+        help: Some("remove the duplicate delete operation".to_string()),
+        column: None,
+        notes: vec![
+            "A schema can only be deleted once per transaction".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn cannot_delete_already_deleted_table(
+	schema_name: impl IntoFragment,
+	table_name: impl IntoFragment,
+) -> Diagnostic {
+	let schema_fragment = schema_name.into_fragment();
+	let table_fragment = table_name.into_fragment();
+	let schema = schema_fragment.value();
+	let table = table_fragment.value();
+	Diagnostic {
+        code: "CA_018".to_string(),
+        statement: None,
+        message: format!("table `{}.{}` is already marked for deletion in this transaction", schema, table),
+        fragment: table_fragment,
+        label: Some("duplicate table deletion".to_string()),
+        help: Some("remove the duplicate delete operation".to_string()),
+        column: None,
+        notes: vec![
+            "A table can only be deleted once per transaction".to_string(),
+        ],
+        cause: None,
+    }
+}
+
+pub fn cannot_delete_already_deleted_view(
+	schema_name: impl IntoFragment,
+	view_name: impl IntoFragment,
+) -> Diagnostic {
+	let schema_fragment = schema_name.into_fragment();
+	let view_fragment = view_name.into_fragment();
+	let schema = schema_fragment.value();
+	let view = view_fragment.value();
+	Diagnostic {
+        code: "CA_019".to_string(),
+        statement: None,
+        message: format!("view `{}.{}` is already marked for deletion in this transaction", schema, view),
+        fragment: view_fragment,
+        label: Some("duplicate view deletion".to_string()),
+        help: Some("remove the duplicate delete operation".to_string()),
+        column: None,
+        notes: vec![
+            "A view can only be deleted once per transaction".to_string(),
+        ],
         cause: None,
     }
 }

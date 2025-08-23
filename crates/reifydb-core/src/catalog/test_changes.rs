@@ -3,13 +3,10 @@
 
 #[cfg(test)]
 mod tests {
-	use crate::catalog::TransactionalChanges;
-	use crate::{
-		catalog::OperationType,
-		interface::{
-			SchemaDef, SchemaId, TableDef, TableId, TransactionId,
-			ViewDef, ViewId,
-		},
+	use crate::interface::change::{TransactionalChanges, OperationType, Operation};
+	use crate::interface::{
+		SchemaDef, SchemaId, TableDef, TableId, TransactionId,
+		ViewDef, ViewId,
 	};
 
 	#[test]
@@ -216,15 +213,15 @@ mod tests {
 		// Operations should be in order
 		matches!(
 			&ops[0],
-			crate::catalog::Operation::Schema { .. }
+			Operation::Schema { .. }
 		);
 		matches!(
 			&ops[1],
-			crate::catalog::Operation::Table { .. }
+			Operation::Table { .. }
 		);
 		matches!(
 			&ops[2],
-			crate::catalog::Operation::View { .. }
+			Operation::View { .. }
 		);
 	}
 }

@@ -195,3 +195,15 @@ impl From<Option<OwnedFragment>> for OwnedFragment {
 		fragment_opt.into_fragment()
 	}
 }
+
+impl IntoFragment for &str {
+	fn into_fragment(self) -> OwnedFragment {
+		OwnedFragment::internal(self)
+	}
+}
+
+impl IntoFragment for &String {
+	fn into_fragment(self) -> OwnedFragment {
+		OwnedFragment::internal(self)
+	}
+}

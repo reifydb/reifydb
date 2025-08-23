@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod cdc;
+pub mod change;
 pub mod interceptor;
 mod transaction;
 mod unversioned;

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::catalog::MaterializedCatalog;
 use reifydb_core::interface::StandardCdcTransaction;
 use reifydb_core::transaction::StandardTransaction;
 use reifydb_core::{
@@ -20,18 +21,18 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 		StandardCdcTransaction<Memory>,
 	>,
 > {
-	// let memory = Memory::new();
-	// let hooks = Hooks::new();
-	// let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
-	// let cdc = StandardCdcTransaction::new(memory.clone());
-	// StandardCommandTransaction::new(
-	// 	Serializable::new(memory, unversioned.clone(), hooks.clone())
-	// 		.begin_command()
-	// 		.unwrap(),
-	// 	unversioned,
-	// 	cdc,
-	// 	hooks,
-	// 	Interceptors::new(),
-	// )
-	todo!()
+	let memory = Memory::new();
+	let hooks = Hooks::new();
+	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
+	let cdc = StandardCdcTransaction::new(memory.clone());
+	StandardCommandTransaction::new(
+		Serializable::new(memory, unversioned.clone(), hooks.clone())
+			.begin_command()
+			.unwrap(),
+		unversioned,
+		cdc,
+		hooks,
+		Interceptors::new(),
+		MaterializedCatalog::new(),
+	)
 }

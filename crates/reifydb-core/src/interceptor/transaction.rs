@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-	catalog::TransactionalChanges,
+	interface::change::TransactionalChanges,
 	define_api_function, define_closure_interceptor, define_interceptor,
 	interface::TransactionId, Version,
 };
