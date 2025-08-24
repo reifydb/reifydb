@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::catalog::TransactionalChanges;
 use crate::interceptor::{
 	InterceptorChain, PostCommitContext, PostCommitInterceptor,
 	PreCommitContext, PreCommitInterceptor, SchemaDefPostCreateContext,
@@ -29,7 +28,8 @@ use crate::interface::interceptor::{
 	TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
 };
 use crate::interface::{
-	CommandTransaction, SchemaDef, TableDef, TransactionId, ViewDef,
+	CommandTransaction, SchemaDef, TableDef, TransactionId,
+	TransactionalChanges, ViewDef,
 };
 use crate::row::EncodedRow;
 use crate::{RowNumber, Version};

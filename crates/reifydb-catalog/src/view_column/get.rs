@@ -21,7 +21,7 @@ impl CatalogStore {
 			.get(&ViewColumnsKey { column }.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
-					"View column with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
+					"View column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 					column
 				))
 			})?;

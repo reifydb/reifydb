@@ -1,12 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod schema;
-mod table;
-mod view;
-
 use crate::interface::{
-	SchemaDef, SchemaId, TableDef, TableId, TransactionId, ViewDef, ViewId,
+    SchemaDef, SchemaId, TableDef, TableId, TransactionId, ViewDef, ViewId,
 };
 use crate::{error, internal_error};
 use std::collections::HashMap;
@@ -31,9 +27,8 @@ impl TransactionalChanges {
 		&mut self,
 		schema: SchemaId,
 		change: Change<SchemaDef>,
-		op: OperationType,
 	) {
-		debug_assert_eq!(change.op, op, "change.op must match op parameter");
+		let op = change.op;
 		self.schema_def.insert(schema, change);
 		self.log.push(Operation::Schema {
 			id: schema,
@@ -45,9 +40,8 @@ impl TransactionalChanges {
 		&mut self,
 		table: TableId,
 		change: Change<TableDef>,
-		op: OperationType,
 	) {
-		debug_assert_eq!(change.op, op, "change.op must match op parameter");
+		let op = change.op;
 		self.table_def.insert(table, change);
 		self.log.push(Operation::Table {
 			id: table,
@@ -59,9 +53,8 @@ impl TransactionalChanges {
 		&mut self,
 		view: ViewId,
 		change: Change<ViewDef>,
-		op: OperationType,
 	) {
-		debug_assert_eq!(change.op, op, "change.op must match op parameter");
+		let op = change.op;
 		self.view_def.insert(view, change);
 		self.log.push(Operation::View {
 			id: view,
@@ -158,12 +151,12 @@ impl TransactionalChanges {
 	}
 
 	/// Get all pending changes for commit
-	pub fn get_pending_changes(&self) -> &[Operation] {
+	pub fn get_pendingchanges(&self) -> &[Operation] {
 		&self.log
 	}
 
 	/// Check if there are any pending changes
-	pub fn has_changes(&self) -> bool {
+	pub fn haschanges(&self) -> bool {
 		!self.log.is_empty()
 	}
 

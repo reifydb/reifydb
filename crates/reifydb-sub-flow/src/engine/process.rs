@@ -39,7 +39,7 @@ impl<E: Evaluator> FlowEngine<E> {
 			if let Some(flow_ids) = self.sources.get(&source) {
 				// Process the diffs once for all flows with
 				// this source
-				let bulk_change = Change {
+				let bulkchange = Change {
 					diffs,
 					metadata: change.metadata.clone(),
 				};
@@ -61,7 +61,7 @@ impl<E: Evaluator> FlowEngine<E> {
 								txn,
 								flow,
 								node,
-								&bulk_change,
+								&bulkchange,
 							)?;
 						}
 					}
@@ -92,7 +92,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
 
-		let output_change = match &node_type {
+		let outputchange = match &node_type {
 			SourceTable {
 				..
 			} => {
@@ -118,7 +118,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				txn,
 				flow,
 				flow.get_node(output_id).unwrap(),
-				output_change,
+				outputchange,
 			)?;
 		}
 

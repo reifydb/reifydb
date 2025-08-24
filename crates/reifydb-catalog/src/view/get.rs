@@ -20,7 +20,7 @@ impl CatalogStore {
             .get(&ViewKey { view }.encode())?
             .ok_or_else(|| {
                 Error(internal_error!(
-						"View with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
+						"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 						view
 					))
             })?;

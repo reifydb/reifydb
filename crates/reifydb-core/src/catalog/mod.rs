@@ -5,6 +5,4 @@ pub mod materialized;
 pub mod queries;
 pub mod versioned;
 
-
-pub use crate::interface::change::{TransactionalChanges, Change, OperationType};
 pub use materialized::MaterializedCatalog;

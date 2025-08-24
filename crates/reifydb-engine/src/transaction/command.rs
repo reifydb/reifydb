@@ -11,14 +11,14 @@ use reifydb_core::interceptor::{
 };
 use reifydb_core::interface::interceptor::WithInterceptors;
 use reifydb_core::interface::{
-	CommandTransaction, QueryTransaction, TransactionId, WithHooks,
+	CommandTransaction, QueryTransaction, TransactionId,
+	TransactionalChanges, WithHooks,
 };
 use reifydb_core::{
 	catalog::MaterializedCatalog, diagnostic::transaction,
 	hook::Hooks,
 	interceptor,
 	interceptor::Interceptors,
-	interface::change::TransactionalChanges,
 	interface::{
 		interceptor::TransactionInterceptor, BoxedVersionedIter, CdcTransaction,
 		Transaction, UnversionedTransaction, Versioned,
@@ -205,7 +205,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			let version = versioned.commit()?;
 
 			// Pass catalog changes if there are any
-			let catalog_changes = if self.changes.has_changes() {
+			let catalogchanges = if self.changes.haschanges() {
 				Some(self.changes.clone())
 			} else {
 				None
@@ -215,7 +215,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 				self,
 				id,
 				version,
-				catalog_changes,
+				catalogchanges,
 			)?;
 
 			Ok(version)

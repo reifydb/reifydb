@@ -2,16 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod cdc;
-pub mod change;
+mod change;
 pub mod interceptor;
 mod transaction;
 mod unversioned;
 mod versioned;
 
 use crate::value::uuid::Uuid7;
-pub use cdc::{
-	CdcQueryTransaction, CdcTransaction,
-};
+pub use cdc::{CdcQueryTransaction, CdcTransaction};
+pub use change::*;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 pub use transaction::{CommandTransaction, QueryTransaction};

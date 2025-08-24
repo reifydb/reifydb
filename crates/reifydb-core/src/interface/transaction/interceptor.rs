@@ -1,22 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::change::TransactionalChanges;
-use crate::interface::{CommandTransaction, TableDef, SchemaDef, ViewDef, TransactionId};
 use crate::interceptor::{
 	Chain, PostCommitInterceptor, PreCommitInterceptor,
-	SchemaDefPostCreateInterceptor, SchemaDefPreUpdateInterceptor,
-	SchemaDefPostUpdateInterceptor, SchemaDefPreDeleteInterceptor,
-	TableDefPostCreateInterceptor, TableDefPreUpdateInterceptor,
-	TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
+	SchemaDefPostCreateInterceptor, SchemaDefPostUpdateInterceptor,
+	SchemaDefPreDeleteInterceptor, SchemaDefPreUpdateInterceptor,
+	TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
+	TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor,
 	TablePostDeleteInterceptor, TablePostInsertInterceptor,
 	TablePostUpdateInterceptor, TablePreDeleteInterceptor,
 	TablePreInsertInterceptor, TablePreUpdateInterceptor,
-	ViewDefPostCreateInterceptor, ViewDefPreUpdateInterceptor,
-	ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+	ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor,
+	ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+};
+use crate::interface::transaction::change::TransactionalChanges;
+use crate::interface::{
+	CommandTransaction, SchemaDef, TableDef, TransactionId, ViewDef,
 };
 use crate::row::EncodedRow;
-use crate::RowNumber;
+use crate::{RowNumber, Version};
 
 pub trait TableInterceptor<CT: CommandTransaction> {
 	/// Intercept table pre-insert operations
@@ -75,7 +77,11 @@ pub trait SchemaDefInterceptor<CT: CommandTransaction> {
 	fn pre_update(&mut self, pre: &SchemaDef) -> crate::Result<()>;
 
 	/// Intercept schema post-update operations
-	fn post_update(&mut self, pre: &SchemaDef, post: &SchemaDef) -> crate::Result<()>;
+	fn post_update(
+		&mut self,
+		pre: &SchemaDef,
+		post: &SchemaDef,
+	) -> crate::Result<()>;
 
 	/// Intercept schema pre-delete operations
 	fn pre_delete(&mut self, pre: &SchemaDef) -> crate::Result<()>;
@@ -89,7 +95,11 @@ pub trait TableDefInterceptor<CT: CommandTransaction> {
 	fn pre_update(&mut self, pre: &TableDef) -> crate::Result<()>;
 
 	/// Intercept table definition post-update operations
-	fn post_update(&mut self, pre: &TableDef, post: &TableDef) -> crate::Result<()>;
+	fn post_update(
+		&mut self,
+		pre: &TableDef,
+		post: &TableDef,
+	) -> crate::Result<()>;
 
 	/// Intercept table definition pre-delete operations
 	fn pre_delete(&mut self, pre: &TableDef) -> crate::Result<()>;
@@ -103,7 +113,11 @@ pub trait ViewDefInterceptor<CT: CommandTransaction> {
 	fn pre_update(&mut self, pre: &ViewDef) -> crate::Result<()>;
 
 	/// Intercept view post-update operations
-	fn post_update(&mut self, pre: &ViewDef, post: &ViewDef) -> crate::Result<()>;
+	fn post_update(
+		&mut self,
+		pre: &ViewDef,
+		post: &ViewDef,
+	) -> crate::Result<()>;
 
 	/// Intercept view pre-delete operations
 	fn pre_delete(&mut self, pre: &ViewDef) -> crate::Result<()>;
@@ -114,8 +128,12 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 	fn pre_commit(&mut self) -> crate::Result<()>;
 
 	/// Intercept post-commit operations
-	fn post_commit(&mut self, id: TransactionId, version: crate::Version, catalog_changes: Option<TransactionalChanges>)
-	-> crate::Result<()>;
+	fn post_commit(
+		&mut self,
+		id: TransactionId,
+		version: Version,
+		changes: Option<TransactionalChanges>,
+	) -> crate::Result<()>;
 }
 
 /// Trait for accessing interceptor chains from transaction types

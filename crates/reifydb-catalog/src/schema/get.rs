@@ -20,7 +20,7 @@ impl CatalogStore {
 			}.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
-						"Schema with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
+						"Schema with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 						schema
 					))
 			})?;

@@ -477,7 +477,7 @@ impl AggregateOperator {
 		Ok(states)
 	}
 
-	fn emit_group_changes<T: CommandTransaction>(
+	fn emit_groupchanges<T: CommandTransaction>(
 		&self,
 		txn: &mut T,
 		changed_groups: Vec<Vec<Value>>,
@@ -858,7 +858,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 		}
 
 		// Emit changes for affected groups
-		self.emit_group_changes(ctx.txn, changed_groups)
+		self.emit_groupchanges(ctx.txn, changed_groups)
 	}
 }
 

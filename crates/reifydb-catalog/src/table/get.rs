@@ -18,7 +18,7 @@ impl CatalogStore {
 			.get(&TableKey { table }.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
-						"Table with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
+						"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 						table
 					))
 			})?;

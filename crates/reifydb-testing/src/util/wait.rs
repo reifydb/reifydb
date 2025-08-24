@@ -11,8 +11,8 @@ use std::{
 	time::{Duration, Instant},
 };
 
-/// Default timeout for wait operations (1 second)
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
+/// Default timeout for wait operations (5 seconds)
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Default poll interval (1 millisecond)
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);

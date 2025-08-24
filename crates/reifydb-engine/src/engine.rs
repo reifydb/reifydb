@@ -37,46 +37,8 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		let mut interceptors = self.interceptors.create();
 
 		// Register the materialized catalog interceptors
-		use reifydb_core::interceptor::catalog::{
-			CatalogCommitInterceptor,
-			MaterializedSchemaInterceptor,
-			MaterializedTableInterceptor,
-			MaterializedViewInterceptor,
-		};
+		use reifydb_core::interceptor::catalog::CatalogCommitInterceptor;
 		use std::rc::Rc;
-
-		// Schema interceptors
-		interceptors
-			.schema_def_post_create
-			.add(Rc::new(MaterializedSchemaInterceptor::new()));
-		interceptors
-			.schema_def_post_update
-			.add(Rc::new(MaterializedSchemaInterceptor::new()));
-		interceptors
-			.schema_def_pre_delete
-			.add(Rc::new(MaterializedSchemaInterceptor::new()));
-
-		// Table interceptors
-		interceptors
-			.table_def_post_create
-			.add(Rc::new(MaterializedTableInterceptor::new()));
-		interceptors
-			.table_def_post_update
-			.add(Rc::new(MaterializedTableInterceptor::new()));
-		interceptors
-			.table_def_pre_delete
-			.add(Rc::new(MaterializedTableInterceptor::new()));
-
-		// View interceptors
-		interceptors
-			.view_def_post_create
-			.add(Rc::new(MaterializedViewInterceptor::new()));
-		interceptors
-			.view_def_post_update
-			.add(Rc::new(MaterializedViewInterceptor::new()));
-		interceptors
-			.view_def_pre_delete
-			.add(Rc::new(MaterializedViewInterceptor::new()));
 
 		// Post-commit interceptor
 		interceptors

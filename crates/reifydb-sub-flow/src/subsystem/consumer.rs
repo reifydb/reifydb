@@ -26,7 +26,7 @@ impl FlowConsumer {
 		}
 	}
 
-	fn process_changes<T: CommandTransaction>(
+	fn processchanges<T: CommandTransaction>(
 		&self,
 		txn: &mut T,
 		changes: Vec<FlowChange>,
@@ -130,7 +130,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 				Key::decode(event.key())
 			{
 				// Convert CDC events to FlowChange events
-				let flow_change = match &event.change {
+				let flowchange = match &event.change {
 					CdcChange::Insert {
 						after,
 						..
@@ -159,7 +159,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 					},
 				};
 
-				changes.push(flow_change);
+				changes.push(flowchange);
 			}
 		}
 
@@ -168,7 +168,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 				"Flow consumer processing {} CDC events",
 				changes.len()
 			);
-			self.process_changes(txn, changes)?;
+			self.processchanges(txn, changes)?;
 		}
 
 		Ok(())

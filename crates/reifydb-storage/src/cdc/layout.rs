@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::{Type, row::EncodedRowLayout};
+use reifydb_core::{row::EncodedRowLayout, Type};
 
 pub(crate) static CDC_EVENT_LAYOUT: LazyLock<EncodedRowLayout> =
 	LazyLock::new(|| {
@@ -11,11 +11,10 @@ pub(crate) static CDC_EVENT_LAYOUT: LazyLock<EncodedRowLayout> =
 			Type::Uint8, // version
 			Type::Uint2, // sequence
 			Type::Uint8, // timestamp
-			Type::Uint1, /* change_type (0=Insert, 1=Update,
-			              * 2=Delete) */
-			Type::Blob, // key
-			Type::Blob, // before (optional, undefined for Insert)
-			Type::Blob, // after (optional, undefined for Delete)
+			Type::Uint1, /* change_type (1=Insert, 2=Update,* 3=Delete) */
+			Type::Blob,  // key
+			Type::Blob,  // before (optional, undefined for Insert)
+			Type::Blob,  // after (optional, undefined for Delete)
 		])
 	});
 
@@ -30,17 +29,17 @@ pub(crate) const CDC_AFTER_FIELD: usize = 6;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ChangeType {
-	Insert = 0,
-	Update = 1,
-	Delete = 2,
+	Insert = 1,
+	Update = 2,
+	Delete = 3,
 }
 
 impl From<u8> for ChangeType {
 	fn from(value: u8) -> Self {
 		match value {
-			0 => ChangeType::Insert,
-			1 => ChangeType::Update,
-			2 => ChangeType::Delete,
+			1 => ChangeType::Insert,
+			2 => ChangeType::Update,
+			3 => ChangeType::Delete,
 			_ => panic!("Invalid change type: {}", value),
 		}
 	}
