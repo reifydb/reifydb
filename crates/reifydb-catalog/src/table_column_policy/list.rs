@@ -2,18 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, TableColumnPolicyKey,
-	QueryTransaction,
+	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, QueryTransaction,
+	TableColumnPolicyKey,
 };
 
 use crate::{
 	table_column::ColumnId, table_column_policy::layout::column_policy,
-	Catalog,
+	CatalogStore,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn list_table_column_policies(
-		&self,
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
@@ -69,7 +68,7 @@ mod tests {
 	use crate::{
 		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
-		Catalog,
+		CatalogStore,
 	};
 
 	#[test]
@@ -77,8 +76,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		let catalog = Catalog::new();
-		catalog.create_table_column(
+		CatalogStore::create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -96,13 +94,14 @@ mod tests {
 		)
 		.unwrap();
 
-		let column = catalog
-			.get_table_column(&mut txn, ColumnId(1))
-			.unwrap();
+		let column =
+			CatalogStore::get_table_column(&mut txn, ColumnId(1))
+				.unwrap();
 
-		let policies = catalog
-			.list_table_column_policies(&mut txn, column.id)
-			.unwrap();
+		let policies = CatalogStore::list_table_column_policies(
+			&mut txn, column.id,
+		)
+		.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);
 		assert!(matches!(policies[0].policy, Saturation(Undefined)));

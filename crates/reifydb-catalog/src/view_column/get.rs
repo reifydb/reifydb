@@ -3,7 +3,7 @@
 
 use crate::{
 	view_column::{layout::view_column, ColumnDef, ColumnId, ColumnIndex},
-	Catalog,
+	CatalogStore,
 };
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
@@ -12,9 +12,8 @@ use reifydb_core::{
 	Type,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn get_view_column(
-		&self,
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
@@ -22,7 +21,7 @@ impl Catalog {
 			.get(&ViewColumnsKey { column }.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
-					"View column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+					"View column with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
 					column
 				))
 			})?;

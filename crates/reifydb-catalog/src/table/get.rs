@@ -1,19 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{table::layout::table, Catalog};
+use crate::{table::layout::table, CatalogStore};
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	interface::{
-		EncodableKey, SchemaId, TableDef, TableId, TableKey,
-	},
+	interface::{EncodableKey, SchemaId, TableDef, TableId, TableKey},
 	internal_error,
 	Error,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn get_table(
-		&self,
 		rx: &mut impl QueryTransaction,
 		table: TableId,
 	) -> crate::Result<TableDef> {
@@ -21,7 +18,7 @@ impl Catalog {
 			.get(&TableKey { table }.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
-						"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.", 
+						"Table with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
 						table
 					))
 			})?;
@@ -37,7 +34,7 @@ impl Catalog {
 			id,
 			name,
 			schema,
-			columns: self.list_table_columns(rx, id)?,
+			columns: Self::list_table_columns(rx, id)?,
 		})
 	}
 }
@@ -49,7 +46,7 @@ mod tests {
 
 	use crate::{
 		test_utils::{create_schema, create_table, ensure_test_schema},
-		Catalog,
+		CatalogStore,
 	};
 
 	#[test]
@@ -64,9 +61,8 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
-		let catalog = Catalog::new();
-		let result =
-			catalog.get_table(&mut txn, TableId(1026)).unwrap();
+		let result = CatalogStore::get_table(&mut txn, TableId(1026))
+			.unwrap();
 
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.schema, SchemaId(1027));
@@ -85,8 +81,8 @@ mod tests {
 		create_table(&mut txn, "schema_two", "table_two", &[]);
 		create_table(&mut txn, "schema_three", "table_three", &[]);
 
-		let catalog = Catalog::new();
-		let err = catalog.get_table(&mut txn, TableId(42)).unwrap_err();
+		let err = CatalogStore::get_table(&mut txn, TableId(42))
+			.unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("TableId(42)"));

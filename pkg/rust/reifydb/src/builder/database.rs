@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::Catalog;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::StandardInterceptorBuilder,
@@ -41,7 +40,6 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		hooks: Hooks,
 	) -> Self {
 		let ioc = IocContainer::new()
-			.register(Catalog::new())
 			.register(hooks.clone())
 			.register(versioned.clone())
 			.register(unversioned.clone())
@@ -151,7 +149,6 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			);
 		}
 
-		let catalog = self.ioc.resolve::<Catalog>()?;
 		let versioned = self.ioc.resolve::<T::Versioned>()?;
 		let unversioned = self.ioc.resolve::<T::Unversioned>()?;
 		let cdc = self.ioc.resolve::<T::Cdc>()?;
@@ -161,7 +158,6 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			versioned,
 			unversioned,
 			cdc,
-			catalog,
 			hooks,
 			Box::new(self.interceptors.build()),
 		);

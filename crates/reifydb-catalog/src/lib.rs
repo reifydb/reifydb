@@ -4,8 +4,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub use reifydb_core::Result;
-use std::ops::Deref;
-use std::sync::Arc;
 
 pub mod row;
 pub mod schema;
@@ -17,22 +15,4 @@ pub mod test_utils;
 pub mod view;
 pub mod view_column;
 
-#[derive(Clone)]
-pub struct Catalog(Arc<CatalogInner>);
-
-impl Deref for Catalog {
-	type Target = CatalogInner;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-pub struct CatalogInner {}
-
-
-impl Catalog {
-	pub fn new() -> Self {
-		Self(Arc::new(CatalogInner {}))
-	}
-}
+pub struct CatalogStore;

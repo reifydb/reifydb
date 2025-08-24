@@ -8,14 +8,11 @@ use crate::{
 	table_column::{ColumnIndex, TableColumnToCreate},
 	view,
 	view::ViewToCreate,
-	Catalog,
+	CatalogStore,
 };
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	interface::{
-		ColumnPolicyKind, SchemaDef, TableDef, TableId
-		, ViewDef,
-	},
+	interface::{ColumnPolicyKind, SchemaDef, TableDef, TableId, ViewDef},
 	Type,
 };
 
@@ -23,8 +20,7 @@ pub fn create_schema(
 	txn: &mut impl CommandTransaction,
 	schema: &str,
 ) -> SchemaDef {
-	let catalog = Catalog::new();
-	catalog.create_schema(
+	CatalogStore::create_schema(
 		txn,
 		SchemaToCreate {
 			schema_fragment: None,
@@ -35,9 +31,8 @@ pub fn create_schema(
 }
 
 pub fn ensure_test_schema(txn: &mut impl CommandTransaction) -> SchemaDef {
-	let catalog = Catalog::new();
 	if let Some(result) =
-		catalog.find_schema_by_name(txn, "test_schema").unwrap()
+		CatalogStore::find_schema_by_name(txn, "test_schema").unwrap()
 	{
 		return result;
 	}
@@ -46,10 +41,10 @@ pub fn ensure_test_schema(txn: &mut impl CommandTransaction) -> SchemaDef {
 
 pub fn ensure_test_table(txn: &mut impl CommandTransaction) -> TableDef {
 	let schema = ensure_test_schema(txn);
-	let catalog = Catalog::new();
-	if let Some(result) = catalog
-		.find_table_by_name(txn, schema.id, "test_table")
-		.unwrap()
+
+	if let Some(result) =
+		CatalogStore::find_table_by_name(txn, schema.id, "test_table")
+			.unwrap()
 	{
 		return result;
 	}
@@ -62,8 +57,7 @@ pub fn create_table(
 	table: &str,
 	columns: &[table::TableColumnToCreate],
 ) -> TableDef {
-	let catalog = Catalog::new();
-	catalog.create_table(
+	CatalogStore::create_table(
 		txn,
 		TableToCreate {
 			fragment: None,
@@ -83,10 +77,10 @@ pub fn create_test_table_column(
 ) {
 	ensure_test_table(txn);
 
-	let catalog = Catalog::new();
-	let columns = catalog.list_table_columns(txn, TableId(1)).unwrap();
+	let columns =
+		CatalogStore::list_table_columns(txn, TableId(1)).unwrap();
 
-	catalog.create_table_column(
+	CatalogStore::create_table_column(
 		txn,
 		TableId(1),
 		TableColumnToCreate {
@@ -111,8 +105,7 @@ pub fn create_view(
 	view: &str,
 	columns: &[view::ViewColumnToCreate],
 ) -> ViewDef {
-	let catalog = Catalog::new();
-	catalog.create_deferred_view(
+	CatalogStore::create_deferred_view(
 		txn,
 		ViewToCreate {
 			fragment: None,

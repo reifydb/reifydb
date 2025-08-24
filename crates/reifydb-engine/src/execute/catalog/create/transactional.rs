@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{view::ViewToCreate, Catalog};
+use reifydb_catalog::{view::ViewToCreate, CatalogStore};
 use reifydb_core::{
 	result::error::diagnostic::catalog::view_already_exists,
 	return_error, Value,
@@ -17,8 +17,8 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTransactionalViewPlan,
 	) -> crate::Result<Columns> {
-		let catalog = Catalog::new();
-		if let Some(view) = catalog.find_view_by_name(
+
+		if let Some(view) = CatalogStore::find_view_by_name(
 			txn,
 			plan.schema.id,
 			&plan.view,
@@ -50,7 +50,7 @@ impl Executor {
 			));
 		}
 
-		let result = catalog.create_transactional_view(
+		let result = CatalogStore::create_transactional_view(
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone()),

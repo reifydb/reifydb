@@ -1,18 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	TableColumnKey, TableId, QueryTransaction,
-};
+use reifydb_core::interface::{QueryTransaction, TableColumnKey, TableId};
 
 use crate::{
 	table_column::{layout::table_column, ColumnDef, ColumnId},
-	Catalog,
+	CatalogStore,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn list_table_columns(
-		&self,
 		rx: &mut impl QueryTransaction,
 		table: TableId,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -30,7 +27,7 @@ impl Catalog {
 				.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(self.get_table_column(rx, id)?);
+			result.push(Self::get_table_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -47,7 +44,7 @@ mod tests {
 	use crate::{
 		table_column::{ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
-		Catalog,
+		CatalogStore,
 	};
 
 	#[test]
@@ -56,8 +53,8 @@ mod tests {
 		ensure_test_table(&mut txn);
 
 		// Create columns out of order
-		let catalog = Catalog::new();
-		catalog.create_table_column(
+
+		CatalogStore::create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -75,7 +72,7 @@ mod tests {
 		)
 		.unwrap();
 
-		catalog.create_table_column(
+		CatalogStore::create_table_column(
 			&mut txn,
 			TableId(1),
 			TableColumnToCreate {
@@ -93,8 +90,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns = catalog
-			.list_table_columns(&mut txn, TableId(1))
+		let columns = CatalogStore::list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert_eq!(columns.len(), 2);
 
@@ -112,9 +108,8 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
-		let catalog = Catalog::new();
-		let columns = catalog
-			.list_table_columns(&mut txn, TableId(1))
+
+		let columns = CatalogStore::list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert!(columns.is_empty());
 	}
@@ -122,9 +117,8 @@ mod tests {
 	#[test]
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
-		let catalog = Catalog::new();
-		let columns = catalog
-			.list_table_columns(&mut txn, TableId(1))
+
+		let columns = CatalogStore::list_table_columns(&mut txn, TableId(1))
 			.unwrap();
 		assert!(columns.is_empty());
 	}

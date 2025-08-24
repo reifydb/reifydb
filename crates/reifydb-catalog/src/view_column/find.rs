@@ -1,19 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	QueryTransaction, ViewColumnKey,
-	ViewId,
-};
+use reifydb_core::interface::{QueryTransaction, ViewColumnKey, ViewId};
 
 use crate::{
 	view_column::{layout::view_column_link, ColumnDef, ColumnId},
-	Catalog,
+	CatalogStore,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn find_view_column_by_name(
-		&self,
 		rx: &mut impl QueryTransaction,
 		view: ViewId,
 		name: impl AsRef<str>,
@@ -42,6 +38,6 @@ impl Catalog {
 			return Ok(None);
 		};
 
-		Ok(Some(self.get_view_column(rx, id)?))
+		Ok(Some(Self::get_view_column(rx, id)?))
 	}
 }

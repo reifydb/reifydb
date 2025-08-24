@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{table::TableToCreate, Catalog};
+use reifydb_catalog::{table::TableToCreate, CatalogStore};
 use reifydb_core::{
 	result::error::diagnostic::catalog::table_already_exists, return_error,
 	Value,
@@ -21,8 +21,7 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
-		let catalog = Catalog::new();
-		if let Some(table) = catalog.find_table_by_name(
+		if let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			plan.schema.id,
 			&plan.table,
@@ -54,7 +53,7 @@ impl Executor {
 			));
 		}
 
-		catalog.create_table(
+		CatalogStore::create_table(
 			txn,
 			TableToCreate {
 				fragment: Some(plan.table.clone()),

@@ -8,15 +8,12 @@ use crate::{
 		u16::GeneratorU16, u32::GeneratorU32, u64::GeneratorU64,
 		u8::GeneratorU8,
 	},
-	Catalog,
+	CatalogStore,
 };
-use reifydb_core::interface::{
-	CommandTransaction,
-};
+use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
-		EncodableKey, ViewColumnId, ViewColumnSequenceKey,
-		ViewId,
+		EncodableKey, ViewColumnId, ViewColumnSequenceKey, ViewId,
 	}, Type,
 	Value,
 };
@@ -29,8 +26,7 @@ impl ViewColumnSequence {
 		view: ViewId,
 		column: ViewColumnId,
 	) -> crate::Result<Value> {
-		let catalog = Catalog::new();
-		let column = catalog.get_view_column(txn, column)?;
+		let column = CatalogStore::get_view_column(txn, column)?;
 		let key = ViewColumnSequenceKey {
 			view,
 			column: column.id,
@@ -78,10 +74,9 @@ impl ViewColumnSequence {
 		column: ViewColumnId,
 		value: Value,
 	) -> crate::Result<()> {
-		let catalog = Catalog::new();
-		let view = catalog.get_view(txn, view)?;
+		let view = CatalogStore::get_view(txn, view)?;
 
-		let column = catalog.get_view_column(txn, column)?;
+		let column = CatalogStore::get_view_column(txn, column)?;
 
 		debug_assert!(value.get_type() == column.ty);
 

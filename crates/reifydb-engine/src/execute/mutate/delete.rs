@@ -3,7 +3,7 @@
 
 use std::{collections::Bound::Included, sync::Arc};
 
-use reifydb_catalog::Catalog;
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, TableRowKey,
@@ -34,7 +34,7 @@ impl Executor {
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let catalog = Catalog::new();
+
 		let Some(schema_ref) = plan.schema.as_ref() else {
 			return_error!(schema_not_found(
 				None::<reifydb_core::OwnedFragment>,
@@ -44,8 +44,8 @@ impl Executor {
 		let schema_name = schema_ref.fragment();
 
 		let schema =
-			catalog.find_schema_by_name(txn, schema_name)?.unwrap();
-		let Some(table) = catalog.find_table_by_name(
+			CatalogStore::find_schema_by_name(txn, schema_name)?.unwrap();
+		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table.fragment(),

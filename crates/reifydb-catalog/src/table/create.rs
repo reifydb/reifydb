@@ -5,7 +5,7 @@ use crate::{
 	sequence::SystemSequence,
 	table::layout::{table, table_schema},
 	table_column::ColumnIndex,
-	Catalog,
+	CatalogStore,
 };
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
@@ -37,14 +37,13 @@ pub struct TableToCreate {
 	pub columns: Vec<TableColumnToCreate>,
 }
 
-impl Catalog {
+impl CatalogStore {
 	pub fn create_table(
-		&self,
 		txn: &mut impl CommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let Some(schema) =
-			self.find_schema_by_name(txn, &to_create.schema)?
+			Self::find_schema_by_name(txn, &to_create.schema)?
 		else {
 			return_error!(schema_not_found(
 				to_create.fragment,
@@ -52,7 +51,7 @@ impl Catalog {
 			));
 		};
 
-		if let Some(table) = self.find_table_by_name(
+		if let Some(table) = Self::find_table_by_name(
 			txn,
 			schema.id,
 			&to_create.table,
@@ -65,21 +64,20 @@ impl Catalog {
 		}
 
 		let table_id = SystemSequence::next_table_id(txn)?;
-		self.store_table(txn, table_id, schema.id, &to_create)?;
-		self.link_table_to_schema(
+		Self::store_table(txn, table_id, schema.id, &to_create)?;
+		Self::link_table_to_schema(
 			txn,
 			schema.id,
 			table_id,
 			&to_create.table,
 		)?;
 
-		self.insert_columns(txn, table_id, to_create)?;
+		Self::insert_columns(txn, table_id, to_create)?;
 
-		Ok(self.get_table(txn, table_id)?)
+		Ok(Self::get_table(txn, table_id)?)
 	}
 
 	fn store_table(
-		&self,
 		txn: &mut impl CommandTransaction,
 		table: TableId,
 		schema: SchemaId,
@@ -102,7 +100,6 @@ impl Catalog {
 	}
 
 	fn link_table_to_schema(
-		&self,
 		txn: &mut impl CommandTransaction,
 		schema: SchemaId,
 		table: TableId,
@@ -127,7 +124,6 @@ impl Catalog {
 	}
 
 	fn insert_columns(
-		&self,
 		txn: &mut impl CommandTransaction,
 		table: TableId,
 		to_create: TableToCreate,
@@ -135,7 +131,7 @@ impl Catalog {
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
-			self.create_table_column(
+			Self::create_table_column(
 				txn,
 				table,
 				crate::table_column::TableColumnToCreate {
@@ -171,7 +167,7 @@ mod tests {
 	use crate::{
 		table::{layout::table_schema, TableToCreate},
 		test_utils::ensure_test_schema,
-		Catalog,
+		CatalogStore,
 	};
 
 	#[test]
@@ -188,18 +184,17 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let catalog = Catalog::new();
-		let result = catalog
-			.create_table(&mut txn, to_create.clone())
-			.unwrap();
+		let result =
+			CatalogStore::create_table(&mut txn, to_create.clone())
+				.unwrap();
 		assert_eq!(result.id, TableId(1025));
 		assert_eq!(result.schema, SchemaId(1025));
 		assert_eq!(result.name, "test_table");
 
 		// Creating the same table again with `if_not_exists = false`
 		// should return error
-		let err =
-			catalog.create_table(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_table(&mut txn, to_create)
+			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
@@ -215,8 +210,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let catalog = Catalog::new();
-		catalog.create_table(&mut txn, to_create).unwrap();
+		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let to_create = TableToCreate {
 			schema: "test_schema".to_string(),
@@ -225,7 +219,7 @@ mod tests {
 			fragment: None,
 		};
 
-		catalog.create_table(&mut txn, to_create).unwrap();
+		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let links = txn
 			.range(SchemaTableKey::full_scan(schema.id))
@@ -267,9 +261,8 @@ mod tests {
 			fragment: None,
 		};
 
-		let catalog = Catalog::new();
-		let err =
-			catalog.create_table(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_table(&mut txn, to_create)
+			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_002");
 	}
 }

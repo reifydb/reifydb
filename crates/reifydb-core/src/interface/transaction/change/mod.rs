@@ -15,15 +15,59 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct TransactionalChanges {
 	/// Transaction ID this change set belongs to
-	txn_id: TransactionId,
+	pub txn_id: TransactionId,
 	/// Schema definition changes indexed by SchemaId
-	schema_def: HashMap<SchemaId, Change<SchemaDef>>,
+	pub schema_def: HashMap<SchemaId, Change<SchemaDef>>,
 	/// Table definition changes indexed by TableId
-	table_def: HashMap<TableId, Change<TableDef>>,
+	pub table_def: HashMap<TableId, Change<TableDef>>,
 	/// View definition changes indexed by ViewId
-	view_def: HashMap<ViewId, Change<ViewDef>>,
+	pub view_def: HashMap<ViewId, Change<ViewDef>>,
 	/// Order of operations for replay/rollback
-	log: Vec<Operation>,
+	pub log: Vec<Operation>,
+}
+
+impl TransactionalChanges {
+	pub fn change_schema_def(
+		&mut self,
+		schema: SchemaId,
+		change: Change<SchemaDef>,
+		op: OperationType,
+	) {
+		debug_assert_eq!(change.op, op, "change.op must match op parameter");
+		self.schema_def.insert(schema, change);
+		self.log.push(Operation::Schema {
+			id: schema,
+			op,
+		});
+	}
+
+	pub fn change_table_def(
+		&mut self,
+		table: TableId,
+		change: Change<TableDef>,
+		op: OperationType,
+	) {
+		debug_assert_eq!(change.op, op, "change.op must match op parameter");
+		self.table_def.insert(table, change);
+		self.log.push(Operation::Table {
+			id: table,
+			op,
+		});
+	}
+
+	pub fn change_view_def(
+		&mut self,
+		view: ViewId,
+		change: Change<ViewDef>,
+		op: OperationType,
+	) {
+		debug_assert_eq!(change.op, op, "change.op must match op parameter");
+		self.view_def.insert(view, change);
+		self.log.push(Operation::View {
+			id: view,
+			op,
+		});
+	}
 }
 
 /// Represents a single change
@@ -36,7 +80,7 @@ pub struct Change<T> {
 	pub post: Option<T>,
 
 	/// Type of operation
-	pub operation: OperationType,
+	pub op: OperationType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

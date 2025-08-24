@@ -20,19 +20,15 @@ impl TransactionalChanges {
 			));
 		}
 
-		self.view_def.insert(
+		self.change_view_def(
 			view.id,
 			Change {
 				pre: None,
 				post: Some(view.clone()),
-				operation: OperationType::Create,
+				op: OperationType::Create,
 			},
+			OperationType::Create,
 		);
-
-		self.log.push(Operation::View {
-			id: view.id,
-			op: OperationType::Create,
-		});
 
 		Ok(())
 	}
@@ -44,12 +40,12 @@ impl TransactionalChanges {
 		post: ViewDef,
 	) -> crate::Result<()> {
 		match self.view_def.get_mut(&post.id) {
-			Some(existing) if existing.operation == OperationType::Create => {
+			Some(existing) if existing.op == OperationType::Create => {
 				// Coalesce with create - just update the "post" state
 				existing.post = Some(post);
 				Ok(())
 			}
-			Some(existing) if existing.operation == OperationType::Update => {
+			Some(existing) if existing.op == OperationType::Update => {
 				// Coalesce multiple updates - keep original "pre", update "post"
 				existing.post = Some(post);
 				Ok(())
@@ -61,19 +57,15 @@ impl TransactionalChanges {
 				));
 			}
 			None => {
-				self.view_def.insert(
+				self.change_view_def(
 					post.id,
 					Change {
 						pre: Some(pre),
 						post: Some(post.clone()),
-						operation: OperationType::Update,
+						op: OperationType::Update,
 					},
+					OperationType::Update,
 				);
-
-				self.log.push(Operation::View {
-					id: post.id,
-					op: OperationType::Update,
-				});
 
 				Ok(())
 			}
@@ -83,7 +75,7 @@ impl TransactionalChanges {
 	/// Add a view definition deletion
 	pub fn add_view_def_delete(&mut self, view: ViewDef) -> crate::Result<()> {
 		match self.view_def.get_mut(&view.id) {
-			Some(existing) if existing.operation == OperationType::Create => {
+			Some(existing) if existing.op == OperationType::Create => {
 				// Created and deleted in same transaction - remove entirely
 				self.view_def.remove(&view.id);
 				// Remove from operation log
@@ -92,10 +84,10 @@ impl TransactionalChanges {
 				});
 				Ok(())
 			}
-			Some(existing) if existing.operation == OperationType::Update => {
+			Some(existing) if existing.op == OperationType::Update => {
 				// Convert update to delete, keep original pre state
 				existing.post = None;
-				existing.operation = OperationType::Delete;
+				existing.op = OperationType::Delete;
 				// Update operation log
 				if let Some(op) = self.log.iter_mut().rev().find(|op| {
 					matches!(op, Operation::View { id, .. } if *id == view.id)
@@ -114,19 +106,15 @@ impl TransactionalChanges {
 				));
 			}
 			None => {
-				self.view_def.insert(
+				self.change_view_def(
 					view.id,
 					Change {
 						pre: Some(view.clone()),
 						post: None,
-						operation: OperationType::Delete,
+						op: OperationType::Delete,
 					},
+					OperationType::Delete,
 				);
-
-				self.log.push(Operation::View {
-					id: view.id,
-					op: OperationType::Delete,
-				});
 
 				Ok(())
 			}

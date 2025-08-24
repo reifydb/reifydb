@@ -82,7 +82,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 			};
 
 			// Get table to check its type
-			let table = match catalog.get_table(txn, table_id) {
+			let table = match CatalogStore::get_table(txn, table_id) {
 				Ok(t) => t,
 				Err(_) => {
 					// Not a table, might be a view - skip

@@ -1,18 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	TableColumnKey, TableId, QueryTransaction,
-};
+use reifydb_core::interface::{QueryTransaction, TableColumnKey, TableId};
 
 use crate::{
 	table_column::{layout::table_column, ColumnDef, ColumnId},
-	Catalog,
+	CatalogStore,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn find_table_column_by_name(
-		&self,
 		rx: &mut impl QueryTransaction,
 		table: TableId,
 		column_name: &str,
@@ -37,7 +34,7 @@ impl Catalog {
 			});
 
 		if let Some(id) = maybe_id {
-			Ok(Some(self.get_table_column(rx, id)?))
+			Ok(Some(Self::get_table_column(rx, id)?))
 		} else {
 			Ok(None)
 		}
@@ -46,10 +43,10 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+	use crate::test_utils::create_test_table_column;
+	use crate::CatalogStore;
 	use reifydb_core::{interface::TableId, Type};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-
-	use crate::{test_utils::create_test_table_column, Catalog};
 
 	#[test]
 	fn test_ok() {
@@ -58,15 +55,13 @@ mod tests {
 		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let catalog = Catalog::new();
-		let result = catalog
-			.find_table_column_by_name(
-				&mut txn,
-				TableId(1),
-				"col_3",
-			)
-			.unwrap()
-			.unwrap();
+		let result = CatalogStore::find_table_column_by_name(
+			&mut txn,
+			TableId(1),
+			"col_3",
+		)
+		.unwrap()
+		.unwrap();
 
 		assert_eq!(result.id, 3);
 		assert_eq!(result.name, "col_3");
@@ -79,14 +74,12 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
 
-		let catalog = Catalog::new();
-		let result = catalog
-			.find_table_column_by_name(
-				&mut txn,
-				TableId(1),
-				"not_found",
-			)
-			.unwrap();
+		let result = CatalogStore::find_table_column_by_name(
+			&mut txn,
+			TableId(1),
+			"not_found",
+		)
+		.unwrap();
 
 		assert!(result.is_none());
 	}

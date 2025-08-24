@@ -1,19 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	QueryTransaction, ViewColumnKey,
-	ViewId,
-};
+use reifydb_core::interface::{QueryTransaction, ViewColumnKey, ViewId};
 
 use crate::{
 	view_column::{layout::view_column_link, ColumnDef, ColumnId},
-	Catalog,
+	CatalogStore,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn list_view_columns(
-		&self,
 		rx: &mut impl QueryTransaction,
 		view: ViewId,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -33,7 +29,7 @@ impl Catalog {
 			.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(self.get_view_column(rx, id)?);
+			result.push(Self::get_view_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);

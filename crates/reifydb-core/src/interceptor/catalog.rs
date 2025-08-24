@@ -24,13 +24,11 @@ use crate::{
 
 /// Interceptor that updates the materialized catalog for schema definitions
 pub struct MaterializedSchemaInterceptor {
-	catalog: MaterializedCatalog,
 }
 
 impl MaterializedSchemaInterceptor {
-	pub fn new(catalog: MaterializedCatalog) -> Self {
+	pub fn new() -> Self {
 		Self {
-			catalog,
 		}
 	}
 }
@@ -93,13 +91,11 @@ impl<CT: CommandTransaction> SchemaDefPreDeleteInterceptor<CT>
 
 /// Interceptor that updates the materialized catalog for table definitions
 pub struct MaterializedTableInterceptor {
-	catalog: MaterializedCatalog,
 }
 
 impl MaterializedTableInterceptor {
-	pub fn new(catalog: MaterializedCatalog) -> Self {
+	pub fn new() -> Self {
 		Self {
-			catalog,
 		}
 	}
 }
@@ -161,13 +157,11 @@ impl<CT: CommandTransaction> TableDefPreDeleteInterceptor<CT>
 
 /// Interceptor that updates the materialized catalog for view definitions
 pub struct MaterializedViewInterceptor {
-	catalog: MaterializedCatalog,
 }
 
 impl MaterializedViewInterceptor {
-	pub fn new(catalog: MaterializedCatalog) -> Self {
+	pub fn new() -> Self {
 		Self {
-			catalog,
 		}
 	}
 }
@@ -229,14 +223,12 @@ impl<CT: CommandTransaction> ViewDefPreDeleteInterceptor<CT>
 
 /// Post-commit interceptor that finalizes catalog changes
 pub struct CatalogCommitInterceptor<CT: CommandTransaction> {
-	catalog: MaterializedCatalog,
 	_phantom: std::marker::PhantomData<CT>,
 }
 
 impl<CT: CommandTransaction> CatalogCommitInterceptor<CT> {
-	pub fn new(catalog: MaterializedCatalog) -> Self {
+	pub fn new() -> Self {
 		Self {
-			catalog,
 			_phantom: std::marker::PhantomData,
 		}
 	}
@@ -246,138 +238,138 @@ impl<CT: CommandTransaction> PostCommitInterceptor<CT>
 	for CatalogCommitInterceptor<CT>
 {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
-		let version = ctx.version;
-
-		// Get catalog changes from the context
-		if let Some(ref changes) = ctx.catalog_changes {
-			// Apply schema changes
-			for (id, change) in changes.schema_def() {
-				match change.operation {
-					OperationType::Create
-					| OperationType::Update => {
-						if let Some(schema) =
-							&change.post
-						{
-							self.catalog.schemas
-                                .get_or_insert_with(*id, || crate::catalog::versioned::VersionedSchemaDef::new())
-                                .value()
-                                .insert(version, Some(schema.clone()));
-
-							// Update name index
-							if let Some(
-								pre_schema,
-							) = &change.pre
-							{
-								self.catalog.schemas_by_name.remove(&pre_schema.name);
-							}
-							self.catalog.schemas_by_name
-                                .insert(schema.name.clone(), schema.id);
-						}
-					}
-					OperationType::Delete => {
-						if let Some(entry) = self
-							.catalog
-							.schemas
-							.get(id)
-						{
-							entry.value().insert(
-								version, None,
-							);
-						}
-						if let Some(schema) =
-							&change.pre
-						{
-							self.catalog.schemas_by_name.remove(&schema.name);
-						}
-					}
-				}
-			}
-
-			// Apply table changes
-			for (id, change) in changes.table_def() {
-				match change.operation {
-					OperationType::Create
-					| OperationType::Update => {
-						if let Some(table) =
-							&change.post
-						{
-							self.catalog.tables
-                                .get_or_insert_with(*id, || crate::catalog::versioned::VersionedTableDef::new())
-                                .value()
-                                .insert(version, Some(table.clone()));
-
-							// Update name index
-							if let Some(pre_table) =
-								&change.pre
-							{
-								self.catalog.tables_by_name
-                                    .remove(&(pre_table.schema, pre_table.name.clone()));
-							}
-							self.catalog.tables_by_name
-                                .insert((table.schema, table.name.clone()), table.id);
-						}
-					}
-					OperationType::Delete => {
-						if let Some(entry) = self
-							.catalog
-							.tables
-							.get(id)
-						{
-							entry.value().insert(
-								version, None,
-							);
-						}
-						if let Some(table) = &change.pre
-						{
-							self.catalog.tables_by_name
-                                .remove(&(table.schema, table.name.clone()));
-						}
-					}
-				}
-			}
-
-			// Apply view changes
-			for (id, change) in changes.view_def() {
-				match change.operation {
-					OperationType::Create
-					| OperationType::Update => {
-						if let Some(view) = &change.post
-						{
-							self.catalog.views
-                                .get_or_insert_with(*id, || crate::catalog::versioned::VersionedViewDef::new())
-                                .value()
-                                .insert(version, Some(view.clone()));
-
-							// Update name index
-							if let Some(pre_view) =
-								&change.pre
-							{
-								self.catalog.views_by_name
-                                    .remove(&(pre_view.schema, pre_view.name.clone()));
-							}
-							self.catalog.views_by_name
-                                .insert((view.schema, view.name.clone()), view.id);
-						}
-					}
-					OperationType::Delete => {
-						if let Some(entry) = self
-							.catalog
-							.views
-							.get(id)
-						{
-							entry.value().insert(
-								version, None,
-							);
-						}
-						if let Some(view) = &change.pre
-						{
-							self.catalog.views_by_name
-                                .remove(&(view.schema, view.name.clone()));
-						}
-					}
-				}
-			}
-		}
+		// let version = ctx.version;
+		//
+		// // Get catalog changes from the context
+		// if let Some(ref changes) = ctx.catalog_changes {
+		// 	// Apply schema changes
+		// 	for (id, change) in changes.schema_def() {
+		// 		match change.op {
+		// 			OperationType::Create
+		// 			| OperationType::Update => {
+		// 				if let Some(schema) =
+		// 					&change.post
+		// 				{
+		// 					CatalogStore::schemas
+        //                         .get_or_insert_with(*id, || crate::catalog::versioned::VersionedSchemaDef::new())
+        //                         .value()
+        //                         .insert(version, Some(schema.clone()));
+		//
+		// 					// Update name index
+		// 					if let Some(
+		// 						pre_schema,
+		// 					) = &change.pre
+		// 					{
+		// 						CatalogStore::schemas_by_name.remove(&pre_schema.name);
+		// 					}
+		// 					CatalogStore::schemas_by_name
+        //                         .insert(schema.name.clone(), schema.id);
+		// 				}
+		// 			}
+		// 			OperationType::Delete => {
+		// 				if let Some(entry) = self
+		// 					.catalog
+		// 					.schemas
+		// 					.get(id)
+		// 				{
+		// 					entry.value().insert(
+		// 						version, None,
+		// 					);
+		// 				}
+		// 				if let Some(schema) =
+		// 					&change.pre
+		// 				{
+		// 					CatalogStore::schemas_by_name.remove(&schema.name);
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		//
+		// 	// Apply table changes
+		// 	for (id, change) in changes.table_def() {
+		// 		match change.op {
+		// 			OperationType::Create
+		// 			| OperationType::Update => {
+		// 				if let Some(table) =
+		// 					&change.post
+		// 				{
+		// 					CatalogStore::tables
+        //                         .get_or_insert_with(*id, || crate::catalog::versioned::VersionedTableDef::new())
+        //                         .value()
+        //                         .insert(version, Some(table.clone()));
+		//
+		// 					// Update name index
+		// 					if let Some(pre_table) =
+		// 						&change.pre
+		// 					{
+		// 						CatalogStore::tables_by_name
+        //                             .remove(&(pre_table.schema, pre_table.name.clone()));
+		// 					}
+		// 					CatalogStore::tables_by_name
+        //                         .insert((table.schema, table.name.clone()), table.id);
+		// 				}
+		// 			}
+		// 			OperationType::Delete => {
+		// 				if let Some(entry) = self
+		// 					.catalog
+		// 					.tables
+		// 					.get(id)
+		// 				{
+		// 					entry.value().insert(
+		// 						version, None,
+		// 					);
+		// 				}
+		// 				if let Some(table) = &change.pre
+		// 				{
+		// 					CatalogStore::tables_by_name
+        //                         .remove(&(table.schema, table.name.clone()));
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		//
+		// 	// Apply view changes
+		// 	for (id, change) in changes.view_def() {
+		// 		match change.op {
+		// 			OperationType::Create
+		// 			| OperationType::Update => {
+		// 				if let Some(view) = &change.post
+		// 				{
+		// 					CatalogStore::views
+        //                         .get_or_insert_with(*id, || crate::catalog::versioned::VersionedViewDef::new())
+        //                         .value()
+        //                         .insert(version, Some(view.clone()));
+		//
+		// 					// Update name index
+		// 					if let Some(pre_view) =
+		// 						&change.pre
+		// 					{
+		// 						CatalogStore::views_by_name
+        //                             .remove(&(pre_view.schema, pre_view.name.clone()));
+		// 					}
+		// 					CatalogStore::views_by_name
+        //                         .insert((view.schema, view.name.clone()), view.id);
+		// 				}
+		// 			}
+		// 			OperationType::Delete => {
+		// 				if let Some(entry) = self
+		// 					.catalog
+		// 					.views
+		// 					.get(id)
+		// 				{
+		// 					entry.value().insert(
+		// 						version, None,
+		// 					);
+		// 				}
+		// 				if let Some(view) = &change.pre
+		// 				{
+		// 					CatalogStore::views_by_name
+        //                         .remove(&(view.schema, view.name.clone()));
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		Ok(())
 	}

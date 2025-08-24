@@ -5,12 +5,9 @@ use crate::plan::{
 	logical::CreateTransactionalViewNode,
 	physical::{Compiler, CreateTransactionalViewPlan, PhysicalPlan},
 };
-use reifydb_catalog::Catalog;
+use reifydb_catalog::CatalogStore;
 use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{
-	diagnostic::catalog::schema_not_found
-	, return_error,
-};
+use reifydb_core::{diagnostic::catalog::schema_not_found, return_error};
 use PhysicalPlan::CreateTransactionalView;
 
 impl Compiler {
@@ -18,9 +15,10 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: CreateTransactionalViewNode,
 	) -> crate::Result<PhysicalPlan> {
-		let catalog = Catalog::new();
-		let Some(schema) = catalog
-			.find_schema_by_name(rx, &create.schema.fragment())?
+		let Some(schema) = CatalogStore::find_schema_by_name(
+			rx,
+			&create.schema.fragment(),
+		)?
 		else {
 			return_error!(schema_not_found(
 				Some(create.schema.clone()),

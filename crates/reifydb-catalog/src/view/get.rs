@@ -1,20 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{view::layout::view, Catalog};
+use crate::{view::layout::view, CatalogStore};
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	interface::{
-		EncodableKey, SchemaId, ViewDef,
-		ViewId, ViewKey, ViewKind,
+		EncodableKey, SchemaId, ViewDef, ViewId, ViewKey, ViewKind,
 	},
 	internal_error,
 	Error,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn get_view(
-		&self,
 		rx: &mut impl QueryTransaction,
 		view: ViewId,
 	) -> crate::Result<ViewDef> {
@@ -22,7 +20,7 @@ impl Catalog {
             .get(&ViewKey { view }.encode())?
             .ok_or_else(|| {
                 Error(internal_error!(
-						"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.", 
+						"View with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
 						view
 					))
             })?;
@@ -43,7 +41,7 @@ impl Catalog {
 			name,
 			schema,
 			kind,
-			columns: self.list_view_columns(rx, id)?,
+			columns: Self::list_view_columns(rx, id)?,
 		})
 	}
 }
@@ -55,7 +53,7 @@ mod tests {
 
 	use crate::{
 		test_utils::{create_schema, create_view, ensure_test_schema},
-		Catalog,
+		CatalogStore,
 	};
 
 	#[test]
@@ -70,8 +68,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let catalog = Catalog::new();
-		let result = catalog.get_view(&mut txn, ViewId(1026)).unwrap();
+		let result =
+			CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.schema, SchemaId(1027));
@@ -90,8 +88,8 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let catalog = Catalog::new();
-		let err = catalog.get_view(&mut txn, ViewId(42)).unwrap_err();
+		let err = CatalogStore::get_view(&mut txn, ViewId(42))
+			.unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ViewId(42)"));

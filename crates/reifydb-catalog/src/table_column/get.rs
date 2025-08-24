@@ -3,7 +3,7 @@
 
 use crate::{
 	table_column::{layout::column, ColumnDef, ColumnId, ColumnIndex},
-	Catalog,
+	CatalogStore,
 };
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
@@ -12,9 +12,8 @@ use reifydb_core::{
 	Type,
 };
 
-impl Catalog {
+impl CatalogStore {
 	pub fn get_table_column(
-		&self,
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
@@ -22,7 +21,7 @@ impl Catalog {
 			.get(&TableColumnsKey { column }.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
-					"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+					"Table column with ID {:?} not found in Self:: This indicates a critical catalog inconsistency.",
 					column
 				))
 			})?;
@@ -41,7 +40,7 @@ impl Catalog {
 		let auto_increment =
 			column::LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
 
-		let policies = self.list_table_column_policies(rx, id)?;
+		let policies = Self::list_table_column_policies(rx, id)?;
 
 		Ok(ColumnDef {
 			id,
@@ -61,7 +60,7 @@ mod tests {
 
 	use crate::{
 		table_column::ColumnId, test_utils::create_test_table_column,
-		Catalog,
+		CatalogStore,
 	};
 
 	#[test]
@@ -71,10 +70,9 @@ mod tests {
 		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let catalog = Catalog::new();
-		let result = catalog
-			.get_table_column(&mut txn, ColumnId(2))
-			.unwrap();
+		let result =
+			CatalogStore::get_table_column(&mut txn, ColumnId(2))
+				.unwrap();
 
 		assert_eq!(result.id, 2);
 		assert_eq!(result.name, "col_2");
@@ -89,9 +87,7 @@ mod tests {
 		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let catalog = Catalog::new();
-		let err = catalog
-			.get_table_column(&mut txn, ColumnId(4))
+		let err = CatalogStore::get_table_column(&mut txn, ColumnId(4))
 			.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));

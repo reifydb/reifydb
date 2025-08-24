@@ -9,7 +9,7 @@ use crate::plan::{
 	physical::PhysicalPlan::{TableScan, ViewScan},
 };
 use reifydb_catalog::{
-	table::TableColumnToCreate, view::ViewColumnToCreate, Catalog,
+	table::TableColumnToCreate, view::ViewColumnToCreate, CatalogStore,
 };
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
@@ -40,7 +40,6 @@ impl Compiler {
 			return Ok(None);
 		}
 
-		let catalog = Catalog::new();
 		let mut stack: Vec<PhysicalPlan> = Vec::new();
 		for plan in logical {
 			match plan {
@@ -213,8 +212,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::SourceScan(scan) => {
-					let Some(schema) = catalog
-						.find_schema_by_name(
+					let Some(schema) = CatalogStore::find_schema_by_name(
 							rx,
 							&scan.schema.fragment(),
 						)?
@@ -232,8 +230,7 @@ impl Compiler {
 						);
 					};
 
-					if let Some(table) = catalog
-						.find_table_by_name(
+					if let Some(table) = CatalogStore::find_table_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment(),
@@ -244,8 +241,7 @@ impl Compiler {
 								table,
 							},
 						));
-					} else if let Some(view) = catalog
-						.find_view_by_name(
+					} else if let Some(view) = CatalogStore::find_view_by_name(
 							rx,
 							schema.id,
 							&scan.source.fragment(),

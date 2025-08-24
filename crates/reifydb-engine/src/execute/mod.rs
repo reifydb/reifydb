@@ -17,7 +17,6 @@ use query::{
 	take::TakeNode,
 	view_scan::ViewScanNode,
 };
-use reifydb_catalog::Catalog;
 use reifydb_core::interface::{QueryTransaction, Transaction};
 use reifydb_core::{
 	interface::{
@@ -115,7 +114,6 @@ impl ExecutionPlan {
 }
 
 pub(crate) struct Executor {
-	pub catalog: Catalog,
 	pub functions: Functions,
 }
 
@@ -123,7 +121,6 @@ impl Executor {
 	#[allow(dead_code)]
 	pub(crate) fn testing() -> Self {
 		Self {
-			catalog: Catalog::new(),
 			functions: Functions::builder()
 				.register_aggregate(
 					"sum",

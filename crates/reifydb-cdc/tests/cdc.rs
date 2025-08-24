@@ -11,7 +11,7 @@ use std::{
 };
 
 use Key::TableRow;
-use reifydb_catalog::Catalog;
+use reifydb_catalog::CatalogStore;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_engine::{StandardTransaction, StandardCdcTransaction};
 use reifydb_core::{
@@ -460,13 +460,11 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	let versioned =
 		Serializable::new(memory, unversioned.clone(), hooks.clone());
-	let catalog = Catalog::new();
 
 	StandardEngine::new(
 		versioned,
 		unversioned,
 		cdc,
-		catalog,
 		hooks,
 		Box::new(StandardInterceptorFactory::default()),
 	)

@@ -2,6 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interceptor::{
+	Chain, PostCommitInterceptor, PreCommitInterceptor,
+	TablePostDeleteInterceptor, TablePreDeleteInterceptor,
+};
+use reifydb_core::interceptor::{
 	TablePostInsertInterceptor, TablePreInsertInterceptor,
 	TablePreUpdateInterceptor,
 };
@@ -10,12 +14,11 @@ use reifydb_core::interface::{
 	CommandTransaction, QueryTransaction, TransactionId, WithHooks,
 };
 use reifydb_core::{
-	catalog::MaterializedCatalog, 
-	interface::change::TransactionalChanges,
-	diagnostic::transaction,
+	catalog::MaterializedCatalog, diagnostic::transaction,
 	hook::Hooks,
 	interceptor,
 	interceptor::Interceptors,
+	interface::change::TransactionalChanges,
 	interface::{
 		interceptor::TransactionInterceptor, BoxedVersionedIter, CdcTransaction,
 		Transaction, UnversionedTransaction, Versioned,
@@ -26,10 +29,6 @@ use reifydb_core::{
 	row::EncodedRow,
 	EncodedKey,
 	EncodedKeyRange,
-};
-use reifydb_core::interceptor::{
-	Chain, PostCommitInterceptor, PreCommitInterceptor,
-	TablePostDeleteInterceptor, TablePreDeleteInterceptor,
 };
 use std::marker::PhantomData;
 
@@ -86,53 +85,6 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		&self.hooks
 	}
 
-	pub fn catalog(&self) -> &MaterializedCatalog {
-		&self.catalog
-	}
-
-	/// Get a schema by ID, checking transaction-local changes first
-	pub fn get_schema(
-		&self,
-		id: reifydb_core::interface::SchemaId,
-	) -> Option<reifydb_core::interface::SchemaDef> {
-		// First check transaction-local changes
-		if let Some(schema) = self.changes.get_schema(id) {
-			return Some(schema.clone());
-		}
-
-		// Fall back to MaterializedCatalog
-		// Note: We use the transaction's version for consistency
-		self.catalog.get_schema(id, self.version())
-	}
-
-	/// Get a table by ID, checking transaction-local changes first
-	pub fn get_table(
-		&self,
-		id: reifydb_core::interface::TableId,
-	) -> Option<reifydb_core::interface::TableDef> {
-		// First check transaction-local changes
-		if let Some(table) = self.changes.get_table(id) {
-			return Some(table.clone());
-		}
-
-		// Fall back to MaterializedCatalog
-		self.catalog.get_table(id, self.version())
-	}
-
-	/// Get a view by ID, checking transaction-local changes first
-	pub fn get_view(
-		&self,
-		id: reifydb_core::interface::ViewId,
-	) -> Option<reifydb_core::interface::ViewDef> {
-		// First check transaction-local changes
-		if let Some(view) = self.changes.get_view(id) {
-			return Some(view.clone());
-		}
-
-		// Fall back to MaterializedCatalog
-		self.catalog.get_view(id, self.version())
-	}
-
 	/// Check if transaction is still active and return appropriate error if
 	/// not
 	fn check_active(&self) -> reifydb_core::Result<()> {
@@ -148,7 +100,10 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	}
 
 	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> reifydb_core::Result<R>
+	pub fn with_unversioned_query<F, R>(
+		&self,
+		f: F,
+	) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Unversioned as UnversionedTransaction>::Query<
@@ -166,7 +121,10 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Note: If this operation fails, the versioned transaction is NOT
 	/// automatically rolled back. The caller should handle transaction
 	/// rollback if needed.
-	pub fn with_unversioned_command<F, R>(&self, f: F) -> reifydb_core::Result<R>
+	pub fn with_unversioned_command<F, R>(
+		&self,
+		f: F,
+	) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Unversioned as UnversionedTransaction>::Command<
@@ -180,7 +138,10 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 
 	/// Execute a function with access to the versioned command transaction.
 	/// This operates within the same transaction context.
-	pub fn with_versioned_command<F, R>(&mut self, f: F) -> reifydb_core::Result<R>
+	pub fn with_versioned_command<F, R>(
+		&mut self,
+		f: F,
+	) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Versioned as VersionedTransaction>::Command,
@@ -203,7 +164,10 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Execute a function with access to the versioned query capabilities.
 	/// This operates within the same transaction context and provides
 	/// read-only access.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> reifydb_core::Result<R>
+	pub fn with_versioned_query<F, R>(
+		&mut self,
+		f: F,
+	) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Versioned as VersionedTransaction>::Command,
@@ -228,7 +192,9 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Commit the transaction.
 	/// Since unversioned transactions are short-lived and auto-commit,
 	/// this only commits the versioned transaction.
-	pub fn commit(&mut self) -> reifydb_core::Result<reifydb_core::Version> {
+	pub fn commit(
+		&mut self,
+	) -> reifydb_core::Result<reifydb_core::Version> {
 		self.check_active()?;
 
 		TransactionInterceptor::pre_commit(self)?;
@@ -300,7 +266,10 @@ impl<T: Transaction> VersionedQueryTransaction
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
+	fn contains_key(
+		&mut self,
+		key: &EncodedKey,
+	) -> reifydb_core::Result<bool> {
 		self.check_active()?;
 		self.versioned.as_mut().unwrap().contains_key(key)
 	}

@@ -2,15 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	SchemaId, SchemaViewKey, QueryTransaction, Versioned,
-	ViewDef, ViewId,
+	QueryTransaction, SchemaId, SchemaViewKey, Versioned, ViewDef, ViewId,
 };
 
-use crate::{view::layout::view_schema, Catalog};
+use crate::{view::layout::view_schema, CatalogStore};
 
-impl Catalog {
+impl CatalogStore {
 	pub fn find_view_by_name(
-		&self,
 		rx: &mut impl QueryTransaction,
 		schema: SchemaId,
 		name: impl AsRef<str>,
@@ -33,19 +31,18 @@ impl Catalog {
 			return Ok(None);
 		};
 
-		Ok(Some(self.get_view(rx, view)?))
+		Ok(Some(Self::get_view(rx, view)?))
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use crate::test_utils::{
+		create_schema, create_view, ensure_test_schema,
+	};
+	use crate::CatalogStore;
 	use reifydb_core::interface::{SchemaId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-
-	use crate::{
-		test_utils::{create_schema, create_view, ensure_test_schema},
-		Catalog,
-	};
 
 	#[test]
 	fn test_ok() {
@@ -59,11 +56,13 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let catalog = Catalog::new();
-		let result = catalog
-			.find_view_by_name(&mut txn, SchemaId(1027), "view_two")
-			.unwrap()
-			.unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut txn,
+			SchemaId(1027),
+			"view_two",
+		)
+		.unwrap()
+		.unwrap();
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.schema, SchemaId(1027));
 		assert_eq!(result.name, "view_two");
@@ -72,14 +71,13 @@ mod tests {
 	#[test]
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
-		let catalog = Catalog::new();
-		let result = catalog
-			.find_view_by_name(
-				&mut txn,
-				SchemaId(1025),
-				"some_view",
-			)
-			.unwrap();
+
+		let result = CatalogStore::find_view_by_name(
+			&mut txn,
+			SchemaId(1025),
+			"some_view",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -95,14 +93,12 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let catalog = Catalog::new();
-		let result = catalog
-			.find_view_by_name(
-				&mut txn,
-				SchemaId(1025),
-				"view_four_two",
-			)
-			.unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut txn,
+			SchemaId(1025),
+			"view_four_two",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -118,10 +114,12 @@ mod tests {
 		create_view(&mut txn, "schema_two", "view_two", &[]);
 		create_view(&mut txn, "schema_three", "view_three", &[]);
 
-		let catalog = Catalog::new();
-		let result = catalog
-			.find_view_by_name(&mut txn, SchemaId(2), "view_two")
-			.unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut txn,
+			SchemaId(2),
+			"view_two",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 }

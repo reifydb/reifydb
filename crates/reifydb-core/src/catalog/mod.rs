@@ -5,8 +5,6 @@ pub mod materialized;
 pub mod queries;
 pub mod versioned;
 
-#[cfg(test)]
-mod test_changes;
 
-pub use crate::interface::change::{TransactionalChanges, Change, OperationType, Operation};
+pub use crate::interface::change::{TransactionalChanges, Change, OperationType};
 pub use materialized::MaterializedCatalog;

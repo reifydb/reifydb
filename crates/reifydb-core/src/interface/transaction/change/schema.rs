@@ -22,19 +22,15 @@ impl TransactionalChanges {
 			));
 		}
 
-		self.schema_def.insert(
+		self.change_schema_def(
 			schema.id,
 			Change {
 				pre: None,
 				post: Some(schema.clone()),
-				operation: OperationType::Create,
+				op: OperationType::Create,
 			},
+			OperationType::Create,
 		);
-
-		self.log.push(Operation::Schema {
-			id: schema.id,
-			op: OperationType::Create,
-		});
 
 		Ok(())
 	}
@@ -47,7 +43,7 @@ impl TransactionalChanges {
 	) -> crate::Result<()> {
 		match self.schema_def.get_mut(&post.id) {
 			Some(existing)
-				if existing.operation
+				if existing.op
 					== OperationType::Create =>
 			{
 				// Coalesce with create - just update the "post" state
@@ -55,7 +51,7 @@ impl TransactionalChanges {
 				Ok(())
 			}
 			Some(existing)
-				if existing.operation
+				if existing.op
 					== OperationType::Update =>
 			{
 				// Coalesce multiple updates - keep original "pre", update "post"
@@ -68,20 +64,15 @@ impl TransactionalChanges {
 				));
 			}
 			None => {
-				self.schema_def.insert(
+				self.change_schema_def(
 					post.id,
 					Change {
 						pre: Some(pre),
 						post: Some(post.clone()),
-						operation:
-							OperationType::Update,
+						op: OperationType::Update,
 					},
+					OperationType::Update,
 				);
-
-				self.log.push(Operation::Schema {
-					id: post.id,
-					op: OperationType::Update,
-				});
 
 				Ok(())
 			}
@@ -95,7 +86,7 @@ impl TransactionalChanges {
 	) -> crate::Result<()> {
 		match self.schema_def.get_mut(&schema.id) {
 			Some(existing)
-				if existing.operation
+				if existing.op
 					== OperationType::Create =>
 			{
 				// Created and deleted in same transaction - remove entirely
@@ -107,12 +98,12 @@ impl TransactionalChanges {
 				Ok(())
 			}
 			Some(existing)
-				if existing.operation
+				if existing.op
 					== OperationType::Update =>
 			{
 				// Convert update to delete, keep original pre state
 				existing.post = None;
-				existing.operation = OperationType::Delete;
+				existing.op = OperationType::Delete;
 				// Update operation log
 				if let Some(op) =
 					self.log.iter_mut().rev().find(
@@ -131,20 +122,15 @@ impl TransactionalChanges {
 				));
 			}
 			None => {
-				self.schema_def.insert(
+				self.change_schema_def(
 					schema.id,
 					Change {
 						pre: Some(schema.clone()),
 						post: None,
-						operation:
-							OperationType::Delete,
+						op: OperationType::Delete,
 					},
+					OperationType::Delete,
 				);
-
-				self.log.push(Operation::Schema {
-					id: schema.id,
-					op: OperationType::Delete,
-				});
 
 				Ok(())
 			}

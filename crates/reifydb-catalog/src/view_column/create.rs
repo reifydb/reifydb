@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	sequence::SystemSequence,
-	view_column::{
+    sequence::SystemSequence,
+    view_column::{
 		layout::{view_column, view_column_link}, ColumnDef,
 		ColumnIndex,
 	},
-	Catalog,
+    CatalogStore,
 };
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
@@ -31,14 +31,13 @@ pub struct ViewColumnToCreate<'a> {
 	pub index: ColumnIndex,
 }
 
-impl Catalog {
+impl CatalogStore {
 	pub(crate) fn create_view_column(
-		&self,
 		txn: &mut impl CommandTransaction,
 		view: ViewId,
 		column_to_create: ViewColumnToCreate,
 	) -> crate::Result<ColumnDef> {
-		if let Some(column) = self.find_view_column_by_name(
+		if let Some(column) = Self::find_view_column_by_name(
 			txn,
 			view,
 			&column_to_create.column,

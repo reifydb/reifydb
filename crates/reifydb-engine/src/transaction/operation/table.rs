@@ -5,16 +5,16 @@ use crate::StandardCommandTransaction;
 use reifydb_catalog::sequence::TableRowSequence;
 use reifydb_core::interface::{Transaction, VersionedCommandTransaction};
 use reifydb_core::{
-    hook::table::{TablePostInsertHook, TablePreInsertHook},
-    interface::{
-        interceptor::TableInterceptor, EncodableKey, TableDef,
-        TableRowKey,
-    },
-    row::EncodedRow,
-    RowNumber,
+	hook::table::{TablePostInsertHook, TablePreInsertHook},
+	interface::{
+		interceptor::TableInterceptor, EncodableKey, TableDef,
+		TableRowKey,
+	},
+	row::EncodedRow,
+	RowNumber,
 };
 
-pub trait TableOperations {
+pub(crate) trait TableOperations {
 	fn insert_into_table(
 		&mut self,
 		table: TableDef,

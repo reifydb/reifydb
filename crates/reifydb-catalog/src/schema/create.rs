@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{schema::layout::schema, sequence::SystemSequence, Catalog};
+use crate::{schema::layout::schema, sequence::SystemSequence, CatalogStore};
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{EncodableKey, SchemaDef, SchemaKey},
@@ -16,14 +16,13 @@ pub struct SchemaToCreate {
 	pub name: String,
 }
 
-impl Catalog {
+impl CatalogStore {
 	pub fn create_schema(
-		&self,
 		txn: &mut impl CommandTransaction,
 		to_create: SchemaToCreate,
 	) -> crate::Result<SchemaDef> {
 		if let Some(schema) =
-			self.find_schema_by_name(txn, &to_create.name)?
+			Self::find_schema_by_name(txn, &to_create.name)?
 		{
 			return_error!(schema_already_exists(
 				to_create.schema_fragment,
@@ -49,7 +48,7 @@ impl Catalog {
 			row,
 		)?;
 
-		Ok(self.get_schema(txn, schema_id)?)
+		Ok(Self::get_schema(txn, schema_id)?)
 	}
 }
 
@@ -58,12 +57,11 @@ mod tests {
 	use reifydb_core::interface::SchemaId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
-	use crate::{schema::create::SchemaToCreate, Catalog};
+	use crate::{schema::create::SchemaToCreate, CatalogStore};
 
 	#[test]
 	fn test_create_schema() {
 		let mut txn = create_test_command_transaction();
-		let catalog = Catalog::new();
 
 		let to_create = SchemaToCreate {
 			schema_fragment: None,
@@ -71,16 +69,18 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = catalog
-			.create_schema(&mut txn, to_create.clone())
-			.unwrap();
+		let result = CatalogStore::create_schema(
+			&mut txn,
+			to_create.clone(),
+		)
+		.unwrap();
 		assert_eq!(result.id, SchemaId(1025));
 		assert_eq!(result.name, "test_schema");
 
 		// Creating the same schema again with `if_not_exists = false`
 		// should return error
-		let err =
-			catalog.create_schema(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_schema(&mut txn, to_create)
+			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}
 }

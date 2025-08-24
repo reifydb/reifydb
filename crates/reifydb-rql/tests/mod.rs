@@ -3,7 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_catalog::{schema::SchemaToCreate, table::TableToCreate, Catalog};
+use reifydb_catalog::{schema::SchemaToCreate, table::TableToCreate, CatalogStore};
 use reifydb_rql::explain::{
 	explain_ast, explain_lex, explain_logical_plan, explain_physical_plan,
 };
@@ -76,9 +76,7 @@ impl testscript::Runner for Runner {
 				let mut dummy_tx =
 					create_test_command_transaction();
 
-				let catalog = Catalog::new();
-
-				catalog.create_schema(
+				CatalogStore::create_schema(
 					&mut dummy_tx,
 					SchemaToCreate {
 						schema_fragment: None,
@@ -87,7 +85,7 @@ impl testscript::Runner for Runner {
 				)
 				.unwrap();
 
-				catalog.create_table(
+				CatalogStore::create_table(
 					&mut dummy_tx,
 					TableToCreate {
 						fragment: None,
@@ -98,7 +96,7 @@ impl testscript::Runner for Runner {
 				)
 				.unwrap();
 
-				catalog.create_table(
+				CatalogStore::create_table(
 					&mut dummy_tx,
 					TableToCreate {
 						fragment: None,

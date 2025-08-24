@@ -7,7 +7,7 @@ use crate::{
     engine::FlowEngine, operator::OperatorContext, Change, Diff, Flow, FlowNode,
     FlowNodeType,
 };
-use reifydb_catalog::Catalog;
+use reifydb_catalog::CatalogStore;
 use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
     interface::{
@@ -131,8 +131,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		view_id: ViewId,
 		change: &Change,
 	) -> crate::Result<()> {
-		let catalog = Catalog::new();
-		let view = catalog.get_view(txn, view_id)?;
+		let view = CatalogStore::get_view(txn, view_id)?;
 		let layout = view.get_layout();
 
 		for diff in &change.diffs {

@@ -23,19 +23,15 @@ impl TransactionalChanges {
 			));
 		}
 
-		self.table_def.insert(
+		self.change_table_def(
 			table.id,
 			Change {
 				pre: None,
 				post: Some(table.clone()),
-				operation: OperationType::Create,
+				op: OperationType::Create,
 			},
+			OperationType::Create,
 		);
-
-		self.log.push(Operation::Table {
-			id: table.id,
-			op: OperationType::Create,
-		});
 
 		Ok(())
 	}
@@ -47,12 +43,12 @@ impl TransactionalChanges {
 		post: TableDef,
 	) -> crate::Result<()> {
 		match self.table_def.get_mut(&post.id) {
-			Some(existing) if existing.operation == OperationType::Create => {
+			Some(existing) if existing.op == OperationType::Create => {
 				// Coalesce with create - just update the "post" state
 				existing.post = Some(post);
 				Ok(())
 			}
-			Some(existing) if existing.operation == OperationType::Update => {
+			Some(existing) if existing.op == OperationType::Update => {
 				// Coalesce multiple updates - keep original "pre", update "post"
 				existing.post = Some(post);
 				Ok(())
@@ -64,19 +60,15 @@ impl TransactionalChanges {
 				));
 			}
 			None => {
-				self.table_def.insert(
+				self.change_table_def(
 					post.id,
 					Change {
 						pre: Some(pre),
 						post: Some(post.clone()),
-						operation: OperationType::Update,
+						op: OperationType::Update,
 					},
+					OperationType::Update,
 				);
-
-				self.log.push(Operation::Table {
-					id: post.id,
-					op: OperationType::Update,
-				});
 
 				Ok(())
 			}
@@ -89,7 +81,7 @@ impl TransactionalChanges {
 		table: TableDef,
 	) -> crate::Result<()> {
 		match self.table_def.get_mut(&table.id) {
-			Some(existing) if existing.operation == OperationType::Create => {
+			Some(existing) if existing.op == OperationType::Create => {
 				// Created and deleted in same transaction - remove entirely
 				self.table_def.remove(&table.id);
 				// Remove from operation log
@@ -98,10 +90,10 @@ impl TransactionalChanges {
 				});
 				Ok(())
 			}
-			Some(existing) if existing.operation == OperationType::Update => {
+			Some(existing) if existing.op == OperationType::Update => {
 				// Convert update to delete, keep original pre state
 				existing.post = None;
-				existing.operation = OperationType::Delete;
+				existing.op = OperationType::Delete;
 				// Update operation log
 				if let Some(op) = self.log.iter_mut().rev().find(|op| {
 					matches!(op, Operation::Table { id, .. } if *id == table.id)
@@ -120,19 +112,15 @@ impl TransactionalChanges {
 				));
 			}
 			None => {
-				self.table_def.insert(
+				self.change_table_def(
 					table.id,
 					Change {
 						pre: Some(table.clone()),
 						post: None,
-						operation: OperationType::Delete,
+						op: OperationType::Delete,
 					},
+					OperationType::Delete,
 				);
-
-				self.log.push(Operation::Table {
-					id: table.id,
-					op: OperationType::Delete,
-				});
 
 				Ok(())
 			}

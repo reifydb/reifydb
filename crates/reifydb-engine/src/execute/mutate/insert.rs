@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
+use reifydb_catalog::{sequence::TableColumnSequence, CatalogStore};
 use reifydb_core::interface::Transaction;
 use reifydb_core::{
 	interface::{ColumnPolicyKind, Params}, result::error::diagnostic::catalog::table_not_found, return_error, row::EncodedRowLayout,
@@ -31,13 +31,13 @@ impl Executor {
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let catalog = Catalog::new();
+
 		let schema_name =
 			plan.schema.as_ref().map(|s| s.fragment()).unwrap(); // FIXME
 
 		let schema =
-			catalog.find_schema_by_name(txn, schema_name)?.unwrap();
-		let Some(table) = catalog.find_table_by_name(
+			CatalogStore::find_schema_by_name(txn, schema_name)?.unwrap();
+		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table.fragment(),

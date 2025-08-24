@@ -6,17 +6,15 @@ use crate::{
 	StandardCommandTransaction,
 	StandardQueryTransaction,
 };
-use reifydb_catalog::Catalog;
 use reifydb_core::catalog::MaterializedCatalog;
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
-		Command, Engine as EngineInterface,
-		ExecuteCommand, ExecuteQuery, Identity, Params, Query,
-		Transaction, VersionedTransaction, WithHooks
-		,
+		Command, Engine as EngineInterface, ExecuteCommand,
+		ExecuteQuery, Identity, Params, Query, Transaction,
+		VersionedTransaction, WithHooks,
 	},
 	Frame,
 };
@@ -48,42 +46,42 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		use std::rc::Rc;
 
 		// Schema interceptors
-		interceptors.schema_def_post_create.add(Rc::new(
-			MaterializedSchemaInterceptor::new(catalog.clone()),
-		));
-		interceptors.schema_def_post_update.add(Rc::new(
-			MaterializedSchemaInterceptor::new(catalog.clone()),
-		));
-		interceptors.schema_def_pre_delete.add(Rc::new(
-			MaterializedSchemaInterceptor::new(catalog.clone()),
-		));
+		interceptors
+			.schema_def_post_create
+			.add(Rc::new(MaterializedSchemaInterceptor::new()));
+		interceptors
+			.schema_def_post_update
+			.add(Rc::new(MaterializedSchemaInterceptor::new()));
+		interceptors
+			.schema_def_pre_delete
+			.add(Rc::new(MaterializedSchemaInterceptor::new()));
 
 		// Table interceptors
-		interceptors.table_def_post_create.add(Rc::new(
-			MaterializedTableInterceptor::new(catalog.clone()),
-		));
-		interceptors.table_def_post_update.add(Rc::new(
-			MaterializedTableInterceptor::new(catalog.clone()),
-		));
-		interceptors.table_def_pre_delete.add(Rc::new(
-			MaterializedTableInterceptor::new(catalog.clone()),
-		));
+		interceptors
+			.table_def_post_create
+			.add(Rc::new(MaterializedTableInterceptor::new()));
+		interceptors
+			.table_def_post_update
+			.add(Rc::new(MaterializedTableInterceptor::new()));
+		interceptors
+			.table_def_pre_delete
+			.add(Rc::new(MaterializedTableInterceptor::new()));
 
 		// View interceptors
-		interceptors.view_def_post_create.add(Rc::new(
-			MaterializedViewInterceptor::new(catalog.clone()),
-		));
-		interceptors.view_def_post_update.add(Rc::new(
-			MaterializedViewInterceptor::new(catalog.clone()),
-		));
-		interceptors.view_def_pre_delete.add(Rc::new(
-			MaterializedViewInterceptor::new(catalog.clone()),
-		));
+		interceptors
+			.view_def_post_create
+			.add(Rc::new(MaterializedViewInterceptor::new()));
+		interceptors
+			.view_def_post_update
+			.add(Rc::new(MaterializedViewInterceptor::new()));
+		interceptors
+			.view_def_pre_delete
+			.add(Rc::new(MaterializedViewInterceptor::new()));
 
 		// Post-commit interceptor
-		interceptors.post_commit.add(Rc::new(
-			CatalogCommitInterceptor::new(catalog.clone()),
-		));
+		interceptors
+			.post_commit
+			.add(Rc::new(CatalogCommitInterceptor::new()));
 
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -141,7 +139,8 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>  for StandardEngine<T>
+impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
+	for StandardEngine<T>
 {
 	#[inline]
 	fn execute_command(
@@ -193,7 +192,6 @@ impl<T: Transaction> StandardEngine<T> {
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-		catalog: Catalog,
 		hooks: Hooks,
 		interceptors: Box<
 			dyn InterceptorFactory<StandardCommandTransaction<T>>,
@@ -205,7 +203,6 @@ impl<T: Transaction> StandardEngine<T> {
 			cdc: cdc.clone(),
 			hooks,
 			executor: Executor {
-				catalog,
 				functions: Functions::builder()
 					.register_aggregate(
 						"sum",

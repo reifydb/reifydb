@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::schema::SchemaToCreate;
+use reifydb_catalog::CatalogStore;
 use reifydb_core::interface::interceptor::SchemaDefInterceptor;
 use reifydb_core::{
 	result::error::diagnostic::catalog::schema_already_exists, return_error,
@@ -9,12 +10,8 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
+use crate::{columnar::Columns, execute::Executor, StandardCommandTransaction};
 use reifydb_core::interface::Transaction;
-use crate::{
-	columnar::Columns,
-	execute::Executor,
-	StandardCommandTransaction,
-};
 
 impl Executor {
 	pub(crate) fn create_schema<T: Transaction>(
@@ -23,7 +20,7 @@ impl Executor {
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
 		if let Some(schema) =
-			self.catalog.find_schema_by_name(txn, &plan.schema)?
+			CatalogStore::find_schema_by_name(txn, &plan.schema)?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -43,7 +40,7 @@ impl Executor {
 			));
 		}
 
-		let result = self.catalog.create_schema(
+		let result = CatalogStore::create_schema(
 			txn,
 			SchemaToCreate {
 				schema_fragment: Some(plan.schema.clone()),

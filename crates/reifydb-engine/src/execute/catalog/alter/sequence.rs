@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use catalog::schema_not_found;
-use reifydb_catalog::{sequence::TableColumnSequence, Catalog};
+use reifydb_catalog::{sequence::TableColumnSequence, CatalogStore};
 use reifydb_core::{
     diagnostic::{
         catalog, catalog::table_not_found, query::column_not_found,
@@ -24,14 +24,13 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
-		let catalog = Catalog::new();
 		let schema_name = match &plan.schema {
 			Some(schema) => schema.as_ref(),
 			None => unimplemented!(),
 		};
 
 		let Some(schema) =
-			catalog.find_schema_by_name(txn, schema_name)?
+			CatalogStore::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(schema_not_found(
 				plan.schema.clone(),
@@ -39,7 +38,7 @@ impl Executor {
 			));
 		};
 
-		let Some(table) = catalog.find_table_by_name(
+		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
 			&plan.table,
@@ -52,7 +51,7 @@ impl Executor {
 			));
 		};
 
-		let Some(column) = catalog.find_table_column_by_name(
+		let Some(column) = CatalogStore::find_table_column_by_name(
 			txn,
 			table.id,
 			plan.column.as_ref(),
@@ -112,9 +111,9 @@ impl Executor {
 mod tests {
     use crate::test_utils::create_test_command_transaction;
     use reifydb_catalog::{
-        table::{TableColumnToCreate, TableToCreate},
-        test_utils::ensure_test_schema,
-        Catalog,
+		table::{TableColumnToCreate, TableToCreate},
+		test_utils::ensure_test_schema,
+		CatalogStore,
     };
     use reifydb_core::{
         interface::{
@@ -136,8 +135,8 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		// Create a table with an auto-increment column
-		let catalog = Catalog::new();
-		catalog.create_table(
+
+		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
@@ -196,8 +195,8 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		// Create a table with a non-auto-increment column
-		let catalog = Catalog::new();
-		catalog.create_table(
+
+		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
@@ -293,8 +292,8 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		// Create a table
-		let catalog = Catalog::new();
-		catalog.create_table(
+
+		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
