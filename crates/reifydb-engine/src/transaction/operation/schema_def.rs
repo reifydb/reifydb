@@ -6,6 +6,7 @@ use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::catalog::{Change, OperationType, TransactionalChanges};
 use reifydb_core::diagnostic::catalog::schema_already_pending_in_transaction;
+use reifydb_core::interface::interceptor::SchemaDefInterceptor;
 use reifydb_core::interface::{CommandTransaction, SchemaDef, Transaction};
 use reifydb_core::return_error;
 use OperationType::Create;
@@ -14,7 +15,7 @@ pub(crate) trait SchemaDefCreateOperation {
 	fn create_schema_def(
 		&mut self,
 		schema: SchemaToCreate,
-	) -> crate::Result<()>;
+	) -> crate::Result<SchemaDef>;
 }
 
 impl<T: Transaction> SchemaDefCreateOperation
@@ -23,19 +24,16 @@ impl<T: Transaction> SchemaDefCreateOperation
 	fn create_schema_def(
 		&mut self,
 		schema: SchemaToCreate,
-	) -> crate::Result<()> {
-		// add to transactional change
-		let schema = CatalogStore::create_schema(self, schema)?;
-		track_create_change(self.get_changes_mut(), schema)?;
-		// Catalog::create_schema - storage
-		// SchemaDefPostCreateInterceptor
-		// SchemaDefHook
+	) -> crate::Result<SchemaDef> {
 
-		todo!()
+		let result = CatalogStore::create_schema(self, schema)?;
+		track_created(self.get_changes_mut(), result.clone())?;
+		SchemaDefInterceptor::post_create(self, &result)?;
+		Ok(result)
 	}
 }
 
-fn track_create_change(
+fn track_created(
 	changes: &mut TransactionalChanges,
 	schema: SchemaDef,
 ) -> crate::Result<()> {

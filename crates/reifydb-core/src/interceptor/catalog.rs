@@ -41,8 +41,8 @@ impl<CT: CommandTransaction> SchemaDefPostCreateInterceptor<CT>
 		ctx: &mut SchemaDefPostCreateContext<CT>,
 	) -> crate::Result<()> {
 		// Record in transaction-local storage
-		ctx.txn.get_changes_mut()
-			.add_schema_def_create(ctx.post.clone())?;
+		// ctx.txn.get_changes_mut()
+		// 	.add_schema_def_create(ctx.post.clone())?;
 
 		Ok(())
 	}

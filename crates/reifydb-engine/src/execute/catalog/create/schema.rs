@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::transaction::operation::SchemaDefCreateOperation;
 use reifydb_catalog::schema::SchemaToCreate;
 use reifydb_catalog::CatalogStore;
-use reifydb_core::interface::interceptor::SchemaDefInterceptor;
 use reifydb_core::{
 	result::error::diagnostic::catalog::schema_already_exists, return_error,
 	Value,
@@ -40,18 +40,13 @@ impl Executor {
 			));
 		}
 
-		let result = CatalogStore::create_schema(
-			txn,
-			SchemaToCreate {
-				schema_fragment: Some(plan.schema.clone()),
-				name: plan.schema.to_string(),
-			},
-		)?;
-
-		SchemaDefInterceptor::post_create(txn, &result)?;
+		let result = txn.create_schema_def(SchemaToCreate {
+			schema_fragment: Some(plan.schema.clone()),
+			name: plan.schema.to_string(),
+		})?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(plan.schema.to_string())),
+			("schema", Value::Utf8(result.name)),
 			("created", Value::Bool(true)),
 		]))
 	}

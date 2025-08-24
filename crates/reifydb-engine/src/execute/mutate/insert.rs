@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::InsertPlan;
 
-use crate::transaction::operation::table::TableOperations;
+use crate::transaction::operation::TableOperations;
 use crate::{
 	columnar::Columns,
 	execute::{
@@ -31,12 +31,12 @@ impl Executor {
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-
 		let schema_name =
 			plan.schema.as_ref().map(|s| s.fragment()).unwrap(); // FIXME
 
 		let schema =
-			CatalogStore::find_schema_by_name(txn, schema_name)?.unwrap();
+			CatalogStore::find_schema_by_name(txn, schema_name)?
+				.unwrap();
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
