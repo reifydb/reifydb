@@ -4,12 +4,12 @@
 use crate::ast::{
 	Ast, AstList, TokenKind,
 	ast::AstFrom,
-	lex::{
+	parse::Parser,
+	tokenize::{
 		Keyword, Operator,
 		Operator::{CloseBracket, OpenBracket},
 		Separator,
 	},
-	parse::Parser,
 };
 
 impl Parser {
@@ -69,11 +69,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{AstFrom, lex::lex, parse::Parser};
+	use crate::ast::{AstFrom, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_from_schema_and_table() {
-		let tokens = lex("FROM reifydb.users").unwrap();
+		let tokens = tokenize("FROM reifydb.users").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -101,7 +101,7 @@ mod tests {
 
 	#[test]
 	fn test_from_table_without_schema() {
-		let tokens = lex("FROM users").unwrap();
+		let tokens = tokenize("FROM users").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -126,7 +126,7 @@ mod tests {
 
 	#[test]
 	fn test_from_static_empty() {
-		let tokens = lex("FROM []").unwrap();
+		let tokens = tokenize("FROM []").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -150,7 +150,7 @@ mod tests {
 
 	#[test]
 	fn test_from_static() {
-		let tokens = lex("FROM [ { field: 'value' }]").unwrap();
+		let tokens = tokenize("FROM [ { field: 'value' }]").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -188,9 +188,11 @@ mod tests {
 
 	#[test]
 	fn test_from_static_multiple() {
-		let tokens = lex("FROM [ { field: 'value' },\
+		let tokens = tokenize(
+			"FROM [ { field: 'value' },\
         { field: 'value2' }\
-        ]")
+        ]",
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -244,7 +246,7 @@ mod tests {
 
 	#[test]
 	fn test_from_static_trailing_comma() {
-		let tokens = lex("FROM [ { field: 'value' }, ]").unwrap();
+		let tokens = tokenize("FROM [ { field: 'value' }, ]").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

@@ -89,11 +89,11 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::ast::{lex::lex, parse::parse};
+	use crate::ast::{parse::parse, tokenize::tokenize};
 
 	#[test]
 	fn test_compile_static_single_row() {
-		let tokens = lex("from [{id: 1, name: 'Alice'}]").unwrap();
+		let tokens = tokenize("from [{id: 1, name: 'Alice'}]").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -120,7 +120,7 @@ mod tests {
 	#[test]
 	fn test_compile_static_multiple_rows_different_columns() {
 		let tokens =
-            lex("from [{id: 1, name: 'Alice'}, {id: 2, email: 'bob@test.com'}, {name: 'Charlie'}]")
+            tokenize("from [{id: 1, name: 'Alice'}, {id: 2, email: 'bob@test.com'}, {name: 'Charlie'}]")
                 .unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -201,7 +201,7 @@ mod tests {
 
 	#[test]
 	fn test_compile_static_empty_list() {
-		let tokens = lex("from []").unwrap();
+		let tokens = tokenize("from []").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

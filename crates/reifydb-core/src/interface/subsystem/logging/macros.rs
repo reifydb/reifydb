@@ -366,7 +366,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_complex_inline_expressions() {
+	fn test_comptokenize_inline_expressions() {
 		let (sender, receiver) = unbounded();
 
 		with_mock_logger(sender, || {

@@ -168,8 +168,8 @@ describe('IntervalValue', () => {
         });
     });
 
-    describe('display complex intervals', () => {
-        it('should format complex interval with all components', () => {
+    describe('display comptokenize intervals', () => {
+        it('should format comptokenize interval with all components', () => {
             const interval = IntervalValue.new(
                 0, 
                 1, 
@@ -178,7 +178,7 @@ describe('IntervalValue', () => {
             expect(interval.toString()).toBe('P1DT2H30M45.123S');
         });
 
-        it('should format another complex interval', () => {
+        it('should format another comptokenize interval', () => {
             const interval = IntervalValue.new(
                 0,
                 7,
@@ -271,7 +271,7 @@ describe('IntervalValue', () => {
             expect(IntervalValue.parse('P1Y').toString()).toBe('P1Y');
         });
 
-        it('should parse complex duration strings', () => {
+        it('should parse comptokenize duration strings', () => {
             expect(IntervalValue.parse('P1Y2M3DT4H5M6S').toString()).toBe('P1Y2M3DT4H5M6S');
             expect(IntervalValue.parse('PT1H30M').toString()).toBe('PT1H30M');
             expect(IntervalValue.parse('P7DT12H').toString()).toBe('P7DT12H');

@@ -198,7 +198,7 @@ sort rating desc"#,
 		log_info!("{}", frame);
 	}
 
-	// Example 8: Complex sort with mixed directions
+	// Example 8: Comptokenize sort with mixed directions
 	log_info!("\nExample 8: Sort by category ascending, then rating descending");
 	log_query(
 		r#"from store.products

@@ -1604,11 +1604,11 @@ mod tests {
 		}
 
 		#[test]
-		fn test_complex_reorder_pattern() {
+		fn test_comptokenize_reorder_pattern() {
 			let size = 100;
 			let mut bv = BitVec::from_fn(size, |i| i % 7 == 0);
 
-			// Create a complex reordering pattern
+			// Create a comptokenize reordering pattern
 			let mut indices: Vec<usize> = (0..size).collect();
 			indices.reverse();
 

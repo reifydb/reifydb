@@ -5,14 +5,14 @@ use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstParameterRef, AstWildcard,
-	lex::{
+	parse::Parser,
+	tokenize::{
 		Keyword,
 		Literal::{False, Number, Temporal, Text, True, Undefined},
 		Operator,
 		Separator::NewLine,
 		TokenKind,
 	},
-	parse::Parser,
 };
 
 impl Parser {

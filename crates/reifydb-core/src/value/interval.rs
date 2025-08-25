@@ -472,8 +472,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_interval_display_complex_intervals() {
-		// Complex interval with all components
+	fn test_interval_display_comptokenize_intervals() {
+		// Comptokenize interval with all components
 		let interval = Interval::new(
 			0,
 			1,
@@ -482,7 +482,7 @@ mod tests {
 		);
 		assert_eq!(format!("{}", interval), "P1DT2H30M45.123S");
 
-		// Another complex interval
+		// Another comptokenize interval
 		let interval = Interval::new(
 			0,
 			7,

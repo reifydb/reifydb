@@ -3,8 +3,8 @@
 
 use crate::ast::{
 	AstInsert,
-	lex::{Keyword, Operator},
 	parse::Parser,
+	tokenize::{Keyword, Operator},
 };
 
 impl Parser {
@@ -34,13 +34,15 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{AstInsert, lex::lex, parse::Parser};
+	use crate::ast::{AstInsert, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_schema_and_table() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         insert test.users
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -66,9 +68,11 @@ mod tests {
 
 	#[test]
 	fn test_table_only() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         insert users
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();

@@ -40,11 +40,11 @@
 //! The files are then verified by inspection and checked in to version control.
 //! Tests will fail with a diff if they don't match the expected output.
 //!
-//! This approach is particularly useful when testing complex stateful systems,
-//! such as database operations, network protocols, or language parsing. It can
-//! be tedious and labor-intensive to write and assert such cases by hand, so
-//! scripting and recording these interactions often yields much better test
-//! coverage at a fraction of the cost.
+//! This approach is particularly useful when testing comptokenize stateful
+//! systems, such as database operations, network protocols, or language
+//! parsing. It can be tedious and labor-intensive to write and assert such
+//! cases by hand, so scripting and recording these interactions often yields
+//! much better test coverage at a fraction of the cost.
 //!
 //! Internally, the
 //! [`testfile`](https://docs.rs/testfile/latest/testfile/) crate is used

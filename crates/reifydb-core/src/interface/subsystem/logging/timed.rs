@@ -212,7 +212,7 @@ mod tests {
 			});
 			assert_eq!(value, 300);
 
-			// Test with more complex return type
+			// Test with more comptokenize return type
 			let vec = log_timed_info!("Creating vector", {
 				vec![1, 2, 3, 4, 5]
 			});

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{AstCallFunction, lex::Operator, parse::Parser};
+use crate::ast::{AstCallFunction, parse::Parser, tokenize::Operator};
 
 impl Parser {
 	pub(crate) fn parse_function_call(
@@ -140,11 +140,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{lex::lex, parse::parse};
+	use crate::ast::{parse::parse, tokenize::tokenize};
 
 	#[test]
 	fn test_simple_function_call() {
-		let tokens = lex("func()").unwrap();
+		let tokens = tokenize("func()").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -156,7 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_function_call_with_args() {
-		let tokens = lex("func('arg')").unwrap();
+		let tokens = tokenize("func('arg')").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -168,7 +168,7 @@ mod tests {
 
 	#[test]
 	fn test_namespaced_function_call() {
-		let tokens = lex("blob::hex('deadbeef')").unwrap();
+		let tokens = tokenize("blob::hex('deadbeef')").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -181,7 +181,8 @@ mod tests {
 
 	#[test]
 	fn test_deeply_nested_function_call() {
-		let tokens = lex("ext::crypto::hash::sha256('data')").unwrap();
+		let tokens =
+			tokenize("ext::crypto::hash::sha256('data')").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -196,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn test_identifier_without_parens_not_function_call() {
-		let tokens = lex("identifier").unwrap();
+		let tokens = tokenize("identifier").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -207,7 +208,7 @@ mod tests {
 
 	#[test]
 	fn test_namespace_access_without_parens_not_function_call() {
-		let tokens = lex("namespace::identifier").unwrap();
+		let tokens = tokenize("namespace::identifier").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

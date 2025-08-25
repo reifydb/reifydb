@@ -6,8 +6,8 @@ use reifydb_core::{OwnedFragment, diagnostic::ast, return_error};
 use crate::ast::{
 	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token,
 	TokenKind,
-	lex::{Literal::Number, Operator},
 	parse::{Parser, Precedence},
+	tokenize::{Literal::Number, Operator},
 };
 
 impl Parser {
@@ -100,12 +100,12 @@ mod tests {
 
 	use crate::ast::{
 		Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix,
-		AstPrefixOperator, lex::lex, parse::parse,
+		AstPrefixOperator, parse::parse, tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_negative_number() {
-		let tokens = lex("-2").unwrap();
+		let tokens = tokenize("-2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -119,7 +119,7 @@ mod tests {
 
 	#[test]
 	fn test_group_plus() {
-		let tokens = lex("+(2)").unwrap();
+		let tokens = tokenize("+(2)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -145,7 +145,7 @@ mod tests {
 
 	#[test]
 	fn test_group_negate() {
-		let tokens = lex("-(2)").unwrap();
+		let tokens = tokenize("-(2)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -171,7 +171,7 @@ mod tests {
 
 	#[test]
 	fn test_group_negate_negative_number() {
-		let tokens = lex("-(-2)").unwrap();
+		let tokens = tokenize("-(-2)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -197,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn test_not_false() {
-		let tokens = lex("!false").unwrap();
+		let tokens = tokenize("!false").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -218,7 +218,7 @@ mod tests {
 
 	#[test]
 	fn test_not_word_false() {
-		let tokens = lex("not false").unwrap();
+		let tokens = tokenize("not false").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -239,7 +239,7 @@ mod tests {
 
 	#[test]
 	fn test_not_comparison_precedence() {
-		let tokens = lex("not x == 5").unwrap();
+		let tokens = tokenize("not x == 5").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

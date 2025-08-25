@@ -5,8 +5,10 @@ use Separator::Comma;
 
 use crate::ast::{
 	AstTuple,
-	lex::{Operator, Operator::CloseParen, Separator, Token, TokenKind},
 	parse::{Parser, Precedence},
+	tokenize::{
+		Operator, Operator::CloseParen, Separator, Token, TokenKind,
+	},
 };
 
 impl Parser {
@@ -49,13 +51,13 @@ mod tests {
 		AstInfix,
 		AstLiteral::Number,
 		InfixOperator,
-		lex::lex,
 		parse::parse,
+		tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_empty_tuple() {
-		let tokens = lex("()").unwrap();
+		let tokens = tokenize("()").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -65,7 +67,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_number() {
-		let tokens = lex("(9924)").unwrap();
+		let tokens = tokenize("(9924)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -81,7 +83,7 @@ mod tests {
 
 	#[test]
 	fn test_nested_tuple() {
-		let tokens = lex("(1 * ( 2 + 3 ))").unwrap();
+		let tokens = tokenize("(1 * ( 2 + 3 ))").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -126,7 +128,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_identifier() {
-		let tokens = lex("(u)").unwrap();
+		let tokens = tokenize("(u)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -142,7 +144,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_identifier_and_type() {
-		let tokens = lex("(u: Bool)").unwrap();
+		let tokens = tokenize("(u: Bool)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -168,7 +170,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_multiple_identifiers() {
-		let tokens = lex("(u,v)").unwrap();
+		let tokens = tokenize("(u,v)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -187,7 +189,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_identifiers_and_types() {
-		let tokens = lex("(u: Bool, v: Text)").unwrap();
+		let tokens = tokenize("(u: Bool, v: Text)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -236,7 +238,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_identifiers_and_declaration() {
-		let tokens = lex("(u = 1, v = 2)").unwrap();
+		let tokens = tokenize("(u = 1, v = 2)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -289,10 +291,12 @@ mod tests {
 
 	#[test]
 	fn test_multiline_tuple() {
-		let tokens = lex(r#"(
+		let tokens = tokenize(
+			r#"(
         u: Bool,
         v: Text
-        )"#)
+        )"#,
+		)
 		.unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -342,7 +346,7 @@ mod tests {
 
 	#[test]
 	fn test_regression() {
-		let tokens = lex("(-1 -2)").unwrap();
+		let tokens = tokenize("(-1 -2)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

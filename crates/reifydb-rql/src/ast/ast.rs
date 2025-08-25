@@ -5,7 +5,7 @@ use std::ops::{Deref, Index};
 
 use reifydb_core::{IndexType, JoinType, OwnedFragment, SortDirection};
 
-use crate::ast::lex::{Literal, ParameterKind, Token, TokenKind};
+use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstStatement(pub Vec<Ast>);

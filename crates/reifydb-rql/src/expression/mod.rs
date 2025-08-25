@@ -5,23 +5,23 @@ use reifydb_core::{
 	OwnedFragment,
 	interface::expression::{
 		AccessSourceExpression, AddExpression, AliasExpression,
-		AndExpression, BetweenExpression, CallExpression,
+		AndExpression, BetweenExpression, Caltokenizepression,
 		CastExpression, ColumnExpression, ConstantExpression,
-		DivExpression, EqualExpression, Expression,
-		GreaterThanEqualExpression, GreaterThanExpression,
-		IdentExpression, LessThanEqualExpression, LessThanExpression,
-		MulExpression, NotEqualExpression, OrExpression,
-		ParameterExpression, PrefixExpression, PrefixOperator,
-		RemExpression, SubExpression, TupleExpression, TypeExpression,
-		XorExpression,
+		DivExpression, Equatokenizepression, Expression,
+		GreaterThanEquatokenizepression, GreaterThanExpression,
+		IdentExpression, LessThanEquatokenizepression,
+		LessThanExpression, Mutokenizepression,
+		NotEquatokenizepression, OrExpression, ParameterExpression,
+		PrefixExpression, PrefixOperator, RemExpression, SubExpression,
+		TupleExpression, TypeExpression, XorExpression,
 	},
 };
 
 use crate::{
 	ast,
 	ast::{
-		Ast, AstInfix, AstLiteral, InfixOperator, lex::ParameterKind,
-		parse,
+		Ast, AstInfix, AstLiteral, InfixOperator, parse,
+		tokenize::ParameterKind,
 	},
 	convert_data_type,
 };
@@ -83,7 +83,7 @@ impl ExpressionCompiler {
                     arg_expressions.push(Self::compile(arg_ast)?);
                 }
 
-                Ok(Expression::Call(CallExpression {
+                Ok(Expression::Call(Caltokenizepression {
                     func: IdentExpression(OwnedFragment::testing(&full_name)),
                     args: arg_expressions,
                     fragment: call.token.fragment,
@@ -220,7 +220,7 @@ impl ExpressionCompiler {
 			InfixOperator::Multiply(token) => {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
-				Ok(Expression::Mul(MulExpression {
+				Ok(Expression::Mul(Mutokenizepression {
 					left: Box::new(left),
 					right: Box::new(right),
 					fragment: token.fragment,
@@ -240,7 +240,7 @@ impl ExpressionCompiler {
 					panic!()
 				};
 
-				Ok(Expression::Call(CallExpression {
+				Ok(Expression::Call(Caltokenizepression {
 					func: IdentExpression(fragment),
 					args: tuple.expressions,
 					fragment: token.fragment,
@@ -263,7 +263,7 @@ impl ExpressionCompiler {
 				let right = Self::compile(*ast.right)?;
 
 				Ok(Expression::GreaterThanEqual(
-					GreaterThanEqualExpression {
+					GreaterThanEquatokenizepression {
 						left: Box::new(left),
 						right: Box::new(right),
 						fragment: token.fragment,
@@ -285,7 +285,7 @@ impl ExpressionCompiler {
 				let right = Self::compile(*ast.right)?;
 
 				Ok(Expression::LessThanEqual(
-					LessThanEqualExpression {
+					LessThanEquatokenizepression {
 						left: Box::new(left),
 						right: Box::new(right),
 						fragment: token.fragment,
@@ -296,7 +296,7 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::Equal(EqualExpression {
+				Ok(Expression::Equal(Equatokenizepression {
 					left: Box::new(left),
 					right: Box::new(right),
 					fragment: token.fragment,
@@ -306,11 +306,13 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::NotEqual(NotEqualExpression {
-					left: Box::new(left),
-					right: Box::new(right),
-					fragment: token.fragment,
-				}))
+				Ok(Expression::NotEqual(
+					NotEquatokenizepression {
+						left: Box::new(left),
+						right: Box::new(right),
+						fragment: token.fragment,
+					},
+				))
 			}
 			InfixOperator::As(token) => {
 				let left = Self::compile(*ast.left)?;
@@ -366,7 +368,7 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::Equal(EqualExpression {
+				Ok(Expression::Equal(Equatokenizepression {
 					left: Box::new(left),
 					right: Box::new(right),
 					fragment: token.fragment,

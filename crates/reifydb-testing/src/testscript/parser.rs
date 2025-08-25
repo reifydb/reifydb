@@ -9,178 +9,425 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::collections::HashSet;
-
-use nom::{
-	Finish as _, Parser,
-	branch::alt,
-	bytes::complete::{
-		escaped_transform, is_not, tag, take, take_while_m_n,
-	},
-	character::complete::{
-		alphanumeric1, anychar, char, line_ending, not_line_ending,
-		one_of, space0, space1,
-	},
-	combinator::{
-		consumed, eof, map_res, opt, peek, recognize, value, verify,
-	},
-	error::ErrorKind,
-	multi::{many_till, many0, many0_count, separated_list1},
-	sequence::{delimited, pair, preceded, separated_pair, terminated},
-};
+use std::{collections::HashSet, fmt};
 
 use crate::testscript::command::{Argument, Block, Command};
 
-/// A string input fragment, annotated with location information.
-type Span<'a> = nom_locate::LocatedSpan<&'a str>;
-
-/// A Fragment parse result.
-type IResult<'a, O> = nom::IResult<Span<'a>, O>;
-
-/// A Fragment parse error.
-type Error<'a> = nom::error::Error<Span<'a>>;
-
-/// Parses the given testscript string into a list of command blocks.
-pub(crate) fn parse(input: &str) -> Result<Vec<Block>, Error> {
-	blocks(Span::new(input)).finish().map(|(_, blocks)| blocks)
+#[derive(Debug, Clone)]
+pub struct ParseError {
+	pub message: String,
+	pub line: u32,
+	pub column: usize,
+	pub input: LocatedSpan,
+	pub code: String,
 }
 
-/// Parses a command, for use in tests.
-#[cfg(test)]
-pub(crate) fn parse_command(input: &str) -> Result<Command, Error> {
-	command(Span::new(input)).finish().map(|(_, cmd)| cmd)
+impl fmt::Display for ParseError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(
+			f,
+			"Parse error at line {}:{}: {}",
+			self.line, self.column, self.message
+		)
+	}
 }
 
-/// Parses a list of blocks until EOF.
-fn blocks(input: Span) -> IResult<Vec<Block>> {
-	let (input, (blocks, _)) = many_till(block, eof).parse(input)?;
-	Ok((input, blocks))
+impl std::error::Error for ParseError {}
+
+#[derive(Debug, Clone)]
+pub struct LocatedSpan {
+	column: usize,
+	line: u32,
+	line_text: String,
 }
 
-/// Parses a single block, consisting of a set of commands, a --- separator, and
-/// the command output.
-fn block(input: Span) -> IResult<Block> {
-	// Parse the command section, preserving the literal for output.
-	let line_number = input.location_line();
-	let (input, (literal, commands)) = consumed(commands).parse(input)?;
-	let block = Block {
-		literal: literal.to_string(),
-		commands,
-		line_number,
-	};
-
-	// If there were no commands, and we're at the end of the input,
-	// preserve the literal as an empty block for output.
-	if input.is_empty() && block.commands.is_empty() {
-		return Ok((input, block));
+impl LocatedSpan {
+	fn new(
+		_line_start: usize,
+		column: usize,
+		line: u32,
+		line_text: String,
+	) -> Self {
+		LocatedSpan {
+			column,
+			line,
+			line_text,
+		}
 	}
 
-	// Parse the separator. There must be one.
-	let (input, _) = separator(input)?;
+	pub fn location_line(&self) -> u32 {
+		self.line
+	}
 
-	// Parse and skip the output section.
-	let (input, _) = output(input)?;
+	pub fn get_column(&self) -> usize {
+		self.column
+	}
 
-	Ok((input, block))
+	pub fn get_utf8_column(&self) -> usize {
+		self.column
+	}
+
+	pub fn get_line_beginning(&self) -> &[u8] {
+		self.line_text.as_bytes()
+	}
 }
 
-/// Parses the command section of a block. This consists of lines that are
-/// either empty/blank, commands, or comments, up to the separator or EOF.
-fn commands(mut input: Span) -> IResult<Vec<Command>> {
-	let mut commands = Vec::new();
-	loop {
-		// Skip empty/comment lines.
-		if let (i, Some(_)) = opt(empty_or_comment_line).parse(input)? {
-			input = i;
-			continue;
+pub(crate) fn parse(input: &str) -> Result<Vec<Block>, ParseError> {
+	let mut parser = Parser::new(input);
+	parser.parse_blocks()
+}
+
+#[cfg(test)]
+pub(crate) fn parse_command(input: &str) -> Result<Command, ParseError> {
+	let mut parser = Parser::new(input);
+	parser.parse_command()
+}
+
+struct Parser<'a> {
+	input: &'a str,
+	pos: usize,
+	line: u32,
+	column: usize,
+	line_start_pos: usize,
+}
+
+impl<'a> Parser<'a> {
+	fn new(input: &'a str) -> Self {
+		Parser {
+			input,
+			pos: 0,
+			line: 1,
+			column: 1,
+			line_start_pos: 0,
+		}
+	}
+
+	fn current_char(&self) -> Option<char> {
+		self.input[self.pos..].chars().next()
+	}
+
+	fn peek_char(&self) -> Option<char> {
+		self.current_char()
+	}
+
+	fn peek_str(&self, n: usize) -> &str {
+		// This function returns n bytes from current position
+		// It's only used for checking ASCII patterns like "---" and
+		// "//"
+		let end = (self.pos + n).min(self.input.len());
+
+		// Make sure we don't split a UTF-8 character
+		let mut safe_end = end;
+		while safe_end > self.pos
+			&& !self.input.is_char_boundary(safe_end)
+		{
+			safe_end -= 1;
 		}
 
-		// Detect premature EOF. This case must be handled by the
-		// caller.
-		if input.is_empty() {
-			return Ok((input, commands));
-		}
+		&self.input[self.pos..safe_end]
+	}
 
-		// If we hit a separator and we've seen at least 1 command,
-		// we're done. Otherwise, we want to error while attempting to
-		// parse the command.
-		if let (_, Some(_)) = peek(opt(separator)).parse(input)? {
-			if !commands.is_empty() {
-				return Ok((input, commands));
+	fn advance(&mut self) -> Option<char> {
+		if let Some(ch) = self.current_char() {
+			self.pos += ch.len_utf8();
+			if ch == '\n' {
+				self.line += 1;
+				self.column = 1;
+				self.line_start_pos = self.pos;
+			} else {
+				self.column += 1;
+			}
+			Some(ch)
+		} else {
+			None
+		}
+	}
+
+	fn skip_whitespace(&mut self) {
+		while let Some(ch) = self.peek_char() {
+			if ch.is_whitespace() && ch != '\n' {
+				self.advance();
+			} else {
+				break;
+			}
+		}
+	}
+
+	fn skip_line(&mut self) {
+		while let Some(ch) = self.peek_char() {
+			if ch == '\n' {
+				self.advance();
+				break;
+			}
+			self.advance();
+		}
+	}
+
+	fn is_at_end(&self) -> bool {
+		self.pos >= self.input.len()
+	}
+
+	fn error(&self, message: impl Into<String>) -> ParseError {
+		let line_end = self.input[self.line_start_pos..]
+			.find('\n')
+			.map(|i| self.line_start_pos + i)
+			.unwrap_or(self.input.len());
+		let line_text = &self.input[self.line_start_pos..line_end];
+
+		ParseError {
+			message: message.into(),
+			line: self.line,
+			column: self.column,
+			input: LocatedSpan::new(
+				self.line_start_pos,
+				self.column,
+				self.line,
+				line_text.to_string(),
+			),
+			code: format!("{:?}", line_text),
+		}
+	}
+
+	fn parse_blocks(&mut self) -> Result<Vec<Block>, ParseError> {
+		let mut blocks = Vec::new();
+
+		while !self.is_at_end() {
+			if let Some(block) = self.parse_block()? {
+				blocks.push(block);
 			}
 		}
 
-		// Parse a command.
-		let (i, command) = command(input)?;
-		commands.push(command);
-		input = i;
+		Ok(blocks)
 	}
-}
 
-/// Parses a single command, consisting of a command name and optionally a set
-/// of arguments (with or without values), prefix, and silencing parentheses.
-/// Consumes the entire line, including any whitespace and comments at the end.
-fn command(input: Span) -> IResult<Command> {
-	// Look for a silencing (.
-	let (input, maybe_silent) =
-		opt(terminated(char('('), space0)).parse(input)?;
-	let silent = maybe_silent.is_some();
+	fn parse_block(&mut self) -> Result<Option<Block>, ParseError> {
+		let line_number = self.line;
+		let literal_start = self.pos;
 
-	// The prefix, tags, and fail marker.
-	let mut tags = HashSet::new();
-	let (input, prefix) =
-		opt(terminated(string, pair(tag(":"), space0))).parse(input)?;
-	let (input, maybe_tags) =
-		opt(delimited(space0, taglist, space0)).parse(input)?;
-	tags.extend(maybe_tags.unwrap_or_default());
-	let (input, maybe_fail) =
-		opt(terminated(char('!'), space0)).parse(input)?;
-	let fail = maybe_fail.is_some();
+		// Parse commands
+		let commands = self.parse_commands()?;
 
-	// A > takes the rest of the line as the literal command name. It allows
-	// line continuation with \ to escape the newline.
-	// TODO: generalize line continuation for all commands.
-	let (input, maybe_literal) =
-		opt(terminated(tag(">"), space0)).parse(input)?;
-	if maybe_literal.is_some() {
-		let line_number = input.location_line();
-		let (input, name) = line_continuation(input)?;
-		let args = Vec::new();
-		return Ok((
-			input,
-			Command {
+		// Capture literal
+		let literal_end = self.pos;
+		let literal =
+			self.input[literal_start..literal_end].to_string();
+
+		// Handle empty block at EOF
+		if self.is_at_end() && commands.is_empty() {
+			return Ok(Some(Block {
+				literal,
+				commands,
+				line_number,
+			}));
+		}
+
+		// If no commands and not at EOF, this isn't a valid block
+		if commands.is_empty() {
+			return Ok(None);
+		}
+
+		// Parse separator
+		if !self.parse_separator()? {
+			return Err(self.error("Expected --- separator"));
+		}
+
+		// Parse and skip output
+		self.parse_output()?;
+
+		Ok(Some(Block {
+			literal,
+			commands,
+			line_number,
+		}))
+	}
+
+	fn parse_commands(&mut self) -> Result<Vec<Command>, ParseError> {
+		let mut commands = Vec::new();
+
+		loop {
+			// Skip empty and comment lines
+			if self.skip_empty_or_comment_line() {
+				continue;
+			}
+
+			// Check for EOF
+			if self.is_at_end() {
+				break;
+			}
+
+			// Check for separator
+			if self.peek_str(3) == "---" {
+				if !commands.is_empty() {
+					break;
+				}
+			}
+
+			// Check for leading whitespace (not allowed for
+			// commands)
+			if let Some(ch) = self.peek_char() {
+				if ch.is_whitespace() && ch != '\n' {
+					return Err(self.error(
+						"Command cannot start with whitespace",
+					));
+				}
+			}
+
+			// Parse command
+			match self.parse_command() {
+				Ok(cmd) => commands.push(cmd),
+				Err(e) => {
+					// If we hit a separator but have no
+					// commands, let parse_command error
+					if self.peek_str(3) == "---"
+						&& commands.is_empty()
+					{
+						return Err(e);
+					}
+					return Err(e);
+				}
+			}
+		}
+
+		Ok(commands)
+	}
+
+	fn parse_command(&mut self) -> Result<Command, ParseError> {
+		let line_number = self.line;
+
+		// Check for silencing (
+		let silent = if self.peek_char() == Some('(') {
+			self.advance();
+			self.skip_whitespace();
+			true
+		} else {
+			false
+		};
+
+		// Parse prefix and tags
+		let mut tags = HashSet::new();
+		let mut prefix = None;
+
+		// Try to parse prefix (string followed by :)
+		let saved_pos = self.pos;
+		self.skip_whitespace();
+		if let Ok(s) = self.parse_string() {
+			self.skip_whitespace();
+			if self.peek_char() == Some(':') {
+				self.advance();
+				self.skip_whitespace();
+				prefix = Some(s);
+			} else {
+				// Backtrack
+				self.pos = saved_pos;
+			}
+		}
+
+		// Parse tags before command
+		self.skip_whitespace();
+		if let Some(parsed_tags) = self.parse_taglist()? {
+			tags.extend(parsed_tags);
+		}
+		self.skip_whitespace();
+
+		// Check for fail marker
+		let fail = if self.peek_char() == Some('!') {
+			self.advance();
+			self.skip_whitespace();
+			true
+		} else {
+			false
+		};
+
+		// Check for literal command (>)
+		if self.peek_char() == Some('>') {
+			self.advance();
+			self.skip_whitespace();
+			let name = self.parse_line_continuation()?;
+			return Ok(Command {
 				name,
-				args,
+				args: Vec::new(),
 				tags,
 				prefix,
 				silent,
 				fail,
 				line_number,
-			},
-		));
-	}
+			});
+		}
 
-	// The command itself, and any trailing tags.
-	let line_number = input.location_line();
-	let (input, name) = string(input)?;
-	let (input, args) = many0(preceded(space1, argument)).parse(input)?;
-	let (mut input, maybe_tags) =
-		opt(preceded(space1, taglist)).parse(input)?;
-	tags.extend(maybe_tags.unwrap_or_default());
+		// Parse command name
+		self.skip_whitespace();
+		let name = self
+			.parse_string()
+			.map_err(|_| self.error("Expected command name"))?;
 
-	// If silenced, look for the closing brace.
-	if silent {
-		(input, _) = preceded(space0, char(')')).parse(input)?;
-	}
+		// Parse arguments
+		let mut args = Vec::new();
+		loop {
+			self.skip_whitespace();
+			if self.peek_char() == Some('[') {
+				// Might be trailing tags
+				if let Some(parsed_tags) =
+					self.parse_taglist()?
+				{
+					tags.extend(parsed_tags);
+					break;
+				}
+			}
 
-	// Ignore trailing whitespace and comments on this line.
-	let (input, _) = space0(input)?;
-	let (input, _) = opt(comment).parse(input)?;
-	let (input, _) = line_ending(input)?;
+			// Check for end of command
+			if silent && self.peek_char() == Some(')') {
+				break;
+			}
 
-	Ok((
-		input,
-		Command {
+			if self.peek_char() == Some('#')
+				|| self.peek_str(2) == "//"
+			{
+				break;
+			}
+
+			if self.peek_char() == Some('\n') || self.is_at_end() {
+				break;
+			}
+
+			// Try to parse an argument
+			let saved_pos = self.pos;
+			let saved_line = self.line;
+			let saved_column = self.column;
+			let saved_line_start = self.line_start_pos;
+			match self.parse_argument() {
+				Ok(arg) => args.push(arg),
+				Err(_) => {
+					self.pos = saved_pos;
+					self.line = saved_line;
+					self.column = saved_column;
+					self.line_start_pos = saved_line_start;
+					break;
+				}
+			}
+		}
+
+		// Handle closing ) for silent commands
+		if silent {
+			self.skip_whitespace();
+			if self.peek_char() != Some(')') {
+				return Err(self.error(
+					"Expected closing ) for silent command",
+				));
+			}
+			self.advance();
+		}
+
+		// Skip trailing whitespace and comments
+		self.skip_whitespace();
+		if self.peek_char() == Some('#') || self.peek_str(2) == "//" {
+			self.skip_line();
+		} else if self.peek_char() == Some('\n') {
+			self.advance();
+		} else if !self.is_at_end() {
+			return Err(self.error("Expected end of line"));
+		}
+
+		Ok(Command {
 			name,
 			args,
 			tags,
@@ -188,185 +435,413 @@ fn command(input: Span) -> IResult<Command> {
 			silent,
 			fail,
 			line_number,
-		},
-	))
-}
-
-/// Parses a single command argument, consisting of an argument value and
-/// optionally a key separated by =.
-fn argument(input: Span) -> IResult<Argument> {
-	if let Ok((input, (key, value))) =
-		separated_pair(string, tag("="), opt(string)).parse(input)
-	{
-		return Ok((
-			input,
-			Argument {
-				key: Some(key),
-				value: value.unwrap_or_default(),
-			},
-		));
+		})
 	}
-	let (input, value) = string(input)?;
-	Ok((
-		input,
-		Argument {
-			key: None,
-			value,
-		},
-	))
-}
 
-/// Parses a list of []-delimited command tags separated by comma or whitespace.
-fn taglist(input: Span) -> IResult<HashSet<String>> {
-	let (input, tags) = delimited(
-		tag("["),
-		separated_list1(one_of(", "), string),
-		tag("]"),
-	)
-	.parse(input)?;
-	Ok((input, HashSet::from_iter(tags)))
-}
+	fn parse_argument(&mut self) -> Result<Argument, ParseError> {
+		// Try key=value format first
+		let saved_pos = self.pos;
+		let saved_line = self.line;
+		let saved_column = self.column;
+		let saved_line_start = self.line_start_pos;
 
-/// Parses a command/output separator: --- followed by a line ending.
-fn separator(input: Span) -> IResult<()> {
-	value((), terminated(tag("---"), alt((line_ending, eof)))).parse(input)
-}
-
-/// Parses the command output following a --- separator, up to the first blank
-/// line or EOF. This is typically two consecutive line endings, except the
-/// special case where there is no output, i.e. the first character is a line
-/// ending or EOF.
-fn output(input: Span) -> IResult<Span> {
-	if let (input, Some(output)) =
-		opt(alt((line_ending, eof))).parse(input)?
-	{
-		return Ok((input, output));
-	}
-	// TODO: many_till(anychar) is probably too expensive.
-	recognize(many_till(
-		anychar,
-		pair(alt((line_ending, eof)), alt((line_ending, eof))),
-	))
-	.parse(input)
-}
-
-/// Parses a string, both quoted (' or ") and unquoted.
-fn string(input: Span) -> IResult<String> {
-	alt((unquoted_string, quoted_string('\''), quoted_string('"')))
-		.parse(input)
-}
-
-/// An unquoted string can't contain whitespace, and can only contain
-/// alphanumeric characters and some punctuation.
-fn unquoted_string(input: Span) -> IResult<String> {
-	let (input, string) = recognize(pair(
-		alt((alphanumeric1, tag("_"))),
-		many0_count(alt((
-			alphanumeric1,
-			tag("_"),
-			tag("-"),
-			tag("."),
-			tag("/"),
-			tag("@"),
-		))),
-	))
-	.parse(input)?;
-	Ok((input, string.to_string()))
-}
-
-/// A quoted string can contain anything, and respects common escape sequences.
-/// It can be quoted using ' or ".
-fn quoted_string(quote: char) -> impl FnMut(Span) -> IResult<String> {
-	move |input| {
-		let q = match quote {
-			'\'' | '\"' => quote.to_string(),
-			c => panic!("invalid quote character {c}"),
-		};
-		let q = q.as_str();
-
-		// Because is_not in escaped_transform requires at least one
-		// matching character, special-case the empty quoted string.
-		let (input, maybe_empty) =
-			opt(tag(format!("{q}{q}").as_str())).parse(input)?;
-		if maybe_empty.is_some() {
-			return Ok((input, String::new()));
+		self.skip_whitespace();
+		if let Ok(key) = self.parse_string() {
+			if self.peek_char() == Some('=') {
+				self.advance();
+				// Allow empty value after =
+				self.skip_whitespace();
+				let value = match self.parse_string() {
+					Ok(v) => v,
+					Err(_) => {
+						// Check if next char is
+						// whitespace or end - means
+						// empty value
+						match self.peek_char() {
+							Some(ch) if ch
+								.is_whitespace(
+								) =>
+							{
+								String::new()
+							}
+							Some('[')
+							| Some(')')
+							| Some('#') | None => String::new(),
+							_ if self.peek_str(
+								2,
+							) == "//" =>
+							{
+								String::new()
+							}
+							_ => {
+								self.pos = saved_pos;
+								self.line = saved_line;
+								self.column = saved_column;
+								self.line_start_pos = saved_line_start;
+								return Err(self.error("Expected argument value after ="));
+							}
+						}
+					}
+				};
+				return Ok(Argument {
+					key: Some(key),
+					value,
+				});
+			}
+			// Just a value
+			return Ok(Argument {
+				key: None,
+				value: key,
+			});
 		}
 
-		let result = delimited(
-            tag(q),
-            escaped_transform(
-                is_not(format!("\\{q}").as_str()),
-                '\\',
-                alt((
-                    value('\'', tag("\'")),
-                    value('\"', tag("\"")),
-                    value('\\', tag("\\")),
-                    value('\0', tag("0")),
-                    value('\n', tag("n")),
-                    value('\r', tag("r")),
-                    value('\t', tag("t")),
-                    map_res(
-                        preceded(tag("x"), take(2usize)),
-                        |input: Span| match u8::from_str_radix(input.fragment(), 16) {
-                            Ok(byte) => Ok(char::from(byte)),
-                            Err(_) => Err(Error::new(input, ErrorKind::HexDigit)),
-                        },
-                    ),
-                    map_res(
-                        delimited(
-                            tag("u{"),
-                            take_while_m_n(1, 6, |c: char| c.is_ascii_hexdigit()),
-                            tag("}"),
-                        ),
-                        |input: Span| {
-                            let codepoint = u32::from_str_radix(input.fragment(), 16)
-                                .or(Err(Error::new(input, ErrorKind::HexDigit)))?;
-                            char::from_u32(codepoint).ok_or(Error::new(input, ErrorKind::Char))
-                        },
-                    ),
-                )),
-            ),
-            tag(q),
-        )
-        .parse(input);
-		result
+		self.pos = saved_pos;
+		Err(self.error("Expected argument"))
 	}
-}
 
-/// Parses a line that only contains whitespace and/or a comment.
-fn empty_or_comment_line(input: Span) -> IResult<Span> {
-	verify(
-		recognize(delimited(
-			space0,
-			opt(comment),
-			alt((line_ending, eof)),
-		)),
-		|line: &Span| !line.is_empty(),
-	)
-	.parse(input)
-}
-
-/// Parses a # or // comment until the end of the line/file (not inclusive).
-fn comment(input: Span) -> IResult<Span> {
-	recognize(preceded(alt((tag("//"), tag("#"))), not_line_ending))
-		.parse(input)
-}
-
-/// Parses a raw line with optional \ line continuation escapes. Naïve but
-/// sufficient implementation that e.g. doesn't support \\ escapes.
-fn line_continuation(mut input: Span) -> IResult<String> {
-	let mut result = String::new();
-	loop {
-		let (i, line) = terminated(not_line_ending, line_ending)
-			.parse(input)?;
-		input = i;
-		result.push_str(line.as_ref());
-
-		if line.ends_with('\\') {
-			// Remove \ and continue.
-			result.pop();
-			continue;
+	fn parse_taglist(
+		&mut self,
+	) -> Result<Option<HashSet<String>>, ParseError> {
+		if self.peek_char() != Some('[') {
+			return Ok(None);
 		}
-		return Ok((input, result));
+
+		self.advance();
+		let mut tags = HashSet::new();
+
+		loop {
+			self.skip_whitespace();
+
+			if self.peek_char() == Some(']') {
+				// Empty tag list is an error
+				if tags.is_empty() {
+					return Err(
+						self.error("Empty tag list")
+					);
+				}
+				self.advance();
+				break;
+			}
+
+			self.skip_whitespace();
+			let tag = self
+				.parse_string()
+				.map_err(|_| self.error("Expected tag name"))?;
+			tags.insert(tag);
+
+			self.skip_whitespace();
+			if self.peek_char() == Some(',') {
+				self.advance();
+				self.skip_whitespace();
+			} else if self.peek_char() == Some(' ') {
+				self.skip_whitespace();
+			}
+		}
+
+		Ok(Some(tags))
+	}
+
+	fn parse_string(&mut self) -> Result<String, ParseError> {
+		// Note: Don't skip whitespace here - the caller should handle
+		// that self.skip_whitespace();
+
+		match self.peek_char() {
+			Some('\'') => self.parse_quoted_string('\''),
+			Some('"') => self.parse_quoted_string('"'),
+			_ => self.parse_unquoted_string(),
+		}
+	}
+
+	fn parse_unquoted_string(&mut self) -> Result<String, ParseError> {
+		let mut result = String::new();
+
+		// First character must be alphanumeric or _
+		match self.peek_char() {
+			Some(ch) if ch.is_alphanumeric() || ch == '_' => {
+				result.push(ch);
+				self.advance();
+			}
+			_ => return Err(self.error("Expected string")),
+		}
+
+		// Subsequent characters
+		while let Some(ch) = self.peek_char() {
+			if ch.is_alphanumeric() || "_-./@".contains(ch) {
+				result.push(ch);
+				self.advance();
+			} else {
+				break;
+			}
+		}
+
+		Ok(result)
+	}
+
+	fn parse_quoted_string(
+		&mut self,
+		quote: char,
+	) -> Result<String, ParseError> {
+		let mut result = String::new();
+
+		// Skip opening quote
+		if self.peek_char() != Some(quote) {
+			return Err(
+				self.error(format!("Expected {} quote", quote))
+			);
+		}
+		self.advance();
+
+		while let Some(ch) = self.peek_char() {
+			if ch == quote {
+				self.advance();
+				return Ok(result);
+			} else if ch == '\\' {
+				self.advance();
+				match self.peek_char() {
+					Some('\'') => {
+						result.push('\'');
+						self.advance();
+					}
+					Some('"') => {
+						result.push('"');
+						self.advance();
+					}
+					Some('\\') => {
+						result.push('\\');
+						self.advance();
+					}
+					Some('0') => {
+						result.push('\0');
+						self.advance();
+					}
+					Some('n') => {
+						result.push('\n');
+						self.advance();
+					}
+					Some('r') => {
+						result.push('\r');
+						self.advance();
+					}
+					Some('t') => {
+						result.push('\t');
+						self.advance();
+					}
+					Some('x') => {
+						self.advance();
+						let hex = self
+							.parse_hex_digits(
+								2, 2,
+							)?;
+						let byte = u8::from_str_radix(
+							&hex, 16,
+						)
+						.map_err(|_| {
+							self.error(
+								"Invalid hex escape",
+							)
+						})?;
+						result.push(char::from(byte));
+					}
+					Some('u') => {
+						self.advance();
+						if self.peek_char() != Some('{')
+						{
+							return Err(self
+								.error(
+									"Expected { after \\u",
+								));
+						}
+						self.advance();
+						let hex = self
+							.parse_hex_digits(
+								1, 6,
+							)?;
+						if self.peek_char() != Some('}')
+						{
+							return Err(self
+								.error(
+									"Expected } after unicode escape",
+								));
+						}
+						self.advance();
+						let codepoint =
+							u32::from_str_radix(
+								&hex, 16,
+							)
+							.map_err(
+								|_| {
+									self.error("Invalid unicode escape")
+								},
+							)?;
+						let ch = char::from_u32(
+							codepoint,
+						)
+						.ok_or_else(|| {
+							self.error(
+								"Invalid unicode codepoint",
+							)
+						})?;
+						result.push(ch);
+					}
+					_ => {
+						return Err(self.error(
+							"Invalid escape sequence",
+						));
+					}
+				}
+			} else {
+				result.push(ch);
+				self.advance();
+			}
+		}
+
+		Err(self.error(format!(
+			"Unterminated string (missing {})",
+			quote
+		)))
+	}
+
+	fn parse_hex_digits(
+		&mut self,
+		min: usize,
+		max: usize,
+	) -> Result<String, ParseError> {
+		let mut hex = String::new();
+		for i in 0..max {
+			match self.peek_char() {
+				Some(ch) if ch.is_ascii_hexdigit() => {
+					hex.push(ch);
+					self.advance();
+				}
+				_ => {
+					if i < min {
+						return Err(self.error(
+							format!(
+								"Expected at least {} hex digits",
+								min
+							),
+						));
+					}
+					break;
+				}
+			}
+		}
+		if hex.len() < min {
+			return Err(self.error(format!(
+				"Expected at least {} hex digits",
+				min
+			)));
+		}
+		Ok(hex)
+	}
+
+	fn skip_empty_or_comment_line(&mut self) -> bool {
+		let saved_pos = self.pos;
+
+		self.skip_whitespace();
+
+		// Check for comment
+		if self.peek_char() == Some('#') || self.peek_str(2) == "//" {
+			self.skip_line();
+			return true;
+		}
+
+		// Check for empty line
+		if self.peek_char() == Some('\n') {
+			self.advance();
+			return true;
+		}
+
+		// Not an empty or comment line, restore position
+		self.pos = saved_pos;
+		false
+	}
+
+	fn parse_separator(&mut self) -> Result<bool, ParseError> {
+		if self.peek_str(3) != "---" {
+			return Ok(false);
+		}
+
+		self.advance(); // -
+		self.advance(); // -
+		self.advance(); // -
+
+		// Must be followed by newline (with optional \r) or EOF
+		match self.peek_char() {
+			Some('\r') => {
+				self.advance();
+				if self.peek_char() == Some('\n') {
+					self.advance();
+				}
+				Ok(true)
+			}
+			Some('\n') => {
+				self.advance();
+				Ok(true)
+			}
+			None => Ok(true),
+			_ => Err(self.error(
+				"Separator must be followed by newline or EOF",
+			)),
+		}
+	}
+
+	fn parse_output(&mut self) -> Result<(), ParseError> {
+		// Special case: no output (immediate newline or EOF)
+		if self.peek_char() == Some('\n') || self.is_at_end() {
+			if self.peek_char() == Some('\n') {
+				self.advance();
+			}
+			return Ok(());
+		}
+
+		// Read until double newline or EOF
+		let mut last_was_newline = false;
+		while !self.is_at_end() {
+			let ch = self.advance().unwrap();
+			if ch == '\n' {
+				if last_was_newline {
+					break;
+				}
+				last_was_newline = true;
+			} else {
+				last_was_newline = false;
+			}
+		}
+
+		Ok(())
+	}
+
+	fn parse_line_continuation(&mut self) -> Result<String, ParseError> {
+		let mut result = String::new();
+
+		loop {
+			// Read until end of line
+			while let Some(ch) = self.peek_char() {
+				if ch == '\n' {
+					break;
+				}
+				result.push(ch);
+				self.advance();
+			}
+
+			// Check for continuation
+			if result.ends_with('\\') {
+				result.pop(); // Remove the backslash
+				if self.peek_char() == Some('\n') {
+					self.advance(); // Skip newline
+					continue;
+				}
+			}
+
+			// Skip the final newline
+			if self.peek_char() == Some('\n') {
+				self.advance();
+			}
+
+			break;
+		}
+
+		Ok(result)
 	}
 }

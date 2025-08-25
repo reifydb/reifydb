@@ -3,8 +3,8 @@
 
 use crate::ast::{
 	AstList, TokenKind,
-	lex::{Operator, Operator::CloseBracket, Separator},
 	parse::{Parser, Precedence},
+	tokenize::{Operator, Operator::CloseBracket, Separator},
 };
 
 impl Parser {
@@ -36,11 +36,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{lex::lex, parse::Parser};
+	use crate::ast::{parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_empty() {
-		let tokens = lex("[]").unwrap();
+		let tokens = tokenize("[]").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -52,7 +52,7 @@ mod tests {
 
 	#[test]
 	fn test_single() {
-		let tokens = lex("[ 'ReifyDB' ]").unwrap();
+		let tokens = tokenize("[ 'ReifyDB' ]").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -67,7 +67,7 @@ mod tests {
 
 	#[test]
 	fn test_numbers() {
-		let tokens = lex("[1, 2.2 , 2.34142]").unwrap();
+		let tokens = tokenize("[1, 2.2 , 2.34142]").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -88,7 +88,7 @@ mod tests {
 
 	#[test]
 	fn test_row() {
-		let tokens = lex("[ { field: 'value' }]").unwrap();
+		let tokens = tokenize("[ { field: 'value' }]").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

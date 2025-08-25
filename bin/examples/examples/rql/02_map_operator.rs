@@ -157,8 +157,8 @@ map {
 		// +-----------+---------+------------+---------+-------+
 	}
 
-	// Example 6: MAP with complex expressions
-	log_info!("\nExample 6: MAP with complex expressions");
+	// Example 6: MAP with comptokenize expressions
+	log_info!("\nExample 6: MAP with comptokenize expressions");
 
 	// Create a table for more realistic example
 	db.command_as_root("create schema sales", Params::None).unwrap();

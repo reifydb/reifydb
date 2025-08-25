@@ -29,14 +29,15 @@ mod tests {
 	};
 
 	use crate::{
-		ast::{lex::lex, parse::parse},
+		ast::{parse::parse, tokenize::tokenize},
 		plan::logical::{LogicalPlan, compile_logical},
 	};
 
 	#[test]
 	fn test_with_schema() {
-		let tokens = lex("ALTER SEQUENCE test.users.id SET VALUE 1000")
-			.unwrap();
+		let tokens =
+			tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000")
+				.unwrap();
 		let ast = parse(tokens).unwrap();
 
 		let plans = compile_logical(ast.into_iter().next().unwrap())
@@ -73,8 +74,8 @@ mod tests {
 
 	#[test]
 	fn test_without_schema() {
-		let tokens =
-			lex("ALTER SEQUENCE users.id SET VALUE 500").unwrap();
+		let tokens = tokenize("ALTER SEQUENCE users.id SET VALUE 500")
+			.unwrap();
 		let ast = parse(tokens).unwrap();
 
 		let plans = compile_logical(ast.into_iter().next().unwrap())

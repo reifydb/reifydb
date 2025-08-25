@@ -1,0 +1,83 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test UTF-8 characters in string literals
+tokenize 'from [
+    { id: 1, name: "Zebra"   },
+    { id: 2, name: "Apple"   },
+    { id: 3, name: "中文"    },
+    { id: 4, name: "العربية" },
+    { id: 5, name: "Banana"  }
+  ] insert test.unicode_names'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Operator(OpenBracket)
+> 
+> Line 2:
+>   [  2] Operator(OpenCurly)
+>   [  3] Identifier("id")
+>   [  4] Operator(Colon)
+>   [  5] Literal(Number)
+>   [  6] Separator(Comma)
+>   [  7] Identifier("name")
+>   [  8] Operator(Colon)
+>   [  9] Literal(Text)
+>   [ 10] Operator(CloseCurly)
+>   [ 11] Separator(Comma)
+> 
+> Line 3:
+>   [ 12] Operator(OpenCurly)
+>   [ 13] Identifier("id")
+>   [ 14] Operator(Colon)
+>   [ 15] Literal(Number)
+>   [ 16] Separator(Comma)
+>   [ 17] Identifier("name")
+>   [ 18] Operator(Colon)
+>   [ 19] Literal(Text)
+>   [ 20] Operator(CloseCurly)
+>   [ 21] Separator(Comma)
+> 
+> Line 4:
+>   [ 22] Operator(OpenCurly)
+>   [ 23] Identifier("id")
+>   [ 24] Operator(Colon)
+>   [ 25] Literal(Number)
+>   [ 26] Separator(Comma)
+>   [ 27] Identifier("name")
+>   [ 28] Operator(Colon)
+>   [ 29] Literal(Text)
+>   [ 30] Operator(CloseCurly)
+>   [ 31] Separator(Comma)
+> 
+> Line 5:
+>   [ 32] Operator(OpenCurly)
+>   [ 33] Identifier("id")
+>   [ 34] Operator(Colon)
+>   [ 35] Literal(Number)
+>   [ 36] Separator(Comma)
+>   [ 37] Identifier("name")
+>   [ 38] Operator(Colon)
+>   [ 39] Literal(Text)
+>   [ 40] Operator(CloseCurly)
+>   [ 41] Separator(Comma)
+> 
+> Line 6:
+>   [ 42] Operator(OpenCurly)
+>   [ 43] Identifier("id")
+>   [ 44] Operator(Colon)
+>   [ 45] Literal(Number)
+>   [ 46] Separator(Comma)
+>   [ 47] Identifier("name")
+>   [ 48] Operator(Colon)
+>   [ 49] Literal(Text)
+>   [ 50] Operator(CloseCurly)
+> 
+> Line 7:
+>   [ 51] Operator(CloseBracket)
+>   [ 52] Keyword(Insert)
+>   [ 53] Identifier("test")
+>   [ 54] Operator(Dot)
+>   [ 55] Identifier("unicode_names")
+> 
+> 

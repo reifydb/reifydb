@@ -3,10 +3,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::ast::{Token, TokenKind, lex::lex};
+use crate::ast::{Token, TokenKind};
 
-pub fn explain_lex(query: &str) -> crate::Result<String> {
-	let tokens = lex(query).unwrap();
+pub fn explain_tokenize(query: &str) -> crate::Result<String> {
+	// Use the new tokenizer directly
+	let tokens = crate::ast::tokenize::tokenize(query)?;
 
 	let mut lines: BTreeMap<u32, Vec<(usize, &Token)>> = BTreeMap::new();
 	for (i, token) in tokens.iter().enumerate() {
@@ -43,7 +44,7 @@ pub fn explain_lex(query: &str) -> crate::Result<String> {
 				}
 			};
 
-			result.push_str(&format!("  [{:>2}] {}\n", i, label));
+			result.push_str(&format!("  [{:>3}] {}\n", i, label));
 		}
 		result.push('\n');
 	}

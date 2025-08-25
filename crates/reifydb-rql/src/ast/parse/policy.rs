@@ -7,8 +7,8 @@ use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
 	AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind,
-	lex::{Keyword::Policy, Literal, Operator, Separator},
 	parse::{Parser, Precedence},
+	tokenize::{Keyword::Policy, Literal, Operator, Separator},
 };
 
 impl Parser {
@@ -67,13 +67,13 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateTable, AstPolicyKind, lex::lex,
-		parse::Parser,
+		AstCreate, AstCreateTable, AstPolicyKind, parse::Parser,
+		tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_saturation_error() {
-		let tokens = lex(r#"policy {saturation error}"#).unwrap();
+		let tokens = tokenize(r#"policy {saturation error}"#).unwrap();
 
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse_policy_block().unwrap();
@@ -89,7 +89,8 @@ mod tests {
 
 	#[test]
 	fn test_saturation_undefined() {
-		let tokens = lex(r#"policy {saturation undefined}"#).unwrap();
+		let tokens =
+			tokenize(r#"policy {saturation undefined}"#).unwrap();
 
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse_policy_block().unwrap();
@@ -108,7 +109,8 @@ mod tests {
 
 	#[test]
 	fn test_table_with_policy_block() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create table test.items{
             field:  int2
                     policy {
@@ -116,7 +118,8 @@ mod tests {
                         default 0
                     }
         }
-    "#)
+    "#,
+		)
 		.unwrap();
 
 		let mut parser = Parser::new(tokens);

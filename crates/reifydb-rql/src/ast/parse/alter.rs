@@ -3,8 +3,8 @@
 
 use crate::ast::{
 	AstAlter, AstAlterSequence,
-	lex::{Keyword, Operator, Token},
 	parse::Parser,
+	tokenize::{Keyword, Operator, Token},
 };
 
 impl Parser {
@@ -70,12 +70,15 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{AstAlter, AstAlterSequence, lex::lex, parse::Parser};
+	use crate::ast::{
+		AstAlter, AstAlterSequence, parse::Parser, tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_alter_sequence_with_schema() {
-		let tokens = lex("ALTER SEQUENCE test.users.id SET VALUE 1000")
-			.unwrap();
+		let tokens =
+			tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -110,8 +113,8 @@ mod tests {
 
 	#[test]
 	fn test_alter_sequence_without_schema() {
-		let tokens =
-			lex("ALTER SEQUENCE users.id SET VALUE 500").unwrap();
+		let tokens = tokenize("ALTER SEQUENCE users.id SET VALUE 500")
+			.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -142,8 +145,9 @@ mod tests {
 
 	#[test]
 	fn test_alter_sequence_case_insensitive() {
-		let tokens = lex("alter sequence TEST.USERS.ID set value 2000")
-			.unwrap();
+		let tokens =
+			tokenize("alter sequence TEST.USERS.ID set value 2000")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

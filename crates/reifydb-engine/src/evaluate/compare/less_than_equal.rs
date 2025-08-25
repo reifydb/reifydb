@@ -6,7 +6,9 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedFragment,
 	Type::Bool,
-	interface::{Evaluator, evaluate::expression::LessThanEqualExpression},
+	interface::{
+		Evaluator, evaluate::expression::LessThanEquatokenizepression,
+	},
 	result::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -29,7 +31,7 @@ impl StandardEvaluator {
 	pub(crate) fn less_than_equal(
 		&self,
 		ctx: &EvaluationContext,
-		lte: &LessThanEqualExpression,
+		lte: &LessThanEquatokenizepression,
 	) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &lte.left)?;
 		let right = self.evaluate(ctx, &lte.right)?;

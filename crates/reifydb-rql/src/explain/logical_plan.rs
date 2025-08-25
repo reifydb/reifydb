@@ -14,11 +14,11 @@ use crate::{
 };
 
 pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
-	let statements = parse(query).unwrap(); // FIXME
+	let statements = parse(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		plans.extend(compile_logical(statement).unwrap()) // FIXME
+		plans.extend(compile_logical(statement)?)
 	}
 
 	let mut result = String::new();

@@ -3,8 +3,8 @@
 
 use crate::ast::{
 	Ast, AstFilter,
-	lex::{Keyword, Operator},
 	parse::{Parser, Precedence},
+	tokenize::{Keyword, Operator},
 };
 
 impl Parser {
@@ -46,13 +46,13 @@ impl Parser {
 mod tests {
 	use crate::ast::{
 		Ast, InfixOperator, TokenKind,
-		lex::{Keyword, lex},
 		parse::Parser,
+		tokenize::{Keyword, tokenize},
 	};
 
 	#[test]
 	fn test_simple_comparison() {
-		let tokens = lex("filter price > 100").unwrap();
+		let tokens = tokenize("filter price > 100").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -69,7 +69,7 @@ mod tests {
 
 	#[test]
 	fn test_nested_expression() {
-		let tokens = lex("filter (price + fee) > 100").unwrap();
+		let tokens = tokenize("filter (price + fee) > 100").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -85,7 +85,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_missing_expression() {
-		let tokens = lex("filter").unwrap();
+		let tokens = tokenize("filter").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse_filter().unwrap();
 		assert_eq!(*result.node, Ast::Nop);
@@ -93,7 +93,7 @@ mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = lex("filter value > 100").unwrap();
+		let tokens = tokenize("filter value > 100").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -105,7 +105,8 @@ mod tests {
 
 	#[test]
 	fn test_logical_and() {
-		let tokens = lex("filter price > 100 and qty < 50").unwrap();
+		let tokens =
+			tokenize("filter price > 100 and qty < 50").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -125,8 +126,9 @@ mod tests {
 
 	#[test]
 	fn test_logical_or() {
-		let tokens = lex("filter active == true or premium == true")
-			.unwrap();
+		let tokens =
+			tokenize("filter active == true or premium == true")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -145,7 +147,8 @@ mod tests {
 	#[test]
 	fn test_logical_xor() {
 		let tokens =
-			lex("filter active == true xor guest == true").unwrap();
+			tokenize("filter active == true xor guest == true")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -162,8 +165,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_complex_logical_chain() {
-		let tokens = lex(
+	fn test_comptokenize_logical_chain() {
+		let tokens = tokenize(
 			"filter active == true and price > 100 or premium == true",
 		)
 		.unwrap();
@@ -186,7 +189,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_with_braces() {
-		let tokens = lex("filter { price > 100 }").unwrap();
+		let tokens = tokenize("filter { price > 100 }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -202,8 +205,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_filter_complex_expression_with_braces() {
-		let tokens = lex(
+	fn test_filter_comptokenize_expression_with_braces() {
+		let tokens = tokenize(
 			"filter { (price + fee) > 100 and active == true }",
 		)
 		.unwrap();
@@ -231,7 +234,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_without_braces_still_works() {
-		let tokens = lex("filter price > 100").unwrap();
+		let tokens = tokenize("filter price > 100").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -248,9 +251,10 @@ mod tests {
 
 	#[test]
 	fn test_filter_with_braces_logical_operators() {
-		let tokens =
-			lex("filter { active == true or premium == true }")
-				.unwrap();
+		let tokens = tokenize(
+			"filter { active == true or premium == true }",
+		)
+		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -268,7 +272,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_empty_braces() {
-		let tokens = lex("filter { }").unwrap();
+		let tokens = tokenize("filter { }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse_filter().unwrap();
 		assert_eq!(*result.node, Ast::Nop);

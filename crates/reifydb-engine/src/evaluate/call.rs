@@ -5,7 +5,7 @@ use reifydb_core::{
 	error,
 	interface::{
 		Evaluator,
-		evaluate::expression::{CallExpression, Expression},
+		evaluate::expression::{Caltokenizepression, Expression},
 	},
 	result::error::diagnostic::function,
 };
@@ -20,7 +20,7 @@ impl StandardEvaluator {
 	pub(crate) fn call(
 		&self,
 		ctx: &EvaluationContext,
-		call: &CallExpression,
+		call: &Caltokenizepression,
 	) -> crate::Result<Column> {
 		let arguments = self.evaluate_arguments(ctx, &call.args)?;
 		let function = call.func.0.fragment();
