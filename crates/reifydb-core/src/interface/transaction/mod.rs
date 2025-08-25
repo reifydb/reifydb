@@ -22,6 +22,12 @@ pub use versioned::*;
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransactionId(pub(crate) Uuid7);
 
+impl Default for TransactionId {
+	fn default() -> Self {
+		Self::generate()
+	}
+}
+
 impl Deref for TransactionId {
 	type Target = Uuid7;
 

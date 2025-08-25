@@ -10,7 +10,6 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::iter::Rev;
-use std::ops::Bound;
 
 use crossbeam_skiplist::map::Range as MapRange;
 use reifydb_core::{
@@ -22,7 +21,7 @@ use reifydb_core::{
 	row::EncodedRow,
 };
 
-use crate::memory::{Memory, versioned::VersionedRow};
+use crate::memory::{Memory, VersionedRow};
 
 impl VersionedRangeRev for Memory {
 	type RangeIterRev<'a>
@@ -61,25 +60,11 @@ impl Iterator for RangeRev<'_> {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.range.next()?;
-			if let Some((version, value)) = item
-				.value()
-				.upper_bound(Bound::Included(&self.version))
-				.and_then(|item| {
-					if item.value().is_some() {
-						Some((
-							*item.key(),
-							item.value()
-								.clone()
-								.unwrap(),
-						))
-					} else {
-						None
-					}
-				}) {
+			if let Some(row) = item.value().get(self.version) {
 				return Some(Versioned {
 					key: item.key().clone(),
-					version,
-					row: value,
+					version: self.version,
+					row,
 				});
 			}
 		}

@@ -2,13 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::interface::{
-    SchemaDef, SchemaId, TableDef, TableId, TransactionId, ViewDef, ViewId,
+	SchemaDef, SchemaId, TableDef, TableId, TransactionId, ViewDef, ViewId,
 };
-use crate::{error, internal_error};
 use std::collections::HashMap;
 
 /// Tracks all catalog changes within a transaction
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TransactionalChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
@@ -151,13 +150,8 @@ impl TransactionalChanges {
 	}
 
 	/// Get all pending changes for commit
-	pub fn get_pendingchanges(&self) -> &[Operation] {
+	pub fn get_pending_changes(&self) -> &[Operation] {
 		&self.log
-	}
-
-	/// Check if there are any pending changes
-	pub fn haschanges(&self) -> bool {
-		!self.log.is_empty()
 	}
 
 	/// Get the transaction ID
@@ -186,24 +180,5 @@ impl TransactionalChanges {
 		self.table_def.clear();
 		self.view_def.clear();
 		self.log.clear();
-	}
-
-	/// Helper to get schema name from SchemaId
-	pub(crate) fn get_schema_name(
-		&self,
-		schema_id: SchemaId,
-	) -> crate::Result<String> {
-		self.schema_def
-			.get(&schema_id)
-			.and_then(|change| {
-				change.post.as_ref().or(change.pre.as_ref())
-			})
-			.map(|schema| schema.name.clone())
-			.ok_or_else(|| {
-				error!(internal_error!(
-					"Schema {} not found in transaction changes - this should never happen",
-					schema_id
-				))
-			})
 	}
 }

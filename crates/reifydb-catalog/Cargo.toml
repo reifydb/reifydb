@@ -11,6 +11,7 @@ reifydb-core = { workspace = true }
 reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
 
+crossbeam-skiplist = {workspace = true}
 once_cell = {workspace = true}
 serde = { workspace = true }
 

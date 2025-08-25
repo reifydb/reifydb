@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::interceptor::materialized_catalog::MaterializedCatalogInterceptor;
 use crate::{
 	execute::Executor, function::{math, Functions},
 	StandardCommandTransaction,
 	StandardQueryTransaction,
 };
-use reifydb_core::catalog::MaterializedCatalog;
+use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
 	hook::{Hook, Hooks},
@@ -18,6 +19,7 @@ use reifydb_core::{
 	},
 	Frame,
 };
+use std::rc::Rc;
 use std::{ops::Deref, sync::Arc};
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
@@ -36,14 +38,10 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		let catalog = MaterializedCatalog::new();
 		let mut interceptors = self.interceptors.create();
 
-		// Register the materialized catalog interceptors
-		use reifydb_core::interceptor::catalog::CatalogCommitInterceptor;
-		use std::rc::Rc;
-
 		// Post-commit interceptor
-		interceptors
-			.post_commit
-			.add(Rc::new(CatalogCommitInterceptor::new()));
+		interceptors.post_commit.add(Rc::new(
+			MaterializedCatalogInterceptor::new(catalog.clone()),
+		));
 
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -51,7 +49,6 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 			self.cdc.clone(),
 			self.hooks.clone(),
 			interceptors,
-			catalog,
 		))
 	}
 

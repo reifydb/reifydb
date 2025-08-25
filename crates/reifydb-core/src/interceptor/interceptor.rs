@@ -244,7 +244,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT>
 		&mut self,
 		id: TransactionId,
 		version: Version,
-		changes: Option<TransactionalChanges>,
+		changes: TransactionalChanges,
 	) -> crate::Result<()> {
 		if self.post_commit_interceptors().is_empty() {
 			return Ok(());

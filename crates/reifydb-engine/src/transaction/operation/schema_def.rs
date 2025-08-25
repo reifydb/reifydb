@@ -73,7 +73,7 @@ impl<T: Transaction> SchemaDefUpdateOperation
 {
 	fn update_schema_def(
 		&mut self,
-		schema_id: SchemaId,
+		_schema_id: SchemaId,
 	) -> crate::Result<SchemaDef> {
 		// // Get the current state before update
 		// let pre = CatalogStore::get_schema(self, schema_id)?;
@@ -147,7 +147,7 @@ impl<T: Transaction> SchemaDefDeleteOperation
 {
 	fn delete_schema_def(
 		&mut self,
-		schema_id: SchemaId,
+		_schema_id: SchemaId,
 	) -> crate::Result<()> {
 		// let schema = CatalogStore::get_schema(self, schema_id)?;
 		//

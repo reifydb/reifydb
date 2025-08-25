@@ -37,7 +37,7 @@ define_interceptor!(
 	fields: {
 		id: TransactionId,
 		version: Version,
-		catalogchanges: Option<TransactionalChanges>,
+		changes: TransactionalChanges,
 	}
 );
 

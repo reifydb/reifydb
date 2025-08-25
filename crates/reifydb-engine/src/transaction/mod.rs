@@ -10,6 +10,7 @@ use reifydb_core::interface::{
 
 mod cdc;
 mod command;
+#[allow(dead_code)]
 pub(crate) mod operation;
 mod query;
 

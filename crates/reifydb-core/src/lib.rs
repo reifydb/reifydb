@@ -3,7 +3,6 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub mod catalog;
 mod common;
 pub mod delta;
 pub mod hook;

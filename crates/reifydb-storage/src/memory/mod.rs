@@ -16,19 +16,19 @@ mod range;
 mod range_rev;
 mod scan;
 mod scan_rev;
-mod versioned;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	EncodedKey,
 	interface::{
 		CdcEvent, CdcEventKey, UnversionedInsert, UnversionedRemove,
 		UnversionedStorage, VersionedStorage,
 	},
 	row::EncodedRow,
+	util::VersionedContainer,
+	EncodedKey,
 };
 
-use crate::memory::versioned::VersionedRow;
+pub type VersionedRow = VersionedContainer<EncodedRow>;
 
 #[derive(Clone)]
 pub struct Memory(Arc<MemoryInner>);

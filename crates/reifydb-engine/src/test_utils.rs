@@ -3,7 +3,6 @@
 
 use crate::transaction::StandardCdcTransaction;
 use crate::{StandardCommandTransaction, StandardTransaction};
-use reifydb_core::catalog::MaterializedCatalog;
 use reifydb_core::{hook::Hooks, interceptor::Interceptors};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
@@ -28,6 +27,5 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 		cdc,
 		hooks,
 		Interceptors::new(),
-		MaterializedCatalog::new(),
 	)
 }

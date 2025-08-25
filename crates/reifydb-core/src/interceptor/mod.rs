@@ -2,16 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod builder;
-pub mod catalog;
 mod chain;
 mod factory;
+mod interceptor;
 mod interceptors;
 mod schema_def;
 mod table;
 mod table_def;
 mod transaction;
 mod view_def;
-mod interceptor;
 
 pub use builder::*;
 pub use chain::InterceptorChain;
@@ -125,15 +124,18 @@ macro_rules! define_closure_interceptor {
 		$context_type:ident,
 		with_transaction
 	) => {
-		pub struct $wrapper_name<T: crate::interface::CommandTransaction, F>
-		where
+		pub struct $wrapper_name<
+			T: crate::interface::CommandTransaction,
+			F,
+		> where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
 			closure: F,
 			_phantom: PhantomData<T>,
 		}
 
-		impl<T: crate::interface::CommandTransaction, F> $wrapper_name<T, F>
+		impl<T: crate::interface::CommandTransaction, F>
+			$wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
@@ -145,7 +147,8 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: crate::interface::CommandTransaction, F> Clone for $wrapper_name<T, F>
+		impl<T: crate::interface::CommandTransaction, F> Clone
+			for $wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
 				+ Clone,
@@ -158,7 +161,8 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: crate::interface::CommandTransaction, F> $trait_name<T> for $wrapper_name<T, F>
+		impl<T: crate::interface::CommandTransaction, F> $trait_name<T>
+			for $wrapper_name<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
 		{
@@ -208,7 +212,8 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: crate::interface::CommandTransaction, F> $trait_name<T> for $wrapper_name<F>
+		impl<T: crate::interface::CommandTransaction, F> $trait_name<T>
+			for $wrapper_name<F>
 		where
 			F: Fn(&mut $context_type) -> crate::Result<()>,
 		{
@@ -231,7 +236,9 @@ macro_rules! define_api_function {
 		$closure_type:ident<T, F>,
 		$context_type:ident<T>
 	) => {
-		pub fn $fn_name<T: crate::interface::CommandTransaction, F>(f: F) -> $closure_type<T, F>
+		pub fn $fn_name<T: crate::interface::CommandTransaction, F>(
+			f: F,
+		) -> $closure_type<T, F>
 		where
 			F: Fn(&mut $context_type<T>) -> crate::Result<()>
 				+ Send

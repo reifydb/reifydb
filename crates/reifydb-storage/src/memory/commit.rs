@@ -2,18 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, Result, Version,
-	delta::Delta,
-	interface::{CdcEventKey, UnversionedCommit, VersionedCommit},
-	result::error::diagnostic::sequence,
+	delta::Delta, interface::{CdcEventKey, UnversionedCommit, VersionedCommit}, result::error::diagnostic::sequence,
 	return_error,
 	row::EncodedRow,
 	util::now_millis,
+	CowVec,
+	Result,
+	Version,
 };
 
 use crate::{
 	cdc::generate_cdc_event,
-	memory::{Memory, versioned::VersionedRow},
+	memory::{Memory, VersionedRow},
 };
 
 impl VersionedCommit for Memory {
@@ -31,13 +31,11 @@ impl VersionedCommit for Memory {
 				.get(delta.key())
 				.and_then(|entry| {
 					let values = entry.value();
-					values.back().map(|e| {
-						e.value()
-							.clone()
-							.unwrap_or_else(|| {
-								EncodedRow::deleted()
-							})
-					})
+					Some(values
+						.get_latest()
+						.unwrap_or_else(|| {
+							EncodedRow::deleted()
+						}))
 				});
 
 			match &delta {
@@ -52,9 +50,7 @@ impl VersionedCommit for Memory {
 							VersionedRow::new,
 						);
 					let val = item.value();
-					val.lock();
 					val.insert(version, Some(row.clone()));
-					val.unlock();
 				}
 				Delta::Remove {
 					key,

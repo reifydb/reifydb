@@ -1547,6 +1547,7 @@ dependencies = [
 name = "reifydb-catalog"
 version = "0.0.1"
 dependencies = [
+ "crossbeam-skiplist",
  "once_cell",
  "reifydb-core",
  "reifydb-engine",

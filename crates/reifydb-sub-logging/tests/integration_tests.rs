@@ -374,10 +374,11 @@ fn test_flush_on_shutdown() {
 		));
 	}
 
-	// Wait for logs to be buffered
+	// Wait for ALL logs to be buffered (not just some)
+	// This ensures the logging thread has received all 10 logs
 	wait_for(
-		|| subsystem.buffered_count() > 0,
-		"Logs should be buffered before shutdown",
+		|| subsystem.buffered_count() == 10,
+		"All 10 logs should be buffered before shutdown",
 	);
 
 	// Shutdown immediately (before flush interval)

@@ -132,7 +132,7 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 		&mut self,
 		id: TransactionId,
 		version: Version,
-		changes: Option<TransactionalChanges>,
+		changes: TransactionalChanges,
 	) -> crate::Result<()>;
 }
 

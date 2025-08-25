@@ -72,7 +72,7 @@ pub(crate) trait TableDefUpdateOperation {
 impl<T: Transaction> TableDefUpdateOperation for StandardCommandTransaction<T> {
 	fn update_table_def(
 		&mut self,
-		table_id: TableId,
+		_table_id: TableId,
 	) -> crate::Result<TableDef> {
 		// let pre = CatalogStore::get_table(self, table_id)?;
 		//
@@ -133,7 +133,10 @@ pub(crate) trait TableDefDeleteOperation {
 }
 
 impl<T: Transaction> TableDefDeleteOperation for StandardCommandTransaction<T> {
-	fn delete_table_def(&mut self, table_id: TableId) -> crate::Result<()> {
+	fn delete_table_def(
+		&mut self,
+		_table_id: TableId,
+	) -> crate::Result<()> {
 		// let table = CatalogStore::get_table(self, table_id)?;
 		//
 		// TableDefInterceptor::pre_delete(self, &table)?;

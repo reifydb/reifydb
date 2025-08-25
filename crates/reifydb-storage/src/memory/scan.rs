@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::ops::Bound;
 
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
@@ -18,7 +17,7 @@ use reifydb_core::{
 	row::EncodedRow,
 };
 
-use crate::memory::{Memory, versioned::VersionedRow};
+use crate::memory::{Memory, VersionedRow};
 
 impl VersionedScan for Memory {
 	type ScanIter<'a> = VersionedIter<'a>;
@@ -43,25 +42,11 @@ impl Iterator for VersionedIter<'_> {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.iter.next()?;
-			if let Some((version, row)) = item
-				.value()
-				.upper_bound(Bound::Included(&self.version))
-				.and_then(|item| {
-					if item.value().is_some() {
-						Some((
-							*item.key(),
-							item.value()
-								.clone()
-								.unwrap(),
-						))
-					} else {
-						None
-					}
-				}) {
+			if let Some(row) = item.value().get(self.version) {
 				return Some(Versioned {
 					key: item.key().clone(),
 					row,
-					version,
+					version: self.version,
 				});
 			}
 		}

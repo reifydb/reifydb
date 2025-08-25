@@ -72,7 +72,7 @@ pub(crate) trait ViewDefUpdateOperation {
 impl<T: Transaction> ViewDefUpdateOperation for StandardCommandTransaction<T> {
 	fn update_view_def(
 		&mut self,
-		view_id: ViewId,
+		_view_id: ViewId,
 	) -> crate::Result<ViewDef> {
 		// let pre = CatalogStore::get_view(self, view_id)?;
 		//
@@ -134,7 +134,7 @@ pub(crate) trait ViewDefDeleteOperation {
 }
 
 impl<T: Transaction> ViewDefDeleteOperation for StandardCommandTransaction<T> {
-	fn delete_view_def(&mut self, view_id: ViewId) -> crate::Result<()> {
+	fn delete_view_def(&mut self, _view_id: ViewId) -> crate::Result<()> {
 		// let view = CatalogStore::get_view(self, view_id)?;
 		//
 		// ViewDefInterceptor::pre_delete(self, &view)?;
