@@ -150,6 +150,35 @@ impl<'a> Fragment<'a> {
 		self.into_owned()
 	}
 
+	/// Create a borrowed view of this fragment
+	pub fn as_borrowed(&'a self) -> Fragment<'a> {
+		match self {
+			Fragment::Owned(owned) => match owned {
+				OwnedFragment::None => Fragment::None,
+				OwnedFragment::Statement {
+					text,
+					line,
+					column,
+				} => Fragment::Borrowed(
+					BorrowedFragment::Statement {
+						text: text.as_str(),
+						line: *line,
+						column: *column,
+					},
+				),
+				OwnedFragment::Internal {
+					text,
+				} => Fragment::Borrowed(
+					BorrowedFragment::Internal {
+						text: text.as_str(),
+					},
+				),
+			},
+			Fragment::Borrowed(b) => Fragment::Borrowed(*b), /* Copy since BorrowedFragment is Copy */
+			Fragment::None => Fragment::None,
+		}
+	}
+
 	/// Get a sub-fragment starting at the given offset with the given
 	/// length
 	pub fn sub_fragment(
@@ -228,6 +257,13 @@ impl<'a> IntoOwnedFragment for &BorrowedFragment<'a> {
 impl<'a> IntoFragment<'a> for Fragment<'a> {
 	fn into_fragment(self) -> Fragment<'a> {
 		self
+	}
+}
+
+// Implementation for &Fragment - creates a borrowed view
+impl<'a> IntoFragment<'a> for &'a Fragment<'a> {
+	fn into_fragment(self) -> Fragment<'a> {
+		self.as_borrowed()
 	}
 }
 

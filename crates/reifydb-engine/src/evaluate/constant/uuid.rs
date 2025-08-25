@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	IntoFragment, OwnedFragment, Type,
+	IntoFragment, Type,
 	result::error::diagnostic::cast,
 	return_error,
 	value::uuid::parse::{parse_uuid4, parse_uuid7},
@@ -20,29 +20,30 @@ impl UuidParser {
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment().into_owned();
+		let fragment = fragment.into_fragment();
 		match target {
-			Type::Uuid4 => Self::parse_uuid4(&fragment, row_count),
-			Type::Uuid7 => Self::parse_uuid7(&fragment, row_count),
+			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
+			Type::Uuid7 => Self::parse_uuid7(fragment, row_count),
 			_ => return_error!(cast::unsupported_cast(
-				fragment.clone(),
+				fragment,
 				Type::Utf8,
 				target
 			)),
 		}
 	}
 
-	fn parse_uuid4(
-		fragment: &OwnedFragment,
+	fn parse_uuid4<'a>(
+		fragment: impl IntoFragment<'a>,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		match parse_uuid4(fragment.clone()) {
+		let fragment = fragment.into_fragment();
+		match parse_uuid4(&fragment) {
 			Ok(uuid) => {
 				Ok(ColumnData::uuid4(vec![uuid; row_count]))
 			}
 			Err(err) => {
 				return_error!(cast::invalid_uuid(
-					fragment.clone(),
+					fragment,
 					Type::Uuid4,
 					err.diagnostic()
 				))
@@ -50,17 +51,18 @@ impl UuidParser {
 		}
 	}
 
-	fn parse_uuid7(
-		fragment: &OwnedFragment,
+	fn parse_uuid7<'a>(
+		fragment: impl IntoFragment<'a>,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		match parse_uuid7(fragment.clone()) {
+		let fragment = fragment.into_fragment();
+		match parse_uuid7(&fragment) {
 			Ok(uuid) => {
 				Ok(ColumnData::uuid7(vec![uuid; row_count]))
 			}
 			Err(err) => {
 				return_error!(cast::invalid_uuid(
-					fragment.clone(),
+					fragment,
 					Type::Uuid7,
 					err.diagnostic()
 				))
