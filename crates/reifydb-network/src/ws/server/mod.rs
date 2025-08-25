@@ -303,7 +303,7 @@ impl<T: Transaction> WsServer<T> {
 															name: "GONE".to_string(), //FIXME
 															columns: frame.into_iter().map(|c| {
 															    WebsocketColumn {
-																ty: c.get_type(),
+																r#type: c.get_type(),
 																name: c.name.to_string(),
 																frame: c.table.as_ref().map(|s| s.to_string()),
 																data: c.iter().map(|v| {
@@ -362,7 +362,7 @@ impl<T: Transaction> WsServer<T> {
 															name: "GONE".to_string(), // FIXME
 															columns: frame.into_iter().map(|c| {
 															    WebsocketColumn {
-																ty: c.get_type(),
+																r#type: c.get_type(),
 																name: c.name.to_string(),
 																frame: c.table.as_ref().map(|s| s.to_string()),
 																data: c.iter().map(|v| {

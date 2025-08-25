@@ -2,7 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	collections::HashMap, fmt, fmt::Debug, sync::OnceLock, thread::current,
+	collections::HashMap,
+	fmt,
+	fmt::Debug,
+	sync::{Mutex, OnceLock},
+	thread::current,
 };
 
 use chrono::{DateTime, Utc};
@@ -149,10 +153,34 @@ impl Logger {
 /// Global logger instance - lightweight, only holds a channel sender
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
+/// Maximum number of log records to buffer before logger is initialized
+const MAX_BUFFERED_RECORDS: usize = 10_000;
+
+/// Buffer for log records that arrive before logger initialization
+static LOG_BUFFER: OnceLock<Mutex<Vec<Record>>> = OnceLock::new();
+
+/// Get or create the log buffer
+fn get_log_buffer() -> &'static Mutex<Vec<Record>> {
+	LOG_BUFFER.get_or_init(|| Mutex::new(Vec::with_capacity(1000)))
+}
+
 /// Initialize the global logger with a sender channel
 /// This can only be called once - subsequent calls will be ignored
 pub fn init_logger(sender: Sender<Record>) {
-	let _ = LOGGER.set(Logger::new(sender));
+	let logger = Logger::new(sender);
+
+	// Set the logger first
+	if LOGGER.set(logger).is_ok() {
+		if let Ok(mut buffer) = get_log_buffer().lock() {
+			if !buffer.is_empty() {
+				if let Some(logger) = LOGGER.get() {
+					for record in buffer.drain(..) {
+						let _ = logger.log(record);
+					}
+				}
+			}
+		}
+	}
 }
 
 /// Get the global logger
@@ -173,9 +201,21 @@ pub fn log(record: Record) {
 		}
 	}
 
-	// Normal path: use global logger
+	// Normal path: use global logger if available
 	if let Some(logger) = logger() {
 		// Ignore send errors - logging should not crash the application
 		let _ = logger.log(record);
+	} else {
+		// No logger yet, buffer the record
+		if let Ok(mut buffer) = get_log_buffer().lock() {
+			// Only buffer up to MAX_BUFFERED_RECORDS to prevent
+			// unbounded memory growth
+			if buffer.len() < MAX_BUFFERED_RECORDS {
+				buffer.push(record);
+			}
+			// If we've reached the limit, we silently drop new
+			// records This prevents memory exhaustion if logging
+			// is misconfigured
+		}
 	}
 }

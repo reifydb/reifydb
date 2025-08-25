@@ -19,6 +19,6 @@ export class Client {
 }
 
 export {ReifyError, asFrameResults} from "@reifydb/core";
-export type {FrameResults, SingleFrameResult, Diagnostic, Span, DiagnosticColumn} from "@reifydb/core";
+export type {FrameResults, SingleFrameResult, Diagnostic, Fragment, DiagnosticColumn} from "@reifydb/core";
 export {WsClient} from "./ws";
 export type {WsClientOptions} from "./ws";

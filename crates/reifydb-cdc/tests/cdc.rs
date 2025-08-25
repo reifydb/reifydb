@@ -3,36 +3,38 @@
 
 use std::{
 	sync::{
-		atomic::{AtomicBool, AtomicUsize, Ordering}, Arc,
-		Mutex,
+		Arc, Mutex,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	thread,
 	time::Duration,
 };
 
+use Key::TableRow;
+use reifydb_catalog::MaterializedCatalog;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
-	diagnostic::Diagnostic, hook::Hooks, interceptor::StandardInterceptorFactory,
+	EncodedKey, Result, RowNumber,
+	diagnostic::Diagnostic,
+	hook::Hooks,
+	interceptor::StandardInterceptorFactory,
 	interface::{
-		key::TableRowKey, CdcConsume, CdcConsumer, CdcConsumerKey,
-		CdcEvent, CommandTransaction, ConsumerId,
-		EncodableKey, Engine as EngineInterface, Key,
-		TableId, VersionedCommandTransaction,
-		VersionedQueryTransaction,
+		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
+		CommandTransaction, ConsumerId, EncodableKey,
+		Engine as EngineInterface, Key, TableId,
+		VersionedCommandTransaction, VersionedQueryTransaction,
+		key::TableRowKey,
 	},
 	row::EncodedRow,
-	util::CowVec,
-	EncodedKey,
-	Result,
-	RowNumber,
+	util::{CowVec, mock_time_set},
 };
-use reifydb_engine::StandardEngine;
-use reifydb_engine::{StandardCdcTransaction, StandardTransaction};
+use reifydb_engine::{
+	StandardCdcTransaction, StandardEngine, StandardTransaction,
+};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
-use Key::TableRow;
 
 #[test]
 fn test_consumer_lifecycle() {
@@ -453,7 +455,7 @@ type TestTransaction = StandardTransaction<
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
 	#[cfg(debug_assertions)]
-	reifydb_core::util::mock_time_set(1000);
+	mock_time_set(1000);
 	let memory = Memory::new();
 	let hooks = Hooks::new();
 	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
@@ -467,6 +469,7 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 		cdc,
 		hooks,
 		Box::new(StandardInterceptorFactory::default()),
+		MaterializedCatalog::new(),
 	)
 }
 

@@ -47,7 +47,7 @@ pub struct WebsocketFrame {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebsocketColumn {
 	pub name: String,
-	pub ty: Type,
+	pub r#type: Type,
 	pub data: Vec<String>,
 	pub frame: Option<String>,
 }

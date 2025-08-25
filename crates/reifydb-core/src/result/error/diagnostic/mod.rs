@@ -37,7 +37,6 @@ pub struct Diagnostic {
 	pub statement: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
-
 	pub fragment: OwnedFragment,
 	pub label: Option<String>,
 	pub help: Option<String>,
@@ -48,7 +47,7 @@ pub struct Diagnostic {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagnosticColumn {
 	pub name: String,
-	pub ty: Type,
+	pub r#type: Type,
 }
 
 impl Default for Diagnostic {

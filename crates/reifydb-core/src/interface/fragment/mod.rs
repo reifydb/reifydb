@@ -4,6 +4,8 @@
 pub mod borrowed;
 pub mod owned;
 
+use std::ops::Deref;
+
 pub use borrowed::BorrowedFragment;
 pub use owned::OwnedFragment;
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,14 @@ use serde::{Deserialize, Serialize};
 	Deserialize,
 )]
 pub struct StatementColumn(pub u32);
+
+impl Deref for StatementColumn {
+	type Target = u32;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
 
 impl PartialEq<i32> for StatementColumn {
 	fn eq(&self, other: &i32) -> bool {
@@ -42,6 +52,14 @@ impl PartialEq<i32> for StatementColumn {
 	Deserialize,
 )]
 pub struct StatementLine(pub u32);
+
+impl Deref for StatementLine {
+	type Target = u32;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
 
 impl PartialEq<i32> for StatementLine {
 	fn eq(&self, other: &i32) -> bool {

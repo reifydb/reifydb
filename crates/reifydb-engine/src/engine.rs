@@ -1,26 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interceptor::materialized_catalog::MaterializedCatalogInterceptor;
-use crate::{
-	execute::Executor, function::{math, Functions},
-	StandardCommandTransaction,
-	StandardQueryTransaction,
-};
+use std::{ops::Deref, rc::Rc, sync::Arc};
+
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
+	Frame,
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, Identity, Params, Query, Transaction,
-		VersionedTransaction, WithHooks,
+		ExecuteQuery, Identity, Params, Query, QueryTransaction,
+		Transaction, VersionedTransaction, WithHooks,
 	},
-	Frame,
 };
-use std::rc::Rc;
-use std::{ops::Deref, sync::Arc};
+
+use crate::{
+	StandardCommandTransaction, StandardQueryTransaction,
+	execute::Executor,
+	function::{Functions, math},
+	interceptor::materialized_catalog::MaterializedCatalogInterceptor,
+};
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
@@ -35,12 +35,12 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	type Query = StandardQueryTransaction<T>;
 
 	fn begin_command(&self) -> crate::Result<Self::Command> {
-		let catalog = MaterializedCatalog::new();
 		let mut interceptors = self.interceptors.create();
 
-		// Post-commit interceptor
 		interceptors.post_commit.add(Rc::new(
-			MaterializedCatalogInterceptor::new(catalog.clone()),
+			MaterializedCatalogInterceptor::new(
+				self.catalog.clone(),
+			),
 		));
 
 		Ok(StandardCommandTransaction::new(
@@ -144,6 +144,7 @@ pub struct EngineInner<T: Transaction> {
 	executor: Executor,
 	interceptors:
 		Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
+	catalog: MaterializedCatalog,
 }
 
 impl<T: Transaction> StandardEngine<T> {
@@ -155,6 +156,7 @@ impl<T: Transaction> StandardEngine<T> {
 		interceptors: Box<
 			dyn InterceptorFactory<StandardCommandTransaction<T>>,
 		>,
+		catalog: MaterializedCatalog,
 	) -> Self {
 		Self(Arc::new(EngineInner {
 			versioned: versioned.clone(),
@@ -194,6 +196,7 @@ impl<T: Transaction> StandardEngine<T> {
 					.build(),
 			},
 			interceptors,
+			catalog,
 		}))
 	}
 
@@ -230,5 +233,10 @@ impl<T: Transaction> StandardEngine<T> {
 	#[inline]
 	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
 		self.hooks.trigger(hook)
+	}
+
+	#[inline]
+	pub fn catalog(&self) -> &MaterializedCatalog {
+		&self.catalog
 	}
 }

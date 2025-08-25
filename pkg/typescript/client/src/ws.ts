@@ -300,7 +300,7 @@ function columnsToRows(columns: Column[]): Record<string, Value>[] {
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decode({type: col.ty, value: col.data[i]});
+            row[col.name] = decode({type: col.type, value: col.data[i]});
         }
         return row;
     });
