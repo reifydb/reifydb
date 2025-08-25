@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::interface::{
-	SchemaDef, SchemaId, TableDef, TableId, ViewDef, ViewId,
+    SchemaDef, SchemaId, TableDef, TableId, ViewDef, ViewId,
 };
 use reifydb_core::util::VersionedContainer;
 
@@ -19,9 +19,10 @@ pub type VersionedViewDef = VersionedContainer<ViewDef>;
 
 /// A materialized catalog that stores versioned schema, table, and view definitions.
 /// This provides fast O(1) lookups for catalog metadata without hitting storage.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MaterializedCatalog(Arc<MaterializedCatalogInner>);
 
+#[derive(Debug)]
 pub struct MaterializedCatalogInner {
 	/// Versioned schema definitions indexed by schema ID
 	pub(crate) schemas: SkipMap<SchemaId, VersionedSchemaDef>,

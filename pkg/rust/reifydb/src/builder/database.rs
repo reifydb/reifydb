@@ -1,11 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use crate::{
+	database::{Database, DatabaseConfig},
+	health::HealthMonitor,
+	subsystem::Subsystems,
+};
+use reifydb_catalog::{MaterializedCatalog, MaterializedCatalogLoader};
+use reifydb_core::interface::VersionedTransaction;
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::StandardInterceptorBuilder,
 	interface::{subsystem::SubsystemFactory, Transaction},
 	ioc::IocContainer,
+	log_timed_debug,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 #[cfg(feature = "sub_flow")]
@@ -15,12 +23,6 @@ use reifydb_sub_logging::LoggingSubsystemFactory;
 #[cfg(feature = "sub_workerpool")]
 use reifydb_sub_workerpool::WorkerPoolSubsystemFactory;
 use std::{sync::Arc, time::Duration};
-
-use crate::{
-	database::{Database, DatabaseConfig},
-	health::HealthMonitor,
-	subsystem::Subsystems,
-};
 
 pub struct DatabaseBuilder<T: Transaction> {
 	config: DatabaseConfig,
@@ -40,6 +42,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		hooks: Hooks,
 	) -> Self {
 		let ioc = IocContainer::new()
+			.register(MaterializedCatalog::new())
 			.register(hooks.clone())
 			.register(versioned.clone())
 			.register(unversioned.clone())
@@ -149,10 +152,21 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			);
 		}
 
+		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let versioned = self.ioc.resolve::<T::Versioned>()?;
 		let unversioned = self.ioc.resolve::<T::Unversioned>()?;
 		let cdc = self.ioc.resolve::<T::Cdc>()?;
 		let hooks = self.ioc.resolve::<Hooks>()?;
+
+		// Load the materialized catalog from storage
+		log_timed_debug!("Loading materialized catalog", {
+			versioned.with_query(|tx| {
+				MaterializedCatalogLoader::load_all(
+					tx, &catalog,
+				)?;
+				Ok(())
+			})?;
+		});
 
 		let engine = StandardEngine::new(
 			versioned,
@@ -160,6 +174,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			cdc,
 			hooks,
 			Box::new(self.interceptors.build()),
+			catalog,
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
