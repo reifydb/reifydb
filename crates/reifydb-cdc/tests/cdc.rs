@@ -10,7 +10,9 @@ use std::{
 	time::Duration,
 };
 
+use reifydb_catalog::MaterializedCatalog;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
+use reifydb_core::util::mock_time_set;
 use reifydb_core::{
 	diagnostic::Diagnostic, hook::Hooks, interceptor::StandardInterceptorFactory,
 	interface::{
@@ -453,7 +455,7 @@ type TestTransaction = StandardTransaction<
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
 	#[cfg(debug_assertions)]
-	reifydb_core::util::mock_time_set(1000);
+	mock_time_set(1000);
 	let memory = Memory::new();
 	let hooks = Hooks::new();
 	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
@@ -467,6 +469,7 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 		cdc,
 		hooks,
 		Box::new(StandardInterceptorFactory::default()),
+		MaterializedCatalog::new(),
 	)
 }
 

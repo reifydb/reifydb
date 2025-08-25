@@ -35,12 +35,12 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	type Query = StandardQueryTransaction<T>;
 
 	fn begin_command(&self) -> crate::Result<Self::Command> {
-		let catalog = MaterializedCatalog::new();
 		let mut interceptors = self.interceptors.create();
 
-		// Post-commit interceptor
 		interceptors.post_commit.add(Rc::new(
-			MaterializedCatalogInterceptor::new(catalog.clone()),
+			MaterializedCatalogInterceptor::new(
+				self.catalog.clone(),
+			),
 		));
 
 		Ok(StandardCommandTransaction::new(
@@ -144,6 +144,7 @@ pub struct EngineInner<T: Transaction> {
 	executor: Executor,
 	interceptors:
 		Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
+	catalog: MaterializedCatalog,
 }
 
 impl<T: Transaction> StandardEngine<T> {
@@ -155,6 +156,7 @@ impl<T: Transaction> StandardEngine<T> {
 		interceptors: Box<
 			dyn InterceptorFactory<StandardCommandTransaction<T>>,
 		>,
+		catalog: MaterializedCatalog,
 	) -> Self {
 		Self(Arc::new(EngineInner {
 			versioned: versioned.clone(),
@@ -194,6 +196,7 @@ impl<T: Transaction> StandardEngine<T> {
 					.build(),
 			},
 			interceptors,
+			catalog,
 		}))
 	}
 
@@ -230,5 +233,10 @@ impl<T: Transaction> StandardEngine<T> {
 	#[inline]
 	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
 		self.hooks.trigger(hook)
+	}
+
+	#[inline]
+	pub fn catalog(&self) -> &MaterializedCatalog {
+		&self.catalog
 	}
 }
