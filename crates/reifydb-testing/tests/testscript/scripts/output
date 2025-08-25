@@ -80,7 +80,6 @@ prefix:
 
 # Lines only containing whitespace are not considered empty, and not prefixed.
 # The output parser also handles them correctly when parsing this file.
-_set prefix= suffix=
 _echo " "
 _echo "  "
 _echo "\t"

@@ -1,3 +1,3 @@
-parse error at line 1 column 9 for CrLf:
+parse error at line 1 column 18 for "\"command []\"":
 command []
-        ^
+                 ^

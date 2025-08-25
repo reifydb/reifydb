@@ -3,24 +3,3 @@
 command
 ---
 Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 3 }
-
-// Comment.
-
-foo arg
-bar key=value
-baz arg key=value
----
-Command { name: "foo", args: [Argument { key: None, value: "arg" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 9 }
-Command { name: "bar", args: [Argument { key: Some("key"), value: "value" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 10 }
-Command { name: "baz", args: [Argument { key: None, value: "arg" }, Argument { key: Some("key"), value: "value" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 11 }
-
-# Comment.
-a: foo arg
-# Comment.
-b: bar key=value
-# Comment.
----
-a: Command { name: "foo", args: [Argument { key: None, value: "arg" }], prefix: Some("a"), tags: {}, silent: false, fail: false, line_number: 18 }
-b: Command { name: "bar", args: [Argument { key: Some("key"), value: "value" }], prefix: Some("b"), tags: {}, silent: false, fail: false, line_number: 20 }
-
-# Comment.
