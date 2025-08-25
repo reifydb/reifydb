@@ -81,12 +81,14 @@ mod tests {
 	};
 
 	use crate::{
-		execute::Executor, test_utils::create_test_command_transaction,
+		execute::Executor,
+		test_utils::create_test_command_transaction_with_internal_schema,
 	};
 
 	#[test]
 	fn test_create_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn =
+			create_test_command_transaction_with_internal_schema();
 
 		let schema = ensure_test_schema(&mut txn);
 
@@ -158,7 +160,8 @@ mod tests {
 
 	#[test]
 	fn test_create_same_view_in_different_schema() {
-		let mut txn = create_test_command_transaction();
+		let mut txn =
+			create_test_command_transaction_with_internal_schema();
 
 		let schema = ensure_test_schema(&mut txn);
 		let another_schema = create_schema(&mut txn, "another_schema");
@@ -225,7 +228,8 @@ mod tests {
 
 	#[test]
 	fn test_create_view_missing_schema() {
-		let mut txn = create_test_command_transaction();
+		let mut txn =
+			create_test_command_transaction_with_internal_schema();
 
 		let plan = CreateDeferredViewPlan {
 			schema: SchemaDef {

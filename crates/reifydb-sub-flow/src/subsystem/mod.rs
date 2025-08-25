@@ -5,7 +5,7 @@ mod consumer;
 mod factory;
 pub mod intercept;
 
-use std::{any::Any, sync::Arc, time::Duration};
+use std::{any::Any, time::Duration};
 
 pub use factory::FlowSubsystemFactory;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
@@ -17,10 +17,9 @@ use reifydb_core::{
 	},
 	ioc::IocContainer,
 };
-use reifydb_engine::{StandardEngine, StandardEvaluator};
+use reifydb_engine::StandardEngine;
 
 use self::consumer::FlowConsumer;
-use crate::engine::FlowEngine;
 
 pub struct FlowSubsystemConfig {
 	/// Unique identifier for this consumer
@@ -32,7 +31,7 @@ pub struct FlowSubsystemConfig {
 }
 
 pub struct FlowSubsystem<T: Transaction> {
-	consumer: PollConsumer<T, FlowConsumer>,
+	consumer: PollConsumer<T, FlowConsumer<T>>,
 	running: bool,
 }
 
@@ -43,10 +42,7 @@ impl<T: Transaction> FlowSubsystem<T> {
 	) -> crate::Result<Self> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		let flow_engine =
-			Arc::new(FlowEngine::new(StandardEvaluator::default()));
-
-		let consumer = FlowConsumer::new(flow_engine);
+		let consumer = FlowConsumer::new(engine.clone());
 
 		Ok(Self {
 			consumer: PollConsumer::new(

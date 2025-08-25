@@ -67,6 +67,7 @@ fn main() {
 		r#"
 	create deferred view test.basic { value: int8, age: int8 } with {
 	    from test.users
+	    aggregate { sum(value) } by { age }
 	}
 		"#,
 		Params::None,
