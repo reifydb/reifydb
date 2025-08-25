@@ -11,16 +11,16 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaOperations, CatalogStore, CatalogTableOperations,
-	CatalogTransactionContext, TransactionalChangesExt,
+	CatalogSchemaDefOperations, CatalogStore, CatalogTableDefOperations,
+	CatalogTransactionOperations, TransactionalChangesExt,
 	table::TableToCreate,
 };
 
-impl<T> CatalogTableOperations for T
+impl<T> CatalogTableDefOperations for T
 where
 	T: CommandTransaction
-		+ CatalogTransactionContext
-		+ CatalogSchemaOperations
+		+ CatalogTransactionOperations
+		+ CatalogSchemaDefOperations
 		+ WithInterceptors<T>
 		+ WithHooks
 		+ TableDefInterceptor<T>,
@@ -43,7 +43,7 @@ where
 		}
 
 		let result = CatalogStore::create_table(self, to_create)?;
-		self.track_table_created(result.clone())?;
+		self.track_table_def_created(result.clone())?;
 		TableDefInterceptor::post_create(self, &result)?;
 
 		Ok(result)
@@ -71,7 +71,7 @@ where
 		if let Some(table) = self.catalog().find_table_by_name(
 			schema,
 			name,
-			CatalogTransactionContext::version(self),
+			CatalogTransactionOperations::version(self),
 		) {
 			return Ok(Some(table));
 		}
@@ -103,7 +103,7 @@ where
 		// 2. Check MaterializedCatalog
 		if let Some(table) = self.catalog().find_table(
 			id,
-			CatalogTransactionContext::version(self),
+			CatalogTransactionOperations::version(self),
 		) {
 			return Ok(Some(table));
 		}

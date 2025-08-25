@@ -19,7 +19,7 @@ use crate::{
 };
 
 // Schema operations
-pub trait CatalogSchemaOperations {
+pub trait CatalogSchemaDefOperations {
 	fn create_schema(
 		&mut self,
 		schema: SchemaToCreate,
@@ -44,7 +44,7 @@ pub trait CatalogSchemaOperations {
 }
 
 // Table operations
-pub trait CatalogTableOperations {
+pub trait CatalogTableDefOperations {
 	fn create_table(
 		&mut self,
 		table: TableToCreate,
@@ -68,7 +68,7 @@ pub trait CatalogTableOperations {
 }
 
 // View operations
-pub trait CatalogViewOperations {
+pub trait CatalogViewDefOperations {
 	fn create_view(&mut self, view: ViewToCreate)
 	-> crate::Result<ViewDef>;
 
@@ -88,71 +88,93 @@ pub trait CatalogViewOperations {
 
 // Combined catalog transaction trait
 pub trait CatalogTransaction:
-	CatalogSchemaOperations + CatalogTableOperations + CatalogViewOperations
+	CatalogSchemaDefOperations
+	+ CatalogTableDefOperations
+	+ CatalogViewDefOperations
 {
 }
 
 // Context trait that provides access to catalog-specific state
-pub trait CatalogTransactionContext: CommandTransaction {
+pub trait CatalogTransactionOperations: CommandTransaction {
 	fn catalog(&self) -> &MaterializedCatalog;
 	fn version(&self) -> Version;
 
 	// Schema tracking methods
-	fn track_schema_created(
+	fn track_schema_def_created(
 		&mut self,
 		schema: SchemaDef,
 	) -> crate::Result<()>;
-	fn track_schema_updated(
+
+	fn track_schema_def_updated(
 		&mut self,
 		pre: SchemaDef,
 		post: SchemaDef,
 	) -> crate::Result<()>;
-	fn track_schema_deleted(
+
+	fn track_schema_def_deleted(
 		&mut self,
 		schema: SchemaDef,
 	) -> crate::Result<()>;
 
 	// Table tracking methods
-	fn track_table_created(&mut self, table: TableDef)
-	-> crate::Result<()>;
+	fn track_table_def_created(
+		&mut self,
+		table: TableDef,
+	) -> crate::Result<()>;
 
-	fn track_table_updated(
+	fn track_table_def_updated(
 		&mut self,
 		pre: TableDef,
 		post: TableDef,
 	) -> crate::Result<()>;
-	fn track_table_deleted(&mut self, table: TableDef)
-	-> crate::Result<()>;
+
+	fn track_table_def_deleted(
+		&mut self,
+		table: TableDef,
+	) -> crate::Result<()>;
 
 	// View tracking methods
-	fn track_view_created(&mut self, view: ViewDef) -> crate::Result<()>;
-	fn track_view_updated(
+	fn track_view_def_created(
+		&mut self,
+		view: ViewDef,
+	) -> crate::Result<()>;
+
+	fn track_view_def_updated(
 		&mut self,
 		pre: ViewDef,
 		post: ViewDef,
 	) -> crate::Result<()>;
-	fn track_view_deleted(&mut self, view: ViewDef) -> crate::Result<()>;
+
+	fn track_view_def_deleted(
+		&mut self,
+		view: ViewDef,
+	) -> crate::Result<()>;
 }
 
 // Extension trait for TransactionalChanges with catalog-specific helpers
 pub trait TransactionalChangesExt {
 	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef>;
+
 	fn is_schema_deleted_by_name(&self, name: &str) -> bool;
+
 	fn find_table_by_name(
 		&self,
 		schema: SchemaId,
 		name: &str,
 	) -> Option<&TableDef>;
+
 	fn is_table_deleted_by_name(
 		&self,
 		schema: SchemaId,
 		name: &str,
 	) -> bool;
+
 	fn find_view_by_name(
 		&self,
 		schema: SchemaId,
 		name: &str,
 	) -> Option<&ViewDef>;
+
 	fn is_view_deleted_by_name(&self, schema: SchemaId, name: &str)
 	-> bool;
 }

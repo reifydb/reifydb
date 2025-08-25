@@ -21,9 +21,9 @@ pub mod view_column;
 pub use loader::MaterializedCatalogLoader;
 pub use materialized::MaterializedCatalog;
 pub use transaction::{
-	CatalogSchemaOperations, CatalogTableOperations, CatalogTransaction,
-	CatalogTransactionContext, CatalogViewOperations,
-	TransactionalChangesExt,
+	CatalogSchemaDefOperations, CatalogTableDefOperations,
+	CatalogTransaction, CatalogTransactionOperations,
+	CatalogViewDefOperations, TransactionalChangesExt,
 };
 
 pub struct CatalogStore;

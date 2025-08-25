@@ -11,15 +11,15 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaOperations, CatalogStore, CatalogTransactionContext,
-	CatalogViewOperations, TransactionalChangesExt, view::ViewToCreate,
+	CatalogSchemaDefOperations, CatalogStore, CatalogTransactionOperations,
+	CatalogViewDefOperations, TransactionalChangesExt, view::ViewToCreate,
 };
 
-impl<T> CatalogViewOperations for T
+impl<T> CatalogViewDefOperations for T
 where
 	T: CommandTransaction
-		+ CatalogTransactionContext
-		+ CatalogSchemaOperations
+		+ CatalogTransactionOperations
+		+ CatalogSchemaDefOperations
 		+ WithInterceptors<T>
 		+ WithHooks
 		+ ViewDefInterceptor<T>,
@@ -41,7 +41,7 @@ where
 
 		let result =
 			CatalogStore::create_deferred_view(self, to_create)?;
-		self.track_view_created(result.clone())?;
+		self.track_view_def_created(result.clone())?;
 		ViewDefInterceptor::post_create(self, &result)?;
 
 		Ok(result)
@@ -69,7 +69,7 @@ where
 		if let Some(view) = self.catalog().find_view_by_name(
 			schema,
 			name,
-			CatalogTransactionContext::version(self),
+			CatalogTransactionOperations::version(self),
 		) {
 			return Ok(Some(view));
 		}
@@ -96,10 +96,10 @@ where
 		}
 
 		// 2. Check MaterializedCatalog
-		if let Some(view) = self
-			.catalog()
-			.find_view(id, CatalogTransactionContext::version(self))
-		{
+		if let Some(view) = self.catalog().find_view(
+			id,
+			CatalogTransactionOperations::version(self),
+		) {
 			return Ok(Some(view));
 		}
 
