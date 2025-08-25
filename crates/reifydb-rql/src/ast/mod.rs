@@ -9,6 +9,7 @@ pub use crate::ast::{
 mod ast;
 pub(crate) mod lex;
 pub(crate) mod parse;
+pub(crate) mod tokenize;
 
 pub fn parse(str: &str) -> crate::Result<Vec<AstStatement>> {
 	let tokens = lex(str)?;

@@ -1,0 +1,22 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tokenize 'create index idx_status on test.users {created_at desc, status asc}'
+---
+> Line 1:
+>   [  0] Keyword(Create)
+>   [  1] Keyword(Index)
+>   [  2] Identifier("idx_status")
+>   [  3] Keyword(On)
+>   [  4] Identifier("test")
+>   [  5] Operator(Dot)
+>   [  6] Identifier("users")
+>   [  7] Operator(OpenCurly)
+>   [  8] Identifier("created_at")
+>   [  9] Keyword(Desc)
+>   [ 10] Separator(Comma)
+>   [ 11] Identifier("status")
+>   [ 12] Keyword(Asc)
+>   [ 13] Operator(CloseCurly)
+> 
+> 
