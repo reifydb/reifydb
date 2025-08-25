@@ -1,11 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-	define_api_function, define_closure_interceptor, define_interceptor,
-	impl_register_interceptor, interface::TableDef,
+	RowNumber, define_api_function, define_closure_interceptor,
+	define_interceptor, impl_register_interceptor, interface::TableDef,
 	row::EncodedRow,
-	RowNumber
-	,
 };
 
 // PRE INSERT

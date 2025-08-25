@@ -1,12 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::transaction::StandardCdcTransaction;
-use crate::{StandardCommandTransaction, StandardTransaction};
 use reifydb_core::{hook::Hooks, interceptor::Interceptors};
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::mvcc::transaction::serializable::Serializable;
-use reifydb_transaction::svl::SingleVersionLock;
+use reifydb_transaction::{
+	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
+};
+
+use crate::{
+	StandardCommandTransaction, StandardTransaction,
+	transaction::StandardCdcTransaction,
+};
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	StandardTransaction<

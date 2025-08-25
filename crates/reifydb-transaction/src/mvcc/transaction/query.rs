@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{interface::TransactionId, Version};
+use reifydb_core::{Version, interface::TransactionId};
 
 use crate::mvcc::transaction::{version::VersionProvider, *};
 

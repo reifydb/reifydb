@@ -8,16 +8,21 @@ mod transaction;
 mod unversioned;
 mod versioned;
 
-use crate::value::uuid::Uuid7;
+use std::{
+	fmt::{Display, Formatter},
+	ops::Deref,
+};
+
 pub use cdc::{CdcQueryTransaction, CdcTransaction};
 pub use change::*;
-use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 pub use transaction::{CommandTransaction, QueryTransaction};
 pub use unversioned::*;
 pub use versioned::*;
 
-/// A unique identifier for a transaction using UUIDv7 for time-ordered uniqueness
+use crate::value::uuid::Uuid7;
+
+/// A unique identifier for a transaction using UUIDv7 for time-ordered
+/// uniqueness
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransactionId(pub(crate) Uuid7);

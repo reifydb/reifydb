@@ -3,16 +3,16 @@
 
 use std::fmt::Write;
 
+use reifydb_core::{JoinType, interface::QueryTransaction};
+
 use crate::{
 	ast::parse,
 	plan::{
 		logical::compile_logical,
 		physical,
-		physical::{compile_physical, PhysicalPlan},
+		physical::{PhysicalPlan, compile_physical},
 	},
 };
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::JoinType;
 
 pub fn explain_physical_plan(
 	rx: &mut impl QueryTransaction,

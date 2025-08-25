@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::{
+	Version,
+	interface::{SchemaId, TableDef, TableId},
+};
+
 use crate::materialized::{MaterializedCatalog, VersionedTableDef};
-use reifydb_core::interface::{SchemaId, TableDef, TableId};
-use reifydb_core::Version;
 
 impl MaterializedCatalog {
 	/// Find a table by ID at a specific version
@@ -66,11 +69,12 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use reifydb_core::interface::{
-		ColumnIndex, TableColumnDef, TableColumnId,
+	use reifydb_core::{
+		Type,
+		interface::{ColumnIndex, TableColumnDef, TableColumnId},
 	};
-	use reifydb_core::Type;
+
+	use super::*;
 
 	fn create_test_table(
 		id: TableId,

@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    define_api_function, define_closure_interceptor, define_interceptor,
-    interface::ViewDef,
+	define_api_function, define_closure_interceptor, define_interceptor,
+	interface::ViewDef,
 };
 
 // VIEW POST CREATE
@@ -13,16 +13,16 @@ define_interceptor!(
     context: ViewDefPostCreateContext<T>,
     trait: ViewDefPostCreateInterceptor,
     fields: {
-        txn: &'a mut T,
-        post: &'a ViewDef,
+	txn: &'a mut T,
+	post: &'a ViewDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureViewDefPostCreateInterceptor,
-    ViewDefPostCreateInterceptor,
-    ViewDefPostCreateContext,
-    with_transaction
+	ClosureViewDefPostCreateInterceptor,
+	ViewDefPostCreateInterceptor,
+	ViewDefPostCreateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -36,16 +36,16 @@ define_interceptor!(
     context: ViewDefPreUpdateContext<T>,
     trait: ViewDefPreUpdateInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a ViewDef,
+	txn: &'a mut T,
+	pre: &'a ViewDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureViewDefPreUpdateInterceptor,
-    ViewDefPreUpdateInterceptor,
-    ViewDefPreUpdateContext,
-    with_transaction
+	ClosureViewDefPreUpdateInterceptor,
+	ViewDefPreUpdateInterceptor,
+	ViewDefPreUpdateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -59,17 +59,17 @@ define_interceptor!(
     context: ViewDefPostUpdateContext<T>,
     trait: ViewDefPostUpdateInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a ViewDef,
-        post: &'a ViewDef,
+	txn: &'a mut T,
+	pre: &'a ViewDef,
+	post: &'a ViewDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureViewDefPostUpdateInterceptor,
-    ViewDefPostUpdateInterceptor,
-    ViewDefPostUpdateContext,
-    with_transaction
+	ClosureViewDefPostUpdateInterceptor,
+	ViewDefPostUpdateInterceptor,
+	ViewDefPostUpdateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -83,16 +83,16 @@ define_interceptor!(
     context: ViewDefPreDeleteContext<T>,
     trait: ViewDefPreDeleteInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a ViewDef,
+	txn: &'a mut T,
+	pre: &'a ViewDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureViewDefPreDeleteInterceptor,
-    ViewDefPreDeleteInterceptor,
-    ViewDefPreDeleteContext,
-    with_transaction
+	ClosureViewDefPreDeleteInterceptor,
+	ViewDefPreDeleteInterceptor,
+	ViewDefPreDeleteContext,
+	with_transaction
 );
 
 define_api_function!(

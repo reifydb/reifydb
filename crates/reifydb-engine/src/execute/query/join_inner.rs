@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::{
+	Value,
+	interface::{QueryTransaction, evaluate::expression::Expression},
+};
+
 use crate::{
 	columnar::{
-		layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
-		SourceQualified,
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
+		layout::ColumnsLayout,
 	},
-	evaluate::{evaluate, EvaluationContext},
+	evaluate::{EvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
-};
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{
-	interface::evaluate::expression::Expression,
-	Value,
 };
 
 pub(crate) struct InnerJoinNode {

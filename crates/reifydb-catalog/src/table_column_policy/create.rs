@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	sequence::SystemSequence, table_column::ColumnId, table_column_policy::layout::column_policy,
-	CatalogStore,
-};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
 	interface::{
-		ColumnPolicy, ColumnPolicyKind, EncodableKey,
-		TableColumnPolicyKey,
+		ColumnPolicy, ColumnPolicyKind, CommandTransaction,
+		EncodableKey, TableColumnPolicyKey,
 	},
 	result::error::diagnostic::catalog::table_column_policy_already_exists,
 	return_error,
+};
+
+use crate::{
+	CatalogStore, sequence::SystemSequence, table_column::ColumnId,
+	table_column_policy::layout::column_policy,
 };
 
 impl CatalogStore {
@@ -80,20 +80,21 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
-		test_utils::{create_test_table_column, ensure_test_table},
-		CatalogStore,
-	};
+	use ColumnPolicyKind::Saturation;
+	use ColumnSaturationPolicy::Error;
 	use reifydb_core::{
+		Type,
 		interface::{
 			ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 		},
-		Type,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use ColumnPolicyKind::Saturation;
-	use ColumnSaturationPolicy::Error;
+
+	use crate::{
+		CatalogStore,
+		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
+		test_utils::{create_test_table_column, ensure_test_table},
+	};
 
 	#[test]
 	fn test_ok() {

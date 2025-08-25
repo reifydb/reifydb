@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interface::interceptor::WithInterceptors;
-use crate::interface::{CommandTransaction, QueryTransaction, WithHooks};
 use crate::{
-	interface::{Identity, Params},
 	Frame,
+	interface::{
+		CommandTransaction, Identity, Params, QueryTransaction,
+		WithHooks, interceptor::WithInterceptors,
+	},
 };
 
 #[derive(Debug)]

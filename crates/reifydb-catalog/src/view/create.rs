@@ -1,25 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	sequence::SystemSequence,
-	view::layout::{view, view_schema},
-	view_column::ColumnIndex,
-	CatalogStore,
-};
-use reifydb_core::interface::CommandTransaction;
+use ViewKind::{Deferred, Transactional};
 use reifydb_core::{
+	OwnedFragment, Type,
 	interface::{
-		EncodableKey, Key, SchemaId, SchemaViewKey, ViewDef, ViewId,
-		ViewKey, ViewKind,
-	}, result::error::diagnostic::catalog::{
+		CommandTransaction, EncodableKey, Key, SchemaId, SchemaViewKey,
+		ViewDef, ViewId, ViewKey, ViewKind,
+	},
+	result::error::diagnostic::catalog::{
 		schema_not_found, view_already_exists,
 	},
 	return_error,
-	OwnedFragment,
-	Type,
 };
-use ViewKind::{Deferred, Transactional};
+
+use crate::{
+	CatalogStore,
+	sequence::SystemSequence,
+	view::layout::{view, view_schema},
+	view_column::ColumnIndex,
+};
 
 #[derive(Debug, Clone)]
 pub struct ViewColumnToCreate {
@@ -179,9 +179,9 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		test_utils::ensure_test_schema,
-		view::{layout::view_schema, ViewToCreate},
 		CatalogStore,
+		test_utils::ensure_test_schema,
+		view::{ViewToCreate, layout::view_schema},
 	};
 
 	#[test]

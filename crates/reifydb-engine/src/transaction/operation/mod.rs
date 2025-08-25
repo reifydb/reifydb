@@ -6,11 +6,15 @@ mod table;
 mod table_def;
 mod view_def;
 
-use crate::StandardCommandTransaction;
-use reifydb_core::interface::{CommandTransaction, SchemaId, Transaction};
-use reifydb_core::{error, internal_error};
+use reifydb_core::{
+	error,
+	interface::{CommandTransaction, SchemaId, Transaction},
+	internal_error,
+};
 pub(crate) use schema_def::*;
 pub(crate) use table::*;
+
+use crate::StandardCommandTransaction;
 
 /// Helper to get schema name from SchemaId
 pub(crate) fn get_schema_name<T: Transaction>(

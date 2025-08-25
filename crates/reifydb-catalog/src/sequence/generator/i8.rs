@@ -2,15 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	diagnostic::sequence::sequence_exhausted, interface::{
-		UnversionedCommandTransaction, UnversionedQueryTransaction,
+	EncodedKey, Type,
+	diagnostic::sequence::sequence_exhausted,
+	interface::{
+		CommandTransaction, UnversionedCommandTransaction,
+		UnversionedQueryTransaction,
 	},
 	return_error,
 	row::EncodedRowLayout,
-	EncodedKey,
-	Type,
 };
 
 static LAYOUT: Lazy<EncodedRowLayout> =
@@ -71,12 +71,12 @@ impl GeneratorI8 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
+		EncodedKey, Type,
 		interface::{
 			Unversioned, UnversionedCommandTransaction,
 			UnversionedQueryTransaction,
-		}, result::error::diagnostic::sequence::sequence_exhausted,
-		EncodedKey,
-		Type,
+		},
+		result::error::diagnostic::sequence::sequence_exhausted,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 

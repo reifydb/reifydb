@@ -3,18 +3,17 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	Result, RowNumber,
 	interceptor::{
 		Interceptors, PreCommitContext, PreCommitInterceptor,
 		RegisterInterceptor, TablePostDeleteContext,
 		TablePostDeleteInterceptor, TablePostInsertContext,
 		TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
-	}, interface::{TableId, Transaction},
+	},
+	interface::{CommandTransaction, TableId, Transaction},
 	ioc::{IocContainer, LazyResolveRc},
-	Result,
-	RowNumber,
 };
 use reifydb_engine::StandardEngine;
 

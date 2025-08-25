@@ -1,20 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::{CatalogStore, schema::SchemaToCreate};
+use reifydb_core::{
+	diagnostic::catalog::{
+		cannot_delete_already_deleted_schema,
+		cannot_update_deleted_schema,
+		schema_already_pending_in_transaction,
+	},
+	interface::{
+		Change, CommandTransaction, Operation, OperationType,
+		OperationType::{Create, Delete, Update},
+		SchemaDef, SchemaId, Transaction, TransactionalChanges,
+		interceptor::SchemaDefInterceptor,
+	},
+	return_error,
+};
+
 use crate::StandardCommandTransaction;
-use reifydb_catalog::schema::SchemaToCreate;
-use reifydb_catalog::CatalogStore;
-use reifydb_core::diagnostic::catalog::{
-	cannot_delete_already_deleted_schema, cannot_update_deleted_schema,
-	schema_already_pending_in_transaction,
-};
-use reifydb_core::interface::interceptor::SchemaDefInterceptor;
-use reifydb_core::interface::OperationType::{Create, Delete, Update};
-use reifydb_core::interface::{
-	Change, CommandTransaction, Operation, OperationType, SchemaDef,
-	SchemaId, Transaction, TransactionalChanges,
-};
-use reifydb_core::return_error;
 
 pub(crate) trait SchemaDefCreateOperation {
 	fn create_schema_def(
@@ -78,13 +81,14 @@ impl<T: Transaction> SchemaDefUpdateOperation
 		// // Get the current state before update
 		// let pre = CatalogStore::get_schema(self, schema_id)?;
 		//
-		// // Apply the update (you'll need to implement update_schema in CatalogStore)
-		// // For now, we'll assume it exists or needs to be created
-		// // let post = CatalogStore::update_schema(self, schema_id, updates)?;
-		// // SchemaDefInterceptor::pre_update(self, &pre)?;
+		// // Apply the update (you'll need to implement update_schema
+		// in CatalogStore) // For now, we'll assume it exists or
+		// needs to be created // let post =
+		// CatalogStore::update_schema(self, schema_id, updates)?; //
+		// SchemaDefInterceptor::pre_update(self, &pre)?;
 		//
-		// // For now, creating a placeholder - you'll need to implement the actual update
-		// let post = SchemaDef {
+		// // For now, creating a placeholder - you'll need to implement
+		// the actual update let post = SchemaDef {
 		// 	id: schema_id,
 		// 	name: updates.name,
 		// };
@@ -113,7 +117,8 @@ fn _track_updated(
 			Ok(())
 		}
 		Some(existing) if existing.op == OperationType::Update => {
-			// Coalesce multiple updates - keep original "pre", update "post"
+			// Coalesce multiple updates - keep original "pre",
+			// update "post"
 			existing.post = Some(post);
 			Ok(())
 		}
@@ -165,7 +170,8 @@ fn _track_deleted(
 ) -> crate::Result<()> {
 	match changes.schema_def.get_mut(&schema.id) {
 		Some(existing) if existing.op == OperationType::Create => {
-			// Created and deleted in same transaction - remove entirely
+			// Created and deleted in same transaction - remove
+			// entirely
 			changes.schema_def.remove(&schema.id);
 			// Remove from operation log
 			changes.log.retain(

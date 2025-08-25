@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    define_api_function, define_closure_interceptor, define_interceptor,
-    interface::TableDef,
+	define_api_function, define_closure_interceptor, define_interceptor,
+	interface::TableDef,
 };
 
 // TABLE POST CREATE
@@ -13,16 +13,16 @@ define_interceptor!(
     context: TableDefPostCreateContext<T>,
     trait: TableDefPostCreateInterceptor,
     fields: {
-        txn: &'a mut T,
-        post: &'a TableDef,
+	txn: &'a mut T,
+	post: &'a TableDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureTableDefPostCreateInterceptor,
-    TableDefPostCreateInterceptor,
-    TableDefPostCreateContext,
-    with_transaction
+	ClosureTableDefPostCreateInterceptor,
+	TableDefPostCreateInterceptor,
+	TableDefPostCreateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -36,16 +36,16 @@ define_interceptor!(
     context: TableDefPreUpdateContext<T>,
     trait: TableDefPreUpdateInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a TableDef,
+	txn: &'a mut T,
+	pre: &'a TableDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureTableDefPreUpdateInterceptor,
-    TableDefPreUpdateInterceptor,
-    TableDefPreUpdateContext,
-    with_transaction
+	ClosureTableDefPreUpdateInterceptor,
+	TableDefPreUpdateInterceptor,
+	TableDefPreUpdateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -59,17 +59,17 @@ define_interceptor!(
     context: TableDefPostUpdateContext<T>,
     trait: TableDefPostUpdateInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a TableDef,
-        post: &'a TableDef,
+	txn: &'a mut T,
+	pre: &'a TableDef,
+	post: &'a TableDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureTableDefPostUpdateInterceptor,
-    TableDefPostUpdateInterceptor,
-    TableDefPostUpdateContext,
-    with_transaction
+	ClosureTableDefPostUpdateInterceptor,
+	TableDefPostUpdateInterceptor,
+	TableDefPostUpdateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -83,16 +83,16 @@ define_interceptor!(
     context: TableDefPreDeleteContext<T>,
     trait: TableDefPreDeleteInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a TableDef,
+	txn: &'a mut T,
+	pre: &'a TableDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureTableDefPreDeleteInterceptor,
-    TableDefPreDeleteInterceptor,
-    TableDefPreDeleteContext,
-    with_transaction
+	ClosureTableDefPreDeleteInterceptor,
+	TableDefPreDeleteInterceptor,
+	TableDefPreDeleteContext,
+	with_transaction
 );
 
 define_api_function!(

@@ -4,7 +4,7 @@
 mod create;
 mod start;
 
-use reifydb_core::interface::{WithHooks, Transaction};
+use reifydb_core::interface::{Transaction, WithHooks};
 use reifydb_engine::StandardEngine;
 
 use crate::boot::{create::CreateCallback, start::StartCallback};

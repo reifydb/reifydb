@@ -1,19 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-    columnar::{layout::ColumnsLayout, Columns},
-    evaluate::{evaluate, EvaluationContext},
-    execute::{
-        query::layout::derive_columns_column_layout, Batch, ExecutionContext,
-        ExecutionPlan,
-    },
-};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-    interface::evaluate::expression::Expression,
-    value::row_number::ROW_NUMBER_COLUMN_NAME,
-    ColumnDescriptor,
+	ColumnDescriptor,
+	interface::{QueryTransaction, evaluate::expression::Expression},
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
+};
+
+use crate::{
+	columnar::{Columns, layout::ColumnsLayout},
+	evaluate::{EvaluationContext, evaluate},
+	execute::{
+		Batch, ExecutionContext, ExecutionPlan,
+		query::layout::derive_columns_column_layout,
+	},
 };
 
 pub(crate) struct MapNode {

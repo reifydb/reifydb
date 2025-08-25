@@ -4,27 +4,25 @@
 use std::{
 	ops::Bound,
 	sync::{
-		atomic::{AtomicBool, Ordering},
 		Arc,
+		atomic::{AtomicBool, Ordering},
 	},
 	thread::{self, JoinHandle},
 	time::Duration,
 };
 
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	EncodedKey, Result, Version,
 	interface::{
 		CdcConsume, CdcConsumer, CdcEvent, CdcQueryTransaction,
-		ConsumerId, Engine as EngineInterface, Key,
+		CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
 		Transaction, VersionedCommandTransaction,
 		key::{CdcConsumerKey, EncodableKey},
 		subsystem::workerpool::Priority,
 	},
 	log_debug, log_error,
 	row::EncodedRow,
-	util::CowVec, EncodedKey,
-	Result,
-	Version,
+	util::CowVec,
 };
 use reifydb_engine::StandardEngine;
 

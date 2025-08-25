@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::collections::HashMap;
+
 use crate::interface::{
 	SchemaDef, SchemaId, TableDef, TableId, TransactionId, ViewDef, ViewId,
 };
-use std::collections::HashMap;
 
 /// Tracks all catalog changes within a transaction
 #[derive(Default, Debug, Clone)]

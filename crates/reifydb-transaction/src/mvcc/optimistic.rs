@@ -5,10 +5,10 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Error, Version,
 	hook::Hooks,
 	interface::{
-        BoxedVersionedIter, TransactionId, UnversionedTransaction,
-        Versioned, VersionedCommandTransaction,
-        VersionedQueryTransaction, VersionedStorage,
-        VersionedTransaction, WithHooks,
+		BoxedVersionedIter, TransactionId, UnversionedTransaction,
+		Versioned, VersionedCommandTransaction,
+		VersionedQueryTransaction, VersionedStorage,
+		VersionedTransaction, WithHooks,
 	},
 	row::EncodedRow,
 };

@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	interface::{
-		CdcQueryTransaction, UnversionedCommandTransaction,
-		UnversionedQueryTransaction, VersionedCommandTransaction,
-		VersionedQueryTransaction,
-	},
+use crate::interface::{
+	CdcQueryTransaction, UnversionedCommandTransaction,
+	UnversionedQueryTransaction, VersionedCommandTransaction,
+	VersionedQueryTransaction,
 };
 
 pub trait CommandTransaction:
@@ -36,7 +34,9 @@ pub trait CommandTransaction:
 	fn get_changes(&self) -> &super::change::TransactionalChanges;
 
 	/// Get mutable reference to catalog changes for this transaction
-	fn get_changes_mut(&mut self) -> &mut super::change::TransactionalChanges;
+	fn get_changes_mut(
+		&mut self,
+	) -> &mut super::change::TransactionalChanges;
 }
 
 pub trait QueryTransaction: VersionedQueryTransaction {

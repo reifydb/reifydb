@@ -9,7 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
 	EncodedKey, Result, Version,

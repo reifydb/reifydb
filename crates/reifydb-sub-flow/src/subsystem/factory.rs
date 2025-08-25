@@ -7,14 +7,14 @@ use reifydb_cdc::PollConsumerConfig;
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		subsystem::{Subsystem, SubsystemFactory}, ConsumerId,
-		Transaction,
+		ConsumerId, Transaction,
+		subsystem::{Subsystem, SubsystemFactory},
 	},
 	ioc::IocContainer,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 
-use super::{intercept::TransactionalFlowInterceptor, FlowSubsystem};
+use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 #[derive()]

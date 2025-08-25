@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	schema::{convert_schema, layout::schema},
-	CatalogStore,
-};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	interface::{SchemaDef, SchemaKey},
+	interface::{QueryTransaction, SchemaDef, SchemaKey},
 	row::EncodedRow,
+};
+
+use crate::{
+	CatalogStore,
+	schema::{convert_schema, layout::schema},
 };
 
 impl CatalogStore {
@@ -35,7 +35,7 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		schema::SchemaId, test_utils::create_schema, CatalogStore,
+		CatalogStore, schema::SchemaId, test_utils::create_schema,
 	};
 
 	#[test]

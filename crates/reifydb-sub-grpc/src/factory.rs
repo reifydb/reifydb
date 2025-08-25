@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		subsystem::{Subsystem, SubsystemFactory},
 		Transaction,
+		subsystem::{Subsystem, SubsystemFactory},
 	},
 	ioc::IocContainer,
 };

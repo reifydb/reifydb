@@ -17,13 +17,12 @@ use query::{
 	take::TakeNode,
 	view_scan::ViewScanNode,
 };
-use reifydb_core::interface::{QueryTransaction, Transaction};
 use reifydb_core::{
+	Frame,
 	interface::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		TableDef,
+		QueryTransaction, TableDef, Transaction,
 	},
-	Frame,
 };
 use reifydb_rql::{
 	ast,
@@ -31,12 +30,12 @@ use reifydb_rql::{
 };
 
 use crate::{
-	columnar::{
-		layout::ColumnsLayout, Column, ColumnData, ColumnQualified, Columns,
-		SourceQualified,
-	},
-	function::{math, Functions},
 	StandardCommandTransaction,
+	columnar::{
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
+		layout::ColumnsLayout,
+	},
+	function::{Functions, math},
 };
 
 mod catalog;

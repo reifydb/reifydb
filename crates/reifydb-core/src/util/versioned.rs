@@ -1,8 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::fmt::Debug;
-use std::sync::{Arc, RwLock};
+use std::{
+	fmt::Debug,
+	sync::{Arc, RwLock},
+};
 
 use crossbeam_skiplist::SkipMap;
 
@@ -60,7 +62,8 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 
 	/// Gets the definition that was active at a specific version.
 	///
-	/// This returns the definition with the highest version that is <= the requested version.
+	/// This returns the definition with the highest version that is <= the
+	/// requested version.
 	pub fn get(&self, version: Version) -> Option<T> {
 		let inner = self.inner.read().unwrap();
 
@@ -73,7 +76,8 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 
 	/// Gets the exact definition at a specific version.
 	///
-	/// Unlike `get`, this only returns a definition if there's an exact version match.
+	/// Unlike `get`, this only returns a definition if there's an exact
+	/// version match.
 	pub fn get_exact(&self, version: Version) -> Option<T> {
 		let inner = self.inner.read().unwrap();
 		inner.versions
@@ -142,8 +146,8 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 
 	/// Performs a bulk insert of multiple versions.
 	///
-	/// This is more efficient than multiple individual inserts as it acquires
-	/// the write lock only once.
+	/// This is more efficient than multiple individual inserts as it
+	/// acquires the write lock only once.
 	pub fn bulk_insert(
 		&self,
 		versions: impl IntoIterator<Item = (Version, Option<T>)>,
@@ -173,9 +177,9 @@ impl<T: Debug + Clone + Send + Sync + 'static> Default
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[derive(Debug, Clone, PartialEq)]
+	#[derive(Debug, Clone, PartialEq)]
 	struct TestDef {
 		name: String,
 	}

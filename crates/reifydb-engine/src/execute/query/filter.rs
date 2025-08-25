@@ -1,17 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	columnar::{layout::ColumnsLayout, ColumnData},
-	evaluate::{evaluate, EvaluationContext},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
-};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	interface::{
-		evaluate::expression::Expression,
-	},
 	BitVec,
+	interface::{QueryTransaction, evaluate::expression::Expression},
+};
+
+use crate::{
+	columnar::{ColumnData, layout::ColumnsLayout},
+	evaluate::{EvaluationContext, evaluate},
+	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
 pub(crate) struct FilterNode {

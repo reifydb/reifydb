@@ -1,7 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{interface::fragment::{IntoFragment, OwnedFragment}, result::error::diagnostic::Diagnostic, Fragment};
+use crate::{
+	Fragment,
+	interface::fragment::{IntoFragment, OwnedFragment},
+	result::error::diagnostic::Diagnostic,
+};
 
 pub fn schema_already_exists(
 	fragment: impl IntoFragment,
@@ -375,18 +379,22 @@ pub fn cannot_delete_already_deleted_schema(
 	let fragment = schema_name.into_fragment();
 	let name = fragment.value();
 	Diagnostic {
-        code: "CA_017".to_string(),
-        statement: None,
-        message: format!("schema `{}` is already marked for deletion in this transaction", name),
-        fragment,
-        label: Some("duplicate schema deletion".to_string()),
-        help: Some("remove the duplicate delete operation".to_string()),
-        column: None,
-        notes: vec![
-            "A schema can only be deleted once per transaction".to_string(),
-        ],
-        cause: None,
-    }
+		code: "CA_017".to_string(),
+		statement: None,
+		message: format!(
+			"schema `{}` is already marked for deletion in this transaction",
+			name
+		),
+		fragment,
+		label: Some("duplicate schema deletion".to_string()),
+		help: Some("remove the duplicate delete operation".to_string()),
+		column: None,
+		notes: vec![
+			"A schema can only be deleted once per transaction"
+				.to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn cannot_delete_already_deleted_table(
@@ -398,18 +406,20 @@ pub fn cannot_delete_already_deleted_table(
 	let schema = schema_fragment.value();
 	let table = table_fragment.value();
 	Diagnostic {
-        code: "CA_018".to_string(),
-        statement: None,
-        message: format!("table `{}.{}` is already marked for deletion in this transaction", schema, table),
-        fragment: table_fragment,
-        label: Some("duplicate table deletion".to_string()),
-        help: Some("remove the duplicate delete operation".to_string()),
-        column: None,
-        notes: vec![
-            "A table can only be deleted once per transaction".to_string(),
-        ],
-        cause: None,
-    }
+		code: "CA_018".to_string(),
+		statement: None,
+		message: format!(
+			"table `{}.{}` is already marked for deletion in this transaction",
+			schema, table
+		),
+		fragment: table_fragment,
+		label: Some("duplicate table deletion".to_string()),
+		help: Some("remove the duplicate delete operation".to_string()),
+		column: None,
+		notes: vec!["A table can only be deleted once per transaction"
+			.to_string()],
+		cause: None,
+	}
 }
 
 pub fn cannot_delete_already_deleted_view(
@@ -421,16 +431,18 @@ pub fn cannot_delete_already_deleted_view(
 	let schema = schema_fragment.value();
 	let view = view_fragment.value();
 	Diagnostic {
-        code: "CA_019".to_string(),
-        statement: None,
-        message: format!("view `{}.{}` is already marked for deletion in this transaction", schema, view),
-        fragment: view_fragment,
-        label: Some("duplicate view deletion".to_string()),
-        help: Some("remove the duplicate delete operation".to_string()),
-        column: None,
-        notes: vec![
-            "A view can only be deleted once per transaction".to_string(),
-        ],
-        cause: None,
-    }
+		code: "CA_019".to_string(),
+		statement: None,
+		message: format!(
+			"view `{}.{}` is already marked for deletion in this transaction",
+			schema, view
+		),
+		fragment: view_fragment,
+		label: Some("duplicate view deletion".to_string()),
+		help: Some("remove the duplicate delete operation".to_string()),
+		column: None,
+		notes: vec!["A view can only be deleted once per transaction"
+			.to_string()],
+		cause: None,
+	}
 }

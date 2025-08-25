@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::{
+	Version,
+	interface::{SchemaId, ViewDef, ViewId},
+};
+
 use crate::materialized::{MaterializedCatalog, VersionedViewDef};
-use reifydb_core::interface::{SchemaId, ViewDef, ViewId};
-use reifydb_core::Version;
 
 impl MaterializedCatalog {
 	/// Find a view by ID at a specific version
@@ -67,11 +70,14 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use reifydb_core::interface::{
-		ColumnIndex, ViewColumnDef, ViewColumnId, ViewKind,
+	use reifydb_core::{
+		Type,
+		interface::{
+			ColumnIndex, ViewColumnDef, ViewColumnId, ViewKind,
+		},
 	};
-	use reifydb_core::Type;
+
+	use super::*;
 
 	fn create_test_view(
 		id: ViewId,

@@ -3,7 +3,7 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange, Version,
-	interface::{WithHooks, Versioned, TransactionId},
+	interface::{TransactionId, Versioned, WithHooks},
 	row::EncodedRow,
 };
 
@@ -11,7 +11,7 @@ pub type BoxedVersionedIter<'a> =
 	Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
 pub trait VersionedTransaction:
-WithHooks + Send + Sync + Clone + 'static
+	WithHooks + Send + Sync + Clone + 'static
 {
 	type Query: VersionedQueryTransaction;
 	type Command: VersionedCommandTransaction;
@@ -41,10 +41,11 @@ WithHooks + Send + Sync + Clone + 'static
 
 pub trait VersionedQueryTransaction {
 	fn version(&self) -> Version;
-	
+
 	fn id(&self) -> TransactionId;
 
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
+	fn get(&mut self, key: &EncodedKey)
+	-> crate::Result<Option<Versioned>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 

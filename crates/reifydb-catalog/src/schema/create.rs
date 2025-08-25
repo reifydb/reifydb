@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{schema::layout::schema, sequence::SystemSequence, CatalogStore};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	interface::{EncodableKey, SchemaDef, SchemaKey},
+	OwnedFragment,
+	interface::{CommandTransaction, EncodableKey, SchemaDef, SchemaKey},
 	result::error::diagnostic::catalog::schema_already_exists,
 	return_error,
-	OwnedFragment,
 };
+
+use crate::{CatalogStore, schema::layout::schema, sequence::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct SchemaToCreate {
@@ -57,7 +57,7 @@ mod tests {
 	use reifydb_core::interface::SchemaId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
-	use crate::{schema::create::SchemaToCreate, CatalogStore};
+	use crate::{CatalogStore, schema::create::SchemaToCreate};
 
 	#[test]
 	fn test_create_schema() {

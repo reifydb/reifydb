@@ -4,8 +4,8 @@
 use reifydb_core::interface::{QueryTransaction, TableColumnKey, TableId};
 
 use crate::{
-	table_column::{layout::table_column, ColumnDef, ColumnId},
 	CatalogStore,
+	table_column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl CatalogStore {
@@ -38,13 +38,13 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{interface::TableId, Type};
+	use reifydb_core::{Type, interface::TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
+		CatalogStore,
 		table_column::{ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
-		CatalogStore,
 	};
 
 	#[test]
@@ -90,8 +90,9 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns = CatalogStore::list_table_columns(&mut txn, TableId(1))
-			.unwrap();
+		let columns =
+			CatalogStore::list_table_columns(&mut txn, TableId(1))
+				.unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -109,8 +110,9 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		let columns = CatalogStore::list_table_columns(&mut txn, TableId(1))
-			.unwrap();
+		let columns =
+			CatalogStore::list_table_columns(&mut txn, TableId(1))
+				.unwrap();
 		assert!(columns.is_empty());
 	}
 
@@ -118,8 +120,9 @@ mod tests {
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
 
-		let columns = CatalogStore::list_table_columns(&mut txn, TableId(1))
-			.unwrap();
+		let columns =
+			CatalogStore::list_table_columns(&mut txn, TableId(1))
+				.unwrap();
 		assert!(columns.is_empty());
 	}
 }

@@ -6,20 +6,18 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_core::{
+	OwnedFragment, Value,
+	interface::{QueryTransaction, evaluate::expression::Expression},
+};
+
 use crate::{
 	columnar::{
-		layout::ColumnsLayout, Column, ColumnData, ColumnQualified,
-		Columns,
+		Column, ColumnData, ColumnQualified, Columns,
+		layout::ColumnsLayout,
 	},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 	function::{AggregateFunction, AggregateFunctionContext, Functions},
-};
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{
-	interface::{
-		evaluate::expression::Expression,
-	}, OwnedFragment,
-	Value,
 };
 
 enum Projection {

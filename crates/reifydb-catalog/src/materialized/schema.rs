@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::{
+	Version,
+	interface::{SchemaDef, SchemaId},
+};
+
 use crate::materialized::{MaterializedCatalog, VersionedSchemaDef};
-use reifydb_core::interface::{SchemaDef, SchemaId};
-use reifydb_core::Version;
 
 impl MaterializedCatalog {
 	/// Find a schema by ID at a specific version
@@ -118,12 +121,8 @@ mod tests {
 		catalog.set_schema(schema_id, 1, Some(schema_v1.clone()));
 
 		// Verify initial state
-		assert!(catalog
-			.find_schema_by_name("old_name", 1)
-			.is_some());
-		assert!(catalog
-			.find_schema_by_name("new_name", 1)
-			.is_none());
+		assert!(catalog.find_schema_by_name("old_name", 1).is_some());
+		assert!(catalog.find_schema_by_name("new_name", 1).is_none());
 
 		// Rename the schema
 		let mut schema_v2 = schema_v1.clone();
@@ -131,9 +130,7 @@ mod tests {
 		catalog.set_schema(schema_id, 2, Some(schema_v2.clone()));
 
 		// Old name should be gone
-		assert!(catalog
-			.find_schema_by_name("old_name", 2)
-			.is_none());
+		assert!(catalog.find_schema_by_name("old_name", 2).is_none());
 
 		// New name can be found
 		assert_eq!(
@@ -158,7 +155,10 @@ mod tests {
 		catalog.set_schema(schema_id, 1, Some(schema.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_schema(schema_id, 1), Some(schema.clone()));
+		assert_eq!(
+			catalog.find_schema(schema_id, 1),
+			Some(schema.clone())
+		);
 		assert!(catalog
 			.find_schema_by_name("deletable_schema", 1)
 			.is_some());
@@ -237,6 +237,9 @@ mod tests {
 			catalog.find_schema(schema_id, 30),
 			Some(schema_v3.clone())
 		);
-		assert_eq!(catalog.find_schema(schema_id, 100), Some(schema_v3));
+		assert_eq!(
+			catalog.find_schema(schema_id, 100),
+			Some(schema_v3)
+		);
 	}
 }

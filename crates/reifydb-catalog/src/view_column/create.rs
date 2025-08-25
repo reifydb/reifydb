@@ -1,23 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-    sequence::SystemSequence,
-    view_column::{
-		layout::{view_column, view_column_link}, ColumnDef,
-		ColumnIndex,
-	},
-    CatalogStore,
-};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	diagnostic::catalog::view_column_already_exists, interface::{
-		EncodableKey, Key, ViewColumnKey,
+	OwnedFragment, Type,
+	diagnostic::catalog::view_column_already_exists,
+	interface::{
+		CommandTransaction, EncodableKey, Key, ViewColumnKey,
 		ViewColumnsKey, ViewId,
 	},
 	return_error,
-	OwnedFragment,
-	Type,
+};
+
+use crate::{
+	CatalogStore,
+	sequence::SystemSequence,
+	view_column::{
+		ColumnDef, ColumnIndex,
+		layout::{view_column, view_column_link},
+	},
 };
 
 pub struct ViewColumnToCreate<'a> {

@@ -6,22 +6,22 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_core::{
+	EncodedKey, EncodedKeyRange,
+	interface::{
+		EncodableKey, EncodableKeyRange, QueryTransaction, ViewDef,
+		ViewRowKey, ViewRowKeyRange,
+	},
+	row::EncodedRowLayout,
+	value::row_number::ROW_NUMBER_COLUMN_NAME,
+};
+
 use crate::{
 	columnar::{
-		layout::{ColumnLayout, ColumnsLayout}, Column, ColumnData, Columns,
-		SourceQualified,
+		Column, ColumnData, Columns, SourceQualified,
+		layout::{ColumnLayout, ColumnsLayout},
 	},
 	execute::{Batch, ExecutionContext},
-};
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{
-	interface::{
-		EncodableKey, EncodableKeyRange,
-		ViewDef, ViewRowKey, ViewRowKeyRange,
-	}, row::EncodedRowLayout,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
-	EncodedKey,
-	EncodedKeyRange,
 };
 
 pub(crate) struct ViewScanNode {

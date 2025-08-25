@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	delta::Delta, interface::{CdcEventKey, UnversionedCommit, VersionedCommit}, result::error::diagnostic::sequence,
+	CowVec, Result, Version,
+	delta::Delta,
+	interface::{CdcEventKey, UnversionedCommit, VersionedCommit},
+	result::error::diagnostic::sequence,
 	return_error,
 	row::EncodedRow,
 	util::now_millis,
-	CowVec,
-	Result,
-	Version,
 };
 
 use crate::{

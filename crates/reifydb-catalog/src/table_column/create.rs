@@ -1,25 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	sequence::SystemSequence,
-	table_column::{
-		layout::{column, table_column}, ColumnDef,
-		ColumnIndex,
-	},
-	CatalogStore,
-};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	OwnedFragment, Type,
 	diagnostic::catalog::{
 		auto_increment_invalid_type, table_column_already_exists,
-	}, interface::{
-		ColumnPolicyKind, EncodableKey, Key, TableColumnKey,
-		TableColumnsKey, TableId,
+	},
+	interface::{
+		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
+		TableColumnKey, TableColumnsKey, TableId,
 	},
 	return_error,
-	OwnedFragment,
-	Type,
+};
+
+use crate::{
+	CatalogStore,
+	sequence::SystemSequence,
+	table_column::{
+		ColumnDef, ColumnIndex,
+		layout::{column, table_column},
+	},
 };
 
 pub struct TableColumnToCreate<'a> {
@@ -147,15 +147,15 @@ impl CatalogStore {
 #[cfg(test)]
 mod test {
 	use reifydb_core::{
-		interface::{TableColumnId, TableId},
 		Type,
+		interface::{TableColumnId, TableId},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
+		CatalogStore,
 		table_column::{ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
-		CatalogStore,
 	};
 
 	#[test]

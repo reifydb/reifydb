@@ -4,8 +4,8 @@
 use reifydb_core::interface::{QueryTransaction, ViewColumnKey, ViewId};
 
 use crate::{
-	view_column::{layout::view_column_link, ColumnDef, ColumnId},
 	CatalogStore,
+	view_column::{ColumnDef, ColumnId, layout::view_column_link},
 };
 
 impl CatalogStore {

@@ -3,24 +3,21 @@
 
 use std::path::Path;
 
-use reifydb_core::interface::CdcTransaction;
-use reifydb_engine::StandardCdcTransaction;
 use reifydb_core::{
-    hook::Hooks,
-    interface::{
-        UnversionedTransaction, VersionedStorage,
-    },
+	hook::Hooks,
+	interface::{CdcTransaction, UnversionedTransaction, VersionedStorage},
 };
+use reifydb_engine::StandardCdcTransaction;
 use reifydb_storage::{
-    lmdb::Lmdb,
-    memory::Memory,
-    sqlite::{Sqlite, SqliteConfig},
+	lmdb::Lmdb,
+	memory::Memory,
+	sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_transaction::{
-    mvcc::transaction::{
-        optimistic::Optimistic, serializable::Serializable,
-    },
-    svl::SingleVersionLock,
+	mvcc::transaction::{
+		optimistic::Optimistic, serializable::Serializable,
+	},
+	svl::SingleVersionLock,
 };
 
 pub mod sync;

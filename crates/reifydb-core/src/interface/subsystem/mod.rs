@@ -3,8 +3,10 @@
 
 use std::any::Any;
 
-use crate::interface::CommandTransaction;
-use crate::{interceptor::StandardInterceptorBuilder, ioc::IocContainer};
+use crate::{
+	interceptor::StandardInterceptorBuilder, interface::CommandTransaction,
+	ioc::IocContainer,
+};
 
 pub mod logging;
 pub mod workerpool;

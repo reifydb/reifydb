@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-    define_api_function, define_closure_interceptor, define_interceptor,
-    interface::SchemaDef,
+	define_api_function, define_closure_interceptor, define_interceptor,
+	interface::SchemaDef,
 };
 
 // SCHEMA POST CREATE
@@ -13,16 +13,16 @@ define_interceptor!(
     context: SchemaDefPostCreateContext<T>,
     trait: SchemaDefPostCreateInterceptor,
     fields: {
-        txn: &'a mut T,
-        post: &'a SchemaDef,
+	txn: &'a mut T,
+	post: &'a SchemaDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureSchemaDefPostCreateInterceptor,
-    SchemaDefPostCreateInterceptor,
-    SchemaDefPostCreateContext,
-    with_transaction
+	ClosureSchemaDefPostCreateInterceptor,
+	SchemaDefPostCreateInterceptor,
+	SchemaDefPostCreateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -36,16 +36,16 @@ define_interceptor!(
     context: SchemaDefPreUpdateContext<T>,
     trait: SchemaDefPreUpdateInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a SchemaDef,
+	txn: &'a mut T,
+	pre: &'a SchemaDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureSchemaDefPreUpdateInterceptor,
-    SchemaDefPreUpdateInterceptor,
-    SchemaDefPreUpdateContext,
-    with_transaction
+	ClosureSchemaDefPreUpdateInterceptor,
+	SchemaDefPreUpdateInterceptor,
+	SchemaDefPreUpdateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -59,17 +59,17 @@ define_interceptor!(
     context: SchemaDefPostUpdateContext<T>,
     trait: SchemaDefPostUpdateInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a SchemaDef,
-        post: &'a SchemaDef,
+	txn: &'a mut T,
+	pre: &'a SchemaDef,
+	post: &'a SchemaDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureSchemaDefPostUpdateInterceptor,
-    SchemaDefPostUpdateInterceptor,
-    SchemaDefPostUpdateContext,
-    with_transaction
+	ClosureSchemaDefPostUpdateInterceptor,
+	SchemaDefPostUpdateInterceptor,
+	SchemaDefPostUpdateContext,
+	with_transaction
 );
 
 define_api_function!(
@@ -83,16 +83,16 @@ define_interceptor!(
     context: SchemaDefPreDeleteContext<T>,
     trait: SchemaDefPreDeleteInterceptor,
     fields: {
-        txn: &'a mut T,
-        pre: &'a SchemaDef,
+	txn: &'a mut T,
+	pre: &'a SchemaDef,
     }
 );
 
 define_closure_interceptor!(
-    ClosureSchemaDefPreDeleteInterceptor,
-    SchemaDefPreDeleteInterceptor,
-    SchemaDefPreDeleteContext,
-    with_transaction
+	ClosureSchemaDefPreDeleteInterceptor,
+	SchemaDefPreDeleteInterceptor,
+	SchemaDefPreDeleteContext,
+	with_transaction
 );
 
 define_api_function!(

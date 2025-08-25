@@ -5,7 +5,7 @@ use reifydb_core::interface::{
 	QueryTransaction, SchemaId, SchemaViewKey, Versioned, ViewDef, ViewId,
 };
 
-use crate::{view::layout::view_schema, CatalogStore};
+use crate::{CatalogStore, view::layout::view_schema};
 
 impl CatalogStore {
 	pub fn find_view_by_name(
@@ -37,12 +37,13 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use crate::test_utils::{
-		create_schema, create_view, ensure_test_schema,
-	};
-	use crate::CatalogStore;
 	use reifydb_core::interface::{SchemaId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+
+	use crate::{
+		CatalogStore,
+		test_utils::{create_schema, create_view, ensure_test_schema},
+	};
 
 	#[test]
 	fn test_ok() {

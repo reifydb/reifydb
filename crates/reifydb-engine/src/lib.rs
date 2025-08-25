@@ -18,7 +18,7 @@ pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;
 pub use reifydb_core::Result;
 pub use transaction::{
-    StandardCdcQueryTransaction, StandardCdcTransaction,
-    StandardCommandTransaction, StandardQueryTransaction,
-    StandardTransaction,
+	StandardCdcQueryTransaction, StandardCdcTransaction,
+	StandardCommandTransaction, StandardQueryTransaction,
+	StandardTransaction,
 };

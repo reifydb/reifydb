@@ -1,23 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	sequence::SystemSequence,
-	table::layout::{table, table_schema},
-	table_column::ColumnIndex,
-	CatalogStore,
-};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	OwnedFragment, Type,
 	interface::{
-		ColumnPolicyKind, EncodableKey, Key, SchemaId, SchemaTableKey,
-		TableDef, TableId, TableKey,
-	}, result::error::diagnostic::catalog::{
+		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
+		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
+	},
+	result::error::diagnostic::catalog::{
 		schema_not_found, table_already_exists,
 	},
 	return_error,
-	OwnedFragment,
-	Type,
+};
+
+use crate::{
+	CatalogStore,
+	sequence::SystemSequence,
+	table::layout::{table, table_schema},
+	table_column::ColumnIndex,
 };
 
 #[derive(Debug, Clone)]
@@ -165,9 +165,9 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		table::{layout::table_schema, TableToCreate},
-		test_utils::ensure_test_schema,
 		CatalogStore,
+		table::{TableToCreate, layout::table_schema},
+		test_utils::ensure_test_schema,
 	};
 
 	#[test]

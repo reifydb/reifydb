@@ -5,8 +5,8 @@ mod lifecycle;
 
 pub use lifecycle::*;
 use reifydb_core::{
-    hook::lifecycle::OnCreateHook,
-    interface::{Transaction, WithHooks as _},
+	hook::lifecycle::OnCreateHook,
+	interface::{Transaction, WithHooks as _},
 };
 use reifydb_engine::StandardEngine;
 

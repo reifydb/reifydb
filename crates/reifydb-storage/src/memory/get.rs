@@ -18,7 +18,7 @@ impl VersionedGet for Memory {
 			Some(item) => item,
 			None => return Ok(None),
 		};
-		
+
 		// Get the value at the specified version
 		let row = match item.value().get(version) {
 			Some(row) => row,

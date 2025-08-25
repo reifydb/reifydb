@@ -6,7 +6,7 @@
 //! These type aliases provide non-generic post types that are ready to use
 //! without having to specify the transaction types.
 
-use reifydb_engine::{StandardTransaction, StandardCdcTransaction};
+use reifydb_engine::{StandardCdcTransaction, StandardTransaction};
 use reifydb_storage::{memory::Memory, sqlite::Sqlite};
 use reifydb_transaction::{
 	mvcc::transaction::{

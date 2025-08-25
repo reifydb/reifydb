@@ -1,17 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::sequence::generator::u64::GeneratorU64;
 use once_cell::sync::Lazy;
 pub use reifydb_core::interface::SystemSequenceId;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	interface::{
-		ColumnPolicyId, EncodableKey, SchemaId, SystemSequenceKey,
-		TableColumnId, TableId, ViewColumnId, ViewId,
-	},
 	EncodedKey,
+	interface::{
+		ColumnPolicyId, CommandTransaction, EncodableKey, SchemaId,
+		SystemSequenceKey, TableColumnId, TableId, ViewColumnId,
+		ViewId,
+	},
 };
+
+use crate::sequence::generator::u64::GeneratorU64;
 
 pub(crate) const SCHEMA_SEQ_ID: SystemSequenceId = SystemSequenceId(1);
 pub(crate) const TABLE_SEQ_ID: SystemSequenceId = SystemSequenceId(2);

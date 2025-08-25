@@ -1,38 +1,41 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interceptor::{
-	InterceptorChain, PostCommitContext, PostCommitInterceptor,
-	PreCommitContext, PreCommitInterceptor, SchemaDefPostCreateContext,
-	SchemaDefPostCreateInterceptor, SchemaDefPostUpdateContext,
-	SchemaDefPostUpdateInterceptor, SchemaDefPreDeleteContext,
-	SchemaDefPreDeleteInterceptor, SchemaDefPreUpdateContext,
-	SchemaDefPreUpdateInterceptor, TableDefPostCreateContext,
-	TableDefPostCreateInterceptor, TableDefPostUpdateContext,
-	TableDefPostUpdateInterceptor, TableDefPreDeleteContext,
-	TableDefPreDeleteInterceptor, TableDefPreUpdateContext,
-	TableDefPreUpdateInterceptor, TablePostDeleteContext,
-	TablePostDeleteInterceptor, TablePostInsertContext,
-	TablePostInsertInterceptor, TablePostUpdateContext,
-	TablePostUpdateInterceptor, TablePreDeleteContext,
-	TablePreDeleteInterceptor, TablePreInsertContext,
-	TablePreInsertInterceptor, TablePreUpdateContext,
-	TablePreUpdateInterceptor, ViewDefPostCreateContext,
-	ViewDefPostCreateInterceptor, ViewDefPostUpdateContext,
-	ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext,
-	ViewDefPreDeleteInterceptor, ViewDefPreUpdateContext,
-	ViewDefPreUpdateInterceptor,
+use crate::{
+	RowNumber, Version,
+	interceptor::{
+		InterceptorChain, PostCommitContext, PostCommitInterceptor,
+		PreCommitContext, PreCommitInterceptor,
+		SchemaDefPostCreateContext, SchemaDefPostCreateInterceptor,
+		SchemaDefPostUpdateContext, SchemaDefPostUpdateInterceptor,
+		SchemaDefPreDeleteContext, SchemaDefPreDeleteInterceptor,
+		SchemaDefPreUpdateContext, SchemaDefPreUpdateInterceptor,
+		TableDefPostCreateContext, TableDefPostCreateInterceptor,
+		TableDefPostUpdateContext, TableDefPostUpdateInterceptor,
+		TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
+		TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
+		TablePostDeleteContext, TablePostDeleteInterceptor,
+		TablePostInsertContext, TablePostInsertInterceptor,
+		TablePostUpdateContext, TablePostUpdateInterceptor,
+		TablePreDeleteContext, TablePreDeleteInterceptor,
+		TablePreInsertContext, TablePreInsertInterceptor,
+		TablePreUpdateContext, TablePreUpdateInterceptor,
+		ViewDefPostCreateContext, ViewDefPostCreateInterceptor,
+		ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor,
+		ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
+		ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor,
+	},
+	interface::{
+		CommandTransaction, SchemaDef, TableDef, TransactionId,
+		TransactionalChanges, ViewDef,
+		interceptor::{
+			SchemaDefInterceptor, TableDefInterceptor,
+			TableInterceptor, TransactionInterceptor,
+			ViewDefInterceptor, WithInterceptors,
+		},
+	},
+	row::EncodedRow,
 };
-use crate::interface::interceptor::{
-	SchemaDefInterceptor, TableDefInterceptor, TableInterceptor,
-	TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
-};
-use crate::interface::{
-	CommandTransaction, SchemaDef, TableDef, TransactionId,
-	TransactionalChanges, ViewDef,
-};
-use crate::row::EncodedRow;
-use crate::{RowNumber, Version};
 
 /// Macro to generate interceptor execution methods
 macro_rules! impl_interceptor_method {

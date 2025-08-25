@@ -7,6 +7,7 @@ use reifydb_core::interface::QueryTransaction;
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::execute::{
+	ExecutionContext, ExecutionPlan,
 	query::{
 		aggregate::AggregateNode,
 		filter::FilterNode,
@@ -19,8 +20,7 @@ use crate::execute::{
 		table_scan::TableScanNode,
 		take::TakeNode,
 		view_scan::ViewScanNode,
-	}, ExecutionContext,
-	ExecutionPlan,
+	},
 };
 
 pub(crate) fn compile(
@@ -34,7 +34,8 @@ pub(crate) fn compile(
 			map,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context.clone()));
+			let input_node =
+				Box::new(compile(*input, rx, context.clone()));
 			ExecutionPlan::Aggregate(AggregateNode::new(
 				input_node, by, map, context,
 			))
@@ -45,7 +46,9 @@ pub(crate) fn compile(
 			input,
 		}) => {
 			let input_node = Box::new(compile(*input, rx, context));
-			ExecutionPlan::Filter(FilterNode::new(input_node, conditions))
+			ExecutionPlan::Filter(FilterNode::new(
+				input_node, conditions,
+			))
 		}
 
 		PhysicalPlan::Take(physical::TakeNode {
@@ -69,10 +72,15 @@ pub(crate) fn compile(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
-				ExecutionPlan::Map(MapNode::new(input_node, map))
+				let input_node =
+					Box::new(compile(*input, rx, context));
+				ExecutionPlan::Map(MapNode::new(
+					input_node, map,
+				))
 			} else {
-				ExecutionPlan::MapWithoutInput(MapWithoutInputNode::new(map))
+				ExecutionPlan::MapWithoutInput(
+					MapWithoutInputNode::new(map),
+				)
 			}
 		}
 
@@ -81,9 +89,13 @@ pub(crate) fn compile(
 			right,
 			on,
 		}) => {
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on))
+			let left_node =
+				Box::new(compile(*left, rx, context.clone()));
+			let right_node =
+				Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::InnerJoin(InnerJoinNode::new(
+				left_node, right_node, on,
+			))
 		}
 
 		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
@@ -91,9 +103,13 @@ pub(crate) fn compile(
 			right,
 			on,
 		}) => {
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on))
+			let left_node =
+				Box::new(compile(*left, rx, context.clone()));
+			let right_node =
+				Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::LeftJoin(LeftJoinNode::new(
+				left_node, right_node, on,
+			))
 		}
 
 		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
@@ -101,8 +117,10 @@ pub(crate) fn compile(
 			right,
 			join_type,
 		}) => {
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			let left_node =
+				Box::new(compile(*left, rx, context.clone()));
+			let right_node =
+				Box::new(compile(*right, rx, context.clone()));
 			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(
 				left_node, right_node, join_type,
 			))
@@ -110,17 +128,23 @@ pub(crate) fn compile(
 
 		PhysicalPlan::InlineData(physical::InlineDataNode {
 			rows,
-		}) => ExecutionPlan::InlineData(InlineDataNode::new(rows, context)),
+		}) => ExecutionPlan::InlineData(InlineDataNode::new(
+			rows, context,
+		)),
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
 			schema: _,
 			table,
-		}) => ExecutionPlan::TableScan(TableScanNode::new(table, context).unwrap()),
+		}) => ExecutionPlan::TableScan(
+			TableScanNode::new(table, context).unwrap(),
+		),
 
 		PhysicalPlan::ViewScan(physical::ViewScanNode {
 			schema: _,
 			view,
-		}) => ExecutionPlan::ViewScan(ViewScanNode::new(view, context).unwrap()),
+		}) => ExecutionPlan::ViewScan(
+			ViewScanNode::new(view, context).unwrap(),
+		),
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::CreateDeferredView(_)

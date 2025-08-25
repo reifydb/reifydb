@@ -1,19 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{table::TableToCreate, CatalogStore};
+use reifydb_catalog::{CatalogStore, table::TableToCreate};
 use reifydb_core::{
+	Value, interface::Transaction,
 	result::error::diagnostic::catalog::table_already_exists, return_error,
-	Value,
 };
 use reifydb_rql::plan::physical::CreateTablePlan;
 
-use reifydb_core::interface::Transaction;
-use crate::{
-	columnar::Columns,
-	execute::Executor,
-	StandardCommandTransaction,
-};
+use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
 
 impl Executor {
 	pub(crate) fn create_table<T: Transaction>(
@@ -73,16 +68,16 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-	use crate::test_utils::create_test_command_transaction;
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
 	use reifydb_core::{
-		interface::{Params, SchemaDef, SchemaId}, OwnedFragment,
-		Value,
+		OwnedFragment, Value,
+		interface::{Params, SchemaDef, SchemaId},
 	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 
-	use crate::execute::{
-		catalog::create::table::CreateTablePlan, Executor,
+	use crate::{
+		execute::{Executor, catalog::create::table::CreateTablePlan},
+		test_utils::create_test_command_transaction,
 	};
 
 	#[test]

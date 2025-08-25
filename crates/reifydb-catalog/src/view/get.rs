@@ -1,15 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{view::layout::view, CatalogStore};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
+	Error,
 	interface::{
-		EncodableKey, SchemaId, ViewDef, ViewId, ViewKey, ViewKind,
+		EncodableKey, QueryTransaction, SchemaId, ViewDef, ViewId,
+		ViewKey, ViewKind,
 	},
 	internal_error,
-	Error,
 };
+
+use crate::{CatalogStore, view::layout::view};
 
 impl CatalogStore {
 	pub fn get_view(
@@ -52,8 +53,8 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		test_utils::{create_schema, create_view, ensure_test_schema},
 		CatalogStore,
+		test_utils::{create_schema, create_view, ensure_test_schema},
 	};
 
 	#[test]

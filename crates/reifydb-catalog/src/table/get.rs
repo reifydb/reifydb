@@ -1,13 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{table::layout::table, CatalogStore};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	interface::{EncodableKey, SchemaId, TableDef, TableId, TableKey},
-	internal_error,
 	Error,
+	interface::{
+		EncodableKey, QueryTransaction, SchemaId, TableDef, TableId,
+		TableKey,
+	},
+	internal_error,
 };
+
+use crate::{CatalogStore, table::layout::table};
 
 impl CatalogStore {
 	pub fn get_table(
@@ -45,8 +48,8 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		test_utils::{create_schema, create_table, ensure_test_schema},
 		CatalogStore,
+		test_utils::{create_schema, create_table, ensure_test_schema},
 	};
 
 	#[test]

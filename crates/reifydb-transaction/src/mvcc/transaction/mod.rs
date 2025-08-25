@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 pub use command::*;
 use oracle::*;
-use reifydb_core::{interface::TransactionId, Version};
+use reifydb_core::{Version, interface::TransactionId};
 use version::VersionProvider;
 
 pub use crate::mvcc::types::*;

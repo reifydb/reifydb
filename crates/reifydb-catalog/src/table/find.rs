@@ -6,7 +6,7 @@ use reifydb_core::interface::{
 	Versioned,
 };
 
-use crate::{table::layout::table_schema, CatalogStore};
+use crate::{CatalogStore, table::layout::table_schema};
 
 impl CatalogStore {
 	pub fn find_table_by_name(
@@ -41,12 +41,13 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use crate::test_utils::{
-		create_schema, create_table, ensure_test_schema,
-	};
-	use crate::CatalogStore;
 	use reifydb_core::interface::{SchemaId, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+
+	use crate::{
+		CatalogStore,
+		test_utils::{create_schema, create_table, ensure_test_schema},
+	};
 
 	#[test]
 	fn test_ok() {

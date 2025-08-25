@@ -3,14 +3,13 @@
 
 use std::marker::PhantomData;
 
-use reifydb_core::interface::TransactionId;
 use reifydb_core::{
+	EncodedKey, EncodedKeyRange,
 	interface::{
 		BoxedVersionedIter, CdcTransaction, QueryTransaction,
-		Transaction, UnversionedTransaction, Versioned,
+		Transaction, TransactionId, UnversionedTransaction, Versioned,
 		VersionedQueryTransaction, VersionedTransaction,
-	}, EncodedKey,
-	EncodedKeyRange,
+	},
 };
 
 /// An active query transaction that holds a versioned query transaction
@@ -39,7 +38,10 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 	}
 
 	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> reifydb_core::Result<R>
+	pub fn with_unversioned_query<F, R>(
+		&self,
+		f: F,
+	) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Unversioned as UnversionedTransaction>::Query<
@@ -52,7 +54,10 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 
 	/// Execute a function with access to the versioned query transaction.
 	/// This operates within the same transaction context.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> reifydb_core::Result<R>
+	pub fn with_versioned_query<F, R>(
+		&mut self,
+		f: F,
+	) -> reifydb_core::Result<R>
 	where
 		F: FnOnce(
 			&mut <T::Versioned as VersionedTransaction>::Query,
@@ -87,7 +92,10 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> reifydb_core::Result<bool> {
+	fn contains_key(
+		&mut self,
+		key: &EncodedKey,
+	) -> reifydb_core::Result<bool> {
 		self.versioned.contains_key(key)
 	}
 

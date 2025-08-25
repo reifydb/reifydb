@@ -6,20 +6,21 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_core::{
+	ColumnDescriptor, Type, Value,
+	interface::{
+		QueryTransaction, TableDef,
+		evaluate::expression::AliasExpression,
+	},
+};
+
 use crate::{
 	columnar::{
-		layout::{ColumnLayout, ColumnsLayout}, Column, ColumnData, ColumnQualified,
-		Columns,
+		Column, ColumnData, ColumnQualified, Columns,
+		layout::{ColumnLayout, ColumnsLayout},
 	},
-	evaluate::{cast::cast_column_data, evaluate, EvaluationContext},
+	evaluate::{EvaluationContext, cast::cast_column_data, evaluate},
 	execute::{Batch, ExecutionContext},
-};
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{
-	interface::{
-		evaluate::expression::AliasExpression, TableDef,
-	}, ColumnDescriptor, Type,
-	Value,
 };
 
 pub(crate) struct InlineDataNode {

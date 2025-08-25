@@ -3,25 +3,24 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{sequence::TableColumnSequence, CatalogStore};
-use reifydb_core::interface::Transaction;
+use reifydb_catalog::{CatalogStore, sequence::TableColumnSequence};
 use reifydb_core::{
-	interface::{ColumnPolicyKind, Params}, result::error::diagnostic::catalog::table_not_found, return_error, row::EncodedRowLayout,
-	ColumnDescriptor,
-	IntoOwnedFragment,
-	Type,
-	Value,
+	ColumnDescriptor, IntoOwnedFragment, Type, Value,
+	interface::{ColumnPolicyKind, Params, Transaction},
+	result::error::diagnostic::catalog::table_not_found,
+	return_error,
+	row::EncodedRowLayout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
 
-use crate::transaction::operation::TableOperations;
 use crate::{
+	StandardCommandTransaction,
 	columnar::Columns,
 	execute::{
-		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
-		Executor,
+		Batch, ExecutionContext, Executor, compile,
+		mutate::coerce::coerce_value_to_column_type,
 	},
-	StandardCommandTransaction,
+	transaction::operation::TableOperations,
 };
 
 impl Executor {

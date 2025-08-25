@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::StandardCommandTransaction;
 use reifydb_catalog::sequence::TableRowSequence;
-use reifydb_core::interface::{Transaction, VersionedCommandTransaction};
 use reifydb_core::{
+	RowNumber,
 	hook::table::{TablePostInsertHook, TablePreInsertHook},
 	interface::{
-		interceptor::TableInterceptor, EncodableKey, TableDef,
-		TableRowKey,
+		EncodableKey, TableDef, TableRowKey, Transaction,
+		VersionedCommandTransaction, interceptor::TableInterceptor,
 	},
 	row::EncodedRow,
-	RowNumber,
 };
+
+use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
 	fn insert_into_table(

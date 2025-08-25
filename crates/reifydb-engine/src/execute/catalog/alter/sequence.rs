@@ -2,21 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use catalog::schema_not_found;
-use reifydb_catalog::{sequence::TableColumnSequence, CatalogStore};
+use reifydb_catalog::{CatalogStore, sequence::TableColumnSequence};
 use reifydb_core::{
-    diagnostic::{
-        catalog, catalog::table_not_found, query::column_not_found,
-        sequence::can_not_alter_not_auto_increment,
-    }, interface::{EvaluationContext, Params},
-    return_error,
-    ColumnDescriptor,
-    Value
-    ,
+	ColumnDescriptor, Value,
+	diagnostic::{
+		catalog, catalog::table_not_found, query::column_not_found,
+		sequence::can_not_alter_not_auto_increment,
+	},
+	interface::{EvaluationContext, Params, Transaction},
+	return_error,
 };
 use reifydb_rql::plan::physical::AlterSequencePlan;
 
-use reifydb_core::interface::Transaction;
-use crate::{columnar::Columns, evaluate::evaluate, execute::Executor, StandardCommandTransaction};
+use crate::{
+	StandardCommandTransaction, columnar::Columns, evaluate::evaluate,
+	execute::Executor,
+};
 
 impl Executor {
 	pub(crate) fn alter_table_sequence<T: Transaction>(
@@ -109,27 +110,28 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_test_command_transaction;
-    use reifydb_catalog::{
+	use reifydb_catalog::{
+		CatalogStore,
 		table::{TableColumnToCreate, TableToCreate},
 		test_utils::ensure_test_schema,
-		CatalogStore,
-    };
-    use reifydb_core::{
-        interface::{
-            expression::{
-                ConstantExpression::Number,
-                Expression::Constant,
-            },
-            Params,
-        }, OwnedFragment, Type,
-        Value,
-    };
-    use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
+	};
+	use reifydb_core::{
+		OwnedFragment, Type, Value,
+		interface::{
+			Params,
+			expression::{
+				ConstantExpression::Number,
+				Expression::Constant,
+			},
+		},
+	};
+	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
 
-    use crate::execute::Executor;
+	use crate::{
+		execute::Executor, test_utils::create_test_command_transaction,
+	};
 
-    #[test]
+	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_schema(&mut txn);

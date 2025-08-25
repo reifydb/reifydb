@@ -3,16 +3,16 @@
 
 use std::cmp::Ordering::Equal;
 
-use crate::{
-	columnar::{layout::ColumnsLayout, Columns},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
-};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	error,
-	result::error::diagnostic::query, SortDirection::{Asc, Desc}
-	,
-	SortKey,
+	SortDirection::{Asc, Desc},
+	SortKey, error,
+	interface::QueryTransaction,
+	result::error::diagnostic::query,
+};
+
+use crate::{
+	columnar::{Columns, layout::ColumnsLayout},
+	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
 pub(crate) struct SortNode {
@@ -21,10 +21,7 @@ pub(crate) struct SortNode {
 }
 
 impl SortNode {
-	pub(crate) fn new(
-		input: Box<ExecutionPlan>,
-		by: Vec<SortKey>,
-	) -> Self {
+	pub(crate) fn new(input: Box<ExecutionPlan>, by: Vec<SortKey>) -> Self {
 		Self {
 			input,
 			by,

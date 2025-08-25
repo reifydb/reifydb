@@ -1,10 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::StandardCommandTransaction;
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::interceptor::{PostCommitContext, PostCommitInterceptor};
-use reifydb_core::interface::Transaction;
+use reifydb_core::{
+	interceptor::{PostCommitContext, PostCommitInterceptor},
+	interface::Transaction,
+};
+
+use crate::StandardCommandTransaction;
 
 pub(crate) struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,

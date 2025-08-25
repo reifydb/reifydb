@@ -1,22 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::transaction::operation::get_schema_name;
-use crate::StandardCommandTransaction;
-use reifydb_catalog::view::ViewToCreate;
-use reifydb_catalog::CatalogStore;
-use reifydb_core::diagnostic::catalog::{
-	cannot_delete_already_deleted_view, cannot_update_deleted_view,
-	view_already_pending_in_transaction,
-};
-use reifydb_core::interface::interceptor::ViewDefInterceptor;
-use reifydb_core::interface::OperationType::{Create, Delete};
-use reifydb_core::interface::{
-	Change, CommandTransaction, Operation, OperationType, Transaction,
-	ViewDef, ViewId,
-};
-use reifydb_core::return_error;
 use OperationType::Update;
+use reifydb_catalog::{CatalogStore, view::ViewToCreate};
+use reifydb_core::{
+	diagnostic::catalog::{
+		cannot_delete_already_deleted_view, cannot_update_deleted_view,
+		view_already_pending_in_transaction,
+	},
+	interface::{
+		Change, CommandTransaction, Operation, OperationType,
+		OperationType::{Create, Delete},
+		Transaction, ViewDef, ViewId,
+		interceptor::ViewDefInterceptor,
+	},
+	return_error,
+};
+
+use crate::{
+	StandardCommandTransaction, transaction::operation::get_schema_name,
+};
 
 pub(crate) trait ViewDefCreateOperation {
 	fn create_view_def(
@@ -105,7 +108,8 @@ fn _track_updated<T: Transaction>(
 			Ok(())
 		}
 		Some(existing) if existing.op == Update => {
-			// Coalesce multiple updates - keep original "pre", update "post"
+			// Coalesce multiple updates - keep original "pre",
+			// update "post"
 			existing.post = Some(post);
 			Ok(())
 		}
@@ -152,7 +156,8 @@ fn _track_deleted<T: Transaction>(
 	let changes = txn.get_changes_mut();
 	match changes.view_def.get_mut(&view.id) {
 		Some(existing) if existing.op == Create => {
-			// Created and deleted in same transaction - remove entirely
+			// Created and deleted in same transaction - remove
+			// entirely
 			changes.view_def.remove(&view.id);
 			// Remove from operation log
 			changes.log.retain(

@@ -14,15 +14,15 @@ pub mod wait_group;
 pub use bitvec::BitVec;
 #[cfg(debug_assertions)]
 pub use clock::{
-    mock_time_advance, mock_time_advance_micros, mock_time_advance_millis,
-    mock_time_advance_nanos, mock_time_clear,
-    mock_time_get, mock_time_get_micros, mock_time_get_millis,
-    mock_time_get_nanos, mock_time_is_active, mock_time_scoped,
-    mock_time_scoped_micros, mock_time_scoped_millis, mock_time_scoped_nanos,
-    mock_time_set, mock_time_set_micros, mock_time_set_millis,
-    mock_time_set_nanos, mock_time_with, mock_time_with_control,
-    mock_time_with_micros, mock_time_with_millis, mock_time_with_nanos,
-    MockTimeControl, MockTimeGuard,
+	MockTimeControl, MockTimeGuard, mock_time_advance,
+	mock_time_advance_micros, mock_time_advance_millis,
+	mock_time_advance_nanos, mock_time_clear, mock_time_get,
+	mock_time_get_micros, mock_time_get_millis, mock_time_get_nanos,
+	mock_time_is_active, mock_time_scoped, mock_time_scoped_micros,
+	mock_time_scoped_millis, mock_time_scoped_nanos, mock_time_set,
+	mock_time_set_micros, mock_time_set_millis, mock_time_set_nanos,
+	mock_time_with, mock_time_with_control, mock_time_with_micros,
+	mock_time_with_millis, mock_time_with_nanos,
 };
 pub use clock::{now, now_micros, now_millis, now_nanos};
 pub use cowvec::CowVec;

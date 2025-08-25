@@ -3,15 +3,16 @@
 
 use std::marker::PhantomData;
 
-use super::LoggingBuilder;
 use reifydb_core::{
 	interface::{
-		subsystem::{Subsystem, SubsystemFactory},
 		Transaction,
+		subsystem::{Subsystem, SubsystemFactory},
 	},
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardCommandTransaction;
+
+use super::LoggingBuilder;
 
 /// Configuration function for the logging subsystem
 pub type LoggingConfigurator =

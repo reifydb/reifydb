@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, CommandTransaction
-	, ViewId, ViewRowSequenceKey,
+	CommandTransaction, EncodableKey, ViewId, ViewRowSequenceKey,
 };
 
 use crate::{row::RowNumber, sequence::generator::u64::GeneratorU64};

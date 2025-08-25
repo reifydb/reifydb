@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	table_column::{layout::column, ColumnDef, ColumnId, ColumnIndex},
-	CatalogStore,
-};
-use reifydb_core::interface::QueryTransaction;
 use reifydb_core::{
-	interface::{EncodableKey, TableColumnsKey}, internal_error,
-	Error,
-	Type,
+	Error, Type,
+	interface::{EncodableKey, QueryTransaction, TableColumnsKey},
+	internal_error,
+};
+
+use crate::{
+	CatalogStore,
+	table_column::{ColumnDef, ColumnId, ColumnIndex, layout::column},
 };
 
 impl CatalogStore {
@@ -59,8 +59,8 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		table_column::ColumnId, test_utils::create_test_table_column,
-		CatalogStore,
+		CatalogStore, table_column::ColumnId,
+		test_utils::create_test_table_column,
 	};
 
 	#[test]

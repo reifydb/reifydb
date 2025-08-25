@@ -3,10 +3,7 @@
 
 use std::ops::Bound;
 
-use crate::{
-    interface::CdcEvent, Result,
-    Version,
-};
+use crate::{Result, Version, interface::CdcEvent};
 
 pub trait CdcTransaction: Send + Sync + Clone + 'static {
 	type Query<'a>: CdcQueryTransaction;

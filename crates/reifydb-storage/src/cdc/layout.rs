@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::{row::EncodedRowLayout, Type};
+use reifydb_core::{Type, row::EncodedRowLayout};
 
 pub(crate) static CDC_EVENT_LAYOUT: LazyLock<EncodedRowLayout> =
 	LazyLock::new(|| {
@@ -11,10 +11,11 @@ pub(crate) static CDC_EVENT_LAYOUT: LazyLock<EncodedRowLayout> =
 			Type::Uint8, // version
 			Type::Uint2, // sequence
 			Type::Uint8, // timestamp
-			Type::Uint1, /* change_type (1=Insert, 2=Update,* 3=Delete) */
-			Type::Blob,  // key
-			Type::Blob,  // before (optional, undefined for Insert)
-			Type::Blob,  // after (optional, undefined for Delete)
+			Type::Uint1, /* change_type (1=Insert, 2=Update,*
+			              * 3=Delete) */
+			Type::Blob, // key
+			Type::Blob, // before (optional, undefined for Insert)
+			Type::Blob, // after (optional, undefined for Delete)
 		])
 	});
 

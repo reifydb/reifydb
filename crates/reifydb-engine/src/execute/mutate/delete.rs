@@ -5,26 +5,25 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	EncodedKeyRange, IntoOwnedFragment, Value,
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, TableRowKey,
-		TableRowKeyRange,
-	}, result::error::diagnostic::{
+		TableRowKeyRange, Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction,
+	},
+	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
-	}, return_error,
+	},
+	return_error,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
-	EncodedKeyRange,
-	IntoOwnedFragment
-	,
-	Value,
 };
 use reifydb_rql::plan::physical::DeletePlan;
 
-use reifydb_core::interface::{Transaction, VersionedCommandTransaction, VersionedQueryTransaction};
 use crate::{
-	columnar::{ColumnData, Columns},
-	execute::{compile, Batch, ExecutionContext, Executor},
 	StandardCommandTransaction,
+	columnar::{ColumnData, Columns},
+	execute::{Batch, ExecutionContext, Executor, compile},
 };
 
 impl Executor {
@@ -34,7 +33,6 @@ impl Executor {
 		plan: DeletePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-
 		let Some(schema_ref) = plan.schema.as_ref() else {
 			return_error!(schema_not_found(
 				None::<reifydb_core::OwnedFragment>,
@@ -44,7 +42,8 @@ impl Executor {
 		let schema_name = schema_ref.fragment();
 
 		let schema =
-			CatalogStore::find_schema_by_name(txn, schema_name)?.unwrap();
+			CatalogStore::find_schema_by_name(txn, schema_name)?
+				.unwrap();
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,

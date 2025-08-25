@@ -4,8 +4,8 @@
 use std::marker::PhantomData;
 
 use crate::{
-	define_api_function, define_closure_interceptor, define_interceptor,
-	interface::TransactionId, Version,
+	Version, define_api_function, define_closure_interceptor,
+	define_interceptor, interface::TransactionId,
 };
 
 // PRE COMMIT
@@ -54,8 +54,7 @@ define_api_function!(
 	PostCommitContext
 );
 
-use crate::impl_register_interceptor;
-use crate::interface::TransactionalChanges;
+use crate::{impl_register_interceptor, interface::TransactionalChanges};
 
 impl_register_interceptor!(
 	ClosurePreCommitInterceptor<T, F>,

@@ -1,14 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use PhysicalPlan::CreateTable;
+use reifydb_catalog::CatalogStore;
+use reifydb_core::{
+	diagnostic::catalog::schema_not_found, interface::QueryTransaction,
+	return_error,
+};
+
 use crate::plan::{
 	logical::CreateTableNode,
 	physical::{Compiler, CreateTablePlan, PhysicalPlan},
 };
-use reifydb_catalog::CatalogStore;
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{diagnostic::catalog::schema_not_found, return_error};
-use PhysicalPlan::CreateTable;
 
 impl Compiler {
 	pub(crate) fn compile_create_table(

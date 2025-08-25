@@ -3,15 +3,15 @@
 
 use std::collections::HashSet;
 
+use reifydb_core::{JoinType, Value, interface::QueryTransaction};
+
 use crate::{
-    columnar::{
-        layout::ColumnsLayout, Column, ColumnQualified, Columns,
-        SourceQualified,
-    },
-    execute::{Batch, ExecutionContext, ExecutionPlan},
+	columnar::{
+		Column, ColumnQualified, Columns, SourceQualified,
+		layout::ColumnsLayout,
+	},
+	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{JoinType, Value};
 
 pub(crate) struct NaturalJoinNode {
 	left: Box<ExecutionPlan>,

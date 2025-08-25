@@ -7,8 +7,8 @@ use reifydb_core::interface::{
 };
 
 use crate::{
-	table_column::ColumnId, table_column_policy::layout::column_policy,
-	CatalogStore,
+	CatalogStore, table_column::ColumnId,
+	table_column_policy::layout::column_policy,
 };
 
 impl CatalogStore {
@@ -55,20 +55,20 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
+	use ColumnPolicyKind::Saturation;
+	use ColumnSaturationPolicy::Undefined;
 	use reifydb_core::{
+		Type,
 		interface::{
 			ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 		},
-		Type,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use ColumnPolicyKind::Saturation;
-	use ColumnSaturationPolicy::Undefined;
 
 	use crate::{
+		CatalogStore,
 		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
 		test_utils::ensure_test_table,
-		CatalogStore,
 	};
 
 	#[test]

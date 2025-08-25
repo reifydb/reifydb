@@ -19,13 +19,13 @@ mod scan_rev;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
+	EncodedKey,
 	interface::{
 		CdcEvent, CdcEventKey, UnversionedInsert, UnversionedRemove,
 		UnversionedStorage, VersionedStorage,
 	},
 	row::EncodedRow,
 	util::VersionedContainer,
-	EncodedKey,
 };
 
 pub type VersionedRow = VersionedContainer<EncodedRow>;

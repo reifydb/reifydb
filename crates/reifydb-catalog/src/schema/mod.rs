@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub use create::SchemaToCreate;
-use reifydb_core::interface::{SchemaId, SchemaDef, Versioned};
+use reifydb_core::interface::{SchemaDef, SchemaId, Versioned};
 
 use crate::schema::layout::schema;
 

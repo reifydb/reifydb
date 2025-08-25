@@ -5,27 +5,29 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{ColumnPolicyKind, EncodableKey, Params, TableRowKey}, result::error::diagnostic::{
+	ColumnDescriptor, IntoOwnedFragment, Type, Value,
+	interface::{
+		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
+		Transaction, VersionedCommandTransaction,
+	},
+	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		engine,
-	}, return_error, row::EncodedRowLayout,
+	},
+	return_error,
+	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
-	ColumnDescriptor,
-	IntoOwnedFragment,
-	Type,
-	Value,
 };
 use reifydb_rql::plan::physical::UpdatePlan;
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{ColumnData, Columns},
 	execute::{
-		compile, mutate::coerce::coerce_value_to_column_type, Batch, ExecutionContext,
-		Executor,
+		Batch, ExecutionContext, Executor, compile,
+		mutate::coerce::coerce_value_to_column_type,
 	},
-	StandardCommandTransaction,
 };
-use reifydb_core::interface::{Transaction, VersionedCommandTransaction};
 
 impl Executor {
 	pub(crate) fn update<T: Transaction>(
@@ -34,7 +36,6 @@ impl Executor {
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-
 		let Some(schema_ref) = plan.schema.as_ref() else {
 			return_error!(schema_not_found(
 				None::<reifydb_core::OwnedFragment>,
@@ -44,7 +45,8 @@ impl Executor {
 		let schema_name = schema_ref.fragment();
 
 		let schema =
-			CatalogStore::find_schema_by_name(txn, schema_name)?.unwrap();
+			CatalogStore::find_schema_by_name(txn, schema_name)?
+				.unwrap();
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,

@@ -4,13 +4,13 @@
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{subsystem::SubsystemFactory, Transaction},
+	interface::{Transaction, subsystem::SubsystemFactory},
 };
 use reifydb_engine::StandardCommandTransaction;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
-use super::{traits::WithSubsystem, DatabaseBuilder};
+use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
 #[cfg(feature = "async")]

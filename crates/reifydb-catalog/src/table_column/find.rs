@@ -4,8 +4,8 @@
 use reifydb_core::interface::{QueryTransaction, TableColumnKey, TableId};
 
 use crate::{
-	table_column::{layout::table_column, ColumnDef, ColumnId},
 	CatalogStore,
+	table_column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl CatalogStore {
@@ -43,10 +43,10 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use crate::test_utils::create_test_table_column;
-	use crate::CatalogStore;
-	use reifydb_core::{interface::TableId, Type};
+	use reifydb_core::{Type, interface::TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+
+	use crate::{CatalogStore, test_utils::create_test_table_column};
 
 	#[test]
 	fn test_ok() {

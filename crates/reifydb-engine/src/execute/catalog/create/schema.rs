@@ -1,17 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::transaction::operation::SchemaDefCreateOperation;
-use reifydb_catalog::schema::SchemaToCreate;
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::{CatalogStore, schema::SchemaToCreate};
 use reifydb_core::{
-	result::error::diagnostic::catalog::schema_already_exists, return_error,
-	Value,
+	Value, interface::Transaction,
+	result::error::diagnostic::catalog::schema_already_exists,
+	return_error,
 };
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
-use crate::{columnar::Columns, execute::Executor, StandardCommandTransaction};
-use reifydb_core::interface::Transaction;
+use crate::{
+	StandardCommandTransaction, columnar::Columns, execute::Executor,
+	transaction::operation::SchemaDefCreateOperation,
+};
 
 impl Executor {
 	pub(crate) fn create_schema<T: Transaction>(
@@ -54,11 +55,12 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-	use crate::test_utils::create_test_command_transaction;
-	use reifydb_core::{interface::Params, OwnedFragment, Value};
+	use reifydb_core::{OwnedFragment, Value, interface::Params};
 	use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
 
-	use crate::execute::Executor;
+	use crate::{
+		execute::Executor, test_utils::create_test_command_transaction,
+	};
 
 	#[test]
 	fn test_create_schema() {

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	hook::Hooks,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{subsystem::SubsystemFactory, Transaction},
+	interface::{Transaction, subsystem::SubsystemFactory},
 };
 use reifydb_engine::StandardCommandTransaction;
 #[cfg(feature = "sub_grpc")]
@@ -14,7 +14,7 @@ use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_ws")]
 use reifydb_sub_ws::{WsConfig, WsSubsystemFactory};
 
-use super::{traits::WithSubsystem, DatabaseBuilder};
+use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
 #[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]

@@ -1,24 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::interceptor::{
-	Chain, PostCommitInterceptor, PreCommitInterceptor,
-	SchemaDefPostCreateInterceptor, SchemaDefPostUpdateInterceptor,
-	SchemaDefPreDeleteInterceptor, SchemaDefPreUpdateInterceptor,
-	TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
-	TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor,
-	TablePostDeleteInterceptor, TablePostInsertInterceptor,
-	TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-	TablePreInsertInterceptor, TablePreUpdateInterceptor,
-	ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor,
-	ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+use crate::{
+	RowNumber, Version,
+	interceptor::{
+		Chain, PostCommitInterceptor, PreCommitInterceptor,
+		SchemaDefPostCreateInterceptor, SchemaDefPostUpdateInterceptor,
+		SchemaDefPreDeleteInterceptor, SchemaDefPreUpdateInterceptor,
+		TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
+		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor,
+		TablePostDeleteInterceptor, TablePostInsertInterceptor,
+		TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+		TablePreInsertInterceptor, TablePreUpdateInterceptor,
+		ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor,
+		ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+	},
+	interface::{
+		CommandTransaction, SchemaDef, TableDef, TransactionId,
+		ViewDef, transaction::change::TransactionalChanges,
+	},
+	row::EncodedRow,
 };
-use crate::interface::transaction::change::TransactionalChanges;
-use crate::interface::{
-	CommandTransaction, SchemaDef, TableDef, TransactionId, ViewDef,
-};
-use crate::row::EncodedRow;
-use crate::{RowNumber, Version};
 
 pub trait TableInterceptor<CT: CommandTransaction> {
 	/// Intercept table pre-insert operations

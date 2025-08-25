@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{subsystem::SubsystemFactory, Transaction};
+use reifydb_core::interface::{Transaction, subsystem::SubsystemFactory};
 use reifydb_engine::StandardCommandTransaction;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingBuilder;

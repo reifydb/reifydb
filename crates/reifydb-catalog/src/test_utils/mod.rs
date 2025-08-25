@@ -1,19 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::{
+	Type,
+	interface::{
+		ColumnPolicyKind, CommandTransaction, SchemaDef, TableDef,
+		TableId, ViewDef,
+	},
+};
+
 use crate::{
+	CatalogStore,
 	schema::SchemaToCreate,
 	table,
 	table::TableToCreate,
 	table_column::{ColumnIndex, TableColumnToCreate},
 	view,
 	view::ViewToCreate,
-	CatalogStore,
-};
-use reifydb_core::interface::CommandTransaction;
-use reifydb_core::{
-	interface::{ColumnPolicyKind, SchemaDef, TableDef, TableId, ViewDef},
-	Type,
 };
 
 pub fn create_schema(
