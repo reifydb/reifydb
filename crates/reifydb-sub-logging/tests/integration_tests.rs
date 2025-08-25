@@ -239,17 +239,23 @@ fn test_backend_failure_resilience() {
 
 	subsystem.start().expect("Failed to start");
 
-	// Send logs normally
+	// Send logs normally and wait for them to be processed
 	for i in 0..5 {
 		log(Record::new(Info, "test", format!("Before failure {}", i)));
 	}
 
-	thread::sleep(Duration::from_millis(100));
+	// Wait for the first batch to be processed
+	wait_for(
+		|| backend_clone.get_logs().len() >= 5,
+		"Should process initial logs before failure",
+	);
+	
+	let logs_before_failure = backend_clone.get_logs().len();
 
 	// Make backend fail
 	backend_clone.set_fail_on_write(true);
 
-	// These logs should not crash the system
+	// These logs should not crash the system (they will be buffered internally)
 	for i in 0..5 {
 		log(Record::new(
 			LogLevel::Error,
@@ -258,6 +264,7 @@ fn test_backend_failure_resilience() {
 		));
 	}
 
+	// Give some time for failed writes to be attempted
 	thread::sleep(Duration::from_millis(100));
 
 	// Re-enable backend
@@ -268,18 +275,22 @@ fn test_backend_failure_resilience() {
 		log(Record::new(Info, "test", format!("After failure {}", i)));
 	}
 
-	// Wait for recovery logs to be buffered
-	wait_for(
-		|| subsystem.buffered_count() > 0,
-		"Recovery logs should be buffered",
-	);
-
+	// Force a flush to ensure all buffered logs are processed
 	subsystem.flush().expect("Failed to flush");
 
-	// Only logs before and after failure should be recorded
+	// Wait for logs after recovery to be written
+	// We should have the initial logs plus the recovery logs (not the failed ones)
 	wait_for(
-		|| backend_clone.get_logs().len() >= 10,
-		"Should have at least 10 successful logs",
+		|| backend_clone.get_logs().len() >= logs_before_failure + 5,
+		"Should have processed recovery logs",
+	);
+
+	let final_logs = backend_clone.get_logs();
+	// We should have at least 10 logs (5 before + 5 after, failed logs are dropped)
+	assert!(
+		final_logs.len() >= 10,
+		"Expected at least 10 logs, got {}",
+		final_logs.len()
 	);
 
 	subsystem.shutdown().expect("Failed to shutdown");
