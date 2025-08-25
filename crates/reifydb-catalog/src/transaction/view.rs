@@ -91,8 +91,8 @@ where
 
 	fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>> {
 		// 1. Check transactional changes first
-		if let Some(change) = self.get_changes().view_def.get(&id) {
-			return Ok(change.post.clone());
+		if let Some(view) = self.get_changes().get_view_def(id) {
+			return Ok(Some(view.clone()));
 		}
 
 		// 2. Check MaterializedCatalog

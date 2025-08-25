@@ -96,8 +96,8 @@ where
 		id: TableId,
 	) -> crate::Result<Option<TableDef>> {
 		// 1. Check transactional changes first
-		if let Some(change) = self.get_changes().table_def.get(&id) {
-			return Ok(change.post.clone());
+		if let Some(table) = self.get_changes().get_table_def(id) {
+			return Ok(Some(table.clone()));
 		}
 
 		// 2. Check MaterializedCatalog

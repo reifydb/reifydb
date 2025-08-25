@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
 use crate::interface::{
-	SchemaDef, SchemaId, TableDef, TableId, TransactionId, ViewDef, ViewId,
+	OperationType::Delete, SchemaDef, SchemaId, TableDef, TableId,
+	TransactionId, ViewDef, ViewId,
 };
 
 /// Tracks all catalog changes within a transaction
@@ -12,52 +11,58 @@ use crate::interface::{
 pub struct TransactionalChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
-	/// Schema definition changes indexed by SchemaId
-	pub schema_def: HashMap<SchemaId, Change<SchemaDef>>,
-	/// Table definition changes indexed by TableId
-	pub table_def: HashMap<TableId, Change<TableDef>>,
-	/// View definition changes indexed by ViewId
-	pub view_def: HashMap<ViewId, Change<ViewDef>>,
+	/// All schema definition changes in order (no coalescing)
+	pub schema_def: Vec<Change<SchemaDef>>,
+	/// All table definition changes in order (no coalescing)
+	pub table_def: Vec<Change<TableDef>>,
+	/// All view definition changes in order (no coalescing)
+	pub view_def: Vec<Change<ViewDef>>,
 	/// Order of operations for replay/rollback
 	pub log: Vec<Operation>,
 }
 
 impl TransactionalChanges {
-	pub fn change_schema_def(
-		&mut self,
-		schema: SchemaId,
-		change: Change<SchemaDef>,
-	) {
+	pub fn add_schema_def_change(&mut self, change: Change<SchemaDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.schema_def.insert(schema, change);
+		self.schema_def.push(change);
 		self.log.push(Operation::Schema {
-			id: schema,
+			id,
 			op,
 		});
 	}
 
-	pub fn change_table_def(
-		&mut self,
-		table: TableId,
-		change: Change<TableDef>,
-	) {
+	pub fn add_table_def_change(&mut self, change: Change<TableDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|t| t.id)
+			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.table_def.insert(table, change);
+		self.table_def.push(change);
 		self.log.push(Operation::Table {
-			id: table,
+			id,
 			op,
 		});
 	}
 
-	pub fn change_view_def(
-		&mut self,
-		view: ViewId,
-		change: Change<ViewDef>,
-	) {
+	pub fn add_view_def_change(&mut self, change: Change<ViewDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|v| v.id)
+			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.view_def.insert(view, change);
+		self.view_def.push(change);
 		self.log.push(Operation::View {
-			id: view,
+			id,
 			op,
 		});
 	}
@@ -104,50 +109,80 @@ impl TransactionalChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
-			schema_def: HashMap::new(),
-			table_def: HashMap::new(),
-			view_def: HashMap::new(),
+			schema_def: Vec::new(),
+			table_def: Vec::new(),
+			view_def: Vec::new(),
 			log: Vec::new(),
 		}
 	}
 
 	/// Check if a schema exists in this transaction's view
-	pub fn schema_exists(&self, id: SchemaId) -> bool {
-		match self.schema_def.get(&id) {
-			Some(change) => change.post.is_some(),
-			None => false,
-		}
+	pub fn schema_def_exists(&self, id: SchemaId) -> bool {
+		self.get_schema_def(id).is_some()
 	}
 
 	/// Get current state of a schema within this transaction
-	pub fn get_schema(&self, id: SchemaId) -> Option<&SchemaDef> {
-		self.schema_def.get(&id).and_then(|change| change.post.as_ref())
+	pub fn get_schema_def(&self, id: SchemaId) -> Option<&SchemaDef> {
+		// Find the last change for this schema ID
+		for change in self.schema_def.iter().rev() {
+			if let Some(schema) = &change.post {
+				if schema.id == id {
+					return Some(schema);
+				}
+			} else if let Some(schema) = &change.pre {
+				if schema.id == id && change.op == Delete {
+					// Schema was deleted
+					return None;
+				}
+			}
+		}
+		None
 	}
 
 	/// Check if a table exists in this transaction's view
-	pub fn table_exists(&self, id: TableId) -> bool {
-		match self.table_def.get(&id) {
-			Some(change) => change.post.is_some(),
-			None => false,
-		}
+	pub fn table_def_exists(&self, id: TableId) -> bool {
+		self.get_table_def(id).is_some()
 	}
 
 	/// Get current state of a table within this transaction
-	pub fn get_table(&self, id: TableId) -> Option<&TableDef> {
-		self.table_def.get(&id).and_then(|change| change.post.as_ref())
+	pub fn get_table_def(&self, id: TableId) -> Option<&TableDef> {
+		// Find the last change for this table ID
+		for change in self.table_def.iter().rev() {
+			if let Some(table) = &change.post {
+				if table.id == id {
+					return Some(table);
+				}
+			} else if let Some(table) = &change.pre {
+				if table.id == id && change.op == Delete {
+					// Table was deleted
+					return None;
+				}
+			}
+		}
+		None
 	}
 
 	/// Check if a view exists in this transaction's view
-	pub fn view_exists(&self, id: ViewId) -> bool {
-		match self.view_def.get(&id) {
-			Some(change) => change.post.is_some(),
-			None => false,
-		}
+	pub fn view_def_exists(&self, id: ViewId) -> bool {
+		self.get_view_def(id).is_some()
 	}
 
 	/// Get current state of a view within this transaction
-	pub fn get_view(&self, id: ViewId) -> Option<&ViewDef> {
-		self.view_def.get(&id).and_then(|change| change.post.as_ref())
+	pub fn get_view_def(&self, id: ViewId) -> Option<&ViewDef> {
+		// Find the last change for this view ID
+		for change in self.view_def.iter().rev() {
+			if let Some(view) = &change.post {
+				if view.id == id {
+					return Some(view);
+				}
+			} else if let Some(view) = &change.pre {
+				if view.id == id && change.op == Delete {
+					// View was deleted
+					return None;
+				}
+			}
+		}
+		None
 	}
 
 	/// Get all pending changes for commit
@@ -161,17 +196,17 @@ impl TransactionalChanges {
 	}
 
 	/// Get schema definition changes
-	pub fn schema_def(&self) -> &HashMap<SchemaId, Change<SchemaDef>> {
+	pub fn schema_def(&self) -> &[Change<SchemaDef>] {
 		&self.schema_def
 	}
 
 	/// Get table definition changes
-	pub fn table_def(&self) -> &HashMap<TableId, Change<TableDef>> {
+	pub fn table_def(&self) -> &[Change<TableDef>] {
 		&self.table_def
 	}
 
 	/// Get view definition changes
-	pub fn view_def(&self) -> &HashMap<ViewId, Change<ViewDef>> {
+	pub fn view_def(&self) -> &[Change<ViewDef>] {
 		&self.view_def
 	}
 

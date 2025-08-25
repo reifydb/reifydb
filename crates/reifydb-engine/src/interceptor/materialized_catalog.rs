@@ -27,28 +27,48 @@ impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
 	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		let version = ctx.version;
 
-		for (id, change) in &ctx.changes.schema_def {
+		for change in &ctx.changes.schema_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|s| s.id)
+				.expect(
+					"Change must have either pre or post state",
+				);
 			self.catalog.set_schema(
-				*id,
+				id,
 				version,
 				change.post.clone(),
 			);
 		}
 
-		for (id, change) in &ctx.changes.table_def {
+		for change in &ctx.changes.table_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|t| t.id)
+				.expect(
+					"Change must have either pre or post state",
+				);
 			self.catalog.set_table(
-				*id,
+				id,
 				version,
 				change.post.clone(),
 			);
 		}
 
-		for (id, change) in &ctx.changes.view_def {
-			self.catalog.set_view(
-				*id,
-				version,
-				change.post.clone(),
-			);
+		for change in &ctx.changes.view_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|v| v.id)
+				.expect(
+					"Change must have either pre or post state",
+				);
+			self.catalog.set_view(id, version, change.post.clone());
 		}
 
 		Ok(())

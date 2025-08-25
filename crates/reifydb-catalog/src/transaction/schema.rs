@@ -85,8 +85,8 @@ where
 		id: SchemaId,
 	) -> crate::Result<Option<SchemaDef>> {
 		// 1. Check transactional changes first
-		if let Some(change) = self.get_changes().schema_def.get(&id) {
-			return Ok(change.post.clone());
+		if let Some(schema) = self.get_changes().get_schema_def(id) {
+			return Ok(Some(schema.clone()));
 		}
 
 		// 2. Check MaterializedCatalog

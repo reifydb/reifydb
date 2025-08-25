@@ -181,13 +181,13 @@ pub trait TransactionalChangesExt {
 
 impl TransactionalChangesExt for TransactionalChanges {
 	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef> {
-		self.schema_def.values().find_map(|change| {
+		self.schema_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|s| s.name == name)
 		})
 	}
 
 	fn is_schema_deleted_by_name(&self, name: &str) -> bool {
-		self.schema_def.values().any(|change| {
+		self.schema_def.iter().rev().any(|change| {
 			change.op == OperationType::Delete
 				&& change.pre.as_ref().map(|s| s.name.as_str())
 					== Some(name)
@@ -199,7 +199,7 @@ impl TransactionalChangesExt for TransactionalChanges {
 		schema: SchemaId,
 		name: &str,
 	) -> Option<&TableDef> {
-		self.table_def.values().find_map(|change| {
+		self.table_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|t| {
 				t.schema == schema && t.name == name
 			})
@@ -211,7 +211,7 @@ impl TransactionalChangesExt for TransactionalChanges {
 		schema: SchemaId,
 		name: &str,
 	) -> bool {
-		self.table_def.values().any(|change| {
+		self.table_def.iter().rev().any(|change| {
 			change.op == OperationType::Delete
 				&& change
 					.pre
@@ -229,7 +229,7 @@ impl TransactionalChangesExt for TransactionalChanges {
 		schema: SchemaId,
 		name: &str,
 	) -> Option<&ViewDef> {
-		self.view_def.values().find_map(|change| {
+		self.view_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|v| {
 				v.schema == schema && v.name == name
 			})
@@ -241,7 +241,7 @@ impl TransactionalChangesExt for TransactionalChanges {
 		schema: SchemaId,
 		name: &str,
 	) -> bool {
-		self.view_def.values().any(|change| {
+		self.view_def.iter().rev().any(|change| {
 			change.op == OperationType::Delete
 				&& change
 					.pre
