@@ -11,6 +11,9 @@ mod builder;
 mod operator;
 mod source;
 
+use reifydb_catalog::sequence::flow::{
+	next_flow_edge_id, next_flow_id, next_flow_node_id,
+};
 use reifydb_core::{
 	flow::{Flow, FlowEdge, FlowNode, FlowNodeType},
 	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
@@ -49,23 +52,20 @@ pub(crate) struct FlowCompiler<'a, T: CommandTransaction> {
 impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 	/// Creates a new FlowCompiler instance
 	pub fn new(txn: &'a mut T) -> crate::Result<Self> {
-		todo!()
-		// Ok(Self {
-		// 	flow: Flow::new(next_flow_id(txn)?),
-		// 	txn,
-		// })
+		Ok(Self {
+			flow: Flow::new(next_flow_id(txn)?),
+			txn,
+		})
 	}
 
 	/// Gets the next available node ID
 	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
-		// next_flow_node_id(self.txn)
-		todo!()
+		next_flow_node_id(self.txn)
 	}
 
 	/// Gets the next available edge ID
 	fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
-		// next_flow_edge_id(self.txn)
-		todo!()
+		next_flow_edge_id(self.txn)
 	}
 
 	/// Adds an edge between two nodes

@@ -36,6 +36,7 @@ impl Executor {
 		let schema =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 				.unwrap();
+
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,

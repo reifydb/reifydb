@@ -3,7 +3,10 @@
 
 //! Compilation of inline data operations
 
-use reifydb_core::interface::{CommandTransaction, FlowNodeId};
+use reifydb_core::{
+	flow::FlowNodeType,
+	interface::{CommandTransaction, FlowNodeId},
+};
 
 use super::super::{CompileOperator, FlowCompiler};
 use crate::{Result, plan::physical::InlineDataNode};
@@ -21,11 +24,7 @@ impl From<InlineDataNode> for InlineDataCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for InlineDataCompiler {
-	fn compile(
-		self,
-		_compiler: &mut FlowCompiler<T>,
-	) -> Result<FlowNodeId> {
-		// TODO: Implement inline data compilation
-		unimplemented!("Inline data compilation not yet implemented")
+	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		compiler.build_node(FlowNodeType::SourceInlineData {}).build()
 	}
 }

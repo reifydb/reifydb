@@ -8,7 +8,7 @@ use reifydb_core::{
 	Value,
 	flow::{
 		Change, Diff, Flow, FlowNode, FlowNodeType,
-		FlowNodeType::SourceTable,
+		FlowNodeType::{SourceInlineData, SourceTable},
 	},
 	interface::{
 		CommandTransaction, EncodableKey, Evaluator,
@@ -93,6 +93,9 @@ impl<E: Evaluator> FlowEngine<E> {
 		let node_outputs = &node.outputs;
 
 		let outputchange = match &node_type {
+			SourceInlineData {} => {
+				unimplemented!()
+			}
 			SourceTable {
 				..
 			} => {

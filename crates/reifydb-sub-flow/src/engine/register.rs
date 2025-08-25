@@ -26,6 +26,9 @@ impl<E: Evaluator> FlowEngine<E> {
 		for node_id in flow.get_node_ids() {
 			let node = flow.get_node(&node_id).unwrap();
 			match &node.ty {
+				FlowNodeType::SourceInlineData {} => {
+					unimplemented!()
+				}
 				FlowNodeType::SourceTable {
 					table,
 					..

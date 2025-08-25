@@ -9,6 +9,7 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowNodeType {
+	SourceInlineData {},
 	SourceTable {
 		name: String,
 		table: TableId,
