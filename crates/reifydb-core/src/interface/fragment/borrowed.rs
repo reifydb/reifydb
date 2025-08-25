@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{Fragment, OwnedFragment, StatementColumn, StatementLine};
+use super::{OwnedFragment, StatementColumn, StatementLine};
 
 /// Borrowed fragment - zero-copy for parsing
 #[derive(Debug, Copy, Clone)]
@@ -45,10 +45,9 @@ impl<'a> BorrowedFragment<'a> {
 	}
 }
 
-impl<'a> Fragment for BorrowedFragment<'a> {
-	type SubFragment = BorrowedFragment<'a>;
-
-	fn value(&self) -> &str {
+impl<'a> BorrowedFragment<'a> {
+	/// Get the text value of the fragment
+	pub fn value(&self) -> &str {
 		match self {
 			BorrowedFragment::None => "",
 			BorrowedFragment::Statement {
@@ -62,7 +61,8 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 		}
 	}
 
-	fn line(&self) -> StatementLine {
+	/// Get line position
+	pub fn line(&self) -> StatementLine {
 		match self {
 			BorrowedFragment::Statement {
 				line,
@@ -72,7 +72,8 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 		}
 	}
 
-	fn column(&self) -> StatementColumn {
+	/// Get column position
+	pub fn column(&self) -> StatementColumn {
 		match self {
 			BorrowedFragment::Statement {
 				column,
@@ -82,7 +83,8 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 		}
 	}
 
-	fn into_owned(self) -> OwnedFragment {
+	/// Convert to owned variant
+	pub fn into_owned(self) -> OwnedFragment {
 		match self {
 			BorrowedFragment::None => OwnedFragment::None,
 			BorrowedFragment::Statement {
@@ -102,7 +104,13 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 		}
 	}
 
-	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
+	/// Get a sub-fragment starting at the given offset with the given
+	/// length
+	pub fn sub_fragment(
+		&self,
+		offset: usize,
+		length: usize,
+	) -> OwnedFragment {
 		let text = self.value();
 		let end = std::cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {
@@ -133,27 +141,10 @@ impl<'a> Fragment for BorrowedFragment<'a> {
 	}
 }
 
-// Implement Fragment for &BorrowedFragment as well
-impl<'a> Fragment for &BorrowedFragment<'a> {
-	type SubFragment = BorrowedFragment<'a>;
-
-	fn value(&self) -> &str {
-		(*self).value()
-	}
-
-	fn line(&self) -> StatementLine {
-		(*self).line()
-	}
-
-	fn column(&self) -> StatementColumn {
-		(*self).column()
-	}
-
-	fn into_owned(self) -> OwnedFragment {
+// Implement methods for &BorrowedFragment as well
+impl<'a> BorrowedFragment<'a> {
+	/// Clone and convert to owned
+	pub fn to_owned(&self) -> OwnedFragment {
 		(*self).into_owned()
-	}
-
-	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
-		(*self).sub_fragment(offset, length)
 	}
 }

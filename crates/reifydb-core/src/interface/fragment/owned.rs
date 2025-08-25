@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{Fragment, StatementColumn, StatementLine};
+use super::{StatementColumn, StatementLine};
 
 /// Owned fragment - owns all its data
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,10 +29,9 @@ pub enum OwnedFragment {
 	},
 }
 
-impl Fragment for OwnedFragment {
-	type SubFragment = OwnedFragment;
-
-	fn value(&self) -> &str {
+impl OwnedFragment {
+	/// Get the text value of the fragment
+	pub fn value(&self) -> &str {
 		match self {
 			OwnedFragment::None => "",
 			OwnedFragment::Statement {
@@ -46,7 +45,8 @@ impl Fragment for OwnedFragment {
 		}
 	}
 
-	fn line(&self) -> StatementLine {
+	/// Get line position
+	pub fn line(&self) -> StatementLine {
 		match self {
 			OwnedFragment::Statement {
 				line,
@@ -56,7 +56,8 @@ impl Fragment for OwnedFragment {
 		}
 	}
 
-	fn column(&self) -> StatementColumn {
+	/// Get column position
+	pub fn column(&self) -> StatementColumn {
 		match self {
 			OwnedFragment::Statement {
 				column,
@@ -66,11 +67,18 @@ impl Fragment for OwnedFragment {
 		}
 	}
 
-	fn into_owned(self) -> OwnedFragment {
+	/// Convert to owned variant
+	pub fn into_owned(self) -> OwnedFragment {
 		self
 	}
 
-	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
+	/// Get a sub-fragment starting at the given offset with the given
+	/// length
+	pub fn sub_fragment(
+		&self,
+		offset: usize,
+		length: usize,
+	) -> OwnedFragment {
 		let text = self.value();
 		let end = std::cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {

@@ -5,12 +5,14 @@ use base64::{Engine as _, engine::general_purpose};
 
 use super::Blob;
 use crate::{
-	Error, interface::fragment::Fragment, result::error::diagnostic::blob,
+	Error, interface::fragment::IntoFragment,
+	result::error::diagnostic::blob,
 };
 
 impl Blob {
-	pub fn from_b64(fragment: impl Fragment) -> Result<Self, Error> {
-		let b64_str = fragment.value();
+	pub fn from_b64(fragment: impl IntoFragment) -> Result<Self, Error> {
+		let owned_fragment = fragment.into_fragment();
+		let b64_str = owned_fragment.value();
 		// Try standard base64 first, then without padding if it fails
 		match general_purpose::STANDARD.decode(b64_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
@@ -22,7 +24,7 @@ impl Blob {
 					Ok(bytes) => Ok(Blob::new(bytes)),
 					Err(_) => Err(Error(
 						blob::invalid_base64_string(
-							fragment,
+							owned_fragment,
 						),
 					)),
 				}
@@ -30,12 +32,13 @@ impl Blob {
 		}
 	}
 
-	pub fn from_b64url(fragment: impl Fragment) -> Result<Self, Error> {
-		let b64url_str = fragment.value();
+	pub fn from_b64url(fragment: impl IntoFragment) -> Result<Self, Error> {
+		let owned_fragment = fragment.into_fragment();
+		let b64url_str = owned_fragment.value();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
 			Err(_) => Err(Error(blob::invalid_base64url_string(
-				fragment,
+				owned_fragment,
 			))),
 		}
 	}

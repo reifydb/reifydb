@@ -95,40 +95,74 @@ macro_rules! fragment {
 	};
 }
 
-/// Core trait for fragment types
-pub trait Fragment: Clone {
-	type SubFragment: Fragment + IntoOwnedFragment + IntoFragment;
+/// Core enum for fragment types
+#[derive(Debug, Clone)]
+pub enum Fragment<'a> {
+	Owned(OwnedFragment),
+	Borrowed(BorrowedFragment<'a>),
+	None,
+}
 
+impl<'a> Fragment<'a> {
 	/// Get the text value of the fragment
-	fn value(&self) -> &str;
+	pub fn value(&self) -> &str {
+		match self {
+			Fragment::Owned(f) => f.value(),
+			Fragment::Borrowed(f) => f.value(),
+			Fragment::None => "",
+		}
+	}
 
 	/// Alias for value() for compatibility
-	fn fragment(&self) -> &str {
+	pub fn fragment(&self) -> &str {
 		self.value()
 	}
 
 	/// Get line position
-	fn line(&self) -> StatementLine;
+	pub fn line(&self) -> StatementLine {
+		match self {
+			Fragment::Owned(f) => f.line(),
+			Fragment::Borrowed(f) => f.line(),
+			Fragment::None => StatementLine(1),
+		}
+	}
 
 	/// Get column position
-	fn column(&self) -> StatementColumn;
+	pub fn column(&self) -> StatementColumn {
+		match self {
+			Fragment::Owned(f) => f.column(),
+			Fragment::Borrowed(f) => f.column(),
+			Fragment::None => StatementColumn(0),
+		}
+	}
 
 	/// Convert to owned variant
-	fn into_owned(self) -> OwnedFragment
-	where
-		Self: Sized;
+	pub fn into_owned(self) -> OwnedFragment {
+		match self {
+			Fragment::Owned(f) => f,
+			Fragment::Borrowed(f) => f.into_owned(),
+			Fragment::None => OwnedFragment::None,
+		}
+	}
 
 	/// Convert to owned variant (alias for compatibility)
-	fn to_owned(self) -> OwnedFragment
-	where
-		Self: Sized,
-	{
+	pub fn to_owned(self) -> OwnedFragment {
 		self.into_owned()
 	}
 
 	/// Get a sub-fragment starting at the given offset with the given
 	/// length
-	fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment;
+	pub fn sub_fragment(
+		&self,
+		offset: usize,
+		length: usize,
+	) -> OwnedFragment {
+		match self {
+			Fragment::Owned(f) => f.sub_fragment(offset, length),
+			Fragment::Borrowed(f) => f.sub_fragment(offset, length),
+			Fragment::None => OwnedFragment::None,
+		}
+	}
 }
 
 /// Trait for types that can be converted into a Fragment
@@ -190,8 +224,22 @@ impl<'a> IntoOwnedFragment for &BorrowedFragment<'a> {
 	}
 }
 
-// Blanket implementation for any Fragment type
-impl<T: Fragment> IntoFragment for T {
+// Implementation for Fragment enum
+impl<'a> IntoFragment for Fragment<'a> {
+	fn into_fragment(self) -> OwnedFragment {
+		self.into_owned()
+	}
+}
+
+// Implementation for OwnedFragment
+impl IntoFragment for OwnedFragment {
+	fn into_fragment(self) -> OwnedFragment {
+		self
+	}
+}
+
+// Implementation for BorrowedFragment
+impl<'a> IntoFragment for BorrowedFragment<'a> {
 	fn into_fragment(self) -> OwnedFragment {
 		self.into_owned()
 	}

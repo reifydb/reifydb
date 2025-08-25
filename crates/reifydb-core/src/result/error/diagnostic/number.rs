@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	ColumnDescriptor, Type,
-	interface::fragment::{Fragment, IntoFragment, OwnedFragment},
+	ColumnDescriptor, OwnedFragment, Type,
+	interface::fragment::{IntoFragment, IntoOwnedFragment},
 	result::error::diagnostic::{Diagnostic, util::value_range},
 };
 

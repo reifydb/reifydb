@@ -5,33 +5,35 @@ use ::uuid::Uuid;
 
 use crate::{
 	Error, err,
-	interface::fragment::Fragment,
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::uuid::{
 		invalid_uuid4_format, invalid_uuid7_format,
 	},
 	value::{Uuid4, Uuid7},
 };
 
-pub fn parse_uuid4(fragment: impl Fragment) -> Result<Uuid4, Error> {
-	let value = fragment.value().trim();
+pub fn parse_uuid4(fragment: impl IntoFragment) -> Result<Uuid4, Error> {
+	let owned_fragment = fragment.into_fragment();
+	let value = owned_fragment.value().trim();
 
 	if let Ok(uuid) = Uuid::parse_str(value) {
 		if uuid.get_version_num() == 4 {
 			return Ok(Uuid4(uuid));
 		}
 	}
-	err!(invalid_uuid4_format(fragment.clone()))
+	err!(invalid_uuid4_format(owned_fragment))
 }
 
-pub fn parse_uuid7(fragment: impl Fragment) -> Result<Uuid7, Error> {
-	let value = fragment.value().trim();
+pub fn parse_uuid7(fragment: impl IntoFragment) -> Result<Uuid7, Error> {
+	let owned_fragment = fragment.into_fragment();
+	let value = owned_fragment.value().trim();
 	if let Ok(uuid) = Uuid::parse_str(value) {
 		if uuid.get_version_num() == 7 {
 			return Ok(Uuid7(uuid));
 		}
 	}
 
-	err!(invalid_uuid7_format(fragment.clone()))
+	err!(invalid_uuid7_format(owned_fragment))
 }
 
 #[cfg(test)]

@@ -4,8 +4,7 @@
 //! BLOB-related diagnostic functions
 
 use crate::{
-	fragment,
-	interface::fragment::{Fragment, IntoFragment},
+	fragment, interface::fragment::IntoFragment,
 	result::error::diagnostic::Diagnostic,
 };
 

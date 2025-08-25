@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	Fragment,
-	interface::fragment::{IntoFragment, OwnedFragment},
+	OwnedFragment,
+	interface::fragment::{IntoFragment, IntoOwnedFragment},
 	result::error::diagnostic::Diagnostic,
 };
 

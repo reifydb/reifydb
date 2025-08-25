@@ -5,7 +5,7 @@ use std::{any::TypeId, num::IntErrorKind, str::FromStr};
 
 use crate::{
 	Error, Type, err,
-	interface::fragment::Fragment,
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::number::{
 		invalid_number_format, nan_not_allowed, number_out_of_range,
 	},
@@ -13,7 +13,7 @@ use crate::{
 	value::is::{IsFloat, IsInt, IsUint},
 };
 
-pub fn parse_int<T>(fragment: impl Fragment) -> Result<T, Error>
+pub fn parse_int<T>(fragment: impl IntoFragment) -> Result<T, Error>
 where
 	T: IsInt + 'static,
 {
@@ -32,7 +32,7 @@ where
 	}
 }
 
-pub fn parse_uint<T>(fragment: impl Fragment) -> Result<T, Error>
+pub fn parse_uint<T>(fragment: impl IntoFragment) -> Result<T, Error>
 where
 	T: IsUint + 'static,
 {
@@ -51,18 +51,19 @@ where
 	}
 }
 
-pub fn parse_float<T>(fragment: impl Fragment) -> Result<T, Error>
+pub fn parse_float<T>(fragment: impl IntoFragment) -> Result<T, Error>
 where
 	T: IsFloat + 'static,
 {
-	if fragment.value().to_lowercase().contains("nan") {
+	let owned_fragment = fragment.into_fragment();
+	if owned_fragment.value().to_lowercase().contains("nan") {
 		return_error!(nan_not_allowed());
 	}
 
 	if TypeId::of::<T>() == TypeId::of::<f32>() {
-		Ok(cast::<T, f32>(parse_f32(fragment)?))
+		Ok(cast::<T, f32>(parse_f32(owned_fragment.clone())?))
 	} else if TypeId::of::<T>() == TypeId::of::<f64>() {
-		Ok(cast::<T, f64>(parse_f64(fragment)?))
+		Ok(cast::<T, f64>(parse_f64(owned_fragment)?))
 	} else {
 		unreachable!();
 	}
@@ -166,16 +167,17 @@ impl TypeInfo for f64 {
 }
 
 #[inline]
-fn parse_signed_generic<T>(fragment: impl Fragment) -> Result<T, Error>
+fn parse_signed_generic<T>(fragment: impl IntoFragment) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-	let value = fragment.value().replace("_", "");
+	let owned_fragment = fragment.into_fragment();
+	let value = owned_fragment.value().replace("_", "");
 	let value = value.trim();
 
 	if value.is_empty() {
 		return_error!(invalid_number_format(
-			fragment.clone(),
+			owned_fragment.clone(),
 			T::type_enum()
 		));
 	}
@@ -186,7 +188,7 @@ where
 			match err.kind() {
 				IntErrorKind::Empty => {
 					err!(invalid_number_format(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum()
 					))
 				}
@@ -207,32 +209,32 @@ where
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
-							err!(number_out_of_range(fragment.clone(), type_enum, None))
+							err!(number_out_of_range(owned_fragment.clone(), type_enum, None))
 						}
 					} else {
 						err!(invalid_number_format(
-							fragment.clone(),
+							owned_fragment.clone(),
 							T::type_enum()
 						))
 					}
 				}
 				IntErrorKind::PosOverflow => {
 					err!(number_out_of_range(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::NegOverflow => {
 					err!(number_out_of_range(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::Zero => {
 					err!(invalid_number_format(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum()
 					))
 				}
@@ -243,16 +245,17 @@ where
 }
 
 #[inline]
-fn parse_unsigned_generic<T>(fragment: impl Fragment) -> Result<T, Error>
+fn parse_unsigned_generic<T>(fragment: impl IntoFragment) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-	let value = fragment.value().replace("_", "");
+	let owned_fragment = fragment.into_fragment();
+	let value = owned_fragment.value().replace("_", "");
 	let value = value.trim();
 
 	if value.is_empty() {
 		return_error!(invalid_number_format(
-			fragment.clone(),
+			owned_fragment.clone(),
 			T::type_enum()
 		));
 	}
@@ -263,7 +266,7 @@ where
 			match err.kind() {
 				IntErrorKind::Empty => {
 					err!(invalid_number_format(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum()
 					))
 				}
@@ -273,7 +276,7 @@ where
 						// negative values
 						if f < 0.0 {
 							return_error!(number_out_of_range(
-                                fragment.clone(),
+                                owned_fragment.clone(),
                                 T::type_enum(),
                                 None
                             ));
@@ -291,33 +294,33 @@ where
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
-							err!(number_out_of_range(fragment.clone(), type_enum, None))
+							err!(number_out_of_range(owned_fragment.clone(), type_enum, None))
 						}
 					} else {
 						if value.contains("-") {
-							err!(number_out_of_range(fragment.clone(), T::type_enum(), None))
+							err!(number_out_of_range(owned_fragment.clone(), T::type_enum(), None))
 						} else {
-							err!(invalid_number_format(fragment.clone(), T::type_enum()))
+							err!(invalid_number_format(owned_fragment.clone(), T::type_enum()))
 						}
 					}
 				}
 				IntErrorKind::PosOverflow => {
 					err!(number_out_of_range(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::NegOverflow => {
 					err!(number_out_of_range(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::Zero => {
 					err!(invalid_number_format(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum()
 					))
 				}
@@ -328,7 +331,7 @@ where
 }
 
 #[inline]
-fn parse_float_generic<T>(fragment: impl Fragment) -> Result<T, Error>
+fn parse_float_generic<T>(fragment: impl IntoFragment) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseFloatError>
 		+ Copy
@@ -336,12 +339,13 @@ where
 		+ PartialEq
 		+ 'static,
 {
-	let value = fragment.value().replace("_", "");
+	let owned_fragment = fragment.into_fragment();
+	let value = owned_fragment.value().replace("_", "");
 	let value = value.trim();
 
 	if value.is_empty() {
 		return_error!(invalid_number_format(
-			fragment.clone(),
+			owned_fragment.clone(),
 			T::type_enum()
 		));
 	}
@@ -354,7 +358,7 @@ where
 					|| v_f32 == f32::NEG_INFINITY
 				{
 					return_error!(number_out_of_range(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum(),
 						None
 					));
@@ -365,7 +369,7 @@ where
 					|| v_f64 == f64::NEG_INFINITY
 				{
 					return_error!(number_out_of_range(
-						fragment.clone(),
+						owned_fragment.clone(),
 						T::type_enum(),
 						None
 					));
@@ -374,69 +378,69 @@ where
 			Ok(v)
 		}
 		Err(_) => err!(invalid_number_format(
-			fragment.clone(),
+			owned_fragment.clone(),
 			T::type_enum()
 		)),
 	}
 }
 
 #[inline]
-fn parse_f32(fragment: impl Fragment) -> Result<f32, Error> {
+fn parse_f32(fragment: impl IntoFragment) -> Result<f32, Error> {
 	parse_float_generic::<f32>(fragment)
 }
 
 #[inline]
-fn parse_f64(fragment: impl Fragment) -> Result<f64, Error> {
+fn parse_f64(fragment: impl IntoFragment) -> Result<f64, Error> {
 	parse_float_generic::<f64>(fragment)
 }
 
 #[inline]
-fn parse_i8(fragment: impl Fragment) -> Result<i8, Error> {
+fn parse_i8(fragment: impl IntoFragment) -> Result<i8, Error> {
 	parse_signed_generic::<i8>(fragment)
 }
 
 #[inline]
-fn parse_i16(fragment: impl Fragment) -> Result<i16, Error> {
+fn parse_i16(fragment: impl IntoFragment) -> Result<i16, Error> {
 	parse_signed_generic::<i16>(fragment)
 }
 
 #[inline]
-fn parse_i32(fragment: impl Fragment) -> Result<i32, Error> {
+fn parse_i32(fragment: impl IntoFragment) -> Result<i32, Error> {
 	parse_signed_generic::<i32>(fragment)
 }
 
 #[inline]
-fn parse_i64(fragment: impl Fragment) -> Result<i64, Error> {
+fn parse_i64(fragment: impl IntoFragment) -> Result<i64, Error> {
 	parse_signed_generic::<i64>(fragment)
 }
 
 #[inline]
-fn parse_i128(fragment: impl Fragment) -> Result<i128, Error> {
+fn parse_i128(fragment: impl IntoFragment) -> Result<i128, Error> {
 	parse_signed_generic::<i128>(fragment)
 }
 
 #[inline]
-fn parse_u8(fragment: impl Fragment) -> Result<u8, Error> {
+fn parse_u8(fragment: impl IntoFragment) -> Result<u8, Error> {
 	parse_unsigned_generic::<u8>(fragment)
 }
 
 #[inline]
-fn parse_u16(fragment: impl Fragment) -> Result<u16, Error> {
+fn parse_u16(fragment: impl IntoFragment) -> Result<u16, Error> {
 	parse_unsigned_generic::<u16>(fragment)
 }
 
 #[inline]
-fn parse_u32(fragment: impl Fragment) -> Result<u32, Error> {
+fn parse_u32(fragment: impl IntoFragment) -> Result<u32, Error> {
 	parse_unsigned_generic::<u32>(fragment)
 }
 
 #[inline]
-fn parse_u64(fragment: impl Fragment) -> Result<u64, Error> {
+fn parse_u64(fragment: impl IntoFragment) -> Result<u64, Error> {
 	parse_unsigned_generic::<u64>(fragment)
 }
 
 #[inline]
-fn parse_u128(fragment: impl Fragment) -> Result<u128, Error> {
+fn parse_u128(fragment: impl IntoFragment) -> Result<u128, Error> {
 	parse_unsigned_generic::<u128>(fragment)
 }
 

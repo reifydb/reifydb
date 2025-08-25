@@ -10,7 +10,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{OwnedFragment, Type, interface::fragment::Fragment};
+use crate::{OwnedFragment, Type};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression {

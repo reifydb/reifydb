@@ -3,21 +3,26 @@
 
 use super::{date::parse_date, time::parse_time};
 use crate::{
-	DateTime, Error, interface::fragment::Fragment,
+	DateTime, Error, interface::fragment::IntoFragment,
 	result::error::diagnostic::temporal, return_error,
 };
 
-pub fn parse_datetime(fragment: impl Fragment) -> Result<DateTime, Error> {
-	let parts: Vec<&str> = fragment.value().split('T').collect();
+pub fn parse_datetime(fragment: impl IntoFragment) -> Result<DateTime, Error> {
+	let owned_fragment = fragment.into_fragment();
+	let parts: Vec<&str> = owned_fragment.value().split('T').collect();
 	if parts.len() != 2 {
-		return_error!(temporal::invalid_datetime_format(fragment));
+		return_error!(temporal::invalid_datetime_format(
+			owned_fragment
+		));
 	}
 
 	// Create sub-fragments for the date and time parts with proper position
 	let date_offset = 0;
-	let date_fragment = fragment.sub_fragment(date_offset, parts[0].len());
+	let date_fragment =
+		owned_fragment.sub_fragment(date_offset, parts[0].len());
 	let time_offset = parts[0].len() + 1; // +1 for the 'T' separator
-	let time_fragment = fragment.sub_fragment(time_offset, parts[1].len());
+	let time_fragment =
+		owned_fragment.sub_fragment(time_offset, parts[1].len());
 
 	let date = parse_date(date_fragment)?;
 	let time = parse_time(time_fragment)?;

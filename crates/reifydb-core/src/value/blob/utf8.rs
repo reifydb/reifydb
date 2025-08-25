@@ -3,12 +3,14 @@
 
 use super::Blob;
 use crate::{
-	Error, interface::fragment::Fragment, result::error::diagnostic::blob,
+	Error, interface::fragment::IntoFragment,
+	result::error::diagnostic::blob,
 };
 
 impl Blob {
-	pub fn from_utf8(fragment: impl Fragment) -> Self {
-		let utf8_str = fragment.value();
+	pub fn from_utf8(fragment: impl IntoFragment) -> Self {
+		let owned_fragment = fragment.into_fragment();
+		let utf8_str = owned_fragment.value();
 		Blob::new(utf8_str.as_bytes().to_vec())
 	}
 
@@ -23,7 +25,7 @@ impl Blob {
 		String::from_utf8_lossy(self.as_bytes()).to_string()
 	}
 
-	pub fn from_str(fragment: impl Fragment) -> Self {
+	pub fn from_str(fragment: impl IntoFragment) -> Self {
 		Self::from_utf8(fragment)
 	}
 }

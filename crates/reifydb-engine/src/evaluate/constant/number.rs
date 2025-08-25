@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Type,
-	interface::fragment::Fragment,
+	IntoFragment, OwnedFragment, Type,
 	result::error::diagnostic::{cast, number},
 	return_error,
 	value::{
@@ -20,55 +19,59 @@ impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
 	pub(crate) fn from_number(
-		fragment: impl Fragment,
+		fragment: impl IntoFragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
 		match target {
-			Type::Bool => Self::parse_bool(fragment, row_count),
-			Type::Float4 => Self::parse_float4(fragment, row_count),
-			Type::Float8 => Self::parse_float8(fragment, row_count),
+			Type::Bool => Self::parse_bool(&fragment, row_count),
+			Type::Float4 => {
+				Self::parse_float4(&fragment, row_count)
+			}
+			Type::Float8 => {
+				Self::parse_float8(&fragment, row_count)
+			}
 			Type::Int1 => {
-				Self::parse_int1(fragment, target, row_count)
+				Self::parse_int1(&fragment, target, row_count)
 			}
 			Type::Int2 => {
-				Self::parse_int2(fragment, target, row_count)
+				Self::parse_int2(&fragment, target, row_count)
 			}
 			Type::Int4 => {
-				Self::parse_int4(fragment, target, row_count)
+				Self::parse_int4(&fragment, target, row_count)
 			}
 			Type::Int8 => {
-				Self::parse_int8(fragment, target, row_count)
+				Self::parse_int8(&fragment, target, row_count)
 			}
 			Type::Int16 => {
-				Self::parse_int16(fragment, target, row_count)
+				Self::parse_int16(&fragment, target, row_count)
 			}
 			Type::Uint1 => {
-				Self::parse_uint1(fragment, target, row_count)
+				Self::parse_uint1(&fragment, target, row_count)
 			}
 			Type::Uint2 => {
-				Self::parse_uint2(fragment, target, row_count)
+				Self::parse_uint2(&fragment, target, row_count)
 			}
 			Type::Uint4 => {
-				Self::parse_uint4(fragment, target, row_count)
+				Self::parse_uint4(&fragment, target, row_count)
 			}
 			Type::Uint8 => {
-				Self::parse_uint8(fragment, target, row_count)
+				Self::parse_uint8(&fragment, target, row_count)
 			}
 			Type::Uint16 => {
-				Self::parse_uint16(fragment, target, row_count)
+				Self::parse_uint16(&fragment, target, row_count)
 			}
 			_ => return_error!(cast::unsupported_cast(
 				fragment.clone(),
-				Type::Float8, /* Numbers are treated as
-				               * float8 by default */
+				Type::Float8,
 				target,
 			)),
 		}
 	}
 
 	fn parse_bool(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		match parse_bool(fragment.clone()) {
@@ -81,7 +84,7 @@ impl NumberParser {
 	}
 
 	fn parse_float4(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		match parse_float::<f32>(fragment.clone()) {
@@ -97,7 +100,7 @@ impl NumberParser {
 	}
 
 	fn parse_float8(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		match parse_float::<f64>(fragment.clone()) {
@@ -113,7 +116,7 @@ impl NumberParser {
 	}
 
 	fn parse_int1(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -130,10 +133,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -154,7 +157,7 @@ impl NumberParser {
 	}
 
 	fn parse_int2(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -171,10 +174,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -182,7 +185,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -193,7 +196,7 @@ impl NumberParser {
 	}
 
 	fn parse_int4(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -210,10 +213,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -221,7 +224,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -232,7 +235,7 @@ impl NumberParser {
 	}
 
 	fn parse_int8(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -249,10 +252,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -260,7 +263,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -271,7 +274,7 @@ impl NumberParser {
 	}
 
 	fn parse_int16(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -288,10 +291,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -299,7 +302,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -310,7 +313,7 @@ impl NumberParser {
 	}
 
 	fn parse_uint1(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -325,10 +328,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -336,7 +339,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -347,7 +350,7 @@ impl NumberParser {
 	}
 
 	fn parse_uint2(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -362,10 +365,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -373,7 +376,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -384,7 +387,7 @@ impl NumberParser {
 	}
 
 	fn parse_uint4(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -399,10 +402,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -410,7 +413,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -421,7 +424,7 @@ impl NumberParser {
 	}
 
 	fn parse_uint8(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -436,10 +439,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -447,7 +450,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),
@@ -458,7 +461,7 @@ impl NumberParser {
 	}
 
 	fn parse_uint16(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		ty: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -473,10 +476,10 @@ impl NumberParser {
 				]))
 			} else {
 				return_error!(cast::invalid_number(
-					fragment.clone().to_owned(),
+					fragment.clone(),
 					ty,
 					number::number_out_of_range(
-						fragment.clone().to_owned(),
+						fragment.clone(),
 						ty,
 						None
 					),
@@ -484,7 +487,7 @@ impl NumberParser {
 			}
 		} else {
 			return_error!(cast::invalid_number(
-				fragment.clone().to_owned(),
+				fragment.clone(),
 				ty,
 				number::invalid_number_format(
 					fragment.clone(),

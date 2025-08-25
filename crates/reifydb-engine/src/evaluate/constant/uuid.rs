@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	Type,
-	interface::fragment::Fragment,
+	IntoFragment, OwnedFragment, Type,
 	result::error::diagnostic::cast,
 	return_error,
 	value::uuid::parse::{parse_uuid4, parse_uuid7},
@@ -17,13 +16,14 @@ impl UuidParser {
 	/// Parse text to a specific UUID target type with detailed error
 	/// handling
 	pub(crate) fn from_text(
-		fragment: impl Fragment,
+		fragment: impl IntoFragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
 		match target {
-			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
-			Type::Uuid7 => Self::parse_uuid7(fragment, row_count),
+			Type::Uuid4 => Self::parse_uuid4(&fragment, row_count),
+			Type::Uuid7 => Self::parse_uuid7(&fragment, row_count),
 			_ => return_error!(cast::unsupported_cast(
 				fragment.clone(),
 				Type::Utf8,
@@ -33,7 +33,7 @@ impl UuidParser {
 	}
 
 	fn parse_uuid4(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		match parse_uuid4(fragment.clone()) {
@@ -51,7 +51,7 @@ impl UuidParser {
 	}
 
 	fn parse_uuid7(
-		fragment: impl Fragment,
+		fragment: &OwnedFragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		match parse_uuid7(fragment.clone()) {

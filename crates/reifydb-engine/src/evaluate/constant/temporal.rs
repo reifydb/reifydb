@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Type,
-	interface::fragment::Fragment,
+	IntoFragment, Type,
 	result::error::diagnostic::temporal,
 	return_error,
 	value::temporal::{
@@ -19,7 +18,7 @@ impl TemporalParser {
 	/// Parse temporal expression to a specific target type with detailed
 	/// error handling
 	pub fn from_temporal(
-		fragment: impl Fragment,
+		fragment: impl IntoFragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -29,9 +28,10 @@ impl TemporalParser {
 	/// Parse a temporal constant expression and create a column with the
 	/// specified row count
 	pub fn parse_temporal(
-		fragment: impl Fragment,
+		fragment: impl IntoFragment,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
 		let value = fragment.value();
 
 		// Route based on character patterns
@@ -73,12 +73,13 @@ impl TemporalParser {
 
 	/// Parse temporal to specific target type with detailed error handling
 	pub fn parse_temporal_type(
-		fragment: impl Fragment,
+		fragment: impl IntoFragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		use reifydb_core::result::error::diagnostic::cast;
 
+		let fragment = fragment.into_fragment();
 		match target {
 			Type::Date => {
 				let date = match parse_date(fragment.clone()) {
@@ -100,8 +101,7 @@ impl TemporalParser {
 					Ok(datetime) => datetime,
 					Err(e) => return_error!(
 						cast::invalid_temporal(
-							fragment.clone()
-								.to_owned(),
+							fragment.clone(),
 							Type::DateTime,
 							e.0
 						)
@@ -132,8 +132,7 @@ impl TemporalParser {
 					Ok(interval) => interval,
 					Err(e) => return_error!(
 						cast::invalid_temporal(
-							fragment.clone()
-								.to_owned(),
+							fragment.clone(),
 							Type::Interval,
 							e.0
 						)

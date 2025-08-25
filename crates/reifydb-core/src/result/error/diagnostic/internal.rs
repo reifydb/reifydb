@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{OwnedFragment, diagnostic::Diagnostic};
+use crate::{OwnedFragment, result::error::diagnostic::Diagnostic};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context

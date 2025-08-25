@@ -3,7 +3,7 @@
 
 use crate::{
 	Error, err,
-	interface::fragment::Fragment,
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::boolean::{
 		empty_boolean_value, invalid_boolean_format,
 		invalid_number_boolean,
@@ -11,11 +11,12 @@ use crate::{
 	return_error,
 };
 
-pub fn parse_bool(fragment: impl Fragment) -> Result<bool, Error> {
-	let value = fragment.value().trim();
+pub fn parse_bool(fragment: impl IntoFragment) -> Result<bool, Error> {
+	let owned_fragment = fragment.into_fragment();
+	let value = owned_fragment.value().trim();
 
 	if value.is_empty() {
-		return_error!(empty_boolean_value(fragment.clone()));
+		return_error!(empty_boolean_value(owned_fragment.clone()));
 	}
 
 	match value.to_lowercase().as_str() {
@@ -27,9 +28,9 @@ pub fn parse_bool(fragment: impl Fragment) -> Result<bool, Error> {
 			// Check if the value contains numbers - if so, use
 			// numeric boolean diagnostic
 			if value.chars().any(|c| c.is_ascii_digit()) {
-				err!(invalid_number_boolean(fragment))
+				err!(invalid_number_boolean(owned_fragment))
 			} else {
-				err!(invalid_boolean_format(fragment))
+				err!(invalid_boolean_format(owned_fragment))
 			}
 		}
 	}
