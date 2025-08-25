@@ -1,14 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use PhysicalPlan::CreateDeferredView;
+use reifydb_catalog::CatalogStore;
+use reifydb_core::{
+	diagnostic::catalog::schema_not_found, interface::QueryTransaction,
+	return_error,
+};
+
 use crate::plan::{
 	logical::CreateDeferredViewNode,
 	physical::{Compiler, CreateDeferredViewPlan, PhysicalPlan},
 };
-use reifydb_catalog::CatalogStore;
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{diagnostic::catalog::schema_not_found, return_error};
-use PhysicalPlan::CreateDeferredView;
 
 impl Compiler {
 	pub(crate) fn compile_create_deferred(
@@ -31,7 +34,9 @@ impl Compiler {
 			view: create.view,
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
-			with: Self::compile(rx, create.with)?.map(Box::new),
+			with: Self::compile(rx, create.with)?
+				.map(Box::new)
+				.unwrap(), // FIXME
 		}))
 	}
 }

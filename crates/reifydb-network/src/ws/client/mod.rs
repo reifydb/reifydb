@@ -306,7 +306,7 @@ fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
 	result
 }
 
-/// Parse interval from ISO 8601 duration string using core parser (eliminates
+/// Parse interval from ISO 8601 duration string using flow parser (eliminates
 /// approximation)
 fn parse_interval_string(s: &str) -> Result<Interval, ()> {
 	use reifydb_core::interface::fragment::BorrowedFragment;

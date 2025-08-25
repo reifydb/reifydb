@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	expression::Expression, CommandTransaction, FlowNodeId,
+use reifydb_core::{
+	flow::{FlowNodeType::Operator, OperatorType::Map},
+	interface::{CommandTransaction, FlowNodeId, expression::Expression},
 };
-use reifydb_rql::plan::physical::{MapNode, PhysicalPlan};
-use FlowNodeType::Operator;
-use OperatorType::Map;
 
+use super::super::{CompileOperator, FlowCompiler};
 use crate::{
-	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
 	Result,
+	plan::physical::{MapNode, PhysicalPlan},
 };
 
 pub(crate) struct MapCompiler {

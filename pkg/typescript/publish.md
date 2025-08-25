@@ -35,8 +35,8 @@ pnpm test
 #### Option A: Publish individually
 
 ```bash
-# Publish core package first
-pnpm publish:core
+# Publish flow package first
+pnpm publish:flow
 
 # Then publish client package
 pnpm publish:client
@@ -45,6 +45,6 @@ pnpm publish:client
 #### Option B: Publish all at once
 
 ```bash
-# This will publish core first, then client
+# This will publish flow first, then client
 pnpm publish:all
 ```

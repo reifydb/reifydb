@@ -3,11 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-	interface::{CdcChange, CdcConsume, CdcEvent, Key, Transaction},
-	log_debug,
 	Result,
+	flow::{Change, Diff},
+	interface::{
+		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Key,
+		Transaction,
+	},
+	log_debug,
 };
 use reifydb_engine::StandardEvaluator;
 
@@ -26,7 +29,7 @@ impl FlowConsumer {
 		}
 	}
 
-	fn processchanges<T: CommandTransaction>(
+	fn process_changes<T: CommandTransaction>(
 		&self,
 		txn: &mut T,
 		changes: Vec<FlowChange>,
@@ -34,8 +37,6 @@ impl FlowConsumer {
 		use reifydb_core::{
 			interface::SourceId, value::columnar::Columns,
 		};
-
-		use crate::{Change, Diff};
 
 		// Convert FlowChange events to flow engine Change format
 		let mut diffs = Vec::new();
@@ -168,7 +169,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer {
 				"Flow consumer processing {} CDC events",
 				changes.len()
 			);
-			self.processchanges(txn, changes)?;
+			self.process_changes(txn, changes)?;
 		}
 
 		Ok(())

@@ -1,16 +1,14 @@
-use crate::{
-	core::{Change, Diff},
-	operator::{Operator, OperatorContext},
-};
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	BitVec,
+	flow::{Change, Diff},
 	interface::{
-		expression::Expression, EvaluationContext, Evaluator,
-		Params,
+		CommandTransaction, EvaluationContext, Evaluator, Params,
+		expression::Expression,
 	},
 	value::columnar::{ColumnData, Columns},
-	BitVec,
 };
+
+use crate::operator::{Operator, OperatorContext};
 
 pub struct FilterOperator {
 	conditions: Vec<Expression>,

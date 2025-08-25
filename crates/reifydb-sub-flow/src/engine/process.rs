@@ -3,21 +3,21 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    engine::FlowEngine, operator::OperatorContext, Change, Diff, Flow, FlowNode,
-    FlowNodeType,
-};
 use reifydb_catalog::CatalogStore;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
-    interface::{
-        EncodableKey, Evaluator, GetEncodedRowLayout, SourceId,
-        SourceId::Table,
-        ViewId, ViewRowKey,
-    },
-    Value,
+	Value,
+	flow::{
+		Change, Diff, Flow, FlowNode, FlowNodeType,
+		FlowNodeType::SourceTable,
+	},
+	interface::{
+		CommandTransaction, EncodableKey, Evaluator,
+		GetEncodedRowLayout, SourceId, SourceId::Table, ViewId,
+		ViewRowKey,
+	},
 };
-use FlowNodeType::SourceTable;
+
+use crate::{engine::FlowEngine, operator::OperatorContext};
 
 impl<E: Evaluator> FlowEngine<E> {
 	pub fn process<T: CommandTransaction>(

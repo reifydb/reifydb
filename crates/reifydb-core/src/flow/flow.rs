@@ -1,16 +1,18 @@
-use reifydb_core::interface::{FlowId, FlowNodeId};
 use serde::{Deserialize, Serialize};
 
 use super::{
 	graph::DirectedGraph,
 	node::{FlowEdge, FlowNode},
 };
-use crate::Result;
+use crate::{
+	Result,
+	interface::{FlowId, FlowNodeId},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {
-	pub(crate) id: FlowId,
-	pub(crate) graph: DirectedGraph<FlowNode>,
+	pub id: FlowId,
+	pub graph: DirectedGraph<FlowNode>,
 }
 
 impl Flow {
@@ -67,10 +69,11 @@ impl Flow {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{TableId, ViewId};
-
 	use super::*;
-	use crate::{FlowEdge, FlowNodeType, core::OperatorType};
+	use crate::{
+		flow::{FlowNodeType, OperatorType},
+		interface::{TableId, ViewId},
+	};
 
 	#[test]
 	fn test_dataflow_graph_basic_operations() {

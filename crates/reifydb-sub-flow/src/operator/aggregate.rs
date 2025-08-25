@@ -1,23 +1,22 @@
 use std::{collections::HashMap, ops::Bound};
 
-use crate::{
-	core::{Change, Diff},
-	operator::{Operator, OperatorContext},
-	Result,
-};
 use reifydb_catalog::row::RowNumber;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	CowVec, Value,
+	flow::{Change, Diff},
 	interface::{
-		expression::Expression, EvaluationContext, Evaluator, Params,
-		SourceId::View, Transaction,
-		ViewId,
-	}, row::{EncodedKey, EncodedKeyRange, EncodedRow},
+		CommandTransaction, EvaluationContext, Evaluator, Params,
+		SourceId::View, Transaction, ViewId, expression::Expression,
+	},
+	row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
-	CowVec,
-	Value,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::{
+	Result,
+	operator::{Operator, OperatorContext},
+};
 // ============================================================================
 // Key Implementation for Aggregate State Storage
 // ============================================================================

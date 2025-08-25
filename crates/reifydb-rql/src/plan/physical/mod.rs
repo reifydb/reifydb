@@ -4,22 +4,22 @@
 mod alter;
 mod create;
 
+use reifydb_catalog::{
+	CatalogStore, table::TableColumnToCreate, view::ViewColumnToCreate,
+};
+use reifydb_core::{
+	JoinType, OwnedFragment, SortKey,
+	interface::{
+		QueryTransaction, SchemaDef, TableDef, ViewDef,
+		evaluate::expression::{AliasExpression, Expression},
+	},
+	result::error::diagnostic::catalog::schema_not_found,
+	return_error,
+};
+
 use crate::plan::{
 	logical::LogicalPlan,
 	physical::PhysicalPlan::{TableScan, ViewScan},
-};
-use reifydb_catalog::{
-	table::TableColumnToCreate, view::ViewColumnToCreate, CatalogStore,
-};
-use reifydb_core::interface::QueryTransaction;
-use reifydb_core::{
-	interface::{
-		evaluate::expression::{AliasExpression, Expression}, SchemaDef, TableDef,
-		ViewDef,
-	}, result::error::diagnostic::catalog::schema_not_found, return_error,
-	JoinType,
-	OwnedFragment,
-	SortKey,
 };
 
 struct Compiler {}
@@ -317,7 +317,7 @@ pub struct CreateDeferredViewPlan {
 	pub view: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Option<Box<PhysicalPlan>>,
+	pub with: Box<PhysicalPlan>,
 }
 
 #[derive(Debug, Clone)]
@@ -326,7 +326,7 @@ pub struct CreateTransactionalViewPlan {
 	pub view: OwnedFragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Option<Box<PhysicalPlan>>,
+	pub with: Box<PhysicalPlan>,
 }
 
 #[derive(Debug, Clone)]

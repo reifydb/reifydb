@@ -1,19 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::CommandTransaction;
-use reifydb_core::{
-	interface::{expression::Expression, FlowNodeId},
-	JoinType,
-};
-use reifydb_rql::plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan};
-use FlowNodeType::Operator;
 use JoinType::{Inner, Left};
-use OperatorType::Join;
+use reifydb_core::{
+	JoinType,
+	flow::{FlowNodeType::Operator, OperatorType::Join},
+	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+};
 
+use super::super::{CompileOperator, FlowCompiler};
 use crate::{
-	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
 	Result,
+	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
 };
 
 pub(crate) struct JoinCompiler {

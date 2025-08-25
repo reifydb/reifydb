@@ -1,19 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{view::ViewToCreate, CatalogStore};
+use reifydb_catalog::{CatalogStore, view::ViewToCreate};
 use reifydb_core::{
+	Value, interface::Transaction,
 	result::error::diagnostic::catalog::view_already_exists, return_error,
-	Value,
 };
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
-use reifydb_core::interface::Transaction;
-use crate::{
-	columnar::Columns,
-	execute::Executor,
-	StandardCommandTransaction,
-};
+use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
 
 impl Executor {
 	pub(crate) fn create_deferred_view<T: Transaction>(
@@ -21,7 +16,6 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
-
 		if let Some(view) = CatalogStore::find_view_by_name(
 			txn,
 			plan.schema.id,
@@ -76,17 +70,19 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-	use crate::test_utils::create_test_command_transaction;
+	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
 	use reifydb_core::{
-		interface::{Params, SchemaDef, SchemaId}, OwnedFragment,
-		Value,
+		OwnedFragment, Value,
+		interface::{Params, SchemaDef, SchemaId},
 	};
 	use reifydb_rql::plan::physical::{
-		CreateDeferredViewPlan, PhysicalPlan,
+		CreateDeferredViewPlan, InlineDataNode, PhysicalPlan,
 	};
 
-	use crate::execute::Executor;
+	use crate::{
+		execute::Executor, test_utils::create_test_command_transaction,
+	};
 
 	#[test]
 	fn test_create_view() {
@@ -102,7 +98,9 @@ mod tests {
 			view: OwnedFragment::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: None,
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
 		};
 
 		// First creation should succeed
@@ -173,7 +171,9 @@ mod tests {
 			view: OwnedFragment::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: None,
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
 		};
 
 		let result = Executor::testing()
@@ -200,7 +200,9 @@ mod tests {
 			view: OwnedFragment::testing("test_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: None,
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
 		};
 
 		let result = Executor::testing()
@@ -233,7 +235,9 @@ mod tests {
 			view: OwnedFragment::testing("my_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: None,
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
 		};
 
 		let err = Executor::testing()

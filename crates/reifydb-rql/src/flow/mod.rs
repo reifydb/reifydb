@@ -11,28 +11,25 @@ mod builder;
 mod operator;
 mod source;
 
-use reifydb_core::interface::{
-	CommandTransaction, FlowEdgeId, FlowNodeId, Transaction, ViewDef,
+use reifydb_core::{
+	flow::{Flow, FlowEdge, FlowNode, FlowNodeType},
+	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
 };
-use reifydb_rql::plan::physical::PhysicalPlan;
 
-use crate::{
-	compiler::{
-		operator::{
-			aggregate::AggregateCompiler, filter::FilterCompiler,
-			join::JoinCompiler, map::MapCompiler,
-			sort::SortCompiler, take::TakeCompiler,
-		},
-		source::{
-			inline_data::InlineDataCompiler,
-			table_scan::TableScanCompiler,
-		},
-	}, Flow, FlowEdge, FlowNode,
-	FlowNodeType,
+use self::{
+	operator::{
+		aggregate::AggregateCompiler, filter::FilterCompiler,
+		join::JoinCompiler, map::MapCompiler, sort::SortCompiler,
+		take::TakeCompiler,
+	},
+	source::{
+		inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
+	},
 };
+use crate::plan::physical::PhysicalPlan;
 
 /// Public API for compiling logical plans to Flows
-pub fn compile_flow<T: Transaction>(
+pub fn compile_flow(
 	txn: &mut impl CommandTransaction,
 	plan: PhysicalPlan,
 	sink: &ViewDef,

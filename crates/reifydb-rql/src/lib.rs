@@ -13,9 +13,11 @@ use crate::ast::AstIdentifier;
 pub mod ast;
 pub mod explain;
 pub mod expression;
+#[allow(dead_code, unused_variables)]
+pub mod flow;
 pub mod plan;
 
-pub(crate) fn convert_data_type(ast: &AstIdentifier) -> crate::Result<Type> {
+pub(crate) fn convert_data_type(ast: &AstIdentifier) -> Result<Type> {
 	Ok(match ast.value().to_ascii_lowercase().as_str() {
 		"bool" => Type::Bool,
 		"float4" => Type::Float4,

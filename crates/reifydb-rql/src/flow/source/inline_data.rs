@@ -4,12 +4,9 @@
 //! Compilation of inline data operations
 
 use reifydb_core::interface::{CommandTransaction, FlowNodeId};
-use reifydb_rql::plan::physical::InlineDataNode;
 
-use crate::{
-	compiler::{CompileOperator, FlowCompiler},
-	Result,
-};
+use super::super::{CompileOperator, FlowCompiler};
+use crate::{Result, plan::physical::InlineDataNode};
 
 pub(crate) struct InlineDataCompiler {
 	pub inline_data: InlineDataNode,

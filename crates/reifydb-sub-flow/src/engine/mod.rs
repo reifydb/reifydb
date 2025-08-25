@@ -6,9 +6,12 @@ mod register;
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{Evaluator, FlowId, FlowNodeId, SourceId};
+use reifydb_core::{
+	flow::Flow,
+	interface::{Evaluator, FlowId, FlowNodeId, SourceId},
+};
 
-use crate::{Flow, operator::OperatorEnum};
+use crate::operator::OperatorEnum;
 
 pub struct FlowEngine<E: Evaluator> {
 	evaluator: E,

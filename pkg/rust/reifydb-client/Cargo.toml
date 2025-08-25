@@ -16,7 +16,7 @@ reifydb = { workspace = true }
 reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
 
 #reifydb-reifydb-catalog = { workspace = true }
-#reifydb-reifydb-core = { workspace = true }
+#reifydb-reifydb-flow = { workspace = true }
 #reifydb-diagnostic = { workspace = true }
 #reifydb-reifydb-engine = { workspace = true }
 #reifydb-reifydb-storage = { workspace = true }

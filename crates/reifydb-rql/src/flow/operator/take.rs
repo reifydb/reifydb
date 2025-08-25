@@ -1,14 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, FlowNodeId};
-use reifydb_rql::plan::physical::{PhysicalPlan, TakeNode};
-use FlowNodeType::Operator;
-use OperatorType::Take;
+use reifydb_core::{
+	flow::{FlowNodeType::Operator, OperatorType::Take},
+	interface::{CommandTransaction, FlowNodeId},
+};
 
+use super::super::{CompileOperator, FlowCompiler};
 use crate::{
-	compiler::{CompileOperator, FlowCompiler}, FlowNodeType, OperatorType,
 	Result,
+	plan::physical::{PhysicalPlan, TakeNode},
 };
 
 pub(crate) struct TakeCompiler {

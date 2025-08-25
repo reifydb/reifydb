@@ -3,10 +3,13 @@
 
 //! Builder pattern for constructing flow nodes with edges
 
-use reifydb_core::interface::{CommandTransaction, FlowNodeId};
+use reifydb_core::{
+	flow::FlowNodeType,
+	interface::{CommandTransaction, FlowNodeId},
+};
 
 use super::FlowCompiler;
-use crate::{FlowNodeType, Result};
+use crate::Result;
 
 /// Builder for creating flow nodes with automatic edge management
 pub(crate) struct FlowNodeBuilder<'a, 'b, T>

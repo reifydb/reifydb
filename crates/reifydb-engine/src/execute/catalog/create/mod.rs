@@ -1,11 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::CommandTransaction;
-use reifydb_core::interface::ViewDef;
-use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_core::interface::{
+	Command, ExecuteCommand, Identity, Params, Transaction, ViewDef,
+};
+use reifydb_rql::{flow::compile_flow, plan::physical::PhysicalPlan};
 
-use crate::execute::Executor;
+use crate::{StandardCommandTransaction, execute::Executor};
 
 #[allow(dead_code)] // FIXME
 mod deferred;
@@ -15,36 +16,33 @@ mod table;
 mod transactional;
 
 impl Executor {
-	pub(crate) fn create_flow(
+	// FIXME
+	pub(crate) fn create_flow<T: Transaction>(
 		&self,
-		_txn: &mut impl CommandTransaction,
-		_view: &ViewDef,
-		plan: Option<Box<PhysicalPlan>>,
+		txn: &mut StandardCommandTransaction<T>,
+		view: &ViewDef,
+		plan: Box<PhysicalPlan>,
 	) -> crate::Result<()> {
-		let Some(_plan) = plan else {
-			return Ok(());
-		};
+		let flow = compile_flow(txn, *plan, view).unwrap();
 
-		// let flow = compile_flow(txn, *plan, view).unwrap();
-		//
-		// let rql = r#"
-		//          from[{data: blob::utf8('$REPLACE')}]
-		//          insert reifydb.flows
-		//      "#
-		// .replace(
-		// 	"$REPLACE",
-		// 	serde_json::to_string(&flow).unwrap().as_str(),
-		// );
-		//
-		// self.execute_command(
-		// 	txn,
-		// 	Command {
-		// 		rql: rql.as_str(),
-		// 		params: Params::default(),
-		// 		identity: &Identity::root(),
-		// 	},
-		// )?;
+		let rql = r#"
+		         from[{data: blob::utf8('$REPLACE')}]
+		         insert reifydb.flows
+		     "#
+		.replace(
+			"$REPLACE",
+			serde_json::to_string(&flow).unwrap().as_str(),
+		);
 
-		todo!()
+		self.execute_command(
+			txn,
+			Command {
+				rql: rql.as_str(),
+				params: Params::default(),
+				identity: &Identity::root(),
+			},
+		)?;
+
+		Ok(())
 	}
 }

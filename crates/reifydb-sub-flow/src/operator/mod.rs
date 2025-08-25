@@ -4,14 +4,14 @@ mod map;
 
 use std::marker::PhantomData;
 
-use crate::core::Change;
 pub use aggregate::AggregateOperator;
 pub use filter::FilterOperator;
 pub use map::MapOperator;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_core::{
+	flow::Change,
 	interface::{
-		expression::Expression, EvaluationContext, Evaluator,
+		CommandTransaction, EvaluationContext, Evaluator,
+		expression::Expression,
 	},
 	value::columnar::Column,
 };

@@ -1,11 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OperatorType::{Aggregate, Filter, Map};
-use reifydb_core::interface::{Evaluator, FlowId, FlowNodeId, SourceId};
+use reifydb_core::{
+	flow::{
+		Flow, FlowNodeType, OperatorType,
+		OperatorType::{Aggregate, Filter, Map},
+	},
+	interface::{Evaluator, FlowId, FlowNodeId, SourceId},
+};
 
 use crate::{
-	Flow, FlowNodeType, OperatorType,
 	engine::FlowEngine,
 	operator::{
 		AggregateOperator, FilterOperator, MapOperator, OperatorEnum,

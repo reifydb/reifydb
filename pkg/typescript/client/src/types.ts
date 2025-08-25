@@ -7,7 +7,7 @@
 import type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 
-// Re-export types that are actually available in core
+// Re-export types that are actually available in flow
 export type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 export { ReifyError } from "@reifydb/core";
 

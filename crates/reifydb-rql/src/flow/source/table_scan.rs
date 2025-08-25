@@ -3,13 +3,13 @@
 
 //! Compilation of table scan operations
 
-use reifydb_core::interface::{CommandTransaction, FlowNodeId};
-use reifydb_rql::plan::physical::TableScanNode;
-
-use crate::{
-	compiler::{CompileOperator, FlowCompiler}, FlowNodeType,
-	Result,
+use reifydb_core::{
+	flow::FlowNodeType,
+	interface::{CommandTransaction, FlowNodeId},
 };
+
+use super::super::{CompileOperator, FlowCompiler};
+use crate::{Result, plan::physical::TableScanNode};
 
 pub(crate) struct TableScanCompiler {
 	pub table_scan: TableScanNode,

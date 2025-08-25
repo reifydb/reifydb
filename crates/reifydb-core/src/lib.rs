@@ -5,6 +5,7 @@
 
 mod common;
 pub mod delta;
+pub mod flow;
 pub mod hook;
 pub mod index;
 pub mod interceptor;
@@ -17,16 +18,16 @@ pub mod value;
 
 pub use common::*;
 pub use interface::{
+	ColumnDescriptor,
 	fragment::{
 		BorrowedFragment, Fragment, IntoFragment, IntoOwnedFragment,
 		OwnedFragment, StatementColumn, StatementLine,
 	},
-	ColumnDescriptor,
 };
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
-pub use util::{ioc, retry, BitVec, CowVec, Either, WaitGroup};
+pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};
 pub use value::{
 	Blob, Date, DateTime, GetType, IdentityId, Interval, IntoValue,
 	OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7, Value,

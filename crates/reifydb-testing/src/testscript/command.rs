@@ -98,7 +98,7 @@ impl Argument {
 		}
 	}
 
-	/// Parses the argument value as a T using core::str::parse().
+	/// Parses the argument value as a T using flow::str::parse().
 	/// Convenience method that returns an improved error message as a
 	/// boxed error to ease error handling in a [`Runner`](crate::Runner).
 	pub fn parse<T>(&self) -> Result<T, Box<dyn Error>>
@@ -278,7 +278,7 @@ mod tests {
 	}
 
 	/// Basic tests of Argument.parse(). Not comprehensive, since it
-	/// dispatches to core::str::parse().
+	/// dispatches to flow::str::parse().
 	#[test]
 	fn test_argument_parse() {
 		assert_eq!(arg!("-1").parse::<i64>().unwrap(), -1_i64);

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use reifydb_catalog::row::RowNumber;
-use reifydb_core::{Value, interface::SourceId, value::columnar::Columns};
 use serde::{Deserialize, Serialize};
+
+use crate::{RowNumber, Value, interface::SourceId, value::columnar::Columns};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Diff {

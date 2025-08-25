@@ -20,7 +20,7 @@
 // // This file is licensed under the AGPL-3.0-or-later, see license.md file
 //
 // use reifydb::network::ws::client::WsClient;
-// use reifydb::core::interface::Params;
+// use reifydb::flow::interface::Params;
 //
 // #[tokio::main]
 // async fn main() {
