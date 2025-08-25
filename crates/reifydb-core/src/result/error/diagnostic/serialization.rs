@@ -36,36 +36,6 @@ pub fn serialization_error(msg: String) -> Diagnostic {
 	}
 }
 
-/// Bincode encoding error
-pub fn bincode_encode_error(err: bincode::error::EncodeError) -> Diagnostic {
-	Diagnostic {
-		code: "SER_003".to_string(),
-		statement: None,
-		message: format!("Bincode encode error: {}", err),
-		column: None,
-		fragment: OwnedFragment::None,
-		label: None,
-		help: Some("Check binary data format".to_string()),
-		notes: vec![],
-		cause: None,
-	}
-}
-
-/// Bincode decoding error
-pub fn bincode_decode_error(err: bincode::error::DecodeError) -> Diagnostic {
-	Diagnostic {
-		code: "SER_004".to_string(),
-		statement: None,
-		message: format!("Bincode decode error: {}", err),
-		column: None,
-		fragment: OwnedFragment::None,
-		label: None,
-		help: Some("Check binary data format".to_string()),
-		notes: vec![],
-		cause: None,
-	}
-}
-
 /// Keycode-specific serialization error
 pub fn keycode_serialization_error(msg: String) -> Diagnostic {
 	Diagnostic {

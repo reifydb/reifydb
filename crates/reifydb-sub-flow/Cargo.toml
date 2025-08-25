@@ -15,7 +15,6 @@ reifydb-rql = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
-bincode = "1.3"
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

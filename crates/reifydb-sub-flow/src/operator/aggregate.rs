@@ -9,6 +9,7 @@ use reifydb_core::{
 		SourceId::View, Transaction, ViewId, expression::Expression,
 	},
 	row::{EncodedKey, EncodedKeyRange, EncodedRow},
+	util::encoding::keycode,
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
 use serde::{Deserialize, Serialize};
@@ -37,8 +38,7 @@ impl FlowAggregateStateKey {
 
 	fn new(flow_id: u64, node_id: u64, group_key: Vec<Value>) -> Self {
 		// Serialize group key values
-		let serialized =
-			bincode::serialize(&group_key).unwrap_or_default();
+		let serialized = keycode::serialize(&group_key);
 		Self {
 			flow_id,
 			node_id,
@@ -275,12 +275,12 @@ impl GroupState {
 	}
 
 	fn to_encoded_row(&self) -> EncodedRow {
-		let bytes = bincode::serialize(self).unwrap_or_default();
+		let bytes = keycode::serialize(self);
 		EncodedRow(CowVec::new(bytes))
 	}
 
 	fn from_encoded_row(row: &EncodedRow) -> Option<Self> {
-		bincode::deserialize(row.as_ref()).ok()
+		keycode::deserialize(row.as_ref()).ok()
 	}
 }
 
@@ -460,7 +460,7 @@ impl AggregateOperator {
 				FlowAggregateStateKey::decode(&versioned.key)
 			{
 				if let Ok(group_key) =
-					bincode::deserialize::<Vec<Value>>(
+					keycode::deserialize::<Vec<Value>>(
 						&state_key.group_key,
 					) {
 					if let Some(state) =
