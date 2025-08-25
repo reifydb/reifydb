@@ -20,8 +20,8 @@ pub use common::*;
 pub use interface::{
 	ColumnDescriptor,
 	fragment::{
-		BorrowedFragment, Fragment, IntoFragment, IntoOwnedFragment,
-		OwnedFragment, StatementColumn, StatementLine,
+		BorrowedFragment, Fragment, IntoFragment, OwnedFragment,
+		StatementColumn, StatementLine,
 	},
 };
 pub use result::*;

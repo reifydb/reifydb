@@ -103,6 +103,34 @@ pub enum Fragment<'a> {
 	None,
 }
 
+impl Fragment<'_> {
+	pub fn owned_internal(text: impl Into<String>) -> Self {
+		Fragment::Owned(OwnedFragment::Internal {
+			text: text.into(),
+		})
+	}
+
+	pub fn owned_empty() -> Self {
+		Fragment::Owned(OwnedFragment::testing_empty())
+	}
+
+	pub fn borrowed_internal(text: &str) -> Fragment {
+		Fragment::Borrowed(BorrowedFragment::Internal {
+			text,
+		})
+	}
+
+	pub fn none() -> Self {
+		Self::None
+	}
+
+	pub fn testing_empty() -> Fragment<'static> {
+		Fragment::Borrowed(BorrowedFragment::Internal {
+			text: "",
+		})
+	}
+}
+
 impl<'a> Fragment<'a> {
 	/// Get the text value of the fragment
 	pub fn value(&self) -> &str {
@@ -199,57 +227,69 @@ pub trait IntoFragment<'a> {
 	fn into_fragment(self) -> Fragment<'a>;
 }
 
-/// Trait to provide an OwnedFragment either directly or lazily (via closure)
-pub trait IntoOwnedFragment {
-	fn into_fragment(self) -> OwnedFragment;
-}
-
-impl IntoOwnedFragment for OwnedFragment {
-	fn into_fragment(self) -> OwnedFragment {
-		self
-	}
-}
-
-impl IntoOwnedFragment for &OwnedFragment {
-	fn into_fragment(self) -> OwnedFragment {
-		self.clone()
-	}
-}
-
-impl<F> IntoOwnedFragment for F
+// Additional IntoFragment implementations for closure returning OwnedFragment
+impl<F> IntoFragment<'static> for F
 where
 	F: Fn() -> OwnedFragment,
 {
-	fn into_fragment(self) -> OwnedFragment {
+	fn into_fragment(self) -> Fragment<'static> {
+		Fragment::Owned(self())
+	}
+}
+
+// Implementation for &OwnedFragment
+impl IntoFragment<'static> for &OwnedFragment {
+	fn into_fragment(self) -> Fragment<'static> {
+		Fragment::Owned(self.clone())
+	}
+}
+
+/// Trait for lazy fragment generation that returns Fragment instead of
+/// OwnedFragment
+pub trait LazyFragment<'a>: Copy {
+	fn fragment(&self) -> Fragment<'a>;
+}
+
+/// Wrapper to allow LazyFragment to be used as IntoFragment
+pub struct LazyFragmentWrapper<T>(pub T);
+
+impl<'a, T> IntoFragment<'a> for LazyFragmentWrapper<T>
+where
+	T: LazyFragment<'a>,
+{
+	fn into_fragment(self) -> Fragment<'a> {
+		self.0.fragment()
+	}
+}
+
+// Implementation for closures that return Fragment
+impl<'a, F> LazyFragment<'a> for F
+where
+	F: Fn() -> Fragment<'a> + Copy,
+{
+	fn fragment(&self) -> Fragment<'a> {
 		self()
 	}
 }
 
-impl<'a> IntoOwnedFragment for BorrowedFragment<'a> {
-	fn into_fragment(self) -> OwnedFragment {
-		match self {
-			BorrowedFragment::None => OwnedFragment::None,
-			BorrowedFragment::Statement {
-				text,
-				line,
-				column,
-			} => OwnedFragment::Statement {
-				text: text.to_string(),
-				line,
-				column,
-			},
-			BorrowedFragment::Internal {
-				text,
-			} => OwnedFragment::Internal {
-				text: text.to_string(),
-			},
-		}
+// Implementation for Fragment itself - using clone since we can't borrow with
+// proper lifetime
+impl<'a> LazyFragment<'a> for Fragment<'a>
+where
+	Fragment<'a>: Copy,
+{
+	fn fragment(&self) -> Fragment<'a> {
+		self.clone()
 	}
 }
 
-impl<'a> IntoOwnedFragment for &BorrowedFragment<'a> {
-	fn into_fragment(self) -> OwnedFragment {
-		IntoOwnedFragment::into_fragment(*self)
+// Implementation for &Fragment
+impl<'a, 'b> LazyFragment<'a> for &'b Fragment<'a>
+where
+	'a: 'b,
+{
+	fn fragment(&self) -> Fragment<'a> {
+		(*self).clone()
 	}
 }
 

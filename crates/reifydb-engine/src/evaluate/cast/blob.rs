@@ -2,15 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	OwnedFragment, Type, err, error::diagnostic::cast,
-	interface::fragment::BorrowedFragment, value::Blob,
+	Type, err,
+	error::diagnostic::cast,
+	interface::{LazyFragment, fragment::BorrowedFragment},
+	value::Blob,
 };
 
 use crate::columnar::ColumnData;
 
-pub fn to_blob(
+pub fn to_blob<'a>(
 	data: &ColumnData,
-	_fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8(container) => {
@@ -36,7 +38,7 @@ pub fn to_blob(
 		_ => {
 			let source_type = data.get_type();
 			err!(cast::unsupported_cast(
-				_fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				Type::Blob
 			))
@@ -46,7 +48,7 @@ pub fn to_blob(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::BitVec;
+	use reifydb_core::{BitVec, Fragment};
 
 	use super::*;
 
@@ -56,9 +58,8 @@ mod tests {
 		let bitvec = BitVec::repeat(2, true);
 		let container = ColumnData::utf8_with_bitvec(strings, bitvec);
 
-		let result =
-			to_blob(&container, || OwnedFragment::testing_empty())
-				.unwrap();
+		let result = to_blob(&container, || Fragment::testing_empty())
+			.unwrap();
 
 		match result {
 			ColumnData::Blob(container) => {
@@ -75,8 +76,7 @@ mod tests {
 		let bitvec = BitVec::repeat(1, true);
 		let container = ColumnData::int4_with_bitvec(ints, bitvec);
 
-		let result =
-			to_blob(&container, || OwnedFragment::testing_empty());
+		let result = to_blob(&container, || Fragment::testing_empty());
 		assert!(result.is_err());
 	}
 }

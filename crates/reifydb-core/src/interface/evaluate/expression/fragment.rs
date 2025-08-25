@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 use crate::{
-	OwnedFragment,
+	Fragment, OwnedFragment,
 	interface::{
 		evaluate::expression::{
 			AddExpression, CastExpression, ConstantExpression,
@@ -13,14 +13,18 @@ use crate::{
 };
 
 impl Expression {
-	pub fn lazy_fragment(&self) -> impl Fn() -> OwnedFragment + '_ {
+	pub fn lazy_fragment<'a>(&'a self) -> impl Fn() -> Fragment<'a> + 'a {
 		move || match self {
-			Expression::AccessSource(expr) => expr.fragment(),
-			Expression::Alias(expr) => expr.expression.fragment(),
+			Expression::AccessSource(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
+			Expression::Alias(expr) => {
+				Fragment::Owned(expr.expression.fragment())
+			}
 			Expression::Cast(CastExpression {
 				expression: expr,
 				..
-			}) => expr.fragment(),
+			}) => Fragment::Owned(expr.fragment()),
 			Expression::Constant(expr) => match expr {
 				ConstantExpression::Undefined {
 					fragment,
@@ -36,30 +40,58 @@ impl Expression {
 				}
 				| ConstantExpression::Text {
 					fragment,
-				} => fragment.clone(),
+				} => Fragment::Owned(fragment.clone()),
 			},
-			Expression::Column(expr) => expr.0.clone(),
+			Expression::Column(expr) => {
+				Fragment::Owned(expr.0.clone())
+			}
 
-			Expression::Add(expr) => expr.fragment(),
-			Expression::Sub(expr) => expr.fragment(),
-			Expression::GreaterThan(expr) => expr.fragment.clone(),
+			Expression::Add(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
+			Expression::Sub(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
+			Expression::GreaterThan(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
 			Expression::GreaterThanEqual(expr) => {
-				expr.fragment.clone()
+				Fragment::Owned(expr.fragment.clone())
 			}
-			Expression::LessThan(expr) => expr.fragment.clone(),
+			Expression::LessThan(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
 			Expression::LessThanEqual(expr) => {
-				expr.fragment.clone()
+				Fragment::Owned(expr.fragment.clone())
 			}
-			Expression::Equal(expr) => expr.fragment.clone(),
-			Expression::NotEqual(expr) => expr.fragment.clone(),
-			Expression::Between(expr) => expr.fragment(),
-			Expression::And(expr) => expr.fragment.clone(),
-			Expression::Or(expr) => expr.fragment.clone(),
-			Expression::Xor(expr) => expr.fragment.clone(),
+			Expression::Equal(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
+			Expression::NotEqual(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
+			Expression::Between(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
+			Expression::And(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
+			Expression::Or(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
+			Expression::Xor(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
 
-			Expression::Mul(expr) => expr.fragment(),
-			Expression::Div(expr) => expr.fragment(),
-			Expression::Rem(expr) => expr.fragment(),
+			Expression::Mul(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
+			Expression::Div(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
+			Expression::Rem(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
 
 			Expression::Tuple(expr) => {
 				let fragments = expr
@@ -67,21 +99,29 @@ impl Expression {
 					.iter()
 					.map(|e| e.fragment())
 					.collect::<Vec<_>>();
-				OwnedFragment::merge_all(fragments)
+				Fragment::Owned(OwnedFragment::merge_all(
+					fragments,
+				))
 			}
-			Expression::Type(expr) => expr.fragment.clone(),
+			Expression::Type(expr) => {
+				Fragment::Owned(expr.fragment.clone())
+			}
 
-			Expression::Prefix(expr) => expr.fragment(),
+			Expression::Prefix(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
 
-			Expression::Call(expr) => expr.fragment(),
+			Expression::Call(expr) => {
+				Fragment::Owned(expr.fragment())
+			}
 			Expression::Parameter(param) => match param {
 				ParameterExpression::Positional {
 					fragment,
 					..
-				} => fragment.clone(),
+				} => Fragment::Owned(fragment.clone()),
 				ParameterExpression::Named {
 					fragment,
-				} => fragment.clone(),
+				} => Fragment::Owned(fragment.clone()),
 			},
 		}
 	}
@@ -161,6 +201,6 @@ impl RemExpression {
 
 impl Expression {
 	pub fn fragment(&self) -> OwnedFragment {
-		self.lazy_fragment()()
+		self.lazy_fragment()().into_owned()
 	}
 }

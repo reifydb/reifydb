@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	Error, GetType, IntoOwnedFragment,
+	Error, GetType, IntoFragment,
 	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
 	result::error::diagnostic::number::number_out_of_range,
 	return_error,
@@ -20,7 +20,7 @@ impl EvaluationContext<'_> {
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl IntoFragment<'static>,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -33,7 +33,7 @@ impl EvaluationContext<'_> {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
 					return_error!(number_out_of_range(
-                        fragment.into_fragment(),
+                        fragment,
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
                     ));
@@ -42,7 +42,7 @@ impl EvaluationContext<'_> {
 				lp.checked_add(rp)
 					.ok_or_else(|| {
 						Error(number_out_of_range(
-                            fragment.into_fragment(),
+                            fragment,
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
                         ))
@@ -69,7 +69,7 @@ impl EvaluationContext<'_> {
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl IntoFragment<'static>,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -82,7 +82,7 @@ impl EvaluationContext<'_> {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
 					return_error!(number_out_of_range(
-                        fragment.into_fragment(),
+                        fragment,
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
                     ));
@@ -91,7 +91,7 @@ impl EvaluationContext<'_> {
 				lp.checked_sub(rp)
 					.ok_or_else(|| {
 						Error(number_out_of_range(
-                            fragment.into_fragment(),
+                            fragment,
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
                         ))
@@ -118,7 +118,7 @@ impl EvaluationContext<'_> {
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl IntoFragment<'static>,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -131,7 +131,7 @@ impl EvaluationContext<'_> {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
 					return_error!(number_out_of_range(
-                        fragment.into_fragment(),
+                        fragment,
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
                     ));
@@ -140,7 +140,7 @@ impl EvaluationContext<'_> {
 				lp.checked_mul(rp)
 					.ok_or_else(|| {
 						Error(number_out_of_range(
-                            fragment.into_fragment(),
+                            fragment,
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
                         ))
@@ -167,7 +167,7 @@ impl EvaluationContext<'_> {
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl IntoFragment<'static>,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -180,7 +180,7 @@ impl EvaluationContext<'_> {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
 					return_error!(number_out_of_range(
-                        fragment.into_fragment(),
+                        fragment,
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
                     ));
@@ -189,7 +189,7 @@ impl EvaluationContext<'_> {
 				lp.checked_div(rp)
 					.ok_or_else(|| {
 						Error(number_out_of_range(
-                            fragment.into_fragment(),
+                            fragment,
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
                         ))
@@ -216,7 +216,7 @@ impl EvaluationContext<'_> {
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl IntoFragment<'static>,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -229,7 +229,7 @@ impl EvaluationContext<'_> {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
 					return_error!(number_out_of_range(
-                        fragment.into_fragment(),
+                        fragment,
                         <L as Promote<R>>::Output::get_type(),
                         self.target_column.as_ref(),
                     ));
@@ -238,7 +238,7 @@ impl EvaluationContext<'_> {
 				lp.checked_rem(rp)
 					.ok_or_else(|| {
 						Error(number_out_of_range(
-                            fragment.into_fragment(),
+                            fragment,
                             <L as Promote<R>>::Output::get_type(),
                             self.target_column.as_ref(),
                         ))
@@ -262,7 +262,7 @@ impl EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use crate::{OwnedFragment, interface::evaluate::EvaluationContext};
+	use crate::{Fragment, interface::evaluate::EvaluationContext};
 
 	#[test]
 	fn test_add() {
@@ -270,7 +270,7 @@ mod tests {
 		let result = test_instance.add(
 			1i8,
 			255i16,
-			OwnedFragment::testing_empty(),
+			Fragment::testing_empty(),
 		);
 		assert_eq!(result, Ok(Some(256i128)));
 	}
@@ -281,7 +281,7 @@ mod tests {
 		let result = test_instance.sub(
 			1i8,
 			255i16,
-			OwnedFragment::testing_empty(),
+			Fragment::testing_empty(),
 		);
 		assert_eq!(result, Ok(Some(-254i128)));
 	}
@@ -292,7 +292,7 @@ mod tests {
 		let result = test_instance.mul(
 			23i8,
 			255i16,
-			OwnedFragment::testing_empty(),
+			Fragment::testing_empty(),
 		);
 		assert_eq!(result, Ok(Some(5865i128)));
 	}
@@ -303,7 +303,7 @@ mod tests {
 		let result = test_instance.div(
 			120i8,
 			20i16,
-			OwnedFragment::testing_empty(),
+			Fragment::testing_empty(),
 		);
 		assert_eq!(result, Ok(Some(6i128)));
 	}
@@ -314,7 +314,7 @@ mod tests {
 		let result = test_instance.remainder(
 			120i8,
 			21i16,
-			OwnedFragment::testing_empty(),
+			Fragment::testing_empty(),
 		);
 		assert_eq!(result, Ok(Some(15i128)));
 	}

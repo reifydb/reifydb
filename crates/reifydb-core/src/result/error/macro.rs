@@ -21,9 +21,10 @@ macro_rules! error {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment($crate::IntoOwnedFragment::into_fragment(
-			$fragment,
-		));
+		diag.with_fragment(
+			$crate::IntoFragment::into_fragment($fragment)
+				.into_owned(),
+		);
 		$crate::error::Error(diag)
 	}};
 }
@@ -49,9 +50,10 @@ macro_rules! return_error {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment($crate::IntoOwnedFragment::into_fragment(
-			$fragment,
-		));
+		diag.with_fragment(
+			$crate::IntoFragment::into_fragment($fragment)
+				.into_owned(),
+		);
 		return Err($crate::error::Error(diag));
 	}};
 }
@@ -75,9 +77,10 @@ macro_rules! err {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment($crate::IntoOwnedFragment::into_fragment(
-			$fragment,
-		));
+		diag.with_fragment(
+			$crate::IntoFragment::into_fragment($fragment)
+				.into_owned(),
+		);
 		Err($crate::error::Error(diag))
 	}};
 }

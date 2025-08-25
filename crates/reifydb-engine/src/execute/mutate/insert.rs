@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::{CatalogStore, sequence::TableColumnSequence};
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedFragment, Type, Value,
+	ColumnDescriptor, IntoFragment, Type, Value,
 	interface::{ColumnPolicyKind, Params, Transaction},
 	result::error::diagnostic::catalog::table_not_found,
 	return_error,

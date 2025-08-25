@@ -5,6 +5,7 @@ use std::fmt::{Debug, Display};
 
 use reifydb_core::{
 	OwnedFragment, Type,
+	interface::fragment::LazyFragment,
 	result::error::diagnostic::{boolean::invalid_number_boolean, cast},
 	return_error,
 	value::{
@@ -16,44 +17,54 @@ use reifydb_core::{
 
 use crate::columnar::ColumnData;
 
-pub fn to_boolean(
+pub fn to_boolean<'a>(
 	data: &ColumnData,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Int1(container) => from_int1(container, &fragment),
-		ColumnData::Int2(container) => from_int2(container, &fragment),
-		ColumnData::Int4(container) => from_int4(container, &fragment),
-		ColumnData::Int8(container) => from_int8(container, &fragment),
+		ColumnData::Int1(container) => {
+			from_int1(container, lazy_fragment)
+		}
+		ColumnData::Int2(container) => {
+			from_int2(container, lazy_fragment)
+		}
+		ColumnData::Int4(container) => {
+			from_int4(container, lazy_fragment)
+		}
+		ColumnData::Int8(container) => {
+			from_int8(container, lazy_fragment)
+		}
 		ColumnData::Int16(container) => {
-			from_int16(container, &fragment)
+			from_int16(container, lazy_fragment)
 		}
 		ColumnData::Uint1(container) => {
-			from_uint1(container, &fragment)
+			from_uint1(container, lazy_fragment)
 		}
 		ColumnData::Uint2(container) => {
-			from_uint2(container, &fragment)
+			from_uint2(container, lazy_fragment)
 		}
 		ColumnData::Uint4(container) => {
-			from_uint4(container, &fragment)
+			from_uint4(container, lazy_fragment)
 		}
 		ColumnData::Uint8(container) => {
-			from_uint8(container, &fragment)
+			from_uint8(container, lazy_fragment)
 		}
 		ColumnData::Uint16(container) => {
-			from_uint16(container, &fragment)
+			from_uint16(container, lazy_fragment)
 		}
 		ColumnData::Float4(container) => {
-			from_float4(container, &fragment)
+			from_float4(container, lazy_fragment)
 		}
 		ColumnData::Float8(container) => {
-			from_float8(container, &fragment)
+			from_float8(container, lazy_fragment)
 		}
-		ColumnData::Utf8(container) => from_utf8(container, fragment),
+		ColumnData::Utf8(container) => {
+			from_utf8(container, lazy_fragment)
+		}
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				Type::Bool
 			))
@@ -61,9 +72,9 @@ pub fn to_boolean(
 	}
 }
 
-fn to_bool<T>(
+fn to_bool<'a, T>(
 	container: &NumberContainer<T>,
-	fragment: &impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 	validate: impl Fn(T) -> Option<bool>,
 ) -> crate::Result<ColumnData>
 where
@@ -75,7 +86,9 @@ where
 			match validate(container[idx]) {
 				Some(b) => out.push::<bool>(b),
 				None => {
-					let base_fragment = fragment();
+					let base_fragment = lazy_fragment
+						.fragment()
+						.into_owned();
 					let error_fragment =
 						OwnedFragment::Statement {
 							text: container[idx]
@@ -100,11 +113,11 @@ where
 macro_rules! impl_integer_to_bool {
 	($fn_name:ident, $type:ty) => {
 		#[inline]
-		fn $fn_name(
+		fn $fn_name<'a>(
 			container: &NumberContainer<$type>,
-			fragment: &impl Fn() -> OwnedFragment,
+			lazy_fragment: impl LazyFragment<'a>,
 		) -> crate::Result<ColumnData> {
-			to_bool(container, fragment, |val| match val {
+			to_bool(container, lazy_fragment, |val| match val {
 				0 => Some(false),
 				1 => Some(true),
 				_ => None,
@@ -116,11 +129,11 @@ macro_rules! impl_integer_to_bool {
 macro_rules! impl_float_to_bool {
 	($fn_name:ident, $type:ty) => {
 		#[inline]
-		fn $fn_name(
+		fn $fn_name<'a>(
 			container: &NumberContainer<$type>,
-			fragment: &impl Fn() -> OwnedFragment,
+			lazy_fragment: impl LazyFragment<'a>,
 		) -> crate::Result<ColumnData> {
-			to_bool(container, fragment, |val| {
+			to_bool(container, lazy_fragment, |val| {
 				if val == 0.0 {
 					Some(false)
 				} else if val == 1.0 {
@@ -146,9 +159,9 @@ impl_integer_to_bool!(from_uint16, u128);
 impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
-fn from_utf8(
+fn from_utf8<'a>(
 	container: &StringContainer,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	use reifydb_core::interface::fragment::BorrowedFragment;
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
@@ -163,7 +176,11 @@ fn from_utf8(
 				Err(mut e) => {
 					// Replace the error's fragment with the
 					// proper source fragment
-					e.0.with_fragment(fragment());
+					e.0.with_fragment(
+						lazy_fragment
+							.fragment()
+							.into_owned(),
+					);
 					return Err(e);
 				}
 			}

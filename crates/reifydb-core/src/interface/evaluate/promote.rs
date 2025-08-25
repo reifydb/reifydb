@@ -2,17 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	GetType, IntoOwnedFragment, error,
-	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
+	GetType, error,
+	interface::{
+		ColumnSaturationPolicy, LazyFragment,
+		evaluate::EvaluationContext,
+	},
 	result::error::diagnostic::number::number_out_of_range,
 	value::number::SafePromote,
 };
 
 pub trait Promote {
-	fn promote<From, To>(
+	fn promote<'a, From, To>(
 		&self,
 		from: From,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl LazyFragment<'a>,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafePromote<To>,
@@ -20,10 +23,10 @@ pub trait Promote {
 }
 
 impl Promote for EvaluationContext<'_> {
-	fn promote<From, To>(
+	fn promote<'a, From, To>(
 		&self,
 		from: From,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl LazyFragment<'a>,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafePromote<To>,
@@ -34,10 +37,10 @@ impl Promote for EvaluationContext<'_> {
 }
 
 impl Promote for &EvaluationContext<'_> {
-	fn promote<From, To>(
+	fn promote<'a, From, To>(
 		&self,
 		from: From,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl LazyFragment<'a>,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafePromote<To>,
@@ -48,7 +51,7 @@ impl Promote for &EvaluationContext<'_> {
 				.checked_promote()
 				.ok_or_else(|| {
 					return error!(number_out_of_range(
-						fragment.into_fragment(),
+						fragment.fragment(),
 						To::get_type(),
 						self.target_column.as_ref(),
 					));
@@ -67,7 +70,7 @@ impl Promote for &EvaluationContext<'_> {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		ColumnDescriptor, GetType, OwnedFragment, Type,
+		ColumnDescriptor, Fragment, GetType, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
@@ -84,9 +87,8 @@ mod tests {
 				.with_column_type(Type::Int2));
 		ctx.column_policies = vec![Saturation(Error)];
 
-		let result = ctx.promote::<i8, i16>(1i8, || {
-			OwnedFragment::testing_empty()
-		});
+		let result = ctx
+			.promote::<i8, i16>(1i8, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(1i16)));
 	}
 
@@ -100,7 +102,7 @@ mod tests {
 
 		let err = ctx
 			.promote::<TestI8, TestI16>(TestI8 {}, || {
-				OwnedFragment::testing_empty()
+				Fragment::testing_empty()
 			})
 			.err()
 			.unwrap();
@@ -118,7 +120,7 @@ mod tests {
 
 		let result = ctx
 			.promote::<TestI8, TestI16>(TestI8 {}, || {
-				OwnedFragment::testing_empty()
+				Fragment::testing_empty()
 			})
 			.unwrap();
 		assert!(result.is_none());

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	ColumnDescriptor, IntoOwnedFragment, Type, Value,
+	ColumnDescriptor, IntoFragment, Type, Value,
 	interface::{
 		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
 		Transaction, VersionedCommandTransaction,

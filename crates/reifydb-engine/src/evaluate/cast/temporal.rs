@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Date, DateTime, Interval, Time, Type, error,
-	interface::fragment::{BorrowedFragment, OwnedFragment},
+	interface::fragment::{BorrowedFragment, LazyFragment, OwnedFragment},
 	result::error::diagnostic::cast,
 	value::{
 		container::StringContainer,
@@ -15,21 +15,21 @@ use reifydb_core::{
 
 use crate::columnar::ColumnData;
 
-pub fn to_temporal(
+pub fn to_temporal<'a>(
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8(container) = data {
 		match target {
-			Type::Date => to_date(container, fragment),
-			Type::DateTime => to_datetime(container, fragment),
-			Type::Time => to_time(container, fragment),
-			Type::Interval => to_interval(container, fragment),
+			Type::Date => to_date(container, lazy_fragment),
+			Type::DateTime => to_datetime(container, lazy_fragment),
+			Type::Time => to_time(container, lazy_fragment),
+			Type::Interval => to_interval(container, lazy_fragment),
 			_ => {
 				let source_type = data.get_type();
 				reifydb_core::err!(cast::unsupported_cast(
-					fragment(),
+					lazy_fragment.fragment(),
 					source_type,
 					target
 				))
@@ -38,7 +38,7 @@ pub fn to_temporal(
 	} else {
 		let source_type = data.get_type();
 		reifydb_core::err!(cast::unsupported_cast(
-			fragment(),
+			lazy_fragment.fragment(),
 			source_type,
 			target
 		))
@@ -48,9 +48,9 @@ pub fn to_temporal(
 macro_rules! impl_to_temporal {
     ($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
         #[inline]
-        fn $fn_name(
+        fn $fn_name<'a>(
             container: &StringContainer,
-            fragment: impl Fn() -> OwnedFragment,
+            lazy_fragment: impl LazyFragment<'a>,
         ) -> crate::Result<ColumnData> {
             let mut out = ColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
@@ -61,7 +61,7 @@ macro_rules! impl_to_temporal {
 
                     let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
                         // Get the original fragment for error reporting
-                        let proper_fragment = fragment();
+                        let proper_fragment = lazy_fragment.fragment().into_owned();
 
                         // Handle fragment replacement based on the context
                         // For Internal fragments (from parsing), we need to adjust position

@@ -11,9 +11,9 @@ pub mod uuid;
 use std::ops::Deref;
 
 use reifydb_core::{
-	OwnedFragment, Type, err, error,
+	Type, err, error,
 	interface::{
-		Evaluator,
+		Evaluator, LazyFragment,
 		expression::{CastExpression, Expression},
 	},
 	result::error::diagnostic::cast,
@@ -44,16 +44,16 @@ impl StandardEvaluator {
 			}
 			expr => {
 				let column = self.evaluate(ctx, expr)?;
-
+				let lazy_frag = cast.expression.lazy_fragment();
 				let casted = cast_column_data(
 					ctx,
 					&column.data(),
 					cast.to.ty,
-					cast.expression.lazy_fragment(),
+					&lazy_frag,
 				)
 				.map_err(|e| {
 					error!(cast::invalid_number(
-						cast_fragment(),
+						cast_fragment().into_owned(),
 						cast.to.ty,
 						e.diagnostic()
 					))
@@ -88,11 +88,11 @@ impl StandardEvaluator {
 	}
 }
 
-pub fn cast_column_data(
+pub fn cast_column_data<'a>(
 	ctx: &EvaluationContext,
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
 		let mut result =
@@ -106,29 +106,29 @@ pub fn cast_column_data(
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
 		(_, target) if target.is_number() => {
-			number::to_number(ctx, data, target, fragment)
+			number::to_number(ctx, data, target, lazy_fragment)
 		}
 		(_, target) if target.is_blob() => {
-			blob::to_blob(data, fragment)
+			blob::to_blob(data, lazy_fragment)
 		}
 		(_, target) if target.is_bool() => {
-			boolean::to_boolean(data, fragment)
+			boolean::to_boolean(data, lazy_fragment)
 		}
 		(_, target) if target.is_utf8() => {
-			text::to_text(data, fragment)
+			text::to_text(data, lazy_fragment)
 		}
 		(_, target) if target.is_temporal() => {
-			temporal::to_temporal(data, target, fragment)
+			temporal::to_temporal(data, target, lazy_fragment)
 		}
 		(_, target) if target.is_uuid() => {
-			uuid::to_uuid(data, target, fragment)
+			uuid::to_uuid(data, target, lazy_fragment)
 		}
 		(source, target) if source.is_uuid() || target.is_uuid() => {
-			uuid::to_uuid(data, target, fragment)
+			uuid::to_uuid(data, target, lazy_fragment)
 		}
 		_ => {
 			err!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))

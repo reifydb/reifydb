@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	OwnedFragment, Type, error,
-	interface::fragment::BorrowedFragment,
+	Type, error,
+	interface::fragment::{BorrowedFragment, LazyFragment},
 	result::error::diagnostic::cast,
 	value::{
 		container::{StringContainer, UuidContainer},
@@ -16,25 +16,25 @@ use reifydb_core::{
 
 use crate::columnar::ColumnData;
 
-pub fn to_uuid(
+pub fn to_uuid<'a>(
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8(container) => {
-			from_text(container, target, fragment)
+			from_text(container, target, lazy_fragment)
 		}
 		ColumnData::Uuid4(container) => {
-			from_uuid4(container, target, fragment)
+			from_uuid4(container, target, lazy_fragment)
 		}
 		ColumnData::Uuid7(container) => {
-			from_uuid7(container, target, fragment)
+			from_uuid7(container, target, lazy_fragment)
 		}
 		_ => {
 			let source_type = data.get_type();
 			reifydb_core::err!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))
@@ -43,18 +43,18 @@ pub fn to_uuid(
 }
 
 #[inline]
-fn from_text(
+fn from_text<'a>(
 	container: &StringContainer,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match target {
-		Type::Uuid4 => to_uuid4(container, fragment),
-		Type::Uuid7 => to_uuid7(container, fragment),
+		Type::Uuid4 => to_uuid4(container, lazy_fragment),
+		Type::Uuid7 => to_uuid7(container, lazy_fragment),
 		_ => {
 			let source_type = Type::Utf8;
 			reifydb_core::err!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))
@@ -65,9 +65,9 @@ fn from_text(
 macro_rules! impl_to_uuid {
     ($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
         #[inline]
-        fn $fn_name(
+        fn $fn_name<'a>(
             container: &StringContainer,
-            fragment: impl Fn() -> OwnedFragment,
+            lazy_fragment: impl LazyFragment<'a>,
         ) -> crate::Result<ColumnData> {
             let mut out = ColumnData::with_capacity($target_type, container.len());
             for idx in 0..container.len() {
@@ -77,7 +77,7 @@ macro_rules! impl_to_uuid {
 
                     let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
                         // Get the original fragment for error reporting
-                        let proper_fragment = fragment();
+                        let proper_fragment = lazy_fragment.fragment().into_owned();
 
                         // Replace the error's origin with the proper RQL fragment
                         // This ensures the error shows "at col" not the actual value
@@ -101,10 +101,10 @@ impl_to_uuid!(to_uuid4, Uuid4, Type::Uuid4, parse_uuid4);
 impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 
 #[inline]
-fn from_uuid4(
+fn from_uuid4<'a>(
 	container: &UuidContainer<Uuid4>,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(
@@ -114,7 +114,7 @@ fn from_uuid4(
 		_ => {
 			let source_type = Type::Uuid4;
 			reifydb_core::err!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))
@@ -123,10 +123,10 @@ fn from_uuid4(
 }
 
 #[inline]
-fn from_uuid7(
+fn from_uuid7<'a>(
 	container: &UuidContainer<Uuid7>,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(
@@ -136,7 +136,7 @@ fn from_uuid7(
 		_ => {
 			let source_type = Type::Uuid7;
 			reifydb_core::err!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))

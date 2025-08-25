@@ -2,17 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	GetType, IntoOwnedFragment, error,
-	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
+	GetType, error,
+	interface::{
+		ColumnSaturationPolicy, LazyFragment,
+		evaluate::EvaluationContext,
+	},
 	result::error::diagnostic::number::number_out_of_range,
 	value::number::SafeDemote,
 };
 
 pub trait Demote {
-	fn demote<From, To>(
+	fn demote<'a, From, To>(
 		&self,
 		from: From,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl LazyFragment<'a>,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeDemote<To>,
@@ -20,10 +23,10 @@ pub trait Demote {
 }
 
 impl Demote for EvaluationContext<'_> {
-	fn demote<From, To>(
+	fn demote<'a, From, To>(
 		&self,
 		from: From,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl LazyFragment<'a>,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeDemote<To>,
@@ -34,10 +37,10 @@ impl Demote for EvaluationContext<'_> {
 }
 
 impl Demote for &EvaluationContext<'_> {
-	fn demote<From, To>(
+	fn demote<'a, From, To>(
 		&self,
 		from: From,
-		fragment: impl IntoOwnedFragment,
+		fragment: impl LazyFragment<'a>,
 	) -> crate::Result<Option<To>>
 	where
 		From: SafeDemote<To>,
@@ -48,7 +51,7 @@ impl Demote for &EvaluationContext<'_> {
 				.checked_demote()
 				.ok_or_else(|| {
 					return error!(number_out_of_range(
-						fragment.into_fragment(),
+						fragment.fragment(),
 						To::get_type(),
 						self.target_column.as_ref(),
 					));
@@ -67,7 +70,7 @@ impl Demote for &EvaluationContext<'_> {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		ColumnDescriptor, GetType, OwnedFragment, Type,
+		ColumnDescriptor, Fragment, GetType, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
@@ -84,9 +87,8 @@ mod tests {
 				.with_column_type(Type::Int1));
 		ctx.column_policies = vec![Saturation(Error)];
 
-		let result = ctx.demote::<i16, i8>(1i16, || {
-			OwnedFragment::testing_empty()
-		});
+		let result = ctx
+			.demote::<i16, i8>(1i16, &|| Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(1i8)));
 	}
 
@@ -99,8 +101,8 @@ mod tests {
 		ctx.column_policies = vec![Saturation(Error)];
 
 		let err = ctx
-			.demote::<TestI16, TestI8>(TestI16 {}, || {
-				OwnedFragment::testing_empty()
+			.demote::<TestI16, TestI8>(TestI16 {}, &|| {
+				Fragment::testing_empty()
 			})
 			.err()
 			.unwrap();
@@ -118,8 +120,8 @@ mod tests {
 		ctx.column_policies = vec![Saturation(Undefined)];
 
 		let result = ctx
-			.demote::<TestI16, TestI8>(TestI16 {}, || {
-				OwnedFragment::testing_empty()
+			.demote::<TestI16, TestI8>(TestI16 {}, &|| {
+				Fragment::testing_empty()
 			})
 			.unwrap();
 		assert!(result.is_none());

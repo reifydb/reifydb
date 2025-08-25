@@ -4,7 +4,8 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, OwnedFragment, Type, error,
+	GetType, Type, error,
+	interface::fragment::LazyFragment,
 	result::error::diagnostic::cast,
 	return_error,
 	value::{
@@ -22,50 +23,54 @@ use crate::{
 	evaluate::{Convert, Demote, Promote},
 };
 
-pub fn to_number(
+pub fn to_number<'a>(
 	ctx: impl Promote + Demote + Convert,
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		let source_type = data.get_type();
 		return_error!(cast::unsupported_cast(
-			fragment(),
+			lazy_fragment.fragment(),
 			source_type,
 			target
 		));
 	}
 
 	if data.get_type().is_number() {
-		return number_to_number(data, target, ctx, fragment);
+		return number_to_number(data, target, ctx, lazy_fragment);
 	}
 
 	if data.is_bool() {
-		return bool_to_number(data, target, fragment);
+		return bool_to_number(data, target, lazy_fragment);
 	}
 
 	if data.is_utf8() {
 		return match target {
 			Type::Float4 | Type::Float8 => {
-				text_to_float(data, target, fragment)
+				text_to_float(data, target, lazy_fragment)
 			}
-			_ => text_to_integer(data, target, fragment),
+			_ => text_to_integer(data, target, lazy_fragment),
 		};
 	}
 
 	if data.is_float() {
-		return float_to_integer(data, target, fragment);
+		return float_to_integer(data, target, lazy_fragment);
 	}
 
 	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(fragment(), source_type, target))
+	return_error!(cast::unsupported_cast(
+		lazy_fragment.fragment(),
+		source_type,
+		target
+	))
 }
 
-fn bool_to_number(
+fn bool_to_number<'a>(
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	macro_rules! bool_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
@@ -105,7 +110,7 @@ fn bool_to_number(
 				_ => {
 					let source_type = data.get_type();
 					return_error!(cast::unsupported_cast(
-						fragment(),
+						lazy_fragment.fragment(),
 						source_type,
 						target
 					));
@@ -129,7 +134,7 @@ fn bool_to_number(
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))
@@ -137,10 +142,10 @@ fn bool_to_number(
 	}
 }
 
-fn float_to_integer(
+fn float_to_integer<'a>(
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Float4(container) => match target {
@@ -157,7 +162,7 @@ fn float_to_integer(
 			_ => {
 				let source_type = data.get_type();
 				return_error!(cast::unsupported_cast(
-					fragment(),
+					lazy_fragment.fragment(),
 					source_type,
 					target
 				))
@@ -177,7 +182,7 @@ fn float_to_integer(
 			_ => {
 				let source_type = data.get_type();
 				return_error!(cast::unsupported_cast(
-					fragment(),
+					lazy_fragment.fragment(),
 					source_type,
 					target
 				))
@@ -186,7 +191,7 @@ fn float_to_integer(
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))
@@ -228,14 +233,15 @@ macro_rules! parse_and_push {
 	}};
 }
 
-fn text_to_integer(
+fn text_to_integer<'a>(
 	data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8(container) => {
-			let base_fragment = fragment();
+			let base_fragment =
+				lazy_fragment.fragment().into_owned();
 			let mut out = ColumnData::with_capacity(
 				target,
 				container.len(),
@@ -369,7 +375,7 @@ fn text_to_integer(
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(
-				fragment(),
+				lazy_fragment.fragment(),
 				source_type,
 				target
 			))
@@ -377,14 +383,14 @@ fn text_to_integer(
 	}
 }
 
-fn text_to_float(
+fn text_to_float<'a>(
 	column_data: &ColumnData,
 	target: Type,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8(container) = column_data {
 		// Create base fragment once for efficiency
-		let base_fragment = fragment();
+		let base_fragment = lazy_fragment.fragment().into_owned();
 		let mut out =
 			ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
@@ -460,7 +466,7 @@ fn text_to_float(
 	} else {
 		let source_type = column_data.get_type();
 		return_error!(cast::unsupported_cast(
-			fragment(),
+			lazy_fragment.fragment(),
 			source_type,
 			target
 		))
@@ -607,15 +613,15 @@ float_to_int_vec!(
 	u128::MAX as f64
 );
 
-fn number_to_number(
+fn number_to_number<'a>(
 	data: &ColumnData,
 	target: Type,
 	ctx: impl Promote + Demote + Convert,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		return_error!(cast::unsupported_cast(
-			fragment(),
+			lazy_fragment.fragment(),
 			data.get_type(),
 			target,
 		));
@@ -634,7 +640,7 @@ fn number_to_number(
                         Type::$pro_variant => return promote_vec::<$src_ty, $pro_ty>(
                             container,
                                 ctx,
-                                &fragment,
+                                lazy_fragment,
                                 Type::$pro_variant,
                                 ColumnData::push::<$pro_ty>,
                             ),
@@ -643,7 +649,7 @@ fn number_to_number(
                         Type::$dem_variant => return demote_vec::<$src_ty, $dem_ty>(
                             container,
                                     ctx,
-                                    &fragment,
+                                    lazy_fragment,
                                     Type::$dem_variant,
                                     ColumnData::push::<$dem_ty>,
                                 ),
@@ -652,7 +658,7 @@ fn number_to_number(
                         Type::$con_variant => return convert_vec::<$src_ty, $con_ty>(
                             container,
                                 ctx,
-                                &fragment,
+                                lazy_fragment,
                                 Type::$con_variant,
                                 ColumnData::push::<$con_ty>,
                             ),
@@ -736,13 +742,17 @@ fn number_to_number(
 	);
 
 	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(fragment(), source_type, target))
+	return_error!(cast::unsupported_cast(
+		lazy_fragment.fragment(),
+		source_type,
+		target
+	))
 }
 
-pub(crate) fn demote_vec<From, To>(
+pub(crate) fn demote_vec<'a, From, To>(
 	container: &NumberContainer<From>,
 	demote: impl Demote,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -754,7 +764,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match demote.demote::<From, To>(val, &fragment)? {
+			match demote.demote::<From, To>(val, lazy_fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -765,10 +775,10 @@ where
 	Ok(out)
 }
 
-pub(crate) fn promote_vec<From, To>(
+pub(crate) fn promote_vec<'a, From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Promote,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -780,7 +790,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match ctx.promote::<From, To>(val, &fragment)? {
+			match ctx.promote::<From, To>(val, lazy_fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -791,10 +801,10 @@ where
 	Ok(out)
 }
 
-pub(crate) fn convert_vec<From, To>(
+pub(crate) fn convert_vec<'a, From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Convert,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -812,7 +822,9 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match ctx.convert::<From, To>(val, &fragment)? {
+			match ctx.convert::<From, To>(val, || {
+				lazy_fragment.fragment().into_owned()
+			})? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -827,7 +839,8 @@ where
 mod tests {
 	mod promote {
 		use reifydb_core::{
-			BitVec, IntoOwnedFragment, OwnedFragment, Type,
+			BitVec, Fragment, GetType, Type,
+			interface::fragment::LazyFragment,
 			value::{
 				container::NumberContainer, number::SafePromote,
 			},
@@ -846,7 +859,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -868,7 +881,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -888,7 +901,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -909,7 +922,7 @@ mod tests {
 			let result = promote_vec::<i8, i16>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int2,
 				|col, v| col.push::<i16>(v),
 			)
@@ -933,13 +946,14 @@ mod tests {
 
 		impl Promote for &TestCtx {
 			/// Can only used with i8
-			fn promote<From, To>(
+			fn promote<'a, From, To>(
 				&self,
 				val: From,
-				_fragment: impl IntoOwnedFragment,
+				_fragment: impl LazyFragment<'a>,
 			) -> crate::Result<Option<To>>
 			where
 				From: SafePromote<To>,
+				To: GetType,
 			{
 				// Only simulate promotion failure for i8 == 42
 				let raw: i8 = unsafe {
@@ -955,7 +969,8 @@ mod tests {
 
 	mod demote {
 		use reifydb_core::{
-			BitVec, IntoOwnedFragment, OwnedFragment, Type,
+			BitVec, Fragment, GetType, Type,
+			interface::fragment::LazyFragment,
 			value::{
 				container::NumberContainer, number::SafeDemote,
 			},
@@ -974,7 +989,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -997,7 +1012,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1017,7 +1032,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1038,7 +1053,7 @@ mod tests {
 			let result = demote_vec::<i16, i8>(
 				&container,
 				&ctx,
-				|| OwnedFragment::testing_empty(),
+				|| Fragment::testing_empty(),
 				Type::Int1,
 				|col, v| col.push::<i8>(v),
 			)
@@ -1062,13 +1077,14 @@ mod tests {
 
 		impl Demote for &TestCtx {
 			/// Can only be used with i16 → i8
-			fn demote<From, To>(
+			fn demote<'a, From, To>(
 				&self,
 				val: From,
-				_fragment: impl IntoOwnedFragment,
+				_fragment: impl LazyFragment<'a>,
 			) -> crate::Result<Option<To>>
 			where
 				From: SafeDemote<To>,
+				To: GetType,
 			{
 				// Only simulate promotion failure for i16 == 42
 				let raw: i16 = unsafe {

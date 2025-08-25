@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	ColumnDescriptor, Type, Value,
+	ColumnDescriptor, Fragment, Type, Value,
 	interface::{
 		QueryTransaction, TableDef,
 		evaluate::expression::AliasExpression,
@@ -286,7 +286,7 @@ impl InlineDataNode {
 							&ctx,
 							&temp_data,
 							wide_type,
-							|| reifydb_core::OwnedFragment::testing("inline"),
+							|| Fragment::none(),
 						) {
 							Ok(casted) => {
 								if let Some(casted_value) = casted.iter().next() {
@@ -327,9 +327,7 @@ impl InlineDataNode {
 						&ctx,
 						&column_data,
 						optimal_type,
-						|| {
-							reifydb_core::OwnedFragment::testing("inline")
-						},
+						|| Fragment::none(),
 					) {
 						column_data = demoted;
 					}

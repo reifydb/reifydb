@@ -4,7 +4,8 @@
 use std::fmt::{Debug, Display};
 
 use reifydb_core::{
-	Error, OwnedFragment, Type,
+	Error, Type, err,
+	interface::fragment::LazyFragment,
 	result::error::diagnostic::cast,
 	value::{
 		IsNumber, IsTemporal, IsUuid,
@@ -17,12 +18,14 @@ use reifydb_core::{
 
 use crate::columnar::ColumnData;
 
-pub fn to_text(
+pub fn to_text<'a>(
 	data: &ColumnData,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Blob(container) => from_blob(container, fragment),
+		ColumnData::Blob(container) => {
+			from_blob(container, lazy_fragment)
+		}
 		ColumnData::Bool(container) => from_bool(container),
 		ColumnData::Int1(container) => from_number(container),
 		ColumnData::Int2(container) => from_number(container),
@@ -44,8 +47,8 @@ pub fn to_text(
 		ColumnData::Uuid7(container) => from_uuid(container),
 		_ => {
 			let source_type = data.get_type();
-			reifydb_core::err!(cast::unsupported_cast(
-				fragment(),
+			err!(cast::unsupported_cast(
+				lazy_fragment.fragment(),
 				source_type,
 				Type::Utf8
 			))
@@ -54,9 +57,9 @@ pub fn to_text(
 }
 
 #[inline]
-pub fn from_blob(
+pub fn from_blob<'a>(
 	container: &BlobContainer,
-	fragment: impl Fn() -> OwnedFragment,
+	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
@@ -66,7 +69,8 @@ pub fn from_blob(
 				Err(e) => {
 					return Err(Error(
 						cast::invalid_blob_to_utf8(
-							fragment(),
+							lazy_fragment
+								.fragment(),
 							e.diagnostic(),
 						),
 					));
@@ -147,7 +151,7 @@ where
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		BitVec, Blob, OwnedFragment, value::container::BlobContainer,
+		BitVec, Blob, Fragment, value::container::BlobContainer,
 	};
 
 	use crate::{columnar::ColumnData, evaluate::cast::text::from_blob};
@@ -162,10 +166,9 @@ mod tests {
 		let bitvec = BitVec::repeat(2, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result = from_blob(&container, || {
-			OwnedFragment::testing_empty()
-		})
-		.unwrap();
+		let result =
+			from_blob(&container, || Fragment::testing_empty())
+				.unwrap();
 
 		match result {
 			ColumnData::Utf8(container) => {
@@ -184,9 +187,8 @@ mod tests {
 		let bitvec = BitVec::repeat(1, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result = from_blob(&container, || {
-			OwnedFragment::testing_empty()
-		});
+		let result =
+			from_blob(&container, || Fragment::testing_empty());
 		assert!(result.is_err());
 	}
 }

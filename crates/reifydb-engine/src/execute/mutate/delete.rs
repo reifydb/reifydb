@@ -5,7 +5,7 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	EncodedKeyRange, IntoOwnedFragment, Value,
+	EncodedKeyRange, IntoFragment, Value,
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, TableRowKey,
 		TableRowKeyRange, Transaction, VersionedCommandTransaction,
