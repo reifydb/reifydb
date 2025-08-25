@@ -13,7 +13,9 @@ use reifydb_core::{
 		QueryTransaction, SchemaDef, TableDef, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
-	result::error::diagnostic::catalog::schema_not_found,
+	result::error::diagnostic::catalog::{
+		schema_not_found, table_not_found,
+	},
 	return_error,
 };
 
@@ -253,7 +255,13 @@ impl Compiler {
 							},
 						));
 					} else {
-						unimplemented!()
+						return_error!(
+							table_not_found(
+								Some(scan.source.clone()),
+								&scan.schema.fragment(),
+								&scan.source.fragment()
+							)
+						);
 					}
 				}
 
