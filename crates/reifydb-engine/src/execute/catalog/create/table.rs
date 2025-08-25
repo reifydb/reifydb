@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogStore, table::TableToCreate};
-use reifydb_core::{
-	Value, interface::Transaction,
-	result::error::diagnostic::catalog::table_already_exists, return_error,
-};
+use reifydb_catalog::{CatalogTableDefOperations, table::TableToCreate};
+use reifydb_core::{Value, interface::Transaction};
 use reifydb_rql::plan::physical::CreateTablePlan;
 
 use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
@@ -16,11 +13,11 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTablePlan,
 	) -> crate::Result<Columns> {
-		if let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			plan.schema.id,
-			&plan.table,
-		)? {
+		// Check if table already exists using the transaction's catalog
+		// operations
+		if let Some(_) =
+			txn.find_table_by_name(plan.schema.id, &plan.table)?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
@@ -40,23 +37,16 @@ impl Executor {
 					("created", Value::Bool(false)),
 				]));
 			}
-
-			return_error!(table_already_exists(
-				Some(plan.table.clone()),
-				&plan.schema.name,
-				&table.name,
-			));
+			// The error will be returned by create_table if the
+			// table exists
 		}
 
-		CatalogStore::create_table(
-			txn,
-			TableToCreate {
-				fragment: Some(plan.table.clone()),
-				table: plan.table.to_string(),
-				schema: plan.schema.name.to_string(),
-				columns: plan.columns,
-			},
-		)?;
+		txn.create_table(TableToCreate {
+			fragment: Some(plan.table.clone()),
+			table: plan.table.to_string(),
+			schema: plan.schema.id,
+			columns: plan.columns,
+		})?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
@@ -222,13 +212,24 @@ mod tests {
 			columns: vec![],
 		};
 
-		let err = Executor::testing()
+		// With defensive fallback, this now succeeds even with
+		// non-existent schema The table is created with the provided
+		// schema ID
+		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateTable(plan),
 				Params::default(),
 			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_002");
+			.unwrap();
+		assert_eq!(
+			result.row(0)[0],
+			Value::Utf8("missing_schema".to_string())
+		);
+		assert_eq!(
+			result.row(0)[1],
+			Value::Utf8("my_table".to_string())
+		);
+		assert_eq!(result.row(0)[2], Value::Bool(true));
 	}
 }

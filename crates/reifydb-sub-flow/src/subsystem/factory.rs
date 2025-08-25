@@ -1,46 +1,45 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, time::Duration};
+use std::time::Duration;
 
-use reifydb_cdc::PollConsumerConfig;
 use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
 		ConsumerId, Transaction,
-		subsystem::{Subsystem, SubsystemFactory},
+		subsystem::{
+			Subsystem, SubsystemFactory, workerpool::Priority,
+		},
 	},
 	ioc::IocContainer,
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_engine::StandardCommandTransaction;
 
-use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
+use super::{
+	FlowSubsystem, FlowSubsystemConfig,
+	intercept::TransactionalFlowInterceptor,
+};
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 #[derive()]
-pub struct FlowSubsystemFactory<T: Transaction> {
-	consumer_id: ConsumerId,
-	poll_interval: Duration,
-	_phantom: PhantomData<T>,
+pub struct FlowSubsystemFactory {
+	config: FlowSubsystemConfig,
 }
 
-impl<T: Transaction> FlowSubsystemFactory<T> {
+impl FlowSubsystemFactory {
 	pub fn new() -> Self {
 		Self {
-			consumer_id: ConsumerId::flow_consumer(),
-			poll_interval: Duration::from_millis(1),
-			_phantom: PhantomData,
+			config: FlowSubsystemConfig {
+				consumer_id: ConsumerId::flow_consumer(),
+				poll_interval: Duration::from_millis(1),
+				priority: Priority::Normal,
+			},
 		}
-	}
-
-	pub fn with_poll_interval(mut self, interval: Duration) -> Self {
-		self.poll_interval = interval;
-		self
 	}
 }
 
 impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
-	for FlowSubsystemFactory<T>
+	for FlowSubsystemFactory
 {
 	fn provide_interceptors(
 		&self,
@@ -62,16 +61,7 @@ impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
 	fn create(
 		self: Box<Self>,
 		ioc: &IocContainer,
-	) -> reifydb_core::Result<Box<dyn Subsystem>> {
-		let engine = ioc.resolve::<StandardEngine<T>>()?;
-		let poll_config = PollConsumerConfig::new(
-			self.consumer_id.clone(),
-			self.poll_interval,
-		);
-		Ok(Box::new(FlowSubsystem::with_config(
-			engine,
-			self.consumer_id,
-			poll_config,
-		)))
+	) -> crate::Result<Box<dyn Subsystem>> {
+		Ok(Box::new(FlowSubsystem::<T>::new(self.config, ioc)?))
 	}
 }

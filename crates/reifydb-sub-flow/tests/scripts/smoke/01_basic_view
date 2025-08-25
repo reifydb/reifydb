@@ -62,7 +62,7 @@ query 'FROM test.basic'
 |  name   |  age  |
 +---------+-------+
 |   dim   |  40   |
-|   bob   |  17   |
-|  lucy   |  20   |
 |  juciy  |  19   |
+|  lucy   |  20   |
+|   bob   |  17   |
 +---------+-------+

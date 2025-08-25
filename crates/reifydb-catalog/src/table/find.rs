@@ -2,13 +2,43 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	QueryTransaction, SchemaId, SchemaTableKey, TableDef, TableId,
-	Versioned,
+	EncodableKey, QueryTransaction, SchemaId, SchemaTableKey, TableDef,
+	TableId, TableKey, Versioned,
 };
 
-use crate::{CatalogStore, table::layout::table_schema};
+use crate::{
+	CatalogStore,
+	table::layout::{table, table_schema},
+};
 
 impl CatalogStore {
+	pub fn find_table(
+		rx: &mut impl QueryTransaction,
+		table: TableId,
+	) -> crate::Result<Option<TableDef>> {
+		let Some(versioned) = rx.get(&TableKey {
+			table,
+		}
+		.encode())?
+		else {
+			return Ok(None);
+		};
+
+		let row = versioned.row;
+		let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
+		let schema =
+			SchemaId(table::LAYOUT.get_u64(&row, table::SCHEMA));
+		let name =
+			table::LAYOUT.get_utf8(&row, table::NAME).to_string();
+
+		Ok(Some(TableDef {
+			id,
+			name,
+			schema,
+			columns: Self::list_table_columns(rx, id)?,
+		}))
+	}
+
 	pub fn find_table_by_name(
 		rx: &mut impl QueryTransaction,
 		schema: SchemaId,

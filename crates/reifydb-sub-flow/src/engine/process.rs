@@ -92,7 +92,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
 
-		let outputchange = match &node_type {
+		let output = match &node_type {
 			SourceInlineData {} => {
 				unimplemented!()
 			}
@@ -121,7 +121,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				txn,
 				flow,
 				flow.get_node(output_id).unwrap(),
-				outputchange,
+				output,
 			)?;
 		}
 

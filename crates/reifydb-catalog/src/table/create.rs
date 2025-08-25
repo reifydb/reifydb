@@ -3,12 +3,10 @@
 
 use reifydb_core::{
 	OwnedFragment, Type,
+	diagnostic::catalog::table_already_exists,
 	interface::{
 		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
 		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
-	},
-	result::error::diagnostic::catalog::{
-		schema_not_found, table_already_exists,
 	},
 	return_error,
 };
@@ -33,7 +31,7 @@ pub struct TableColumnToCreate {
 pub struct TableToCreate {
 	pub fragment: Option<OwnedFragment>,
 	pub table: String,
-	pub schema: String,
+	pub schema: SchemaId,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
@@ -42,20 +40,14 @@ impl CatalogStore {
 		txn: &mut impl CommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
-		let Some(schema) =
-			Self::find_schema_by_name(txn, &to_create.schema)?
-		else {
-			return_error!(schema_not_found(
-				to_create.fragment,
-				&to_create.schema
-			));
-		};
+		let schema_id = to_create.schema;
 
-		if let Some(table) = Self::find_table_by_name(
+		if let Some(table) = CatalogStore::find_table_by_name(
 			txn,
-			schema.id,
+			schema_id,
 			&to_create.table,
 		)? {
+			let schema = CatalogStore::get_schema(txn, schema_id)?;
 			return_error!(table_already_exists(
 				to_create.fragment,
 				&schema.name,
@@ -64,10 +56,10 @@ impl CatalogStore {
 		}
 
 		let table_id = SystemSequence::next_table_id(txn)?;
-		Self::store_table(txn, table_id, schema.id, &to_create)?;
+		Self::store_table(txn, table_id, schema_id, &to_create)?;
 		Self::link_table_to_schema(
 			txn,
-			schema.id,
+			schema_id,
 			table_id,
 			&to_create.table,
 		)?;
@@ -128,6 +120,13 @@ impl CatalogStore {
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {
+		// Look up schema name for error messages
+		let schema_name = Self::find_schema(txn, to_create.schema)?
+			.map(|s| s.name)
+			.unwrap_or_else(|| {
+				format!("schema_{}", to_create.schema)
+			});
+
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
@@ -138,7 +137,7 @@ impl CatalogStore {
 					fragment: column_to_create
 						.fragment
 						.clone(),
-					schema_name: &to_create.schema,
+					schema_name: &schema_name,
 					table,
 					table_name: &to_create.table,
 					column: column_to_create.name,
@@ -174,10 +173,10 @@ mod tests {
 	fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 
-		ensure_test_schema(&mut txn);
+		let test_schema = ensure_test_schema(&mut txn);
 
 		let to_create = TableToCreate {
-			schema: "test_schema".to_string(),
+			schema: test_schema.id,
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
@@ -191,8 +190,6 @@ mod tests {
 		assert_eq!(result.schema, SchemaId(1025));
 		assert_eq!(result.name, "test_table");
 
-		// Creating the same table again with `if_not_exists = false`
-		// should return error
 		let err = CatalogStore::create_table(&mut txn, to_create)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
@@ -201,10 +198,10 @@ mod tests {
 	#[test]
 	fn test_table_linked_to_schema() {
 		let mut txn = create_test_command_transaction();
-		let schema = ensure_test_schema(&mut txn);
+		let test_schema = ensure_test_schema(&mut txn);
 
 		let to_create = TableToCreate {
-			schema: "test_schema".to_string(),
+			schema: test_schema.id,
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
@@ -213,7 +210,7 @@ mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let to_create = TableToCreate {
-			schema: "test_schema".to_string(),
+			schema: test_schema.id,
 			table: "another_table".to_string(),
 			columns: vec![],
 			fragment: None,
@@ -222,7 +219,7 @@ mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let links = txn
-			.range(SchemaTableKey::full_scan(schema.id))
+			.range(SchemaTableKey::full_scan(test_schema.id))
 			.unwrap()
 			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
@@ -248,21 +245,5 @@ mod tests {
 			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),
 			"another_table"
 		);
-	}
-
-	#[test]
-	fn test_create_table_missing_schema() {
-		let mut txn = create_test_command_transaction();
-
-		let to_create = TableToCreate {
-			schema: "missing_schema".to_string(),
-			table: "my_table".to_string(),
-			columns: vec![],
-			fragment: None,
-		};
-
-		let err = CatalogStore::create_table(&mut txn, to_create)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_002");
 	}
 }

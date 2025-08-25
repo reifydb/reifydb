@@ -1,18 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogStore, schema::SchemaToCreate};
-use reifydb_core::{
-	Value, interface::Transaction,
-	result::error::diagnostic::catalog::schema_already_exists,
-	return_error,
-};
+use reifydb_catalog::{CatalogSchemaDefOperations, schema::SchemaToCreate};
+use reifydb_core::{Value, interface::Transaction};
 use reifydb_rql::plan::physical::CreateSchemaPlan;
 
-use crate::{
-	StandardCommandTransaction, columnar::Columns, execute::Executor,
-	transaction::operation::SchemaDefCreateOperation,
-};
+use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
 
 impl Executor {
 	pub(crate) fn create_schema<T: Transaction>(
@@ -20,9 +13,9 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateSchemaPlan,
 	) -> crate::Result<Columns> {
-		if let Some(schema) =
-			CatalogStore::find_schema_by_name(txn, &plan.schema)?
-		{
+		// Check if schema already exists using the transaction's
+		// catalog operations
+		if let Some(_) = txn.find_schema_by_name(&plan.schema)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
@@ -34,14 +27,11 @@ impl Executor {
 					("created", Value::Bool(false)),
 				]));
 			}
-
-			return_error!(schema_already_exists(
-				Some(plan.schema),
-				&schema.name,
-			));
+			// The error will be returned by create_schema if the
+			// schema exists
 		}
 
-		let result = txn.create_schema_def(SchemaToCreate {
+		let result = txn.create_schema(SchemaToCreate {
 			schema_fragment: Some(plan.schema.clone()),
 			name: plan.schema.to_string(),
 		})?;

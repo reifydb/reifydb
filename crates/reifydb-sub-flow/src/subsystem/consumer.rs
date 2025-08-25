@@ -1,42 +1,104 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
-
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	Result,
-	flow::{Change, Diff},
+	Result, Value,
+	flow::{Change, Diff, Flow},
 	interface::{
-		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Key,
-		Transaction,
+		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
+		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
+		TableId, Transaction,
 	},
 	log_debug,
+	row::EncodedRow,
+	util::CowVec,
+	value::columnar::Columns,
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardEngine, StandardEvaluator};
 
 use super::intercept::FlowChange;
 use crate::engine::FlowEngine;
 
 /// Consumer that processes CDC events for Flow subsystem
-pub struct FlowConsumer {
-	flow_engine: Arc<FlowEngine<StandardEvaluator>>,
+pub struct FlowConsumer<T: Transaction> {
+	engine: StandardEngine<T>,
 }
 
-impl FlowConsumer {
-	pub fn new(flow_engine: Arc<FlowEngine<StandardEvaluator>>) -> Self {
+impl<T: Transaction> FlowConsumer<T> {
+	pub fn new(engine: StandardEngine<T>) -> Self {
 		Self {
-			flow_engine,
+			engine,
 		}
 	}
 
-	fn process_changes<T: CommandTransaction>(
+	/// Helper method to convert row bytes to Columns format
+	fn to_columns<TC: CommandTransaction>(
+		txn: &mut TC,
+		table: TableId,
+		row_bytes: &[u8],
+	) -> Result<Columns> {
+		// Get table metadata from catalog
+		let table = CatalogStore::get_table(txn, table)?;
+		let layout = table.get_layout();
+
+		// Create columns structure based on table definition
+		let mut columns = Columns::from_table_def(&table);
+
+		// Convert row bytes to EncodedRow
+		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));
+
+		// Append the row data to columns
+		columns.append_rows(&layout, [encoded_row])?;
+
+		Ok(columns)
+	}
+
+	/// Load flows from the catalog
+	fn load_flows(
 		&self,
-		txn: &mut T,
+		_txn: &impl QueryTransaction,
+	) -> Result<Vec<Flow>> {
+		let mut flows = Vec::new();
+
+		// Query the reifydb.flows table
+		let frames = self.engine.query_as(
+			&Identity::root(),
+			"FROM reifydb.flows map { cast(data, utf8) }",
+			Params::None,
+		)?;
+
+		for frame in frames {
+			// Access the first row, first column
+			let value = frame[0].get_value(0);
+			if !matches!(value, Value::Undefined) {
+				if let Ok(flow) = serde_json::from_str::<Flow>(
+					&value.to_string(),
+				) {
+					flows.push(flow);
+				}
+			}
+		}
+
+		Ok(flows)
+	}
+
+	fn process_changes<TC: CommandTransaction>(
+		&self,
+		txn: &mut TC,
 		changes: Vec<FlowChange>,
 	) -> Result<()> {
-		use reifydb_core::{
-			interface::SourceId, value::columnar::Columns,
-		};
+		use reifydb_core::interface::SourceId;
+
+		// Create a new FlowEngine for this processing batch
+		let mut flow_engine =
+			FlowEngine::new(StandardEvaluator::default());
+
+		// Load and register flows
+		let flows = self.load_flows(txn)?;
+		for flow in flows {
+			flow_engine.register(flow)?;
+		}
 
 		// Convert FlowChange events to flow engine Change format
 		let mut diffs = Vec::new();
@@ -46,18 +108,19 @@ impl FlowConsumer {
 				FlowChange::Insert {
 					table_id,
 					row_number,
-					row: _,
+					row,
 				} => {
-					// For now, create a simple columnar
-					// representation This will need
-					// proper column extraction from the row
-					// data
+					// Convert row bytes to Columns format
+					let columns = Self::to_columns(
+						txn, table_id, &row,
+					)?;
+
 					let diff = Diff::Insert {
 						source: SourceId::Table(
 							table_id,
 						),
 						row_ids: vec![row_number],
-						after: Columns::empty(), /* TODO: Convert row bytes to Columns */
+						after: columns,
 					};
 					diffs.push(diff);
 					log_debug!(
@@ -69,16 +132,24 @@ impl FlowConsumer {
 				FlowChange::Update {
 					table_id,
 					row_number,
-					before: _,
-					after: _,
+					before,
+					after,
 				} => {
+					// Convert row bytes to Columns format
+					let before_columns = Self::to_columns(
+						txn, table_id, &before,
+					)?;
+					let after_columns = Self::to_columns(
+						txn, table_id, &after,
+					)?;
+
 					let diff = Diff::Update {
 						source: SourceId::Table(
 							table_id,
 						),
 						row_ids: vec![row_number],
-						before: Columns::empty(), /* TODO: Convert before bytes to Columns */
-						after: Columns::empty(),  /* TODO: Convert after bytes to Columns */
+						before: before_columns,
+						after: after_columns,
 					};
 					diffs.push(diff);
 					log_debug!(
@@ -90,14 +161,19 @@ impl FlowConsumer {
 				FlowChange::Delete {
 					table_id,
 					row_number,
-					row: _,
+					row,
 				} => {
+					// Convert row bytes to Columns format
+					let columns = Self::to_columns(
+						txn, table_id, &row,
+					)?;
+
 					let diff = Diff::Remove {
 						source: SourceId::Table(
 							table_id,
 						),
 						row_ids: vec![row_number],
-						before: Columns::empty(), /* TODO: Convert row bytes to Columns */
+						before: columns,
 					};
 					diffs.push(diff);
 					log_debug!(
@@ -111,14 +187,14 @@ impl FlowConsumer {
 
 		if !diffs.is_empty() {
 			let change = Change::new(diffs);
-			self.flow_engine.process(txn, change)?;
+			flow_engine.process(txn, change)?;
 		}
 
 		Ok(())
 	}
 }
 
-impl<T: Transaction> CdcConsume<T> for FlowConsumer {
+impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(
 		&self,
 		txn: &mut impl CommandTransaction,

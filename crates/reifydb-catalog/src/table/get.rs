@@ -3,41 +3,22 @@
 
 use reifydb_core::{
 	Error,
-	interface::{
-		EncodableKey, QueryTransaction, SchemaId, TableDef, TableId,
-		TableKey,
-	},
+	interface::{QueryTransaction, TableDef, TableId},
 	internal_error,
 };
 
-use crate::{CatalogStore, table::layout::table};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub fn get_table(
 		rx: &mut impl QueryTransaction,
 		table: TableId,
 	) -> crate::Result<TableDef> {
-		let versioned = rx
-			.get(&TableKey { table }.encode())?
-			.ok_or_else(|| {
-				Error(internal_error!(
-						"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-						table
-					))
-			})?;
-
-		let row = versioned.row;
-		let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
-		let schema =
-			SchemaId(table::LAYOUT.get_u64(&row, table::SCHEMA));
-		let name =
-			table::LAYOUT.get_utf8(&row, table::NAME).to_string();
-
-		Ok(TableDef {
-			id,
-			name,
-			schema,
-			columns: Self::list_table_columns(rx, id)?,
+		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
+			Error(internal_error!(
+				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				table
+			))
 		})
 	}
 }

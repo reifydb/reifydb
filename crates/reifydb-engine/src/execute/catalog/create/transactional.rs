@@ -52,8 +52,8 @@ impl Executor {
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone()),
-				view: plan.view.to_string(),
-				schema: plan.schema.name.to_string(),
+				name: plan.view.to_string(),
+				schema: plan.schema.id,
 				columns: plan.columns,
 			},
 		)?;

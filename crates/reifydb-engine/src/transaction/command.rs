@@ -3,6 +3,7 @@
 
 use std::marker::PhantomData;
 
+use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Version,
 	diagnostic::transaction,
@@ -31,12 +32,14 @@ use reifydb_core::{
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction<T: Transaction> {
-	versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
-	unversioned: T::Unversioned,
-	cdc: T::Cdc,
+	pub(crate) versioned:
+		Option<<T::Versioned as VersionedTransaction>::Command>,
+	pub(crate) unversioned: T::Unversioned,
+	pub(crate) cdc: T::Cdc,
 	state: TransactionState,
-	hooks: Hooks,
-	changes: TransactionalChanges,
+	pub(crate) hooks: Hooks,
+	pub(crate) changes: TransactionalChanges,
+	pub(crate) catalog: MaterializedCatalog,
 
 	pub(crate) interceptors: Interceptors<Self>,
 	// Marker to prevent Send and Sync
@@ -57,6 +60,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		hooks: Hooks,
+		catalog: MaterializedCatalog,
 		interceptors: Interceptors<Self>,
 	) -> Self {
 		let txn_id = versioned.id();
@@ -66,6 +70,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			cdc,
 			state: TransactionState::Active,
 			hooks,
+			catalog,
 			interceptors,
 			changes: TransactionalChanges::new(txn_id),
 			_not_send_sync: PhantomData,

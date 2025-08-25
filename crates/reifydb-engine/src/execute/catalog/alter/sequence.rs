@@ -134,15 +134,13 @@ mod tests {
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-
-		// Create a table with an auto-increment column
+		let test_schema = ensure_test_schema(&mut txn);
 
 		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
-				schema: "test_schema".to_string(),
+				schema: test_schema.id,
 				table: "users".to_string(),
 				columns: vec![
 					TableColumnToCreate {
@@ -194,15 +192,12 @@ mod tests {
 	#[test]
 	fn test_non_auto_increment_column() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-
-		// Create a table with a non-auto-increment column
-
+		let test_schema = ensure_test_schema(&mut txn);
 		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
-				schema: "test_schema".to_string(),
+				schema: test_schema.id,
 				table: "items".to_string(),
 				columns: vec![TableColumnToCreate {
 					fragment: None,
@@ -291,15 +286,13 @@ mod tests {
 	#[test]
 	fn test_column_not_found() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-
-		// Create a table
+		let test_schema = ensure_test_schema(&mut txn);
 
 		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
-				schema: "test_schema".to_string(),
+				schema: test_schema.id,
 				table: "posts".to_string(),
 				columns: vec![TableColumnToCreate {
 					fragment: None,

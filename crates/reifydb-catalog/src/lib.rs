@@ -14,10 +14,16 @@ pub mod table;
 pub mod table_column;
 pub mod table_column_policy;
 pub mod test_utils;
+pub mod transaction;
 pub mod view;
 pub mod view_column;
 
 pub use loader::MaterializedCatalogLoader;
 pub use materialized::MaterializedCatalog;
+pub use transaction::{
+	CatalogSchemaDefOperations, CatalogTableDefOperations,
+	CatalogTransaction, CatalogTransactionOperations,
+	CatalogViewDefOperations, TransactionalChangesExt,
+};
 
 pub struct CatalogStore;

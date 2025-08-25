@@ -8,6 +8,7 @@ use reifydb_core::interface::{
 	VersionedTransaction,
 };
 
+mod catalog;
 mod cdc;
 mod command;
 #[allow(dead_code)]
