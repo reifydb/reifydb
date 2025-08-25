@@ -274,7 +274,7 @@ fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
 				schema: None,
 				table: col.frame,
 				name: col.name,
-				data: convert_column_values(col.ty, col.data),
+				data: convert_column_values(col.r#type, col.data),
 			})
 			.collect();
 
@@ -296,7 +296,7 @@ fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
 				schema: None,
 				table: col.frame,
 				name: col.name,
-				data: convert_column_values(col.ty, col.data),
+				data: convert_column_values(col.r#type, col.data),
 			})
 			.collect();
 

@@ -31,11 +31,19 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
 		statement: grpc.statement,
 		message: grpc.message,
 		fragment: grpc
-			.span
-			.map(|s| OwnedFragment::Statement {
-				column: StatementColumn(s.offset),
-				line: StatementLine(s.line),
-				text: s.fragment,
+			.fragment
+			.map(|f| {
+				if let (Some(line), Some(column)) = (f.line, f.column) {
+					OwnedFragment::Statement {
+						text: f.text,
+						column: StatementColumn(column),
+						line: StatementLine(line),
+					}
+				} else {
+					OwnedFragment::Internal {
+						text: f.text,
+					}
+				}
 			})
 			.into(),
 		label: grpc.label,
@@ -43,7 +51,7 @@ pub(crate) fn convert_diagnostic(grpc: grpc::Diagnostic) -> Diagnostic {
 		notes: grpc.notes,
 		column: grpc.column.map(|c| DiagnosticColumn {
 			name: c.name,
-			ty: Type::from_u8(c.ty as u8),
+			r#type: Type::from_u8(c.ty as u8),
 		}),
 		cause: grpc.cause.map(|cb| Box::from(convert_diagnostic(*cb))),
 	}

@@ -12,7 +12,7 @@ export {
     Params,
     Frame,
     DiagnosticColumn,
-    Span,
+    Fragment,
     Diagnostic,
     Column,
     ErrorResponse,

@@ -52,6 +52,14 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
+                statement: "MAP cast(129, int1) as result;",
+                fragment: {
+                    Statement: expect.objectContaining({
+                        text: "129",
+                        line: expect.any(Number),
+                        column: expect.any(Number)
+                    })
+                },
                 cause: expect.objectContaining({
                     code: expect.stringContaining('NUMBER_002'),
                     label: expect.stringContaining("value '129' exceeds the valid range for type Int1 (-128 to 127)"),
@@ -74,6 +82,14 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
+                statement: "MAP cast(129, int1) as result;",
+                fragment: {
+                    Statement: expect.objectContaining({
+                        text: "129",
+                        line: expect.any(Number),
+                        column: expect.any(Number)
+                    })
+                },
                 cause: expect.objectContaining({
                     code: expect.stringContaining('NUMBER_002'),
                     label: expect.stringContaining("value '129' exceeds the valid range for type Int1 (-128 to 127)"),

@@ -110,7 +110,7 @@ impl DefaultRenderer {
 			let _ = writeln!(
 				output,
 				"  column `{}` is of type `{}`",
-				col.name, col.ty
+				col.name, col.r#type
 			);
 			let _ = writeln!(output);
 		}
@@ -237,7 +237,7 @@ impl DefaultRenderer {
 			let _ = writeln!(
 				output,
 				"{}  column `{}` is of type `{}`",
-				indent, col.name, col.ty
+				indent, col.name, col.r#type
 			);
 		}
 
