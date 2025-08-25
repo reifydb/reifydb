@@ -13,52 +13,52 @@ use reifydb_core::{
 	Result,
 	interface::{
 		CdcConsumer, ConsumerId, Transaction,
-		subsystem::{HealthStatus, Subsystem},
+		subsystem::{HealthStatus, Subsystem, workerpool::Priority},
 	},
+	ioc::IocContainer,
 };
 use reifydb_engine::{StandardEngine, StandardEvaluator};
 
 use self::consumer::FlowConsumer;
 use crate::engine::FlowEngine;
 
+pub struct FlowSubsystemConfig {
+	/// Unique identifier for this consumer
+	pub consumer_id: ConsumerId,
+	/// How often to poll for new CDC events
+	pub poll_interval: Duration,
+	/// Priority for the polling task in the worker pool
+	pub priority: Priority,
+}
+
 pub struct FlowSubsystem<T: Transaction> {
-	engine: StandardEngine<T>,
-	flow_engine: Arc<FlowEngine<StandardEvaluator>>,
-	poll_consumer: Option<PollConsumer<T, FlowConsumer>>,
-	#[allow(dead_code)]
-	consumer_id: ConsumerId,
-	poll_config: PollConsumerConfig,
+	consumer: PollConsumer<T, FlowConsumer>,
 	running: bool,
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(engine: StandardEngine<T>) -> Self {
-		Self::with_config(
-			engine,
-			ConsumerId::flow_consumer(),
-			PollConsumerConfig::new(
-				ConsumerId::flow_consumer(),
-				Duration::from_millis(100),
-			),
-		)
-	}
+	pub fn new(
+		cfg: FlowSubsystemConfig,
+		ioc: &IocContainer,
+	) -> crate::Result<Self> {
+		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-	pub fn with_config(
-		engine: StandardEngine<T>,
-		consumer_id: ConsumerId,
-		poll_config: PollConsumerConfig,
-	) -> Self {
 		let flow_engine =
 			Arc::new(FlowEngine::new(StandardEvaluator::default()));
 
-		Self {
-			engine,
-			flow_engine,
-			poll_consumer: None,
-			consumer_id,
-			poll_config,
+		let consumer = FlowConsumer::new(flow_engine);
+
+		Ok(Self {
+			consumer: PollConsumer::new(
+				PollConsumerConfig::new(
+					cfg.consumer_id.clone(),
+					cfg.poll_interval,
+				),
+				engine,
+				consumer,
+			),
 			running: false,
-		}
+		})
 	}
 }
 
@@ -78,16 +78,7 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 			return Ok(());
 		}
 
-		// Create and start the CDC poll consumer with flow engine
-		let consumer = FlowConsumer::new(Arc::clone(&self.flow_engine));
-		let mut poll_consumer = PollConsumer::new(
-			self.poll_config.clone(),
-			self.engine.clone(),
-			consumer,
-		);
-
-		poll_consumer.start()?;
-		self.poll_consumer = Some(poll_consumer);
+		self.consumer.start()?;
 		self.running = true;
 
 		Ok(())
@@ -98,11 +89,7 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 			return Ok(());
 		}
 
-		// Stop the poll consumer
-		if let Some(mut consumer) = self.poll_consumer.take() {
-			consumer.stop()?;
-		}
-
+		self.consumer.stop()?;
 		self.running = false;
 		Ok(())
 	}
