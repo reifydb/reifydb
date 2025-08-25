@@ -8,8 +8,8 @@ use crate::{
 };
 
 impl Blob {
-	pub fn from_utf8(fragment: impl IntoFragment) -> Self {
-		let owned_fragment = fragment.into_fragment();
+	pub fn from_utf8<'a>(fragment: impl IntoFragment<'a>) -> Self {
+		let owned_fragment = fragment.into_fragment().into_owned();
 		let utf8_str = owned_fragment.value();
 		Blob::new(utf8_str.as_bytes().to_vec())
 	}
@@ -25,7 +25,7 @@ impl Blob {
 		String::from_utf8_lossy(self.as_bytes()).to_string()
 	}
 
-	pub fn from_str(fragment: impl IntoFragment) -> Self {
+	pub fn from_str<'a>(fragment: impl IntoFragment<'a>) -> Self {
 		Self::from_utf8(fragment)
 	}
 }

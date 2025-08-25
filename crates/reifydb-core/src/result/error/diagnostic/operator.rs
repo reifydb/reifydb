@@ -6,10 +6,10 @@ use crate::{
 	result::error::diagnostic::Diagnostic,
 };
 
-pub fn not_can_not_applied_to_number(
-	fragment: impl IntoFragment,
+pub fn not_can_not_applied_to_number<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_001".to_string(),
         statement: None,
@@ -27,8 +27,10 @@ pub fn not_can_not_applied_to_number(
     }
 }
 
-pub fn not_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn not_can_not_applied_to_text<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_002".to_string(),
         statement: None,
@@ -46,10 +48,10 @@ pub fn not_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn not_can_not_applied_to_temporal(
-	fragment: impl IntoFragment,
+pub fn not_can_not_applied_to_temporal<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_003".to_string(),
         statement: None,
@@ -67,8 +69,10 @@ pub fn not_can_not_applied_to_temporal(
     }
 }
 
-pub fn not_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn not_can_not_applied_to_uuid<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_004".to_string(),
         statement: None,
@@ -86,10 +90,10 @@ pub fn not_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn and_can_not_applied_to_number(
-	fragment: impl IntoFragment,
+pub fn and_can_not_applied_to_number<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_005".to_string(),
         statement: None,
@@ -107,8 +111,10 @@ pub fn and_can_not_applied_to_number(
     }
 }
 
-pub fn and_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn and_can_not_applied_to_text<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_006".to_string(),
         statement: None,
@@ -126,10 +132,10 @@ pub fn and_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn and_can_not_applied_to_temporal(
-	fragment: impl IntoFragment,
+pub fn and_can_not_applied_to_temporal<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_007".to_string(),
         statement: None,
@@ -147,8 +153,10 @@ pub fn and_can_not_applied_to_temporal(
     }
 }
 
-pub fn and_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn and_can_not_applied_to_uuid<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_008".to_string(),
         statement: None,
@@ -166,8 +174,10 @@ pub fn and_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn or_can_not_applied_to_number(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn or_can_not_applied_to_number<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_009".to_string(),
         statement: None,
@@ -185,8 +195,10 @@ pub fn or_can_not_applied_to_number(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn or_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn or_can_not_applied_to_text<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_010".to_string(),
         statement: None,
@@ -204,10 +216,10 @@ pub fn or_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn or_can_not_applied_to_temporal(
-	fragment: impl IntoFragment,
+pub fn or_can_not_applied_to_temporal<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_011".to_string(),
         statement: None,
@@ -225,8 +237,10 @@ pub fn or_can_not_applied_to_temporal(
     }
 }
 
-pub fn or_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn or_can_not_applied_to_uuid<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_012".to_string(),
         statement: None,
@@ -244,10 +258,10 @@ pub fn or_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn xor_can_not_applied_to_number(
-	fragment: impl IntoFragment,
+pub fn xor_can_not_applied_to_number<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_013".to_string(),
         statement: None,
@@ -265,8 +279,10 @@ pub fn xor_can_not_applied_to_number(
     }
 }
 
-pub fn xor_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn xor_can_not_applied_to_text<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_014".to_string(),
         statement: None,
@@ -284,10 +300,10 @@ pub fn xor_can_not_applied_to_text(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn xor_can_not_applied_to_temporal(
-	fragment: impl IntoFragment,
+pub fn xor_can_not_applied_to_temporal<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_015".to_string(),
         statement: None,
@@ -305,8 +321,10 @@ pub fn xor_can_not_applied_to_temporal(
     }
 }
 
-pub fn xor_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn xor_can_not_applied_to_uuid<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_016".to_string(),
         statement: None,
@@ -324,12 +342,12 @@ pub fn xor_can_not_applied_to_uuid(fragment: impl IntoFragment) -> Diagnostic {
     }
 }
 
-pub fn add_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn add_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_017".to_string(),
         statement: None,
@@ -347,12 +365,12 @@ pub fn add_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn sub_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn sub_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_018".to_string(),
         statement: None,
@@ -370,12 +388,12 @@ pub fn sub_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn mul_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn mul_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_019".to_string(),
         statement: None,
@@ -393,12 +411,12 @@ pub fn mul_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn div_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn div_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_020".to_string(),
         statement: None,
@@ -416,12 +434,12 @@ pub fn div_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn rem_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn rem_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_021".to_string(),
         statement: None,
@@ -439,12 +457,12 @@ pub fn rem_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn equal_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn equal_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_022".to_string(),
         statement: None,
@@ -462,12 +480,12 @@ pub fn equal_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn not_equal_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn not_equal_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_023".to_string(),
         statement: None,
@@ -485,12 +503,12 @@ pub fn not_equal_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn less_than_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn less_than_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_024".to_string(),
         statement: None,
@@ -508,12 +526,12 @@ pub fn less_than_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn less_than_equal_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn less_than_equal_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_025".to_string(),
         statement: None,
@@ -531,12 +549,12 @@ pub fn less_than_equal_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn greater_than_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn greater_than_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_026".to_string(),
         statement: None,
@@ -554,12 +572,12 @@ pub fn greater_than_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn greater_than_equal_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn greater_than_equal_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	left: Type,
 	right: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_027".to_string(),
         statement: None,
@@ -578,12 +596,12 @@ pub fn greater_than_equal_cannot_be_applied_to_incompatible_types(
     }
 }
 
-pub fn between_cannot_be_applied_to_incompatible_types(
-	fragment: impl IntoFragment,
+pub fn between_cannot_be_applied_to_incompatible_types<'a>(
+	fragment: impl IntoFragment<'a>,
 	value_type: Type,
 	range_type: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_028".to_string(),
         statement: None,

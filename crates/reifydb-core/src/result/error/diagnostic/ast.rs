@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	OwnedFragment,
-	interface::fragment::{IntoFragment, IntoOwnedFragment},
+	OwnedFragment, interface::fragment::IntoFragment,
 	result::error::diagnostic::Diagnostic,
 };
 
@@ -38,8 +37,10 @@ pub fn unexpected_eof_error() -> Diagnostic {
 }
 
 /// Error for when we expect an identifier token specifically  
-pub fn expected_identifier_error(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn expected_identifier_error<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	let label = Some(format!("found `{}`", value));
 
@@ -57,8 +58,8 @@ pub fn expected_identifier_error(fragment: impl IntoFragment) -> Diagnostic {
 }
 
 /// Error for invalid policy tokens
-pub fn invalid_policy_error(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_policy_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	let message = format!("Invalid policy token: {}", value);
 	let label = Some(format!("found `{}`", value));
@@ -77,11 +78,11 @@ pub fn invalid_policy_error(fragment: impl IntoFragment) -> Diagnostic {
 }
 
 /// Error for unexpected tokens
-pub fn unexpected_token_error(
+pub fn unexpected_token_error<'a>(
 	expected: &str,
-	fragment: impl IntoFragment,
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	let message = format!(
 		"Unexpected token: expected {}, got {}",
@@ -102,8 +103,10 @@ pub fn unexpected_token_error(
 }
 
 /// Error for unsupported tokens
-pub fn unsupported_token_error(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn unsupported_token_error<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	let message = format!("Unsupported token: {}", value);
 	let label = Some(format!("found `{}`", value));
@@ -123,10 +126,10 @@ pub fn unsupported_token_error(fragment: impl IntoFragment) -> Diagnostic {
 }
 
 /// Multiple expressions require curly braces
-pub fn multiple_expressions_without_braces(
-	fragment: impl IntoFragment,
+pub fn multiple_expressions_without_braces<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let keyword = fragment.value().to_string();
 	Diagnostic {
 		code: "AST_007".to_string(),
@@ -148,8 +151,8 @@ pub fn multiple_expressions_without_braces(
 }
 
 /// Type not found error
-pub fn unrecognized_type(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn unrecognized_type<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let type_name = fragment.value().to_string();
 	Diagnostic {
 		code: "AST_008".to_string(),

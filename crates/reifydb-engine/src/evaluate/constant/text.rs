@@ -19,12 +19,12 @@ pub(crate) struct TextParser;
 
 impl TextParser {
 	/// Parse text to a specific target type with detailed error handling
-	pub(crate) fn from_text(
-		fragment: impl IntoFragment,
+	pub(crate) fn from_text<'a>(
+		fragment: impl IntoFragment<'a>,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+		let fragment = fragment.into_fragment().into_owned();
 		match target {
 			Type::Bool => Self::parse_bool(&fragment, row_count),
 			Type::Float4 => {

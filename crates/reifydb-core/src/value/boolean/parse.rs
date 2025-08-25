@@ -11,8 +11,8 @@ use crate::{
 	return_error,
 };
 
-pub fn parse_bool(fragment: impl IntoFragment) -> Result<bool, Error> {
-	let owned_fragment = fragment.into_fragment();
+pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let value = owned_fragment.value().trim();
 
 	if value.is_empty() {

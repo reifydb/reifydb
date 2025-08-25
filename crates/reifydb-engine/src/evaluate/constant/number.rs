@@ -18,12 +18,12 @@ pub(crate) struct NumberParser;
 impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
-	pub(crate) fn from_number(
-		fragment: impl IntoFragment,
+	pub(crate) fn from_number<'a>(
+		fragment: impl IntoFragment<'a>,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+		let fragment = fragment.into_fragment().into_owned();
 		match target {
 			Type::Bool => Self::parse_bool(&fragment, row_count),
 			Type::Float4 => {

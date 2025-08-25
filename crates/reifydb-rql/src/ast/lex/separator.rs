@@ -50,7 +50,6 @@ pub(crate) fn parse_separator(
 #[cfg(test)]
 mod tests {
 	use nom_locate::LocatedSpan;
-	use reifydb_core::Fragment;
 
 	use crate::ast::lex::{
 		TokenKind,

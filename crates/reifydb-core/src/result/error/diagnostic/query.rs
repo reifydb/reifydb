@@ -6,8 +6,8 @@ use crate::{
 	result::error::diagnostic::Diagnostic,
 };
 
-pub fn column_not_found(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn column_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "QUERY_001".to_string(),
         statement: None,

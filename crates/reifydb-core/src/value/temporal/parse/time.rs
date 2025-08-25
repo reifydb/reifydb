@@ -6,9 +6,9 @@ use crate::{
 	result::error::diagnostic::temporal, return_error,
 };
 
-pub fn parse_time(fragment: impl IntoFragment) -> Result<Time, Error> {
+pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
-	let owned_fragment = fragment.into_fragment();
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let fragment_value = owned_fragment.value();
 	let mut time_str = fragment_value;
 

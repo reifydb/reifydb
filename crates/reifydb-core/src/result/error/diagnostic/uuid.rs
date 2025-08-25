@@ -6,8 +6,8 @@ use crate::{
 	result::error::diagnostic::Diagnostic,
 };
 
-pub fn invalid_uuid4_format(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_uuid4_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let label =
 		Some(format!("'{}' is not a valid UUID v4", fragment.value()));
 
@@ -31,8 +31,8 @@ pub fn invalid_uuid4_format(fragment: impl IntoFragment) -> Diagnostic {
 	}
 }
 
-pub fn invalid_uuid7_format(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_uuid7_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let label =
 		Some(format!("'{}' is not a valid UUID v7", fragment.value()));
 

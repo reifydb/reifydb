@@ -10,8 +10,10 @@ use crate::{
 };
 
 impl Blob {
-	pub fn from_b64(fragment: impl IntoFragment) -> Result<Self, Error> {
-		let owned_fragment = fragment.into_fragment();
+	pub fn from_b64<'a>(
+		fragment: impl IntoFragment<'a>,
+	) -> Result<Self, Error> {
+		let owned_fragment = fragment.into_fragment().into_owned();
 		let b64_str = owned_fragment.value();
 		// Try standard base64 first, then without padding if it fails
 		match general_purpose::STANDARD.decode(b64_str) {
@@ -32,8 +34,10 @@ impl Blob {
 		}
 	}
 
-	pub fn from_b64url(fragment: impl IntoFragment) -> Result<Self, Error> {
-		let owned_fragment = fragment.into_fragment();
+	pub fn from_b64url<'a>(
+		fragment: impl IntoFragment<'a>,
+	) -> Result<Self, Error> {
+		let owned_fragment = fragment.into_fragment().into_owned();
 		let b64url_str = owned_fragment.value();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),

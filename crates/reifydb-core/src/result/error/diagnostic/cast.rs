@@ -6,12 +6,12 @@ use crate::{
 	result::error::diagnostic::Diagnostic,
 };
 
-pub fn unsupported_cast(
-	fragment: impl IntoFragment,
+pub fn unsupported_cast<'a>(
+	fragment: impl IntoFragment<'a>,
 	from_type: Type,
 	to_type: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"cannot cast {} of type {} to {}",
 		fragment.value(),
@@ -34,12 +34,12 @@ pub fn unsupported_cast(
     }
 }
 
-pub fn invalid_number(
-	fragment: impl IntoFragment,
+pub fn invalid_number<'a>(
+	fragment: impl IntoFragment<'a>,
 	target: Type,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("failed to cast to {}", target));
 	Diagnostic {
 		code: "CAST_002".to_string(),
@@ -54,12 +54,12 @@ pub fn invalid_number(
 	}
 }
 
-pub fn invalid_temporal(
-	fragment: impl IntoFragment,
+pub fn invalid_temporal<'a>(
+	fragment: impl IntoFragment<'a>,
 	target: Type,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("failed to cast to {}", target));
 	Diagnostic {
 		code: "CAST_003".to_string(),
@@ -74,11 +74,11 @@ pub fn invalid_temporal(
 	}
 }
 
-pub fn invalid_boolean(
-	fragment: impl IntoFragment,
+pub fn invalid_boolean<'a>(
+	fragment: impl IntoFragment<'a>,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some("failed to cast to bool".to_string());
 	Diagnostic {
 		code: "CAST_004".to_string(),
@@ -93,12 +93,12 @@ pub fn invalid_boolean(
 	}
 }
 
-pub fn invalid_uuid(
-	fragment: impl IntoFragment,
+pub fn invalid_uuid<'a>(
+	fragment: impl IntoFragment<'a>,
 	target: Type,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("failed to cast to {}", target));
 	Diagnostic {
 		code: "CAST_005".to_string(),
@@ -113,11 +113,11 @@ pub fn invalid_uuid(
 	}
 }
 
-pub fn invalid_blob_to_utf8(
-	fragment: impl IntoFragment,
+pub fn invalid_blob_to_utf8<'a>(
+	fragment: impl IntoFragment<'a>,
 	cause: Diagnostic,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some("failed to cast BLOB to UTF8".to_string());
 	Diagnostic {
         code: "CAST_006".to_string(),

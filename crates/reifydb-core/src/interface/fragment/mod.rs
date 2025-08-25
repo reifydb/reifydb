@@ -166,8 +166,8 @@ impl<'a> Fragment<'a> {
 }
 
 /// Trait for types that can be converted into a Fragment
-pub trait IntoFragment {
-	fn into_fragment(self) -> OwnedFragment;
+pub trait IntoFragment<'a> {
+	fn into_fragment(self) -> Fragment<'a>;
 }
 
 /// Trait to provide an OwnedFragment either directly or lazily (via closure)
@@ -225,32 +225,32 @@ impl<'a> IntoOwnedFragment for &BorrowedFragment<'a> {
 }
 
 // Implementation for Fragment enum
-impl<'a> IntoFragment for Fragment<'a> {
-	fn into_fragment(self) -> OwnedFragment {
-		self.into_owned()
-	}
-}
-
-// Implementation for OwnedFragment
-impl IntoFragment for OwnedFragment {
-	fn into_fragment(self) -> OwnedFragment {
+impl IntoFragment<'_> for Fragment<'static> {
+	fn into_fragment(self) -> Fragment<'static> {
 		self
 	}
 }
 
-// Implementation for BorrowedFragment
-impl<'a> IntoFragment for BorrowedFragment<'a> {
-	fn into_fragment(self) -> OwnedFragment {
-		self.into_owned()
+// Implementation for OwnedFragment
+impl IntoFragment<'_> for OwnedFragment {
+	fn into_fragment(self) -> Fragment<'static> {
+		Fragment::Owned(self)
+	}
+}
+
+// Implementation for BorrowedFragment - converts to owned
+impl<'a> IntoFragment<'a> for BorrowedFragment<'a> {
+	fn into_fragment(self) -> Fragment<'a> {
+		Fragment::Owned(self.into_owned())
 	}
 }
 
 // Implementation for Option<OwnedFragment>
-impl IntoFragment for Option<OwnedFragment> {
-	fn into_fragment(self) -> OwnedFragment {
+impl IntoFragment<'_> for Option<OwnedFragment> {
+	fn into_fragment(self) -> Fragment<'static> {
 		match self {
-			Some(fragment) => fragment,
-			None => OwnedFragment::None,
+			Some(fragment) => Fragment::Owned(fragment),
+			None => Fragment::None,
 		}
 	}
 }
@@ -258,18 +258,35 @@ impl IntoFragment for Option<OwnedFragment> {
 // Also provide From implementations for convenience
 impl From<Option<OwnedFragment>> for OwnedFragment {
 	fn from(fragment_opt: Option<OwnedFragment>) -> Self {
-		fragment_opt.into_fragment()
+		match fragment_opt {
+			Some(fragment) => fragment,
+			None => OwnedFragment::None,
+		}
 	}
 }
 
-impl IntoFragment for &str {
-	fn into_fragment(self) -> OwnedFragment {
-		OwnedFragment::internal(self)
+// String reference implementations - return borrowed fragments to avoid
+// allocation
+impl<'a> IntoFragment<'a> for &'a str {
+	fn into_fragment(self) -> Fragment<'a> {
+		Fragment::Borrowed(BorrowedFragment::Internal {
+			text: self,
+		})
 	}
 }
 
-impl IntoFragment for &String {
-	fn into_fragment(self) -> OwnedFragment {
-		OwnedFragment::internal(self)
+impl<'a> IntoFragment<'a> for &'a String {
+	fn into_fragment(self) -> Fragment<'a> {
+		Fragment::Borrowed(BorrowedFragment::Internal {
+			text: self.as_str(),
+		})
+	}
+}
+
+impl IntoFragment<'_> for String {
+	fn into_fragment(self) -> Fragment<'static> {
+		Fragment::Owned(OwnedFragment::Internal {
+			text: self,
+		})
 	}
 }

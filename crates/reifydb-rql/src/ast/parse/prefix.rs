@@ -35,7 +35,6 @@ impl Parser {
 							Number,
 						),
 						fragment: {
-							use reifydb_core::interface::fragment::Fragment;
 							OwnedFragment::Statement {
 								column: operator
 									.token()

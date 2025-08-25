@@ -3,7 +3,7 @@
 
 use crate::{
 	OwnedFragment, Type,
-	interface::fragment::{IntoFragment, IntoOwnedFragment},
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::{Diagnostic, util::value_max},
 };
 
@@ -28,10 +28,10 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 	}
 }
 
-pub fn can_not_alter_not_auto_increment(
-	fragment: impl IntoFragment,
+pub fn can_not_alter_not_auto_increment<'a>(
+	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "SEQUENCE_002".to_string(),
         statement: None,

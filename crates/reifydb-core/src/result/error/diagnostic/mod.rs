@@ -91,11 +91,14 @@ impl Diagnostic {
 
 	/// Set or update the fragment for this diagnostic and all nested
 	/// diagnostics recursively
-	pub fn with_fragment(&mut self, new_fragment: impl IntoFragment) {
+	pub fn with_fragment<'a>(
+		&mut self,
+		new_fragment: impl IntoFragment<'a>,
+	) {
 		// Always update the fragment, not just when it's None
 		// This is needed for cast errors that need to update the
 		// fragment
-		self.fragment = new_fragment.into_fragment();
+		self.fragment = new_fragment.into_fragment().into_owned();
 
 		if let Some(ref mut cause) = self.cause {
 			cause.with_fragment(self.fragment.clone());

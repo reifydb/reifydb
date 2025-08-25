@@ -3,8 +3,6 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_core::Fragment;
-
 use crate::ast::{Token, TokenKind, lex::lex};
 
 pub fn explain_lex(query: &str) -> crate::Result<String> {

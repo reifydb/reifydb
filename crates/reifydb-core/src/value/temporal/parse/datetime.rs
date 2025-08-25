@@ -7,8 +7,10 @@ use crate::{
 	result::error::diagnostic::temporal, return_error,
 };
 
-pub fn parse_datetime(fragment: impl IntoFragment) -> Result<DateTime, Error> {
-	let owned_fragment = fragment.into_fragment();
+pub fn parse_datetime<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Result<DateTime, Error> {
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let parts: Vec<&str> = owned_fragment.value().split('T').collect();
 	if parts.len() != 2 {
 		return_error!(temporal::invalid_datetime_format(

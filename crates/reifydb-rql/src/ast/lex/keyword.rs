@@ -243,8 +243,6 @@ pub(crate) fn parse_keyword(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::Fragment;
-
 	use crate::ast::lex::{
 		LocatedSpan, TokenKind,
 		keyword::{Keyword, parse_keyword},

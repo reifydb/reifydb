@@ -3,15 +3,15 @@
 
 use crate::{
 	ColumnDescriptor, OwnedFragment, Type,
-	interface::fragment::{IntoFragment, IntoOwnedFragment},
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::{Diagnostic, util::value_range},
 };
 
-pub fn invalid_number_format(
-	fragment: impl IntoFragment,
+pub fn invalid_number_format<'a>(
+	fragment: impl IntoFragment<'a>,
 	target: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"'{}' is not a valid {} number",
 		fragment.value(),
@@ -63,12 +63,12 @@ pub fn invalid_number_format(
 	}
 }
 
-pub fn number_out_of_range(
-	fragment: impl IntoFragment,
+pub fn number_out_of_range<'a>(
+	fragment: impl IntoFragment<'a>,
 	target: Type,
 	descriptor: Option<&ColumnDescriptor>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 
 	let range = value_range(target);
 
@@ -141,12 +141,12 @@ pub fn nan_not_allowed() -> Diagnostic {
 	}
 }
 
-pub fn integer_precision_loss(
-	fragment: impl IntoFragment,
+pub fn integer_precision_loss<'a>(
+	fragment: impl IntoFragment<'a>,
 	source_type: Type,
 	target: Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+	let fragment = fragment.into_fragment().into_owned();
 	let is_signed = source_type.is_signed_integer();
 
 	let (min_limit, max_limit) = match target {

@@ -15,12 +15,12 @@ pub(crate) struct UuidParser;
 impl UuidParser {
 	/// Parse text to a specific UUID target type with detailed error
 	/// handling
-	pub(crate) fn from_text(
-		fragment: impl IntoFragment,
+	pub(crate) fn from_text<'a>(
+		fragment: impl IntoFragment<'a>,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+		let fragment = fragment.into_fragment().into_owned();
 		match target {
 			Type::Uuid4 => Self::parse_uuid4(&fragment, row_count),
 			Type::Uuid7 => Self::parse_uuid7(&fragment, row_count),

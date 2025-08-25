@@ -13,7 +13,7 @@ use crate::{
 	value::is::{IsFloat, IsInt, IsUint},
 };
 
-pub fn parse_int<T>(fragment: impl IntoFragment) -> Result<T, Error>
+pub fn parse_int<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: IsInt + 'static,
 {
@@ -32,7 +32,7 @@ where
 	}
 }
 
-pub fn parse_uint<T>(fragment: impl IntoFragment) -> Result<T, Error>
+pub fn parse_uint<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: IsUint + 'static,
 {
@@ -51,11 +51,11 @@ where
 	}
 }
 
-pub fn parse_float<T>(fragment: impl IntoFragment) -> Result<T, Error>
+pub fn parse_float<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: IsFloat + 'static,
 {
-	let owned_fragment = fragment.into_fragment();
+	let owned_fragment = fragment.into_fragment().into_owned();
 	if owned_fragment.value().to_lowercase().contains("nan") {
 		return_error!(nan_not_allowed());
 	}
@@ -167,11 +167,13 @@ impl TypeInfo for f64 {
 }
 
 #[inline]
-fn parse_signed_generic<T>(fragment: impl IntoFragment) -> Result<T, Error>
+fn parse_signed_generic<'a, T>(
+	fragment: impl IntoFragment<'a>,
+) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-	let owned_fragment = fragment.into_fragment();
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let value = owned_fragment.value().replace("_", "");
 	let value = value.trim();
 
@@ -245,11 +247,13 @@ where
 }
 
 #[inline]
-fn parse_unsigned_generic<T>(fragment: impl IntoFragment) -> Result<T, Error>
+fn parse_unsigned_generic<'a, T>(
+	fragment: impl IntoFragment<'a>,
+) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-	let owned_fragment = fragment.into_fragment();
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let value = owned_fragment.value().replace("_", "");
 	let value = value.trim();
 
@@ -331,7 +335,9 @@ where
 }
 
 #[inline]
-fn parse_float_generic<T>(fragment: impl IntoFragment) -> Result<T, Error>
+fn parse_float_generic<'a, T>(
+	fragment: impl IntoFragment<'a>,
+) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseFloatError>
 		+ Copy
@@ -339,7 +345,7 @@ where
 		+ PartialEq
 		+ 'static,
 {
-	let owned_fragment = fragment.into_fragment();
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let value = owned_fragment.value().replace("_", "");
 	let value = value.trim();
 
@@ -385,62 +391,62 @@ where
 }
 
 #[inline]
-fn parse_f32(fragment: impl IntoFragment) -> Result<f32, Error> {
+fn parse_f32<'a>(fragment: impl IntoFragment<'a>) -> Result<f32, Error> {
 	parse_float_generic::<f32>(fragment)
 }
 
 #[inline]
-fn parse_f64(fragment: impl IntoFragment) -> Result<f64, Error> {
+fn parse_f64<'a>(fragment: impl IntoFragment<'a>) -> Result<f64, Error> {
 	parse_float_generic::<f64>(fragment)
 }
 
 #[inline]
-fn parse_i8(fragment: impl IntoFragment) -> Result<i8, Error> {
+fn parse_i8<'a>(fragment: impl IntoFragment<'a>) -> Result<i8, Error> {
 	parse_signed_generic::<i8>(fragment)
 }
 
 #[inline]
-fn parse_i16(fragment: impl IntoFragment) -> Result<i16, Error> {
+fn parse_i16<'a>(fragment: impl IntoFragment<'a>) -> Result<i16, Error> {
 	parse_signed_generic::<i16>(fragment)
 }
 
 #[inline]
-fn parse_i32(fragment: impl IntoFragment) -> Result<i32, Error> {
+fn parse_i32<'a>(fragment: impl IntoFragment<'a>) -> Result<i32, Error> {
 	parse_signed_generic::<i32>(fragment)
 }
 
 #[inline]
-fn parse_i64(fragment: impl IntoFragment) -> Result<i64, Error> {
+fn parse_i64<'a>(fragment: impl IntoFragment<'a>) -> Result<i64, Error> {
 	parse_signed_generic::<i64>(fragment)
 }
 
 #[inline]
-fn parse_i128(fragment: impl IntoFragment) -> Result<i128, Error> {
+fn parse_i128<'a>(fragment: impl IntoFragment<'a>) -> Result<i128, Error> {
 	parse_signed_generic::<i128>(fragment)
 }
 
 #[inline]
-fn parse_u8(fragment: impl IntoFragment) -> Result<u8, Error> {
+fn parse_u8<'a>(fragment: impl IntoFragment<'a>) -> Result<u8, Error> {
 	parse_unsigned_generic::<u8>(fragment)
 }
 
 #[inline]
-fn parse_u16(fragment: impl IntoFragment) -> Result<u16, Error> {
+fn parse_u16<'a>(fragment: impl IntoFragment<'a>) -> Result<u16, Error> {
 	parse_unsigned_generic::<u16>(fragment)
 }
 
 #[inline]
-fn parse_u32(fragment: impl IntoFragment) -> Result<u32, Error> {
+fn parse_u32<'a>(fragment: impl IntoFragment<'a>) -> Result<u32, Error> {
 	parse_unsigned_generic::<u32>(fragment)
 }
 
 #[inline]
-fn parse_u64(fragment: impl IntoFragment) -> Result<u64, Error> {
+fn parse_u64<'a>(fragment: impl IntoFragment<'a>) -> Result<u64, Error> {
 	parse_unsigned_generic::<u64>(fragment)
 }
 
 #[inline]
-fn parse_u128(fragment: impl IntoFragment) -> Result<u128, Error> {
+fn parse_u128<'a>(fragment: impl IntoFragment<'a>) -> Result<u128, Error> {
 	parse_unsigned_generic::<u128>(fragment)
 }
 

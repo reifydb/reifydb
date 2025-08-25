@@ -75,7 +75,6 @@ where
 			match validate(container[idx]) {
 				Some(b) => out.push::<bool>(b),
 				None => {
-					use reifydb_core::Fragment;
 					let base_fragment = fragment();
 					let error_fragment =
 						OwnedFragment::Statement {

@@ -8,8 +8,10 @@ use crate::{
 };
 
 impl Blob {
-	pub fn from_hex(fragment: impl IntoFragment) -> Result<Self, Error> {
-		let owned_fragment = fragment.into_fragment();
+	pub fn from_hex<'a>(
+		fragment: impl IntoFragment<'a>,
+	) -> Result<Self, Error> {
+		let owned_fragment = fragment.into_fragment().into_owned();
 		let hex_str = owned_fragment.value();
 		let clean_hex = if hex_str.starts_with("0x")
 			|| hex_str.starts_with("0X")

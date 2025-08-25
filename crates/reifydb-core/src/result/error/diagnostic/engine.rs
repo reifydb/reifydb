@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	OwnedFragment,
-	interface::fragment::{IntoFragment, IntoOwnedFragment},
+	OwnedFragment, interface::fragment::IntoFragment,
 	result::error::diagnostic::Diagnostic,
 };
 
@@ -79,8 +78,10 @@ pub fn invalid_row_number_values() -> Diagnostic {
 }
 
 /// Invalid parameter reference error
-pub fn invalid_parameter_reference(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_parameter_reference<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	Diagnostic {
         code: "ENG_005".to_string(),
@@ -96,8 +97,8 @@ pub fn invalid_parameter_reference(fragment: impl IntoFragment) -> Diagnostic {
 }
 
 /// Parameter not found error
-pub fn parameter_not_found(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn parameter_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	Diagnostic {
         code: "ENG_006".to_string(),

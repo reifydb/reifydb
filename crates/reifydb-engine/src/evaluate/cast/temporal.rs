@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Date, DateTime, Interval, Time, Type, error,
-	interface::fragment::{BorrowedFragment, Fragment, OwnedFragment},
+	interface::fragment::{BorrowedFragment, OwnedFragment},
 	result::error::diagnostic::cast,
 	value::{
 		container::StringContainer,

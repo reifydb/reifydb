@@ -6,8 +6,10 @@ use crate::{
 	result::error::diagnostic::Diagnostic,
 };
 
-pub fn invalid_boolean_format(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_boolean_format<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	let label =
 		Some(format!("expected 'true' or 'false', found '{}'", value));
@@ -27,8 +29,8 @@ pub fn invalid_boolean_format(fragment: impl IntoFragment) -> Diagnostic {
 	}
 }
 
-pub fn empty_boolean_value(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn empty_boolean_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let label = Some("boolean value cannot be empty".to_string());
 	Diagnostic {
 		code: "BOOLEAN_002".to_string(),
@@ -46,8 +48,10 @@ pub fn empty_boolean_value(fragment: impl IntoFragment) -> Diagnostic {
 	}
 }
 
-pub fn invalid_number_boolean(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_number_boolean<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	let label = Some(format!(
 		"number '{}' cannot be cast to boolean, only 1 or 0 are allowed",

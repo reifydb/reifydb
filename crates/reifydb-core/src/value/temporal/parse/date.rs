@@ -6,8 +6,8 @@ use crate::{
 	result::error::diagnostic::temporal, return_error,
 };
 
-pub fn parse_date(fragment: impl IntoFragment) -> Result<Date, Error> {
-	let owned_fragment = fragment.into_fragment();
+pub fn parse_date<'a>(fragment: impl IntoFragment<'a>) -> Result<Date, Error> {
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let value = owned_fragment.value();
 	let parts: Vec<&str> = value.split('-').collect();
 

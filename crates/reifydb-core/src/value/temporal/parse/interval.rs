@@ -6,8 +6,10 @@ use crate::{
 	result::error::diagnostic::temporal, return_error,
 };
 
-pub fn parse_interval(fragment: impl IntoFragment) -> Result<Interval, Error> {
-	let owned_fragment = fragment.into_fragment();
+pub fn parse_interval<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Result<Interval, Error> {
+	let owned_fragment = fragment.into_fragment().into_owned();
 	let fragment_value = owned_fragment.value();
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 

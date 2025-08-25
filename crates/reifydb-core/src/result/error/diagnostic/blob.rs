@@ -9,8 +9,8 @@ use crate::{
 };
 
 /// Invalid hexadecimal string in BLOB constructor
-pub fn invalid_hex_string(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_hex_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	Diagnostic {
         code: "BLOB_001".to_string(),
@@ -26,8 +26,10 @@ pub fn invalid_hex_string(fragment: impl IntoFragment) -> Diagnostic {
 }
 
 /// Invalid base64 string in BLOB constructor
-pub fn invalid_base64_string(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_base64_string<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	Diagnostic {
         code: "BLOB_002".to_string(),
@@ -45,8 +47,10 @@ pub fn invalid_base64_string(fragment: impl IntoFragment) -> Diagnostic {
 }
 
 /// Invalid base64url string in BLOB constructor
-pub fn invalid_base64url_string(fragment: impl IntoFragment) -> Diagnostic {
-	let fragment = fragment.into_fragment();
+pub fn invalid_base64url_string<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.value();
 	Diagnostic {
         code: "BLOB_003".to_string(),

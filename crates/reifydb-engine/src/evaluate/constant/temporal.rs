@@ -17,8 +17,8 @@ pub struct TemporalParser;
 impl TemporalParser {
 	/// Parse temporal expression to a specific target type with detailed
 	/// error handling
-	pub fn from_temporal(
-		fragment: impl IntoFragment,
+	pub fn from_temporal<'a>(
+		fragment: impl IntoFragment<'a>,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
@@ -27,11 +27,11 @@ impl TemporalParser {
 
 	/// Parse a temporal constant expression and create a column with the
 	/// specified row count
-	pub fn parse_temporal(
-		fragment: impl IntoFragment,
+	pub fn parse_temporal<'a>(
+		fragment: impl IntoFragment<'a>,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+		let fragment = fragment.into_fragment().into_owned();
 		let value = fragment.value();
 
 		// Route based on character patterns
@@ -72,14 +72,14 @@ impl TemporalParser {
 	}
 
 	/// Parse temporal to specific target type with detailed error handling
-	pub fn parse_temporal_type(
-		fragment: impl IntoFragment,
+	pub fn parse_temporal_type<'a>(
+		fragment: impl IntoFragment<'a>,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		use reifydb_core::result::error::diagnostic::cast;
 
-		let fragment = fragment.into_fragment();
+		let fragment = fragment.into_fragment().into_owned();
 		match target {
 			Type::Date => {
 				let date = match parse_date(fragment.clone()) {
