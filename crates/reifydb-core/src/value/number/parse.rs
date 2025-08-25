@@ -55,15 +55,15 @@ pub fn parse_float<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: IsFloat + 'static,
 {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	if owned_fragment.value().to_lowercase().contains("nan") {
+	let fragment = fragment.into_fragment();
+	if fragment.value().to_lowercase().contains("nan") {
 		return_error!(nan_not_allowed());
 	}
 
 	if TypeId::of::<T>() == TypeId::of::<f32>() {
-		Ok(cast::<T, f32>(parse_f32(owned_fragment.clone())?))
+		Ok(cast::<T, f32>(parse_f32(fragment.clone())?))
 	} else if TypeId::of::<T>() == TypeId::of::<f64>() {
-		Ok(cast::<T, f64>(parse_f64(owned_fragment)?))
+		Ok(cast::<T, f64>(parse_f64(fragment)?))
 	} else {
 		unreachable!();
 	}
@@ -173,15 +173,12 @@ fn parse_signed_generic<'a, T>(
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let value = owned_fragment.value().replace("_", "");
+	let fragment = fragment.into_fragment();
+	let value = fragment.value().replace("_", "");
 	let value = value.trim();
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(
-			owned_fragment.clone(),
-			T::type_enum()
-		));
+		return_error!(invalid_number_format(fragment, T::type_enum()));
 	}
 
 	match value.parse::<T>() {
@@ -190,7 +187,7 @@ where
 			match err.kind() {
 				IntErrorKind::Empty => {
 					err!(invalid_number_format(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum()
 					))
 				}
@@ -211,32 +208,32 @@ where
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
-							err!(number_out_of_range(owned_fragment.clone(), type_enum, None))
+							err!(number_out_of_range(fragment, type_enum, None))
 						}
 					} else {
 						err!(invalid_number_format(
-							owned_fragment.clone(),
+							fragment,
 							T::type_enum()
 						))
 					}
 				}
 				IntErrorKind::PosOverflow => {
 					err!(number_out_of_range(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::NegOverflow => {
 					err!(number_out_of_range(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::Zero => {
 					err!(invalid_number_format(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum()
 					))
 				}
@@ -253,15 +250,12 @@ fn parse_unsigned_generic<'a, T>(
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let value = owned_fragment.value().replace("_", "");
+	let fragment = fragment.into_fragment();
+	let value = fragment.value().replace("_", "");
 	let value = value.trim();
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(
-			owned_fragment.clone(),
-			T::type_enum()
-		));
+		return_error!(invalid_number_format(fragment, T::type_enum()));
 	}
 
 	match value.parse::<T>() {
@@ -270,7 +264,7 @@ where
 			match err.kind() {
 				IntErrorKind::Empty => {
 					err!(invalid_number_format(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum()
 					))
 				}
@@ -280,7 +274,7 @@ where
 						// negative values
 						if f < 0.0 {
 							return_error!(number_out_of_range(
-                                owned_fragment.clone(),
+                                fragment,
                                 T::type_enum(),
                                 None
                             ));
@@ -298,33 +292,33 @@ where
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
-							err!(number_out_of_range(owned_fragment.clone(), type_enum, None))
+							err!(number_out_of_range(fragment, type_enum, None))
 						}
 					} else {
 						if value.contains("-") {
-							err!(number_out_of_range(owned_fragment.clone(), T::type_enum(), None))
+							err!(number_out_of_range(fragment, T::type_enum(), None))
 						} else {
-							err!(invalid_number_format(owned_fragment.clone(), T::type_enum()))
+							err!(invalid_number_format(fragment, T::type_enum()))
 						}
 					}
 				}
 				IntErrorKind::PosOverflow => {
 					err!(number_out_of_range(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::NegOverflow => {
 					err!(number_out_of_range(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum(),
 						None
 					))
 				}
 				IntErrorKind::Zero => {
 					err!(invalid_number_format(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum()
 					))
 				}
@@ -345,15 +339,12 @@ where
 		+ PartialEq
 		+ 'static,
 {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let value = owned_fragment.value().replace("_", "");
+	let fragment = fragment.into_fragment();
+	let value = fragment.value().replace("_", "");
 	let value = value.trim();
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(
-			owned_fragment.clone(),
-			T::type_enum()
-		));
+		return_error!(invalid_number_format(fragment, T::type_enum()));
 	}
 
 	match value.parse::<T>() {
@@ -364,7 +355,7 @@ where
 					|| v_f32 == f32::NEG_INFINITY
 				{
 					return_error!(number_out_of_range(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum(),
 						None
 					));
@@ -375,7 +366,7 @@ where
 					|| v_f64 == f64::NEG_INFINITY
 				{
 					return_error!(number_out_of_range(
-						owned_fragment.clone(),
+						fragment,
 						T::type_enum(),
 						None
 					));
@@ -383,10 +374,7 @@ where
 			}
 			Ok(v)
 		}
-		Err(_) => err!(invalid_number_format(
-			owned_fragment.clone(),
-			T::type_enum()
-		)),
+		Err(_) => err!(invalid_number_format(fragment, T::type_enum())),
 	}
 }
 

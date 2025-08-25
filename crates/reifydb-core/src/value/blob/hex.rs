@@ -11,8 +11,8 @@ impl Blob {
 	pub fn from_hex<'a>(
 		fragment: impl IntoFragment<'a>,
 	) -> Result<Self, Error> {
-		let owned_fragment = fragment.into_fragment().into_owned();
-		let hex_str = owned_fragment.value();
+		let fragment = fragment.into_fragment();
+		let hex_str = fragment.value();
 		let clean_hex = if hex_str.starts_with("0x")
 			|| hex_str.starts_with("0X")
 		{
@@ -23,9 +23,9 @@ impl Blob {
 
 		match hex::decode(clean_hex) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
-			Err(_) => Err(Error(blob::invalid_hex_string(
-				owned_fragment,
-			))),
+			Err(_) => {
+				Err(Error(blob::invalid_hex_string(fragment)))
+			}
 		}
 	}
 

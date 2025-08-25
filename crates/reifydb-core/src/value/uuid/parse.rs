@@ -15,29 +15,29 @@ use crate::{
 pub fn parse_uuid4<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<Uuid4, Error> {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let value = owned_fragment.value().trim();
+	let fragment = fragment.into_fragment();
+	let value = fragment.value().trim();
 
 	if let Ok(uuid) = Uuid::parse_str(value) {
 		if uuid.get_version_num() == 4 {
 			return Ok(Uuid4(uuid));
 		}
 	}
-	err!(invalid_uuid4_format(owned_fragment))
+	err!(invalid_uuid4_format(fragment))
 }
 
 pub fn parse_uuid7<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<Uuid7, Error> {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let value = owned_fragment.value().trim();
+	let fragment = fragment.into_fragment();
+	let value = fragment.value().trim();
 	if let Ok(uuid) = Uuid::parse_str(value) {
 		if uuid.get_version_num() == 7 {
 			return Ok(Uuid7(uuid));
 		}
 	}
 
-	err!(invalid_uuid7_format(owned_fragment))
+	err!(invalid_uuid7_format(fragment))
 }
 
 #[cfg(test)]

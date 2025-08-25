@@ -9,8 +9,8 @@ use crate::{
 
 impl Blob {
 	pub fn from_utf8<'a>(fragment: impl IntoFragment<'a>) -> Self {
-		let owned_fragment = fragment.into_fragment().into_owned();
-		let utf8_str = owned_fragment.value();
+		let fragment = fragment.into_fragment();
+		let utf8_str = fragment.value();
 		Blob::new(utf8_str.as_bytes().to_vec())
 	}
 

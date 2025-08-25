@@ -225,8 +225,8 @@ impl<'a> IntoOwnedFragment for &BorrowedFragment<'a> {
 }
 
 // Implementation for Fragment enum
-impl IntoFragment<'_> for Fragment<'static> {
-	fn into_fragment(self) -> Fragment<'static> {
+impl<'a> IntoFragment<'a> for Fragment<'a> {
+	fn into_fragment(self) -> Fragment<'a> {
 		self
 	}
 }

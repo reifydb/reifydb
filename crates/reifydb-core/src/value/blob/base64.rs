@@ -13,8 +13,8 @@ impl Blob {
 	pub fn from_b64<'a>(
 		fragment: impl IntoFragment<'a>,
 	) -> Result<Self, Error> {
-		let owned_fragment = fragment.into_fragment().into_owned();
-		let b64_str = owned_fragment.value();
+		let fragment = fragment.into_fragment();
+		let b64_str = fragment.value();
 		// Try standard base64 first, then without padding if it fails
 		match general_purpose::STANDARD.decode(b64_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
@@ -26,7 +26,7 @@ impl Blob {
 					Ok(bytes) => Ok(Blob::new(bytes)),
 					Err(_) => Err(Error(
 						blob::invalid_base64_string(
-							owned_fragment,
+							fragment,
 						),
 					)),
 				}
@@ -37,12 +37,12 @@ impl Blob {
 	pub fn from_b64url<'a>(
 		fragment: impl IntoFragment<'a>,
 	) -> Result<Self, Error> {
-		let owned_fragment = fragment.into_fragment().into_owned();
-		let b64url_str = owned_fragment.value();
+		let fragment = fragment.into_fragment();
+		let b64url_str = fragment.value();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
 			Err(_) => Err(Error(blob::invalid_base64url_string(
-				owned_fragment,
+				fragment,
 			))),
 		}
 	}

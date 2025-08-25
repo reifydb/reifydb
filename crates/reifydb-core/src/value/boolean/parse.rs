@@ -12,11 +12,11 @@ use crate::{
 };
 
 pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let value = owned_fragment.value().trim();
+	let fragment = fragment.into_fragment();
+	let value = fragment.value().trim();
 
 	if value.is_empty() {
-		return_error!(empty_boolean_value(owned_fragment.clone()));
+		return_error!(empty_boolean_value(fragment));
 	}
 
 	match value.to_lowercase().as_str() {
@@ -28,9 +28,9 @@ pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
 			// Check if the value contains numbers - if so, use
 			// numeric boolean diagnostic
 			if value.chars().any(|c| c.is_ascii_digit()) {
-				err!(invalid_number_boolean(owned_fragment))
+				err!(invalid_number_boolean(fragment))
 			} else {
-				err!(invalid_boolean_format(owned_fragment))
+				err!(invalid_boolean_format(fragment))
 			}
 		}
 	}

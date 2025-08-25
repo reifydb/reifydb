@@ -10,21 +10,17 @@ use crate::{
 pub fn parse_datetime<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<DateTime, Error> {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let parts: Vec<&str> = owned_fragment.value().split('T').collect();
+	let fragment = fragment.into_fragment();
+	let parts: Vec<&str> = fragment.value().split('T').collect();
 	if parts.len() != 2 {
-		return_error!(temporal::invalid_datetime_format(
-			owned_fragment
-		));
+		return_error!(temporal::invalid_datetime_format(fragment));
 	}
 
 	// Create sub-fragments for the date and time parts with proper position
 	let date_offset = 0;
-	let date_fragment =
-		owned_fragment.sub_fragment(date_offset, parts[0].len());
+	let date_fragment = fragment.sub_fragment(date_offset, parts[0].len());
 	let time_offset = parts[0].len() + 1; // +1 for the 'T' separator
-	let time_fragment =
-		owned_fragment.sub_fragment(time_offset, parts[1].len());
+	let time_fragment = fragment.sub_fragment(time_offset, parts[1].len());
 
 	let date = parse_date(date_fragment)?;
 	let time = parse_time(time_fragment)?;

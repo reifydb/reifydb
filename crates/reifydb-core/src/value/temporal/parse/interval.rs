@@ -9,17 +9,15 @@ use crate::{
 pub fn parse_interval<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<Interval, Error> {
-	let owned_fragment = fragment.into_fragment().into_owned();
-	let fragment_value = owned_fragment.value();
+	let fragment = fragment.into_fragment();
+	let fragment_value = fragment.value();
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
 	if fragment_value.len() == 1
 		|| !fragment_value.starts_with('P')
 		|| fragment_value == "PT"
 	{
-		return_error!(temporal::invalid_interval_format(
-			owned_fragment.clone()
-		));
+		return_error!(temporal::invalid_interval_format(fragment));
 	}
 
 	let mut chars = fragment_value.chars().skip(1); // Skip 'P'
@@ -42,19 +40,17 @@ pub fn parse_interval<'a>(
 			}
 			'Y' => {
 				if in_time_part {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'Y', true));
 				}
 				if current_number.is_empty() {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let years: i32 = current_number
@@ -62,9 +58,8 @@ pub fn parse_interval<'a>(
 					.map_err(|_| {
 						let start = current_position
 							- current_number.len();
-						let number_frag =
-							owned_fragment
-								.sub_fragment(
+						let number_frag = fragment
+							.sub_fragment(
 								start,
 								current_number
 									.len(),
@@ -77,11 +72,10 @@ pub fn parse_interval<'a>(
 			}
 			'M' => {
 				if current_number.is_empty() {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let value: i64 = current_number
@@ -89,9 +83,8 @@ pub fn parse_interval<'a>(
 					.map_err(|_| {
 						let start = current_position
 							- current_number.len();
-						let number_frag =
-							owned_fragment
-								.sub_fragment(
+						let number_frag = fragment
+							.sub_fragment(
 								start,
 								current_number
 									.len(),
@@ -108,19 +101,17 @@ pub fn parse_interval<'a>(
 			}
 			'W' => {
 				if in_time_part {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'W', true));
 				}
 				if current_number.is_empty() {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let weeks: i32 = current_number
@@ -128,9 +119,8 @@ pub fn parse_interval<'a>(
 					.map_err(|_| {
 						let start = current_position
 							- current_number.len();
-						let number_frag =
-							owned_fragment
-								.sub_fragment(
+						let number_frag = fragment
+							.sub_fragment(
 								start,
 								current_number
 									.len(),
@@ -143,19 +133,17 @@ pub fn parse_interval<'a>(
 			}
 			'D' => {
 				if in_time_part {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'D', true));
 				}
 				if current_number.is_empty() {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let day_value: i32 = current_number
@@ -163,9 +151,8 @@ pub fn parse_interval<'a>(
 					.map_err(|_| {
 						let start = current_position
 							- current_number.len();
-						let number_frag =
-							owned_fragment
-								.sub_fragment(
+						let number_frag = fragment
+							.sub_fragment(
 								start,
 								current_number
 									.len(),
@@ -178,19 +165,17 @@ pub fn parse_interval<'a>(
 			}
 			'H' => {
 				if !in_time_part {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'H', false));
 				}
 				if current_number.is_empty() {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let hours: i64 = current_number
@@ -198,9 +183,8 @@ pub fn parse_interval<'a>(
 					.map_err(|_| {
 						let start = current_position
 							- current_number.len();
-						let number_frag =
-							owned_fragment
-								.sub_fragment(
+						let number_frag = fragment
+							.sub_fragment(
 								start,
 								current_number
 									.len(),
@@ -213,19 +197,17 @@ pub fn parse_interval<'a>(
 			}
 			'S' => {
 				if !in_time_part {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::invalid_unit_in_context(unit_frag, 'S', false));
 				}
 				if current_number.is_empty() {
-					let unit_frag = owned_fragment
-						.sub_fragment(
-							current_position,
-							1,
-						);
+					let unit_frag = fragment.sub_fragment(
+						current_position,
+						1,
+					);
 					return_error!(temporal::incomplete_interval_specification(unit_frag));
 				}
 				let seconds: i64 = current_number
@@ -233,9 +215,8 @@ pub fn parse_interval<'a>(
 					.map_err(|_| {
 						let start = current_position
 							- current_number.len();
-						let number_frag =
-							owned_fragment
-								.sub_fragment(
+						let number_frag = fragment
+							.sub_fragment(
 								start,
 								current_number
 									.len(),
@@ -247,7 +228,7 @@ pub fn parse_interval<'a>(
 				current_position += 1;
 			}
 			_ => {
-				let char_frag = owned_fragment
+				let char_frag = fragment
 					.sub_fragment(current_position, 1);
 				return_error!(
 					temporal::invalid_interval_character(
@@ -260,8 +241,8 @@ pub fn parse_interval<'a>(
 
 	if !current_number.is_empty() {
 		let start = current_position - current_number.len();
-		let number_frag = owned_fragment
-			.sub_fragment(start, current_number.len());
+		let number_frag =
+			fragment.sub_fragment(start, current_number.len());
 		return_error!(temporal::incomplete_interval_specification(
 			number_frag
 		));
