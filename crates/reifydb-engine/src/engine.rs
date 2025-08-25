@@ -48,6 +48,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 			self.unversioned.clone(),
 			self.cdc.clone(),
 			self.hooks.clone(),
+			self.catalog.clone(),
 			interceptors,
 		))
 	}

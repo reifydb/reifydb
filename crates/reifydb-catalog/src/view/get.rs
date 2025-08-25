@@ -3,46 +3,22 @@
 
 use reifydb_core::{
 	Error,
-	interface::{
-		EncodableKey, QueryTransaction, SchemaId, ViewDef, ViewId,
-		ViewKey, ViewKind,
-	},
+	interface::{QueryTransaction, ViewDef, ViewId},
 	internal_error,
 };
 
-use crate::{CatalogStore, view::layout::view};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub fn get_view(
 		rx: &mut impl QueryTransaction,
 		view: ViewId,
 	) -> crate::Result<ViewDef> {
-		let versioned = rx
-            .get(&ViewKey { view }.encode())?
-            .ok_or_else(|| {
-                Error(internal_error!(
-						"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-						view
-					))
-            })?;
-
-		let row = versioned.row;
-		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-		let schema = SchemaId(view::LAYOUT.get_u64(&row, view::SCHEMA));
-		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
-
-		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
-			0 => ViewKind::Deferred,
-			1 => ViewKind::Transactional,
-			_ => unimplemented!(),
-		};
-
-		Ok(ViewDef {
-			id,
-			name,
-			schema,
-			kind,
-			columns: Self::list_view_columns(rx, id)?,
+		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
+			Error(internal_error!(
+				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				view
+			))
 		})
 	}
 }

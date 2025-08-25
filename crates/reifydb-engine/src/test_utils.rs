@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{
-	CatalogStore,
+	CatalogStore, MaterializedCatalog,
 	schema::SchemaToCreate,
 	table::{TableColumnToCreate, TableToCreate},
 };
@@ -35,6 +35,7 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 		unversioned,
 		cdc,
 		hooks,
+		MaterializedCatalog::new(),
 		Interceptors::new(),
 	)
 }
@@ -58,10 +59,11 @@ pub fn create_test_command_transaction_with_internal_schema()
 		unversioned,
 		cdc,
 		hooks,
+		MaterializedCatalog::new(),
 		Interceptors::new(),
 	);
 
-	CatalogStore::create_schema(
+	let schema = CatalogStore::create_schema(
 		&mut result,
 		SchemaToCreate {
 			schema_fragment: None,
@@ -74,7 +76,7 @@ pub fn create_test_command_transaction_with_internal_schema()
 		&mut result,
 		TableToCreate {
 			fragment: None,
-			schema: "reifydb".to_string(),
+			schema: schema.id,
 			table: "flows".to_string(),
 			columns: vec![
 				TableColumnToCreate {

@@ -60,12 +60,17 @@ pub fn create_table(
 	table: &str,
 	columns: &[table::TableColumnToCreate],
 ) -> TableDef {
+	// First look up the schema to get its ID
+	let schema_def = CatalogStore::find_schema_by_name(txn, schema)
+		.unwrap()
+		.expect("Schema not found");
+
 	CatalogStore::create_table(
 		txn,
 		TableToCreate {
 			fragment: None,
-			schema: schema.to_string(),
 			table: table.to_string(),
+			schema: schema_def.id,
 			columns: columns.to_vec(),
 		},
 	)
@@ -108,12 +113,17 @@ pub fn create_view(
 	view: &str,
 	columns: &[view::ViewColumnToCreate],
 ) -> ViewDef {
+	// First look up the schema to get its ID
+	let schema_def = CatalogStore::find_schema_by_name(txn, schema)
+		.unwrap()
+		.expect("Schema not found");
+
 	CatalogStore::create_deferred_view(
 		txn,
 		ViewToCreate {
 			fragment: None,
-			schema: schema.to_string(),
-			view: view.to_string(),
+			name: view.to_string(),
+			schema: schema_def.id,
 			columns: columns.to_vec(),
 		},
 	)

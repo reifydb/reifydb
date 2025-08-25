@@ -3,31 +3,23 @@
 
 use reifydb_core::{
 	Error,
-	interface::{
-		EncodableKey, QueryTransaction, SchemaDef, SchemaId, SchemaKey,
-	},
+	interface::{QueryTransaction, SchemaDef, SchemaId},
 	internal_error,
 };
 
-use crate::{CatalogStore, schema::convert_schema};
+use crate::CatalogStore;
 
 impl CatalogStore {
 	pub fn get_schema(
 		rx: &mut impl QueryTransaction,
 		schema: SchemaId,
 	) -> crate::Result<SchemaDef> {
-		let versioned = rx
-			.get(&&SchemaKey {
-				schema,
-			}.encode())?
-			.ok_or_else(|| {
-				Error(internal_error!(
-						"Schema with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-						schema
-					))
-			})?;
-
-		Ok(convert_schema(versioned))
+		CatalogStore::find_schema(rx, schema)?.ok_or_else(|| {
+			Error(internal_error!(
+				"Schema with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				schema
+			))
+		})
 	}
 }
 

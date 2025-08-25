@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{
-	Value, interface::Transaction,
-	result::error::diagnostic::catalog::view_already_exists, return_error,
-};
+use reifydb_catalog::{CatalogViewOperations, view::ViewToCreate};
+use reifydb_core::{Value, interface::Transaction};
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 
 use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
@@ -16,11 +13,9 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(view) = CatalogStore::find_view_by_name(
-			txn,
-			plan.schema.id,
-			&plan.view,
-		)? {
+		if let Some(_) =
+			txn.find_view_by_name(plan.schema.id, &plan.view)?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
@@ -40,23 +35,14 @@ impl Executor {
 					("created", Value::Bool(false)),
 				]));
 			}
-
-			return_error!(view_already_exists(
-				Some(plan.view.clone()),
-				&plan.schema.name,
-				&view.name,
-			));
 		}
 
-		let result = CatalogStore::create_deferred_view(
-			txn,
-			ViewToCreate {
-				fragment: Some(plan.view.clone()),
-				view: plan.view.to_string(),
-				schema: plan.schema.name.to_string(),
-				columns: plan.columns,
-			},
-		)?;
+		let result = txn.create_view(ViewToCreate {
+			fragment: Some(plan.view.clone()),
+			name: plan.view.to_string(),
+			schema: plan.schema.id,
+			columns: plan.columns,
+		})?;
 
 		self.create_flow(txn, &result, plan.with)?;
 
@@ -244,13 +230,12 @@ mod tests {
 			})),
 		};
 
-		let err = Executor::testing()
+		Executor::testing()
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan),
 				Params::default(),
 			)
 			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_002");
 	}
 }

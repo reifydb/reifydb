@@ -2,12 +2,48 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	QueryTransaction, SchemaId, SchemaViewKey, Versioned, ViewDef, ViewId,
+	EncodableKey, QueryTransaction, SchemaId, SchemaViewKey, Versioned,
+	ViewDef, ViewId, ViewKey, ViewKind,
 };
 
-use crate::{CatalogStore, view::layout::view_schema};
+use crate::{
+	CatalogStore,
+	view::layout::{view, view_schema},
+};
 
 impl CatalogStore {
+	pub fn find_view(
+		rx: &mut impl QueryTransaction,
+		id: ViewId,
+	) -> crate::Result<Option<ViewDef>> {
+		let Some(versioned) = rx.get(&ViewKey {
+			view: id,
+		}
+		.encode())?
+		else {
+			return Ok(None);
+		};
+
+		let row = versioned.row;
+		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
+		let schema = SchemaId(view::LAYOUT.get_u64(&row, view::SCHEMA));
+		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
+
+		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
+			0 => ViewKind::Deferred,
+			1 => ViewKind::Transactional,
+			_ => unimplemented!(),
+		};
+
+		Ok(Some(ViewDef {
+			id,
+			name,
+			schema,
+			kind,
+			columns: Self::list_view_columns(rx, id)?,
+		}))
+	}
+
 	pub fn find_view_by_name(
 		rx: &mut impl QueryTransaction,
 		schema: SchemaId,

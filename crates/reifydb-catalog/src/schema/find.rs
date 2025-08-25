@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{QueryTransaction, SchemaDef, SchemaKey},
+	interface::{
+		EncodableKey, QueryTransaction, SchemaDef, SchemaId, SchemaKey,
+	},
 	row::EncodedRow,
 };
 
@@ -27,6 +29,17 @@ impl CatalogStore {
 				None
 			}
 		}))
+	}
+
+	pub fn find_schema(
+		rx: &mut impl QueryTransaction,
+		id: SchemaId,
+	) -> crate::Result<Option<SchemaDef>> {
+		Ok(rx.get(&SchemaKey {
+			schema: id,
+		}
+		.encode())?
+			.map(convert_schema))
 	}
 }
 

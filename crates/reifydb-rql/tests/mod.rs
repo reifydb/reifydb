@@ -78,7 +78,7 @@ impl testscript::Runner for Runner {
 				let mut dummy_tx =
 					create_test_command_transaction();
 
-				CatalogStore::create_schema(
+				let schema = CatalogStore::create_schema(
 					&mut dummy_tx,
 					SchemaToCreate {
 						schema_fragment: None,
@@ -92,7 +92,7 @@ impl testscript::Runner for Runner {
 					TableToCreate {
 						fragment: None,
 						table: "users".to_string(),
-						schema: "default".to_string(),
+						schema: schema.id,
 						columns: vec![],
 					},
 				)
@@ -103,7 +103,7 @@ impl testscript::Runner for Runner {
 					TableToCreate {
 						fragment: None,
 						table: "orders".to_string(),
-						schema: "default".to_string(),
+						schema: schema.id,
 						columns: vec![],
 					},
 				)
