@@ -200,7 +200,7 @@ describe('TimeValue', () => {
             // Test 1 hour
             expect(TimeValue.fromNanosSinceMidnight(3_600_000_000_000n).toString()).toBe('01:00:00.000000000');
             
-            // Test complex time with nanoseconds
+            // Test comptokenize time with nanoseconds
             const nanos = 14n * 3600n * 1_000_000_000n + 
                          30n * 60n * 1_000_000_000n + 
                          45n * 1_000_000_000n + 

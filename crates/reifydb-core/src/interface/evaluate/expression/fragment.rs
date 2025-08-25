@@ -5,7 +5,7 @@ use crate::{
 	interface::{
 		evaluate::expression::{
 			AddExpression, CastExpression, ConstantExpression,
-			DivExpression, Expression, MulExpression,
+			DivExpression, Expression, Mutokenizepression,
 			RemExpression, SubExpression,
 		},
 		expression::ParameterExpression,
@@ -169,7 +169,7 @@ impl SubExpression {
 	}
 }
 
-impl MulExpression {
+impl Mutokenizepression {
 	pub fn fragment(&self) -> OwnedFragment {
 		OwnedFragment::merge_all([
 			self.left.fragment(),

@@ -1,8 +1,68 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{cursor::Cursor, identifier::is_identifier_char};
-use crate::ast::lex::{Operator, Token, TokenKind};
+use super::{
+	cursor::Cursor,
+	identifier::is_identifier_char,
+	token::{Token, TokenKind},
+};
+
+macro_rules! operator {
+    (
+        $( $value:ident => $tag:literal ),*
+    ) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum Operator {  $( $value ),* }
+
+        impl Operator {
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $( Operator::$value => $tag ),*
+                }
+            }
+        }
+    };
+}
+
+operator! {
+    OpenParen        => "(",
+    CloseParen       => ")",
+    OpenBracket      => "[",
+    CloseBracket     => "]",
+    OpenCurly        => "{",
+    CloseCurly      => "}",
+    LeftAngle        => "<",
+    DoubleLeftAngle  => "<<",
+    LeftAngleEqual   => "<=",
+    RightAngle       => ">",
+    DoubleRightAngle => ">>",
+    RightAngleEqual  => ">=",
+    Dot              => ".",
+    Colon            => ":",
+    DoubleColon      => "::",
+    Arrow            => "->",
+    DoubleDot        => "..",
+    Plus             => "+",
+    Minus            => "-",
+    Asterisk         => "*",
+    Slash            => "/",
+    Ampersand        => "&",
+    DoubleAmpersand  => "&&",
+    Pipe             => "|",
+    DoublePipe       => "||",
+    Caret            => "^",
+    Percent          => "%",
+    Equal            => "=",
+    DoubleEqual      => "==",
+    Bang             => "!",
+    BangEqual        => "!=",
+    QuestionMark     => "?",
+    As               => "as",
+    And              => "and",
+    Or               => "or",
+    Not              => "not",
+    Xor              => "xor"
+}
 
 /// Scan for an operator token
 pub fn scan_operator(cursor: &mut Cursor) -> Option<Token> {
@@ -101,19 +161,6 @@ pub fn scan_operator(cursor: &mut Cursor) -> Option<Token> {
 			start_column,
 		),
 	})
-}
-
-pub fn is_operator_char(ch: char) -> bool {
-	matches!(
-		ch,
-		'(' | ')'
-			| '[' | ']' | '{' | '}'
-			| '<' | '>' | '.' | ':'
-			| '+' | '-' | '*' | '/'
-			| '&' | '|' | '^' | '%'
-			| '=' | '!' | '?' | ','
-			| ';'
-	)
 }
 
 #[cfg(test)]

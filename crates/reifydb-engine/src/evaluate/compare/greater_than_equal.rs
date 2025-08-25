@@ -7,7 +7,8 @@ use reifydb_core::{
 	OwnedFragment,
 	Type::Bool,
 	interface::{
-		Evaluator, evaluate::expression::GreaterThanEqualExpression,
+		Evaluator,
+		evaluate::expression::GreaterThanEquatokenizepression,
 	},
 	result::error::diagnostic::operator::greater_than_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
@@ -31,7 +32,7 @@ impl StandardEvaluator {
 	pub(crate) fn greater_than_equal(
 		&self,
 		ctx: &EvaluationContext,
-		gte: &GreaterThanEqualExpression,
+		gte: &GreaterThanEquatokenizepression,
 	) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &gte.left)?;
 		let right = self.evaluate(ctx, &gte.right)?;

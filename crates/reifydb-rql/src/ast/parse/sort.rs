@@ -8,12 +8,12 @@ use reifydb_core::{
 
 use crate::ast::{
 	AstIdentifier, AstSort,
-	lex::{
+	parse::Parser,
+	tokenize::{
 		Keyword,
 		Operator::{CloseCurly, OpenCurly},
 		Separator::Comma,
 	},
-	parse::Parser,
 };
 
 impl Parser {
@@ -90,11 +90,11 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ast::lex::lex;
+	use crate::ast::tokenize::tokenize;
 
 	#[test]
 	fn test_single_column() {
-		let tokens = lex("SORT name").unwrap();
+		let tokens = tokenize("SORT name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -109,7 +109,7 @@ mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = lex("SORT value ASC").unwrap();
+		let tokens = tokenize("SORT value ASC").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -124,7 +124,7 @@ mod tests {
 
 	#[test]
 	fn test_single_column_asc() {
-		let tokens = lex("SORT name ASC").unwrap();
+		let tokens = tokenize("SORT name ASC").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -139,7 +139,7 @@ mod tests {
 
 	#[test]
 	fn test_single_column_desc() {
-		let tokens = lex("SORT name DESC").unwrap();
+		let tokens = tokenize("SORT name DESC").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -157,7 +157,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_columns() {
-		let tokens = lex("SORT {name, age}").unwrap();
+		let tokens = tokenize("SORT {name, age}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -175,7 +175,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_columns_asc_desc() {
-		let tokens = lex("SORT {name ASC, age DESC}").unwrap();
+		let tokens = tokenize("SORT {name ASC, age DESC}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -196,7 +196,7 @@ mod tests {
 
 	#[test]
 	fn test_single_column_with_braces() {
-		let tokens = lex("SORT {name}").unwrap();
+		let tokens = tokenize("SORT {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -211,7 +211,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_columns_without_braces_fails() {
-		let tokens = lex("SORT name, age").unwrap();
+		let tokens = tokenize("SORT name, age").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 

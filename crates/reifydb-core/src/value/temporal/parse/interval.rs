@@ -278,7 +278,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_complex() {
+	fn test_comptokenize() {
 		let fragment = OwnedFragment::testing("P1DT2H30M");
 		let interval = parse_interval(fragment).unwrap();
 		// 1 day + 2 hours + 30 minutes

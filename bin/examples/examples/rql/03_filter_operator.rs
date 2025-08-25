@@ -4,7 +4,7 @@
 //! - Basic comparisons (==, !=, <, >, <=, >=)
 //! - Logical operators (and, or, not)
 //! - Filtering different data types
-//! - Complex filter conditions
+//! - Comptokenize filter conditions
 //!
 //! Run with: `make rql-filter` or `cargo run --bin rql-filter`
 
@@ -177,8 +177,8 @@ filter department == "Sales" or department == "Marketing""#,
 		// Shows Sales or Marketing employees
 	}
 
-	// Example 8: Complex filter with parentheses
-	log_info!("\nExample 8: Complex filter with parentheses");
+	// Example 8: Comptokenize filter with parentheses
+	log_info!("\nExample 8: Comptokenize filter with parentheses");
 	log_query(
 		r#"from hr.employees
 filter (department == "Engineering" or department == "Sales")

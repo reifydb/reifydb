@@ -33,7 +33,7 @@ use reifydb_core::{result::error::diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstStatement,
-	lex::{
+	tokenize::{
 		Keyword, Literal, Operator, Separator, Separator::NewLine,
 		Token, TokenKind,
 	},
@@ -334,15 +334,15 @@ mod tests {
 	use reifydb_core::{Error, err, result::error::diagnostic};
 
 	use crate::ast::{
-		lex::{
+		parse::{Parser, Precedence, Precedence::Term},
+		tokenize::{
 			Literal::{False, Number, True},
 			Operator::Plus,
 			Separator::Semicolon,
 			TokenKind,
 			TokenKind::{Identifier, Literal, Separator},
-			lex,
+			tokenize,
 		},
-		parse::{Parser, Precedence, Precedence::Term},
 	};
 
 	#[test]
@@ -354,7 +354,7 @@ mod tests {
 
 	#[test]
 	fn test_advance() {
-		let tokens = lex("1 + 2").unwrap();
+		let tokens = tokenize("1 + 2").unwrap();
 		let mut parser = Parser::new(tokens);
 
 		let one = parser.advance().unwrap();
@@ -372,7 +372,7 @@ mod tests {
 
 	#[test]
 	fn test_consume_but_eof() {
-		let tokens = lex("").unwrap();
+		let tokens = tokenize("").unwrap();
 		let mut parser = Parser::new(tokens);
 		let err = parser.consume(Identifier).err().unwrap();
 		assert_eq!(err, Error(ast::unexpected_eof_error()))
@@ -380,7 +380,7 @@ mod tests {
 
 	#[test]
 	fn test_consume_but_unexpected_token() {
-		let tokens = lex("false").unwrap();
+		let tokens = tokenize("false").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.consume(Literal(True));
 		assert!(result.is_err());
@@ -392,7 +392,7 @@ mod tests {
 
 	#[test]
 	fn test_consume() {
-		let tokens = lex("true 99").unwrap();
+		let tokens = tokenize("true 99").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.consume(Literal(True)).unwrap();
 		assert_eq!(result.kind, Literal(True));
@@ -403,7 +403,7 @@ mod tests {
 
 	#[test]
 	fn test_consume_if_but_eof() {
-		let tokens = lex("").unwrap();
+		let tokens = tokenize("").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None))
@@ -411,7 +411,7 @@ mod tests {
 
 	#[test]
 	fn test_consume_if_but_unexpected_token() {
-		let tokens = lex("false").unwrap();
+		let tokens = tokenize("false").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None));
@@ -419,7 +419,7 @@ mod tests {
 
 	#[test]
 	fn test_consume_if() {
-		let tokens = lex("true 0x99").unwrap();
+		let tokens = tokenize("true 0x99").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.consume_if(Literal(True)).unwrap().unwrap();
 		assert_eq!(result.kind, Literal(True));
@@ -431,7 +431,7 @@ mod tests {
 
 	#[test]
 	fn test_current_but_eof() {
-		let tokens = lex("").unwrap();
+		let tokens = tokenize("").unwrap();
 		let parser = Parser::new(tokens);
 		let result = parser.current();
 		assert_eq!(result, err!(ast::unexpected_eof_error()))
@@ -439,7 +439,7 @@ mod tests {
 
 	#[test]
 	fn test_current() {
-		let tokens = lex("true false").unwrap();
+		let tokens = tokenize("true false").unwrap();
 		let mut parser = Parser::new(tokens);
 
 		let true_token = parser.current().unwrap().clone();
@@ -453,7 +453,7 @@ mod tests {
 
 	#[test]
 	fn test_current_expect_but_eof() {
-		let tokens = lex("").unwrap();
+		let tokens = tokenize("").unwrap();
 		let parser = Parser::new(tokens);
 		let result = parser.current_expect(Separator(Semicolon));
 		assert_eq!(result, err!(ast::unexpected_eof_error()))
@@ -461,7 +461,7 @@ mod tests {
 
 	#[test]
 	fn test_current_expect() {
-		let tokens = lex("true false").unwrap();
+		let tokens = tokenize("true false").unwrap();
 		let mut parser = Parser::new(tokens);
 
 		let result = parser.current_expect(Literal(True));
@@ -475,7 +475,7 @@ mod tests {
 
 	#[test]
 	fn test_current_expect_but_different() {
-		let tokens = lex("true").unwrap();
+		let tokens = tokenize("true").unwrap();
 		let parser = Parser::new(tokens);
 
 		let result = parser.current_expect(Literal(False));
@@ -488,7 +488,7 @@ mod tests {
 
 	#[test]
 	fn test_current_precedence_but_eof() {
-		let tokens = lex("").unwrap();
+		let tokens = tokenize("").unwrap();
 		let parser = Parser::new(tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::None))
@@ -496,7 +496,7 @@ mod tests {
 
 	#[test]
 	fn test_current_precedence() {
-		let tokens = lex("+").unwrap();
+		let tokens = tokenize("+").unwrap();
 		let parser = Parser::new(tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Term))
@@ -504,7 +504,7 @@ mod tests {
 
 	#[test]
 	fn test_between_precedence() {
-		let tokens = lex("BETWEEN").unwrap();
+		let tokens = tokenize("BETWEEN").unwrap();
 		let parser = Parser::new(tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::Comparison))
@@ -512,7 +512,7 @@ mod tests {
 
 	#[test]
 	fn test_parse_between_expression() {
-		let tokens = lex("x BETWEEN 1 AND 10").unwrap();
+		let tokens = tokenize("x BETWEEN 1 AND 10").unwrap();
 		let result = crate::ast::parse::parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

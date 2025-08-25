@@ -123,7 +123,7 @@ crossbeam-channel = { version = "0.5.15" }
 parking_lot = { version = "0.12" }
 colored = { version = "3.0" }
 
-# lexing
+# tokenizeing
 nom = { version = "8.0.0" }
 nom_locate = { version = "5.0.0" }
 

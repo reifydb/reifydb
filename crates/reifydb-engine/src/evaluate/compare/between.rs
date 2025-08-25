@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::{
 		Evaluator,
 		evaluate::expression::{
-			BetweenExpression, GreaterThanEqualExpression,
-			LessThanEqualExpression,
+			BetweenExpression, GreaterThanEquatokenizepression,
+			LessThanEquatokenizepression,
 		},
 	},
 	result::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types,
@@ -25,13 +25,13 @@ impl StandardEvaluator {
 		expr: &BetweenExpression,
 	) -> crate::Result<Column> {
 		// Create temporary expressions for the comparisons
-		let greater_equal_expr = GreaterThanEqualExpression {
+		let greater_equal_expr = GreaterThanEquatokenizepression {
 			left: expr.value.clone(),
 			right: expr.lower.clone(),
 			fragment: expr.fragment.clone(),
 		};
 
-		let less_equal_expr = LessThanEqualExpression {
+		let less_equal_expr = LessThanEquatokenizepression {
 			left: expr.value.clone(),
 			right: expr.upper.clone(),
 			fragment: expr.fragment.clone(),

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{ast::AstIdentifier, lex::TokenKind, parse::Parser};
+use crate::ast::{ast::AstIdentifier, parse::Parser, tokenize::TokenKind};
 
 impl Parser {
 	pub(crate) fn parse_identifier(
@@ -26,12 +26,13 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		Ast::Identifier, ast::AstIdentifier, lex::lex, parse::parse,
+		Ast::Identifier, ast::AstIdentifier, parse::parse,
+		tokenize::tokenize,
 	};
 
 	#[test]
 	fn identifier() {
-		let tokens = lex("x").unwrap();
+		let tokens = tokenize("x").unwrap();
 		let mut result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -45,7 +46,7 @@ mod tests {
 
 	#[test]
 	fn identifier_with_underscore() {
-		let tokens = lex("some_identifier").unwrap();
+		let tokens = tokenize("some_identifier").unwrap();
 		let mut result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

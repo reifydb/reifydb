@@ -1,8 +1,117 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{cursor::Cursor, identifier::is_identifier_char};
-use crate::ast::lex::{Keyword, Token, TokenKind};
+use reifydb_core::result::error::diagnostic::ast;
+
+use super::{
+	cursor::Cursor,
+	identifier::is_identifier_char,
+	token::{Token, TokenKind},
+};
+
+macro_rules! keyword {
+    (
+        $( $variant:ident => $string:literal ),* $(,)?
+    ) => {
+
+        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        pub enum Keyword {
+            $( $variant ),*
+        }
+
+        impl Keyword {
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $( Keyword::$variant => $string ),*
+                }
+            }
+        }
+
+        impl TryFrom<&str> for Keyword {
+            type Error = reifydb_core::Error;
+
+            fn try_from(value: &str) -> crate::Result<Self> {
+                debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
+                match value {
+                    $( $string => Ok(Keyword::$variant) ),*,
+                    _ => reifydb_core::err!(ast::tokenize_error("not a keyword".to_string()))
+                }
+            }
+        }
+    };
+}
+
+keyword! {
+    Map     => "MAP",
+    By         => "BY",
+    From       => "FROM",
+    Where      => "WHERE",
+    Aggregate  => "AGGREGATE",
+    Having     => "HAVING",
+    Sort      => "SORT",
+    Take      => "TAKE",
+    Offset     => "OFFSET",
+
+    Left       => "LEFT",
+    Inner      => "INNER",
+    Natural    => "NATURAL",
+    Join       => "JOIN",
+    On         => "ON",
+    Using      => "USING",
+    Union      => "UNION",
+    Intersect  => "INTERSECT",
+    Except     => "EXCEPT",
+
+    Insert     => "INSERT",
+    Into       => "INTO",
+    Update     => "UPDATE",
+    Set        => "SET",
+    Delete     => "DELETE",
+
+    Let        => "LET",
+    If         => "IF",
+    Else       => "ELSE",
+    End        => "END",
+    Loop       => "LOOP",
+    Return     => "RETURN",
+
+    Define     => "DEFINE",
+    Function   => "FUNCTION",
+    Call       => "CALL",
+    Cast       => "CAST",
+
+    Describe   => "DESCRIBE",
+    Show       => "SHOW",
+    Create     => "CREATE",
+    Alter      => "ALTER",
+    Drop       => "DROP",
+    Filter     => "FILTER",
+
+    In         => "IN",
+    Between    => "BETWEEN",
+    Like       => "LIKE",
+    Is         => "IS",
+    With       => "WITH",
+
+    Schema => "SCHEMA",
+    Sequence => "SEQUENCE",
+    Series  => "SERIES",
+    Table  => "TABLE",
+    Policy => "POLICY",
+    View => "VIEW",
+    Deferred => "DEFERRED",
+    Transactional => "TRANSACTIONAL",
+
+    Index => "INDEX",
+    Unique => "UNIQUE",
+    Primary => "PRIMARY",
+    Key => "KEY",
+    Asc => "ASC",
+    Desc => "DESC",
+    Auto => "AUTO",
+    Increment => "INCREMENT",
+    Value => "VALUE",
+}
 
 /// Scan for a keyword token
 pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {

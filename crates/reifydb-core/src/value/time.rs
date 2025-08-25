@@ -296,7 +296,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(format!("{}", time), "01:00:00.000000000");
 
-		// Test complex time with nanoseconds
+		// Test comptokenize time with nanoseconds
 		let nanos = 14 * 3600 * 1_000_000_000
 			+ 30 * 60 * 1_000_000_000
 			+ 45 * 1_000_000_000 + 123456789;

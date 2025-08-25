@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	GetType, OwnedFragment, Type,
-	interface::{Evaluator, evaluate::expression::MulExpression},
+	interface::{Evaluator, evaluate::expression::Mutokenizepression},
 	result::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
@@ -24,7 +24,7 @@ impl StandardEvaluator {
 	pub(crate) fn mul(
 		&self,
 		ctx: &EvaluationContext,
-		mul: &MulExpression,
+		mul: &Mutokenizepression,
 	) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &mul.left)?;
 		let right = self.evaluate(ctx, &mul.right)?;

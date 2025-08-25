@@ -9,12 +9,12 @@ use reifydb_core::{
 
 use crate::ast::{
 	AstJoin,
-	lex::{
+	parse::{Parser, Precedence},
+	tokenize::{
 		Keyword::{Inner, Join, Left, Natural, On, With},
 		Operator::{CloseCurly, OpenCurly},
 		Separator::Comma,
 	},
-	parse::{Parser, Precedence},
 };
 
 impl Parser {
@@ -255,11 +255,13 @@ impl Parser {
 mod tests {
 	use reifydb_core::JoinType;
 
-	use crate::ast::{AstJoin, InfixOperator, lex::lex, parse::Parser};
+	use crate::ast::{
+		AstJoin, InfixOperator, parse::Parser, tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_left_join() {
-		let tokens = lex(
+		let tokens = tokenize(
 			"left join with schema.orders on user.id == orders.user_id",
 		)
 		.unwrap();
@@ -316,7 +318,7 @@ mod tests {
 
 	#[test]
 	fn test_left_join_with_curly() {
-		let tokens = lex("left join { with orders on { users.id == orders.user_id, something_else.id == orders.user_id } }").unwrap();
+		let tokens = tokenize("left join { with orders on { users.id == orders.user_id, something_else.id == orders.user_id } }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -398,7 +400,7 @@ mod tests {
 
 	#[test]
 	fn test_left_join_single_on_with_braces() {
-		let tokens = lex(
+		let tokens = tokenize(
 			"left join { with orders on { users.id == orders.user_id } }",
 		)
 		.unwrap();
@@ -423,7 +425,7 @@ mod tests {
 
 	#[test]
 	fn test_left_join_multiple_on_without_braces_fails() {
-		let tokens = lex("left join with orders on users.id == orders.user_id, something_else.id == orders.user_id").unwrap();
+		let tokens = tokenize("left join with orders on users.id == orders.user_id, something_else.id == orders.user_id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
@@ -435,7 +437,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_simple() {
-		let tokens = lex("natural join with orders").unwrap();
+		let tokens = tokenize("natural join with orders").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -461,7 +463,8 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_with_qualified_table() {
-		let tokens = lex("natural join with schema.orders").unwrap();
+		let tokens =
+			tokenize("natural join with schema.orders").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -496,7 +499,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_with_braces() {
-		let tokens = lex("natural join { with orders }").unwrap();
+		let tokens = tokenize("natural join { with orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -522,7 +525,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_left_join() {
-		let tokens = lex("natural left join with orders").unwrap();
+		let tokens = tokenize("natural left join with orders").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -548,7 +551,8 @@ mod tests {
 
 	#[test]
 	fn test_natural_inner_join() {
-		let tokens = lex("natural inner join with orders").unwrap();
+		let tokens =
+			tokenize("natural inner join with orders").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -574,7 +578,7 @@ mod tests {
 
 	#[test]
 	fn test_inner_join() {
-		let tokens = lex(
+		let tokens = tokenize(
 			"inner join with orders on users.id == orders.user_id",
 		)
 		.unwrap();
@@ -628,9 +632,10 @@ mod tests {
 
 	#[test]
 	fn test_join() {
-		let tokens =
-			lex("join with orders on users.id == orders.user_id")
-				.unwrap();
+		let tokens = tokenize(
+			"join with orders on users.id == orders.user_id",
+		)
+		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

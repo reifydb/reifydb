@@ -7,14 +7,14 @@ use Operator::Colon;
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
 	AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
-	lex::{
+	parse::Parser,
+	tokenize::{
 		Keyword,
 		Keyword::{Deferred, Series, Table, Transactional, View, With},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
 	},
-	parse::Parser,
 };
 
 impl Parser {
@@ -262,12 +262,12 @@ mod tests {
 	use crate::ast::{
 		AstCreate, AstCreateDeferredView, AstCreateSchema,
 		AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
-		AstPolicyKind, lex::lex, parse::Parser,
+		AstPolicyKind, parse::Parser, tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_create_schema() {
-		let tokens = lex("CREATE SCHEMA REIFYDB").unwrap();
+		let tokens = tokenize("CREATE SCHEMA REIFYDB").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -288,9 +288,11 @@ mod tests {
 
 	#[test]
 	fn test_create_series() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
             create series test.metrics{value: Int2}
-        "#)
+        "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -321,9 +323,11 @@ mod tests {
 
 	#[test]
 	fn test_create_table() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create table test.users{id: int2, name: text, is_premium: bool}
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -375,9 +379,11 @@ mod tests {
 
 	#[test]
 	fn test_create_table_with_saturation_policy() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create table test.items{field: int2 policy {saturation error} }
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -425,9 +431,11 @@ mod tests {
 
 	#[test]
 	fn test_create_table_with_auto_increment() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create table test.users { id: int4 AUTO INCREMENT, name: utf8 }
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -469,9 +477,11 @@ mod tests {
 
 	#[test]
 	fn test_create_deferred_view() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create deferred view test.views{field: int2 policy { saturation error} }
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -518,9 +528,11 @@ mod tests {
 
 	#[test]
 	fn test_create_transactional_view() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create transactional view test.myview{id: int4, name: utf8}
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -564,12 +576,14 @@ mod tests {
 
 	#[test]
 	fn test_create_transactional_view_with_query() {
-		let tokens = lex(r#"
+		let tokens = tokenize(
+			r#"
         create transactional view test.myview{id: int4, name: utf8} with {
             from test.users
             where age > 18
         }
-    "#)
+    "#,
+		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();

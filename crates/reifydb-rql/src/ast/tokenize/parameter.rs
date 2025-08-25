@@ -4,8 +4,14 @@
 use super::{
 	cursor::Cursor,
 	identifier::{is_identifier_char, is_identifier_start},
+	token::{Token, TokenKind},
 };
-use crate::ast::lex::{ParameterKind, Token, TokenKind};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ParameterKind {
+	Positional(u32), // $1, $2, etc.
+	Named,           // $name, $user_id, etc.
+}
 
 /// Scan for a parameter token ($1, $name, etc.)
 pub fn scan_parameter(cursor: &mut Cursor) -> Option<Token> {

@@ -8,17 +8,16 @@ use reifydb_catalog::{
 };
 use reifydb_engine::test_utils::create_test_command_transaction;
 use reifydb_rql::explain::{
-	explain_ast, explain_lex, explain_logical_plan, explain_physical_plan,
+	explain_ast, explain_logical_plan, explain_physical_plan,
 	explain_tokenize,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-rql/tests/scripts/lex" as lex => run_test }
+test_each_path! { in "crates/reifydb-rql/tests/scripts/tokenize" as tokenize => run_test }
 test_each_path! { in "crates/reifydb-rql/tests/scripts/ast" as ast => run_test }
 test_each_path! { in "crates/reifydb-rql/tests/scripts/logical_plan" as logical_plan => run_test }
 test_each_path! { in "crates/reifydb-rql/tests/scripts/physical_plan" as physical_plan => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/tokenize" as tokenize => run_test }
 
 fn run_test(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")
@@ -40,18 +39,6 @@ impl testscript::Runner for Runner {
 					.as_str();
 				args.reject_rest()?;
 				let result = explain_tokenize(query).unwrap();
-				writeln!(output, "{}", result).unwrap();
-			}
-			// lex QUERY
-			"lex" => {
-				let mut args = command.consume_args();
-				let query = args
-					.next_pos()
-					.ok_or("args not given")?
-					.value
-					.as_str();
-				args.reject_rest()?;
-				let result = explain_lex(query).unwrap();
 				writeln!(output, "{}", result).unwrap();
 			}
 			// ast QUERY

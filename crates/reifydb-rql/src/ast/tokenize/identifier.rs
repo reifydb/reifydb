@@ -1,8 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::cursor::Cursor;
-use crate::ast::lex::{Token, TokenKind};
+use super::{
+	cursor::Cursor,
+	token::{Token, TokenKind},
+};
 
 /// Scan for an identifier token
 pub fn scan_identifier(cursor: &mut Cursor) -> Option<Token> {
@@ -36,7 +38,7 @@ pub fn is_identifier_char(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{lex::TokenKind, tokenize::tokenize};
+	use crate::ast::tokenize::{TokenKind, tokenize};
 
 	#[test]
 	fn test_identifier() {

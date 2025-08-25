@@ -1,8 +1,33 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::cursor::Cursor;
-use crate::ast::lex::{Separator, Token, TokenKind};
+use super::{
+	cursor::Cursor,
+	token::{Token, TokenKind},
+};
+
+macro_rules! separator {
+    (
+        $( $value:ident => $tag:literal ),*
+    ) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum Separator {  $( $value ),* }
+
+        impl Separator {
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $( Separator::$value => $tag ),*
+                }
+            }
+        }
+    };
+}
+
+separator! {
+    Semicolon => ";",
+    Comma => ",",
+    NewLine => "\n"
+}
 
 /// Scan for a separator token
 pub fn scan_separator(cursor: &mut Cursor) -> Option<Token> {

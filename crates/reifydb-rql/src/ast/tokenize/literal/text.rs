@@ -3,10 +3,7 @@
 
 use reifydb_core::OwnedFragment;
 
-use crate::ast::{
-	lex::{Literal, Literal::Text, Token, TokenKind},
-	tokenize::cursor::Cursor,
-};
+use crate::ast::tokenize::{Literal::Text, Token, TokenKind, cursor::Cursor};
 
 /// Scan for a text literal ('...' or "...")
 pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
@@ -63,10 +60,8 @@ pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
 
 #[cfg(test)]
 mod tests {
-	use Literal::{Number, Text};
-
 	use super::*;
-	use crate::ast::tokenize::tokenize;
+	use crate::ast::tokenize::{Literal::Number, tokenize};
 
 	#[test]
 	fn test_text_single_quotes() {
@@ -155,7 +150,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_text_mixed_quotes_complex() {
+	fn test_text_mixed_quotes_comptokenize() {
 		let tokens =
 			tokenize("'He said \"Hello\" and she replied \"Hi\"'")
 				.unwrap();

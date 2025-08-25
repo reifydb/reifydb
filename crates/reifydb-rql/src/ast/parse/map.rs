@@ -9,13 +9,13 @@ use reifydb_core::{
 
 use crate::ast::{
 	Ast, AstInfix, AstMap, InfixOperator,
-	lex::{
+	parse::{Parser, Precedence},
+	tokenize::{
 		Keyword,
 		Operator::{CloseCurly, Colon, OpenCurly},
 		Separator::Comma,
 		TokenKind,
 	},
-	parse::{Parser, Precedence},
 };
 
 impl Parser {
@@ -113,11 +113,11 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ast::{Ast, AstInfix, InfixOperator, lex::lex};
+	use crate::ast::{Ast, AstInfix, InfixOperator, tokenize::tokenize};
 
 	#[test]
 	fn test_constant_number() {
-		let tokens = lex("MAP 1").unwrap();
+		let tokens = tokenize("MAP 1").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -132,7 +132,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_expressions() {
-		let tokens = lex("MAP {1 + 2, 4 * 3}").unwrap();
+		let tokens = tokenize("MAP {1 + 2, 4 * 3}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -154,7 +154,7 @@ mod tests {
 
 	#[test]
 	fn test_star() {
-		let tokens = lex("MAP *").unwrap();
+		let tokens = tokenize("MAP *").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -167,7 +167,7 @@ mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = lex("MAP value").unwrap();
+		let tokens = tokenize("MAP value").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -180,7 +180,7 @@ mod tests {
 
 	#[test]
 	fn test_single_column() {
-		let tokens = lex("MAP name").unwrap();
+		let tokens = tokenize("MAP name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -193,7 +193,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_columns() {
-		let tokens = lex("MAP {name, age}").unwrap();
+		let tokens = tokenize("MAP {name, age}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -209,7 +209,7 @@ mod tests {
 
 	#[test]
 	fn test_as() {
-		let tokens = lex("map 1 as a").unwrap();
+		let tokens = tokenize("map 1 as a").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -234,7 +234,7 @@ mod tests {
 
 	#[test]
 	fn test_single_expression_with_braces() {
-		let tokens = lex("MAP {1}").unwrap();
+		let tokens = tokenize("MAP {1}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -249,7 +249,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_expressions_without_braces_fails() {
-		let tokens = lex("MAP 1, 2").unwrap();
+		let tokens = tokenize("MAP 1, 2").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
@@ -261,7 +261,7 @@ mod tests {
 
 	#[test]
 	fn test_single_column_with_braces() {
-		let tokens = lex("MAP {name}").unwrap();
+		let tokens = tokenize("MAP {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -274,7 +274,7 @@ mod tests {
 
 	#[test]
 	fn test_colon_syntax_single() {
-		let tokens = lex("MAP col: 1 + 2").unwrap();
+		let tokens = tokenize("MAP col: 1 + 2").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -300,7 +300,7 @@ mod tests {
 
 	#[test]
 	fn test_colon_syntax_with_braces() {
-		let tokens = lex("MAP {name: id, age: years}").unwrap();
+		let tokens = tokenize("MAP {name: id, age: years}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -322,8 +322,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_colon_syntax_complex_expression() {
-		let tokens = lex("MAP total: price * quantity").unwrap();
+	fn test_colon_syntax_comptokenize_expression() {
+		let tokens = tokenize("MAP total: price * quantity").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -354,8 +354,9 @@ mod tests {
 
 	#[test]
 	fn test_mixed_syntax() {
-		let tokens = lex("MAP {name, total: price * quantity, age}")
-			.unwrap();
+		let tokens =
+			tokenize("MAP {name, total: price * quantity, age}")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 

@@ -873,7 +873,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_complex_multi_key_scenario() {
+	fn test_comptokenize_multi_key_scenario() {
 		let clock = MockVersionProvider::new(1);
 		let oracle = Oracle::<_>::new(
 			"test_query".into(),

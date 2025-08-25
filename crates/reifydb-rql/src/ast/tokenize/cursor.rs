@@ -135,11 +135,6 @@ impl<'a> Cursor<'a> {
 		self.column
 	}
 
-	/// Get remaining input from current position
-	pub fn remaining(&self) -> &'a str {
-		&self.input[self.pos..]
-	}
-
 	/// Get a slice of the input from a starting position to current
 	pub fn slice_from(&self, start: usize) -> &'a str {
 		&self.input[start..self.pos]

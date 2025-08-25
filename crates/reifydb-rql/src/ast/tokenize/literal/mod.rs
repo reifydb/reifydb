@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::cursor::Cursor;
-use crate::ast::lex::Token;
+use super::{cursor::Cursor, token::Token};
 
 mod bool;
 mod number;

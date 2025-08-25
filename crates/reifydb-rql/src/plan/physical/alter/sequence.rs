@@ -32,7 +32,7 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		ast::{lex::lex, parse::parse},
+		ast::{parse::parse, tokenize::tokenize},
 		plan::{
 			logical::compile_logical,
 			physical::{PhysicalPlan, compile_physical},
@@ -41,8 +41,9 @@ mod tests {
 
 	#[test]
 	fn test_compile_alter_sequence_physical() {
-		let tokens = lex("ALTER SEQUENCE test.users.id SET VALUE 1000")
-			.unwrap();
+		let tokens =
+			tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000")
+				.unwrap();
 		let ast = parse(tokens).unwrap();
 
 		let logical_plans =

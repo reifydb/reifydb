@@ -3,8 +3,6 @@
 
 use reifydb_core::result::error::diagnostic::ast;
 
-use crate::ast::lex::Token;
-
 mod cursor;
 mod identifier;
 mod keyword;
@@ -13,12 +11,16 @@ mod operator;
 mod parameter;
 mod scanner;
 mod separator;
+mod token;
 
 use cursor::Cursor;
 use reifydb_core::error::Error;
 use scanner::{
 	scan_identifier, scan_keyword, scan_literal, scan_operator,
 	scan_parameter, scan_separator,
+};
+pub use token::{
+	Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind,
 };
 
 /// Tokenize the input string into a vector of tokens
@@ -48,12 +50,14 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 				// Unable to tokenize - report error with
 				// current character
 				let ch = cursor.peek().unwrap_or('?');
-				return Err(Error(ast::lex_error(format!(
-					"Unexpected character '{}' at line {}, column {}",
-					ch,
-					cursor.line(),
-					cursor.column()
-				))));
+				return Err(Error(ast::tokenize_error(
+					format!(
+						"Unexpected character '{}' at line {}, column {}",
+						ch,
+						cursor.line(),
+						cursor.column()
+					),
+				)));
 			}
 		}
 	}
@@ -64,9 +68,6 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ast::lex::{
-		Keyword, Literal, Operator, ParameterKind, Separator, TokenKind,
-	};
 
 	#[test]
 	fn test_tokenize_simple() {
@@ -167,7 +168,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_tokenize_complex_query() {
+	fn test_tokenize_comptokenize_query() {
 		let query = "MAP name, age FROM users WHERE age > 18 AND status = 'active'";
 		let tokens = tokenize(query).unwrap();
 

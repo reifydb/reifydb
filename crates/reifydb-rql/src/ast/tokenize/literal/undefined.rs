@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{
-	lex::{Literal::Undefined, Token, TokenKind},
-	tokenize::{cursor::Cursor, identifier::is_identifier_char},
+use crate::ast::tokenize::{
+	Literal::Undefined, Token, TokenKind, cursor::Cursor,
+	identifier::is_identifier_char,
 };
 
 /// Scan for undefined literal
@@ -33,10 +33,7 @@ pub fn scan_undefined(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ast::{
-		lex::{Keyword, Literal},
-		tokenize::tokenize,
-	};
+	use crate::ast::tokenize::{Keyword, tokenize};
 
 	#[test]
 	fn test_undefined() {

@@ -3,7 +3,7 @@
 
 use crate::ast::{
 	AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal,
-	AstLiteralText, AstLiteralUndefined, lex::Literal, parse::Parser,
+	AstLiteralText, AstLiteralUndefined, parse::Parser, tokenize::Literal,
 };
 
 impl Parser {
@@ -52,11 +52,13 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{Ast::Literal, AstLiteral, lex::lex, parse::parse};
+	use crate::ast::{
+		Ast::Literal, AstLiteral, parse::parse, tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_text() {
-		let tokens = lex("'ElodiE'").unwrap();
+		let tokens = tokenize("'ElodiE'").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -70,7 +72,7 @@ mod tests {
 
 	#[test]
 	fn test_number_42() {
-		let tokens = lex("42").unwrap();
+		let tokens = tokenize("42").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -84,7 +86,7 @@ mod tests {
 
 	#[test]
 	fn test_true() {
-		let tokens = lex("true").unwrap();
+		let tokens = tokenize("true").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -98,7 +100,7 @@ mod tests {
 
 	#[test]
 	fn test_false() {
-		let tokens = lex("false").unwrap();
+		let tokens = tokenize("false").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -112,7 +114,7 @@ mod tests {
 
 	#[test]
 	fn test_date() {
-		let tokens = lex("@2024-03-15").unwrap();
+		let tokens = tokenize("@2024-03-15").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -126,7 +128,7 @@ mod tests {
 
 	#[test]
 	fn test_time() {
-		let tokens = lex("@14:30:00").unwrap();
+		let tokens = tokenize("@14:30:00").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -140,7 +142,7 @@ mod tests {
 
 	#[test]
 	fn test_time_milliseconds() {
-		let tokens = lex("@14:30:00.123").unwrap();
+		let tokens = tokenize("@14:30:00.123").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -154,7 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_time_microseconds() {
-		let tokens = lex("@14:30:00.123456").unwrap();
+		let tokens = tokenize("@14:30:00.123456").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -168,7 +170,7 @@ mod tests {
 
 	#[test]
 	fn test_time_nanoseconds() {
-		let tokens = lex("@14:30:00.123456789").unwrap();
+		let tokens = tokenize("@14:30:00.123456789").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -182,7 +184,7 @@ mod tests {
 
 	#[test]
 	fn test_time_with_timezone() {
-		let tokens = lex("@14:30:00Z").unwrap();
+		let tokens = tokenize("@14:30:00Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -196,7 +198,7 @@ mod tests {
 
 	#[test]
 	fn test_time_milliseconds_with_timezone() {
-		let tokens = lex("@14:30:00.123Z").unwrap();
+		let tokens = tokenize("@14:30:00.123Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -210,7 +212,7 @@ mod tests {
 
 	#[test]
 	fn test_time_microseconds_with_timezone() {
-		let tokens = lex("@14:30:00.123456Z").unwrap();
+		let tokens = tokenize("@14:30:00.123456Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -224,7 +226,7 @@ mod tests {
 
 	#[test]
 	fn test_time_nanoseconds_with_timezone() {
-		let tokens = lex("@14:30:00.123456789Z").unwrap();
+		let tokens = tokenize("@14:30:00.123456789Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -238,7 +240,7 @@ mod tests {
 
 	#[test]
 	fn test_time_with_offset_timezone() {
-		let tokens = lex("@14:30:00+05:30").unwrap();
+		let tokens = tokenize("@14:30:00+05:30").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -252,7 +254,7 @@ mod tests {
 
 	#[test]
 	fn test_datetime() {
-		let tokens = lex("@2024-03-15T14:30:00Z").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -266,7 +268,7 @@ mod tests {
 
 	#[test]
 	fn test_datetime_milliseconds() {
-		let tokens = lex("@2024-03-15T14:30:00.123Z").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00.123Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -280,7 +282,7 @@ mod tests {
 
 	#[test]
 	fn test_datetime_microseconds() {
-		let tokens = lex("@2024-03-15T14:30:00.123456Z").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00.123456Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -294,7 +296,8 @@ mod tests {
 
 	#[test]
 	fn test_datetime_nanoseconds() {
-		let tokens = lex("@2024-03-15T14:30:00.123456789Z").unwrap();
+		let tokens =
+			tokenize("@2024-03-15T14:30:00.123456789Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -308,7 +311,7 @@ mod tests {
 
 	#[test]
 	fn test_datetime_without_timezone() {
-		let tokens = lex("@2024-03-15T14:30:00").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -322,7 +325,7 @@ mod tests {
 
 	#[test]
 	fn test_datetime_milliseconds_without_timezone() {
-		let tokens = lex("@2024-03-15T14:30:00.123").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00.123").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -336,7 +339,7 @@ mod tests {
 
 	#[test]
 	fn test_datetime_microseconds_without_timezone() {
-		let tokens = lex("@2024-03-15T14:30:00.123456").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00.123456").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -350,7 +353,8 @@ mod tests {
 
 	#[test]
 	fn test_datetime_nanoseconds_without_timezone() {
-		let tokens = lex("@2024-03-15T14:30:00.123456789").unwrap();
+		let tokens =
+			tokenize("@2024-03-15T14:30:00.123456789").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -364,7 +368,7 @@ mod tests {
 
 	#[test]
 	fn test_range_interval_date() {
-		let tokens = lex("@2024-03-15..2024-03-16").unwrap();
+		let tokens = tokenize("@2024-03-15..2024-03-16").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -378,7 +382,7 @@ mod tests {
 
 	#[test]
 	fn test_range_interval_time() {
-		let tokens = lex("@14:30:00..15:30:00").unwrap();
+		let tokens = tokenize("@14:30:00..15:30:00").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -392,8 +396,9 @@ mod tests {
 
 	#[test]
 	fn test_range_interval_datetime() {
-		let tokens = lex("@2024-03-15T14:30:00..2024-03-15T15:30:00")
-			.unwrap();
+		let tokens =
+			tokenize("@2024-03-15T14:30:00..2024-03-15T15:30:00")
+				.unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -410,7 +415,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_range_interval() {
-		let tokens = lex("@2024-03-15..14:30:00").unwrap();
+		let tokens = tokenize("@2024-03-15..14:30:00").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -424,7 +429,7 @@ mod tests {
 
 	#[test]
 	fn test_duration_interval_date() {
-		let tokens = lex("@P1D").unwrap();
+		let tokens = tokenize("@P1D").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -438,7 +443,7 @@ mod tests {
 
 	#[test]
 	fn test_duration_interval_time() {
-		let tokens = lex("@PT2H30M").unwrap();
+		let tokens = tokenize("@PT2H30M").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -452,7 +457,7 @@ mod tests {
 
 	#[test]
 	fn test_duration_interval_datetime() {
-		let tokens = lex("@P1Y2M3DT4H5M6S").unwrap();
+		let tokens = tokenize("@P1Y2M3DT4H5M6S").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

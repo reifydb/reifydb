@@ -5,8 +5,8 @@ use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstInfix, InfixOperator,
-	lex::{Operator, TokenKind},
 	parse::{Parser, Precedence},
+	tokenize::{Operator, TokenKind},
 };
 
 impl Parser {
@@ -113,16 +113,16 @@ mod tests {
 	use crate::ast::{
 		Ast::{Infix, Literal},
 		AstLiteral,
-		lex::lex,
 		parse::{
 			infix::{AstInfix, InfixOperator},
 			parse,
 		},
+		tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_as_one() {
-		let tokens = lex("1 as one").unwrap();
+		let tokens = tokenize("1 as one").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -134,7 +134,7 @@ mod tests {
 
 	#[test]
 	fn test_as_a() {
-		let tokens = lex("1 as a").unwrap();
+		let tokens = tokenize("1 as a").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -146,7 +146,7 @@ mod tests {
 
 	#[test]
 	fn test_add() {
-		let tokens = lex("1 + 2").unwrap();
+		let tokens = tokenize("1 + 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -175,7 +175,8 @@ mod tests {
 
 	#[test]
 	fn test_cast_infix() {
-		let tokens = lex("cast(-1, int1) < cast(1, int16)").unwrap();
+		let tokens =
+			tokenize("cast(-1, int1) < cast(1, int16)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -193,7 +194,7 @@ mod tests {
 
 	#[test]
 	fn test_subtract() {
-		let tokens = lex("1 - 2").unwrap();
+		let tokens = tokenize("1 - 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -222,7 +223,7 @@ mod tests {
 
 	#[test]
 	fn test_subtract_negative() {
-		let tokens = lex("-1 -2").unwrap();
+		let tokens = tokenize("-1 -2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -244,7 +245,7 @@ mod tests {
 
 	#[test]
 	fn test_multiply() {
-		let tokens = lex("1 * 2").unwrap();
+		let tokens = tokenize("1 * 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -273,7 +274,7 @@ mod tests {
 
 	#[test]
 	fn test_divide() {
-		let tokens = lex("1 / 2").unwrap();
+		let tokens = tokenize("1 / 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -302,7 +303,7 @@ mod tests {
 
 	#[test]
 	fn test_remainder() {
-		let tokens = lex("1 % 2").unwrap();
+		let tokens = tokenize("1 % 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -331,7 +332,7 @@ mod tests {
 
 	#[test]
 	fn test_greater_than() {
-		let tokens = lex("1 > 2").unwrap();
+		let tokens = tokenize("1 > 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -360,7 +361,7 @@ mod tests {
 
 	#[test]
 	fn test_greater_than_or_equal() {
-		let tokens = lex("1 >= 2").unwrap();
+		let tokens = tokenize("1 >= 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -389,7 +390,7 @@ mod tests {
 
 	#[test]
 	fn test_less_than() {
-		let tokens = lex("1 < 2").unwrap();
+		let tokens = tokenize("1 < 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -418,7 +419,7 @@ mod tests {
 
 	#[test]
 	fn test_less_than_or_equal() {
-		let tokens = lex("1 <= 2").unwrap();
+		let tokens = tokenize("1 <= 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -447,7 +448,7 @@ mod tests {
 
 	#[test]
 	fn test_equal() {
-		let tokens = lex("1 == 2").unwrap();
+		let tokens = tokenize("1 == 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -476,7 +477,7 @@ mod tests {
 
 	#[test]
 	fn test_not_equal() {
-		let tokens = lex("1 != 2").unwrap();
+		let tokens = tokenize("1 != 2").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

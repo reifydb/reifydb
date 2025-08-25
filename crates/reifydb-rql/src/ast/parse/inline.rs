@@ -3,12 +3,12 @@
 
 use crate::ast::{
 	AstInline, AstInlineKeyedValue, TokenKind,
-	lex::{
+	parse::{Parser, Precedence},
+	tokenize::{
 		Operator,
 		Operator::{CloseCurly, Colon},
 		Separator::Comma,
 	},
-	parse::{Parser, Precedence},
 };
 
 impl Parser {
@@ -50,13 +50,13 @@ mod tests {
 	use crate::ast::{
 		Ast::{Identifier, Literal},
 		AstLiteral::{Number, Text},
-		lex::lex,
 		parse::parse,
+		tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_empty_inline() {
-		let tokens = lex("{}").unwrap();
+		let tokens = tokenize("{}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -66,7 +66,7 @@ mod tests {
 
 	#[test]
 	fn test_single_keyed_value() {
-		let tokens = lex("{id: 1}").unwrap();
+		let tokens = tokenize("{id: 1}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -83,7 +83,7 @@ mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = lex("{value: 1}").unwrap();
+		let tokens = tokenize("{value: 1}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -100,7 +100,7 @@ mod tests {
 
 	#[test]
 	fn test_text() {
-		let tokens = lex(r#"{text: 'Ada'}"#).unwrap();
+		let tokens = tokenize(r#"{text: 'Ada'}"#).unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -117,7 +117,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_keyed_values() {
-		let tokens = lex(r#"{id: 1, name: 'Ada'}"#).unwrap();
+		let tokens = tokenize(r#"{id: 1, name: 'Ada'}"#).unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -143,7 +143,7 @@ mod tests {
 
 	#[test]
 	fn test_identifier_value() {
-		let tokens = lex("{keyed_value: someVariable}").unwrap();
+		let tokens = tokenize("{keyed_value: someVariable}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -160,11 +160,13 @@ mod tests {
 
 	#[test]
 	fn test_multiline_inline() {
-		let tokens = lex(r#"{
+		let tokens = tokenize(
+			r#"{
             id: 42,
             name: 'Database',
             active: true
-        }"#)
+        }"#,
+		)
 		.unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -195,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn test_trailing_comma() {
-		let tokens = lex("{id: 1, name: 'Test',}").unwrap();
+		let tokens = tokenize("{id: 1, name: 'Test',}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -210,8 +212,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_complex_values() {
-		let tokens = lex("{result: (1 + 2), enabled: !false}").unwrap();
+	fn test_comptokenize_values() {
+		let tokens =
+			tokenize("{result: (1 + 2), enabled: !false}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -229,7 +232,7 @@ mod tests {
 
 	#[test]
 	fn test_nested_inline() {
-		let tokens = lex("{user: {id: 1, name: 'John'}}").unwrap();
+		let tokens = tokenize("{user: {id: 1, name: 'John'}}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

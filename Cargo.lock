@@ -1652,13 +1652,10 @@ dependencies = [
 name = "reifydb-rql"
 version = "0.0.1"
 dependencies = [
- "nom",
- "nom_locate",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-testing",
- "reifydb-transaction",
  "test_each_file",
 ]
 

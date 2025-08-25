@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{
-	lex::{Literal, Token, TokenKind},
-	tokenize::{cursor::Cursor, identifier::is_identifier_char},
+use crate::ast::tokenize::{
+	Literal, Token, TokenKind, cursor::Cursor,
+	identifier::is_identifier_char,
 };
 
 /// Scan for a number literal

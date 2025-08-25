@@ -161,8 +161,8 @@ take 4"#,
 		log_info!("{}", frame);
 	}
 
-	// Example 6: Complex pipeline with take
-	log_info!("\nExample 6: Complex pipeline - filter high severity, sort, take top 3");
+	// Example 6: Comptokenize pipeline with take
+	log_info!("\nExample 6: Comptokenize pipeline - filter high severity, sort, take top 3");
 	log_query(
 		r#"from demo.events
 filter severity == "HIGH" or severity == "CRITICAL"

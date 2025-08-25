@@ -6,12 +6,12 @@ use crate::{
 	result::error::diagnostic::Diagnostic,
 };
 
-/// Generic lexer error with custom message
-pub fn lex_error(message: String) -> Diagnostic {
+/// Generic tokenizeer error with custom message
+pub fn tokenize_error(message: String) -> Diagnostic {
 	Diagnostic {
 		code: "AST_001".to_string(),
 		statement: None,
-		message: format!("Lexer error: {}", message),
+		message: format!("tokenizeer error: {}", message),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,

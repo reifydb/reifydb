@@ -5,7 +5,7 @@
 //! - OR operator
 //! - NOT operator
 //! - XOR operator
-//! - Complex logical expressions
+//! - Comptokenize logical expressions
 //! - Operator precedence with parentheses
 //!
 //! Run with: `make rql-logical` or `cargo run --bin rql-logical`
@@ -147,8 +147,8 @@ filter not in_stock"#,
 		log_info!("{}", frame);
 	}
 
-	// Example 5: Complex logical expression with parentheses
-	log_info!("\nExample 5: Complex expression - (Electronics OR Toys) AND on_sale");
+	// Example 5: Comptokenize logical expression with parentheses
+	log_info!("\nExample 5: Comptokenize expression - (Electronics OR Toys) AND on_sale");
 	log_query(
 		r#"from inventory.products
 filter (category == "Electronics" or category == "Toys")
@@ -275,8 +275,8 @@ map {
 		log_info!("{}", frame);
 	}
 
-	// Example 10: Complex nested logical expressions
-	log_info!("\nExample 10: Complex nested logical expression");
+	// Example 10: Comptokenize nested logical expressions
+	log_info!("\nExample 10: Comptokenize nested logical expression");
 	log_query(
 		r#"from inventory.products
 filter ((category == "Toys" and min_age >= 5) or

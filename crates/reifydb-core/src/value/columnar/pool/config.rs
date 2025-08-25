@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Pool configuration for flexible initialization
+//! Pool configuration for ftokenizeible initialization
 //!
 //! This module provides configuration options for thread-local pools,
 //! allowing different configurations for test, development, and production.

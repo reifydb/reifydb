@@ -3,8 +3,8 @@
 
 use crate::ast::{
 	Ast, AstLiteral, AstTake,
-	lex::Keyword,
 	parse::{Parser, Precedence},
+	tokenize::Keyword,
 };
 
 impl Parser {
@@ -27,11 +27,11 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ast::lex::lex;
+	use crate::ast::tokenize::tokenize;
 
 	#[test]
 	fn test_take_number() {
-		let tokens = lex("TAKE 10").unwrap();
+		let tokens = tokenize("TAKE 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

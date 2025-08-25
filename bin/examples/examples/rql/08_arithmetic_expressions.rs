@@ -92,7 +92,7 @@ fn main() {
 		log_info!("{}", frame);
 	}
 
-	// Set up sample data for more complex examples
+	// Set up sample data for more comptokenize examples
 	db.command_as_root("create schema shop", Params::None).unwrap();
 	db.command_as_root(
 		r#"
@@ -142,7 +142,7 @@ map { name, price, quantity, price * quantity as total }"#,
 		log_info!("{}", frame);
 	}
 
-	// Example 5: Complex calculations with discounts
+	// Example 5: Comptokenize calculations with discounts
 	log_info!("\nExample 5: Calculate discount amount and final price");
 	log_query(
 		r#"from shop.products
@@ -223,7 +223,7 @@ filter price * quantity > 100"#,
 		log_info!("{}", frame);
 	}
 
-	// Example 8: Complex nested calculations
+	// Example 8: Comptokenize nested calculations
 	log_info!("\nExample 8: Complete order calculation");
 	log_query(
 		r#"from shop.products

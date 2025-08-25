@@ -3,8 +3,8 @@
 
 use crate::ast::{
 	AstDescribe,
-	lex::{Keyword::Describe, Operator},
 	parse::{Parser, Precedence},
+	tokenize::{Keyword::Describe, Operator},
 };
 
 impl Parser {
@@ -22,11 +22,14 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{AstCast, AstDescribe, lex::lex, parse::parse};
+	use crate::ast::{
+		AstCast, AstDescribe, parse::parse, tokenize::tokenize,
+	};
 
 	#[test]
 	fn describe_query() {
-		let tokens = lex("describe { map cast(9924, int8) }").unwrap();
+		let tokens =
+			tokenize("describe { map cast(9924, int8) }").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

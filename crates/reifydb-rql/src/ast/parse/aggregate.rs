@@ -8,12 +8,12 @@ use reifydb_core::{
 
 use crate::ast::{
 	AstAggregate,
-	lex::{
+	parse::{Parser, Precedence},
+	tokenize::{
 		Keyword,
 		Operator::{CloseCurly, OpenCurly},
 		Separator::Comma,
 	},
-	parse::{Parser, Precedence},
 };
 
 impl Parser {
@@ -119,11 +119,11 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ast::{Ast, InfixOperator, lex::lex};
+	use crate::ast::{Ast, InfixOperator, tokenize::tokenize};
 
 	#[test]
 	fn test_single_column() {
-		let tokens = lex("AGGREGATE min(age) BY name").unwrap();
+		let tokens = tokenize("AGGREGATE min(age) BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -146,7 +146,7 @@ mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = lex("AGGREGATE min(value) BY value").unwrap();
+		let tokens = tokenize("AGGREGATE min(value) BY value").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -169,8 +169,8 @@ mod tests {
 
 	#[test]
 	fn test_alias() {
-		let tokens =
-			lex("AGGREGATE min(age) as min_age BY name").unwrap();
+		let tokens = tokenize("AGGREGATE min(age) as min_age BY name")
+			.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -199,7 +199,7 @@ mod tests {
 
 	#[test]
 	fn test_no_projection_single_column() {
-		let tokens = lex("AGGREGATE BY name").unwrap();
+		let tokens = tokenize("AGGREGATE BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -214,7 +214,7 @@ mod tests {
 
 	#[test]
 	fn test_no_projection_multiple_columns() {
-		let tokens = lex("AGGREGATE BY {name, age}").unwrap();
+		let tokens = tokenize("AGGREGATE BY {name, age}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -232,9 +232,10 @@ mod tests {
 
 	#[test]
 	fn test_many() {
-		let tokens =
-			lex("AGGREGATE {min(age), max(age)} BY {name, gender}")
-				.unwrap();
+		let tokens = tokenize(
+			"AGGREGATE {min(age), max(age)} BY {name, gender}",
+		)
+		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -268,7 +269,7 @@ mod tests {
 
 	#[test]
 	fn test_single_projection_with_braces() {
-		let tokens = lex("AGGREGATE {min(age)} BY name").unwrap();
+		let tokens = tokenize("AGGREGATE {min(age)} BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -290,7 +291,7 @@ mod tests {
 
 	#[test]
 	fn test_single_by_with_braces() {
-		let tokens = lex("AGGREGATE BY {name}").unwrap();
+		let tokens = tokenize("AGGREGATE BY {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -303,8 +304,8 @@ mod tests {
 
 	#[test]
 	fn test_multiple_projections_without_braces_fails() {
-		let tokens =
-			lex("AGGREGATE min(age), max(age) BY name").unwrap();
+		let tokens = tokenize("AGGREGATE min(age), max(age) BY name")
+			.unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
@@ -316,7 +317,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_by_without_braces_fails() {
-		let tokens = lex("AGGREGATE BY name, age").unwrap();
+		let tokens = tokenize("AGGREGATE BY name, age").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 

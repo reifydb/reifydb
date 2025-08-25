@@ -3,10 +3,7 @@
 
 use reifydb_core::OwnedFragment;
 
-use crate::ast::{
-	lex::{Literal, Token, TokenKind},
-	tokenize::cursor::Cursor,
-};
+use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor};
 
 /// Scan for temporal literal (dates/times starting with @)
 pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
