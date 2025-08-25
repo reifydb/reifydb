@@ -6,7 +6,13 @@ use reifydb_core::result::error::diagnostic::ast;
 use crate::ast::lex::Token;
 
 mod cursor;
+mod identifier;
+mod keyword;
+mod literal;
+mod operator;
+mod parameter;
 mod scanner;
+mod separator;
 
 use cursor::Cursor;
 use reifydb_core::error::Error;
@@ -30,8 +36,8 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 
 		// Try to scan for each token type in order of precedence
 		let token = scan_keyword(&mut cursor)
-			.or_else(|| scan_operator(&mut cursor))
 			.or_else(|| scan_literal(&mut cursor))
+			.or_else(|| scan_operator(&mut cursor))
 			.or_else(|| scan_parameter(&mut cursor))
 			.or_else(|| scan_identifier(&mut cursor))
 			.or_else(|| scan_separator(&mut cursor));
