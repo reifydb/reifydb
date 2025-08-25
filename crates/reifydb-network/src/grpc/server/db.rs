@@ -1,25 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use prost::bytes::buf::Limit;
 use reifydb_core::{
-	Fragment, OwnedFragment, Type, Value,
 	interface::{
 		Engine as EngineInterface, Identity, Params as CoreParams,
 		Transaction,
-	},
-	result::{Frame, error::diagnostic::Diagnostic},
-	value::IdentityId,
+	}, result::{error::diagnostic::Diagnostic, Frame}, value::IdentityId,
+	OwnedFragment,
+	Type,
+	Value,
 };
 use reifydb_engine::StandardEngine;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tokio::task::spawn_blocking;
-use tokio_stream::{Stream, once};
+use tokio_stream::{once, Stream};
 use tonic::{Request, Response, Status};
 
 use crate::grpc::server::{
-	AuthenticatedUser, grpc,
-	grpc::{CommandRequest, CommandResult, QueryRequest, QueryResult},
+	grpc, grpc::{CommandRequest, CommandResult, QueryRequest, QueryResult},
+	AuthenticatedUser,
 };
 
 pub struct DbService<T: Transaction> {
@@ -256,7 +255,9 @@ impl<T: Transaction> grpc::db_server::Db for DbService<T> {
 
 fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
 	let fragment = diagnostic.fragment().and_then(|frag| match frag {
-		OwnedFragment::Internal { text } => Some(grpc::Fragment {
+		OwnedFragment::Internal {
+			text,
+		} => Some(grpc::Fragment {
 			text,
 			column: None,
 			line: None,
@@ -293,8 +294,8 @@ fn map_diagnostic(diagnostic: Diagnostic) -> grpc::Diagnostic {
 
 fn map_frame(frame: Frame) -> grpc::Frame {
 	use grpc::{
-		Date, DateTime, Frame, FrameColumn, Int128, Interval, Time,
-		UInt128, Value as GrpcValue, value::Type as GrpcType,
+		value::Type as GrpcType, Date, DateTime, Frame, FrameColumn, Int128, Interval,
+		Time, UInt128, Value as GrpcValue,
 	};
 
 	Frame {
