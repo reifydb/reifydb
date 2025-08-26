@@ -147,7 +147,10 @@ impl PartialOrd for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
-			_ => unimplemented!(),
+			(Value::Undefined, Value::Undefined) => None,
+			(left, right) => {
+				unimplemented!("partial cmp {left:?} {right:?}")
+			}
 		}
 	}
 }

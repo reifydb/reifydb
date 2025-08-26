@@ -375,6 +375,21 @@ impl ExpressionCompiler {
 				}))
 			}
 
+			InfixOperator::TypeAscription(token) => {
+				let Ast::Identifier(alias) = *ast.left else {
+					unimplemented!()
+				};
+
+				let right = Self::compile(*ast.right)?;
+
+				Ok(Expression::Alias(AliasExpression {
+					alias: IdentExpression(
+						alias.fragment.clone(),
+					),
+					expression: Box::new(right),
+					fragment: token.fragment,
+				}))
+			}
 			operator => {
 				unimplemented!("not implemented: {operator:?}")
 			} /* InfixOperator::Arrow(_) => {}
