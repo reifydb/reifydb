@@ -52,7 +52,7 @@ mod tests {
 
 	#[test]
 	fn test_take_zero() {
-		let tokens = lex("TAKE 0").unwrap();
+		let tokens = tokenize("TAKE 0").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -64,7 +64,7 @@ mod tests {
 
 	#[test]
 	fn test_take_negative() {
-		let tokens = lex("TAKE -1").unwrap();
+		let tokens = tokenize("TAKE -1").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 

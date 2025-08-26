@@ -11,12 +11,11 @@ reifydb-core = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-rql = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
-reifydb = {workspace = true, features = ["sub_flow"]}
+reifydb = { workspace = true, features = ["sub_flow"] }
 test_each_file = { workspace = true }

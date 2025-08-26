@@ -34,7 +34,7 @@ impl FlowJoinStateKey {
 		row_id: u64,
 	) -> Self {
 		let serialized =
-			bincode::serialize(&join_key).unwrap_or_default();
+			serde_json::to_vec(&join_key).unwrap_or_default();
 		Self {
 			flow_id,
 			node_id,

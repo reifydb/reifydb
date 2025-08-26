@@ -38,7 +38,7 @@ impl FlowWindowStateKey {
 		row_id: u64,
 	) -> Self {
 		let serialized =
-			bincode::serialize(&partition_key).unwrap_or_default();
+			serde_json::to_vec(&partition_key).unwrap_or_default();
 		Self {
 			flow_id,
 			node_id,

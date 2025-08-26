@@ -129,7 +129,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
                                 row_data: Self::extract_row_values(after, idx),
                             };
 
-							let serialized = bincode::serialize(&entry)
+							let serialized = serde_json::to_vec(&entry)
                                 .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
@@ -157,12 +157,12 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 							let bytes = data
 								.row
 								.as_ref();
-							let mut entry: DistinctEntry = bincode::deserialize(bytes)
+							let mut entry: DistinctEntry = serde_json::from_slice(bytes)
                                 .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
                                     "Failed to deserialize: {}", e
                                 )))?;
 							entry.count += 1;
-							let serialized = bincode::serialize(&entry)
+							let serialized = serde_json::to_vec(&entry)
                                 .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
@@ -214,7 +214,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 							let bytes = data
 								.row
 								.as_ref();
-							let mut entry: DistinctEntry = bincode::deserialize(bytes)
+							let mut entry: DistinctEntry = serde_json::from_slice(bytes)
                                 .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
                                     "Failed to deserialize: {}", e
                                 )))?;
@@ -224,10 +224,10 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 								// other instances
 								entry.count -=
 									1;
-								let serialized = bincode::serialize(&entry)
-                                    .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
-                                        "Failed to serialize: {}", e
-                                    )))?;
+								let serialized = serde_json::to_vec(&entry)
+                                .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
+                                    "Failed to serialize: {}", e
+                                )))?;
 								ctx.txn.set(&key.encode(), reifydb_core::row::EncodedRow(
                                     reifydb_core::util::CowVec::new(serialized)
                                 ))?;

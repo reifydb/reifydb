@@ -1614,7 +1614,6 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-rql",
  "reifydb-testing",
  "serde",
  "serde_json",

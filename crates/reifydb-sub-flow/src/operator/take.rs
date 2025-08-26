@@ -70,7 +70,7 @@ impl TakeOperator {
 		match txn.get(&key.encode())? {
 			Some(versioned) => {
 				let bytes = versioned.row.as_ref();
-				bincode::deserialize(bytes).map_err(|e| {
+				serde_json::from_slice(bytes).map_err(|e| {
 					reifydb_core::Error(
 						reifydb_core::internal_error!(
 							"Failed to deserialize TakeState: {}",
@@ -92,7 +92,7 @@ impl TakeOperator {
 		state: &TakeState,
 	) -> Result<()> {
 		let key = FlowTakeStateKey::new(self.flow_id, self.node_id);
-		let serialized = bincode::serialize(state).map_err(|e| {
+		let serialized = serde_json::to_vec(state).map_err(|e| {
 			reifydb_core::Error(reifydb_core::internal_error!(
 				"Failed to serialize TakeState: {}",
 				e
