@@ -8,7 +8,18 @@ command "
 create schema test;
 create table test.users { name: utf8, age: int1};"
 ---
-ok
+> +----------+-----------+
+> |  schema  |  created  |
+> +----------+-----------+
+> |   test   |   true    |
+> +----------+-----------+
+> 
+> +----------+---------+-----------+
+> |  schema  |  table  |  created  |
+> +----------+---------+-----------+
+> |   test   |  users  |   true    |
+> +----------+---------+-----------+
+> 
 
 # Create deferred view with filter and map
 command "
@@ -16,7 +27,12 @@ create deferred view test.basic { name: utf8, age: int1 } with {
     from test.users
 };"
 ---
-ok
+> +----------+---------+-----------+
+> |  schema  |  view   |  created  |
+> +----------+---------+-----------+
+> |   test   |  basic  |   true    |
+> +----------+---------+-----------+
+> 
 
 # Insert first batch of test data
 command "
@@ -27,7 +43,12 @@ from [
 ]
 insert test.users;"
 ---
-ok
+> +----------+---------+------------+
+> |  schema  |  table  |  inserted  |
+> +----------+---------+------------+
+> |   test   |  users  |     3      |
+> +----------+---------+------------+
+> 
 
 # Insert second batch
 command "
@@ -36,19 +57,25 @@ from [
 ]
 insert test.users;"
 ---
-ok
+> +----------+---------+------------+
+> |  schema  |  table  |  inserted  |
+> +----------+---------+------------+
+> |   test   |  users  |     1      |
+> +----------+---------+------------+
+> 
 
 # Query the source table - should show all users
-query 'FROM test.users'
+command 'FROM test.users'
 ---
-+---------+-------+
-|  name   |  age  |
-+---------+-------+
-|   dim   |  40   |
-|  juciy  |  19   |
-|  lucy   |  20   |
-|   bob   |  17   |
-+---------+-------+
+> +---------+-------+
+> |  name   |  age  |
+> +---------+-------+
+> |   dim   |  40   |
+> |  juciy  |  19   |
+> |  lucy   |  20   |
+> |   bob   |  17   |
+> +---------+-------+
+> 
 
 # Wait for flow processor to complete processing
 wait 100
@@ -56,13 +83,14 @@ wait 100
 ok
 
 # Query the deferred view
-query 'FROM test.basic'
+command 'FROM test.basic'
 ---
-+---------+-------+
-|  name   |  age  |
-+---------+-------+
-|   dim   |  40   |
-|  juciy  |  19   |
-|  lucy   |  20   |
-|   bob   |  17   |
-+---------+-------+
+> +---------+-------+
+> |  name   |  age  |
+> +---------+-------+
+> |   dim   |  40   |
+> |  juciy  |  19   |
+> |  lucy   |  20   |
+> |   bob   |  17   |
+> +---------+-------+
+> 

@@ -55,22 +55,13 @@ impl testscript::Runner for FlowTestRunner {
 		match command.name.as_str() {
 			"command" => {
 				let rql = self.read_rql_command(command);
-				self.instance
-					.command_as_root(&rql, Params::None)?;
-				writeln!(output, "ok")?;
-			}
+				println!("command: {rql}");
 
-			"query" => {
-				let rql = self.read_rql_command(command);
-				let frames = self
-					.instance
-					.query_as_root(&rql, Params::None)?;
-				for frame in frames {
-					write!(
-						output,
-						"{}",
-						self.format_frame(&frame)
-					)?;
+				for frame in self.instance.command_as_root(
+					rql.as_str(),
+					Params::None,
+				)? {
+					writeln!(output, "{}", frame)?;
 				}
 			}
 

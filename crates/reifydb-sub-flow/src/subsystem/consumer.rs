@@ -4,7 +4,7 @@
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	Result, Value,
-	flow::{Change, Diff, Flow},
+	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
 		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
 		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardEngine, StandardEvaluator};
 
-use super::intercept::FlowChange;
+use super::intercept::Change;
 use crate::engine::FlowEngine;
 
 /// Consumer that processes CDC events for Flow subsystem
@@ -86,7 +86,7 @@ impl<T: Transaction> FlowConsumer<T> {
 	fn process_changes<TC: CommandTransaction>(
 		&self,
 		txn: &mut TC,
-		changes: Vec<FlowChange>,
+		changes: Vec<Change>,
 	) -> Result<()> {
 		use reifydb_core::interface::SourceId;
 
@@ -105,7 +105,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 		for change in changes {
 			match change {
-				FlowChange::Insert {
+				Change::Insert {
 					table_id,
 					row_number,
 					row,
@@ -115,7 +115,7 @@ impl<T: Transaction> FlowConsumer<T> {
 						txn, table_id, &row,
 					)?;
 
-					let diff = Diff::Insert {
+					let diff = FlowDiff::Insert {
 						source: SourceId::Table(
 							table_id,
 						),
@@ -129,7 +129,7 @@ impl<T: Transaction> FlowConsumer<T> {
 						row_number
 					);
 				}
-				FlowChange::Update {
+				Change::Update {
 					table_id,
 					row_number,
 					before,
@@ -143,7 +143,7 @@ impl<T: Transaction> FlowConsumer<T> {
 						txn, table_id, &after,
 					)?;
 
-					let diff = Diff::Update {
+					let diff = FlowDiff::Update {
 						source: SourceId::Table(
 							table_id,
 						),
@@ -158,7 +158,7 @@ impl<T: Transaction> FlowConsumer<T> {
 						row_number
 					);
 				}
-				FlowChange::Delete {
+				Change::Delete {
 					table_id,
 					row_number,
 					row,
@@ -168,7 +168,7 @@ impl<T: Transaction> FlowConsumer<T> {
 						txn, table_id, &row,
 					)?;
 
-					let diff = Diff::Remove {
+					let diff = FlowDiff::Remove {
 						source: SourceId::Table(
 							table_id,
 						),
@@ -186,7 +186,7 @@ impl<T: Transaction> FlowConsumer<T> {
 		}
 
 		if !diffs.is_empty() {
-			let change = Change::new(diffs);
+			let change = FlowChange::new(diffs);
 			flow_engine.process(txn, change)?;
 		}
 
@@ -211,7 +211,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					CdcChange::Insert {
 						after,
 						..
-					} => FlowChange::Insert {
+					} => Change::Insert {
 						table_id: table_row.table,
 						row_number: table_row.row,
 						row: after.to_vec(),
@@ -220,7 +220,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 						before,
 						after,
 						..
-					} => FlowChange::Update {
+					} => Change::Update {
 						table_id: table_row.table,
 						row_number: table_row.row,
 						before: before.to_vec(),
@@ -229,7 +229,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					CdcChange::Delete {
 						before,
 						..
-					} => FlowChange::Delete {
+					} => Change::Delete {
 						table_id: table_row.table,
 						row_number: table_row.row,
 						row: before.to_vec(),

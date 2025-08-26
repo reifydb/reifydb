@@ -1,62 +1,90 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use FlowNodeType::Operator;
-use JoinType::{Inner, Left};
-use OperatorType::Join;
 use reifydb_core::{
-	JoinType,
-	interface::{FlowNodeId, Transaction, expression::Expression},
+	CowVec, JoinType, Value,
+	flow::FlowChange,
+	interface::{CommandTransaction, Evaluator, expression::Expression},
+	row::EncodedKey,
 };
-use reifydb_rql::plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan};
 
 use crate::{
-	FlowNodeType, OperatorType, Result,
-	compiler::{CompileOperator, FlowCompiler},
+	Result,
+	operator::{Operator, OperatorContext},
 };
 
-pub(crate) struct JoinCompiler {
-	pub join_type: JoinType,
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
-	pub on: Vec<Expression>,
+// Key for storing join state
+#[derive(Debug, Clone)]
+struct FlowJoinStateKey {
+	flow_id: u64,
+	node_id: u64,
+	side: u8,
+	join_key: Vec<u8>,
+	row_id: u64,
 }
 
-impl From<JoinInnerNode> for JoinCompiler {
-	fn from(node: JoinInnerNode) -> Self {
+impl FlowJoinStateKey {
+	const KEY_PREFIX: u8 = 0xF1;
+
+	fn new(
+		flow_id: u64,
+		node_id: u64,
+		side: u8,
+		join_key: Vec<Value>,
+		row_id: u64,
+	) -> Self {
+		let serialized =
+			bincode::serialize(&join_key).unwrap_or_default();
 		Self {
-			join_type: Inner,
-			left: node.left,
-			right: node.right,
-			on: node.on,
+			flow_id,
+			node_id,
+			side,
+			join_key: serialized,
+			row_id,
+		}
+	}
+
+	fn encode(&self) -> EncodedKey {
+		let mut key = Vec::new();
+		key.push(Self::KEY_PREFIX);
+		key.extend(&self.flow_id.to_be_bytes());
+		key.extend(&self.node_id.to_be_bytes());
+		key.push(self.side);
+		key.extend(&(self.join_key.len() as u32).to_be_bytes());
+		key.extend(&self.join_key);
+		key.extend(&self.row_id.to_be_bytes());
+		EncodedKey(CowVec::new(key))
+	}
+}
+
+pub struct JoinOperator {
+	join_type: JoinType,
+	left_keys: Vec<Expression>,
+	right_keys: Vec<Expression>,
+}
+
+impl JoinOperator {
+	pub fn new(
+		join_type: JoinType,
+		left_keys: Vec<Expression>,
+		right_keys: Vec<Expression>,
+	) -> Self {
+		Self {
+			join_type,
+			left_keys,
+			right_keys,
 		}
 	}
 }
 
-impl From<JoinLeftNode> for JoinCompiler {
-	fn from(node: JoinLeftNode) -> Self {
-		Self {
-			join_type: Left,
-			left: node.left,
-			right: node.right,
-			on: node.on,
-		}
-	}
-}
-
-impl<T: Transaction> CompileOperator<T> for JoinCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let left_node = compiler.compile_plan(*self.left)?;
-		let right_node = compiler.compile_plan(*self.right)?;
-
-		compiler.build_node(Operator {
-			operator: Join {
-				join_type: self.join_type,
-				left: self.on.clone(),
-				right: self.on,
-			},
-		})
-		.with_inputs([left_node, right_node])
-		.build()
+impl<E: Evaluator> Operator<E> for JoinOperator {
+	fn apply<T: CommandTransaction>(
+		&self,
+		_ctx: &mut OperatorContext<E, T>,
+		change: &FlowChange,
+	) -> Result<FlowChange> {
+		// For now, return a simple pass-through
+		// Full implementation would handle join logic here
+		Ok(change.clone())
 	}
 }

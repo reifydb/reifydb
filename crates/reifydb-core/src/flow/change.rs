@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{RowNumber, Value, interface::SourceId, value::columnar::Columns};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Diff {
+pub enum FlowDiff {
 	Insert {
 		source: SourceId,
 		row_ids: Vec<RowNumber>,
@@ -24,18 +24,18 @@ pub enum Diff {
 	},
 }
 
-impl Diff {
+impl FlowDiff {
 	pub fn source(&self) -> SourceId {
 		match self {
-			Diff::Insert {
+			FlowDiff::Insert {
 				source,
 				..
 			} => *source,
-			Diff::Update {
+			FlowDiff::Update {
 				source,
 				..
 			} => *source,
-			Diff::Remove {
+			FlowDiff::Remove {
 				source,
 				..
 			} => *source,
@@ -45,12 +45,12 @@ impl Diff {
 	/// Validates that row_ids length matches the row count
 	pub fn validate(&self) -> bool {
 		match self {
-			Diff::Insert {
+			FlowDiff::Insert {
 				row_ids,
 				after,
 				..
 			} => row_ids.len() == after.row_count(),
-			Diff::Update {
+			FlowDiff::Update {
 				row_ids,
 				before,
 				after,
@@ -59,7 +59,7 @@ impl Diff {
 				row_ids.len() == before.row_count()
 					&& row_ids.len() == after.row_count()
 			}
-			Diff::Remove {
+			FlowDiff::Remove {
 				row_ids,
 				before,
 				..
@@ -77,13 +77,13 @@ impl Diff {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Change {
-	pub diffs: Vec<Diff>,
+pub struct FlowChange {
+	pub diffs: Vec<FlowDiff>,
 	pub metadata: HashMap<String, Value>,
 }
 
-impl Change {
-	pub fn new(diffs: Vec<Diff>) -> Self {
+impl FlowChange {
+	pub fn new(diffs: Vec<FlowDiff>) -> Self {
 		Self {
 			diffs,
 			metadata: HashMap::new(),

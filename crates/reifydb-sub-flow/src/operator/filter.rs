@@ -1,6 +1,6 @@
 use reifydb_core::{
 	BitVec,
-	flow::{Change, Diff},
+	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
 		expression::Expression,
@@ -26,13 +26,13 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
-		change: &Change,
-	) -> crate::Result<Change> {
+		change: &FlowChange,
+	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
 		for diff in &change.diffs {
 			match diff {
-				Diff::Insert {
+				FlowDiff::Insert {
 					source,
 					row_ids,
 					after,
@@ -51,7 +51,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 								.push(row_ids
 									[*idx]);
 						}
-						output.push(Diff::Insert {
+						output.push(FlowDiff::Insert {
 							source: *source,
 							row_ids:
 								filtered_row_ids,
@@ -59,7 +59,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 						});
 					}
 				}
-				Diff::Update {
+				FlowDiff::Update {
 					source,
 					row_ids,
 					before,
@@ -79,7 +79,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 								.push(row_ids
 									[*idx]);
 						}
-						output.push(Diff::Update {
+						output.push(FlowDiff::Update {
 							source: *source,
 							row_ids:
 								filtered_row_ids,
@@ -89,7 +89,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 					} else {
 						// If new doesn't pass filter,
 						// emit remove of old
-						output.push(Diff::Remove {
+						output.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: row_ids
 								.clone(),
@@ -97,13 +97,13 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 						});
 					}
 				}
-				Diff::Remove {
+				FlowDiff::Remove {
 					source,
 					row_ids,
 					before,
 				} => {
 					// Always pass through removes
-					output.push(Diff::Remove {
+					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
 						before: before.clone(),
@@ -112,7 +112,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 			}
 		}
 
-		Ok(Change::new(output))
+		Ok(FlowChange::new(output))
 	}
 }
 

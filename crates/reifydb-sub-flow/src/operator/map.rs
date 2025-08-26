@@ -1,5 +1,5 @@
 use reifydb_core::{
-	flow::{Change, Diff},
+	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
 		expression::Expression,
@@ -25,26 +25,26 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
-		change: &Change,
-	) -> crate::Result<Change> {
+		change: &FlowChange,
+	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
 		for diff in &change.diffs {
 			match diff {
-				Diff::Insert {
+				FlowDiff::Insert {
 					source,
 					row_ids,
 					after,
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
-					output.push(Diff::Insert {
+					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
 						after: projected_columns,
 					});
 				}
-				Diff::Update {
+				FlowDiff::Update {
 					source,
 					row_ids,
 					before,
@@ -52,14 +52,14 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
-					output.push(Diff::Update {
+					output.push(FlowDiff::Update {
 						source: *source,
 						row_ids: row_ids.clone(),
 						before: before.clone(),
 						after: projected_columns,
 					});
 				}
-				Diff::Remove {
+				FlowDiff::Remove {
 					source,
 					row_ids,
 					before,
@@ -68,7 +68,7 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 					// to maintain schema consistency
 					let projected_columns =
 						self.project(ctx, &before)?;
-					output.push(Diff::Remove {
+					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
 						before: projected_columns,
@@ -77,7 +77,7 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 			}
 		}
 
-		Ok(Change::new(output))
+		Ok(FlowChange::new(output))
 	}
 }
 

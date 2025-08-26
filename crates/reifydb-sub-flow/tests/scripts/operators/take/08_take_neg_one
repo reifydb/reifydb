@@ -1,0 +1,39 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test TAKE -1 - edge case
+# Should return no rows
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+!command 'create deferred view test.none { id: int4, value: int4} with {
+  from test.source take -1
+}'
+---
+> Error TAKE_001
+>   TAKE operator requires non-negative value, got -1
+> 
+> LOCATION
+>   line 2, column 25
+> 
+> CODE
+>   2 │   from test.source take -1
+>     │                         ~~
+>     │
+>     │             negative value not allowed
+> 
+> HELP
+>   Use a positive number to limit results, or 0 to return no rows
+> 
+> NOTES
+>   • TAKE operator limits the number of rows returned from a query
+>   • Negative values are not meaningful in this context
+>   • Valid examples: TAKE 10, TAKE 0, TAKE 100

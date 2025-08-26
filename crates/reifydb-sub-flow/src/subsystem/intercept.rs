@@ -19,7 +19,7 @@ use reifydb_engine::StandardEngine;
 
 /// Event type for flow processing
 #[derive(Debug, Clone)]
-pub enum FlowChange {
+pub(crate) enum Change {
 	Insert {
 		table_id: TableId,
 		row_number: RowNumber,
@@ -42,7 +42,7 @@ pub struct TransactionalFlowInterceptor<T: Transaction> {
 	engine: LazyResolveRc<StandardEngine<T>>,
 	ioc: IocContainer,
 	// Transaction-scoped change buffer
-	changes: Rc<RefCell<Vec<FlowChange>>>,
+	changes: Rc<RefCell<Vec<Change>>>,
 }
 
 impl<T: Transaction> TransactionalFlowInterceptor<T> {
@@ -72,7 +72,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostInsertInterceptor<CT>
 		&self,
 		ctx: &mut TablePostInsertContext<CT>,
 	) -> Result<()> {
-		self.changes.borrow_mut().push(FlowChange::Insert {
+		self.changes.borrow_mut().push(Change::Insert {
 			table_id: ctx.table.id,
 			row_number: ctx.id,
 			row: ctx.row.to_vec(),
@@ -89,7 +89,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostUpdateInterceptor<CT>
 		&self,
 		ctx: &mut TablePostUpdateContext<CT>,
 	) -> Result<()> {
-		self.changes.borrow_mut().push(FlowChange::Update {
+		self.changes.borrow_mut().push(Change::Update {
 			table_id: ctx.table.id,
 			row_number: ctx.id,
 			before: ctx.old_row.to_vec(),
@@ -106,7 +106,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostDeleteInterceptor<CT>
 		&self,
 		ctx: &mut TablePostDeleteContext<CT>,
 	) -> Result<()> {
-		self.changes.borrow_mut().push(FlowChange::Delete {
+		self.changes.borrow_mut().push(Change::Delete {
 			table_id: ctx.table.id,
 			row_number: ctx.id,
 			row: ctx.deleted_row.to_vec(),

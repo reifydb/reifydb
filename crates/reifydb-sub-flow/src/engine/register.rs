@@ -4,7 +4,10 @@
 use reifydb_core::{
 	flow::{
 		Flow, FlowNodeType, OperatorType,
-		OperatorType::{Aggregate, Filter, Map},
+		OperatorType::{
+			Aggregate, Distinct, Filter, Join, Map, Sort, Take,
+			Union,
+		},
 	},
 	interface::{Evaluator, FlowId, FlowNodeId, SourceId},
 };
@@ -12,7 +15,9 @@ use reifydb_core::{
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		AggregateOperator, FilterOperator, MapOperator, OperatorEnum,
+		AggregateOperator, DistinctOperator, FilterOperator,
+		JoinOperator, MapOperator, OperatorEnum, SortOperator,
+		TakeOperator, UnionOperator,
 	},
 };
 
@@ -130,7 +135,30 @@ impl<E: Evaluator> FlowEngine<E> {
 					flow_id.0, node_id.0, by, map,
 				),
 			)),
-			operator => unimplemented!("{:?}", operator),
+			Sort {
+				by,
+			} => Ok(OperatorEnum::Sort(SortOperator::new(by))),
+			Take {
+				limit,
+			} => Ok(OperatorEnum::Take(TakeOperator::new(
+				flow_id.0, node_id.0, limit,
+			))),
+			Join {
+				join_type,
+				left,
+				right,
+			} => Ok(OperatorEnum::Join(JoinOperator::new(
+				join_type, left, right,
+			))),
+			Distinct {
+				..
+			} => Ok(OperatorEnum::Distinct(DistinctOperator::new(
+				flow_id.0, node_id.0,
+			))),
+			Union {} => {
+				Ok(OperatorEnum::Union(UnionOperator::new()))
+			}
+			_ => unimplemented!("Operator not yet implemented"),
 		}
 	}
 }

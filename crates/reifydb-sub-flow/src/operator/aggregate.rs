@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_catalog::row::RowNumber;
 use reifydb_core::{
 	CowVec, Value,
-	flow::{Change, Diff},
+	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
 		SourceId::View, Transaction, ViewId, expression::Expression,
@@ -480,7 +480,7 @@ impl AggregateOperator {
 		&self,
 		txn: &mut T,
 		changed_groups: Vec<Vec<Value>>,
-	) -> Result<Change> {
+	) -> Result<FlowChange> {
 		let mut output_diffs = Vec::new();
 
 		for group_key in changed_groups {
@@ -598,7 +598,7 @@ impl AggregateOperator {
 						"[AggregateOperator]   After: {:?}",
 						columns
 					);
-					output_diffs.push(Diff::Update {
+					output_diffs.push(FlowDiff::Update {
 						source: View(ViewId(0)),
 						row_ids: update_row_ids,
 						before: previous.clone(),
@@ -623,7 +623,7 @@ impl AggregateOperator {
 							.push(RowNumber(hash));
 					}
 
-					output_diffs.push(Diff::Insert {
+					output_diffs.push(FlowDiff::Insert {
 						source: View(ViewId(0)),
 						row_ids: insert_row_ids,
 						after: columns.clone(),
@@ -660,7 +660,7 @@ impl AggregateOperator {
 					remove_row_ids.push(RowNumber(hash));
 				}
 
-				output_diffs.push(Diff::Remove {
+				output_diffs.push(FlowDiff::Remove {
 					source: View(ViewId(0)),
 					row_ids: remove_row_ids,
 					before: before_columns,
@@ -668,7 +668,7 @@ impl AggregateOperator {
 			}
 		}
 
-		Ok(Change::new(output_diffs))
+		Ok(FlowChange::new(output_diffs))
 	}
 }
 
@@ -676,13 +676,13 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
-		change: &Change,
-	) -> Result<Change> {
+		change: &FlowChange,
+	) -> Result<FlowChange> {
 		let mut changed_groups = Vec::new();
 
 		for diff in &change.diffs {
 			match diff {
-				Diff::Insert {
+				FlowDiff::Insert {
 					after,
 					..
 				} => {
@@ -726,7 +726,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 						}
 					}
 				}
-				Diff::Update {
+				FlowDiff::Update {
 					before,
 					after,
 					..
@@ -809,7 +809,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 						}
 					}
 				}
-				Diff::Remove {
+				FlowDiff::Remove {
 					before,
 					..
 				} => {

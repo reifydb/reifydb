@@ -7,7 +7,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	Value,
 	flow::{
-		Change, Diff, Flow, FlowNode, FlowNodeType,
+		Flow, FlowChange, FlowDiff, FlowNode, FlowNodeType,
 		FlowNodeType::{SourceInlineData, SourceTable},
 	},
 	interface::{
@@ -23,7 +23,7 @@ impl<E: Evaluator> FlowEngine<E> {
 	pub fn process<T: CommandTransaction>(
 		&self,
 		txn: &mut T,
-		change: Change,
+		change: FlowChange,
 	) -> crate::Result<()> {
 		let mut diffs_by_source = HashMap::new();
 
@@ -39,7 +39,7 @@ impl<E: Evaluator> FlowEngine<E> {
 			if let Some(flow_ids) = self.sources.get(&source) {
 				// Process the diffs once for all flows with
 				// this source
-				let bulkchange = Change {
+				let bulkchange = FlowChange {
 					diffs,
 					metadata: change.metadata.clone(),
 				};
@@ -75,8 +75,8 @@ impl<E: Evaluator> FlowEngine<E> {
 		&self,
 		txn: &mut T,
 		node: &FlowNode,
-		change: &Change,
-	) -> crate::Result<Change> {
+		change: &FlowChange,
+	) -> crate::Result<FlowChange> {
 		let operator = self.operators.get(&node.id).unwrap();
 		let mut context = OperatorContext::new(&self.evaluator, txn);
 		operator.apply(&mut context, change)
@@ -87,7 +87,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		txn: &mut T,
 		flow: &Flow,
 		node: &FlowNode,
-		change: &Change,
+		change: &FlowChange,
 	) -> crate::Result<()> {
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
@@ -132,14 +132,14 @@ impl<E: Evaluator> FlowEngine<E> {
 		&self,
 		txn: &mut T,
 		view_id: ViewId,
-		change: &Change,
+		change: &FlowChange,
 	) -> crate::Result<()> {
 		let view = CatalogStore::get_view(txn, view_id)?;
 		let layout = view.get_layout();
 
 		for diff in &change.diffs {
 			match diff {
-				Diff::Insert {
+				FlowDiff::Insert {
 					row_ids,
 					after,
 					..
@@ -220,7 +220,7 @@ impl<E: Evaluator> FlowEngine<E> {
 						txn.set(&key, row)?;
 					}
 				}
-				Diff::Update {
+				FlowDiff::Update {
 					row_ids,
 					before: _,
 					after,
@@ -298,7 +298,7 @@ impl<E: Evaluator> FlowEngine<E> {
 						txn.set(&key, new_row)?;
 					}
 				}
-				Diff::Remove {
+				FlowDiff::Remove {
 					row_ids,
 					before,
 					..
