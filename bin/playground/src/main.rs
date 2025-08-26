@@ -54,10 +54,6 @@ fn main() {
 
 	db.start().unwrap();
 
-	db.command_as_root("create schema rollback_tables", Params::None)
-		.unwrap();
-	db.command_as_root("from rollback_tables.new1", Params::None).unwrap();
-
 	db.command_as_root(
 		r#"
 	    create schema test;
