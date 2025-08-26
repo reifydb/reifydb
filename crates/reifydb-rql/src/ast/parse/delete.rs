@@ -11,17 +11,26 @@ impl Parser {
 	pub(crate) fn parse_delete(&mut self) -> crate::Result<AstDelete> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
-		let identifier = self.parse_identifier()?;
-
-		let (schema, table) = if self
-			.current_expect_operator(Operator::Dot)
-			.is_ok()
+		// Check if there's a target table specified (optional)
+		let (schema, table) = if !self.is_eof()
+			&& self.current()?.is_identifier()
 		{
-			self.consume_operator(Operator::Dot)?;
-			let table = self.parse_identifier()?;
-			(Some(identifier), table)
+			let identifier = self.parse_identifier()?;
+
+			if !self.is_eof()
+				&& self.current_expect_operator(Operator::Dot)
+					.is_ok()
+			{
+				self.consume_operator(Operator::Dot)?;
+				let table = self.parse_identifier()?;
+				(Some(identifier), Some(table))
+			} else {
+				(None, Some(identifier))
+			}
 		} else {
-			(None, identifier)
+			// No target table specified - will be inferred from
+			// input
+			(None, None)
 		};
 
 		Ok(AstDelete {
@@ -61,7 +70,10 @@ mod tests {
 					schema.as_ref().unwrap().value(),
 					"test"
 				);
-				assert_eq!(table.value(), "users");
+				assert_eq!(
+					table.as_ref().unwrap().value(),
+					"users"
+				);
 			}
 		}
 	}
@@ -88,7 +100,37 @@ mod tests {
 				..
 			} => {
 				assert!(schema.is_none());
-				assert_eq!(table.value(), "users");
+				assert_eq!(
+					table.as_ref().unwrap().value(),
+					"users"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn test_no_table() {
+		let tokens = tokenize(
+			r#"
+        delete
+    "#,
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let delete = result.first_unchecked().as_delete();
+
+		match delete {
+			AstDelete {
+				schema,
+				table,
+				..
+			} => {
+				assert!(schema.is_none());
+				assert!(table.is_none());
 			}
 		}
 	}

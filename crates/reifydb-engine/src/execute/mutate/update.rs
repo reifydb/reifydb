@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	ColumnDescriptor, IntoFragment, Type, Value,
+	ColumnDescriptor, Type, Value,
 	interface::{
 		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
 		Transaction, VersionedCommandTransaction,
@@ -47,18 +47,32 @@ impl Executor {
 		let schema =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 				.unwrap();
-		let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			schema.id,
-			&plan.table.fragment(),
-		)?
-		else {
-			let fragment = plan.table.into_fragment();
-			return_error!(table_not_found(
-				fragment.clone(),
-				schema_name,
-				&fragment.fragment(),
-			));
+
+		// Get table from plan or infer from input
+		let table = if let Some(table_ref) = &plan.table {
+			// Explicit table specified
+			let Some(table) = CatalogStore::find_table_by_name(
+				txn,
+				schema.id,
+				&table_ref.fragment(),
+			)?
+			else {
+				let fragment = table_ref.clone();
+				return_error!(table_not_found(
+					fragment.clone(),
+					schema_name,
+					&fragment.fragment(),
+				));
+			};
+			table
+		} else {
+			// TODO: Infer table from input pipeline
+			// For now, return an error requiring explicit table
+			return_error!(
+				reifydb_core::error::diagnostic::internal(
+					"UPDATE requires explicit target table when table is not specified"
+				)
+			);
 		};
 
 		let table_types: Vec<Type> =

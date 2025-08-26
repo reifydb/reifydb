@@ -824,7 +824,7 @@ pub struct AstInfix {
 pub struct AstDelete {
 	pub token: Token,
 	pub schema: Option<AstIdentifier>,
-	pub table: AstIdentifier,
+	pub table: Option<AstIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -838,7 +838,7 @@ pub struct AstInsert {
 pub struct AstUpdate {
 	pub token: Token,
 	pub schema: Option<AstIdentifier>,
-	pub table: AstIdentifier,
+	pub table: Option<AstIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

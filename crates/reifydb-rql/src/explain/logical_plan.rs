@@ -21,6 +21,10 @@ pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
 		plans.extend(compile_logical(statement)?)
 	}
 
+	explain_logical_plans(&plans)
+}
+
+pub fn explain_logical_plans(plans: &[LogicalPlan]) -> crate::Result<String> {
 	let mut result = String::new();
 	for plan in plans {
 		let mut output = String::new();
@@ -196,9 +200,87 @@ fn render_logical_plan_inner(
 				));
 			}
 		}
-		LogicalPlan::Delete(_) => unimplemented!(),
+		LogicalPlan::Delete(delete) => {
+			output.push_str(&format!(
+				"{}{} Delete\n",
+				prefix, branch
+			));
+
+			// Show target table if specified
+			if let Some(table) = &delete.table {
+				output.push_str(&format!(
+					"{}├── target table: {}\n",
+					child_prefix,
+					if let Some(schema) = &delete.schema {
+						format!("{}.{}", schema, table)
+					} else {
+						table.to_string()
+					}
+				));
+			} else {
+				output.push_str(&format!(
+					"{}├── target table: <inferred from input>\n",
+					child_prefix
+				));
+			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &delete.input {
+				output.push_str(&format!(
+					"{}└── Input Pipeline:\n",
+					child_prefix
+				));
+				let pipeline_prefix =
+					format!("{}    ", child_prefix);
+				render_logical_plan_inner(
+					input,
+					&pipeline_prefix,
+					true,
+					output,
+				);
+			}
+		}
 		LogicalPlan::Insert(_) => unimplemented!(),
-		LogicalPlan::Update(_) => unimplemented!(),
+		LogicalPlan::Update(update) => {
+			output.push_str(&format!(
+				"{}{} Update\n",
+				prefix, branch
+			));
+
+			// Show target table if specified
+			if let Some(table) = &update.table {
+				output.push_str(&format!(
+					"{}├── target table: {}\n",
+					child_prefix,
+					if let Some(schema) = &update.schema {
+						format!("{}.{}", schema, table)
+					} else {
+						table.to_string()
+					}
+				));
+			} else {
+				output.push_str(&format!(
+					"{}├── target table: <inferred from input>\n",
+					child_prefix
+				));
+			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &update.input {
+				output.push_str(&format!(
+					"{}└── Input Pipeline:\n",
+					child_prefix
+				));
+				let pipeline_prefix =
+					format!("{}    ", child_prefix);
+				render_logical_plan_inner(
+					input,
+					&pipeline_prefix,
+					true,
+					output,
+				);
+			}
+		}
 
 		LogicalPlan::Take(TakeNode {
 			take,

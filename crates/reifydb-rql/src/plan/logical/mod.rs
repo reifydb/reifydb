@@ -29,49 +29,107 @@ impl Compiler {
 			return Ok(vec![]);
 		}
 
-		let mut result = Vec::with_capacity(ast.len());
-		for node in ast {
-			match node {
-				Ast::Create(node) => {
-					result.push(Self::compile_create(node)?)
-				}
-				Ast::Alter(node) => {
-					result.push(Self::compile_alter(node)?)
-				}
-				Ast::AstDelete(node) => {
-					result.push(Self::compile_delete(node)?)
-				}
-				Ast::AstInsert(node) => {
-					result.push(Self::compile_insert(node)?)
-				}
-				Ast::AstUpdate(node) => {
-					result.push(Self::compile_update(node)?)
-				}
+		let ast_len = ast.len();
+		let ast_vec = ast.0; // Extract the inner Vec
 
-				Ast::Aggregate(node) => result
-					.push(Self::compile_aggregate(node)?),
-				Ast::Filter(node) => {
-					result.push(Self::compile_filter(node)?)
+		// Check if this is a pipeline ending with UPDATE or DELETE
+		let is_update_pipeline = ast_len > 1
+			&& matches!(ast_vec.last(), Some(Ast::AstUpdate(_)));
+		let is_delete_pipeline = ast_len > 1
+			&& matches!(ast_vec.last(), Some(Ast::AstDelete(_)));
+
+		if is_update_pipeline || is_delete_pipeline {
+			// Build pipeline: compile all nodes except the last one
+			// into a chain
+			let mut pipeline_nodes = Vec::new();
+
+			for (i, node) in ast_vec.into_iter().enumerate() {
+				if i == ast_len - 1 {
+					// Last node is UPDATE or DELETE
+					match node {
+						Ast::AstUpdate(update_ast) => {
+							// Build the pipeline as
+							// input to update
+							let input = if !pipeline_nodes.is_empty() {
+								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
+							} else {
+								None
+							};
+
+							return Ok(vec![LogicalPlan::Update(UpdateNode {
+								schema: update_ast.schema.map(|s| s.fragment()),
+								table: update_ast.table.map(|t| t.fragment()),
+								input,
+							})]);
+						}
+						Ast::AstDelete(delete_ast) => {
+							// Build the pipeline as
+							// input to delete
+							let input = if !pipeline_nodes.is_empty() {
+								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
+							} else {
+								None
+							};
+
+							return Ok(vec![LogicalPlan::Delete(DeleteNode {
+								schema: delete_ast.schema.map(|s| s.fragment()),
+								table: delete_ast.table.map(|t| t.fragment()),
+								input,
+							})]);
+						}
+						_ => unreachable!(),
+					}
+				} else {
+					// Add to pipeline
+					pipeline_nodes.push(
+						Self::compile_single(node)?,
+					);
 				}
-				Ast::From(node) => {
-					result.push(Self::compile_from(node)?)
-				}
-				Ast::Join(node) => {
-					result.push(Self::compile_join(node)?)
-				}
-				Ast::Take(node) => {
-					result.push(Self::compile_take(node)?)
-				}
-				Ast::Sort(node) => {
-					result.push(Self::compile_sort(node)?)
-				}
-				Ast::Map(node) => {
-					result.push(Self::compile_map(node)?)
-				}
-				node => unimplemented!("{:?}", node),
 			}
+			unreachable!("Pipeline should have been handled above");
+		}
+
+		// Normal compilation (not a pipeline)
+		let mut result = Vec::with_capacity(ast_len);
+		for node in ast_vec {
+			result.push(Self::compile_single(node)?);
 		}
 		Ok(result)
+	}
+
+	// Helper to compile a single AST node
+	fn compile_single(node: Ast) -> crate::Result<LogicalPlan> {
+		match node {
+			Ast::Create(node) => Self::compile_create(node),
+			Ast::Alter(node) => Self::compile_alter(node),
+			Ast::AstDelete(node) => Self::compile_delete(node),
+			Ast::AstInsert(node) => Self::compile_insert(node),
+			Ast::AstUpdate(node) => Self::compile_update(node),
+			Ast::Aggregate(node) => Self::compile_aggregate(node),
+			Ast::Filter(node) => Self::compile_filter(node),
+			Ast::From(node) => Self::compile_from(node),
+			Ast::Join(node) => Self::compile_join(node),
+			Ast::Take(node) => Self::compile_take(node),
+			Ast::Sort(node) => Self::compile_sort(node),
+			Ast::Map(node) => Self::compile_map(node),
+			node => unimplemented!("{:?}", node),
+		}
+	}
+
+	// Helper to build a pipeline from multiple logical plans
+	fn build_pipeline(
+		plans: Vec<LogicalPlan>,
+	) -> crate::Result<LogicalPlan> {
+		// For now, just return the last plan in the chain
+		// In a more complete implementation, this would properly chain
+		// the plans
+		plans.into_iter().last().ok_or_else(|| {
+			reifydb_core::error::Error(
+				reifydb_core::error::diagnostic::internal(
+					"Empty pipeline",
+				),
+			)
+		})
 	}
 }
 
@@ -168,7 +226,8 @@ pub struct IndexColumn {
 #[derive(Debug)]
 pub struct DeleteNode {
 	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+	pub table: Option<OwnedFragment>,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
@@ -180,7 +239,8 @@ pub struct InsertNode {
 #[derive(Debug)]
 pub struct UpdateNode {
 	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+	pub table: Option<OwnedFragment>,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
