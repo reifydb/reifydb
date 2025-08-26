@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test OR logical operator
+# Filter with conditions where at least one must be true
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, category: utf8, priority: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.urgent_or_bug { id: int4, category: utf8, priority: int4 } with {
+  from test.source
+  filter { priority >= 9 or category == "bug" }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  urgent_or_bug  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert mixed data
+command 'from [
+  {id: 1, category: "feature", priority: 5},
+  {id: 2, category: "bug", priority: 3},
+  {id: 3, category: "enhancement", priority: 10},
+  {id: 4, category: "bug", priority: 9},
+  {id: 5, category: "task", priority: 7},
+  {id: 6, category: "feature", priority: 9}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------------+------------+
+> |  id  |   category    |  priority  |
+> +------+---------------+------------+
+> |  6   |    feature    |     9      |
+> |  5   |     task      |     7      |
+> |  4   |      bug      |     9      |
+> |  3   |  enhancement  |     10     |
+> |  2   |      bug      |     3      |
+> |  1   |    feature    |     5      |
+> +------+---------------+------------+
+> 
+
+wait 5
+
+# Should show high priority (>=9) OR bug category
+command 'from test.urgent_or_bug'
+---
+> +------+---------------+------------+
+> |  id  |   category    |  priority  |
+> +------+---------------+------------+
+> |  6   |    feature    |     9      |
+> |  4   |      bug      |     9      |
+> |  3   |  enhancement  |     10     |
+> |  2   |      bug      |     3      |
+> +------+---------------+------------+
+> 

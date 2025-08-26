@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test deeply nested filter conditions
+# Multiple levels of parentheses and logic
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, a: int4, b: int4, c: int4, d: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.complex_filter { id: int4, a: int4, b: int4, c: int4, d: int4 } with {
+  from test.source
+  filter { ((a > 10 and b < 50) or (c == 100)) and d != 0 }
+}'
+---
+> +----------+------------------+-----------+
+> |  schema  |       view       |  created  |
+> +----------+------------------+-----------+
+> |   test   |  complex_filter  |   true    |
+> +----------+------------------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, a: 15, b: 30, c: 50, d: 1},
+  {id: 2, a: 5, b: 20, c: 100, d: 2},
+  {id: 3, a: 20, b: 60, c: 75, d: 0},
+  {id: 4, a: 12, b: 45, c: 80, d: 3},
+  {id: 5, a: 8, b: 35, c: 100, d: 0},
+  {id: 6, a: 25, b: 25, c: 25, d: 5}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+------+------+-------+-----+
+> |  id  |  a   |  b   |   c   |  d  |
+> +------+------+------+-------+-----+
+> |  6   |  25  |  25  |  25   |  5  |
+> |  5   |  8   |  35  |  100  |  0  |
+> |  4   |  12  |  45  |  80   |  3  |
+> |  3   |  20  |  60  |  75   |  0  |
+> |  2   |  5   |  20  |  100  |  2  |
+> |  1   |  15  |  30  |  50   |  1  |
+> +------+------+------+-------+-----+
+> 
+
+wait 5
+
+# Should match complex nested condition
+command 'from test.complex_filter'
+---
+> +------+------+------+-------+-----+
+> |  id  |  a   |  b   |   c   |  d  |
+> +------+------+------+-------+-----+
+> |  6   |  25  |  25  |  25   |  5  |
+> |  4   |  12  |  45  |  80   |  3  |
+> |  2   |  5   |  20  |  100  |  2  |
+> |  1   |  15  |  30  |  50   |  1  |
+> +------+------+------+-------+-----+
+> 

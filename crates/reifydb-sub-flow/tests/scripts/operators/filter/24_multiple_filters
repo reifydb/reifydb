@@ -1,0 +1,74 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test chaining multiple filter operations
+# Sequential filters in flow definition
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4, category: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.filtered_chain { id: int4, value: int4, category: utf8 } with {
+  from test.source
+  filter { value > 50 }
+  filter { value < 150 }
+  filter { category != "excluded" }
+}'
+---
+> +----------+------------------+-----------+
+> |  schema  |       view       |  created  |
+> +----------+------------------+-----------+
+> |   test   |  filtered_chain  |   true    |
+> +----------+------------------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, value: 25, category: "normal"},
+  {id: 2, value: 75, category: "normal"},
+  {id: 3, value: 100, category: "excluded"},
+  {id: 4, value: 125, category: "special"},
+  {id: 5, value: 175, category: "normal"},
+  {id: 6, value: 80, category: "normal"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------+------------+
+> |  id  |  value  |  category  |
+> +------+---------+------------+
+> |  6   |   80    |   normal   |
+> |  5   |   175   |   normal   |
+> |  4   |   125   |  special   |
+> |  3   |   100   |  excluded  |
+> |  2   |   75    |   normal   |
+> |  1   |   25    |   normal   |
+> +------+---------+------------+
+> 
+
+wait 5
+
+# Should pass all three filters
+command 'from test.filtered_chain'
+---
+> +------+---------+------------+
+> |  id  |  value  |  category  |
+> +------+---------+------------+
+> |  6   |   80    |   normal   |
+> |  4   |   125   |  special   |
+> |  2   |   75    |   normal   |
+> +------+---------+------------+
+> 

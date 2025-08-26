@@ -1,0 +1,70 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test basic filter with equality condition
+# Filters rows where status equals 'active'
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, name: utf8, status: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.active_only { id: int4, name: utf8, status: utf8 } with {
+  from test.source
+  filter { status == "active" }
+}'
+---
+> +----------+---------------+-----------+
+> |  schema  |     view      |  created  |
+> +----------+---------------+-----------+
+> |   test   |  active_only  |   true    |
+> +----------+---------------+-----------+
+> 
+
+# Insert mixed data
+command 'from [
+  {id: 1, name: "Alice", status: "active"},
+  {id: 2, name: "Bob", status: "inactive"},
+  {id: 3, name: "Charlie", status: "active"},
+  {id: 4, name: "Diana", status: "pending"},
+  {id: 5, name: "Eve", status: "active"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     5      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+-----------+------------+
+> |  id  |   name    |   status   |
+> +------+-----------+------------+
+> |  5   |    Eve    |   active   |
+> |  4   |   Diana   |  pending   |
+> |  3   |  Charlie  |   active   |
+> |  2   |    Bob    |  inactive  |
+> |  1   |   Alice   |   active   |
+> +------+-----------+------------+
+> 
+
+wait 5
+
+# Should only show active records
+command 'from test.active_only'
+---
+> +------+-----------+----------+
+> |  id  |   name    |  status  |
+> +------+-----------+----------+
+> |  5   |    Eve    |  active  |
+> |  3   |  Charlie  |  active  |
+> |  1   |   Alice   |  active  |
+> +------+-----------+----------+
+> 

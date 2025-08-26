@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test string equality and comparison
+# Filter based on string fields
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, name: utf8, city: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.ny_residents { id: int4, name: utf8, city: utf8 } with {
+  from test.source
+  filter { city == "New York" }
+}'
+---
+> +----------+----------------+-----------+
+> |  schema  |      view      |  created  |
+> +----------+----------------+-----------+
+> |   test   |  ny_residents  |   true    |
+> +----------+----------------+-----------+
+> 
+
+# Insert various cities
+command 'from [
+  {id: 1, name: "Alice", city: "New York"},
+  {id: 2, name: "Bob", city: "Los Angeles"},
+  {id: 3, name: "Charlie", city: "New York"},
+  {id: 4, name: "Diana", city: "Chicago"},
+  {id: 5, name: "Eve", city: "New York"},
+  {id: 6, name: "Frank", city: "Boston"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+-----------+---------------+
+> |  id  |   name    |     city      |
+> +------+-----------+---------------+
+> |  6   |   Frank   |    Boston     |
+> |  5   |    Eve    |   New York    |
+> |  4   |   Diana   |    Chicago    |
+> |  3   |  Charlie  |   New York    |
+> |  2   |    Bob    |  Los Angeles  |
+> |  1   |   Alice   |   New York    |
+> +------+-----------+---------------+
+> 
+
+wait 5
+
+# Should show only New York residents
+command 'from test.ny_residents'
+---
+> +------+-----------+------------+
+> |  id  |   name    |    city    |
+> +------+-----------+------------+
+> |  5   |    Eve    |  New York  |
+> |  3   |  Charlie  |  New York  |
+> |  1   |   Alice   |  New York  |
+> +------+-----------+------------+
+> 

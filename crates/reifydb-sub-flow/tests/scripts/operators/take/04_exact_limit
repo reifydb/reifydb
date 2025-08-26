@@ -39,7 +39,6 @@ wait 5
 
 command 'from test.top_three'
 ---
-> ok
 > +------+---------+
 > |  id  |  value  |
 > +------+---------+

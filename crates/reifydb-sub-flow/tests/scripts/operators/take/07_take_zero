@@ -40,7 +40,6 @@ wait 5
 # View should be empty
 command 'from test.none'
 ---
-> ok
 > +------+---------+
 > |  id  |  value  |
 > +------+---------+

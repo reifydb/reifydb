@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test less than or equal (<=) operator
+# Filter values less than or equal to threshold
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.at_most_fifty { id: int4, value: int4 } with {
+  from test.source
+  filter { value <= 50 }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  at_most_fifty  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert values around threshold
+command 'from [
+  {id: 1, value: 10},
+  {id: 2, value: 25},
+  {id: 3, value: 49},
+  {id: 4, value: 50},
+  {id: 5, value: 51},
+  {id: 6, value: 100}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  6   |   100   |
+> |  5   |   51    |
+> |  4   |   50    |
+> |  3   |   49    |
+> |  2   |   25    |
+> |  1   |   10    |
+> +------+---------+
+> 
+
+wait 5
+
+# Should show values <= 50 (including 50)
+command 'from test.at_most_fifty'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  4   |   50    |
+> |  3   |   49    |
+> |  2   |   25    |
+> |  1   |   10    |
+> +------+---------+
+> 

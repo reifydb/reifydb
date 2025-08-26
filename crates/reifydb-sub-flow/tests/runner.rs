@@ -74,7 +74,6 @@ impl testscript::Runner for FlowTestRunner {
 						|_| "wait argument must be a valid number of milliseconds",
 					)?;
 				thread::sleep(Duration::from_millis(ms));
-				writeln!(output, "ok")?;
 			}
 
 			name => {

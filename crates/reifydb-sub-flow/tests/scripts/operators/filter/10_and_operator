@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test AND logical operator
+# Filter with multiple conditions that must all be true
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, age: int4, status: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.active_adults { id: int4, age: int4, status: utf8 } with {
+  from test.source
+  filter { age >= 18 and status == "active" }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  active_adults  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert mixed data
+command 'from [
+  {id: 1, age: 25, status: "active"},
+  {id: 2, age: 17, status: "active"},
+  {id: 3, age: 30, status: "inactive"},
+  {id: 4, age: 18, status: "active"},
+  {id: 5, age: 16, status: "inactive"},
+  {id: 6, age: 45, status: "active"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+-------+------------+
+> |  id  |  age  |   status   |
+> +------+-------+------------+
+> |  6   |  45   |   active   |
+> |  5   |  16   |  inactive  |
+> |  4   |  18   |   active   |
+> |  3   |  30   |  inactive  |
+> |  2   |  17   |   active   |
+> |  1   |  25   |   active   |
+> +------+-------+------------+
+> 
+
+wait 5
+
+# Should show only active adults (age >= 18 AND status = active)
+command 'from test.active_adults'
+---
+> +------+-------+----------+
+> |  id  |  age  |  status  |
+> +------+-------+----------+
+> |  6   |  45   |  active  |
+> |  4   |  18   |  active  |
+> |  1   |  25   |  active  |
+> +------+-------+----------+
+> 

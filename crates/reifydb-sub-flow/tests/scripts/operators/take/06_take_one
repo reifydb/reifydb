@@ -39,7 +39,6 @@ wait 5
 
 command 'from test.latest'
 ---
-> ok
 > +------+---------+
 > |  id  |  value  |
 > +------+---------+
@@ -61,7 +60,6 @@ wait 5
 
 command 'from test.latest'
 ---
-> ok
 > +------+---------+
 > |  id  |  value  |
 > +------+---------+

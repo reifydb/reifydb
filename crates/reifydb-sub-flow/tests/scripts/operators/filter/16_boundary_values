@@ -1,0 +1,69 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test filter with boundary values
+# Test edge cases: zero, negative, maximum values
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.positive_only { id: int4, value: int8 } with {
+  from test.source
+  filter { value > 0 }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  positive_only  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert boundary values
+command 'from [
+  {id: 1, value: -9223372036854775808},
+  {id: 2, value: -1},
+  {id: 3, value: 0},
+  {id: 4, value: 1},
+  {id: 5, value: 9223372036854775807}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     5      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+------------------------+
+> |  id  |         value          |
+> +------+------------------------+
+> |  5   |  9223372036854775807   |
+> |  4   |           1            |
+> |  3   |           0            |
+> |  2   |           -1           |
+> |  1   |  -9223372036854775808  |
+> +------+------------------------+
+> 
+
+wait 5
+
+# Should show only positive values (> 0)
+command 'from test.positive_only'
+---
+> +------+-----------------------+
+> |  id  |         value         |
+> +------+-----------------------+
+> |  5   |  9223372036854775807  |
+> |  4   |           1           |
+> +------+-----------------------+
+> 

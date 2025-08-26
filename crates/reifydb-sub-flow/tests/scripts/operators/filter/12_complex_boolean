@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test complex nested boolean expressions
+# Combines AND, OR with parentheses for precedence
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, age: int4, status: utf8, vip: bool }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.special_users { id: int4, age: int4, status: utf8, vip: bool } with {
+  from test.source
+  filter { (age >= 18 and status == "active") or vip == true }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  special_users  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert mixed data
+command 'from [
+  {id: 1, age: 25, status: "active", vip: false},
+  {id: 2, age: 17, status: "active", vip: false},
+  {id: 3, age: 30, status: "inactive", vip: true},
+  {id: 4, age: 18, status: "active", vip: false},
+  {id: 5, age: 16, status: "inactive", vip: true},
+  {id: 6, age: 45, status: "inactive", vip: false}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+-------+------------+---------+
+> |  id  |  age  |   status   |   vip   |
+> +------+-------+------------+---------+
+> |  6   |  45   |  inactive  |  false  |
+> |  5   |  16   |  inactive  |  true   |
+> |  4   |  18   |   active   |  false  |
+> |  3   |  30   |  inactive  |  true   |
+> |  2   |  17   |   active   |  false  |
+> |  1   |  25   |   active   |  false  |
+> +------+-------+------------+---------+
+> 
+
+wait 5
+
+# Should show: (active adults) OR (any VIP)
+command 'from test.special_users'
+---
+> +------+-------+------------+---------+
+> |  id  |  age  |   status   |   vip   |
+> +------+-------+------------+---------+
+> |  5   |  16   |  inactive  |  true   |
+> |  4   |  18   |   active   |  false  |
+> |  3   |  30   |  inactive  |  true   |
+> |  1   |  25   |   active   |  false  |
+> +------+-------+------------+---------+
+> 
