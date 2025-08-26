@@ -11,7 +11,7 @@ use crate::ast::{
 	AstJoin,
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{Inner, Join, Left, Natural, On, With},
+		Keyword::{From, Inner, Join, Left, Natural, On},
 		Operator::{CloseCurly, OpenCurly},
 		Separator::Comma,
 	},
@@ -21,14 +21,10 @@ impl Parser {
 	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin> {
 		let token = self.consume_keyword(Join)?;
 
-		let has_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_braces {
-			self.advance()?;
-		}
-
-		self.consume_keyword(With)?;
+		self.consume_operator(OpenCurly)?;
+		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
+		self.consume_operator(CloseCurly)?;
 
 		self.consume_keyword(On)?;
 
@@ -66,15 +62,6 @@ impl Parser {
 			));
 		}
 
-		if has_braces {
-			if !self.is_eof()
-				&& self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?;
-			}
-		}
-
-		// Treat freestanding join as inner join
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
@@ -85,7 +72,6 @@ impl Parser {
 	pub(crate) fn parse_natural_join(&mut self) -> crate::Result<AstJoin> {
 		let token = self.consume_keyword(Natural)?;
 
-		// Check for join type (LEFT, INNER, etc.)
 		let join_type = if self.current()?.is_keyword(Left) {
 			self.advance()?;
 			Some(JoinType::Left)
@@ -93,27 +79,15 @@ impl Parser {
 			self.advance()?;
 			Some(JoinType::Inner)
 		} else {
-			None // Will use default (which is Inner based on the system reminder)
+			None
 		};
 
 		self.consume_keyword(Join)?;
 
-		let has_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_braces {
-			self.advance()?;
-		}
-
-		self.consume_keyword(With)?;
+		self.consume_operator(OpenCurly)?;
+		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
-
-		if has_braces {
-			if !self.is_eof()
-				&& self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?;
-			}
-		}
+		self.consume_operator(CloseCurly)?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
@@ -126,14 +100,10 @@ impl Parser {
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
-		let has_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_braces {
-			self.advance()?;
-		}
-
-		self.consume_keyword(With)?;
+		self.consume_operator(OpenCurly)?;
+		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
+		self.consume_operator(CloseCurly)?;
 
 		self.consume_keyword(On)?;
 
@@ -169,14 +139,6 @@ impl Parser {
 			return_error!(multiple_expressions_without_braces(
 				token.fragment
 			));
-		}
-
-		if has_braces {
-			if !self.is_eof()
-				&& self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?;
-			}
 		}
 
 		Ok(AstJoin::InnerJoin {
@@ -190,14 +152,10 @@ impl Parser {
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
 
-		let has_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_braces {
-			self.advance()?;
-		}
-
-		self.consume_keyword(With)?;
+		self.consume_operator(OpenCurly)?;
+		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
+		self.consume_operator(CloseCurly)?;
 
 		self.consume_keyword(On)?;
 
@@ -233,14 +191,6 @@ impl Parser {
 			return_error!(multiple_expressions_without_braces(
 				token.fragment
 			));
-		}
-
-		if has_braces {
-			if !self.is_eof()
-				&& self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?;
-			}
 		}
 
 		Ok(AstJoin::LeftJoin {
@@ -262,7 +212,7 @@ mod tests {
 	#[test]
 	fn test_left_join() {
 		let tokens = tokenize(
-			"left join with schema.orders on user.id == orders.user_id",
+			"left join { from schema.orders } on user.id == orders.user_id",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -318,7 +268,7 @@ mod tests {
 
 	#[test]
 	fn test_left_join_with_curly() {
-		let tokens = tokenize("left join { with orders on { users.id == orders.user_id, something_else.id == orders.user_id } }").unwrap();
+		let tokens = tokenize("left join { from orders } on { users.id == orders.user_id, something_else.id == orders.user_id }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -401,7 +351,7 @@ mod tests {
 	#[test]
 	fn test_left_join_single_on_with_braces() {
 		let tokens = tokenize(
-			"left join { with orders on { users.id == orders.user_id } }",
+			"left join { from orders } on { users.id == orders.user_id }",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -425,7 +375,7 @@ mod tests {
 
 	#[test]
 	fn test_left_join_multiple_on_without_braces_fails() {
-		let tokens = tokenize("left join with orders on users.id == orders.user_id, something_else.id == orders.user_id").unwrap();
+		let tokens = tokenize("left join { from orders } on users.id == orders.user_id, something_else.id == orders.user_id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
@@ -437,7 +387,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_simple() {
-		let tokens = tokenize("natural join with orders").unwrap();
+		let tokens = tokenize("natural join { from orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -463,8 +413,8 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_with_qualified_table() {
-		let tokens =
-			tokenize("natural join with schema.orders").unwrap();
+		let tokens = tokenize("natural join { from schema.orders }")
+			.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -499,7 +449,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_with_braces() {
-		let tokens = tokenize("natural join { with orders }").unwrap();
+		let tokens = tokenize("natural join { from orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -525,7 +475,8 @@ mod tests {
 
 	#[test]
 	fn test_natural_left_join() {
-		let tokens = tokenize("natural left join with orders").unwrap();
+		let tokens =
+			tokenize("natural left join { from orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -552,7 +503,7 @@ mod tests {
 	#[test]
 	fn test_natural_inner_join() {
 		let tokens =
-			tokenize("natural inner join with orders").unwrap();
+			tokenize("natural inner join { from orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -579,7 +530,7 @@ mod tests {
 	#[test]
 	fn test_inner_join() {
 		let tokens = tokenize(
-			"inner join with orders on users.id == orders.user_id",
+			"inner join { from orders } on users.id == orders.user_id",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -633,7 +584,7 @@ mod tests {
 	#[test]
 	fn test_join() {
 		let tokens = tokenize(
-			"join with orders on users.id == orders.user_id",
+			"join { from orders } on users.id == orders.user_id",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);

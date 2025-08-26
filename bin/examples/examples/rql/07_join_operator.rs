@@ -109,18 +109,16 @@ fn main() {
 	log_query(
 		r#"from company.employees
 inner join {
-  with company.departments
-  on employees.dept_id == departments.dept_id
-}"#,
+  from company.departments
+} on employees.dept_id == departments.dept_id"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from company.employees
 			inner join {
-				with company.departments
-				on employees.dept_id == departments.dept_id
-			}
+				from company.departments
+			} on employees.dept_id == departments.dept_id
 			"#,
 			Params::None,
 		)
@@ -135,18 +133,16 @@ inner join {
 	log_query(
 		r#"from company.employees
 left join {
-  with company.departments
-  on employees.dept_id == departments.dept_id
-}"#,
+  from company.departments
+} on employees.dept_id == departments.dept_id"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from company.employees
 			left join {
-				with company.departments
-				on employees.dept_id == departments.dept_id
-			}
+				from company.departments
+			} on employees.dept_id == departments.dept_id
 			"#,
 			Params::None,
 		)
@@ -159,13 +155,13 @@ left join {
 	log_info!("\nExample 3: Natural join (automatic on dept_id)");
 	log_query(
 		r#"from company.employees
-natural join { with company.departments }"#,
+natural join { from company.departments }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from company.employees
-			natural join { with company.departments }
+			natural join { from company.departments }
 			"#,
 			Params::None,
 		)
@@ -179,9 +175,8 @@ natural join { with company.departments }"#,
 	log_query(
 		r#"from company.employees
 inner join {
-  with company.departments
-  on employees.dept_id == departments.dept_id
-}
+  from company.departments
+} on employees.dept_id == departments.dept_id
 filter departments.location == "Building A""#,
 	);
 	for frame in db
@@ -189,9 +184,8 @@ filter departments.location == "Building A""#,
 			r#"
 			from company.employees
 			inner join {
-				with company.departments
-				on employees.dept_id == departments.dept_id
-			}
+				from company.departments
+			} on employees.dept_id == departments.dept_id
 			filter departments.location == "Building A"
 			"#,
 			Params::None,
@@ -206,9 +200,8 @@ filter departments.location == "Building A""#,
 	log_query(
 		r#"from company.employees
 inner join {
-  with company.departments
-  on employees.dept_id == departments.dept_id
-}
+  from company.departments
+} on employees.dept_id == departments.dept_id
 map { employees.name, departments.dept_name, employees.salary }"#,
 	);
 	for frame in db
@@ -216,9 +209,8 @@ map { employees.name, departments.dept_name, employees.salary }"#,
 			r#"
 			from company.employees
 			inner join {
-				with company.departments
-				on employees.dept_id == departments.dept_id
-			}
+				from company.departments
+			} on employees.dept_id == departments.dept_id
 			map { employees.name, departments.dept_name, employees.salary }
 			"#,
 			Params::None,
@@ -233,26 +225,22 @@ map { employees.name, departments.dept_name, employees.salary }"#,
 	log_query(
 		r#"from company.employees
 inner join {
-  with company.departments
-  on employees.dept_id == departments.dept_id
-}
+  from company.departments
+} on employees.dept_id == departments.dept_id
 inner join {
-  with company.projects
-  on departments.dept_id == projects.dept_id
-}"#,
+  from company.projects
+} on departments.dept_id == projects.dept_id"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from company.employees
 			inner join {
-				with company.departments
-				on employees.dept_id == departments.dept_id
-			}
+				from company.departments
+			} on employees.dept_id == departments.dept_id
 			inner join {
-				with company.projects
-				on departments.dept_id == projects.dept_id
-			}
+				from company.projects
+			} on departments.dept_id == projects.dept_id
 			"#,
 			Params::None,
 		)
@@ -266,9 +254,8 @@ inner join {
 	log_query(
 		r#"from company.employees
 inner join {
-  with company.departments
-  on employees.dept_id == departments.dept_id
-}
+  from company.departments
+} on employees.dept_id == departments.dept_id
 aggregate { avg(employees.salary), count(employees.emp_id) }
   by departments.dept_name"#,
 	);
@@ -277,9 +264,8 @@ aggregate { avg(employees.salary), count(employees.emp_id) }
 			r#"
 			from company.employees
 			inner join {
-				with company.departments
-				on employees.dept_id == departments.dept_id
-			}
+				from company.departments
+			} on employees.dept_id == departments.dept_id
 			aggregate { avg(employees.salary), count(employees.emp_id) }
 				by departments.dept_name
 			"#,
