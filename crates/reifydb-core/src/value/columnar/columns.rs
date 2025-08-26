@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	Type, Value,
 	interface::{TableDef, ViewDef},
-	value::columnar::{
-		Column, ColumnData, ColumnQualified, SourceQualified,
+	value::{
+		columnar::{
+			Column, ColumnData, ColumnQualified, SourceQualified,
+		},
+		container::UndefinedContainer,
 	},
 };
 
@@ -158,7 +161,7 @@ impl Columns {
 				.map(|name| {
 					Column::ColumnQualified(ColumnQualified {
                     name: name.to_string(),
-                    data: ColumnData::with_capacity(Type::Undefined, 0),
+                    data: ColumnData::Undefined(UndefinedContainer::new(0)),
                 })
 				})
 				.collect();

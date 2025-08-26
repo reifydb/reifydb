@@ -265,7 +265,9 @@ impl ColumnData {
 			Type::Uuid4 => Self::uuid4_with_capacity(capacity),
 			Type::Uuid7 => Self::uuid7_with_capacity(capacity),
 			Type::Blob => Self::blob_with_capacity(capacity),
-			Type::Undefined => Self::undefined(capacity),
+			Type::Undefined => panic!(
+				"it is not possible to create an undefined container with capacity without setting the values alread"
+			),
 		}
 	}
 

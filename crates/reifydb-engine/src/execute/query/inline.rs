@@ -419,12 +419,37 @@ impl InlineDataNode {
 						params: &self.context.params,
 					};
 
-					column_data.extend(evaluate(
+					let evaluated = evaluate(
 						&ctx,
 						&alias_expr.expression,
-					)?
-					.data()
-					.clone())?;
+					)?;
+
+					// Ensure we always add exactly one
+					// value
+					let eval_len = evaluated.data().len();
+					if eval_len == 1 {
+						column_data.extend(
+							evaluated
+								.data()
+								.clone(),
+						)?;
+					} else if eval_len == 0 {
+						// If evaluation returned empty,
+						// push undefined
+						column_data.push_value(
+							Value::Undefined,
+						);
+					} else {
+						// This shouldn't happen for
+						// single-row evaluation
+						// but if it does, take only the
+						// first value
+						let first_value = evaluated.data().iter().next()
+							.unwrap_or(Value::Undefined);
+						column_data.push_value(
+							first_value,
+						);
+					}
 				} else {
 					column_data
 						.push_value(Value::Undefined);

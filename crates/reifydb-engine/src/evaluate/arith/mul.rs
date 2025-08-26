@@ -10,7 +10,7 @@ use reifydb_core::{
 	return_error,
 	value::{
 		IsNumber,
-		container::number::NumberContainer,
+		container::{UndefinedContainer, number::NumberContainer},
 		number::{Promote, SafeMul},
 	},
 };
@@ -28,6 +28,29 @@ impl StandardEvaluator {
 	) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &mul.left)?;
 		let right = self.evaluate(ctx, &mul.right)?;
+
+		// Debug row count mismatch
+		if left.data().len() != right.data().len() {
+			eprintln!(
+				"MUL DEBUG: Left has {} rows, right has {} rows",
+				left.data().len(),
+				right.data().len()
+			);
+		}
+
+		// Debug undefined operands
+		if left.get_type() == Type::Undefined
+			|| right.get_type() == Type::Undefined
+		{
+			eprintln!(
+				"MUL DEBUG: Undefined operand - left: {} (len {}), right: {} (len {})",
+				left.get_type(),
+				left.data().len(),
+				right.get_type(),
+				right.data().len()
+			);
+		}
+
 		let target = Type::promote(left.get_type(), right.get_type());
 
 		match (&left.data(), &right.data()) {
@@ -498,25 +521,23 @@ impl StandardEvaluator {
 			// Handle undefined values - any operation with
 			// undefined results in undefined
 			(ColumnData::Undefined(l), _) => {
-				let mut data =
-					ctx.pooled(Type::Undefined, l.len());
-				for _ in 0..l.len() {
-					data.push_undefined();
-				}
 				Ok(Column::ColumnQualified(ColumnQualified {
 					name: mul.fragment().fragment().into(),
-					data,
+					data: ColumnData::Undefined(
+						UndefinedContainer::new(
+							l.len(),
+						),
+					),
 				}))
 			}
 			(_, ColumnData::Undefined(r)) => {
-				let mut data =
-					ctx.pooled(Type::Undefined, r.len());
-				for _ in 0..r.len() {
-					data.push_undefined();
-				}
 				Ok(Column::ColumnQualified(ColumnQualified {
 					name: mul.fragment().fragment().into(),
-					data,
+					data: ColumnData::Undefined(
+						UndefinedContainer::new(
+							r.len(),
+						),
+					),
 				}))
 			}
 

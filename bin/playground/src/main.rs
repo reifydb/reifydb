@@ -59,7 +59,6 @@ fn main() {
 	{
 		log_info!("{}", frame);
 	}
-	return;
 
 	db.command_as_root(
 		r#"

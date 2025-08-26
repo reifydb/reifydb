@@ -116,6 +116,7 @@ impl MapTerminalOperator {
 					// Evaluate the expression first
 					let result =
 						ctx.evaluate(&eval_ctx, expr)?;
+
 					let current_type =
 						result.data().get_type();
 					let target_type = view_column.ty;
