@@ -7,34 +7,83 @@ use crossbeam_skiplist::map::Entry;
 use reifydb_core::{
 	Version,
 	interface::{
-		CdcCount, CdcEvent, CdcEventKey, CdcGet, CdcRange, CdcScan,
-		CdcStorage,
+		CdcCount, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
 	},
 };
 
 use crate::lmdb::Lmdb;
 
 pub struct Range<'a> {
-	iter: Box<dyn Iterator<Item = Entry<'a, CdcEventKey, CdcEvent>> + 'a>,
+	iter: Box<dyn Iterator<Item = Entry<'a, Version, Vec<CdcEvent>>> + 'a>,
+	current_events: Vec<CdcEvent>,
+	current_index: usize,
 }
 
 impl<'a> Iterator for Range<'a> {
 	type Item = CdcEvent;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.iter.next().map(|entry| entry.value().clone())
+		// If we have events in the current batch, return the next one
+		if self.current_index < self.current_events.len() {
+			let event =
+				self.current_events[self.current_index].clone();
+			self.current_index += 1;
+			return Some(event);
+		}
+
+		// Otherwise, get the next version's events
+		if let Some(entry) = self.iter.next() {
+			self.current_events = entry.value().clone();
+			self.current_index = 0;
+
+			// Recursively call next() to get the first event from
+			// the new batch
+			if !self.current_events.is_empty() {
+				self.next()
+			} else {
+				// Empty batch, try next version
+				self.next()
+			}
+		} else {
+			None
+		}
 	}
 }
 
 pub struct Scan<'a> {
-	iter: Box<dyn Iterator<Item = Entry<'a, CdcEventKey, CdcEvent>> + 'a>,
+	iter: Box<dyn Iterator<Item = Entry<'a, Version, Vec<CdcEvent>>> + 'a>,
+	current_events: Vec<CdcEvent>,
+	current_index: usize,
 }
 
 impl<'a> Iterator for Scan<'a> {
 	type Item = CdcEvent;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.iter.next().map(|entry| entry.value().clone())
+		// If we have events in the current batch, return the next one
+		if self.current_index < self.current_events.len() {
+			let event =
+				self.current_events[self.current_index].clone();
+			self.current_index += 1;
+			return Some(event);
+		}
+
+		// Otherwise, get the next version's events
+		if let Some(entry) = self.iter.next() {
+			self.current_events = entry.value().clone();
+			self.current_index = 0;
+
+			// Recursively call next() to get the first event from
+			// the new batch
+			if !self.current_events.is_empty() {
+				self.next()
+			} else {
+				// Empty batch, try next version
+				self.next()
+			}
+		} else {
+			None
+		}
 	}
 }
 

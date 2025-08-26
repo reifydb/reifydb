@@ -65,6 +65,11 @@ impl<E: Evaluator> FlowEngine<E> {
 							find_source_node(
 								flow, &source,
 							) {
+							log_debug!(
+								"FlowEngine: Found source node {:?} in flow {:?}",
+								node.id,
+								flow_id
+							);
 							// Process this node
 							// with all diffs for
 							// this source
@@ -74,6 +79,12 @@ impl<E: Evaluator> FlowEngine<E> {
 								node,
 								&bulkchange,
 							)?;
+						} else {
+							log_debug!(
+								"FlowEngine: No source node found for {:?} in flow {:?}",
+								source,
+								flow_id
+							);
 						}
 					}
 				}
@@ -126,6 +137,12 @@ impl<E: Evaluator> FlowEngine<E> {
 				view,
 				..
 			} => {
+				use reifydb_core::log_debug;
+				log_debug!(
+					"FlowEngine: Applying {} diffs to view {:?}",
+					change.diffs.len(),
+					view
+				);
 				// Sinks persist the final results
 				self.apply_to_view(txn, *view, &change)?;
 				change

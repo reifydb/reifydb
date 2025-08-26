@@ -87,7 +87,7 @@ mod tests {
 		let encoded = key.encode();
 		let expected = vec![
 			0xFE, // version
-			0xEC, // kind
+			0xED, // kind
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
 		];
 		assert_eq!(encoded.as_slice(), expected);

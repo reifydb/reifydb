@@ -20,6 +20,11 @@ use reifydb_engine::{StandardEngine, StandardEvaluator};
 use super::intercept::FlowChange;
 use crate::engine::FlowEngine;
 
+// The table ID for reifydb.flows table
+// This is where flow definitions are stored
+// TODO: Make this configurable or detect dynamically
+const FLOWS_TABLE_ID: u64 = 1025;
+
 /// Consumer that processes CDC events for Flow subsystem
 pub struct FlowConsumer<T: Transaction> {
 	engine: StandardEngine<T>,
@@ -99,8 +104,8 @@ impl<T: Transaction> FlowConsumer<T> {
 		let mut flow_engine =
 			FlowEngine::new(StandardEvaluator::default());
 
-		// Load and register flows
 		let flows = self.load_flows(txn)?;
+
 		log_debug!(
 			"FlowConsumer: Loaded {} flows from reifydb.flows",
 			flows.len()
@@ -200,6 +205,8 @@ impl<T: Transaction> FlowConsumer<T> {
 
 		if !diffs.is_empty() {
 			let change = Change::new(diffs);
+			// Process changes even if no flows are registered yet
+			// The flow engine will handle it appropriately
 			flow_engine.process(txn, change)?;
 		}
 
@@ -214,11 +221,26 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		let mut changes = Vec::new();
+		let mut has_flow_inserts = false;
 
+		// Process all events and detect if we have flow table inserts
 		for event in events {
 			if let Some(Key::TableRow(table_row)) =
 				Key::decode(event.key())
 			{
+				// Check if this is an insert to the flows table
+				if matches!(
+					&event.change,
+					CdcChange::Insert { .. }
+				) && table_row.table.0 == FLOWS_TABLE_ID
+				{
+					has_flow_inserts = true;
+					log_debug!(
+						"FlowConsumer: Detected flow table insert (table={:?})",
+						table_row.table
+					);
+				}
+
 				// Convert CDC events to FlowChange events
 				let flowchange = match &event.change {
 					CdcChange::Insert {
@@ -255,8 +277,9 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 
 		if !changes.is_empty() {
 			log_debug!(
-				"Flow consumer processing {} CDC events",
-				changes.len()
+				"Flow consumer processing {} CDC events (has_flow_inserts={})",
+				changes.len(),
+				has_flow_inserts
 			);
 			self.process_changes(txn, changes)?;
 		}

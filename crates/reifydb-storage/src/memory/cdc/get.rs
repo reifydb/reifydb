@@ -3,28 +3,18 @@
 
 use reifydb_core::{
 	Result, Version,
-	interface::{CdcEvent, CdcEventKey, CdcGet},
+	interface::{CdcEvent, CdcGet},
 };
 
 use crate::memory::Memory;
 
 impl CdcGet for Memory {
 	fn get(&self, version: Version) -> Result<Vec<CdcEvent>> {
-		let start_key = CdcEventKey {
-			version,
-			sequence: 0,
-		};
-		let end_key = CdcEventKey {
-			version: version + 1,
-			sequence: 0,
-		};
-
-		let events: Vec<CdcEvent> = self
-			.cdc_events
-			.range(start_key..end_key)
-			.map(|entry| entry.value().clone())
-			.collect();
-
-		Ok(events)
+		// Get the events for this specific version
+		if let Some(entry) = self.cdc_events.get(&version) {
+			Ok(entry.value().clone())
+		} else {
+			Ok(vec![])
+		}
 	}
 }
