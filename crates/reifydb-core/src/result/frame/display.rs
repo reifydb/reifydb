@@ -59,7 +59,8 @@ impl Display for Frame {
 
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &self[col_idx];
-			let display_name = col.qualified_name();
+			let display_name =
+				escape_control_chars(&col.qualified_name());
 			col_widths[display_idx] = display_width(&display_name);
 		}
 
@@ -96,7 +97,9 @@ impl Display for Frame {
 			.map(|(display_idx, &col_idx)| {
 				let col = &self[col_idx];
 				let w = col_widths[display_idx];
-				let name = col.qualified_name();
+				let name = escape_control_chars(
+					&col.qualified_name(),
+				);
 				let pad = w - display_width(&name);
 				let l = pad / 2;
 				let r = pad - l;
