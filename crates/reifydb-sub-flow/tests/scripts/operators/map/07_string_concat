@@ -1,0 +1,63 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test string concatenation in map operator
+# Using || operator for string concatenation
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, first: utf8, last: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.full_names { 
+  id: int4, 
+  full_name: utf8,
+  formal: utf8 
+} with {
+  from test.source
+  map { 
+    id,
+    first || " " || last as full_name,
+    "Mr/Ms. " || last as formal
+  }
+}'
+---
+> +----------+--------------+-----------+
+> |  schema  |     view     |  created  |
+> +----------+--------------+-----------+
+> |   test   |  full_names  |   true    |
+> +----------+--------------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, first: "John", last: "Doe"},
+  {id: 2, first: "Jane", last: "Smith"},
+  {id: 3, first: "Bob", last: "Johnson"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     3      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Should show concatenated strings
+command 'from test.full_names'
+---
+> +------+---------------+------------------+
+> |  id  |   full_name   |     formal       |
+> +------+---------------+------------------+
+> |  3   |  Bob Johnson  |  Mr/Ms. Johnson  |
+> |  2   |  Jane Smith   |  Mr/Ms. Smith    |
+> |  1   |   John Doe    |  Mr/Ms. Doe      |
+> +------+---------------+------------------+
+> 

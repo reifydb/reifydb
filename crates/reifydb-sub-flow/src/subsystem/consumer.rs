@@ -38,8 +38,8 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 
 	/// Helper method to convert row bytes to Columns format
-	fn to_columns<TC: CommandTransaction>(
-		txn: &mut TC,
+	fn to_columns<CT: CommandTransaction>(
+		txn: &mut CT,
 		table: TableId,
 		row_bytes: &[u8],
 	) -> Result<Columns> {
@@ -93,9 +93,9 @@ impl<T: Transaction> FlowConsumer<T> {
 		Ok(flows)
 	}
 
-	fn process_changes<TC: CommandTransaction>(
+	fn process_changes<CT: CommandTransaction>(
 		&self,
-		txn: &mut TC,
+		txn: &mut CT,
 		changes: Vec<Change>,
 	) -> Result<()> {
 		use reifydb_core::interface::SourceId;
@@ -115,7 +115,7 @@ impl<T: Transaction> FlowConsumer<T> {
 				"FlowConsumer: Registering flow with id: {:?}",
 				flow.id
 			);
-			flow_engine.register(flow)?;
+			flow_engine.register(txn, flow)?;
 		}
 
 		// Convert FlowChange events to flow engine Change format

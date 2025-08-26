@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test type conversions in map
+# Mixing int and float operations
+
+(command 'create schema test;')
+command 'create table test.source { 
+  id: int4,
+  int_val: int4,
+  float_val: float8,
+  text_num: utf8
+}'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.casted { 
+  id: int4,
+  int_to_float: float8,
+  float_to_int: int4,
+  mixed_calc: float8,
+  ratio: float8
+} with {
+  from test.source
+  map { 
+    id,
+    int_val * 1.0 as int_to_float,
+    float_val / 1 as float_to_int,
+    int_val + float_val as mixed_calc,
+    int_val / 3.0 as ratio
+  }
+}'
+---
+> +----------+----------+-----------+
+> |  schema  |   view   |  created  |
+> +----------+----------+-----------+
+> |   test   |  casted  |   true    |
+> +----------+----------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, int_val: 10, float_val: 3.5, text_num: "42"},
+  {id: 2, int_val: 7, float_val: 2.8, text_num: "99"},
+  {id: 3, int_val: 15, float_val: 4.2, text_num: "123"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     3      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Should show type conversion results
+command 'from test.casted'
+---
+> +------+----------------+----------------+--------------+---------+
+> |  id  |  int_to_float  |  float_to_int  |  mixed_calc  |  ratio  |
+> +------+----------------+----------------+--------------+---------+
+> |  3   |     15.0       |      4.2       |     19.2     |   5.0   |
+> |  2   |      7.0       |      2.8       |      9.8     |  2.333  |
+> |  1   |     10.0       |      3.5       |     13.5     |  3.333  |
+> +------+----------------+----------------+--------------+---------+
+> 

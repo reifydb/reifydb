@@ -1,0 +1,69 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test arithmetic expressions in map operator
+# Addition, subtraction, multiplication, division
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, a: int4, b: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.computed { 
+  id: int4, 
+  sum: int4, 
+  diff: int4, 
+  product: int4, 
+  quotient: int4 
+} with {
+  from test.source
+  map { 
+    id,
+    a + b as sum,
+    a - b as diff,
+    a * b as product,
+    a / b as quotient
+  }
+}'
+---
+> +----------+------------+-----------+
+> |  schema  |    view    |  created  |
+> +----------+------------+-----------+
+> |   test   |  computed  |   true    |
+> +----------+------------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, a: 10, b: 5},
+  {id: 2, a: 20, b: 4},
+  {id: 3, a: 15, b: 3},
+  {id: 4, a: 8, b: 2}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     4      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Should show computed values
+command 'from test.computed'
+---
+> +------+-------+--------+-----------+------------+
+> |  id  |  sum  |  diff  |  product  |  quotient  |
+> +------+-------+--------+-----------+------------+
+> |  4   |  10   |   6    |    16     |     4      |
+> |  3   |  18   |   12   |    45     |     5      |
+> |  2   |  24   |   16   |    80     |     5      |
+> |  1   |  15   |   5    |    50     |     2      |
+> +------+-------+--------+-----------+------------+
+> 

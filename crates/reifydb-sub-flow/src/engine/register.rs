@@ -9,7 +9,9 @@ use reifydb_core::{
 			Union,
 		},
 	},
-	interface::{Evaluator, FlowId, FlowNodeId, SourceId},
+	interface::{
+		Evaluator, FlowId, FlowNodeId, QueryTransaction, SourceId,
+	},
 };
 
 use crate::{
@@ -22,7 +24,11 @@ use crate::{
 };
 
 impl<E: Evaluator> FlowEngine<E> {
-	pub fn register(&mut self, flow: Flow) -> crate::Result<()> {
+	pub fn register(
+		&mut self,
+		txn: &mut impl QueryTransaction,
+		flow: Flow,
+	) -> crate::Result<()> {
 		debug_assert!(
 			!self.flows.contains_key(&flow.id),
 			"Flow already registered"

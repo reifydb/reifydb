@@ -1,0 +1,78 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test boolean expressions in map
+# Comparison and logical operations
+
+(command 'create schema test;')
+command 'create table test.source { 
+  id: int4,
+  age: int4,
+  score: int4,
+  status: utf8
+}'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.eligibility { 
+  id: int4,
+  is_adult: bool,
+  passed: bool,
+  is_active: bool,
+  eligible: bool,
+  needs_review: bool
+} with {
+  from test.source
+  map { 
+    id,
+    age >= 18 as is_adult,
+    score > 70 as passed,
+    status == "active" as is_active,
+    (age >= 18) && (score > 70) as eligible,
+    (score >= 60) && (score <= 70) as needs_review
+  }
+}'
+---
+> +----------+---------------+-----------+
+> |  schema  |     view      |  created  |
+> +----------+---------------+-----------+
+> |   test   |  eligibility  |   true    |
+> +----------+---------------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, age: 25, score: 85, status: "active"},
+  {id: 2, age: 17, score: 75, status: "active"},
+  {id: 3, age: 30, score: 65, status: "inactive"},
+  {id: 4, age: 22, score: 70, status: "active"},
+  {id: 5, age: 16, score: 55, status: "pending"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     5      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Should show boolean expression results
+command 'from test.eligibility'
+---
+> +------+------------+----------+------------+------------+----------------+
+> |  id  |  is_adult  |  passed  |  is_active |  eligible  |  needs_review  |
+> +------+------------+----------+------------+------------+----------------+
+> |  5   |   false    |  false   |   false    |   false    |     false      |
+> |  4   |   true     |  false   |   true     |   false    |     true       |
+> |  3   |   true     |  false   |   false    |   false    |     true       |
+> |  2   |   false    |  true    |   true     |   false    |     false      |
+> |  1   |   true     |  true    |   true     |   true     |     false      |
+> +------+------------+----------+------------+------------+----------------+
+> 

@@ -1,0 +1,117 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test map with incremental inserts
+# View should update correctly with each batch
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.transformed { 
+  id: int4, 
+  original: int4,
+  doubled: int4,
+  squared: int4
+} with {
+  from test.source
+  map { 
+    id,
+    value as original,
+    value * 2 as doubled,
+    value * value as squared
+  }
+}'
+---
+> +----------+---------------+-----------+
+> |  schema  |     view      |  created  |
+> +----------+---------------+-----------+
+> |   test   |  transformed  |   true    |
+> +----------+---------------+-----------+
+> 
+
+# First batch
+command 'from [
+  {id: 1, value: 3},
+  {id: 2, value: 5}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     2      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+command 'from test.transformed'
+---
+> +------+------------+-----------+-----------+
+> |  id  |  original  |  doubled  |  squared  |
+> +------+------------+-----------+-----------+
+> |  2   |     5      |    10     |    25     |
+> |  1   |     3      |     6     |     9     |
+> +------+------------+-----------+-----------+
+> 
+
+# Second batch
+command 'from [
+  {id: 3, value: 7},
+  {id: 4, value: 4}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     2      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+command 'from test.transformed'
+---
+> +------+------------+-----------+-----------+
+> |  id  |  original  |  doubled  |  squared  |
+> +------+------------+-----------+-----------+
+> |  4   |     4      |     8     |    16     |
+> |  3   |     7      |    14     |    49     |
+> |  2   |     5      |    10     |    25     |
+> |  1   |     3      |     6     |     9     |
+> +------+------------+-----------+-----------+
+> 
+
+# Third batch
+command 'from [
+  {id: 5, value: 10}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     1      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Final view state
+command 'from test.transformed'
+---
+> +------+------------+-----------+-----------+
+> |  id  |  original  |  doubled  |  squared  |
+> +------+------------+-----------+-----------+
+> |  5   |    10      |    20     |    100    |
+> |  4   |     4      |     8     |    16     |
+> |  3   |     7      |    14     |    49     |
+> |  2   |     5      |    10     |    25     |
+> |  1   |     3      |     6     |     9     |
+> +------+------------+-----------+-----------+
+> 

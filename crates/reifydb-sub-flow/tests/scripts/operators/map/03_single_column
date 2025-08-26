@@ -1,0 +1,55 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test map operator with single column projection
+# Single column without braces
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, name: utf8, score: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.names_only { name: utf8 } with {
+  from test.source
+  map name
+}'
+---
+> +----------+--------------+-----------+
+> |  schema  |     view     |  created  |
+> +----------+--------------+-----------+
+> |   test   |  names_only  |   true    |
+> +----------+--------------+-----------+
+> 
+
+# Insert test data
+command 'from [
+  {id: 1, name: "Alice", score: 95},
+  {id: 2, name: "Bob", score: 87},
+  {id: 3, name: "Charlie", score: 92}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     3      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Should only show name column
+command 'from test.names_only'
+---
+> +-----------+
+> |   name    |
+> +-----------+
+> |  Charlie  |
+> |    Bob    |
+> |   Alice   |
+> +-----------+
+> 
