@@ -69,13 +69,18 @@ impl<T: Transaction> FlowConsumer<T> {
 		)?;
 
 		for frame in frames {
-			// Access the first row, first column
-			let value = frame[0].get_value(0);
-			if !matches!(value, Value::Undefined) {
-				if let Ok(flow) = serde_json::from_str::<Flow>(
-					&value.to_string(),
-				) {
-					flows.push(flow);
+			// Process all rows in the frame
+			if !frame.is_empty() {
+				let column = &frame[0];
+				for row_idx in 0..column.data.len() {
+					let value = column.get_value(row_idx);
+					if !matches!(value, Value::Undefined) {
+						if let Ok(flow) = serde_json::from_str::<Flow>(
+							&value.to_string(),
+						) {
+							flows.push(flow);
+						}
+					}
 				}
 			}
 		}
@@ -96,7 +101,15 @@ impl<T: Transaction> FlowConsumer<T> {
 
 		// Load and register flows
 		let flows = self.load_flows(txn)?;
+		log_debug!(
+			"FlowConsumer: Loaded {} flows from reifydb.flows",
+			flows.len()
+		);
 		for flow in flows {
+			log_debug!(
+				"FlowConsumer: Registering flow with id: {:?}",
+				flow.id
+			);
 			flow_engine.register(flow)?;
 		}
 

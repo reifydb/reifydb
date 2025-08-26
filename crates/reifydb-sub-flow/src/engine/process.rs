@@ -37,6 +37,12 @@ impl<E: Evaluator> FlowEngine<E> {
 		for (source, diffs) in diffs_by_source {
 			// Find all flows triggered by this source
 			if let Some(flow_ids) = self.sources.get(&source) {
+				use reifydb_core::log_debug;
+				log_debug!(
+					"FlowEngine: Source {:?} triggers {} flows",
+					source,
+					flow_ids.len()
+				);
 				// Process the diffs once for all flows with
 				// this source
 				let bulkchange = Change {
@@ -48,6 +54,11 @@ impl<E: Evaluator> FlowEngine<E> {
 					if let Some(flow) =
 						self.flows.get(flow_id)
 					{
+						log_debug!(
+							"FlowEngine: Processing flow {:?} for source {:?}",
+							flow_id,
+							source
+						);
 						// Find the source node in the
 						// flow that matches this source
 						if let Some(node) =
@@ -66,6 +77,12 @@ impl<E: Evaluator> FlowEngine<E> {
 						}
 					}
 				}
+			} else {
+				use reifydb_core::log_debug;
+				log_debug!(
+					"FlowEngine: No flows registered for source {:?}",
+					source
+				);
 			}
 		}
 		Ok(())
