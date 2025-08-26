@@ -22,6 +22,7 @@ mod map;
 mod policy;
 mod prefix;
 mod primary;
+mod select;
 mod sort;
 mod take;
 mod tuple;
