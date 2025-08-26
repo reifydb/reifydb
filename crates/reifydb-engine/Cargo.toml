@@ -17,8 +17,6 @@ reifydb-transaction = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-unicode-width = { workspace = true }
-uuid = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

@@ -223,15 +223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "colored"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
-dependencies = [
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -601,12 +592,6 @@ dependencies = [
  "serde",
  "serde_json",
 ]
-
-[[package]]
-name = "hex"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http"
@@ -1537,16 +1522,13 @@ dependencies = [
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [
- "base64",
  "chrono",
  "crossbeam-channel",
  "crossbeam-skiplist",
- "hex",
  "once_cell",
  "regex",
  "serde",
  "serde_bytes",
- "unicode-width",
  "uuid",
 ]
 
@@ -1564,8 +1546,6 @@ dependencies = [
  "reifydb-transaction",
  "serde",
  "serde_json",
- "unicode-width",
- "uuid",
 ]
 
 [[package]]
@@ -1574,7 +1554,6 @@ version = "0.0.1"
 dependencies = [
  "chrono",
  "futures-util",
- "hex",
  "prost",
  "reifydb-catalog",
  "reifydb-core",
@@ -1656,7 +1635,6 @@ dependencies = [
 name = "reifydb-sub-logging"
 version = "0.0.1"
 dependencies = [
- "colored",
  "crossbeam-channel",
  "parking_lot",
  "reifydb-core",
@@ -2223,12 +2201,6 @@ name = "unicode-segmentation"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
-
-[[package]]
-name = "unicode-width"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
 
 [[package]]
 name = "unindent"

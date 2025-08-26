@@ -92,7 +92,7 @@ mod tests {
                 let mut input = $input;
                 let expect = $expect;
                 let output = serialize(&input);
-                assert_eq!(hex::encode(&output), expect, "encode failed");
+                assert_eq!(crate::util::hex::encode(&output), expect, "encode failed");
 
                 let expect = input;
                 input = deserialize(&output).unwrap();

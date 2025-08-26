@@ -13,8 +13,5 @@ reifydb-engine = { workspace = true }
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 
-# For colored console output
-colored = { workspace = true }
-
 [dev-dependencies]
 reifydb-testing = { workspace = true }

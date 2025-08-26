@@ -1,13 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+pub mod base64;
 pub mod bitvec;
 pub mod clock;
+pub mod colored;
 pub mod cowvec;
 pub mod either;
 pub mod encoding;
+pub mod hex;
 pub mod ioc;
 pub mod retry;
+pub mod unicode_width;
 mod versioned;
 pub mod wait_group;
 

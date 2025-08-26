@@ -26,7 +26,6 @@ tokio-stream = { workspace = true, optional = true }
 
 uuid = { workspace = true }
 chrono = { workspace = true }
-hex = { workspace = true }
 
 
 # grpc

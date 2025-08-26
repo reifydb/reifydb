@@ -3,10 +3,9 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use unicode_width::UnicodeWidthStr;
-
 use crate::{
 	result::frame::{Frame, FrameColumn},
+	util::unicode_width::UnicodeWidthStr,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
