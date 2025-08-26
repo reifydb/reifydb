@@ -9,6 +9,7 @@ mod query;
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	IndexType, JoinType, OwnedFragment, SortDirection, SortKey,
+	error::{Error, diagnostic::internal},
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		expression::{AliasExpression, Expression},
@@ -41,7 +42,7 @@ impl Compiler {
 		if is_update_pipeline || is_delete_pipeline {
 			// Build pipeline: compile all nodes except the last one
 			// into a chain
-			let mut pipeline_nodes = Vec::new();
+			let mut chain_nodes = Vec::new();
 
 			for (i, node) in ast_vec.into_iter().enumerate() {
 				if i == ast_len - 1 {
@@ -50,11 +51,14 @@ impl Compiler {
 						Ast::AstUpdate(update_ast) => {
 							// Build the pipeline as
 							// input to update
-							let input = if !pipeline_nodes.is_empty() {
-								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-							} else {
-								None
-							};
+							let input =
+								if !chain_nodes
+									.is_empty(
+									) {
+									Some(Box::new(Self::build_chain(chain_nodes)?))
+								} else {
+									None
+								};
 
 							return Ok(vec![LogicalPlan::Update(UpdateNode {
 								schema: update_ast.schema.map(|s| s.fragment()),
@@ -65,11 +69,14 @@ impl Compiler {
 						Ast::AstDelete(delete_ast) => {
 							// Build the pipeline as
 							// input to delete
-							let input = if !pipeline_nodes.is_empty() {
-								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-							} else {
-								None
-							};
+							let input =
+								if !chain_nodes
+									.is_empty(
+									) {
+									Some(Box::new(Self::build_chain(chain_nodes)?))
+								} else {
+									None
+								};
 
 							return Ok(vec![LogicalPlan::Delete(DeleteNode {
 								schema: delete_ast.schema.map(|s| s.fragment()),
@@ -81,9 +88,9 @@ impl Compiler {
 					}
 				} else {
 					// Add to pipeline
-					pipeline_nodes.push(
-						Self::compile_single(node)?,
-					);
+					chain_nodes.push(Self::compile_single(
+						node,
+					)?);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -116,20 +123,18 @@ impl Compiler {
 		}
 	}
 
-	// Helper to build a pipeline from multiple logical plans
-	fn build_pipeline(
-		plans: Vec<LogicalPlan>,
-	) -> crate::Result<LogicalPlan> {
-		// For now, just return the last plan in the chain
-		// In a more complete implementation, this would properly chain
-		// the plans
-		plans.into_iter().last().ok_or_else(|| {
-			reifydb_core::error::Error(
-				reifydb_core::error::diagnostic::internal(
-					"Empty pipeline",
-				),
-			)
-		})
+	fn build_chain(plans: Vec<LogicalPlan>) -> crate::Result<LogicalPlan> {
+		// The pipeline should be properly structured with inputs
+		// For now, we'll wrap them in a special Pipeline plan
+		// that the physical compiler can handle
+		if plans.is_empty() {
+			panic!("Empty pipeline");
+		}
+
+		// Return a Chain logical plan that contains all the steps
+		Ok(LogicalPlan::Chain(ChainedNode {
+			steps: plans,
+		}))
 	}
 }
 
@@ -158,6 +163,13 @@ pub enum LogicalPlan {
 	Map(MapNode),
 	InlineData(InlineDataNode),
 	SourceScan(SourceScanNode),
+	// Chain wrapper for chained operations
+	Chain(ChainedNode),
+}
+
+#[derive(Debug)]
+pub struct ChainedNode {
+	pub steps: Vec<LogicalPlan>,
 }
 
 #[derive(Debug)]

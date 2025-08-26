@@ -310,6 +310,17 @@ impl Compiler {
 					));
 				}
 
+				LogicalPlan::Chain(chain) => {
+					// Compile the chain of operations
+					// This ensures they all share the same
+					// stack
+					let chain_result =
+						Self::compile(rx, chain.steps)?;
+					if let Some(result) = chain_result {
+						stack.push(result);
+					}
+				}
+
 				_ => unimplemented!(),
 			}
 		}

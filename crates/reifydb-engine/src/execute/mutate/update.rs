@@ -7,8 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	ColumnDescriptor, Type, Value,
 	interface::{
-		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
-		Transaction, VersionedCommandTransaction,
+		ColumnPolicyKind, EncodableKey, Params, SchemaDef, TableDef,
+		TableRowKey, Transaction, VersionedCommandTransaction,
 	},
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
@@ -18,7 +18,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
-use reifydb_rql::plan::physical::UpdatePlan;
+use reifydb_rql::plan::physical::{PhysicalPlan, UpdatePlan};
 
 use crate::{
 	StandardCommandTransaction,
@@ -29,6 +29,76 @@ use crate::{
 	},
 };
 
+/// Extract table information from a physical plan tree
+/// Returns (schema, table) if a unique table can be identified
+fn extract_table_from_plan(
+	plan: &PhysicalPlan,
+) -> Option<(SchemaDef, TableDef)> {
+	match plan {
+		PhysicalPlan::TableScan(scan) => {
+			Some((scan.schema.clone(), scan.table.clone()))
+		}
+		PhysicalPlan::Filter(filter) => {
+			extract_table_from_plan(&filter.input)
+		}
+		PhysicalPlan::Map(map) => map
+			.input
+			.as_ref()
+			.and_then(|input| extract_table_from_plan(input)),
+		PhysicalPlan::Aggregate(agg) => {
+			extract_table_from_plan(&agg.input)
+		}
+		PhysicalPlan::Sort(sort) => {
+			extract_table_from_plan(&sort.input)
+		}
+		PhysicalPlan::Take(take) => {
+			extract_table_from_plan(&take.input)
+		}
+		PhysicalPlan::JoinInner(join) => {
+			// Check both sides, prefer table over inline data
+			let left = extract_table_from_plan(&join.left);
+			let right = extract_table_from_plan(&join.right);
+
+			match (left, right) {
+				(Some(table), None) | (None, Some(table)) => {
+					Some(table)
+				}
+				(Some(left_table), Some(right_table)) => {
+					// Multiple tables - ambiguous, caller
+					// should handle For now, return
+					// the left table
+					Some(left_table)
+				}
+				(None, None) => None,
+			}
+		}
+		PhysicalPlan::JoinLeft(join) => {
+			// For left join, the left side is the primary table
+			extract_table_from_plan(&join.left)
+		}
+		PhysicalPlan::JoinNatural(join) => {
+			// Check both sides, prefer table over inline data
+			let left = extract_table_from_plan(&join.left);
+			let right = extract_table_from_plan(&join.right);
+
+			match (left, right) {
+				(Some(table), None) | (None, Some(table)) => {
+					Some(table)
+				}
+				(Some(left_table), Some(right_table)) => {
+					// Multiple tables - ambiguous
+					Some(left_table)
+				}
+				(None, None) => None,
+			}
+		}
+		PhysicalPlan::InlineData(_) => None,
+		PhysicalPlan::ViewScan(_) => None, /* Views are not directly
+		                                     * updateable for now */
+		_ => None,
+	}
+}
+
 impl Executor {
 	pub(crate) fn update<T: Transaction>(
 		&self,
@@ -36,44 +106,55 @@ impl Executor {
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let Some(schema_ref) = plan.schema.as_ref() else {
-			return_error!(schema_not_found(
-				None::<reifydb_core::OwnedFragment>,
-				"default"
-			));
-		};
-		let schema_name = schema_ref.fragment();
+		// Get table from plan or infer from input pipeline
+		let (schema, table) =
+			if let (Some(schema_ref), Some(table_ref)) =
+				(&plan.schema, &plan.table)
+			{
+				// Both schema and table explicitly specified
+				let schema_name = schema_ref.fragment();
+				let Some(schema) =
+					CatalogStore::find_schema_by_name(
+						txn,
+						schema_name,
+					)?
+				else {
+					return_error!(schema_not_found(
+						Some(schema_ref.clone()),
+						schema_name
+					));
+				};
 
-		let schema =
-			CatalogStore::find_schema_by_name(txn, schema_name)?
-				.unwrap();
+				let Some(table) =
+					CatalogStore::find_table_by_name(
+						txn,
+						schema.id,
+						&table_ref.fragment(),
+					)?
+				else {
+					let fragment = table_ref.clone();
+					return_error!(table_not_found(
+						fragment.clone(),
+						schema_name,
+						&fragment.fragment(),
+					));
+				};
 
-		// Get table from plan or infer from input
-		let table = if let Some(table_ref) = &plan.table {
-			// Explicit table specified
-			let Some(table) = CatalogStore::find_table_by_name(
-				txn,
-				schema.id,
-				&table_ref.fragment(),
-			)?
-			else {
-				let fragment = table_ref.clone();
-				return_error!(table_not_found(
-					fragment.clone(),
-					schema_name,
-					&fragment.fragment(),
-				));
-			};
-			table
-		} else {
-			// TODO: Infer table from input pipeline
-			// For now, return an error requiring explicit table
-			return_error!(
-				reifydb_core::error::diagnostic::internal(
-					"UPDATE requires explicit target table when table is not specified"
+				(schema, table)
+			} else if plan.schema.is_none() && plan.table.is_none()
+			{
+				// Both should be inferred from the pipeline
+				// Extract table info from the input plan
+				extract_table_from_plan(&plan.input).expect(
+					"Cannot infer target table from pipeline - no table found",
 				)
-			);
-		};
+			} else {
+				// Mixed case - one specified, one not
+				// (shouldn't happen with current parser)
+				panic!(
+					"UPDATE requires either both schema and table or neither"
+				);
+			};
 
 		let table_types: Vec<Type> =
 			table.columns.iter().map(|c| c.ty).collect();
