@@ -495,6 +495,31 @@ impl StandardEvaluator {
 				add_numeric(ctx, l, r, target, add.fragment())
 			}
 
+			// Handle undefined values - any operation with
+			// undefined results in undefined
+			(ColumnData::Undefined(l), _) => {
+				let mut data =
+					ctx.pooled(Type::Undefined, l.len());
+				for _ in 0..l.len() {
+					data.push_undefined();
+				}
+				Ok(Column::ColumnQualified(ColumnQualified {
+					name: add.fragment().fragment().into(),
+					data,
+				}))
+			}
+			(_, ColumnData::Undefined(r)) => {
+				let mut data =
+					ctx.pooled(Type::Undefined, r.len());
+				for _ in 0..r.len() {
+					data.push_undefined();
+				}
+				Ok(Column::ColumnQualified(ColumnQualified {
+					name: add.fragment().fragment().into(),
+					data,
+				}))
+			}
+
 			_ => return_error!(
 				add_cannot_be_applied_to_incompatible_types(
 					add.fragment(),
