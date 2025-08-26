@@ -4,7 +4,7 @@
 #[cfg(feature = "async")]
 mod r#async;
 mod database;
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 mod server;
 mod sync;
 pub mod traits;
@@ -12,7 +12,7 @@ pub mod traits;
 #[cfg(feature = "async")]
 pub use r#async::AsyncBuilder;
 pub use database::DatabaseBuilder;
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 pub use server::ServerBuilder;
 pub use sync::SyncBuilder;
 pub use traits::WithSubsystem;

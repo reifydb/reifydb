@@ -3,7 +3,5 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-#[cfg(any(feature = "grpc", test))]
-pub mod grpc;
 #[cfg(any(feature = "websocket", test))]
 pub mod ws;

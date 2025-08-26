@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
@@ -15,8 +15,6 @@ use reifydb_core::{
 	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{StandardEngine, StandardTransaction};
-#[cfg(feature = "sub_grpc")]
-use reifydb_sub_grpc::GrpcSubsystem;
 #[cfg(feature = "sub_ws")]
 use reifydb_sub_ws::WsSubsystem;
 
@@ -95,11 +93,6 @@ impl<T: Transaction> Database<T> {
 	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
 	// Option<&FlowSubsystem<T, E>> { 	self.subsystem::<FlowSubsystem<T,
 	// E>>() }
-
-	#[cfg(feature = "sub_grpc")]
-	pub fn subsystem_grpc(&self) -> Option<&GrpcSubsystem<T>> {
-		self.subsystem::<GrpcSubsystem<T>>()
-	}
 
 	#[cfg(feature = "sub_ws")]
 	pub fn subsystem_ws(&self) -> Option<&WsSubsystem<T>> {
@@ -285,14 +278,6 @@ impl<T: Transaction> Database<T> {
 		self.health_monitor.get_stale_components(
 			self.config.health_check_interval * 2,
 		)
-	}
-
-	#[cfg(feature = "sub_grpc")]
-	pub fn grpc_socket_addr(&self) -> Option<SocketAddr> {
-		if let Some(subsystem) = self.subsystem_grpc() {
-			return subsystem.socket_addr();
-		}
-		None
 	}
 
 	#[cfg(feature = "sub_ws")]

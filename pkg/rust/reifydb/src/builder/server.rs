@@ -7,8 +7,6 @@ use reifydb_core::{
 	interface::{Transaction, subsystem::SubsystemFactory},
 };
 use reifydb_engine::StandardCommandTransaction;
-#[cfg(feature = "sub_grpc")]
-use reifydb_sub_grpc::{GrpcConfig, GrpcSubsystemFactory};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_ws")]
@@ -17,7 +15,7 @@ use reifydb_sub_ws::{WsConfig, WsSubsystemFactory};
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 pub struct ServerBuilder<T: Transaction> {
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
@@ -29,7 +27,7 @@ pub struct ServerBuilder<T: Transaction> {
 	>,
 }
 
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 impl<T: Transaction> ServerBuilder<T> {
 	pub fn new(
 		versioned: T::Versioned,
@@ -69,13 +67,6 @@ impl<T: Transaction> ServerBuilder<T> {
 		self
 	}
 
-	#[cfg(feature = "sub_grpc")]
-	pub fn with_grpc(mut self, config: GrpcConfig) -> Self {
-		let factory = GrpcSubsystemFactory::new(config);
-		self.subsystem_factories.push(Box::new(factory));
-		self
-	}
-
 	pub fn build(self) -> crate::Result<Database<T>> {
 		let mut database_builder = DatabaseBuilder::new(
 			self.versioned,
@@ -98,7 +89,7 @@ impl<T: Transaction> ServerBuilder<T> {
 	}
 }
 
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self

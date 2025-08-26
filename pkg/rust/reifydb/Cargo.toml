@@ -17,8 +17,6 @@ reifydb-network = { workspace = true, optional = true }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
-
-reifydb-sub-grpc = { workspace = true, optional = true }
 reifydb-sub-logging = { workspace = true, optional = true }
 reifydb-sub-workerpool = { workspace = true, optional = true }
 reifydb-sub-ws = { workspace = true, optional = true }
@@ -30,7 +28,6 @@ async = ["dep:tokio"]
 
 # Subsystem features
 sub_flow = ["dep:reifydb-sub-flow"]
-sub_grpc = ["async", "dep:reifydb-sub-grpc", "dep:reifydb-network"]
 sub_logging = ["dep:reifydb-sub-logging"]
 sub_workerpool = ["dep:reifydb-sub-workerpool"]
 sub_ws = ["async", "dep:reifydb-sub-ws", "dep:reifydb-network"]

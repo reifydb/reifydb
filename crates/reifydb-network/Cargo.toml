@@ -8,8 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-websocket = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic"]
-grpc = ["dep:prost", "dep:tokio", "dep:tokio-stream", "dep:tonic"]
+websocket = ["dep:tokio", "dep:tokio-stream"]
 client = []
 server = []
 
@@ -28,10 +27,6 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 
 
-# grpc
-prost = { workspace = true, optional = true }
-tonic = { workspace = true, optional = true }
-
 # websocket
 futures-util = { workspace = true }
 tokio-tungstenite = { workspace = true }
@@ -42,5 +37,3 @@ reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
 
 [build-dependencies]
-# grpc
-tonic-build = { workspace = true }
