@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CowVec, Result, Version,
 	delta::Delta,
-	interface::{CdcEventKey, UnversionedCommit, VersionedCommit},
+	interface::{UnversionedCommit, VersionedCommit},
 	result::error::diagnostic::sequence,
 	return_error,
 	row::EncodedRow,
@@ -19,6 +19,9 @@ use crate::{
 impl VersionedCommit for Memory {
 	fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
 		let timestamp = now_millis();
+
+		// Collect all CDC events for this version
+		let mut cdc_events = Vec::new();
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
@@ -68,7 +71,6 @@ impl VersionedCommit for Memory {
 				}
 			}
 
-			// Generate and store CDC event
 			let cdc_event = generate_cdc_event(
 				delta.clone(),
 				version,
@@ -76,12 +78,15 @@ impl VersionedCommit for Memory {
 				timestamp,
 				before_value,
 			);
-			let cdc_key = CdcEventKey {
-				version,
-				sequence,
-			};
-			self.cdc_events.insert(cdc_key, cdc_event);
+			cdc_events.push(cdc_event);
 		}
+
+		// Insert all CDC events for this version atomically
+		// CDC consumers will either see all events or none
+		if !cdc_events.is_empty() {
+			self.cdc_events.insert(version, cdc_events);
+		}
+
 		Ok(())
 	}
 }

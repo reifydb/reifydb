@@ -54,10 +54,6 @@ fn main() {
 
 	db.start().unwrap();
 
-	db.command_as_root("create schema rollback_tables", Params::None)
-		.unwrap();
-	db.command_as_root("from rollback_tables.new1", Params::None).unwrap();
-
 	db.command_as_root(
 		r#"
 	    create schema test;
@@ -67,11 +63,35 @@ fn main() {
 	)
 	.unwrap();
 
+	// Create first deferred view - all users
 	db.command_as_root(
 		r#"
-	create deferred view test.basic { value: int8, age: int8 } with {
+	create deferred view test.all_users { value: int8, age: int8 } with {
 	    from test.users
-	    aggregate { sum(value) } by { age }
+	}
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Create second deferred view - teenagers (age < 20)
+	db.command_as_root(
+		r#"
+	create deferred view test.teenagers { value: int8, age: int8 } with {
+	    from test.users
+	    filter { age < 20 }
+	}
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Create third deferred view - adults (age >= 20)
+	db.command_as_root(
+		r#"
+	create deferred view test.adults { value: int8, age: int8 } with {
+	    from test.users
+	    filter { age >= 20 }
 	}
 		"#,
 		Params::None,
@@ -120,35 +140,35 @@ fn main() {
 	)
 	.unwrap();
 
-	// for frame in
-	// 	db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
-	// {
-	// 	println!("{}", frame);
-	// }
+	thread::sleep(Duration::from_millis(100));
 
-	// db.command_as_root(
-	// 	r#"
-	// from test.users
-	// filter { name = "bob" }
-	// map { name: "bob", age: 21}
-	// update test.users;
-	//
-	// "#,
-	// 	Params::None,
-	// )
-	// .unwrap();
-
-	// for frame in
-	// 	db.query_as_root(r#"FROM test.users"#, Params::None).unwrap()
-	// {
-	// 	println!("{}", frame);
-	// }
-
-	// loop {}
-	thread::sleep(Duration::from_millis(10));
-
+	// Debug: Check how many flows are stored
+	log_info!("=== Flows in reifydb.flows table ===");
 	for frame in
-		db.query_as_root(r#"FROM test.basic"#, Params::None).unwrap()
+		db.query_as_root(r#"FROM reifydb.flows"#, Params::None).unwrap()
+	{
+		log_info!("Flow: {}", frame);
+	}
+
+	log_info!("=== All Users View ===");
+	for frame in db
+		.query_as_root(r#"FROM test.all_users"#, Params::None)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	log_info!("=== Teenagers View ===");
+	for frame in db
+		.query_as_root(r#"FROM test.teenagers"#, Params::None)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	log_info!("=== Adults View ===");
+	for frame in
+		db.query_as_root(r#"FROM test.adults"#, Params::None).unwrap()
 	{
 		log_info!("{}", frame);
 	}

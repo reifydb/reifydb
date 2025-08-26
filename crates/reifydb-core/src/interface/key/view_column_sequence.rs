@@ -76,7 +76,7 @@ mod tests {
 		let encoded = key.encode();
 
 		assert_eq!(encoded[0], 0xFE); // version serialized
-		assert_eq!(encoded[1], 0xEA); // KeyKind::ViewColumnSequence serialized
+		assert_eq!(encoded[1], 0xEB); // KeyKind::ViewColumnSequence serialized
 
 		// Test decode
 		let decoded = ViewColumnSequenceKey::decode(&encoded).unwrap();

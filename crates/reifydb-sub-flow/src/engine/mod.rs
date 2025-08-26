@@ -31,4 +31,8 @@ impl<E: Evaluator> FlowEngine<E> {
 			sinks: HashMap::new(),
 		}
 	}
+
+	pub fn has_registered_flows(&self) -> bool {
+		!self.flows.is_empty()
+	}
 }

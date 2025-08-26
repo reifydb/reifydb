@@ -66,10 +66,10 @@ impl Range {
 		let (where_clause, params) = self.build_query_and_params();
 
 		let query = if where_clause.is_empty() {
-			"SELECT value FROM cdc ORDER BY version ASC, key DESC LIMIT ?".to_string()
+			"SELECT value FROM cdc ORDER BY version ASC, sequence ASC LIMIT ?".to_string()
 		} else {
 			format!(
-				"SELECT value FROM cdc {} ORDER BY version ASC, key DESC LIMIT ?",
+				"SELECT value FROM cdc {} ORDER BY version ASC, sequence ASC LIMIT ?",
 				where_clause
 			)
 		};

@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub use cdc_consumer::CdcConsumerKey;
-pub use cdc_event::CdcEventKey;
 pub use kind::KeyKind;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;
@@ -31,7 +30,6 @@ pub use view_row_sequence::ViewRowSequenceKey;
 use crate::{EncodedKey, EncodedKeyRange, util::encoding::keycode};
 
 mod cdc_consumer;
-mod cdc_event;
 mod kind;
 mod schema;
 mod schema_table;
@@ -60,7 +58,6 @@ mod view_row_sequence;
 #[derive(Debug)]
 pub enum Key {
 	CdcConsumer(CdcConsumerKey),
-	CdcEvent(CdcEventKey),
 	Schema(SchemaKey),
 	SchemaTable(SchemaTableKey),
 	SchemaView(SchemaViewKey),
@@ -90,7 +87,6 @@ impl Key {
 	pub fn encode(&self) -> EncodedKey {
 		match &self {
 			Key::CdcConsumer(key) => key.encode(),
-			Key::CdcEvent(key) => key.encode(),
 			Key::Schema(key) => key.encode(),
 			Key::SchemaTable(key) => key.encode(),
 			Key::SchemaView(key) => key.encode(),
@@ -150,9 +146,6 @@ impl Key {
 		match kind {
 			KeyKind::CdcConsumer => CdcConsumerKey::decode(&key)
 				.map(Self::CdcConsumer),
-			KeyKind::CdcEvent => {
-				CdcEventKey::decode(&key).map(Self::CdcEvent)
-			}
 			KeyKind::TableColumns => TableColumnsKey::decode(&key)
 				.map(Self::TableColumns),
 			KeyKind::ColumnPolicy => {
@@ -230,7 +223,7 @@ impl Key {
 #[cfg(test)]
 mod tests {
 	use super::{
-		CdcEventKey, Key, SchemaKey, SchemaTableKey, SystemSequenceKey,
+		Key, SchemaKey, SchemaTableKey, SystemSequenceKey,
 		TableColumnKey, TableColumnPolicyKey, TableColumnSequenceKey,
 		TableColumnsKey, TableIndexKey, TableKey, TableRowKey,
 		TableRowSequenceKey, ViewColumnKey,
@@ -501,25 +494,5 @@ mod tests {
 		let key = Key::TransactionVersion(TransactionVersionKey {});
 		let encoded = key.encode();
 		Key::decode(&encoded).expect("Failed to decode key");
-	}
-
-	#[test]
-	fn test_cdc_event() {
-		let key = Key::CdcEvent(CdcEventKey {
-			version: 123456789,
-			sequence: 999,
-		});
-
-		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
-
-		match decoded {
-			Key::CdcEvent(decoded_inner) => {
-				assert_eq!(decoded_inner.version, 123456789);
-				assert_eq!(decoded_inner.sequence, 999);
-			}
-			_ => unreachable!(),
-		}
 	}
 }

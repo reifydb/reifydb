@@ -83,10 +83,10 @@ impl Sqlite {
                  );
 
                  CREATE TABLE IF NOT EXISTS cdc (
-                     key     BLOB NOT NULL,
-                     version INTEGER NOT NULL,
-                     value   BLOB NOT NULL,
-                     PRIMARY KEY (key, version)
+                     version  INTEGER NOT NULL,
+                     sequence INTEGER NOT NULL,
+                     value    BLOB NOT NULL,
+                     PRIMARY KEY (version, sequence)
                  );
                  COMMIT;",
 			)

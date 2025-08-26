@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, EncodedKey, Version,
-	interface::{CdcEvent, CdcEventKey, EncodableKey},
-	row::EncodedRow,
+	CowVec, EncodedKey, Version, interface::CdcEvent, row::EncodedRow,
 };
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::{
+	Error::ToSqlConversionFailure, OptionalExtension, Transaction, params,
+};
 
 use crate::cdc::codec::encode_cdc_event;
 
@@ -42,21 +42,12 @@ pub(crate) fn store_cdc_event(
 	version: Version,
 	sequence: u16,
 ) -> rusqlite::Result<()> {
-	let cdc_key = CdcEventKey {
-		version,
-		sequence,
-	};
-	let encoded_event = encode_cdc_event(&event).map_err(|e| {
-		rusqlite::Error::ToSqlConversionFailure(Box::new(e))
-	})?;
+	let encoded_event = encode_cdc_event(&event)
+		.map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
 
 	tx.execute(
-		"INSERT OR REPLACE INTO cdc (key, version, value) VALUES (?1, ?2, ?3)",
-		params![
-			cdc_key.encode().to_vec(),
-			version,
-			encoded_event.to_vec()
-		],
+		"INSERT OR REPLACE INTO cdc (version, sequence, value) VALUES (?1, ?2, ?3)",
+		params![version, sequence, encoded_event.to_vec()],
 	)?;
 
 	Ok(())

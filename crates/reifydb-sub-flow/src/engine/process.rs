@@ -37,6 +37,12 @@ impl<E: Evaluator> FlowEngine<E> {
 		for (source, diffs) in diffs_by_source {
 			// Find all flows triggered by this source
 			if let Some(flow_ids) = self.sources.get(&source) {
+				use reifydb_core::log_debug;
+				log_debug!(
+					"FlowEngine: Source {:?} triggers {} flows",
+					source,
+					flow_ids.len()
+				);
 				// Process the diffs once for all flows with
 				// this source
 				let bulkchange = FlowChange {
@@ -48,12 +54,22 @@ impl<E: Evaluator> FlowEngine<E> {
 					if let Some(flow) =
 						self.flows.get(flow_id)
 					{
+						log_debug!(
+							"FlowEngine: Processing flow {:?} for source {:?}",
+							flow_id,
+							source
+						);
 						// Find the source node in the
 						// flow that matches this source
 						if let Some(node) =
 							find_source_node(
 								flow, &source,
 							) {
+							log_debug!(
+								"FlowEngine: Found source node {:?} in flow {:?}",
+								node.id,
+								flow_id
+							);
 							// Process this node
 							// with all diffs for
 							// this source
@@ -63,9 +79,21 @@ impl<E: Evaluator> FlowEngine<E> {
 								node,
 								&bulkchange,
 							)?;
+						} else {
+							log_debug!(
+								"FlowEngine: No source node found for {:?} in flow {:?}",
+								source,
+								flow_id
+							);
 						}
 					}
 				}
+			} else {
+				use reifydb_core::log_debug;
+				log_debug!(
+					"FlowEngine: No flows registered for source {:?}",
+					source
+				);
 			}
 		}
 		Ok(())
@@ -109,6 +137,12 @@ impl<E: Evaluator> FlowEngine<E> {
 				view,
 				..
 			} => {
+				use reifydb_core::log_debug;
+				log_debug!(
+					"FlowEngine: Applying {} diffs to view {:?}",
+					change.diffs.len(),
+					view
+				);
 				// Sinks persist the final results
 				self.apply_to_view(txn, *view, &change)?;
 				change

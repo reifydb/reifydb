@@ -16,7 +16,7 @@ impl CdcGet for Sqlite {
 
 		let mut stmt = conn
 			.prepare_cached(
-				"SELECT value FROM cdc WHERE version = ? ORDER BY key DESC",
+				"SELECT value FROM cdc WHERE version = ? ORDER BY sequence ASC",
 			)
 			.unwrap();
 

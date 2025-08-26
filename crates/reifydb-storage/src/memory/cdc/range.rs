@@ -6,7 +6,7 @@ use std::ops::Bound;
 use crossbeam_skiplist::map::Entry;
 use reifydb_core::{
 	Result, Version,
-	interface::{CdcEvent, CdcEventKey, CdcRange},
+	interface::{CdcEvent, CdcRange},
 };
 
 use crate::memory::Memory;
@@ -19,46 +19,51 @@ impl CdcRange for Memory {
 		start: Bound<Version>,
 		end: Bound<Version>,
 	) -> Result<Self::RangeIter<'_>> {
-		let start_key = match start {
-			Bound::Included(v) => Bound::Included(CdcEventKey {
-				version: v,
-				sequence: 0,
-			}),
-			Bound::Excluded(v) => Bound::Excluded(CdcEventKey {
-				version: v,
-				sequence: u16::MAX,
-			}),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-
-		let end_key = match end {
-			Bound::Included(v) => Bound::Included(CdcEventKey {
-				version: v,
-				sequence: u16::MAX,
-			}),
-			Bound::Excluded(v) => Bound::Excluded(CdcEventKey {
-				version: v.saturating_sub(1),
-				sequence: u16::MAX,
-			}),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-
 		Ok(Range {
-			iter: Box::new(
-				self.cdc_events.range((start_key, end_key)),
+			version_iter: Box::new(
+				self.cdc_events.range((start, end)),
 			),
+			current_events: vec![],
+			current_index: 0,
 		})
 	}
 }
 
 pub struct Range<'a> {
-	iter: Box<dyn Iterator<Item = Entry<'a, CdcEventKey, CdcEvent>> + 'a>,
+	version_iter: Box<
+		dyn Iterator<Item = Entry<'a, Version, Vec<CdcEvent>>> + 'a,
+	>,
+	current_events: Vec<CdcEvent>,
+	current_index: usize,
 }
 
 impl<'a> Iterator for Range<'a> {
 	type Item = CdcEvent;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.iter.next().map(|entry| entry.value().clone())
+		// If we have events in the current batch, return the next one
+		if self.current_index < self.current_events.len() {
+			let event =
+				self.current_events[self.current_index].clone();
+			self.current_index += 1;
+			return Some(event);
+		}
+
+		// Otherwise, get the next version's events
+		if let Some(entry) = self.version_iter.next() {
+			self.current_events = entry.value().clone();
+			self.current_index = 0;
+
+			// Recursively call next() to get the first event from
+			// the new batch
+			if !self.current_events.is_empty() {
+				self.next()
+			} else {
+				// Empty batch, try next version
+				self.next()
+			}
+		} else {
+			None
+		}
 	}
 }
