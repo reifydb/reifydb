@@ -32,7 +32,7 @@ command 'create deferred view test.mixed {
     id as person_id,
     age + 1 as age_next_year,
     height * 100.0 as height_cm,
-    "Hello, " || name as greeting,
+    "Hello, " + name as greeting,
     age >= 18 as is_adult
   }
 }'

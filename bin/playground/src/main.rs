@@ -54,6 +54,13 @@ fn main() {
 
 	db.start().unwrap();
 
+	for frame in
+		db.query_as_root(r#"MAP 1 != undefined"#, Params::None).unwrap()
+	{
+		log_info!("{}", frame);
+	}
+	return;
+
 	db.command_as_root(
 		r#"
 	    create schema test;

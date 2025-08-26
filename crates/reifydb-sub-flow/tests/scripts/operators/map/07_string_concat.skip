@@ -2,7 +2,7 @@
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 # Test string concatenation in map operator
-# Using || operator for string concatenation
+# Using + operator for string concatenation
 
 (command 'create schema test;')
 command 'create table test.source { id: int4, first: utf8, last: utf8 }'
@@ -22,8 +22,8 @@ command 'create deferred view test.full_names {
   from test.source
   map { 
     id,
-    first || " " || last as full_name,
-    "Mr/Ms. " || last as formal
+    first + " " + last as full_name,
+    "Mr/Ms. " + last as formal
   }
 }'
 ---
