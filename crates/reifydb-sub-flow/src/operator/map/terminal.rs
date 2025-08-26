@@ -3,6 +3,7 @@ use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
+		ViewDef,
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	value::columnar::{Column, ColumnQualified, Columns},
@@ -10,29 +11,21 @@ use reifydb_core::{
 
 use crate::operator::{Operator, OperatorContext};
 
-pub struct MapOperator {
+pub struct MapTerminalOperator {
 	expressions: Vec<Expression>,
-	target_schema: Option<Vec<(String, Type)>>,
+	view_def: ViewDef,
 }
 
-impl MapOperator {
-	pub fn new(expressions: Vec<Expression>) -> Self {
+impl MapTerminalOperator {
+	pub fn new(expressions: Vec<Expression>, view_def: ViewDef) -> Self {
 		Self {
 			expressions,
-			target_schema: None,
+			view_def,
 		}
-	}
-
-	pub fn with_target_schema(
-		mut self,
-		schema: Vec<(String, Type)>,
-	) -> Self {
-		self.target_schema = Some(schema);
-		self
 	}
 }
 
-impl<E: Evaluator> Operator<E> for MapOperator {
+impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 	fn apply<T: CommandTransaction>(
 		&self,
 		ctx: &mut OperatorContext<E, T>,
@@ -92,7 +85,7 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 	}
 }
 
-impl MapOperator {
+impl MapTerminalOperator {
 	fn project<E: Evaluator, T: CommandTransaction>(
 		&self,
 		ctx: &OperatorContext<E, T>,
@@ -116,35 +109,33 @@ impl MapOperator {
 
 		let mut projected_columns = Vec::new();
 		for (i, expr) in self.expressions.iter().enumerate() {
-			let column = if let Some(ref schema) =
-				self.target_schema
-			{
-				if let Some((col_name, target_type)) =
-					schema.get(i)
+			let column =
+				if let Some(view_column) =
+					self.view_def.columns.get(i)
 				{
 					// Evaluate the expression first
 					let result =
 						ctx.evaluate(&eval_ctx, expr)?;
 					let current_type =
 						result.data().get_type();
+					let target_type = view_column.ty;
 
-					// If types don't match and it's
-					// not undefined, create a cast
-					// expression
-					if current_type != *target_type
+					// If types don't match and it's not
+					// undefined, create a cast expression
+					if current_type != target_type
 						&& current_type
 							!= Type::Undefined
 					{
 						// Create a cast expression to
 						// coerce the type
 						let cast_expr = Expression::Cast(CastExpression {
-                                fragment: OwnedFragment::internal("auto_cast"),
-                                expression: Box::new(expr.clone()),
-                                to: TypeExpression {
-                                    fragment: OwnedFragment::internal(target_type.to_string()),
-                                    ty: *target_type,
-                                },
-                            });
+						fragment: OwnedFragment::internal("auto_cast"),
+						expression: Box::new(expr.clone()),
+						to: TypeExpression {
+							fragment: OwnedFragment::internal(target_type.to_string()),
+							ty: target_type,
+						},
+					});
 
 						// Evaluate the cast expression
 						let casted = ctx.evaluate(
@@ -153,47 +144,29 @@ impl MapOperator {
 
 						// Create a properly named
 						// column
-						Column::ColumnQualified(
-							ColumnQualified {
-								name: col_name
-									.clone(
-									),
-								data: casted
-									.data()
-									.clone(
-									),
-							},
-						)
+						Column::ColumnQualified(ColumnQualified {
+						name: view_column.name.clone(),
+						data: casted.data().clone(),
+					})
 					} else {
 						// Types match or it's
 						// undefined, just rename if
 						// needed
-						Column::ColumnQualified(
-							ColumnQualified {
-								name: col_name
-									.clone(
-									),
-								data: result
-									.data()
-									.clone(
-									),
-							},
-						)
+						Column::ColumnQualified(ColumnQualified {
+						name: view_column.name.clone(),
+						data: result.data().clone(),
+					})
 					}
 				} else {
-					// No schema info for this
-					// column, evaluate as-is
+					// No schema info for this column
+					// (shouldn't happen for terminal
+					// operator) but we handle it
+					// gracefully
 					ctx.evaluate(&eval_ctx, expr)?
-				}
-			} else {
-				// No target schema, evaluate as-is
-				ctx.evaluate(&eval_ctx, expr)?
-			};
+				};
 
 			projected_columns.push(column);
 		}
-
-		// dbg!(&projected_columns);
 
 		Ok(Columns::new(projected_columns))
 	}

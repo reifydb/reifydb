@@ -32,9 +32,9 @@ command 'create deferred view test.eligibility {
     id,
     age >= 18 as is_adult,
     score > 70 as passed,
-    status == "active" as is_active,
-    (age >= 18) && (score > 70) as eligible,
-    (score >= 60) && (score <= 70) as needs_review
+    status = "active" as is_active,
+    (age >= 18) and (score > 70) as eligible,
+    (score >= 60) and (score <= 70) as needs_review
   }
 }'
 ---
@@ -66,13 +66,13 @@ wait 5
 # Should show boolean expression results
 command 'from test.eligibility'
 ---
-> +------+------------+----------+------------+------------+----------------+
-> |  id  |  is_adult  |  passed  |  is_active |  eligible  |  needs_review  |
-> +------+------------+----------+------------+------------+----------------+
-> |  5   |   false    |  false   |   false    |   false    |     false      |
-> |  4   |   true     |  false   |   true     |   false    |     true       |
-> |  3   |   true     |  false   |   false    |   false    |     true       |
-> |  2   |   false    |  true    |   true     |   false    |     false      |
-> |  1   |   true     |  true    |   true     |   true     |     false      |
-> +------+------------+----------+------------+------------+----------------+
+> +------+------------+----------+-------------+------------+----------------+
+> |  id  |  is_adult  |  passed  |  is_active  |  eligible  |  needs_review  |
+> +------+------------+----------+-------------+------------+----------------+
+> |  5   |   false    |  false   |    false    |   false    |     false      |
+> |  4   |    true    |  false   |    true     |   false    |      true      |
+> |  3   |    true    |  false   |    false    |   false    |      true      |
+> |  2   |   false    |   true   |    true     |   false    |     false      |
+> |  1   |    true    |   true   |    true     |    true    |     false      |
+> +------+------------+----------+-------------+------------+----------------+
 > 

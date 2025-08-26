@@ -31,6 +31,10 @@ pub enum OperatorType {
 	Map {
 		expressions: Vec<Expression>,
 	},
+	MapTerminal {
+		expressions: Vec<Expression>,
+		view_id: ViewId,
+	},
 	Join {
 		join_type: JoinType,
 		left: Vec<Expression>,
@@ -62,6 +66,9 @@ impl OperatorType {
 				..
 			} => false,
 			OperatorType::Map {
+				..
+			} => false,
+			OperatorType::MapTerminal {
 				..
 			} => false,
 			OperatorType::Union => false,

@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{
 		Flow, FlowNodeType, OperatorType,
 		OperatorType::{
-			Aggregate, Distinct, Filter, Join, Map, Sort, Take,
-			Union,
+			Aggregate, Distinct, Filter, Join, Map, MapTerminal,
+			Sort, Take, Union,
 		},
 	},
 	interface::{
@@ -18,8 +19,8 @@ use crate::{
 	engine::FlowEngine,
 	operator::{
 		AggregateOperator, DistinctOperator, FilterOperator,
-		JoinOperator, MapOperator, OperatorEnum, SortOperator,
-		TakeOperator, UnionOperator,
+		JoinOperator, MapOperator, MapTerminalOperator, OperatorEnum,
+		SortOperator, TakeOperator, UnionOperator,
 	},
 };
 
@@ -53,7 +54,7 @@ impl<E: Evaluator> FlowEngine<E> {
 					operator,
 				} => {
 					self.add_operator(
-						flow.id, node_id, operator,
+						txn, flow.id, node_id, operator,
 					)?;
 				}
 				FlowNodeType::SinkView {
@@ -99,14 +100,19 @@ impl<E: Evaluator> FlowEngine<E> {
 		flows.push(flow);
 	}
 
-	fn add_operator(
+	fn add_operator<T: QueryTransaction>(
 		&mut self,
+		txn: &mut T,
 		flow_id: FlowId,
 		node: FlowNodeId,
 		operator: &OperatorType,
 	) -> crate::Result<()> {
-		let operator =
-			self.create_operator(flow_id, node, operator.clone())?;
+		let operator = self.create_operator(
+			txn,
+			flow_id,
+			node,
+			operator.clone(),
+		)?;
 		debug_assert!(
 			!self.operators.contains_key(&node),
 			"Operator already registered"
@@ -116,8 +122,9 @@ impl<E: Evaluator> FlowEngine<E> {
 		Ok(())
 	}
 
-	fn create_operator(
+	fn create_operator<T: QueryTransaction>(
 		&self,
+		txn: &mut T,
 		flow_id: FlowId,
 		node_id: FlowNodeId,
 		operator: OperatorType,
@@ -133,6 +140,19 @@ impl<E: Evaluator> FlowEngine<E> {
 			} => Ok(OperatorEnum::Map(MapOperator::new(
 				expressions,
 			))),
+			MapTerminal {
+				expressions,
+				view_id,
+			} => {
+				let view_def =
+					CatalogStore::get_view(txn, view_id)?;
+				Ok(OperatorEnum::MapTerminal(
+					MapTerminalOperator::new(
+						expressions,
+						view_def,
+					),
+				))
+			}
 			Aggregate {
 				by,
 				map,

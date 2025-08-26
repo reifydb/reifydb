@@ -14,7 +14,7 @@ pub use aggregate::AggregateOperator;
 pub use distinct::DistinctOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
-pub use map::MapOperator;
+pub use map::{MapOperator, MapTerminalOperator};
 use reifydb_core::{
 	flow::FlowChange,
 	interface::{
@@ -40,6 +40,7 @@ pub trait Operator<E: Evaluator>: Send + Sync + 'static {
 pub enum OperatorEnum<E: Evaluator> {
 	Filter(FilterOperator),
 	Map(MapOperator),
+	MapTerminal(MapTerminalOperator),
 	Aggregate(AggregateOperator),
 	Join(JoinOperator),
 	Sort(SortOperator),
@@ -59,6 +60,7 @@ impl<E: Evaluator> OperatorEnum<E> {
 		match self {
 			OperatorEnum::Filter(op) => op.apply(ctx, change),
 			OperatorEnum::Map(op) => op.apply(ctx, change),
+			OperatorEnum::MapTerminal(op) => op.apply(ctx, change),
 			OperatorEnum::Aggregate(op) => op.apply(ctx, change),
 			OperatorEnum::Join(op) => op.apply(ctx, change),
 			OperatorEnum::Sort(op) => op.apply(ctx, change),

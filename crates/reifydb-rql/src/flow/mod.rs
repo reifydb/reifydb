@@ -95,7 +95,21 @@ impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 		plan: PhysicalPlan,
 		sink: &ViewDef,
 	) -> crate::Result<Flow> {
-		let root_node_id = self.compile_plan(plan)?;
+		// Check if the root plan is a Map node that should be terminal
+		let root_node_id = match &plan {
+			PhysicalPlan::Map(map_node) => {
+				// This is a terminal map node - compile it with
+				// view info
+				self.compile_terminal_map(
+					map_node.clone(),
+					sink,
+				)?
+			}
+			_ => {
+				// Not a map or not terminal - compile normally
+				self.compile_plan(plan)?
+			}
+		};
 
 		let result_node = self.add_node(FlowNodeType::SinkView {
 			name: sink.name.clone(),
@@ -164,6 +178,35 @@ impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 				unreachable!()
 			}
 		}
+	}
+
+	/// Compiles a terminal Map node with view information
+	pub(crate) fn compile_terminal_map(
+		&mut self,
+		map_node: crate::plan::physical::MapNode,
+		sink: &ViewDef,
+	) -> crate::Result<FlowNodeId> {
+		// First compile the input if it exists
+		let input_node = if let Some(input) = map_node.input {
+			Some(self.compile_plan(*input)?)
+		} else {
+			None
+		};
+
+		// Create a MapTerminal operator with the view ID
+		let mut builder = self.build_node(FlowNodeType::Operator {
+			operator:
+				reifydb_core::flow::OperatorType::MapTerminal {
+					expressions: map_node.map,
+					view_id: sink.id,
+				},
+		});
+
+		if let Some(input) = input_node {
+			builder = builder.with_input(input);
+		}
+
+		builder.build()
 	}
 }
 
