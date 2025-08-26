@@ -158,7 +158,6 @@ impl<E: Evaluator> FlowEngine<E> {
 			Union {} => {
 				Ok(OperatorEnum::Union(UnionOperator::new()))
 			}
-			_ => unimplemented!("Operator not yet implemented"),
 		}
 	}
 }

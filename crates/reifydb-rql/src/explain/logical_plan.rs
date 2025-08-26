@@ -248,24 +248,55 @@ fn render_logical_plan_inner(
 				"{}{} Aggregate\n",
 				prefix, branch
 			));
-			if !by.is_empty() {
-				output.push_str(&format!(
-					"{}├── by: {}\n",
-					child_prefix,
-					by.iter()
-						.map(|e| e.to_string())
-						.collect::<Vec<_>>()
-						.join(", ")
-				));
-			}
+
+			// Show Map branch
 			if !map.is_empty() {
 				output.push_str(&format!(
-					"{}└── map: {}\n",
-					child_prefix,
-					map.iter()
-						.map(|e| e.to_string())
-						.collect::<Vec<_>>()
-						.join(", ")
+					"{}├── Map\n",
+					child_prefix
+				));
+				let map_prefix =
+					format!("{}│   ", child_prefix);
+				for (i, expr) in map.iter().enumerate() {
+					let last = i == map.len() - 1;
+					output.push_str(&format!(
+						"{}{} {}\n",
+						map_prefix,
+						if last {
+							"└──"
+						} else {
+							"├──"
+						},
+						expr.to_string()
+					));
+				}
+			}
+
+			// Show By branch (even if empty for consistency)
+			if !by.is_empty() {
+				output.push_str(&format!(
+					"{}└── By\n",
+					child_prefix
+				));
+				let by_prefix = format!("{}    ", child_prefix);
+				for (i, expr) in by.iter().enumerate() {
+					let last = i == by.len() - 1;
+					output.push_str(&format!(
+						"{}{} {}\n",
+						by_prefix,
+						if last {
+							"└──"
+						} else {
+							"├──"
+						},
+						expr.to_string()
+					));
+				}
+			} else {
+				// Show empty By for global aggregations
+				output.push_str(&format!(
+					"{}└── By\n",
+					child_prefix
 				));
 			}
 		}

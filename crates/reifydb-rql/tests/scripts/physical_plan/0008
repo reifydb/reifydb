@@ -3,6 +3,11 @@
 
 physical 'from users AGGREGATE { min_age: min(age) } BY name'
 ---
-> └── Aggregate by: [Column(name)], map: [min(Column(age)) as min_age]
->     └── TableScan default.users
+> └── Aggregate
+>     ├── Map
+>     │   └── min(Column(age)) as min_age
+>     ├── By
+>     │   └── Column(name)
+>     └── Source
+>         └── TableScan default.users
 > 

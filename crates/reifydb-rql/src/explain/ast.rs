@@ -126,8 +126,53 @@ fn render_ast_tree_inner(
 			}
 		},
 		Ast::Aggregate(a) => {
-			children.extend(a.by);
-			children.extend(a.map);
+			// Show Map and By as labeled branches
+			if !a.map.is_empty() {
+				// Create a synthetic node for "Aggregate Map"
+				// label
+				output.push_str(&format!(
+					"{}├── Aggregate Map\n",
+					child_prefix
+				));
+				let map_prefix =
+					format!("{}│   ", child_prefix);
+				for (i, child) in a.map.iter().enumerate() {
+					let last = i == a.map.len() - 1;
+					render_ast_tree_inner(
+						child.clone(),
+						&map_prefix,
+						last,
+						output,
+					);
+				}
+			}
+			if !a.by.is_empty() {
+				// Create a synthetic node for "Aggregate By"
+				// label
+				output.push_str(&format!(
+					"{}└── Aggregate By\n",
+					child_prefix
+				));
+				let by_prefix = format!("{}    ", child_prefix);
+				for (i, child) in a.by.iter().enumerate() {
+					let last = i == a.by.len() - 1;
+					render_ast_tree_inner(
+						child.clone(),
+						&by_prefix,
+						last,
+						output,
+					);
+				}
+			} else if a.map.is_empty() {
+				// If both are empty (shouldn't happen), or just
+				// By is empty
+				output.push_str(&format!(
+					"{}└── Aggregate By\n",
+					child_prefix
+				));
+			}
+			// Return early since we handled the children
+			return;
 		}
 		Ast::AstInsert(_) => {
 			unimplemented!()

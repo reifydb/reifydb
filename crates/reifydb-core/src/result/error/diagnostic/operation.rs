@@ -25,3 +25,69 @@ pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 		cause: None,
 	}
 }
+
+/// Missing aggregate map block error
+pub fn missing_aggregate_map_block<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "AGGREGATE_001".to_string(),
+		statement: None,
+		message: "AGGREGATE operator requires at least one aggregation expression".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing aggregation expressions".to_string()),
+		help: Some("Specify aggregation functions before the BY clause, e.g., 'AGGREGATE count(id) BY category' or 'AGGREGATE { sum(amount), avg(price) } BY category'".to_string()),
+		notes: vec![
+			"The AGGREGATE operator requires aggregation functions like count(), sum(), avg(), min(), or max()".to_string(),
+			"Use curly braces for multiple aggregations: AGGREGATE { expr1, expr2 } BY ...".to_string(),
+			"For global aggregations without grouping, use: AGGREGATE count(*) BY {}".to_string(),
+		],
+		cause: None,
+	}
+}
+
+/// Multiple aggregate map expressions without braces error
+pub fn aggregate_multiple_map_without_braces<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "AGGREGATE_002".to_string(),
+		statement: None,
+		message: "Multiple aggregation expressions require curly braces".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces around expressions".to_string()),
+		help: Some("Wrap multiple aggregation expressions in curly braces, e.g., 'AGGREGATE { count(id), sum(amount), avg(price) } BY category'".to_string()),
+		notes: vec![
+			"When specifying multiple aggregation functions, use curly braces: AGGREGATE { expr1, expr2, ... } BY ...".to_string(),
+			"Single aggregation expressions can be written without braces: AGGREGATE count(id) BY category".to_string(),
+			"Curly braces make the query more readable and unambiguous".to_string(),
+		],
+		cause: None,
+	}
+}
+
+/// Multiple aggregate by expressions without braces error
+pub fn aggregate_multiple_by_without_braces<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "AGGREGATE_003".to_string(),
+		statement: None,
+		message: "Multiple grouping columns require curly braces".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces around columns".to_string()),
+		help: Some("Wrap multiple grouping columns in curly braces, e.g., 'AGGREGATE count(id) BY { category, region, year }'".to_string()),
+		notes: vec![
+			"When grouping by multiple columns, use curly braces: AGGREGATE ... BY { col1, col2, ... }".to_string(),
+			"Single grouping columns can be written without braces: AGGREGATE ... BY category".to_string(),
+			"For global aggregations without grouping, use empty braces: AGGREGATE ... BY {}".to_string(),
+		],
+		cause: None,
+	}
+}

@@ -110,22 +110,80 @@ fn render_physical_plan_inner(
 			map,
 			input,
 		}) => {
-			let label = format!(
-				"Aggregate by: [{}], map: [{}]",
-				by.iter()
-					.map(|e| e.to_string())
-					.collect::<Vec<_>>()
-					.join(", "),
-				map.iter()
-					.map(|e| e.to_string())
-					.collect::<Vec<_>>()
-					.join(", ")
-			);
-			write_node_header(output, prefix, is_last, &label);
+			write_node_header(output, prefix, is_last, "Aggregate");
 			with_child_prefix(prefix, is_last, |child_prefix| {
+				// Show Map branch
+				if !map.is_empty() {
+					writeln!(
+						output,
+						"{}├── Map",
+						child_prefix
+					)
+					.unwrap();
+					let map_prefix =
+						format!("{}│   ", child_prefix);
+					for (i, expr) in map.iter().enumerate()
+					{
+						let last = i == map.len() - 1;
+						writeln!(
+							output,
+							"{}{} {}",
+							map_prefix,
+							if last {
+								"└──"
+							} else {
+								"├──"
+							},
+							expr.to_string()
+						)
+						.unwrap();
+					}
+				}
+
+				// Show By branch (even if empty for
+				// consistency)
+				if !by.is_empty() {
+					writeln!(
+						output,
+						"{}├── By",
+						child_prefix
+					)
+					.unwrap();
+					let by_prefix =
+						format!("{}│   ", child_prefix);
+					for (i, expr) in by.iter().enumerate() {
+						let last = i == by.len() - 1;
+						writeln!(
+							output,
+							"{}{} {}",
+							by_prefix,
+							if last {
+								"└──"
+							} else {
+								"├──"
+							},
+							expr.to_string()
+						)
+						.unwrap();
+					}
+				} else {
+					// Show empty By for global aggregations
+					writeln!(
+						output,
+						"{}├── By",
+						child_prefix
+					)
+					.unwrap();
+				}
+
+				// Show Source branch
+				writeln!(output, "{}└── Source", child_prefix)
+					.unwrap();
+				let source_prefix =
+					format!("{}    ", child_prefix);
 				render_physical_plan_inner(
 					input,
-					child_prefix,
+					&source_prefix,
 					true,
 					output,
 				);

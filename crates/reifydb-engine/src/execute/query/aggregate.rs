@@ -214,7 +214,24 @@ fn parse_keys_and_aggregates<'a>(
 	}
 
 	for p in project {
-		match p {
+		// Extract the actual expression, handling aliases
+		let (actual_expr, alias) = match p {
+			Expression::Alias(alias_expr) => {
+				// This is an aliased expression like
+				// "total_count: count(value)"
+				(
+					alias_expr.expression.as_ref(),
+					alias_expr.alias.0.clone(),
+				)
+			}
+			expr => {
+				// Non-aliased expression, use the expression's
+				// fragment as alias
+				(expr, expr.fragment())
+			}
+		};
+
+		match actual_expr {
 			Expression::Call(call) => {
 				let func = call.func.0.fragment();
 				match call.args.first().map(|arg| arg) {
@@ -222,15 +239,18 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions
 							.get_aggregate(func)
 							.unwrap();
-						projections
-							.push(Projection::Aggregate {
-							column: c
-								.0
-								.fragment()
-								.to_string(),
-							alias: p.fragment(),
-							function,
-						});
+						projections.push(
+							Projection::Aggregate {
+								column: c
+									.0
+									.fragment(
+									)
+									.to_string(
+									),
+								alias,
+								function,
+							},
+						);
 					}
 					Some(Expression::AccessSource(
 						access,
@@ -241,15 +261,18 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions
 							.get_aggregate(func)
 							.unwrap();
-						projections
-							.push(Projection::Aggregate {
-							column: access
-								.column
-								.fragment()
-								.to_string(),
-							alias: p.fragment(),
-							function,
-						});
+						projections.push(
+							Projection::Aggregate {
+								column: access
+									.column
+									.fragment(
+									)
+									.to_string(
+									),
+								alias,
+								function,
+							},
+						);
 					}
 					// _ => return
 					// Err(reifydb_core::Error::Unsupported("
@@ -263,7 +286,9 @@ fn parse_keys_and_aggregates<'a>(
 			// _ => return
 			// Err(reifydb_core::Error::Unsupported("Expected
 			// aggregate call expression".into())),
-			_ => panic!(),
+			_ => panic!(
+				"Expected aggregate call expression, got: {actual_expr:#?}"
+			),
 		}
 	}
 	Ok((keys, projections))

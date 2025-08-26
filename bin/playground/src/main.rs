@@ -142,14 +142,6 @@ fn main() {
 
 	thread::sleep(Duration::from_millis(100));
 
-	// Debug: Check how many flows are stored
-	log_info!("=== Flows in reifydb.flows table ===");
-	for frame in
-		db.query_as_root(r#"FROM reifydb.flows"#, Params::None).unwrap()
-	{
-		log_info!("Flow: {}", frame);
-	}
-
 	log_info!("=== All Users View ===");
 	for frame in db
 		.query_as_root(r#"FROM test.all_users"#, Params::None)
@@ -170,6 +162,39 @@ fn main() {
 	for frame in
 		db.query_as_root(r#"FROM test.adults"#, Params::None).unwrap()
 	{
+		log_info!("{}", frame);
+	}
+
+	// Test global aggregation with empty BY clause
+	log_info!("=== Global Aggregation Examples ===");
+
+	// Example 1: Count all rows
+	log_info!("Example 1: Count all rows");
+	for frame in db
+		.query_as_root(
+			r#"from test.users aggregate count(value) by {}"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	// Example 2: Multiple global aggregations with aliases
+	log_info!("\nExample 2: Multiple global aggregations");
+	for frame in db.query_as_root(
+		r#"from test.users aggregate { total_count: count(value), total_sum: sum(value), avg_age: avg(age) } by {}"#,
+		Params::None,
+	).unwrap() {
+		log_info!("{}", frame);
+	}
+
+	// Example 3: Compare with grouped aggregation
+	log_info!("\nExample 3: Grouped aggregation by age");
+	for frame in db.query_as_root(
+		r#"from test.users aggregate { count: count(value), sum: sum(value) } by age"#,
+		Params::None,
+	).unwrap() {
 		log_info!("{}", frame);
 	}
 

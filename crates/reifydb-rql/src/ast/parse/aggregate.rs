@@ -2,7 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	result::error::diagnostic::ast::multiple_expressions_without_braces,
+	result::error::diagnostic::operation::{
+		aggregate_multiple_by_without_braces,
+		aggregate_multiple_map_without_braces,
+	},
 	return_error,
 };
 
@@ -62,11 +65,31 @@ impl Parser {
 
 			if projections.len() > 1 && !has_projections_braces {
 				return_error!(
-					multiple_expressions_without_braces(
+					aggregate_multiple_map_without_braces(
 						token.fragment
 					)
 				);
 			}
+		}
+
+		// Note: We allow empty projections for group-by-only operations
+		// This can be useful for getting distinct groups without
+		// aggregations
+
+		// BY clause is optional - if not present, it's a global
+		// aggregation
+		let has_by_keyword = self
+			.current()
+			.map_or(false, |t| t.is_keyword(Keyword::By));
+
+		if !has_by_keyword {
+			// No BY clause means global aggregation with empty
+			// grouping
+			return Ok(AstAggregate {
+				token,
+				by: Vec::new(),
+				map: projections,
+			});
 		}
 
 		let _ = self.consume_keyword(Keyword::By)?;
@@ -79,30 +102,37 @@ impl Parser {
 
 		let mut by = Vec::new();
 
-		loop {
-			by.push(self.parse_node(Precedence::None)?);
+		// Check for empty braces first
+		if has_by_braces && self.current()?.is_operator(CloseCurly) {
+			self.advance()?; // consume closing brace
+		// Empty by clause for global aggregation
+		} else {
+			loop {
+				by.push(self.parse_node(Precedence::None)?);
 
-			if self.is_eof() {
-				break;
-			}
+				if self.is_eof() {
+					break;
+				}
 
-			// If we have braces, look for closing brace
-			if has_by_braces
-				&& self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?; // consume closing brace
-				break;
-			}
+				// If we have braces, look for closing brace
+				if has_by_braces
+					&& self.current()?
+						.is_operator(CloseCurly)
+				{
+					self.advance()?; // consume closing brace
+					break;
+				}
 
-			if self.current()?.is_separator(Comma) {
-				self.advance()?;
-			} else {
-				break;
+				if self.current()?.is_separator(Comma) {
+					self.advance()?;
+				} else {
+					break;
+				}
 			}
 		}
 
 		if by.len() > 1 && !has_by_braces {
-			return_error!(multiple_expressions_without_braces(
+			return_error!(aggregate_multiple_by_without_braces(
 				token.fragment
 			));
 		}
@@ -337,27 +367,72 @@ mod tests {
 	}
 
 	#[test]
-	fn test_multiple_projections_without_braces_fails() {
+	fn test_multiple_maps_without_braces_fails() {
 		let tokens = tokenize("AGGREGATE min(age), max(age) BY name")
 			.unwrap();
 		let mut parser = Parser::new(tokens);
-		let result = parser.parse();
-
-		assert!(
-			result.is_err(),
-			"Expected error for multiple projections without braces"
-		);
+		let result = parser.parse().unwrap_err();
+		assert_eq!(result.code, "AGGREGATE_002")
 	}
 
 	#[test]
 	fn test_multiple_by_without_braces_fails() {
-		let tokens = tokenize("AGGREGATE BY name, age").unwrap();
+		let tokens =
+			tokenize("AGGREGATE { count(value) } BY name, age")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
-		let result = parser.parse();
+		let result = parser.parse().unwrap_err();
+		assert_eq!(result.code, "AGGREGATE_003")
+	}
 
-		assert!(
-			result.is_err(),
-			"Expected error for multiple BY columns without braces"
+	#[test]
+	fn test_empty_by_clause() {
+		let tokens =
+			tokenize("AGGREGATE { count(value) } BY {}").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let aggregate = result.first_unchecked().as_aggregate();
+		assert_eq!(aggregate.map.len(), 1);
+
+		let projection = &aggregate.map[0].as_call_function();
+		assert_eq!(projection.function.value(), "count");
+		assert!(projection.namespaces.is_empty());
+
+		assert_eq!(projection.arguments.len(), 1);
+		let identifier = projection.arguments.nodes[0].as_identifier();
+		assert_eq!(identifier.value(), "value");
+
+		assert_eq!(
+			aggregate.by.len(),
+			0,
+			"BY clause should be empty for global aggregation"
+		);
+	}
+
+	#[test]
+	fn test_global_aggregate() {
+		let tokens = tokenize("AGGREGATE { count(value) } ").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let aggregate = result.first_unchecked().as_aggregate();
+		assert_eq!(aggregate.map.len(), 1);
+
+		let projection = &aggregate.map[0].as_call_function();
+		assert_eq!(projection.function.value(), "count");
+		assert!(projection.namespaces.is_empty());
+
+		assert_eq!(projection.arguments.len(), 1);
+		let identifier = projection.arguments.nodes[0].as_identifier();
+		assert_eq!(identifier.value(), "value");
+
+		assert_eq!(
+			aggregate.by.len(),
+			0,
+			"BY clause should be empty for global aggregation"
 		);
 	}
 }

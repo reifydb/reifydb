@@ -1,0 +1,38 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test tokenization of global aggregate without BY clause
+tokenize 'aggregate { count(value) }'
+---
+> Line 1:
+>   [  0] Keyword(Aggregate)
+>   [  1] Operator(OpenCurly)
+>   [  2] Identifier("count")
+>   [  3] Operator(OpenParen)
+>   [  4] Keyword(Value)
+>   [  5] Operator(CloseParen)
+>   [  6] Operator(CloseCurly)
+> 
+> 
+
+# Test tokenization of global aggregate with empty BY clause
+tokenize 'aggregate { sum(amount), avg(price) } by {}'
+---
+> Line 1:
+>   [  0] Keyword(Aggregate)
+>   [  1] Operator(OpenCurly)
+>   [  2] Identifier("sum")
+>   [  3] Operator(OpenParen)
+>   [  4] Identifier("amount")
+>   [  5] Operator(CloseParen)
+>   [  6] Separator(Comma)
+>   [  7] Identifier("avg")
+>   [  8] Operator(OpenParen)
+>   [  9] Identifier("price")
+>   [ 10] Operator(CloseParen)
+>   [ 11] Operator(CloseCurly)
+>   [ 12] Keyword(By)
+>   [ 13] Operator(OpenCurly)
+>   [ 14] Operator(CloseCurly)
+> 
+> 
