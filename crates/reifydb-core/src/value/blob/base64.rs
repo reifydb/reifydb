@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use base64::{Engine as _, engine::general_purpose};
-
 use super::Blob;
 use crate::{
 	Error, interface::fragment::IntoFragment,
-	result::error::diagnostic::blob,
+	result::error::diagnostic::blob, util::base64::engine::general_purpose,
 };
 
 impl Blob {

@@ -4,7 +4,7 @@
 mod optimistic;
 mod serializable;
 
-use reifydb_core::{CowVec, row::EncodedRow, util::encoding::bincode};
+use reifydb_core::{CowVec, row::EncodedRow};
 pub use reifydb_core::{EncodedKey, util::encoding::keycode};
 
 pub trait IntoRow {
@@ -51,7 +51,7 @@ macro_rules! impl_kv_for {
 	($t:ty) => {
 		impl IntoRow for $t {
 			fn into_row(self) -> EncodedRow {
-				EncodedRow(CowVec::new(bincode::serialize(
+				EncodedRow(CowVec::new(keycode::serialize(
 					&self,
 				)))
 			}
@@ -63,7 +63,7 @@ macro_rules! impl_kv_for {
 		}
 		impl FromRow for $t {
 			fn from_row(row: &EncodedRow) -> Option<Self> {
-				bincode::deserialize(row).ok()
+				keycode::deserialize(&row.0).ok()
 			}
 		}
 	};

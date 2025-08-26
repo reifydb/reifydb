@@ -20,14 +20,16 @@ use reifydb_core::{
 		Frame, FrameColumn, FrameColumnData,
 		error::diagnostic::Diagnostic,
 	},
+	util::hex::decode,
 	value::{
 		Blob,
 		container::{
-			BlobContainer, BoolContainer, NumberContainer,
-			RowNumberContainer, StringContainer, TemporalContainer,
-			UndefinedContainer, UuidContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer,
+			NumberContainer, RowNumberContainer, StringContainer,
+			TemporalContainer, UndefinedContainer, UuidContainer,
 		},
 		temporal::parse_interval,
+		uuid::{Uuid4, Uuid7},
 	},
 };
 use tokio::{
@@ -581,13 +583,13 @@ fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
 			))
 		}
 		Type::Uuid4 => {
-			let values: Vec<reifydb_core::value::uuid::Uuid4> =
+			let values: Vec<Uuid4> =
 				data.into_iter()
 					.map(|s| {
 						if s == "⟪undefined⟫" {
-							reifydb_core::value::uuid::Uuid4::from(Uuid::nil())
+							Uuid4::from(Uuid::nil())
 						} else {
-							reifydb_core::value::uuid::Uuid4::from(
+							Uuid4::from(
                             Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
                         )
 						}
@@ -599,13 +601,13 @@ fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
 			))
 		}
 		Type::Uuid7 => {
-			let values: Vec<reifydb_core::value::uuid::Uuid7> =
+			let values: Vec<Uuid7> =
 				data.into_iter()
 					.map(|s| {
 						if s == "⟪undefined⟫" {
-							reifydb_core::value::uuid::Uuid7::from(Uuid::nil())
+							Uuid7::from(Uuid::nil())
 						} else {
-							reifydb_core::value::uuid::Uuid7::from(
+							Uuid7::from(
                             Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
                         )
 						}
@@ -617,22 +619,22 @@ fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
 			))
 		}
 		Type::IdentityId => {
-			let values: Vec<reifydb_core::value::IdentityId> = data
-				.into_iter()
-				.map(|s| {
-					if s == "⟪undefined⟫" {
-						reifydb_core::value::IdentityId::from(
-								reifydb_core::value::uuid::Uuid7::from(Uuid::nil())
+			let values: Vec<reifydb_core::value::IdentityId> =
+				data.into_iter()
+					.map(|s| {
+						if s == "⟪undefined⟫" {
+							reifydb_core::value::IdentityId::from(
+								Uuid7::from(Uuid::nil())
 							)
-					} else {
-						let uuid7 = reifydb_core::value::uuid::Uuid7::from(
+						} else {
+							let uuid7 = Uuid7::from(
 								Uuid::parse_str(&s).unwrap_or(Uuid::nil()),
 							);
-						reifydb_core::value::IdentityId::from(uuid7)
-					}
-				})
-				.collect();
-			FrameColumnData::IdentityId(reifydb_core::value::container::IdentityIdContainer::new(
+							reifydb_core::value::IdentityId::from(uuid7)
+						}
+					})
+					.collect();
+			FrameColumnData::IdentityId(IdentityIdContainer::new(
 				values,
 				bitvec.into(),
 			))
@@ -648,9 +650,8 @@ fn convert_column_values(target: Type, data: Vec<String>) -> FrameColumnData {
 						// prefix)
 						if s.starts_with("0x") {
 							if let Ok(bytes) =
-								hex::decode(
-									&s[2..],
-								) {
+								decode(&s[2..])
+							{
 								Blob::new(bytes)
 							} else {
 								Blob::new(

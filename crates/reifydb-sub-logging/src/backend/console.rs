@@ -5,11 +5,11 @@
 
 use std::io::{self, Write};
 
-use colored::*;
 use parking_lot::Mutex;
 use reifydb_core::{
 	Result,
 	interface::subsystem::logging::{LogBackend, LogLevel, Record},
+	util::colored::*,
 };
 
 const MAX_LINE_WIDTH: usize = 160;

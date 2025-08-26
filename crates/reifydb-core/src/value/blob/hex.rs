@@ -3,8 +3,10 @@
 
 use super::Blob;
 use crate::{
-	Error, interface::fragment::IntoFragment,
+	Error,
+	interface::fragment::IntoFragment,
 	result::error::diagnostic::blob,
+	util::hex::{decode, encode},
 };
 
 impl Blob {
@@ -21,7 +23,7 @@ impl Blob {
 			hex_str
 		};
 
-		match hex::decode(clean_hex) {
+		match decode(clean_hex) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
 			Err(_) => {
 				Err(Error(blob::invalid_hex_string(fragment)))
@@ -30,7 +32,7 @@ impl Blob {
 	}
 
 	pub fn to_hex(&self) -> String {
-		format!("0x{}", hex::encode(self.as_bytes()))
+		format!("0x{}", encode(self.as_bytes()))
 	}
 }
 

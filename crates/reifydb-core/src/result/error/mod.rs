@@ -11,9 +11,7 @@ use serde::{de, ser};
 pub mod diagnostic;
 mod r#macro;
 
-use diagnostic::{
-	Diagnostic, conversion, render::DefaultRenderer, serialization,
-};
+use diagnostic::{Diagnostic, conversion, render::DefaultRenderer};
 
 #[derive(Debug, PartialEq)]
 pub struct Error(pub Diagnostic);
@@ -80,17 +78,5 @@ impl From<std::array::TryFromSliceError> for Error {
 impl From<std::string::FromUtf8Error> for Error {
 	fn from(err: std::string::FromUtf8Error) -> Self {
 		crate::error!(conversion::utf8_conversion_error(err))
-	}
-}
-
-impl From<bincode::error::EncodeError> for Error {
-	fn from(err: bincode::error::EncodeError) -> Self {
-		crate::error!(serialization::bincode_encode_error(err))
-	}
-}
-
-impl From<bincode::error::DecodeError> for Error {
-	fn from(err: bincode::error::DecodeError) -> Self {
-		crate::error!(serialization::bincode_decode_error(err))
 	}
 }

@@ -3,11 +3,11 @@
 
 use std::{
 	sync::{
-		Arc, Mutex,
+		Arc, Condvar, Mutex,
 		atomic::{AtomicUsize, Ordering},
 	},
 	thread,
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 use reifydb_core::interface::subsystem::Subsystem;
@@ -30,14 +30,21 @@ fn test_worker_pool_basic() {
 
 	// Submit some tasks
 	let counter = Arc::new(AtomicUsize::new(0));
+	let expected_count = 10;
+	let completion_signal = Arc::new((Mutex::new(0), Condvar::new()));
 
-	for i in 0..10 {
+	for i in 0..expected_count {
 		let counter_clone = Arc::clone(&counter);
+		let signal_clone = Arc::clone(&completion_signal);
 		let task = Box::new(ClosureTask::new(
 			format!("task_{}", i),
 			Priority::Normal,
 			move |_ctx| {
 				counter_clone.fetch_add(1, Ordering::Relaxed);
+				let (lock, cvar) = &*signal_clone;
+				let mut count = lock.lock().unwrap();
+				*count += 1;
+				cvar.notify_one();
 				Ok(())
 			},
 		));
@@ -45,11 +52,29 @@ fn test_worker_pool_basic() {
 		assert!(pool.submit(task).is_ok());
 	}
 
-	// Wait for tasks to complete
-	thread::sleep(Duration::from_millis(100));
+	// Wait for all tasks to complete with timeout
+	let (lock, cvar) = &*completion_signal;
+	let timeout = Duration::from_secs(5);
+	let start = Instant::now();
+	let mut completed = lock.lock().unwrap();
+	while *completed < expected_count {
+		let result = cvar
+			.wait_timeout(
+				completed,
+				timeout.saturating_sub(start.elapsed()),
+			)
+			.unwrap();
+		completed = result.0;
+		if result.1.timed_out() {
+			panic!(
+				"Test timed out waiting for tasks to complete. Completed: {}/{}",
+				*completed, expected_count
+			);
+		}
+	}
 
 	// Check that all tasks were executed
-	assert_eq!(counter.load(Ordering::Relaxed), 10);
+	assert_eq!(counter.load(Ordering::Relaxed), expected_count);
 
 	// shutdown the pool
 	assert!(pool.shutdown().is_ok());

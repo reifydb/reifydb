@@ -307,7 +307,7 @@ mod tests {
 						.map(|v| {
 							let value_str = match v {
                             Value::Undefined => String::new(),
-                            Value::Blob(b) => hex::encode(&**b),
+                            Value::Blob(b) => reifydb_core::util::hex::encode(&**b),
                             _ => v.to_string(),
                         };
 							serde_json::json!({
@@ -327,7 +327,7 @@ mod tests {
 						.map(|(k, v)| {
 							let value_str = match v {
                             Value::Undefined => String::new(),
-                            Value::Blob(b) => hex::encode(&**b),
+                            Value::Blob(b) => reifydb_core::util::hex::encode(&**b),
                             _ => v.to_string(),
                         };
 							(

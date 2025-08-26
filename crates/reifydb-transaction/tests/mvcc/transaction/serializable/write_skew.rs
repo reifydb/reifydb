@@ -57,7 +57,7 @@ fn test_write_skew() {
 	let mut sum = get_bal(&mut txn1, &a999);
 	sum += get_bal(&mut txn1, &a888);
 	assert_eq!(200, sum);
-	txn1.set(&a999, as_row!(0)).unwrap(); // Deduct 100 from a999
+	txn1.set(&a999, as_row!(0u64)).unwrap(); // Deduct 100 from a999
 
 	// Let's read this back.
 	let mut sum = get_bal(&mut txn1, &a999);
@@ -71,7 +71,7 @@ fn test_write_skew() {
 	let mut sum = get_bal(&mut txn2, &a999);
 	sum += get_bal(&mut txn2, &a888);
 	assert_eq!(200, sum);
-	txn2.set(&a888, as_row!(0)).unwrap(); // Deduct 100 from a888
+	txn2.set(&a888, as_row!(0u64)).unwrap(); // Deduct 100 from a888
 
 	// Let's read this back.
 	let mut sum = get_bal(&mut txn2, &a999);
