@@ -25,7 +25,7 @@ pub mod sync;
 #[cfg(feature = "async")]
 pub mod async_;
 
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 pub mod server;
 
 /// Convenience function to create in-memory storage

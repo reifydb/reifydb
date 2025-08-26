@@ -7,8 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dev-dependencies]
-reifydb = { workspace = true, features = ["sub_grpc", "sub_ws"] }
-reifydb-network = { workspace = true, features = ["client", "websocket", "grpc"]}
+reifydb = { workspace = true, features = ["sub_ws"] }
+reifydb-network = { workspace = true, features = ["client", "websocket"]}
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
 tokio = { workspace = true }

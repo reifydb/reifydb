@@ -18,7 +18,6 @@ members = [
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
     "crates/reifydb-sub-flow",
-    "crates/reifydb-sub-grpc",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
     "crates/reifydb-sub-ws",
@@ -46,7 +45,6 @@ default-members = [
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
     "crates/reifydb-sub-flow",
-    "crates/reifydb-sub-grpc",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
     "crates/reifydb-sub-ws",
@@ -101,7 +99,6 @@ reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
 #subsystems
-reifydb-sub-grpc = { path = "crates/reifydb-sub-grpc", version = "0.0.1" }
 reifydb-sub-logging = { path = "crates/reifydb-sub-logging", version = "0.0.1" }
 reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.0.1" }
 reifydb-sub-ws = { path = "crates/reifydb-sub-ws", version = "0.0.1" }
@@ -133,11 +130,6 @@ tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread", "signal"]
 tokio-stream = { version = "0.1.17" }
 tokio-tungstenite = { version = "0.27" }
 
-
-#grpc
-tonic = "0.13.1"
-tonic-build = "0.13.1"
-prost = "0.13.5"
 
 # lmbdb
 heed = { version = "0.22.0", features = ["preserve_order"] }

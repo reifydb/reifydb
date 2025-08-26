@@ -8,12 +8,11 @@ repository.workspace = true
 
 [features]
 default = ["reifydb-network/client"]
-grpc = ["reifydb-network/client", "reifydb-network/grpc"]
 websocket = ["reifydb-network/client", "reifydb-network/websocket"]
 
 [dependencies]
 reifydb = { workspace = true }
-reifydb-network = { workspace = true, optional = true, features = ["grpc", "websocket"] }
+reifydb-network = { workspace = true, optional = true, features = ["websocket"] }
 
 #reifydb-reifydb-catalog = { workspace = true }
 #reifydb-reifydb-flow = { workspace = true }
@@ -23,8 +22,6 @@ reifydb-network = { workspace = true, optional = true, features = ["grpc", "webs
 #reifydb-reifydb-rql = { workspace = true }
 #reifydb-reifydb-transaction = { workspace = true }
 
-prost = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 tokio-stream = { workspace = true, optional = true }
-tonic = { workspace = true, optional = true }
 

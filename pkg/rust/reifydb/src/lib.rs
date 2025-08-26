@@ -38,7 +38,7 @@ pub use reifydb_core::{
 	log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_engine as engine;
-#[cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#[cfg(feature = "sub_ws")]
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;

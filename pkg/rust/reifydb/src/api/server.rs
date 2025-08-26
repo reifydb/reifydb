@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#![cfg(any(feature = "sub_grpc", feature = "sub_ws"))]
+#![cfg(feature = "sub_ws")]
 
 use reifydb_storage::sqlite::SqliteConfig;
 
