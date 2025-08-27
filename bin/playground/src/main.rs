@@ -3,13 +3,13 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::time::Duration;
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
 	WithSubsystem,
 	core::interface::{Params, subsystem::logging::LogLevel::Trace},
-	log_info, sync,
+	sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -54,16 +54,10 @@ fn main() {
 
 	db.start().unwrap();
 
-	for frame in
-		db.query_as_root(r#"MAP 1 != undefined"#, Params::None).unwrap()
-	{
-		log_info!("{}", frame);
-	}
-
 	db.command_as_root(
 		r#"
 	    create schema test;
-	    create table test.users { id: int4, name: utf8, active: bool };
+	    create table test.raw_data { x: int4, y: int4, z: int4 }
 	"#,
 		Params::None,
 	)
@@ -72,32 +66,25 @@ fn main() {
 	db.command_as_root(
 		r#"
   from [
-    { id: 1, name: "Alice", active: true },
-    { id: 2, name: "Bob", active: false },
-    { id: 3, name: "Charlie", active: true }
-  ] insert test.users
+    { x: 10, y: 20, z: 30 },
+    { x: 15, y: 25, z: 35 },
+    { x: 5, y: 15, z: 25 }
+  ] insert test.raw_data
 		"#,
 		Params::None,
 	)
 	.unwrap();
 
-	db.command_as_root(
-		r#"
-from test.users filter active = true map { id: id, name: "ACTIVE", active: false } update
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
+	// Original problematic query - should now work correctly
 	for frame in db
 		.command_as_root(
-			r#"
-from test.users
-		"#,
+			r#"from test.raw_data map {id: x, value: y * 2}"#,
 			Params::None,
 		)
 		.unwrap()
 	{
 		println!("{}", frame);
 	}
+
+	sleep(Duration::from_millis(10))
 }
