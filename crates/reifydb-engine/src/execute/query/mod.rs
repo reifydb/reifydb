@@ -3,6 +3,7 @@
 
 pub mod aggregate;
 pub mod compile;
+pub mod extend;
 pub mod filter;
 pub mod inline;
 pub mod join_inner;

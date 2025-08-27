@@ -6,10 +6,10 @@ use reifydb_core::JoinType;
 use crate::{
 	ast::parse,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, CreateIndexNode, FilterNode,
-		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, MapNode, OrderNode, SourceScanNode, TakeNode,
-		compile_logical,
+		AggregateNode, AlterSequenceNode, CreateIndexNode, ExtendNode,
+		FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
+		JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
+		SourceScanNode, TakeNode, compile_logical,
 	},
 };
 
@@ -310,6 +310,27 @@ fn render_logical_plan_inner(
 			output.push_str(&format!("{}{} Map\n", prefix, branch));
 			for (i, expr) in map.iter().enumerate() {
 				let last = i == map.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr.to_string()
+				));
+			}
+		}
+		LogicalPlan::Extend(ExtendNode {
+			extend,
+		}) => {
+			output.push_str(&format!(
+				"{}{} Extend\n",
+				prefix, branch
+			));
+			for (i, expr) in extend.iter().enumerate() {
+				let last = i == extend.len() - 1;
 				output.push_str(&format!(
 					"{}{} {}\n",
 					child_prefix,

@@ -135,3 +135,25 @@ pub fn map_multiple_expressions_without_braces<'a>(
 		cause: None,
 	}
 }
+
+/// Multiple EXTEND expressions without braces error
+pub fn extend_multiple_expressions_without_braces<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "EXTEND_001".to_string(),
+		statement: None,
+		message: "Multiple EXTEND expressions require curly braces".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces around expressions".to_string()),
+		help: Some("Wrap multiple EXTEND expressions in curly braces, e.g., 'EXTEND { total: price * quantity, tax: price * 0.1 }'".to_string()),
+		notes: vec![
+			"When extending with multiple columns or expressions, use curly braces: EXTEND { expr1, expr2, ... }".to_string(),
+			"Single expressions can be written without braces: EXTEND total: price * quantity".to_string(),
+			"Curly braces make the query more readable and unambiguous".to_string(),
+		],
+		cause: None,
+	}
+}

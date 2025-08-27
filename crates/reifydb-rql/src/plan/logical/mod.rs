@@ -121,6 +121,7 @@ impl Compiler {
 			Ast::Take(node) => Self::compile_take(node),
 			Ast::Sort(node) => Self::compile_sort(node),
 			Ast::Map(node) => Self::compile_map(node),
+			Ast::Extend(node) => Self::compile_extend(node),
 			node => unimplemented!("{:?}", node),
 		}
 	}
@@ -163,6 +164,7 @@ pub enum LogicalPlan {
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode),
+	Extend(ExtendNode),
 	InlineData(InlineDataNode),
 	SourceScan(SourceScanNode),
 	// Chain wrapper for chained operations
@@ -302,6 +304,11 @@ pub struct MapNode {
 }
 
 #[derive(Debug)]
+pub struct ExtendNode {
+	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug)]
 pub struct InlineDataNode {
 	pub rows: Vec<Vec<AliasExpression>>,
 }
@@ -351,6 +358,10 @@ pub fn extract_table_from_plan(
 			extract_table_from_plan(&filter.input)
 		}
 		PhysicalPlan::Map(map) => map
+			.input
+			.as_ref()
+			.and_then(|input| extract_table_from_plan(input)),
+		PhysicalPlan::Extend(extend) => extend
 			.input
 			.as_ref()
 			.and_then(|input| extract_table_from_plan(input)),

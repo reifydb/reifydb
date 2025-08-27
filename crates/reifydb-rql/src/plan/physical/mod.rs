@@ -248,6 +248,16 @@ impl Compiler {
 					));
 				}
 
+				LogicalPlan::Extend(extend) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Extend(
+						ExtendNode {
+							extend: extend.extend,
+							input,
+						},
+					));
+				}
+
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) = CatalogStore::find_schema_by_name(
 							rx,
@@ -360,6 +370,7 @@ pub enum PhysicalPlan {
 	Take(TakeNode),
 	Sort(SortNode),
 	Map(MapNode),
+	Extend(ExtendNode),
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
 	ViewScan(ViewScanNode),
@@ -470,6 +481,12 @@ pub struct SortNode {
 pub struct MapNode {
 	pub input: Option<Box<PhysicalPlan>>,
 	pub map: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExtendNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub extend: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]

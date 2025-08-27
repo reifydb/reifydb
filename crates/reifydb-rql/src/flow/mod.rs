@@ -21,9 +21,9 @@ use reifydb_core::{
 
 use self::{
 	operator::{
-		aggregate::AggregateCompiler, filter::FilterCompiler,
-		join::JoinCompiler, map::MapCompiler, sort::SortCompiler,
-		take::TakeCompiler,
+		aggregate::AggregateCompiler, extend::ExtendCompiler,
+		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler,
+		sort::SortCompiler, take::TakeCompiler,
 	},
 	source::{
 		inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
@@ -147,6 +147,9 @@ impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 			}
 			PhysicalPlan::Map(map) => {
 				MapCompiler::from(map).compile(self)
+			}
+			PhysicalPlan::Extend(extend) => {
+				ExtendCompiler::from(extend).compile(self)
 			}
 			PhysicalPlan::Aggregate(aggregate) => {
 				AggregateCompiler::from(aggregate).compile(self)

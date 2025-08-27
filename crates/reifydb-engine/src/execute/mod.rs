@@ -6,6 +6,7 @@ use std::sync::Arc;
 use query::{
 	aggregate::AggregateNode,
 	compile::compile,
+	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
 	inline::InlineDataNode,
 	join_inner::InnerJoinNode,
@@ -64,6 +65,8 @@ pub(crate) enum ExecutionPlan {
 	NaturalJoin(NaturalJoinNode),
 	Map(MapNode),
 	MapWithoutInput(MapWithoutInputNode),
+	Extend(ExtendNode),
+	ExtendWithoutInput(ExtendWithoutInputNode),
 	Sort(SortNode),
 	TableScan(TableScanNode),
 	Take(TakeNode),
@@ -87,6 +90,10 @@ impl ExecutionPlan {
 			ExecutionPlan::MapWithoutInput(node) => {
 				node.next(ctx, rx)
 			}
+			ExecutionPlan::Extend(node) => node.next(ctx, rx),
+			ExecutionPlan::ExtendWithoutInput(node) => {
+				node.next(ctx, rx)
+			}
 			ExecutionPlan::Sort(node) => node.next(ctx, rx),
 			ExecutionPlan::TableScan(node) => node.next(ctx, rx),
 			ExecutionPlan::Take(node) => node.next(ctx, rx),
@@ -104,6 +111,10 @@ impl ExecutionPlan {
 			ExecutionPlan::NaturalJoin(node) => node.layout(),
 			ExecutionPlan::Map(node) => node.layout(),
 			ExecutionPlan::MapWithoutInput(node) => node.layout(),
+			ExecutionPlan::Extend(node) => node.layout(),
+			ExecutionPlan::ExtendWithoutInput(node) => {
+				node.layout()
+			}
 			ExecutionPlan::Sort(node) => node.layout(),
 			ExecutionPlan::TableScan(node) => node.layout(),
 			ExecutionPlan::Take(node) => node.layout(),
@@ -217,6 +228,7 @@ impl Executor {
 			| PhysicalPlan::Take(_)
 			| PhysicalPlan::Sort(_)
 			| PhysicalPlan::Map(_)
+			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::Delete(_)
 			| PhysicalPlan::Insert(_)
@@ -272,6 +284,7 @@ impl Executor {
 			| PhysicalPlan::Take(_)
 			| PhysicalPlan::Sort(_)
 			| PhysicalPlan::Map(_)
+			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_) => self.query(txn, plan, params),

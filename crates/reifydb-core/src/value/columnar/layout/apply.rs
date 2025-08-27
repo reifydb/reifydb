@@ -1,43 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::collections::{HashMap, HashSet};
+
+use super::{ColumnLayout, ColumnsLayout};
 use crate::value::columnar::{
 	Column, ColumnData, ColumnQualified, Columns, FullyQualified,
 	SourceQualified, Unqualified,
 };
-
-#[derive(Debug, Clone)]
-pub struct ColumnsLayout {
-	pub columns: Vec<ColumnLayout>,
-}
-
-impl ColumnsLayout {
-	pub fn from_columns(columns: &Columns) -> Self {
-		Self {
-			columns: columns
-				.iter()
-				.map(|c| ColumnLayout::from_column(c))
-				.collect(),
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct ColumnLayout {
-	pub schema: Option<String>,
-	pub source: Option<String>,
-	pub name: String,
-}
-
-impl ColumnLayout {
-	pub fn from_column(column: &Column) -> Self {
-		Self {
-			schema: column.schema().map(|s| s.to_string()),
-			source: column.source().map(|s| s.to_string()),
-			name: column.name().to_string(),
-		}
-	}
-}
 
 impl Columns {
 	pub fn apply_layout(&mut self, layout: &ColumnsLayout) {
@@ -91,8 +61,6 @@ impl Columns {
 		&self,
 		layout: &ColumnsLayout,
 	) -> ColumnsLayout {
-		use std::collections::HashMap;
-
 		// Group columns by name and check for ambiguity across
 		// different table/schema contexts
 		let mut name_groups: HashMap<
@@ -118,7 +86,7 @@ impl Columns {
                 let contexts = name_groups.get(&column_layout.name).unwrap();
 
                 // Check if this column name appears in different source/schema contexts
-                let mut unique_contexts = std::collections::HashSet::new();
+                let mut unique_contexts = HashSet::new();
                 for (schema, source) in contexts {
                     unique_contexts.insert((schema.clone(), source.clone()));
                 }

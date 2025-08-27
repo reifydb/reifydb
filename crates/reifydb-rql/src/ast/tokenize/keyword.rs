@@ -44,6 +44,7 @@ macro_rules! keyword {
 keyword! {
     Map     => "MAP",
     Select  => "SELECT",
+    Extend  => "EXTEND",
     By         => "BY",
     From       => "FROM",
     Where      => "WHERE",
@@ -131,6 +132,7 @@ pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
 	const KEYWORDS: &[(&str, Keyword)] = &[
 		("MAP", Keyword::Map),
 		("SELECT", Keyword::Select),
+		("EXTEND", Keyword::Extend),
 		("BY", Keyword::By),
 		("FROM", Keyword::From),
 		("WHERE", Keyword::Where),
