@@ -25,7 +25,7 @@ members = [
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
-    "testsuite/regression",
+    "testsuite/regression", "crates/reifydb-hash",
 ]
 
 default-members = [
