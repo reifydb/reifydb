@@ -11,15 +11,17 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaDefOperations, CatalogStore, CatalogTransactionOperations,
-	CatalogViewDefOperations, TransactionalChangesExt, view::ViewToCreate,
+	CatalogSchemaQueryOperations, CatalogStore, CatalogCommandTransactionOperations,
+	CatalogViewCommandOperations, CatalogViewQueryOperations,
+	CatalogQueryTransactionOperations, TransactionalChangesExt, view::ViewToCreate,
 };
 
-impl<T> CatalogViewDefOperations for T
+impl<T> CatalogViewCommandOperations for T
 where
 	T: CommandTransaction
-		+ CatalogTransactionOperations
-		+ CatalogSchemaDefOperations
+		+ CatalogCommandTransactionOperations
+		+ CatalogSchemaQueryOperations
+		+ CatalogViewQueryOperations
 		+ WithInterceptors<T>
 		+ WithHooks
 		+ ViewDefInterceptor<T>,
@@ -47,6 +49,15 @@ where
 		Ok(result)
 	}
 
+}
+
+// Query operations implementation
+impl<T> CatalogViewQueryOperations for T
+where
+	T: CommandTransaction
+		+ CatalogCommandTransactionOperations
+		+ TransactionalChangesExt,
+{
 	fn find_view_by_name(
 		&mut self,
 		schema: SchemaId,
@@ -69,7 +80,7 @@ where
 		if let Some(view) = self.catalog().find_view_by_name(
 			schema,
 			name,
-			CatalogTransactionOperations::version(self),
+			<T as CatalogQueryTransactionOperations>::version(self),
 		) {
 			return Ok(Some(view));
 		}
@@ -98,7 +109,7 @@ where
 		// 2. Check MaterializedCatalog
 		if let Some(view) = self.catalog().find_view(
 			id,
-			CatalogTransactionOperations::version(self),
+			<T as CatalogQueryTransactionOperations>::version(self),
 		) {
 			return Ok(Some(view));
 		}
@@ -115,3 +126,5 @@ where
 		Ok(None)
 	}
 }
+
+// TODO: Add CatalogViewQueryOperations implementation for query-only transactions

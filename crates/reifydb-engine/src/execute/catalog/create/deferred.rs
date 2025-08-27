@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogViewDefOperations, view::ViewToCreate};
+use reifydb_catalog::{CatalogViewCommandOperations, CatalogViewQueryOperations, view::ViewToCreate};
 use reifydb_core::{Value, interface::Transaction};
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
 

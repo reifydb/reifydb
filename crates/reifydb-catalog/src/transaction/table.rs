@@ -11,16 +11,17 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaDefOperations, CatalogStore, CatalogTableDefOperations,
-	CatalogTransactionOperations, TransactionalChangesExt,
-	table::TableToCreate,
+	CatalogSchemaQueryOperations, CatalogStore, CatalogTableCommandOperations,
+	CatalogTableQueryOperations, CatalogCommandTransactionOperations,
+	CatalogQueryTransactionOperations, TransactionalChangesExt, table::TableToCreate,
 };
 
-impl<T> CatalogTableDefOperations for T
+impl<T> CatalogTableCommandOperations for T
 where
 	T: CommandTransaction
-		+ CatalogTransactionOperations
-		+ CatalogSchemaDefOperations
+		+ CatalogCommandTransactionOperations
+		+ CatalogSchemaQueryOperations
+		+ CatalogTableQueryOperations
 		+ WithInterceptors<T>
 		+ WithHooks
 		+ TableDefInterceptor<T>,
@@ -49,6 +50,15 @@ where
 		Ok(result)
 	}
 
+}
+
+// Query operations implementation  
+impl<T> CatalogTableQueryOperations for T
+where
+	T: CommandTransaction
+		+ CatalogCommandTransactionOperations
+		+ TransactionalChangesExt,
+{
 	fn find_table_by_name(
 		&mut self,
 		schema: SchemaId,
@@ -71,7 +81,7 @@ where
 		if let Some(table) = self.catalog().find_table_by_name(
 			schema,
 			name,
-			CatalogTransactionOperations::version(self),
+			<T as CatalogQueryTransactionOperations>::version(self),
 		) {
 			return Ok(Some(table));
 		}
@@ -103,7 +113,7 @@ where
 		// 2. Check MaterializedCatalog
 		if let Some(table) = self.catalog().find_table(
 			id,
-			CatalogTransactionOperations::version(self),
+			<T as CatalogQueryTransactionOperations>::version(self),
 		) {
 			return Ok(Some(table));
 		}
@@ -120,3 +130,5 @@ where
 		Ok(None)
 	}
 }
+
+// TODO: Add CatalogTableQueryOperations implementation for query-only transactions
