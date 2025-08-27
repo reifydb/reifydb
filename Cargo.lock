@@ -1233,6 +1233,7 @@ name = "reifydb-hash"
 version = "0.0.1"
 dependencies = [
  "cc",
+ "serde",
 ]
 
 [[package]]
@@ -1298,6 +1299,7 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-hash",
  "reifydb-testing",
  "serde",
  "serde_json",

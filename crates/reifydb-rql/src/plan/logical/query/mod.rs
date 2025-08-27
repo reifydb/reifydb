@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod aggregate;
+mod distinct;
 mod filter;
 mod from;
 mod join;

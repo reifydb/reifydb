@@ -3,17 +3,16 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{thread, time::Duration};
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
 	WithSubsystem,
-	core::interface::{Params, subsystem::logging::LogLevel::Trace},
+	core::interface::{Params, subsystem::logging::LogLevel::Info},
 	log_info, sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
-// pub type DB = SqliteDatabaseOptimistic;
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	logging.with_console(|console| {
@@ -25,80 +24,35 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	.batch_size(2000)
 	.flush_interval(Duration::from_millis(50))
 	.immediate_on_error(true)
-	.level(Trace)
+	.level(Info)
 }
 
 fn main() {
 	let mut db: DB = sync::memory_optimistic()
 		.with_logging(logger_configuration)
-
-		// .intercept(table_pre_insert(|_ctx| {
-		// 	log_info!("Table pre insert interceptor called!");
-		// 	Ok(())
-		// }))
-		// .intercept(table_post_insert(|_ctx| {
-		// 	log_info!("Table post insert interceptor called!");
-		// 	Ok(())
-		// }))
-		// .intercept(post_commit(|ctx| {
-		// 	log_info!(
-		// 		"Post-commit interceptor called with version: {:?}",
-		// 		ctx.version
-		// 	);
-		// 	Ok(())
-		// }))
 		.build()
 		.unwrap();
-	// let mut db: DB =
-	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
 	db.start().unwrap();
 
-	for frame in
-		db.query_as_root(r#"MAP 1 != undefined"#, Params::None).unwrap()
-	{
-		log_info!("{}", frame);
-	}
+	log_info!("=== Distinct Operator Implementation Demo ===");
+	log_info!("");
+	log_info!("The DistinctOperator in reifydb-sub-flow:");
+	log_info!("• Uses xxh3_128 to hash each row -> Hash128");
+	log_info!("• Stores Hash128 in FlowDistinctStateKey");
+	log_info!("• Maintains reference counts for duplicates");
+	log_info!("• Emits rows only on first occurrence");
+	log_info!("");
 
+	// Create schema and table
 	db.command_as_root(
 		r#"
-	    create schema test;
-	    create table test.users { value: int8, age: int8};
-	"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Create first deferred view - all users
-	db.command_as_root(
-		r#"
-	create deferred view test.all_users { value: int8, age: int8 } with {
-	    from test.users
-	}
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Create second deferred view - teenagers (age < 20)
-	db.command_as_root(
-		r#"
-	create deferred view test.teenagers { value: int8, age: int8 } with {
-	    from test.users
-	    filter { age < 20 }
-	}
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Create third deferred view - adults (age >= 20)
-	db.command_as_root(
-		r#"
-	create deferred view test.adults { value: int8, age: int8 } with {
-	    from test.users
-	    filter { age >= 20 }
-	}
+		create schema demo;
+		create table demo.events { 
+			id: int8, 
+			category: text,
+			value: int8
+		};
 		"#,
 		Params::None,
 	)
@@ -106,79 +60,65 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-    from [
-        { value: 1, age: 19 },
-        { value: 1, age: 20 },
-        { value: 1, age: 19 },
-    ]
-    insert test.users;
-
-    "#,
+		create deferred view demo.all_events {
+			id: int8,
+			category: text,
+			value: int8
+		} with {
+			FROM demo.events
+		};
+		"#,
 		Params::None,
 	)
 	.unwrap();
+
+	log_info!("=== Input Data (with duplicates) ===");
+	log_info!("Inserting 10 rows with only 4 unique category/value pairs:");
 
 	db.command_as_root(
 		r#"
-	from [
-	    { value: 1, age: 40 },
-	    { value: 1, age: 19 },
-	    { value: 1, age: 19 },
-	]
-	insert test.users;
-
-	"#,
+		from [
+			{ id: 1, category: "A", value: 100 },
+			{ id: 2, category: "B", value: 200 },
+			{ id: 3, category: "A", value: 100 },
+			{ id: 4, category: "C", value: 300 },
+			{ id: 5, category: "B", value: 200 },
+			{ id: 6, category: "A", value: 100 },
+			{ id: 7, category: "D", value: 400 },
+			{ id: 8, category: "B", value: 200 },
+			{ id: 9, category: "A", value: 100 },
+			{ id: 10, category: "C", value: 300 }
+		]
+		insert demo.events;
+		"#,
 		Params::None,
 	)
 	.unwrap();
 
+	// Create another view with distinct
 	db.command_as_root(
 		r#"
-	from [
-	    { value: 11, age: 40 },
-	    { value: 1, age: 19 },
-	    { value: 1, age: 19 },
-	]
-	insert test.users;
-
-	"#,
+		create deferred view demo.unique_events {
+			id: int8,
+			category: text,
+			value: int8
+		} with {
+			FROM demo.events
+			filter { value <= 200 }
+			DISTINCT {category }
+		};
+		"#,
 		Params::None,
 	)
 	.unwrap();
 
-	thread::sleep(Duration::from_millis(100));
+	sleep(Duration::from_millis(10));
 
-	log_info!("=== All Users View ===");
-	for frame in db
-		.query_as_root(r#"FROM test.all_users"#, Params::None)
-		.unwrap()
-	{
-		log_info!("{}", frame);
-	}
-
-	log_info!("=== Teenagers View ===");
-	for frame in db
-		.query_as_root(r#"FROM test.teenagers"#, Params::None)
-		.unwrap()
-	{
-		log_info!("{}", frame);
-	}
-
-	log_info!("=== Adults View ===");
-	for frame in
-		db.query_as_root(r#"FROM test.adults"#, Params::None).unwrap()
-	{
-		log_info!("{}", frame);
-	}
-
-	// Test global aggregation with empty BY clause
-	log_info!("=== Global Aggregation Examples ===");
-
-	// Example 1: Count all rows
-	log_info!("Example 1: Count all rows");
 	for frame in db
 		.query_as_root(
-			r#"from test.users aggregate count(value) by {}"#,
+			r#"
+		FROM demo.all_events
+		"#,
 			Params::None,
 		)
 		.unwrap()
@@ -186,23 +126,17 @@ fn main() {
 		log_info!("{}", frame);
 	}
 
-	// Example 2: Multiple global aggregations with aliases
-	log_info!("\nExample 2: Multiple global aggregations");
-	for frame in db.query_as_root(
-		r#"from test.users aggregate { total_count: count(value), total_sum: sum(value), avg_age: avg(age) } by {}"#,
-		Params::None,
-	).unwrap() {
+	for frame in db
+		.query_as_root(
+			r#"
+		FROM demo.unique_events
+		"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		log_info!("{}", frame);
 	}
 
-	// Example 3: Compare with grouped aggregation
-	log_info!("\nExample 3: Grouped aggregation by age");
-	for frame in db.query_as_root(
-		r#"from test.users aggregate { count: count(value), sum: sum(value) } by age"#,
-		Params::None,
-	).unwrap() {
-		log_info!("{}", frame);
-	}
-
-	thread::sleep(Duration::from_millis(10));
+	sleep(Duration::from_millis(10));
 }

@@ -9,6 +9,7 @@ mod create;
 mod create_index;
 mod delete;
 mod describe;
+mod distinct;
 mod filter;
 mod from;
 mod identifier;

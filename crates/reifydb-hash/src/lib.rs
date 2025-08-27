@@ -8,10 +8,12 @@ mod xxh;
 
 use core::hash::{Hash, Hasher};
 
+use serde::{Deserialize, Serialize};
 pub use xxh::{xxh3_64, xxh3_128, xxh32, xxh64};
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Hash32(pub u32);
 
 impl From<u32> for Hash32 {
@@ -33,7 +35,8 @@ impl Hash for Hash32 {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Hash64(pub u64);
 
 impl From<u64> for Hash64 {
@@ -55,7 +58,8 @@ impl Hash for Hash64 {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Hash128(pub u128);
 
 impl From<u128> for Hash128 {

@@ -228,7 +228,8 @@ impl Executor {
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateSchema(_)
-			| PhysicalPlan::CreateTable(_) => unreachable!(), /* FIXME return explanatory diagnostic */
+			| PhysicalPlan::CreateTable(_)
+			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 		}
 	}
 
@@ -274,7 +275,8 @@ impl Executor {
 			| PhysicalPlan::Map(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::TableScan(_)
-			| PhysicalPlan::ViewScan(_) => self.query(txn, plan, params),
+			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::Distinct(_) => self.query(txn, plan, params),
 		}
 	}
 

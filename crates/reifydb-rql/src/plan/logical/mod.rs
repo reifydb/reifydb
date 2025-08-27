@@ -65,6 +65,8 @@ impl Compiler {
 				Ast::Sort(node) => {
 					result.push(Self::compile_sort(node)?)
 				}
+				Ast::Distinct(node) => result
+					.push(Self::compile_distinct(node)?),
 				Ast::Map(node) => {
 					result.push(Self::compile_map(node)?)
 				}
@@ -91,6 +93,7 @@ pub enum LogicalPlan {
 	Update(UpdateNode),
 	// Query
 	Aggregate(AggregateNode),
+	Distinct(DistinctNode),
 	Filter(FilterNode),
 	JoinInner(JoinInnerNode),
 	JoinLeft(JoinLeftNode),
@@ -187,6 +190,11 @@ pub struct UpdateNode {
 pub struct AggregateNode {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct DistinctNode {
+	pub columns: Vec<OwnedFragment>,
 }
 
 #[derive(Debug)]

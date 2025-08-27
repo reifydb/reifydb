@@ -4,6 +4,7 @@
 //! Operator-specific compilation implementations
 
 pub(crate) mod aggregate;
+pub(crate) mod distinct;
 pub(crate) mod filter;
 pub(crate) mod join;
 pub(crate) mod map;

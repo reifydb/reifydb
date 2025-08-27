@@ -4,10 +4,14 @@
 use reifydb_core::{
 	CowVec, Value,
 	flow::{FlowChange, FlowDiff},
-	interface::{CommandTransaction, Evaluator},
+	interface::{
+		CommandTransaction, EvaluationContext, Evaluator, Params,
+		expression::Expression,
+	},
 	row::EncodedKey,
 	value::columnar::Columns,
 };
+use reifydb_hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -20,13 +24,13 @@ use crate::{
 struct FlowDistinctStateKey {
 	flow_id: u64,
 	node_id: u64,
-	row_hash: u64,
+	row_hash: Hash128,
 }
 
 impl FlowDistinctStateKey {
 	const KEY_PREFIX: u8 = 0xF4;
 
-	fn new(flow_id: u64, node_id: u64, row_hash: u64) -> Self {
+	fn new(flow_id: u64, node_id: u64, row_hash: Hash128) -> Self {
 		Self {
 			flow_id,
 			node_id,
@@ -39,7 +43,7 @@ impl FlowDistinctStateKey {
 		key.push(Self::KEY_PREFIX);
 		key.extend(&self.flow_id.to_be_bytes());
 		key.extend(&self.node_id.to_be_bytes());
-		key.extend(&self.row_hash.to_be_bytes());
+		key.extend(&self.row_hash.0.to_be_bytes());
 		EncodedKey(CowVec::new(key))
 	}
 }
@@ -54,34 +58,89 @@ struct DistinctEntry {
 pub struct DistinctOperator {
 	flow_id: u64,
 	node_id: u64,
+	expressions: Vec<Expression>,
 }
 
 impl DistinctOperator {
-	pub fn new(flow_id: u64, node_id: u64) -> Self {
+	pub fn new(
+		flow_id: u64,
+		node_id: u64,
+		expressions: Vec<Expression>,
+	) -> Self {
 		Self {
 			flow_id,
 			node_id,
+			expressions,
 		}
 	}
 
-	fn hash_row(columns: &Columns, row_idx: usize) -> u64 {
-		use std::{
-			collections::hash_map::DefaultHasher,
-			hash::{Hash, Hasher},
-		};
+	fn hash_row_with_expressions<E: Evaluator, T: CommandTransaction>(
+		ctx: &OperatorContext<E, T>,
+		expressions: &[Expression],
+		columns: &Columns,
+		row_idx: usize,
+	) -> crate::Result<Hash128> {
+		let mut buffer = Vec::new();
 
-		let mut hasher = DefaultHasher::new();
-		for col in columns.iter() {
-			let value = col.data().get_value(row_idx);
-			format!("{:?}", value).hash(&mut hasher);
+		if expressions.is_empty() {
+			// If no expressions specified, hash all columns
+			for col in columns.iter() {
+				let value = col.data().get_value(row_idx);
+				buffer.extend(format!("{:?}", value).as_bytes());
+			}
+		} else {
+			// Hash only the specified expressions
+			let row_count = columns.row_count();
+			let empty_params = Params::None;
+			let eval_ctx = EvaluationContext {
+				target_column: None,
+				column_policies: Vec::new(),
+				columns: columns.clone(),
+				row_count,
+				take: None,
+				params: &empty_params,
+			};
+			for expr in expressions {
+				let result = ctx.evaluate(&eval_ctx, expr)?;
+				let value = result.data().get_value(row_idx);
+				buffer.extend(format!("{:?}", value).as_bytes());
+			}
 		}
-		hasher.finish()
+
+		Ok(xxh3_128(&buffer))
 	}
 
-	fn extract_row_values(columns: &Columns, row_idx: usize) -> Vec<Value> {
-		columns.iter()
-			.map(|col| col.data().get_value(row_idx))
-			.collect()
+	fn extract_row_values<E: Evaluator, T: CommandTransaction>(
+		ctx: &OperatorContext<E, T>,
+		expressions: &[Expression],
+		columns: &Columns,
+		row_idx: usize,
+	) -> crate::Result<Vec<Value>> {
+		if expressions.is_empty() {
+			// If no expressions specified, extract all columns
+			Ok(columns
+				.iter()
+				.map(|col| col.data().get_value(row_idx))
+				.collect())
+		} else {
+			// Extract only the specified expressions
+			let row_count = columns.row_count();
+			let empty_params = Params::None;
+			let eval_ctx = EvaluationContext {
+				target_column: None,
+				column_policies: Vec::new(),
+				columns: columns.clone(),
+				row_count,
+				take: None,
+				params: &empty_params,
+			};
+			let mut values = Vec::new();
+			for expr in expressions {
+				let result = ctx.evaluate(&eval_ctx, expr)?;
+				values.push(result.data().get_value(row_idx));
+			}
+			Ok(values)
+		}
 	}
 }
 
@@ -105,9 +164,9 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 					for (idx, &row_id) in
 						row_ids.iter().enumerate()
 					{
-						let row_hash = Self::hash_row(
-							after, idx,
-						);
+						let row_hash = Self::hash_row_with_expressions(
+							ctx, &self.expressions, after, idx,
+						)?;
 						let key = FlowDistinctStateKey::new(
                             self.flow_id,
                             self.node_id,
@@ -126,7 +185,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 							let entry = DistinctEntry {
                                 count: 1,
                                 first_row_id: row_id.0,
-                                row_data: Self::extract_row_values(after, idx),
+                                row_data: Self::extract_row_values(ctx, &self.expressions, after, idx)?,
                             };
 
 							let serialized = serde_json::to_vec(&entry)
@@ -198,9 +257,9 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 					for (idx, &row_id) in
 						row_ids.iter().enumerate()
 					{
-						let row_hash = Self::hash_row(
-							before, idx,
-						);
+						let row_hash = Self::hash_row_with_expressions(
+							ctx, &self.expressions, before, idx,
+						)?;
 						let key = FlowDistinctStateKey::new(
                             self.flow_id,
                             self.node_id,

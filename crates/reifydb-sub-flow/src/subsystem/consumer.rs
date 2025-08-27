@@ -219,7 +219,6 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		let mut changes = Vec::new();
-		let mut has_flow_inserts = false;
 
 		// Process all events and detect if we have flow table inserts
 		for event in events {
@@ -232,7 +231,6 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					CdcChange::Insert { .. }
 				) && table_row.table.0 == FLOWS_TABLE_ID
 				{
-					has_flow_inserts = true;
 					log_debug!(
 						"FlowConsumer: Detected flow table insert (table={:?})",
 						table_row.table
@@ -275,9 +273,8 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 
 		if !changes.is_empty() {
 			log_debug!(
-				"Flow consumer processing {} CDC events (has_flow_inserts={})",
+				"Flow consumer processing {} CDC events",
 				changes.len(),
-				has_flow_inserts
 			);
 			self.process_changes(txn, changes)?;
 		}

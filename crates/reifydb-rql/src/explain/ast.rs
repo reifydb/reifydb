@@ -55,6 +55,7 @@ fn render_ast_tree_inner(
 		Ast::Tuple(_) => "Tuple",
 		Ast::Wildcard(_) => "Wildcard",
 		Ast::ParameterRef(_) => "ParameterRef",
+		Ast::Distinct(_) => "Distinct",
 	};
 
 	let branch = if is_last {
