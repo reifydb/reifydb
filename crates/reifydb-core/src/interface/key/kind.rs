@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::return_internal_error;
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
@@ -31,6 +33,8 @@ pub enum KeyKind {
 	ViewIndexEntry = 0x16,
 	ViewRow = 0x17,
 	ViewRowSequence = 0x18,
+	TablePrimaryKey = 0x19,
+	ViewPrimaryKey = 0x1A,
 }
 
 impl From<KeyKind> for u8 {
@@ -39,7 +43,7 @@ impl From<KeyKind> for u8 {
 	}
 }
 impl TryFrom<u8> for KeyKind {
-	type Error = serde::de::value::Error;
+	type Error = crate::Error;
 
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
@@ -67,9 +71,15 @@ impl TryFrom<u8> for KeyKind {
 			0x16 => Ok(Self::ViewIndexEntry),
 			0x17 => Ok(Self::ViewRow),
 			0x18 => Ok(Self::ViewRowSequence),
-			_ => Err(serde::de::Error::custom(format!(
-				"Invalid KeyKind value: {value:#04x}"
-			))),
+			0x19 => Ok(Self::TablePrimaryKey),
+			0x1A => Ok(Self::ViewPrimaryKey),
+			_ => {
+				return_internal_error!(
+					"Invalid KeyKind value: {:#04x} (decimal: {}). Valid range: 0x01-0x1A",
+					value,
+					value
+				)
+			}
 		}
 	}
 }

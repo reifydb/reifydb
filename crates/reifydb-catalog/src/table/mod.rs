@@ -21,5 +21,7 @@ pub(crate) fn convert_table(versioned: Versioned) -> TableDef {
 		name,
 		schema,
 		columns: vec![], // Columns will be loaded separately if needed
+		primary_key: None, /* Primary key will be loaded separately if
+		                  * needed */
 	}
 }

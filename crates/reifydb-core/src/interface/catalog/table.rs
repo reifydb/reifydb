@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	Type,
 	interface::{
-		ColumnIndex, ColumnPolicy, SchemaId, TableColumnId, TableId,
+		ColumnIndex, ColumnPolicy, PrimaryKeyDef, SchemaId,
+		TableColumnId, TableId,
 	},
 };
 
@@ -26,4 +27,5 @@ pub struct TableDef {
 	pub schema: SchemaId,
 	pub name: String,
 	pub columns: Vec<TableColumnDef>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }

@@ -36,6 +36,7 @@ impl CatalogStore {
 			name,
 			schema,
 			columns: Self::list_table_columns(rx, id)?,
+			primary_key: None, // TODO: Load primary key if exists
 		}))
 	}
 

@@ -103,6 +103,7 @@ mod tests {
 					index: ColumnIndex(1),
 				},
 			],
+			primary_key: None,
 		}
 	}
 

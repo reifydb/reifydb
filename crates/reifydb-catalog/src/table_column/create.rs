@@ -74,7 +74,7 @@ impl CatalogStore {
 			}
 		}
 
-		let id = SystemSequence::next_column_id(txn)?;
+		let id = SystemSequence::next_table_column_id(txn)?;
 
 		let mut row = column::LAYOUT.allocate_row();
 		column::LAYOUT.set_u64(&mut row, column::ID, id);

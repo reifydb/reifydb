@@ -6,9 +6,9 @@ pub use reifydb_core::interface::SystemSequenceId;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		ColumnPolicyId, CommandTransaction, EncodableKey, SchemaId,
-		SystemSequenceKey, TableColumnId, TableId, ViewColumnId,
-		ViewId,
+		ColumnPolicyId, CommandTransaction, EncodableKey, PrimaryKeyId,
+		SchemaId, SystemSequenceKey, TableColumnId, TableId,
+		ViewColumnId, ViewId,
 	},
 };
 
@@ -19,9 +19,10 @@ pub(crate) const TABLE_SEQ_ID: SystemSequenceId = SystemSequenceId(2);
 pub(crate) const COLUMN_SEQ_ID: SystemSequenceId = SystemSequenceId(3);
 pub(crate) const COLUMN_POLICY_SEQ_ID: SystemSequenceId = SystemSequenceId(4);
 pub(crate) const VIEW_SEQ_ID: SystemSequenceId = SystemSequenceId(5);
-pub(crate) const FLOW_SEQ_ID: SystemSequenceId = SystemSequenceId(6);
-pub(crate) const FLOW_NODE_SEQ_ID: SystemSequenceId = SystemSequenceId(7);
-pub(crate) const FLOW_EDGE_SEQ_ID: SystemSequenceId = SystemSequenceId(8);
+pub(crate) const PK_SEQ_ID: SystemSequenceId = SystemSequenceId(6);
+pub(crate) const FLOW_SEQ_ID: SystemSequenceId = SystemSequenceId(7);
+pub(crate) const FLOW_NODE_SEQ_ID: SystemSequenceId = SystemSequenceId(8);
+pub(crate) const FLOW_EDGE_SEQ_ID: SystemSequenceId = SystemSequenceId(9);
 
 static SCHEMA_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
@@ -58,6 +59,13 @@ static VIEW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	.encode()
 });
 
+static PK_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+	SystemSequenceKey {
+		sequence: PK_SEQ_ID,
+	}
+	.encode()
+});
+
 pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
 		sequence: FLOW_SEQ_ID,
@@ -82,6 +90,12 @@ pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
+	pub(crate) fn next_primary_key_id(
+		txn: &mut impl CommandTransaction,
+	) -> crate::Result<PrimaryKeyId> {
+		GeneratorU64::next(txn, &PK_KEY, None).map(PrimaryKeyId)
+	}
+
 	pub(crate) fn next_schema_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<SchemaId> {
@@ -94,19 +108,13 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &TABLE_KEY, Some(1025)).map(TableId)
 	}
 
-	pub(crate) fn next_column_id(
+	pub(crate) fn next_table_column_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<TableColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, None).map(TableColumnId)
 	}
 
-	pub(crate) fn next_view_column_id(
-		txn: &mut impl CommandTransaction,
-	) -> crate::Result<ViewColumnId> {
-		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ViewColumnId)
-	}
-
-	pub(crate) fn next_column_policy_id(
+	pub(crate) fn next_table_column_policy_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ColumnPolicyId> {
 		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, None)
@@ -117,5 +125,11 @@ impl SystemSequence {
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ViewId> {
 		GeneratorU64::next(txn, &VIEW_KEY, Some(1025)).map(ViewId)
+	}
+
+	pub(crate) fn next_view_column_id(
+		txn: &mut impl CommandTransaction,
+	) -> crate::Result<ViewColumnId> {
+		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ViewColumnId)
 	}
 }

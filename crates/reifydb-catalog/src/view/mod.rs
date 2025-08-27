@@ -29,5 +29,7 @@ pub(crate) fn convert_view(versioned: Versioned) -> ViewDef {
 		schema,
 		kind,
 		columns: vec![], // Columns will be loaded separately if needed
+		primary_key: None, /* Primary key will be loaded separately if
+		                  * needed */
 	}
 }

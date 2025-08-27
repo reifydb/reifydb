@@ -15,6 +15,7 @@ pub use table_column_sequence::TableColumnSequenceKey;
 pub use table_columns::TableColumnsKey;
 pub use table_index::{TableIndexKey, TableIndexKeyRange};
 pub use table_index_entry::TableIndexEntryKey;
+pub use table_primary_key::TablePrimaryKeyEntry;
 pub use table_row::{TableRowKey, TableRowKeyRange};
 pub use table_row_sequence::TableRowSequenceKey;
 pub use transaction_version::TransactionVersionKey;
@@ -24,6 +25,7 @@ pub use view_column_sequence::ViewColumnSequenceKey;
 pub use view_columns::ViewColumnsKey;
 pub use view_index::{ViewIndexKey, ViewIndexKeyRange};
 pub use view_index_entry::ViewIndexEntryKey;
+pub use view_primary_key::ViewPrimaryKeyEntry;
 pub use view_row::{ViewRowKey, ViewRowKeyRange};
 pub use view_row_sequence::ViewRowSequenceKey;
 
@@ -43,6 +45,7 @@ mod table_column_sequence;
 mod table_columns;
 mod table_index;
 mod table_index_entry;
+mod table_primary_key;
 mod table_row;
 mod table_row_sequence;
 mod transaction_version;
@@ -52,6 +55,7 @@ mod view_column_sequence;
 mod view_columns;
 mod view_index;
 mod view_index_entry;
+mod view_primary_key;
 mod view_row;
 mod view_row_sequence;
 
@@ -81,6 +85,8 @@ pub enum Key {
 	ViewIndexEntry(ViewIndexEntryKey),
 	ViewRow(ViewRowKey),
 	ViewRowSequence(ViewRowSequenceKey),
+	TablePrimaryKey(TablePrimaryKeyEntry),
+	ViewPrimaryKey(ViewPrimaryKeyEntry),
 }
 
 impl Key {
@@ -110,6 +116,8 @@ impl Key {
 			Key::ViewIndexEntry(key) => key.encode(),
 			Key::ViewRow(key) => key.encode(),
 			Key::ViewRowSequence(key) => key.encode(),
+			Key::TablePrimaryKey(key) => key.encode(),
+			Key::ViewPrimaryKey(key) => key.encode(),
 		}
 	}
 }
@@ -215,6 +223,14 @@ impl Key {
 			KeyKind::ViewRowSequence => {
 				ViewRowSequenceKey::decode(&key)
 					.map(Self::ViewRowSequence)
+			}
+			KeyKind::TablePrimaryKey => {
+				TablePrimaryKeyEntry::decode(&key)
+					.map(Self::TablePrimaryKey)
+			}
+			KeyKind::ViewPrimaryKey => {
+				ViewPrimaryKeyEntry::decode(&key)
+					.map(Self::ViewPrimaryKey)
 			}
 		}
 	}
