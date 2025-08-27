@@ -61,18 +61,18 @@ impl SortNode {
 		let key_refs =
 			self.by.iter()
 				.map(|key| {
-					let col =
-						columns.iter()
-							.find(|c| {
-								c.qualified_name()
+					let col = columns
+						.iter()
+						.find(|c| {
+							c.qualified_name()
 								== key.column
-									.fragment() || c.name()
+									.text() || c.name()
 								== key.column
-									.fragment()
-							})
-							.ok_or_else(|| {
-								error!(query::column_not_found(key.column.clone()))
-							})?;
+									.text()
+						})
+						.ok_or_else(|| {
+							error!(query::column_not_found(key.column.clone()))
+						})?;
 					Ok::<_, reifydb_core::Error>((
 						col.data().clone(),
 						key.direction.clone(),

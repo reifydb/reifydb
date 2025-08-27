@@ -123,7 +123,7 @@ impl AggregateNode {
 						.unwrap();
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
-                        name: alias.fragment().to_string(),
+                        name: alias.text().to_string(),
                         data: ColumnData::undefined(0),
                     });
 					for key in &group_key_order {
@@ -150,8 +150,7 @@ impl AggregateNode {
 						Column::ColumnQualified(
 							ColumnQualified {
 								name: alias
-									.fragment(
-									)
+									.text()
 									.to_string(
 									),
 								data,
@@ -186,20 +185,20 @@ fn parse_keys_and_aggregates<'a>(
 	for gb in by {
 		match gb {
 			Expression::Column(c) => {
-				keys.push(c.0.fragment());
+				keys.push(c.0.text());
 				projections.push(Projection::Group {
-					column: c.0.fragment().to_string(),
+					column: c.0.text().to_string(),
 					alias: c.fragment(),
 				})
 			}
 			Expression::AccessSource(access) => {
 				// Handle qualified column references like
 				// departments.dept_name
-				keys.push(access.column.fragment());
+				keys.push(access.column.text());
 				projections.push(Projection::Group {
 					column: access
 						.column
-						.fragment()
+						.text()
 						.to_string(),
 					alias: access.fragment(),
 				})
@@ -233,7 +232,7 @@ fn parse_keys_and_aggregates<'a>(
 
 		match actual_expr {
 			Expression::Call(call) => {
-				let func = call.func.0.fragment();
+				let func = call.func.0.text();
 				match call.args.first().map(|arg| arg) {
 					Some(Expression::Column(c)) => {
 						let function = functions
@@ -243,8 +242,7 @@ fn parse_keys_and_aggregates<'a>(
 							Projection::Aggregate {
 								column: c
 									.0
-									.fragment(
-									)
+									.text()
 									.to_string(
 									),
 								alias,
@@ -265,8 +263,7 @@ fn parse_keys_and_aggregates<'a>(
 							Projection::Aggregate {
 								column: access
 									.column
-									.fragment(
-									)
+									.text()
 									.to_string(
 									),
 								alias,

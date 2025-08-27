@@ -514,7 +514,7 @@ impl StandardEvaluator {
 			// undefined results in undefined
 			(ColumnData::Undefined(l), _) => {
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: add.fragment().fragment().into(),
+					name: add.fragment().text().into(),
 					data: ColumnData::Undefined(
 						UndefinedContainer::new(
 							l.len(),
@@ -524,7 +524,7 @@ impl StandardEvaluator {
 			}
 			(_, ColumnData::Undefined(r)) => {
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: add.fragment().fragment().into(),
+					name: add.fragment().text().into(),
 					data: ColumnData::Undefined(
 						UndefinedContainer::new(
 							r.len(),
@@ -576,7 +576,7 @@ where
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: fragment.text().into(),
 		data,
 	}))
 }

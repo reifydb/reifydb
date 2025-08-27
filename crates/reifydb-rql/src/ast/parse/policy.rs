@@ -48,7 +48,7 @@ impl Parser {
 		&mut self,
 	) -> crate::Result<(Token, AstPolicyKind)> {
 		let identifier = self.consume(Identifier)?;
-		let ty = match identifier.fragment.fragment() {
+		let ty = match identifier.fragment.text() {
 			"saturation" => AstPolicyKind::Saturation,
 			"default" => AstPolicyKind::Default,
 			"not" => {

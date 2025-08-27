@@ -7,6 +7,11 @@ use crate::{
 };
 
 mod sequence;
+mod table;
+mod view;
+
+pub use table::{AlterTableNode, AlterTableOperation};
+pub use view::{AlterViewNode, AlterViewOperation};
 
 impl Compiler {
 	pub(crate) fn compile_alter(
@@ -16,16 +21,10 @@ impl Compiler {
 			AstAlter::Sequence(node) => {
 				Self::compile_alter_sequence(node)
 			}
-			AstAlter::Table(_node) => {
-				unimplemented!(
-					"ALTER TABLE is not yet implemented in logical plan"
-				)
+			AstAlter::Table(node) => {
+				Self::compile_alter_table(node)
 			}
-			AstAlter::View(_node) => {
-				unimplemented!(
-					"ALTER VIEW is not yet implemented in logical plan"
-				)
-			}
+			AstAlter::View(node) => Self::compile_alter_view(node),
 		}
 	}
 }

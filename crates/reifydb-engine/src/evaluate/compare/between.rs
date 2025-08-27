@@ -93,10 +93,7 @@ impl StandardEvaluator {
 				}
 
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: expr
-						.fragment
-						.fragment()
-						.to_string(),
+					name: expr.fragment.text().to_string(),
 					data: ColumnData::bool_with_bitvec(
 						data, bitvec,
 					),

@@ -8,6 +8,5 @@ pub use tokenize::explain_tokenize;
 
 mod ast;
 mod logical_plan;
-mod logical_plan_tests;
 mod physical_plan;
 mod tokenize;

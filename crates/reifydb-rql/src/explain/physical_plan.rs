@@ -91,13 +91,13 @@ fn render_physical_plan_inner(
 		}) => {
 			let schema_str = schema
 				.as_ref()
-				.map(|s| format!("{}.", s.fragment()))
+				.map(|s| format!("{}.", s.text()))
 				.unwrap_or_default();
 			let label = format!(
 				"AlterSequence {}{}.{} SET VALUE {}",
 				schema_str,
-				table.fragment(),
-				column.fragment(),
+				table.text(),
+				column.text(),
 				value
 			);
 			write_node_header(output, prefix, is_last, &label);
@@ -421,5 +421,7 @@ fn render_physical_plan_inner(
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}
+		PhysicalPlan::AlterTable(_) => unimplemented!(),
+		PhysicalPlan::AlterView(_) => unimplemented!(),
 	}
 }

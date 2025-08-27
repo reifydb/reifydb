@@ -59,14 +59,11 @@ mod tests {
 			PhysicalPlan::AlterSequence(plan) => {
 				assert!(plan.schema.is_some());
 				assert_eq!(
-					plan.schema
-						.as_ref()
-						.unwrap()
-						.fragment(),
+					plan.schema.as_ref().unwrap().text(),
 					"test"
 				);
-				assert_eq!(plan.table.fragment(), "users");
-				assert_eq!(plan.column.fragment(), "id");
+				assert_eq!(plan.table.text(), "users");
+				assert_eq!(plan.column.text(), "id");
 
 				assert!(matches!(
 					plan.value,
@@ -77,7 +74,7 @@ mod tests {
 					)
 				));
 				let fragment = plan.value.fragment();
-				assert_eq!(fragment.fragment(), "1000");
+				assert_eq!(fragment.text(), "1000");
 			}
 			_ => panic!("Expected AlterSequence physical plan"),
 		}

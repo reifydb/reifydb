@@ -48,7 +48,7 @@ impl Parser {
 									"-{}",
 									literal.0
 										.fragment
-										.fragment()
+										.text()
 								),
 							}
 						},

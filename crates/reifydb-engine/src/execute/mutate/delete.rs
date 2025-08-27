@@ -41,7 +41,7 @@ impl Executor {
 				(&plan.schema, &plan.table)
 			{
 				// Both schema and table explicitly specified
-				let schema_name = schema_ref.fragment();
+				let schema_name = schema_ref.text();
 				let Some(schema) =
 					CatalogStore::find_schema_by_name(
 						txn,
@@ -58,14 +58,14 @@ impl Executor {
 					CatalogStore::find_table_by_name(
 						txn,
 						schema.id,
-						&table_ref.fragment(),
+						&table_ref.text(),
 					)?
 				else {
 					let fragment = table_ref.clone();
 					return_error!(table_not_found(
 						fragment.clone(),
 						schema_name,
-						&fragment.fragment(),
+						&fragment.text(),
 					));
 				};
 

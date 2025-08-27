@@ -21,7 +21,10 @@ use reifydb_core::{
 
 use crate::plan::{
 	logical::LogicalPlan,
-	physical::PhysicalPlan::{TableScan, ViewScan},
+	physical::{
+		PhysicalPlan::{TableScan, ViewScan},
+		alter::{AlterTablePlan, AlterViewPlan},
+	},
 };
 
 struct Compiler {}
@@ -94,6 +97,18 @@ impl Compiler {
 							rx, alter,
 						)?,
 					);
+				}
+
+				LogicalPlan::AlterTable(alter) => {
+					stack.push(Self::compile_alter_table(
+						rx, alter,
+					)?);
+				}
+
+				LogicalPlan::AlterView(alter) => {
+					stack.push(Self::compile_alter_view(
+						rx, alter,
+					)?);
 				}
 
 				LogicalPlan::Filter(filter) => {
@@ -260,8 +275,8 @@ impl Compiler {
 
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) = CatalogStore::find_schema_by_name(
-							rx,
-							&scan.schema.fragment(),
+                        rx,
+                        &scan.schema.text(),
 						)?
 					else {
 						return_error!(
@@ -271,16 +286,16 @@ impl Compiler {
 									.clone(
 									)),
 								&scan.schema
-									.fragment(
+									.text(
 									)
 							)
 						);
 					};
 
 					if let Some(table) = CatalogStore::find_table_by_name(
-							rx,
-							schema.id,
-							&scan.source.fragment(),
+                        rx,
+                        schema.id,
+                        &scan.source.text(),
 						)? {
 						stack.push(TableScan(
 							TableScanNode {
@@ -289,9 +304,9 @@ impl Compiler {
 							},
 						));
 					} else if let Some(view) = CatalogStore::find_view_by_name(
-							rx,
-							schema.id,
-							&scan.source.fragment(),
+                        rx,
+                        schema.id,
+                        &scan.source.text(),
 						)? {
 						stack.push(ViewScan(
 							ViewScanNode {
@@ -303,8 +318,8 @@ impl Compiler {
 						return_error!(
 							table_not_found(
 								Some(scan.source.clone()),
-								&scan.schema.fragment(),
-								&scan.source.fragment()
+								&scan.schema.text(),
+								&scan.source.text()
 							)
 						);
 					}
@@ -356,6 +371,8 @@ pub enum PhysicalPlan {
 	CreateTable(CreateTablePlan),
 	// Alter
 	AlterSequence(AlterSequencePlan),
+	AlterTable(AlterTablePlan),
+	AlterView(AlterViewPlan),
 	// Mutate
 	Delete(DeletePlan),
 	Insert(InsertPlan),

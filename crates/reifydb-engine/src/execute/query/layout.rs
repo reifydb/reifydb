@@ -39,12 +39,12 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 		Expression::Column(col_expr) => ColumnLayout {
 			schema: None,
 			source: None,
-			name: col_expr.0.fragment().to_string(),
+			name: col_expr.0.text().to_string(),
 		},
 		Expression::AccessSource(access_expr) => ColumnLayout {
 			schema: None,
-			source: Some(access_expr.source.fragment().to_string()),
-			name: access_expr.column.fragment().to_string(),
+			source: Some(access_expr.source.text().to_string()),
+			name: access_expr.column.text().to_string(),
 		},
 		_ => {
 			// For other expressions, generate a simplified name
@@ -94,22 +94,20 @@ fn simplified_name(expr: &Expression) -> String {
 				simplified_name(&expr.right)
 			)
 		}
-		Expression::Column(col_expr) => {
-			col_expr.0.fragment().to_string()
-		}
+		Expression::Column(col_expr) => col_expr.0.text().to_string(),
 		Expression::Constant(const_expr) => match const_expr {
 			ConstantExpression::Number {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.text().to_string(),
 			ConstantExpression::Text {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.text().to_string(),
 			ConstantExpression::Bool {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.text().to_string(),
 			ConstantExpression::Temporal {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.text().to_string(),
 			ConstantExpression::Undefined {
 				..
 			} => "undefined".to_string(),
@@ -117,8 +115,8 @@ fn simplified_name(expr: &Expression) -> String {
 		Expression::AccessSource(access_expr) => {
 			format!(
 				"{}.{}",
-				access_expr.source.fragment(),
-				access_expr.column.fragment()
+				access_expr.source.text(),
+				access_expr.column.text()
 			)
 		}
 		Expression::Call(call_expr) => format!(
@@ -225,7 +223,7 @@ fn simplified_name(expr: &Expression) -> String {
 			)
 		}
 		Expression::Type(type_expr) => {
-			type_expr.fragment.fragment().to_string()
+			type_expr.fragment.text().to_string()
 		}
 		Expression::Parameter(_) => "parameter".to_string(),
 	}

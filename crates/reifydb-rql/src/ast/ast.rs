@@ -821,7 +821,7 @@ pub struct AstIdentifier(pub Token);
 
 impl AstIdentifier {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 
 	pub fn name(&self) -> String {
@@ -919,7 +919,7 @@ pub struct AstLiteralNumber(pub Token);
 
 impl AstLiteralNumber {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 
@@ -928,7 +928,7 @@ pub struct AstLiteralTemporal(pub Token);
 
 impl AstLiteralTemporal {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 
@@ -937,7 +937,7 @@ pub struct AstLiteralText(pub Token);
 
 impl AstLiteralText {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 
@@ -955,7 +955,7 @@ pub struct AstLiteralUndefined(pub Token);
 
 impl AstLiteralUndefined {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 

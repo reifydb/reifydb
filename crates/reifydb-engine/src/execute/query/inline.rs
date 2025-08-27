@@ -156,11 +156,8 @@ impl InlineDataNode {
 
 		for row in &self.rows {
 			for keyed_expr in row {
-				let column_name = keyed_expr
-					.alias
-					.0
-					.fragment()
-					.to_string();
+				let column_name =
+					keyed_expr.alias.0.text().to_string();
 				all_columns.insert(column_name);
 			}
 		}
@@ -173,11 +170,8 @@ impl InlineDataNode {
 			let mut row_map: HashMap<String, &AliasExpression> =
 				HashMap::new();
 			for alias_expr in row {
-				let column_name = alias_expr
-					.alias
-					.0
-					.fragment()
-					.to_string();
+				let column_name =
+					alias_expr.alias.0.text().to_string();
 				row_map.insert(column_name, alias_expr);
 			}
 			rows_data.push(row_map);
@@ -364,11 +358,8 @@ impl InlineDataNode {
 			let mut row_map: HashMap<String, &AliasExpression> =
 				HashMap::new();
 			for alias_expr in row {
-				let column_name = alias_expr
-					.alias
-					.0
-					.fragment()
-					.to_string();
+				let column_name =
+					alias_expr.alias.0.text().to_string();
 				row_map.insert(column_name, alias_expr);
 			}
 			rows_data.push(row_map);

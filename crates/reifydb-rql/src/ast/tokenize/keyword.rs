@@ -249,7 +249,7 @@ mod tests {
 				repr
 			);
 			assert_eq!(
-				tokens[0].fragment.fragment().to_lowercase(),
+				tokens[0].fragment.text().to_lowercase(),
 				repr.to_lowercase()
 			);
 			assert_eq!(tokens[0].fragment.column().0, 1);
@@ -356,7 +356,7 @@ mod tests {
 				"Input '{}' should produce an identifier, not a keyword",
 				input_str
 			);
-			assert_eq!(tokens[0].fragment.fragment(), &input_str);
+			assert_eq!(tokens[0].fragment.text(), &input_str);
 		}
 
 		// Also test that the bare lowercase word IS parsed as a keyword

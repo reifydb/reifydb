@@ -45,6 +45,6 @@ mod tests {
 		let tokens = tokenize("user_referral").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.fragment(), "user_referral");
+		assert_eq!(tokens[0].fragment.text(), "user_referral");
 	}
 }

@@ -89,7 +89,7 @@ fn render_ast_tree_inner(
 		description,
 		fragment.line().0,
 		fragment.column().0,
-		fragment.fragment()
+		fragment.text()
 	));
 
 	let child_prefix = format!(

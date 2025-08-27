@@ -123,16 +123,16 @@ impl Display for ConstantExpression {
 			} => write!(f, "undefined"),
 			ConstantExpression::Bool {
 				fragment,
-			} => write!(f, "{}", fragment.fragment()),
+			} => write!(f, "{}", fragment.text()),
 			ConstantExpression::Number {
 				fragment,
-			} => write!(f, "{}", fragment.fragment()),
+			} => write!(f, "{}", fragment.text()),
 			ConstantExpression::Text {
 				fragment,
-			} => write!(f, "\"{}\"", fragment.fragment()),
+			} => write!(f, "\"{}\"", fragment.text()),
 			ConstantExpression::Temporal {
 				fragment,
-			} => write!(f, "{}", fragment.fragment()),
+			} => write!(f, "{}", fragment.text()),
 		}
 	}
 }
@@ -400,8 +400,8 @@ impl Display for Expression {
 				write!(
 					f,
 					"{}.{}",
-					target.fragment(),
-					property.fragment()
+					target.text(),
+					property.text()
 				)
 			}
 			Expression::Alias(AliasExpression {
@@ -419,7 +419,7 @@ impl Display for Expression {
 				write!(f, "Constant({})", fragment)
 			}
 			Expression::Column(ColumnExpression(fragment)) => {
-				write!(f, "Column({})", fragment.fragment())
+				write!(f, "Column({})", fragment.text())
 			}
 			Expression::Add(AddExpression {
 				left,
@@ -541,15 +541,15 @@ impl Display for Expression {
 			Expression::Type(TypeExpression {
 				fragment,
 				..
-			}) => write!(f, "{}", fragment.fragment()),
+			}) => write!(f, "{}", fragment.text()),
 			Expression::Parameter(param) => match param {
 				ParameterExpression::Positional {
 					fragment,
 					..
-				} => write!(f, "{}", fragment.fragment()),
+				} => write!(f, "{}", fragment.text()),
 				ParameterExpression::Named {
 					fragment,
-				} => write!(f, "{}", fragment.fragment()),
+				} => write!(f, "{}", fragment.text()),
 			},
 		}
 	}
@@ -569,12 +569,12 @@ impl Caltokenizepression {
 			line: self.func.0.line(),
 			text: format!(
 				"{}({})",
-				self.func.0.fragment(),
+				self.func.0.text(),
 				self.args
 					.iter()
 					.map(|arg| arg
 						.fragment()
-						.fragment()
+						.text()
 						.to_string())
 					.collect::<Vec<_>>()
 					.join(",")
@@ -613,7 +613,7 @@ impl ParameterExpression {
 		match self {
 			ParameterExpression::Positional {
 				fragment,
-			} => fragment.fragment()[1..].parse().ok(),
+			} => fragment.text()[1..].parse().ok(),
 			ParameterExpression::Named {
 				..
 			} => None,
@@ -624,7 +624,7 @@ impl ParameterExpression {
 		match self {
 			ParameterExpression::Named {
 				fragment,
-			} => Some(&fragment.fragment()[1..]),
+			} => Some(&fragment.text()[1..]),
 			ParameterExpression::Positional {
 				..
 			} => None,
@@ -634,13 +634,13 @@ impl ParameterExpression {
 
 impl IdentExpression {
 	pub fn name(&self) -> &str {
-		self.0.fragment()
+		self.0.text()
 	}
 }
 
 impl Display for IdentExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", self.0.fragment())
+		write!(f, "{}", self.0.text())
 	}
 }
 

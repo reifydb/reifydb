@@ -20,12 +20,12 @@ impl Compiler {
 	) -> crate::Result<PhysicalPlan> {
 		let Some(schema) = CatalogStore::find_schema_by_name(
 			rx,
-			&create.schema.fragment(),
+			&create.schema.text(),
 		)?
 		else {
 			return_error!(schema_not_found(
 				Some(create.schema.clone()),
-				&create.schema.fragment()
+				&create.schema.text()
 			));
 		};
 

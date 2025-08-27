@@ -40,7 +40,7 @@ impl Token {
 		self.kind == TokenKind::Operator(operator)
 	}
 	pub fn value(&self) -> &str {
-		self.fragment.fragment()
+		self.fragment.text()
 	}
 }
 

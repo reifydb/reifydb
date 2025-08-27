@@ -86,24 +86,24 @@ fn render_logical_plan_inner(
 				output.push_str(&format!(
 					"{}├── Schema: {}\n",
 					child_prefix,
-					schema_fragment.fragment()
+					schema_fragment.text()
 				));
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
 					child_prefix,
-					table.fragment()
+					table.text()
 				));
 			} else {
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
 					child_prefix,
-					table.fragment()
+					table.text()
 				));
 			}
 			output.push_str(&format!(
 				"{}├── Column: {}\n",
 				child_prefix,
-				column.fragment()
+				column.text()
 			));
 			output.push_str(&format!(
 				"{}└── Value: {}\n",
@@ -140,17 +140,17 @@ fn render_logical_plan_inner(
 			output.push_str(&format!(
 				"{}├── Name: {}\n",
 				child_prefix,
-				name.fragment()
+				name.text()
 			));
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
 				child_prefix,
-				schema.fragment()
+				schema.text()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.fragment()
+				table.text()
 			));
 
 			let columns_str = columns
@@ -159,13 +159,11 @@ fn render_logical_plan_inner(
 					if let Some(order) = &col.order {
 						format!(
 							"{} {:?}",
-							col.column.fragment(),
+							col.column.text(),
 							order
 						)
 					} else {
-						col.column
-							.fragment()
-							.to_string()
+						col.column.text().to_string()
 					}
 				})
 				.collect::<Vec<_>>()
@@ -499,11 +497,8 @@ fn render_logical_plan_inner(
 			schema,
 			source: table,
 		}) => {
-			let name = format!(
-				"{}.{}",
-				schema.fragment(),
-				table.fragment()
-			);
+			let name =
+				format!("{}.{}", schema.text(), table.text());
 
 			output.push_str(&format!(
 				"{}{} TableScan {}\n",
@@ -541,6 +536,20 @@ fn render_logical_plan_inner(
 					output,
 				);
 			}
+		}
+		LogicalPlan::AlterTable(_) => {
+			output.push_str(&format!(
+				"{}{} AlterTable\n",
+				prefix, branch
+			));
+			// TODO: Add detailed output for AlterTable operations
+		}
+		LogicalPlan::AlterView(_) => {
+			output.push_str(&format!(
+				"{}{} AlterView\n",
+				prefix, branch
+			));
+			// TODO: Add detailed output for AlterView operations
 		}
 	}
 }

@@ -237,6 +237,8 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_) => self.query(rx, plan, params),
 
 			PhysicalPlan::AlterSequence(_)
+			| PhysicalPlan::AlterTable(_)
+			| PhysicalPlan::AlterView(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateSchema(_)
@@ -253,6 +255,12 @@ impl Executor {
 		match plan {
 			PhysicalPlan::AlterSequence(plan) => {
 				self.alter_table_sequence(txn, plan)
+			}
+			PhysicalPlan::AlterTable(_plan) => {
+				unimplemented!()
+			}
+			PhysicalPlan::AlterView(_plan) => {
+				unimplemented!()
 			}
 			PhysicalPlan::CreateDeferredView(plan) => {
 				self.create_deferred_view(txn, plan)
