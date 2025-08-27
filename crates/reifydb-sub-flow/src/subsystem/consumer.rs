@@ -22,7 +22,6 @@ use crate::engine::FlowEngine;
 
 // The table ID for reifydb.flows table
 // This is where flow definitions are stored
-// TODO: Make this configurable or detect dynamically
 const FLOWS_TABLE_ID: u64 = 1025;
 
 /// Consumer that processes CDC events for Flow subsystem

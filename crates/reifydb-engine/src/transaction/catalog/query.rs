@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{
-    CatalogQueryTransactionOperations,
-    CatalogSchemaQueryOperations, CatalogTableQueryOperations,
-    CatalogViewQueryOperations, MaterializedCatalog, CatalogQueryTransaction,
+	CatalogQueryTransaction, CatalogQueryTransactionOperations,
+	CatalogSchemaQueryOperations, CatalogTableQueryOperations,
+	CatalogViewQueryOperations, MaterializedCatalog,
 };
 use reifydb_core::{
-    interface::{
-        SchemaDef, SchemaId, TableDef, TableId, Transaction,
-        VersionedQueryTransaction, ViewDef, ViewId,
-    },
-    Version,
+	Version,
+	interface::{
+		SchemaDef, SchemaId, TableDef, TableId, Transaction,
+		VersionedQueryTransaction, ViewDef, ViewId,
+	},
 };
 
 use crate::StandardQueryTransaction;

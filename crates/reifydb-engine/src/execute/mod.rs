@@ -31,7 +31,7 @@ use reifydb_rql::{
 };
 
 use crate::{
-	StandardCommandTransaction,
+	StandardCommandTransaction, StandardQueryTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
@@ -185,12 +185,12 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 	}
 }
 
-impl ExecuteQuery for Executor {
+impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
 	fn execute_query(
 		&self,
-		txn: &mut impl QueryTransaction,
+		txn: &mut StandardQueryTransaction<T>,
 		qry: Query<'_>,
-	) -> reifydb_core::Result<Vec<Frame>> {
+	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse(qry.rql)?;
 
@@ -209,7 +209,11 @@ impl ExecuteQuery for Executor {
 	}
 }
 
-impl<T: Transaction> Execute<StandardCommandTransaction<T>> for Executor {}
+impl<T: Transaction>
+	Execute<StandardCommandTransaction<T>, StandardQueryTransaction<T>>
+	for Executor
+{
+}
 
 impl Executor {
 	pub(crate) fn execute_query_plan(

@@ -5,7 +5,8 @@ mod alter;
 mod create;
 
 use reifydb_catalog::{
-	CatalogStore, table::TableColumnToCreate, view::ViewColumnToCreate,
+	CatalogQueryTransaction, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	JoinType, OwnedFragment, SortKey,
@@ -29,18 +30,24 @@ use crate::plan::{
 
 struct Compiler {}
 
-pub fn compile_physical(
-	rx: &mut impl QueryTransaction,
+pub fn compile_physical<T>(
+	rx: &mut T,
 	logical: Vec<LogicalPlan>,
-) -> crate::Result<Option<PhysicalPlan>> {
+) -> crate::Result<Option<PhysicalPlan>>
+where
+	T: QueryTransaction + CatalogQueryTransaction,
+{
 	Compiler::compile(rx, logical)
 }
 
 impl Compiler {
-	fn compile(
-		rx: &mut impl QueryTransaction,
+	fn compile<T>(
+		rx: &mut T,
 		logical: Vec<LogicalPlan>,
-	) -> crate::Result<Option<PhysicalPlan>> {
+	) -> crate::Result<Option<PhysicalPlan>>
+	where
+		T: QueryTransaction + CatalogQueryTransaction,
+	{
 		if logical.is_empty() {
 			return Ok(None);
 		}
@@ -274,9 +281,9 @@ impl Compiler {
 				}
 
 				LogicalPlan::SourceScan(scan) => {
-					let Some(schema) = CatalogStore::find_schema_by_name(
-                        rx,
-                        &scan.schema.text(),
+					let Some(schema) = rx
+						.find_schema_by_name(
+							&scan.schema.text(),
 						)?
 					else {
 						return_error!(
@@ -286,16 +293,15 @@ impl Compiler {
 									.clone(
 									)),
 								&scan.schema
-									.text(
-									)
+									.text()
 							)
 						);
 					};
 
-					if let Some(table) = CatalogStore::find_table_by_name(
-                        rx,
-                        schema.id,
-                        &scan.source.text(),
+					if let Some(table) = rx
+						.find_table_by_name(
+							schema.id,
+							&scan.source.text(),
 						)? {
 						stack.push(TableScan(
 							TableScanNode {
@@ -303,10 +309,10 @@ impl Compiler {
 								table,
 							},
 						));
-					} else if let Some(view) = CatalogStore::find_view_by_name(
-                        rx,
-                        schema.id,
-                        &scan.source.text(),
+					} else if let Some(view) = rx
+						.find_view_by_name(
+							schema.id,
+							&scan.source.text(),
 						)? {
 						stack.push(ViewScan(
 							ViewScanNode {
@@ -315,13 +321,13 @@ impl Compiler {
 							},
 						));
 					} else {
-						return_error!(
-							table_not_found(
-								Some(scan.source.clone()),
-								&scan.schema.text(),
-								&scan.source.text()
-							)
-						);
+						return_error!(table_not_found(
+							Some(scan
+								.source
+								.clone()),
+							&scan.schema.text(),
+							&scan.source.text()
+						));
 					}
 				}
 

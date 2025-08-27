@@ -3,6 +3,7 @@
 
 use std::fmt::Write;
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
@@ -14,10 +15,13 @@ use crate::{
 	},
 };
 
-pub fn explain_physical_plan(
-	rx: &mut impl QueryTransaction,
+pub fn explain_physical_plan<T>(
+	rx: &mut T,
 	query: &str,
-) -> crate::Result<String> {
+) -> crate::Result<String>
+where
+	T: QueryTransaction + CatalogQueryTransaction,
+{
 	let statements = parse(query)?;
 
 	let mut plans = Vec::new();

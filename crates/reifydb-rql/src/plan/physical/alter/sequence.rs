@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::interface::QueryTransaction;
 
 use crate::plan::{
@@ -9,10 +10,13 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence(
-		_rx: &mut impl QueryTransaction,
+	pub(crate) fn compile_alter_sequence<T>(
+		_rx: &mut T,
 		alter: AlterSequenceNode,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan>
+	where
+		T: QueryTransaction + CatalogQueryTransaction,
+	{
 		// For ALTER SEQUENCE, we just pass through the logical plan
 		// info The actual execution will happen in the engine
 		Ok(PhysicalPlan::AlterSequence(AlterSequencePlan {

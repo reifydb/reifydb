@@ -1,16 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::marker::PhantomData;
+
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
+	EncodedKey, EncodedKeyRange,
 	interface::{
 		BoxedVersionedIter, CdcTransaction, QueryTransaction,
 		Transaction, TransactionId, UnversionedTransaction, Versioned,
 		VersionedQueryTransaction, VersionedTransaction,
-	}, EncodedKey,
-	EncodedKeyRange,
+	},
 };
-use std::marker::PhantomData;
 
 /// An active query transaction that holds a versioned query transaction
 /// and provides query-only access to unversioned storage.

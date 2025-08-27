@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use PhysicalPlan::CreateTransactionalView;
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{
 	diagnostic::catalog::schema_not_found, interface::QueryTransaction,
 	return_error,
@@ -14,14 +14,15 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_transactional(
-		rx: &mut impl QueryTransaction,
+	pub(crate) fn compile_create_transactional<T>(
+		rx: &mut T,
 		create: CreateTransactionalViewNode,
-	) -> crate::Result<PhysicalPlan> {
-		let Some(schema) = CatalogStore::find_schema_by_name(
-			rx,
-			&create.schema.text(),
-		)?
+	) -> crate::Result<PhysicalPlan>
+	where
+		T: QueryTransaction + CatalogQueryTransaction,
+	{
+		let Some(schema) =
+			rx.find_schema_by_name(&create.schema.text())?
 		else {
 			return_error!(schema_not_found(
 				Some(create.schema.clone()),

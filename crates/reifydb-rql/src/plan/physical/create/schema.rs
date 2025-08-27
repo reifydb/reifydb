@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::interface::QueryTransaction;
 
 use crate::plan::{
@@ -9,10 +10,13 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_schema(
-		_rx: &mut impl QueryTransaction,
+	pub(crate) fn compile_create_schema<T>(
+		_rx: &mut T,
 		create: CreateSchemaNode,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan>
+	where
+		T: QueryTransaction + CatalogQueryTransaction,
+	{
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateSchema(CreateSchemaPlan {
 			schema: create.schema,

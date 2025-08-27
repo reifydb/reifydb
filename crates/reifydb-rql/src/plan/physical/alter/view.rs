@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{
 	SortDirection,
 	interface::{QueryTransaction, SchemaDef, ViewDef},
@@ -35,15 +35,16 @@ pub enum AlterViewOperation {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_view(
-		rx: &mut impl QueryTransaction,
+	pub(crate) fn compile_alter_view<T>(
+		rx: &mut T,
 		node: AlterViewNode,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan>
+	where
+		T: QueryTransaction + CatalogQueryTransaction,
+	{
 		// Resolve the schema
-		let Some(schema_def) = CatalogStore::find_schema_by_name(
-			rx,
-			&node.schema.text(),
-		)?
+		let Some(schema_def) =
+			rx.find_schema_by_name(&node.schema.text())?
 		else {
 			return_error!(schema_not_found(
 				&node.schema,
@@ -52,11 +53,8 @@ impl Compiler {
 		};
 
 		// Resolve the view
-		let Some(view_def) = CatalogStore::find_view_by_name(
-			rx,
-			schema_def.id,
-			&node.view.text(),
-		)?
+		let Some(view_def) =
+			rx.find_view_by_name(schema_def.id, &node.view.text())?
 		else {
 			return_error!(view_not_found(
 				&node.schema,
