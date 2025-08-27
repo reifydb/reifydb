@@ -70,6 +70,7 @@ pub enum Ast {
 	PolicyBlock(AstPolicyBlock),
 	Prefix(AstPrefix),
 	Map(AstMap),
+	Extend(AstExtend),
 	Tuple(AstTuple),
 	Wildcard(AstWildcard),
 }
@@ -134,6 +135,7 @@ impl Ast {
 			Ast::PolicyBlock(node) => &node.token,
 			Ast::Prefix(node) => node.node.token(),
 			Ast::Map(node) => &node.token,
+			Ast::Extend(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
 		}
@@ -478,6 +480,14 @@ impl Ast {
 			result
 		} else {
 			panic!("not map")
+		}
+	}
+
+	pub fn as_extend(&self) -> &AstExtend {
+		if let Ast::Extend(result) = self {
+			result
+		} else {
+			panic!("not extend")
 		}
 	}
 
@@ -826,7 +836,7 @@ pub struct AstInfix {
 pub struct AstDelete {
 	pub token: Token,
 	pub schema: Option<AstIdentifier>,
-	pub table: AstIdentifier,
+	pub table: Option<AstIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -840,7 +850,7 @@ pub struct AstInsert {
 pub struct AstUpdate {
 	pub token: Token,
 	pub schema: Option<AstIdentifier>,
-	pub table: AstIdentifier,
+	pub table: Option<AstIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -978,6 +988,26 @@ impl Index<usize> for AstMap {
 }
 
 impl AstMap {
+	pub fn len(&self) -> usize {
+		self.nodes.len()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstExtend {
+	pub token: Token,
+	pub nodes: Vec<Ast>,
+}
+
+impl Index<usize> for AstExtend {
+	type Output = Ast;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.nodes[index]
+	}
+}
+
+impl AstExtend {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}

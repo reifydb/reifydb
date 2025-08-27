@@ -51,6 +51,7 @@ fn render_ast_tree_inner(
 		Ast::PolicyBlock(_) => "PolicyBlock",
 		Ast::Prefix(_) => "Prefix",
 		Ast::Map(_) => "Map",
+		Ast::Extend(_) => "Extend",
 		Ast::Take(_) => "Take",
 		Ast::Tuple(_) => "Tuple",
 		Ast::Wildcard(_) => "Wildcard",

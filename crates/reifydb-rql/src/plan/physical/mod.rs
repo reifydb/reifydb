@@ -116,9 +116,24 @@ impl Compiler {
 				}
 
 				LogicalPlan::Delete(delete) => {
-					let input = stack
-						.pop()
-						.map(|i| Box::new(i));
+					// If delete has its own input, compile
+					// it first Otherwise, try to pop
+					// from stack (for pipeline operations)
+					let input =
+						if let Some(delete_input) =
+							delete.input
+						{
+							// Recursively compile
+							// the input pipeline
+							let sub_plan = Self::compile(rx, vec![*delete_input])?
+							.expect("Delete input must produce a plan");
+							Some(Box::new(sub_plan))
+						} else {
+							stack.pop().map(|i| {
+								Box::new(i)
+							})
+						};
+
 					stack.push(PhysicalPlan::Delete(
 						DeletePlan {
 							input,
@@ -140,10 +155,30 @@ impl Compiler {
 				}
 
 				LogicalPlan::Update(update) => {
-					let input = stack.pop().unwrap();
+					// If update has its own input, compile
+					// it first Otherwise, pop from
+					// stack (for pipeline operations)
+					let input =
+						if let Some(update_input) =
+							update.input
+						{
+							// Recursively compile
+							// the input pipeline
+							let sub_plan = Self::compile(rx, vec![*update_input])?
+							.expect("Update input must produce a plan");
+							Box::new(sub_plan)
+						} else {
+							Box::new(
+								stack.pop()
+									.expect(
+										"Update requires input",
+									),
+							)
+						};
+
 					stack.push(PhysicalPlan::Update(
 						UpdatePlan {
-							input: Box::new(input),
+							input,
 							schema: update.schema,
 							table: update.table,
 						},
@@ -224,6 +259,16 @@ impl Compiler {
 					));
 				}
 
+				LogicalPlan::Extend(extend) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Extend(
+						ExtendNode {
+							extend: extend.extend,
+							input,
+						},
+					));
+				}
+
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) = CatalogStore::find_schema_by_name(
 							rx,
@@ -286,6 +331,17 @@ impl Compiler {
 					));
 				}
 
+				LogicalPlan::Chain(chain) => {
+					// Compile the chain of operations
+					// This ensures they all share the same
+					// stack
+					let chain_result =
+						Self::compile(rx, chain.steps)?;
+					if let Some(result) = chain_result {
+						stack.push(result);
+					}
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -326,6 +382,7 @@ pub enum PhysicalPlan {
 	Take(TakeNode),
 	Sort(SortNode),
 	Map(MapNode),
+	Extend(ExtendNode),
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
 	ViewScan(ViewScanNode),
@@ -394,7 +451,7 @@ pub struct FilterNode {
 pub struct DeletePlan {
 	pub input: Option<Box<PhysicalPlan>>,
 	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+	pub table: Option<OwnedFragment>,
 }
 
 #[derive(Debug, Clone)]
@@ -408,7 +465,7 @@ pub struct InsertPlan {
 pub struct UpdatePlan {
 	pub input: Box<PhysicalPlan>,
 	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+	pub table: Option<OwnedFragment>,
 }
 
 #[derive(Debug, Clone)]
@@ -442,6 +499,12 @@ pub struct SortNode {
 pub struct MapNode {
 	pub input: Option<Box<PhysicalPlan>>,
 	pub map: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExtendNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub extend: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]

@@ -3,6 +3,7 @@
 
 mod aggregate;
 mod distinct;
+mod extend;
 mod filter;
 mod from;
 mod join;

@@ -123,7 +123,7 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		println!("{}", frame);
 	}
 
 	for frame in db

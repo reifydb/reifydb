@@ -31,6 +31,9 @@ pub enum OperatorType {
 	Map {
 		expressions: Vec<Expression>,
 	},
+	Extend {
+		expressions: Vec<Expression>,
+	},
 	MapTerminal {
 		expressions: Vec<Expression>,
 		view_id: ViewId,
@@ -66,6 +69,9 @@ impl OperatorType {
 				..
 			} => false,
 			OperatorType::Map {
+				..
+			} => false,
+			OperatorType::Extend {
 				..
 			} => false,
 			OperatorType::MapTerminal {

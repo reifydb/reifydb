@@ -2,21 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	diagnostic::ast,
 	result::error::diagnostic::operation::select_multiple_expressions_without_braces,
 	return_error,
 };
 
-use crate::ast::{
-	Ast, AstInfix, AstMap, InfixOperator,
-	parse::{Parser, Precedence},
-	tokenize::{
-		Keyword,
-		Operator::{CloseCurly, Colon, OpenCurly},
-		Separator::Comma,
-		TokenKind,
-	},
-};
+use crate::ast::{AstMap, parse::Parser, tokenize::Keyword};
 
 impl Parser {
 	/// Parse SELECT statement - this is an alias for MAP that delegates to
@@ -24,42 +14,7 @@ impl Parser {
 	pub(crate) fn parse_select(&mut self) -> crate::Result<AstMap> {
 		let token = self.consume_keyword(Keyword::Select)?;
 
-		// Check if we have an opening brace
-		let has_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_braces {
-			self.advance()?; // consume opening brace
-		}
-
-		let mut nodes = Vec::new();
-		loop {
-			// Try to parse colon-based syntax first (e.g., "col:
-			// expression")
-			if let Ok(alias_expr) =
-				self.try_parse_colon_alias_for_select()
-			{
-				nodes.push(alias_expr);
-			} else {
-				nodes.push(self.parse_node(Precedence::None)?);
-			}
-
-			if self.is_eof() {
-				break;
-			}
-
-			// consume comma and continue
-			if self.current()?.is_separator(Comma) {
-				self.advance()?;
-			} else if has_braces
-				&& self.current()?.is_operator(CloseCurly)
-			{
-				// If we have braces, look for closing brace
-				self.advance()?; // consume closing brace
-				break;
-			} else {
-				break;
-			}
-		}
+		let (nodes, has_braces) = self.parse_expressions(true)?;
 
 		if nodes.len() > 1 && !has_braces {
 			return_error!(
@@ -69,51 +24,10 @@ impl Parser {
 			);
 		}
 
-		// Return AstMap, not a new AST type - SELECT is just an alias
 		Ok(AstMap {
 			token,
 			nodes,
 		})
-	}
-
-	/// Try to parse "identifier: expression" syntax and convert it to
-	/// "expression AS identifier" - same logic as map but for SELECT
-	fn try_parse_colon_alias_for_select(&mut self) -> crate::Result<Ast> {
-		let len = self.tokens.len();
-
-		// Look ahead to see if we have "identifier: expression" pattern
-		if len < 2 {
-			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().fragment
-			));
-		}
-
-		// Check if next token is identifier
-		match &self.tokens[len - 1].kind {
-			TokenKind::Identifier => {}
-			_ => return_error!(ast::unsupported_token_error(
-				self.current()?.clone().fragment
-			)),
-		};
-
-		// Check if second token is colon
-		if !self.tokens[len - 2].is_operator(Colon) {
-			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().fragment
-			));
-		}
-
-		let identifier = self.parse_as_identifier()?;
-		let colon_token = self.advance()?; // consume colon
-
-		let expression = self.parse_node(Precedence::None)?;
-
-		Ok(Ast::Infix(AstInfix {
-			token: expression.token().clone(),
-			left: Box::new(expression),
-			operator: InfixOperator::As(colon_token),
-			right: Box::new(Ast::Identifier(identifier)),
-		}))
 	}
 }
 

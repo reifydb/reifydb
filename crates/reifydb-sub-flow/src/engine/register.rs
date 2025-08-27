@@ -6,8 +6,8 @@ use reifydb_core::{
 	flow::{
 		Flow, FlowNodeType, OperatorType,
 		OperatorType::{
-			Aggregate, Distinct, Filter, Join, Map, MapTerminal,
-			Sort, Take, Union,
+			Aggregate, Distinct, Extend, Filter, Join, Map,
+			MapTerminal, Sort, Take, Union,
 		},
 	},
 	interface::{
@@ -18,9 +18,9 @@ use reifydb_core::{
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		AggregateOperator, DistinctOperator, FilterOperator,
-		JoinOperator, MapOperator, MapTerminalOperator, OperatorEnum,
-		SortOperator, TakeOperator, UnionOperator,
+		AggregateOperator, DistinctOperator, ExtendOperator,
+		FilterOperator, JoinOperator, MapOperator, MapTerminalOperator,
+		OperatorEnum, SortOperator, TakeOperator, UnionOperator,
 	},
 };
 
@@ -138,6 +138,11 @@ impl<E: Evaluator> FlowEngine<E> {
 			Map {
 				expressions,
 			} => Ok(OperatorEnum::Map(MapOperator::new(
+				expressions,
+			))),
+			Extend {
+				expressions,
+			} => Ok(OperatorEnum::Extend(ExtendOperator::new(
 				expressions,
 			))),
 			MapTerminal {

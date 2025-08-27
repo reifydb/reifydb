@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	ColumnDescriptor, IntoFragment, Type, Value,
+	ColumnDescriptor, Type, Value,
 	interface::{
 		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
 		Transaction, VersionedCommandTransaction,
@@ -18,7 +18,9 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
-use reifydb_rql::plan::physical::UpdatePlan;
+use reifydb_rql::plan::{
+	logical::extract_table_from_plan, physical::UpdatePlan,
+};
 
 use crate::{
 	StandardCommandTransaction,
@@ -36,30 +38,53 @@ impl Executor {
 		plan: UpdatePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let Some(schema_ref) = plan.schema.as_ref() else {
-			return_error!(schema_not_found(
-				None::<reifydb_core::OwnedFragment>,
-				"default"
-			));
-		};
-		let schema_name = schema_ref.fragment();
+		// Get table from plan or infer from input pipeline
+		let (schema, table) =
+			if let (Some(schema_ref), Some(table_ref)) =
+				(&plan.schema, &plan.table)
+			{
+				// Both schema and table explicitly specified
+				let schema_name = schema_ref.fragment();
+				let Some(schema) =
+					CatalogStore::find_schema_by_name(
+						txn,
+						schema_name,
+					)?
+				else {
+					return_error!(schema_not_found(
+						Some(schema_ref.clone()),
+						schema_name
+					));
+				};
 
-		let schema =
-			CatalogStore::find_schema_by_name(txn, schema_name)?
-				.unwrap();
-		let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			schema.id,
-			&plan.table.fragment(),
-		)?
-		else {
-			let fragment = plan.table.into_fragment();
-			return_error!(table_not_found(
-				fragment.clone(),
-				schema_name,
-				&fragment.fragment(),
-			));
-		};
+				let Some(table) =
+					CatalogStore::find_table_by_name(
+						txn,
+						schema.id,
+						&table_ref.fragment(),
+					)?
+				else {
+					let fragment = table_ref.clone();
+					return_error!(table_not_found(
+						fragment.clone(),
+						schema_name,
+						&fragment.fragment(),
+					));
+				};
+
+				(schema, table)
+			} else if plan.schema.is_none() && plan.table.is_none()
+			{
+				extract_table_from_plan(&plan.input).expect(
+					"Cannot infer target table from pipeline - no table found",
+				)
+			} else {
+				// Mixed case - one specified, one not
+				// (shouldn't happen with current parser)
+				panic!(
+					"UPDATE requires either both schema and table or neither"
+				);
+			};
 
 		let table_types: Vec<Type> =
 			table.columns.iter().map(|c| c.ty).collect();

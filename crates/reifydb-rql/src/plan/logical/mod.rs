@@ -10,12 +10,15 @@ use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	IndexType, JoinType, OwnedFragment, SortDirection, SortKey,
 	interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy,
+		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
 		expression::{AliasExpression, Expression},
 	},
 };
 
-use crate::ast::{Ast, AstPolicy, AstPolicyKind, AstStatement};
+use crate::{
+	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
+	plan::physical::PhysicalPlan,
+};
 
 struct Compiler {}
 
@@ -29,51 +32,113 @@ impl Compiler {
 			return Ok(vec![]);
 		}
 
-		let mut result = Vec::with_capacity(ast.len());
-		for node in ast {
-			match node {
-				Ast::Create(node) => {
-					result.push(Self::compile_create(node)?)
-				}
-				Ast::Alter(node) => {
-					result.push(Self::compile_alter(node)?)
-				}
-				Ast::AstDelete(node) => {
-					result.push(Self::compile_delete(node)?)
-				}
-				Ast::AstInsert(node) => {
-					result.push(Self::compile_insert(node)?)
-				}
-				Ast::AstUpdate(node) => {
-					result.push(Self::compile_update(node)?)
-				}
+		let ast_len = ast.len();
+		let ast_vec = ast.0; // Extract the inner Vec
 
-				Ast::Aggregate(node) => result
-					.push(Self::compile_aggregate(node)?),
-				Ast::Filter(node) => {
-					result.push(Self::compile_filter(node)?)
+		// Check if this is a pipeline ending with UPDATE or DELETE
+		let is_update_pipeline = ast_len > 1
+			&& matches!(ast_vec.last(), Some(Ast::AstUpdate(_)));
+		let is_delete_pipeline = ast_len > 1
+			&& matches!(ast_vec.last(), Some(Ast::AstDelete(_)));
+
+		if is_update_pipeline || is_delete_pipeline {
+			// Build pipeline: compile all nodes except the last one
+			// into a chain
+			let mut chain_nodes = Vec::new();
+
+			for (i, node) in ast_vec.into_iter().enumerate() {
+				if i == ast_len - 1 {
+					// Last node is UPDATE or DELETE
+					match node {
+						Ast::AstUpdate(update_ast) => {
+							// Build the pipeline as
+							// input to update
+							let input =
+								if !chain_nodes
+									.is_empty(
+									) {
+									Some(Box::new(Self::build_chain(chain_nodes)?))
+								} else {
+									None
+								};
+
+							return Ok(vec![LogicalPlan::Update(UpdateNode {
+								schema: update_ast.schema.map(|s| s.fragment()),
+								table: update_ast.table.map(|t| t.fragment()),
+								input,
+							})]);
+						}
+						Ast::AstDelete(delete_ast) => {
+							// Build the pipeline as
+							// input to delete
+							let input =
+								if !chain_nodes
+									.is_empty(
+									) {
+									Some(Box::new(Self::build_chain(chain_nodes)?))
+								} else {
+									None
+								};
+
+							return Ok(vec![LogicalPlan::Delete(DeleteNode {
+								schema: delete_ast.schema.map(|s| s.fragment()),
+								table: delete_ast.table.map(|t| t.fragment()),
+								input,
+							})]);
+						}
+						_ => unreachable!(),
+					}
+				} else {
+					// Add to pipeline
+					chain_nodes.push(Self::compile_single(
+						node,
+					)?);
 				}
-				Ast::From(node) => {
-					result.push(Self::compile_from(node)?)
-				}
-				Ast::Join(node) => {
-					result.push(Self::compile_join(node)?)
-				}
-				Ast::Take(node) => {
-					result.push(Self::compile_take(node)?)
-				}
-				Ast::Sort(node) => {
-					result.push(Self::compile_sort(node)?)
-				}
-				Ast::Distinct(node) => result
-					.push(Self::compile_distinct(node)?),
-				Ast::Map(node) => {
-					result.push(Self::compile_map(node)?)
-				}
-				node => unimplemented!("{:?}", node),
 			}
+			unreachable!("Pipeline should have been handled above");
+		}
+
+		// Normal compilation (not a pipeline)
+		let mut result = Vec::with_capacity(ast_len);
+		for node in ast_vec {
+			result.push(Self::compile_single(node)?);
 		}
 		Ok(result)
+	}
+
+	// Helper to compile a single AST node
+	fn compile_single(node: Ast) -> crate::Result<LogicalPlan> {
+		match node {
+			Ast::Create(node) => Self::compile_create(node),
+			Ast::Alter(node) => Self::compile_alter(node),
+			Ast::AstDelete(node) => Self::compile_delete(node),
+			Ast::AstInsert(node) => Self::compile_insert(node),
+			Ast::AstUpdate(node) => Self::compile_update(node),
+			Ast::Aggregate(node) => Self::compile_aggregate(node),
+			Ast::Filter(node) => Self::compile_filter(node),
+			Ast::From(node) => Self::compile_from(node),
+			Ast::Join(node) => Self::compile_join(node),
+			Ast::Take(node) => Self::compile_take(node),
+			Ast::Sort(node) => Self::compile_sort(node),
+			Ast::Distinct(node) => Self::compile_distinct(node),
+			Ast::Map(node) => Self::compile_map(node),
+			Ast::Extend(node) => Self::compile_extend(node),
+			node => unimplemented!("{:?}", node),
+		}
+	}
+
+	fn build_chain(plans: Vec<LogicalPlan>) -> crate::Result<LogicalPlan> {
+		// The pipeline should be properly structured with inputs
+		// For now, we'll wrap them in a special Pipeline plan
+		// that the physical compiler can handle
+		if plans.is_empty() {
+			panic!("Empty pipeline");
+		}
+
+		// Return a Chain logical plan that contains all the steps
+		Ok(LogicalPlan::Chain(ChainedNode {
+			steps: plans,
+		}))
 	}
 }
 
@@ -101,8 +166,16 @@ pub enum LogicalPlan {
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode),
+	Extend(ExtendNode),
 	InlineData(InlineDataNode),
 	SourceScan(SourceScanNode),
+	// Chain wrapper for chained operations
+	Chain(ChainedNode),
+}
+
+#[derive(Debug)]
+pub struct ChainedNode {
+	pub steps: Vec<LogicalPlan>,
 }
 
 #[derive(Debug)]
@@ -171,7 +244,8 @@ pub struct IndexColumn {
 #[derive(Debug)]
 pub struct DeleteNode {
 	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+	pub table: Option<OwnedFragment>,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
@@ -183,7 +257,8 @@ pub struct InsertNode {
 #[derive(Debug)]
 pub struct UpdateNode {
 	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+	pub table: Option<OwnedFragment>,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
@@ -236,6 +311,11 @@ pub struct MapNode {
 }
 
 #[derive(Debug)]
+pub struct ExtendNode {
+	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug)]
 pub struct InlineDataNode {
 	pub rows: Vec<Vec<AliasExpression>>,
 }
@@ -269,5 +349,79 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 		}
 		AstPolicyKind::Default => unimplemented!(),
 		AstPolicyKind::NotUndefined => unimplemented!(),
+	}
+}
+
+/// Extract table information from a physical plan tree
+/// Returns (schema, table) if a unique table can be identified
+pub fn extract_table_from_plan(
+	plan: &PhysicalPlan,
+) -> Option<(SchemaDef, TableDef)> {
+	match plan {
+		PhysicalPlan::TableScan(scan) => {
+			Some((scan.schema.clone(), scan.table.clone()))
+		}
+		PhysicalPlan::Filter(filter) => {
+			extract_table_from_plan(&filter.input)
+		}
+		PhysicalPlan::Map(map) => map
+			.input
+			.as_ref()
+			.and_then(|input| extract_table_from_plan(input)),
+		PhysicalPlan::Extend(extend) => extend
+			.input
+			.as_ref()
+			.and_then(|input| extract_table_from_plan(input)),
+		PhysicalPlan::Aggregate(agg) => {
+			extract_table_from_plan(&agg.input)
+		}
+		PhysicalPlan::Sort(sort) => {
+			extract_table_from_plan(&sort.input)
+		}
+		PhysicalPlan::Take(take) => {
+			extract_table_from_plan(&take.input)
+		}
+		PhysicalPlan::JoinInner(join) => {
+			// Check both sides, prefer table over inline data
+			let left = extract_table_from_plan(&join.left);
+			let right = extract_table_from_plan(&join.right);
+
+			match (left, right) {
+				(Some(table), None) | (None, Some(table)) => {
+					Some(table)
+				}
+				(Some(left_table), Some(_right_table)) => {
+					// Multiple tables - ambiguous, caller
+					// should handle For now, return
+					// the left table
+					Some(left_table)
+				}
+				(None, None) => None,
+			}
+		}
+		PhysicalPlan::JoinLeft(join) => {
+			// For left join, the left side is the primary table
+			extract_table_from_plan(&join.left)
+		}
+		PhysicalPlan::JoinNatural(join) => {
+			// Check both sides, prefer table over inline data
+			let left = extract_table_from_plan(&join.left);
+			let right = extract_table_from_plan(&join.right);
+
+			match (left, right) {
+				(Some(table), None) | (None, Some(table)) => {
+					Some(table)
+				}
+				(Some(left_table), Some(_right_table)) => {
+					// Multiple tables - ambiguous
+					Some(left_table)
+				}
+				(None, None) => None,
+			}
+		}
+		PhysicalPlan::InlineData(_) => None,
+		PhysicalPlan::ViewScan(_) => None, // Views are not directly
+		// deleteable for now
+		_ => None,
 	}
 }

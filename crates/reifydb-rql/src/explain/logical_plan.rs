@@ -7,9 +7,9 @@ use crate::{
 	ast::parse,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode,
-		DistinctNode, FilterNode, InlineDataNode, JoinInnerNode,
-		JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		SourceScanNode, TakeNode, compile_logical,
+		DistinctNode, ExtendNode, FilterNode, InlineDataNode,
+		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
+		MapNode, OrderNode, SourceScanNode, TakeNode, compile_logical,
 	},
 };
 
@@ -21,6 +21,10 @@ pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
 		plans.extend(compile_logical(statement)?)
 	}
 
+	explain_logical_plans(&plans)
+}
+
+pub fn explain_logical_plans(plans: &[LogicalPlan]) -> crate::Result<String> {
 	let mut result = String::new();
 	for plan in plans {
 		let mut output = String::new();
@@ -196,9 +200,87 @@ fn render_logical_plan_inner(
 				));
 			}
 		}
-		LogicalPlan::Delete(_) => unimplemented!(),
+		LogicalPlan::Delete(delete) => {
+			output.push_str(&format!(
+				"{}{} Delete\n",
+				prefix, branch
+			));
+
+			// Show target table if specified
+			if let Some(table) = &delete.table {
+				output.push_str(&format!(
+					"{}├── target table: {}\n",
+					child_prefix,
+					if let Some(schema) = &delete.schema {
+						format!("{}.{}", schema, table)
+					} else {
+						table.to_string()
+					}
+				));
+			} else {
+				output.push_str(&format!(
+					"{}├── target table: <inferred from input>\n",
+					child_prefix
+				));
+			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &delete.input {
+				output.push_str(&format!(
+					"{}└── Input Pipeline:\n",
+					child_prefix
+				));
+				let pipeline_prefix =
+					format!("{}    ", child_prefix);
+				render_logical_plan_inner(
+					input,
+					&pipeline_prefix,
+					true,
+					output,
+				);
+			}
+		}
 		LogicalPlan::Insert(_) => unimplemented!(),
-		LogicalPlan::Update(_) => unimplemented!(),
+		LogicalPlan::Update(update) => {
+			output.push_str(&format!(
+				"{}{} Update\n",
+				prefix, branch
+			));
+
+			// Show target table if specified
+			if let Some(table) = &update.table {
+				output.push_str(&format!(
+					"{}├── target table: {}\n",
+					child_prefix,
+					if let Some(schema) = &update.schema {
+						format!("{}.{}", schema, table)
+					} else {
+						table.to_string()
+					}
+				));
+			} else {
+				output.push_str(&format!(
+					"{}├── target table: <inferred from input>\n",
+					child_prefix
+				));
+			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &update.input {
+				output.push_str(&format!(
+					"{}└── Input Pipeline:\n",
+					child_prefix
+				));
+				let pipeline_prefix =
+					format!("{}    ", child_prefix);
+				render_logical_plan_inner(
+					input,
+					&pipeline_prefix,
+					true,
+					output,
+				);
+			}
+		}
 
 		LogicalPlan::Take(TakeNode {
 			take,
@@ -228,6 +310,27 @@ fn render_logical_plan_inner(
 			output.push_str(&format!("{}{} Map\n", prefix, branch));
 			for (i, expr) in map.iter().enumerate() {
 				let last = i == map.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr.to_string()
+				));
+			}
+		}
+		LogicalPlan::Extend(ExtendNode {
+			extend,
+		}) => {
+			output.push_str(&format!(
+				"{}{} Extend\n",
+				prefix, branch
+			));
+			for (i, expr) in extend.iter().enumerate() {
+				let last = i == extend.len() - 1;
 				output.push_str(&format!(
 					"{}{} {}\n",
 					child_prefix,
@@ -458,6 +561,21 @@ fn render_logical_plan_inner(
 					output.push_str(col.fragment());
 				}
 				output.push_str("\n");
+			}
+		}
+		LogicalPlan::Chain(chain) => {
+			output.push_str(&format!(
+				"{}{} Chain\n",
+				prefix, branch
+			));
+			for (i, step) in chain.steps.iter().enumerate() {
+				let last = i == chain.steps.len() - 1;
+				render_logical_plan_inner(
+					step,
+					child_prefix.as_str(),
+					last,
+					output,
+				);
 			}
 		}
 	}

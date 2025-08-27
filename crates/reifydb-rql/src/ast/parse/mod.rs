@@ -10,6 +10,7 @@ mod create_index;
 mod delete;
 mod describe;
 mod distinct;
+mod extend;
 mod filter;
 mod from;
 mod identifier;
@@ -34,7 +35,7 @@ use std::{cmp::PartialOrd, collections::HashMap};
 use reifydb_core::{result::error::diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstStatement,
+	Ast, AstInfix, AstStatement, InfixOperator,
 	tokenize::{
 		Keyword, Literal, Operator, Separator, Separator::NewLine,
 		Token, TokenKind,
@@ -327,6 +328,100 @@ impl Parser {
 			lower,
 			upper,
 		})
+	}
+
+	/// Parse a comma-separated list of expressions with optional braces
+	/// Returns (nodes, had_braces) tuple
+	pub(crate) fn parse_expressions(
+		&mut self,
+		allow_colon_alias: bool,
+	) -> crate::Result<(Vec<Ast>, bool)> {
+		let has_braces =
+			self.current()?.is_operator(Operator::OpenCurly);
+
+		if has_braces {
+			self.advance()?; // consume opening brace
+		}
+
+		let mut nodes = Vec::new();
+		loop {
+			if allow_colon_alias {
+				if let Ok(alias_expr) =
+					self.try_parse_colon_alias()
+				{
+					nodes.push(alias_expr);
+				} else {
+					nodes.push(self.parse_node(
+						Precedence::None,
+					)?);
+				}
+			} else {
+				nodes.push(self.parse_node(Precedence::None)?);
+			}
+
+			if self.is_eof() {
+				break;
+			}
+
+			// consume comma and continue
+			if self.current()?.is_separator(Separator::Comma) {
+				self.advance()?;
+			} else if has_braces
+				&& self.current()?
+					.is_operator(Operator::CloseCurly)
+			{
+				// If we have braces, look for closing brace
+				self.advance()?; // consume closing brace
+				break;
+			} else {
+				break;
+			}
+		}
+
+		Ok((nodes, has_braces))
+	}
+
+	/// Try to parse "identifier: expression" syntax and convert it to
+	/// "expression AS identifier"
+	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
+		// Check if we have at least identifier + colon + something
+		// ahead
+		if self.tokens.len() < 2 {
+			return_error!(ast::unsupported_token_error(
+				self.current()?.clone().fragment
+			));
+		}
+
+		// Peek at the tokens to see if we have identifier:
+		let len = self.tokens.len();
+		match &self.tokens[len - 1].kind {
+			TokenKind::Identifier => {}
+			_ => return_error!(ast::unsupported_token_error(
+				self.current()?.clone().fragment
+			)),
+		};
+
+		// Check if second token is colon
+		if !self.tokens[len - 2].is_operator(Operator::Colon) {
+			return_error!(ast::unsupported_token_error(
+				self.current()?.clone().fragment
+			));
+		}
+
+		// Parse the identifier and consume colon
+		let identifier = self.parse_as_identifier()?;
+		let colon_token = self.advance()?; // consume colon
+
+		// Parse the expression
+		let expression = self.parse_node(Precedence::None)?;
+
+		// Return as "expression AS identifier"
+		Ok(Ast::Infix(AstInfix {
+			token: expression.token().clone(),
+			left: Box::new(expression),
+			operator: InfixOperator::As(colon_token),
+			right: Box::new(Ast::Identifier(identifier)),
+		}))
 	}
 }
 

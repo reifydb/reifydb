@@ -1,5 +1,6 @@
 mod aggregate;
 mod distinct;
+mod extend;
 mod filter;
 mod join;
 mod map;
@@ -12,6 +13,7 @@ use std::marker::PhantomData;
 
 pub use aggregate::AggregateOperator;
 pub use distinct::DistinctOperator;
+pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::{MapOperator, MapTerminalOperator};
@@ -40,6 +42,7 @@ pub trait Operator<E: Evaluator>: Send + Sync + 'static {
 pub enum OperatorEnum<E: Evaluator> {
 	Filter(FilterOperator),
 	Map(MapOperator),
+	Extend(ExtendOperator),
 	MapTerminal(MapTerminalOperator),
 	Aggregate(AggregateOperator),
 	Join(JoinOperator),
@@ -60,6 +63,7 @@ impl<E: Evaluator> OperatorEnum<E> {
 		match self {
 			OperatorEnum::Filter(op) => op.apply(ctx, change),
 			OperatorEnum::Map(op) => op.apply(ctx, change),
+			OperatorEnum::Extend(op) => op.apply(ctx, change),
 			OperatorEnum::MapTerminal(op) => op.apply(ctx, change),
 			OperatorEnum::Aggregate(op) => op.apply(ctx, change),
 			OperatorEnum::Join(op) => op.apply(ctx, change),

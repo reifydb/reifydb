@@ -12,7 +12,9 @@ impl Compiler {
 	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Delete(DeleteNode {
 			schema: ast.schema.map(|s| s.fragment()),
-			table: ast.table.fragment(),
+			table: ast.table.map(|t| t.fragment()),
+			input: None, /* Input will be set by the pipeline
+			              * builder */
 		}))
 	}
 }

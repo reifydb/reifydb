@@ -10,6 +10,7 @@ use crate::execute::{
 	ExecutionContext, ExecutionPlan,
 	query::{
 		aggregate::AggregateNode,
+		extend::{ExtendNode, ExtendWithoutInputNode},
 		filter::FilterNode,
 		inline::InlineDataNode,
 		join_inner::InnerJoinNode,
@@ -80,6 +81,23 @@ pub(crate) fn compile(
 			} else {
 				ExecutionPlan::MapWithoutInput(
 					MapWithoutInputNode::new(map),
+				)
+			}
+		}
+
+		PhysicalPlan::Extend(physical::ExtendNode {
+			extend,
+			input,
+		}) => {
+			if let Some(input) = input {
+				let input_node =
+					Box::new(compile(*input, rx, context));
+				ExecutionPlan::Extend(ExtendNode::new(
+					input_node, extend,
+				))
+			} else {
+				ExecutionPlan::ExtendWithoutInput(
+					ExtendWithoutInputNode::new(extend),
 				)
 			}
 		}

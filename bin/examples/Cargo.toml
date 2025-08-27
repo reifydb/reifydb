@@ -66,6 +66,10 @@ name = "rql-logical"
 path = "examples/rql/10_logical_operators.rs"
 
 [[bin]]
+name = "rql-extend"
+path = "examples/rql/11_extend_operator.rs"
+
+[[bin]]
 name = "storage-memory"
 path = "examples/storage/01_memory_storage.rs"
 
