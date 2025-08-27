@@ -59,6 +59,7 @@ impl SqliteConfig {
 		}
 	}
 
+	
 	/// Set the database file path
 	pub fn path<P: AsRef<Path>>(mut self, path: P) -> Self {
 		self.path = path.as_ref().to_path_buf();

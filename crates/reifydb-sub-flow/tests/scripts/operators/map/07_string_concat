@@ -54,10 +54,10 @@ wait 5
 command 'from test.full_names'
 ---
 > +------+---------------+------------------+
-> |  id  |   full_name   |     formal       |
+> |  id  |   full_name   |      formal      |
 > +------+---------------+------------------+
 > |  3   |  Bob Johnson  |  Mr/Ms. Johnson  |
-> |  2   |  Jane Smith   |  Mr/Ms. Smith    |
-> |  1   |   John Doe    |  Mr/Ms. Doe      |
+> |  2   |  Jane Smith   |   Mr/Ms. Smith   |
+> |  1   |   John Doe    |    Mr/Ms. Doe    |
 > +------+---------------+------------------+
 > 
