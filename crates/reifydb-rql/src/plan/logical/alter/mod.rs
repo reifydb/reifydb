@@ -16,6 +16,16 @@ impl Compiler {
 			AstAlter::Sequence(node) => {
 				Self::compile_alter_sequence(node)
 			}
+			AstAlter::Table(_node) => {
+				unimplemented!(
+					"ALTER TABLE is not yet implemented in logical plan"
+				)
+			}
+			AstAlter::View(_node) => {
+				unimplemented!(
+					"ALTER VIEW is not yet implemented in logical plan"
+				)
+			}
 		}
 	}
 }

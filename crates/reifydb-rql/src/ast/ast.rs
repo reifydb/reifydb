@@ -555,6 +555,8 @@ pub enum AstCreate {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstAlter {
 	Sequence(AstAlterSequence),
+	Table(AstAlterTable),
+	View(AstAlterView),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -564,6 +566,40 @@ pub struct AstAlterSequence {
 	pub table: AstIdentifier,
 	pub column: AstIdentifier,
 	pub value: AstLiteral,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterTable {
+	pub token: Token,
+	pub schema: AstIdentifier,
+	pub table: AstIdentifier,
+	pub operations: Vec<AstAlterTableOperation>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstAlterTableOperation {
+	CreatePrimaryKey {
+		name: Option<AstIdentifier>,
+		columns: Vec<AstIndexColumn>,
+	},
+	DropPrimaryKey,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterView {
+	pub token: Token,
+	pub schema: AstIdentifier,
+	pub view: AstIdentifier,
+	pub operations: Vec<AstAlterViewOperation>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstAlterViewOperation {
+	CreatePrimaryKey {
+		name: Option<AstIdentifier>,
+		columns: Vec<AstIndexColumn>,
+	},
+	DropPrimaryKey,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -677,6 +713,14 @@ impl AstAlter {
 	pub fn token(&self) -> &Token {
 		match self {
 			AstAlter::Sequence(AstAlterSequence {
+				token,
+				..
+			}) => token,
+			AstAlter::Table(AstAlterTable {
+				token,
+				..
+			}) => token,
+			AstAlter::View(AstAlterView {
 				token,
 				..
 			}) => token,
