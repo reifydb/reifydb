@@ -11,36 +11,18 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaDefOperations, CatalogStore, CatalogTransactionOperations,
-	TransactionalChangesExt, schema::SchemaToCreate,
+	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
+	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
+	CatalogStore, TransactionalChangesExt, schema::SchemaToCreate,
 };
 
-impl<T> CatalogSchemaDefOperations for T
+// Query operations implementation
+impl<T> CatalogSchemaQueryOperations for T
 where
 	T: CommandTransaction
-		+ CatalogTransactionOperations
-		+ WithInterceptors<T>
-		+ WithHooks
-		+ SchemaDefInterceptor<T>,
+		+ CatalogCommandTransactionOperations
+		+ TransactionalChangesExt,
 {
-	fn create_schema(
-		&mut self,
-		to_create: SchemaToCreate,
-	) -> crate::Result<SchemaDef> {
-		if let Some(schema) =
-			self.find_schema_by_name(&to_create.name)?
-		{
-			return_error!(schema_already_exists(
-				to_create.schema_fragment,
-				&schema.name
-			));
-		}
-		let result = CatalogStore::create_schema(self, to_create)?;
-		self.track_schema_def_created(result.clone())?;
-		SchemaDefInterceptor::post_create(self, &result)?;
-		Ok(result)
-	}
-
 	fn find_schema_by_name(
 		&mut self,
 		name: impl AsRef<str>,
@@ -61,7 +43,7 @@ where
 		// 2. Check MaterializedCatalog
 		if let Some(schema) = self.catalog().find_schema_by_name(
 			name,
-			CatalogTransactionOperations::version(self),
+			<T as CatalogQueryTransactionOperations>::version(self),
 		) {
 			return Ok(Some(schema));
 		}
@@ -92,7 +74,7 @@ where
 		// 2. Check MaterializedCatalog
 		if let Some(schema) = self.catalog().find_schema(
 			id,
-			CatalogTransactionOperations::version(self),
+			<T as CatalogQueryTransactionOperations>::version(self),
 		) {
 			return Ok(Some(schema));
 		}
@@ -119,5 +101,34 @@ where
 					id
 				))
 			})
+	}
+}
+
+// Command operations implementation
+impl<T> CatalogSchemaCommandOperations for T
+where
+	T: CommandTransaction
+		+ CatalogCommandTransactionOperations
+		+ CatalogSchemaQueryOperations
+		+ WithInterceptors<T>
+		+ WithHooks
+		+ SchemaDefInterceptor<T>,
+{
+	fn create_schema(
+		&mut self,
+		to_create: SchemaToCreate,
+	) -> crate::Result<SchemaDef> {
+		if let Some(schema) =
+			self.find_schema_by_name(&to_create.name)?
+		{
+			return_error!(schema_already_exists(
+				to_create.schema_fragment,
+				&schema.name
+			));
+		}
+		let result = CatalogStore::create_schema(self, to_create)?;
+		self.track_schema_def_created(result.clone())?;
+		SchemaDefInterceptor::post_create(self, &result)?;
+		Ok(result)
 	}
 }

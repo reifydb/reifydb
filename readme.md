@@ -1,7 +1,7 @@
 <div align="center">
 
 <picture>
-  <img src="https://reifydb.com/logo.png" alt="ReifyDB Logo" width="512">
+  <img src="https://reifydb.com/img/logo.png" alt="ReifyDB Logo" width="512">
 </picture>
 
 <b>ReifyDB</b>: is a versatile, embeddable relational database built to solve real problems for real developers. Designed for those who care more about building than configuring.

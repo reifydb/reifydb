@@ -58,6 +58,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 			self.versioned.begin_query()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
+			self.catalog.clone(),
 		))
 	}
 

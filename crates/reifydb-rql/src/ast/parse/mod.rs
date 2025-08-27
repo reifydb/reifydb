@@ -106,7 +106,7 @@ impl Parser {
 			.insert(Operator::DoubleColon, Precedence::Primary);
 
 		precedence_map.insert(Operator::Arrow, Precedence::Primary);
-		precedence_map.insert(Operator::Colon, Precedence::Primary);
+		precedence_map.insert(Operator::Colon, Precedence::Assignment);
 
 		precedence_map.insert(Operator::Or, Precedence::LogicOr);
 		precedence_map.insert(Operator::Xor, Precedence::LogicOr);

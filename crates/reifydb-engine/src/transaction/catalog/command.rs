@@ -2,8 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{
-	CatalogSchemaDefOperations, CatalogTransaction,
-	CatalogTransactionOperations, MaterializedCatalog,
+	CatalogCommandTransaction, CatalogCommandTransactionOperations,
+	CatalogQueryTransaction, CatalogQueryTransactionOperations,
+	CatalogSchemaQueryOperations, MaterializedCatalog,
+	TransactionalChangesExt,
 };
 use reifydb_core::{
 	Version,
@@ -15,15 +17,15 @@ use reifydb_core::{
 	interface::{
 		Change,
 		OperationType::{Create, Delete, Update},
-		SchemaDef, TableDef, Transaction, VersionedQueryTransaction,
-		ViewDef,
+		SchemaDef, SchemaId, TableDef, Transaction,
+		VersionedQueryTransaction, ViewDef,
 	},
 	return_error,
 };
 
 use crate::StandardCommandTransaction;
 
-impl<T: Transaction> CatalogTransactionOperations
+impl<T: Transaction> CatalogQueryTransactionOperations
 	for StandardCommandTransaction<T>
 {
 	fn catalog(&self) -> &MaterializedCatalog {
@@ -31,9 +33,15 @@ impl<T: Transaction> CatalogTransactionOperations
 	}
 
 	fn version(&self) -> Version {
-		self.versioned.as_ref().unwrap().version()
+		VersionedQueryTransaction::version(
+			self.versioned.as_ref().unwrap(),
+		)
 	}
+}
 
+impl<T: Transaction> CatalogCommandTransactionOperations
+	for StandardCommandTransaction<T>
+{
 	fn track_schema_def_created(
 		&mut self,
 		schema: SchemaDef,
@@ -227,12 +235,58 @@ impl<T: Transaction> CatalogTransactionOperations
 	}
 }
 
-// Implement the blanket CatalogTransaction trait
-impl<T: Transaction> CatalogTransaction for StandardCommandTransaction<T> {}
+// Implement blanket traits for StandardCommandTransaction
+impl<T: Transaction> CatalogQueryTransaction for StandardCommandTransaction<T> {}
+impl<T: Transaction> CatalogCommandTransaction
+	for StandardCommandTransaction<T>
+{
+}
+
+impl<T: Transaction> TransactionalChangesExt for StandardCommandTransaction<T> {
+	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef> {
+		self.changes.find_schema_by_name(name)
+	}
+
+	fn is_schema_deleted_by_name(&self, name: &str) -> bool {
+		self.changes.is_schema_deleted_by_name(name)
+	}
+
+	fn find_table_by_name(
+		&self,
+		schema: SchemaId,
+		name: &str,
+	) -> Option<&TableDef> {
+		self.changes.find_table_by_name(schema, name)
+	}
+
+	fn is_table_deleted_by_name(
+		&self,
+		schema: SchemaId,
+		name: &str,
+	) -> bool {
+		self.changes.is_table_deleted_by_name(schema, name)
+	}
+
+	fn find_view_by_name(
+		&self,
+		schema: SchemaId,
+		name: &str,
+	) -> Option<&ViewDef> {
+		self.changes.find_view_by_name(schema, name)
+	}
+
+	fn is_view_deleted_by_name(
+		&self,
+		schema: SchemaId,
+		name: &str,
+	) -> bool {
+		self.changes.is_view_deleted_by_name(schema, name)
+	}
+}
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::CatalogTransactionOperations;
+	use reifydb_catalog::CatalogCommandTransactionOperations;
 	use reifydb_core::interface::{
 		Operation,
 		OperationType::{Create, Delete, Update},

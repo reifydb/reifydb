@@ -3,6 +3,7 @@
 
 use std::marker::PhantomData;
 
+use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
@@ -15,9 +16,10 @@ use reifydb_core::{
 /// An active query transaction that holds a versioned query transaction
 /// and provides query-only access to unversioned storage.
 pub struct StandardQueryTransaction<T: Transaction> {
-	versioned: <T::Versioned as VersionedTransaction>::Query,
-	unversioned: T::Unversioned,
-	cdc: T::Cdc,
+	pub(crate) versioned: <T::Versioned as VersionedTransaction>::Query,
+	pub(crate) unversioned: T::Unversioned,
+	pub(crate) cdc: T::Cdc,
+	pub(crate) catalog: MaterializedCatalog,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
@@ -28,11 +30,13 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 		versioned: <T::Versioned as VersionedTransaction>::Query,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
+		catalog: MaterializedCatalog,
 	) -> Self {
 		Self {
 			versioned,
 			unversioned,
 			cdc,
+			catalog,
 			_not_send_sync: PhantomData,
 		}
 	}
