@@ -7,87 +7,18 @@ use reifydb_core::{
 };
 
 use crate::ast::{
-	AstDistinct,
+	AstDistinct, AstIdentifier, TokenKind,
 	parse::Parser,
-	tokenize::{
-		Keyword,
-		Operator::{CloseCurly, OpenCurly},
-		Separator::Comma,
-	},
+	tokenize::{Keyword, Operator, Separator},
 };
 
 impl Parser {
 	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
-		// Check if we have an opening brace
-		let has_braces = self.current()?.is_operator(OpenCurly);
+		let (columns, has_braces) = self.parse_identifiers()?;
 
-		if has_braces {
-			self.advance()?; // consume opening brace
-		}
-
-		let mut columns = Vec::new();
-
-		// Check if no arguments (uses primary key)
-		if self.is_eof()
-			|| (!has_braces
-				&& (self.current()?.is_keyword(Keyword::From)
-					|| self.current()?
-						.is_keyword(Keyword::Map) || self
-					.current()?
-					.is_keyword(Keyword::Select) || self
-					.current()?
-					.is_keyword(Keyword::Filter) || self
-					.current()?
-					.is_keyword(Keyword::Aggregate) || self
-					.current()?
-					.is_keyword(Keyword::Sort) || self
-					.current()?
-					.is_keyword(Keyword::Take) || self
-					.current()?
-					.is_keyword(Keyword::Join) || self
-					.current()?
-					.is_keyword(Keyword::Inner) || self
-					.current()?
-					.is_keyword(Keyword::Left)))
-			|| (has_braces
-				&& self.current()?.is_operator(CloseCurly))
-		{
-			// No arguments - will use primary key
-			if has_braces && self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?; // consume closing brace
-			}
-			return Ok(AstDistinct {
-				token,
-				columns,
-			});
-		}
-
-		// Parse column arguments
-		loop {
-			columns.push(self.parse_as_identifier()?);
-
-			if self.is_eof() {
-				break;
-			}
-
-			// If we have braces, look for closing brace
-			if has_braces && self.current()?.is_operator(CloseCurly)
-			{
-				self.advance()?; // consume closing brace
-				break;
-			}
-
-			// consume comma and continue
-			if self.current()?.is_separator(Comma) {
-				self.advance()?;
-			} else {
-				break;
-			}
-		}
-
+		// Validate multiple columns require braces
 		if columns.len() > 1 && !has_braces {
 			return_error!(
 				distinct_multiple_columns_without_braces(
@@ -100,6 +31,82 @@ impl Parser {
 			token,
 			columns,
 		})
+	}
+
+	/// Parse a comma-separated list of identifiers with optional braces
+	/// Returns (identifiers, had_braces) tuple
+	fn parse_identifiers(
+		&mut self,
+	) -> crate::Result<(Vec<AstIdentifier>, bool)> {
+		if self.is_eof() {
+			return Ok((vec![], false));
+		}
+
+		let has_braces =
+			self.current()?.is_operator(Operator::OpenCurly);
+		if has_braces {
+			self.advance()?; // consume opening brace
+		}
+
+		let mut identifiers = Vec::new();
+
+		// Check if empty list or next statement keyword
+		if self.should_stop_identifier_parsing(has_braces)? {
+			if has_braces
+				&& !self.is_eof() && self
+				.current()?
+				.is_operator(Operator::CloseCurly)
+			{
+				self.advance()?; // consume closing brace
+			}
+			return Ok((identifiers, has_braces));
+		}
+
+		// Parse identifiers
+		loop {
+			identifiers.push(self.parse_as_identifier()?);
+
+			if self.is_eof() {
+				break;
+			}
+
+			// Check for closing brace if we have braces
+			if has_braces
+				&& self.current()?
+					.is_operator(Operator::CloseCurly)
+			{
+				self.advance()?; // consume closing brace
+				break;
+			}
+
+			// Check for comma continuation
+			if self.current()?.is_separator(Separator::Comma) {
+				self.advance()?;
+			} else {
+				break;
+			}
+		}
+
+		Ok((identifiers, has_braces))
+	}
+
+	/// Check if we should stop parsing identifiers based on next token
+	fn should_stop_identifier_parsing(
+		&mut self,
+		has_braces: bool,
+	) -> crate::Result<bool> {
+		if self.is_eof() {
+			return Ok(true);
+		}
+
+		let current = self.current()?;
+
+		// If we have braces, only stop on closing brace
+		if has_braces {
+			return Ok(current.is_operator(Operator::CloseCurly));
+		}
+
+		Ok(matches!(current.kind, TokenKind::Keyword(_)))
 	}
 }
 
