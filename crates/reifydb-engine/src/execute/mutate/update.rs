@@ -7,8 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	ColumnDescriptor, Type, Value,
 	interface::{
-		ColumnPolicyKind, EncodableKey, Params, SchemaDef, TableDef,
-		TableRowKey, Transaction, VersionedCommandTransaction,
+		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
+		Transaction, VersionedCommandTransaction,
 	},
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
@@ -18,7 +18,9 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
-use reifydb_rql::plan::physical::{PhysicalPlan, UpdatePlan};
+use reifydb_rql::plan::{
+	logical::extract_table_from_plan, physical::UpdatePlan,
+};
 
 use crate::{
 	StandardCommandTransaction,
@@ -28,76 +30,6 @@ use crate::{
 		mutate::coerce::coerce_value_to_column_type,
 	},
 };
-
-/// Extract table information from a physical plan tree
-/// Returns (schema, table) if a unique table can be identified
-fn extract_table_from_plan(
-	plan: &PhysicalPlan,
-) -> Option<(SchemaDef, TableDef)> {
-	match plan {
-		PhysicalPlan::TableScan(scan) => {
-			Some((scan.schema.clone(), scan.table.clone()))
-		}
-		PhysicalPlan::Filter(filter) => {
-			extract_table_from_plan(&filter.input)
-		}
-		PhysicalPlan::Map(map) => map
-			.input
-			.as_ref()
-			.and_then(|input| extract_table_from_plan(input)),
-		PhysicalPlan::Aggregate(agg) => {
-			extract_table_from_plan(&agg.input)
-		}
-		PhysicalPlan::Sort(sort) => {
-			extract_table_from_plan(&sort.input)
-		}
-		PhysicalPlan::Take(take) => {
-			extract_table_from_plan(&take.input)
-		}
-		PhysicalPlan::JoinInner(join) => {
-			// Check both sides, prefer table over inline data
-			let left = extract_table_from_plan(&join.left);
-			let right = extract_table_from_plan(&join.right);
-
-			match (left, right) {
-				(Some(table), None) | (None, Some(table)) => {
-					Some(table)
-				}
-				(Some(left_table), Some(right_table)) => {
-					// Multiple tables - ambiguous, caller
-					// should handle For now, return
-					// the left table
-					Some(left_table)
-				}
-				(None, None) => None,
-			}
-		}
-		PhysicalPlan::JoinLeft(join) => {
-			// For left join, the left side is the primary table
-			extract_table_from_plan(&join.left)
-		}
-		PhysicalPlan::JoinNatural(join) => {
-			// Check both sides, prefer table over inline data
-			let left = extract_table_from_plan(&join.left);
-			let right = extract_table_from_plan(&join.right);
-
-			match (left, right) {
-				(Some(table), None) | (None, Some(table)) => {
-					Some(table)
-				}
-				(Some(left_table), Some(right_table)) => {
-					// Multiple tables - ambiguous
-					Some(left_table)
-				}
-				(None, None) => None,
-			}
-		}
-		PhysicalPlan::InlineData(_) => None,
-		PhysicalPlan::ViewScan(_) => None, /* Views are not directly
-		                                     * updateable for now */
-		_ => None,
-	}
-}
 
 impl Executor {
 	pub(crate) fn update<T: Transaction>(
@@ -143,8 +75,6 @@ impl Executor {
 				(schema, table)
 			} else if plan.schema.is_none() && plan.table.is_none()
 			{
-				// Both should be inferred from the pipeline
-				// Extract table info from the input plan
 				extract_table_from_plan(&plan.input).expect(
 					"Cannot infer target table from pipeline - no table found",
 				)

@@ -3,7 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{thread, time::Duration};
+use std::time::Duration;
 
 use reifydb::{
 	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
