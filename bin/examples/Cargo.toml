@@ -11,7 +11,7 @@ name = "reifydb_examples"
 path = "src/lib.rs"
 
 [dependencies]
-reifydb = { path = "../../pkg/rust/reifydb", features = [] }
+reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_logging"] }
 
 tokio = { workspace = true }
 
