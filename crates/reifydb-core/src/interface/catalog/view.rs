@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	Type,
 	interface::{
-		ColumnIndex, PrimaryKeyDef, SchemaId, ViewColumnId, ViewId,
+		ColumnIndex, SchemaId, TablePrimaryKeyDef, ViewColumnId, ViewId,
 	},
 };
 
@@ -31,5 +31,5 @@ pub struct ViewDef {
 	pub name: String,
 	pub kind: ViewKind,
 	pub columns: Vec<ViewColumnDef>,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub primary_key: Option<TablePrimaryKeyDef>,
 }

@@ -41,7 +41,7 @@ impl CatalogStore {
 			schema,
 			kind,
 			columns: Self::list_view_columns(rx, id)?,
-			primary_key: None, // TODO: Load primary key if exists
+			primary_key: Self::find_view_primary_key(rx, id)?,
 		}))
 	}
 
