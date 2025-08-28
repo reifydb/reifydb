@@ -2,15 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod config;
-mod connection;
-mod factory;
-mod network;
-mod protocol;
-mod server;
+mod core;
+mod protocols;
 mod subsystem;
-mod worker;
+
+pub use core::ProtocolServer;
 
 pub use config::ServerConfig;
-pub use factory::ServerSubsystemFactory;
-pub use server::WebSocketServer;
-pub use subsystem::ServerSubsystem;
+pub use protocols::{
+	HttpHandler, ProtocolError, ProtocolHandler, WebSocketHandler,
+};
+pub use subsystem::{ServerSubsystem, ServerSubsystemFactory};

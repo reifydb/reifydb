@@ -14,7 +14,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 
 use crate::{config::ServerConfig, subsystem::ServerSubsystem};
 
-/// Factory for creating WebSocket server subsystem instances
+/// Factory for creating server subsystem instances
 pub struct ServerSubsystemFactory<T: Transaction> {
 	config: ServerConfig,
 	_phantom: PhantomData<T>,

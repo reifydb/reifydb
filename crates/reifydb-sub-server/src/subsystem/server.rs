@@ -9,12 +9,12 @@ use reifydb_core::interface::{
 };
 use reifydb_engine::StandardEngine;
 
-use crate::{config::ServerConfig, server::WebSocketServer};
+use crate::{config::ServerConfig, core::ProtocolServer};
 
-/// High-performance WebSocket server subsystem
+/// Server subsystem that supports WebSocket and HTTP protocols
 pub struct ServerSubsystem<T: Transaction> {
 	config: ServerConfig,
-	server: Option<WebSocketServer<T>>,
+	server: Option<ProtocolServer<T>>,
 	engine: StandardEngine<T>,
 }
 
@@ -39,15 +39,23 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 		}
 
 		println!(
-			"Starting WebSocket server on {}",
+			"Starting server on {} with WebSocket and HTTP protocol support",
 			self.config.bind_addr
 		);
 
-		let mut server = WebSocketServer::new(
+		let mut server = ProtocolServer::new(
 			self.config.clone(),
 			self.engine.clone(),
 		);
-		server.start();
+
+		// Configure protocol handlers
+		server.with_websocket().with_http();
+
+		server.start().map_err(|e| {
+            reifydb_core::error!(reifydb_core::result::error::diagnostic::internal::internal(
+                format!("Failed to start server: {:?}", e)
+            ))
+        })?;
 
 		self.server = Some(server);
 		Ok(())
@@ -55,18 +63,18 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 
 	fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if let Some(mut server) = self.server.take() {
-			println!("Stopping WebSocket server");
+			println!("Stopping server");
 			server.stop();
 		}
 		Ok(())
 	}
 
 	fn is_running(&self) -> bool {
-		self.server.is_some()
+		self.server.as_ref().map_or(false, |s| s.is_running())
 	}
 
 	fn health_status(&self) -> HealthStatus {
-		if self.server.is_some() {
+		if self.is_running() {
 			HealthStatus::Healthy
 		} else {
 			HealthStatus::Failed {

@@ -34,7 +34,7 @@ struct Config {
 impl Default for Config {
 	fn default() -> Self {
 		Self {
-			server_url: "old_ws://127.0.0.1:8091".to_string(),
+			server_url: "ws://127.0.0.1:8091".to_string(),
 			concurrent_connections: 10,
 			requests_per_connection: 100,
 			query_payload: "benchmark query".to_string(),
