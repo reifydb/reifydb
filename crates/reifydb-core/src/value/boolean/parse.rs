@@ -19,15 +19,26 @@ pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
 		return_error!(empty_boolean_value(fragment));
 	}
 
-	match value.to_lowercase().as_str() {
-		"true" => Ok(true),
-		"false" => Ok(false),
-		"1" | "1.0" => Ok(true),
-		"0" | "0.0" => Ok(false),
+	// Fast path: byte-level matching for common cases
+	match value.as_bytes() {
+		b"true" | b"TRUE" | b"True" => return Ok(true),
+		b"false" | b"FALSE" | b"False" => return Ok(false),
+		b"1" | b"1.0" => return Ok(true),
+		b"0" | b"0.0" => return Ok(false),
+		_ => {}
+	}
+
+	// Slow path: case-insensitive matching for mixed case
+	match value.len() {
+		4 if value.eq_ignore_ascii_case("true") => Ok(true),
+		5 if value.eq_ignore_ascii_case("false") => Ok(false),
+		3 if value == "1.0" => Ok(true),
+		3 if value == "0.0" => Ok(false),
 		_ => {
 			// Check if the value contains numbers - if so, use
 			// numeric boolean diagnostic
-			if value.chars().any(|c| c.is_ascii_digit()) {
+			if value.as_bytes().iter().any(|&b| b.is_ascii_digit())
+			{
 				err!(invalid_number_boolean(fragment))
 			} else {
 				err!(invalid_boolean_format(fragment))

@@ -141,9 +141,25 @@ impl<'a> Cursor<'a> {
 		}
 	}
 
-	/// Skip whitespace characters
+	/// Skip whitespace characters - optimized for common ASCII cases
 	pub fn skip_whitespace(&mut self) {
-		self.consume_while(|ch| ch.is_whitespace());
+		// Fast path for ASCII whitespace (most common case)
+		while let Some(ch) = self.current_char {
+			match ch {
+				' ' | '\t' | '\r' | '\n' => {
+					self.consume();
+				}
+				_ => {
+					// Fall back to full Unicode whitespace
+					// check for non-ASCII
+					if ch.is_whitespace() {
+						self.consume();
+					} else {
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	/// Get the current position in the input

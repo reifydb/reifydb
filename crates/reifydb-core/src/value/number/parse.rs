@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{any::TypeId, num::IntErrorKind, str::FromStr};
+use std::{any::TypeId, borrow::Cow, num::IntErrorKind, str::FromStr};
 
 use crate::{
 	Error, Type, err,
@@ -174,8 +174,27 @@ where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value().replace("_", "");
-	let value = value.trim();
+	let raw_value = fragment.value();
+
+	// Fast path: check if we need any string processing
+	let needs_trimming = raw_value
+		.as_bytes()
+		.first()
+		.map_or(false, |&b| b.is_ascii_whitespace())
+		|| raw_value
+			.as_bytes()
+			.last()
+			.map_or(false, |&b| b.is_ascii_whitespace());
+	let has_underscores = raw_value.as_bytes().contains(&b'_');
+
+	let value = match (needs_trimming, has_underscores) {
+		(false, false) => Cow::Borrowed(raw_value), /* Fast path -
+		                                              * no processing
+		                                              * needed */
+		(true, false) => Cow::Borrowed(raw_value.trim()),
+		(false, true) => Cow::Owned(raw_value.replace('_', "")),
+		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
+	};
 
 	if value.is_empty() {
 		return_error!(invalid_number_format(fragment, T::type_enum()));
@@ -251,8 +270,27 @@ where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value().replace("_", "");
-	let value = value.trim();
+	let raw_value = fragment.value();
+
+	// Fast path: check if we need any string processing
+	let needs_trimming = raw_value
+		.as_bytes()
+		.first()
+		.map_or(false, |&b| b.is_ascii_whitespace())
+		|| raw_value
+			.as_bytes()
+			.last()
+			.map_or(false, |&b| b.is_ascii_whitespace());
+	let has_underscores = raw_value.as_bytes().contains(&b'_');
+
+	let value = match (needs_trimming, has_underscores) {
+		(false, false) => Cow::Borrowed(raw_value), /* Fast path -
+		                                              * no processing
+		                                              * needed */
+		(true, false) => Cow::Borrowed(raw_value.trim()),
+		(false, true) => Cow::Owned(raw_value.replace('_', "")),
+		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
+	};
 
 	if value.is_empty() {
 		return_error!(invalid_number_format(fragment, T::type_enum()));
@@ -340,8 +378,27 @@ where
 		+ 'static,
 {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value().replace("_", "");
-	let value = value.trim();
+	let raw_value = fragment.value();
+
+	// Fast path: check if we need any string processing
+	let needs_trimming = raw_value
+		.as_bytes()
+		.first()
+		.map_or(false, |&b| b.is_ascii_whitespace())
+		|| raw_value
+			.as_bytes()
+			.last()
+			.map_or(false, |&b| b.is_ascii_whitespace());
+	let has_underscores = raw_value.as_bytes().contains(&b'_');
+
+	let value = match (needs_trimming, has_underscores) {
+		(false, false) => Cow::Borrowed(raw_value), /* Fast path -
+		                                              * no processing
+		                                              * needed */
+		(true, false) => Cow::Borrowed(raw_value.trim()),
+		(false, true) => Cow::Owned(raw_value.replace('_', "")),
+		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
+	};
 
 	if value.is_empty() {
 		return_error!(invalid_number_format(fragment, T::type_enum()));

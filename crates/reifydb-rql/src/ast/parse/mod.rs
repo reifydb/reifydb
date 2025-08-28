@@ -30,7 +30,7 @@ mod take;
 mod tuple;
 mod update;
 
-use std::{cmp::PartialOrd, collections::HashMap, sync::LazyLock};
+use std::cmp::PartialOrd;
 
 use reifydb_core::{result::error::diagnostic::ast, return_error};
 
@@ -56,32 +56,25 @@ pub(crate) enum Precedence {
 	Primary,
 }
 
-static PRECEDENCE_MAP: LazyLock<HashMap<Operator, Precedence>> =
-	LazyLock::new(|| {
-		let mut map = HashMap::new();
-		map.insert(Operator::As, Precedence::Assignment);
-		map.insert(Operator::Equal, Precedence::Comparison);
-		map.insert(Operator::DoubleEqual, Precedence::Comparison);
-		map.insert(Operator::BangEqual, Precedence::Comparison);
-		map.insert(Operator::LeftAngle, Precedence::Comparison);
-		map.insert(Operator::LeftAngleEqual, Precedence::Comparison);
-		map.insert(Operator::RightAngle, Precedence::Comparison);
-		map.insert(Operator::RightAngleEqual, Precedence::Comparison);
-		map.insert(Operator::Plus, Precedence::Term);
-		map.insert(Operator::Minus, Precedence::Term);
-		map.insert(Operator::Asterisk, Precedence::Factor);
-		map.insert(Operator::Slash, Precedence::Factor);
-		map.insert(Operator::Percent, Precedence::Factor);
-		map.insert(Operator::OpenParen, Precedence::Call);
-		map.insert(Operator::Dot, Precedence::Primary);
-		map.insert(Operator::DoubleColon, Precedence::Primary);
-		map.insert(Operator::Arrow, Precedence::Primary);
-		map.insert(Operator::Colon, Precedence::Assignment);
-		map.insert(Operator::Or, Precedence::LogicOr);
-		map.insert(Operator::Xor, Precedence::LogicOr);
-		map.insert(Operator::And, Precedence::LogicAnd);
-		map
-	});
+// Compile-time precedence lookup using const evaluation
+const fn get_precedence_for_operator(op: Operator) -> Precedence {
+	use Operator::*;
+	use Precedence::*;
+
+	match op {
+		As => Assignment,
+		Equal | DoubleEqual | BangEqual | LeftAngle
+		| LeftAngleEqual | RightAngle | RightAngleEqual => Comparison,
+		Plus | Minus => Term,
+		Asterisk | Slash | Percent => Factor,
+		OpenParen => Call,
+		Dot | DoubleColon | Arrow => Primary,
+		Colon => Assignment,
+		Or | Xor => LogicOr,
+		And => LogicAnd,
+		_ => None,
+	}
+}
 
 pub fn parse<'a>(
 	tokens: Vec<Token<'a>>,
@@ -292,9 +285,7 @@ impl<'a> Parser<'a> {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Operator(operator) => {
-				let precedence =
-					PRECEDENCE_MAP.get(&operator).cloned();
-				Ok(precedence.unwrap_or(Precedence::None))
+				Ok(get_precedence_for_operator(operator))
 			}
 			TokenKind::Keyword(Keyword::Between) => {
 				Ok(Precedence::Comparison)
