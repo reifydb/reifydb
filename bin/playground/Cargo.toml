@@ -7,5 +7,4 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_flow"] }
-serde_json = "1.0.142"
+reifydb = { workspace = true, features = ["sub_flow", "sub_logging"] }

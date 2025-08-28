@@ -1078,7 +1078,6 @@ name = "playground"
 version = "0.0.1"
 dependencies = [
  "reifydb",
- "serde_json",
 ]
 
 [[package]]

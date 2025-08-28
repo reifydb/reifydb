@@ -21,18 +21,12 @@ help:
 	@echo "  make build                   - Build all benchmarks"
 	@echo ""
 	@echo "Options:"
-	@echo "  BENCH_FLAGS='--verbose'      - Pass additional flags to cargo bench"
 	@echo "  BASELINE='main'              - Set baseline name for comparisons"
 
 # Engine benchmarks
 .PHONY: bench-memory-optimistic
 bench-memory-optimistic:
 	cargo bench --bench engine-memory-optimistic $(BENCH_FLAGS)
-
-# Run with verbose outlier information
-.PHONY: bench-memory-optimistic-verbose
-bench-memory-optimistic-verbose:
-	cargo bench --bench engine-memory-optimistic -- --verbose
 
 # RQL pipeline benchmarks
 .PHONY: bench-rql-tokenize

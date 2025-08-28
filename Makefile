@@ -106,7 +106,11 @@ include mk/test-local.mk
 include mk/test-pkg.mk
 include mk/test-suites.mk
 include mk/test-examples.mk
+
+# Only include benchmark makefile when benchmark targets are being run
+ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)
 include mk/test-bench.mk
+endif
 
 # =============================================================================
 # Build Targets
