@@ -10,7 +10,9 @@ use reifydb_core::{
 	return_error,
 	value::{
 		IsNumber,
-		container::{NumberContainer, StringContainer, UndefinedContainer},
+		container::{
+			NumberContainer, StringContainer, UndefinedContainer,
+		},
 		number::{Promote, SafeAdd},
 	},
 };
@@ -497,17 +499,41 @@ impl StandardEvaluator {
 
 			// String concatenation
 			(ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
-				concat_strings(ctx, l, r, target, add.fragment())
+				concat_strings(
+					ctx,
+					l,
+					r,
+					target,
+					add.fragment(),
+				)
 			}
 
 			// String + Other types (auto-promote to string)
-			(ColumnData::Utf8(l), r) if can_promote_to_string(r) => {
-				concat_string_with_other(ctx, l, r, true, target, add.fragment())
+			(ColumnData::Utf8(l), r)
+				if can_promote_to_string(r) =>
+			{
+				concat_string_with_other(
+					ctx,
+					l,
+					r,
+					true,
+					target,
+					add.fragment(),
+				)
 			}
 
 			// Other types + String (auto-promote to string)
-			(l, ColumnData::Utf8(r)) if can_promote_to_string(l) => {
-				concat_string_with_other(ctx, r, l, false, target, add.fragment())
+			(l, ColumnData::Utf8(r))
+				if can_promote_to_string(l) =>
+			{
+				concat_string_with_other(
+					ctx,
+					r,
+					l,
+					false,
+					target,
+					add.fragment(),
+				)
 			}
 
 			// Handle undefined values - any operation with
@@ -587,20 +613,16 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 		ColumnData::Bool(_)
 			| ColumnData::Float4(_)
 			| ColumnData::Float8(_)
-			| ColumnData::Int1(_)
-			| ColumnData::Int2(_)
-			| ColumnData::Int4(_)
-			| ColumnData::Int8(_)
+			| ColumnData::Int1(_) | ColumnData::Int2(_)
+			| ColumnData::Int4(_) | ColumnData::Int8(_)
 			| ColumnData::Int16(_)
 			| ColumnData::Uint1(_)
 			| ColumnData::Uint2(_)
 			| ColumnData::Uint4(_)
 			| ColumnData::Uint8(_)
 			| ColumnData::Uint16(_)
-			| ColumnData::Date(_)
-			| ColumnData::DateTime(_)
-			| ColumnData::Time(_)
-			| ColumnData::Interval(_)
+			| ColumnData::Date(_) | ColumnData::DateTime(_)
+			| ColumnData::Time(_) | ColumnData::Interval(_)
 			| ColumnData::Uuid4(_)
 			| ColumnData::Uuid7(_)
 			| ColumnData::Blob(_)
@@ -620,14 +642,15 @@ fn concat_strings(
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_str), Some(r_str)) => {
-				let concatenated = format!("{}{}", l_str, r_str);
+				let concatenated =
+					format!("{}{}", l_str, r_str);
 				data.push(concatenated);
 			}
 			_ => data.push_undefined(),
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: fragment.text().into(),
 		data,
 	}))
 }
@@ -658,7 +681,7 @@ fn concat_string_with_other(
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: fragment.text().into(),
 		data,
 	}))
 }
