@@ -12,28 +12,40 @@ pub struct Cursor<'a> {
 	line: u32,
 	column: u32,
 	line_start: usize,
+	// Cache current character to avoid repeated UTF-8 validation
+	current_char: Option<char>,
+	current_char_len: usize,
 }
 
 impl<'a> Cursor<'a> {
 	/// Create a new cursor at the beginning of the input
 	pub fn new(input: &'a str) -> Self {
+		let (current_char, current_char_len) = if input.is_empty() {
+			(None, 0)
+		} else {
+			let ch = input.chars().next().unwrap();
+			(Some(ch), ch.len_utf8())
+		};
+
 		Self {
 			input,
 			pos: 0,
 			line: 1,
 			column: 1,
 			line_start: 0,
+			current_char,
+			current_char_len,
 		}
 	}
 
 	/// Check if we've reached the end of input
 	pub fn is_eof(&self) -> bool {
-		self.pos >= self.input.len()
+		self.current_char.is_none()
 	}
 
 	/// Peek at the current character without consuming
 	pub fn peek(&self) -> Option<char> {
-		self.input[self.pos..].chars().next()
+		self.current_char
 	}
 
 	/// Peek at the next n bytes without consuming
@@ -61,8 +73,8 @@ impl<'a> Cursor<'a> {
 
 	/// Consume and return the current character
 	pub fn consume(&mut self) -> Option<char> {
-		if let Some(ch) = self.peek() {
-			self.pos += ch.len_utf8();
+		if let Some(ch) = self.current_char {
+			self.pos += self.current_char_len;
 			if ch == '\n' {
 				self.line += 1;
 				self.column = 1;
@@ -70,6 +82,19 @@ impl<'a> Cursor<'a> {
 			} else {
 				self.column += 1;
 			}
+
+			// Update cached character
+			if self.pos < self.input.len() {
+				let remaining = &self.input[self.pos..];
+				let next_char =
+					remaining.chars().next().unwrap();
+				self.current_char = Some(next_char);
+				self.current_char_len = next_char.len_utf8();
+			} else {
+				self.current_char = None;
+				self.current_char_len = 0;
+			}
+
 			Some(ch)
 		} else {
 			None
@@ -174,6 +199,8 @@ impl<'a> Cursor<'a> {
 			line: self.line,
 			column: self.column,
 			line_start: self.line_start,
+			current_char: self.current_char,
+			current_char_len: self.current_char_len,
 		}
 	}
 
@@ -183,6 +210,13 @@ impl<'a> Cursor<'a> {
 		self.line = state.line;
 		self.column = state.column;
 		self.line_start = state.line_start;
+		self.current_char = state.current_char;
+		self.current_char_len = state.current_char_len;
+	}
+
+	/// Get a slice of the remaining input from current position
+	pub fn remaining_input(&self) -> &'a str {
+		&self.input[self.pos..]
 	}
 }
 
@@ -193,4 +227,6 @@ pub struct CursorState {
 	line: u32,
 	column: u32,
 	line_start: usize,
+	current_char: Option<char>,
+	current_char_len: usize,
 }

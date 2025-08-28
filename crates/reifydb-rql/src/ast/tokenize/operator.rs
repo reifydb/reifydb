@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::{collections::HashMap, sync::LazyLock};
+
 use super::{
 	cursor::Cursor,
 	identifier::is_identifier_char,
@@ -64,58 +66,166 @@ operator! {
     Xor              => "xor"
 }
 
+static SINGLE_CHAR_OPERATORS: LazyLock<HashMap<char, Operator>> =
+	LazyLock::new(|| {
+		let mut map = HashMap::new();
+		map.insert('(', Operator::OpenParen);
+		map.insert(')', Operator::CloseParen);
+		map.insert('[', Operator::OpenBracket);
+		map.insert(']', Operator::CloseBracket);
+		map.insert('{', Operator::OpenCurly);
+		map.insert('}', Operator::CloseCurly);
+		map.insert('<', Operator::LeftAngle);
+		map.insert('>', Operator::RightAngle);
+		map.insert('.', Operator::Dot);
+		map.insert(':', Operator::Colon);
+		map.insert('+', Operator::Plus);
+		map.insert('-', Operator::Minus);
+		map.insert('*', Operator::Asterisk);
+		map.insert('/', Operator::Slash);
+		map.insert('&', Operator::Ampersand);
+		map.insert('|', Operator::Pipe);
+		map.insert('^', Operator::Caret);
+		map.insert('%', Operator::Percent);
+		map.insert('=', Operator::Equal);
+		map.insert('!', Operator::Bang);
+		map.insert('?', Operator::QuestionMark);
+		map
+	});
+
+static WORD_OPERATORS: LazyLock<HashMap<&'static str, Operator>> =
+	LazyLock::new(|| {
+		let mut map = HashMap::new();
+		map.insert("AS", Operator::As);
+		map.insert("AND", Operator::And);
+		map.insert("OR", Operator::Or);
+		map.insert("NOT", Operator::Not);
+		map.insert("XOR", Operator::Xor);
+		map
+	});
+
 /// Scan for an operator token
 pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	// Check multi-character operators first
-	const MULTI_CHAR_OPS: &[(&str, Operator)] = &[
-		("<<", Operator::DoubleLeftAngle),
-		("<=", Operator::LeftAngleEqual),
-		(">>", Operator::DoubleRightAngle),
-		(">=", Operator::RightAngleEqual),
-		("::", Operator::DoubleColon),
-		("->", Operator::Arrow),
-		("..", Operator::DoubleDot),
-		("&&", Operator::DoubleAmpersand),
-		("||", Operator::DoublePipe),
-		("==", Operator::DoubleEqual),
-		("!=", Operator::BangEqual),
-	];
+	let ch = cursor.peek()?;
 
-	for (op_str, op) in MULTI_CHAR_OPS {
-		if cursor.consume_str(op_str) {
-			return Some(Token {
-				kind: TokenKind::Operator(*op),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
-			});
+	// Check for multi-character operators first based on first character
+	let multi_char_op = match ch {
+		'<' => {
+			if cursor.peek_str(2) == "<<" {
+				cursor.consume_str("<<");
+				Some(Operator::DoubleLeftAngle)
+			} else if cursor.peek_str(2) == "<=" {
+				cursor.consume_str("<=");
+				Some(Operator::LeftAngleEqual)
+			} else {
+				None
+			}
 		}
+		'>' => {
+			if cursor.peek_str(2) == ">>" {
+				cursor.consume_str(">>");
+				Some(Operator::DoubleRightAngle)
+			} else if cursor.peek_str(2) == ">=" {
+				cursor.consume_str(">=");
+				Some(Operator::RightAngleEqual)
+			} else {
+				None
+			}
+		}
+		':' => {
+			if cursor.peek_str(2) == "::" {
+				cursor.consume_str("::");
+				Some(Operator::DoubleColon)
+			} else {
+				None
+			}
+		}
+		'-' => {
+			if cursor.peek_str(2) == "->" {
+				cursor.consume_str("->");
+				Some(Operator::Arrow)
+			} else {
+				None
+			}
+		}
+		'.' => {
+			if cursor.peek_str(2) == ".." {
+				cursor.consume_str("..");
+				Some(Operator::DoubleDot)
+			} else {
+				None
+			}
+		}
+		'&' => {
+			if cursor.peek_str(2) == "&&" {
+				cursor.consume_str("&&");
+				Some(Operator::DoubleAmpersand)
+			} else {
+				None
+			}
+		}
+		'|' => {
+			if cursor.peek_str(2) == "||" {
+				cursor.consume_str("||");
+				Some(Operator::DoublePipe)
+			} else {
+				None
+			}
+		}
+		'=' => {
+			if cursor.peek_str(2) == "==" {
+				cursor.consume_str("==");
+				Some(Operator::DoubleEqual)
+			} else {
+				None
+			}
+		}
+		'!' => {
+			if cursor.peek_str(2) == "!=" {
+				cursor.consume_str("!=");
+				Some(Operator::BangEqual)
+			} else {
+				None
+			}
+		}
+		_ => None,
+	};
+
+	if let Some(op) = multi_char_op {
+		return Some(Token {
+			kind: TokenKind::Operator(op),
+			fragment: cursor.make_fragment(
+				start_pos,
+				start_line,
+				start_column,
+			),
+		});
 	}
 
-	// Word operators (must be followed by non-identifier char)
-	const WORD_OPS: &[(&str, Operator)] = &[
-		("as", Operator::As),
-		("and", Operator::And),
-		("or", Operator::Or),
-		("not", Operator::Not),
-		("xor", Operator::Xor),
-	];
+	// Check word operators for alphabetic characters
+	if ch.is_ascii_alphabetic() {
+		let remaining = cursor.remaining_input();
+		let word_len = remaining
+			.chars()
+			.take_while(|&c| is_identifier_char(c))
+			.map(|c| c.len_utf8())
+			.sum::<usize>();
+		let word = &remaining[..word_len];
+		let uppercase_word = word.to_uppercase();
 
-	for (word, op) in WORD_OPS {
-		let peek = cursor.peek_str(word.len());
-		if peek.eq_ignore_ascii_case(word) {
-			let next_char = cursor.peek_ahead(word.len());
+		if let Some(&op) = WORD_OPERATORS.get(uppercase_word.as_str()) {
+			let next_char = cursor.peek_ahead(word.chars().count());
 			if next_char.map_or(true, |ch| !is_identifier_char(ch))
 			{
-				cursor.consume_str_ignore_case(word);
+				for _ in 0..word.chars().count() {
+					cursor.consume();
+				}
 				return Some(Token {
-					kind: TokenKind::Operator(*op),
+					kind: TokenKind::Operator(op),
 					fragment: cursor.make_fragment(
 						start_pos,
 						start_line,
@@ -124,43 +234,23 @@ pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 				});
 			}
 		}
+		return None;
 	}
 
 	// Single character operators
-	let op = match cursor.peek()? {
-		'(' => Operator::OpenParen,
-		')' => Operator::CloseParen,
-		'[' => Operator::OpenBracket,
-		']' => Operator::CloseBracket,
-		'{' => Operator::OpenCurly,
-		'}' => Operator::CloseCurly,
-		'<' => Operator::LeftAngle,
-		'>' => Operator::RightAngle,
-		'.' => Operator::Dot,
-		':' => Operator::Colon,
-		'+' => Operator::Plus,
-		'-' => Operator::Minus,
-		'*' => Operator::Asterisk,
-		'/' => Operator::Slash,
-		'&' => Operator::Ampersand,
-		'|' => Operator::Pipe,
-		'^' => Operator::Caret,
-		'%' => Operator::Percent,
-		'=' => Operator::Equal,
-		'!' => Operator::Bang,
-		'?' => Operator::QuestionMark,
-		_ => return None,
-	};
-
-	cursor.consume();
-	Some(Token {
-		kind: TokenKind::Operator(op),
-		fragment: cursor.make_fragment(
-			start_pos,
-			start_line,
-			start_column,
-		),
-	})
+	if let Some(&op) = SINGLE_CHAR_OPERATORS.get(&ch) {
+		cursor.consume();
+		Some(Token {
+			kind: TokenKind::Operator(op),
+			fragment: cursor.make_fragment(
+				start_pos,
+				start_line,
+				start_column,
+			),
+		})
+	} else {
+		None
+	}
 }
 
 #[cfg(test)]
