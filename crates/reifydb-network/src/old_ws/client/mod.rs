@@ -43,7 +43,7 @@ use tokio_tungstenite::{
 };
 use uuid::Uuid;
 
-use crate::ws::{
+use crate::old_ws::{
 	AuthRequest, CommandRequest, CommandResponse, QueryRequest,
 	QueryResponse, Request, RequestPayload, Response, ResponsePayload,
 	WsParams,

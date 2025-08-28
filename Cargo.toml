@@ -15,6 +15,7 @@ members = [
     "crates/reifydb-engine",
     "crates/reifydb-network",
     "crates/reifydb-rql",
+    "crates/reifydb-sub-server",
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
@@ -43,6 +44,7 @@ default-members = [
     "crates/reifydb-engine",
     "crates/reifydb-network",
     "crates/reifydb-rql",
+    "crates/reifydb-sub-server",
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
@@ -98,6 +100,7 @@ reifydb-hash = { path = "crates/reifydb-hash", version = "0.0.1" }
 reifydb-sub-flow = { path = "crates/reifydb-sub-flow", version = "0.0.1" }
 reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
 reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
+reifydb-sub-server = { path = "crates/reifydb-sub-server", version = "0.0.1" }
 reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }

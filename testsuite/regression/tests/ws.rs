@@ -16,7 +16,7 @@ use reifydb::{
 	},
 	engine::StandardTransaction,
 	memory,
-	network::ws::{client::WsClient, server::WsConfig},
+	network::old_ws::{client::WsClient, server::WsConfig},
 	optimistic,
 };
 use reifydb_testing::{network::busy_wait, testscript, testscript::Command};
@@ -146,7 +146,7 @@ where
 		let socket_addr = busy_wait(|| server.ws_socket_addr());
 		self.client = Some(runtime.block_on(async {
 			let client = WsClient::connect(&format!(
-				"ws://[::1]:{}",
+				"old_ws://[::1]:{}",
 				socket_addr.port()
 			))
 			.await?;

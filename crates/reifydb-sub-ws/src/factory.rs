@@ -12,7 +12,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
-use reifydb_network::ws::server::WsConfig;
+use reifydb_network::old_ws::server::WsConfig;
 
 use super::WsSubsystem;
 

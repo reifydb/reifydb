@@ -147,14 +147,6 @@ impl<T: Transaction> Database<T> {
 			self.subsystem_count()
 		);
 
-		// Initialize engine health monitoring
-		self.health_monitor.update_component_health(
-			"engine".to_string(),
-			HealthStatus::Healthy, /* Engine is always healthy
-			                        * if constructed */
-			true,
-		);
-
 		log_timed_trace!("Database initialization", {
 			self.engine.hooks().trigger(OnStartHook {})?
 		});
@@ -201,14 +193,6 @@ impl<T: Transaction> Database<T> {
 		let result = self
 			.subsystems
 			.stop_all(self.config.graceful_shutdown_timeout);
-
-		// Update engine health monitoring (engine is stopped when
-		// system stops)
-		self.health_monitor.update_component_health(
-			"engine".to_string(),
-			HealthStatus::Healthy,
-			false,
-		);
 
 		self.running = false;
 

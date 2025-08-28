@@ -7,5 +7,4 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_ws"] }
-tokio = {workspace = true}
+reifydb = { workspace = true, features = ["sub_logging", "sub_server"] }

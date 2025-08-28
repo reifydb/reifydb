@@ -3,7 +3,7 @@
 
 use std::thread;
 
-use reifydb::{network::ws::server::WsConfig, server};
+use reifydb::{network::old_ws::server::WsConfig, server};
 use tokio::{
 	runtime::Runtime,
 	select, signal,

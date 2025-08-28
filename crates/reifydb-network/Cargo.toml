@@ -26,6 +26,15 @@ tokio-stream = { workspace = true, optional = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 
+mio = { version = "0.8", features = ["net", "os-poll"] }
+slab = "0.4"
+num_cpus = "1.16"
+core_affinity = "0.8"
+socket2 = { version = "0.5", features = ["all"] }
+httparse = "1.8"
+base64 = "0.22"
+sha1 = "0.10"
+anyhow = "1.0"
 
 # websocket
 futures-util = { workspace = true }

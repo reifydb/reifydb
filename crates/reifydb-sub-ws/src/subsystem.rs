@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::StandardEngine;
-use reifydb_network::ws::server::{WsConfig, WsServer};
+use reifydb_network::old_ws::server::{WsConfig, WsServer};
 use tokio::{runtime::Runtime, sync::oneshot, task::JoinHandle};
 
 pub struct WsSubsystem<T: Transaction> {
