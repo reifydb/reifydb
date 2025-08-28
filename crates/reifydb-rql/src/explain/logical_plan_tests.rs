@@ -3,13 +3,13 @@
 #[cfg(test)]
 mod tests {
 	use crate::{
-		ast::parse, explain::logical_plan::explain_logical_plans,
-		plan::logical::compile_logical,
+        ast::parse_str, explain::logical_plan::explain_logical_plans,
+        plan::logical::compile_logical,
 	};
 
 	// Helper function to compile and explain a query
 	fn compile_and_explain(query: &str) -> String {
-		let statements = parse(query).unwrap();
+		let statements = parse_str(query).unwrap();
 		let mut plans = Vec::new();
 		for statement in statements {
 			plans.extend(compile_logical(statement).unwrap());

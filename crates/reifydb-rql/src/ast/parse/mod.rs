@@ -55,7 +55,7 @@ pub(crate) enum Precedence {
 	Primary,
 }
 
-pub(crate) fn parse<'a>(
+pub fn parse<'a>(
 	tokens: Vec<Token>,
 ) -> crate::Result<Vec<AstStatement>> {
 	let mut parser = Parser::new(tokens);

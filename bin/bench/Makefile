@@ -8,6 +8,11 @@ help:
 	@echo "Engine Benchmarks:"
 	@echo "  make bench-memory-optimistic - Memory optimistic transaction benchmarks"
 	@echo ""
+	@echo "RQL Pipeline Benchmarks:"
+	@echo "  make bench-rql-tokenize      - RQL tokenization performance"
+	@echo "  make bench-rql-parse         - RQL parsing performance" 
+	@echo "  make bench-rql-logical       - RQL logical planning performance"
+	@echo ""
 	@echo "Utility targets:"
 	@echo "  make bench-all               - Run all benchmarks"
 	@echo "  make bench-baseline          - Run benchmarks and save as baseline"
@@ -28,6 +33,19 @@ bench-memory-optimistic:
 .PHONY: bench-memory-optimistic-verbose
 bench-memory-optimistic-verbose:
 	cargo bench --bench engine-memory-optimistic -- --verbose
+
+# RQL pipeline benchmarks
+.PHONY: bench-rql-tokenize
+bench-rql-tokenize:
+	cargo bench --bench rql-tokenize $(BENCH_FLAGS)
+
+.PHONY: bench-rql-parse
+bench-rql-parse:
+	cargo bench --bench rql-parse $(BENCH_FLAGS)
+
+.PHONY: bench-rql-logical
+bench-rql-logical:
+	cargo bench --bench rql-logical $(BENCH_FLAGS)
 
 # Convenience aliases
 .PHONY: memory-optimistic

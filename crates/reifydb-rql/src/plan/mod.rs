@@ -2,15 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	QueryTransaction, evaluate::expression::Expression,
+    evaluate::expression::Expression, QueryTransaction,
 };
 
+use crate::plan::logical::LogicalPlan;
 use crate::{
-	ast::AstStatement,
-	plan::{
-		logical::compile_logical,
-		physical::{PhysicalPlan, compile_physical},
-	},
+    ast::AstStatement,
+    plan::{
+        logical::compile_logical,
+        physical::{compile_physical, PhysicalPlan},
+    },
 };
 
 pub mod logical;
@@ -25,4 +26,16 @@ pub fn plan(
 	let logical = compile_logical(statement)?;
 	let physical = compile_physical(rx, logical)?;
 	Ok(physical)
+}
+
+pub fn logical_all(
+	statements: Vec<AstStatement>,
+) -> crate::Result<Vec<LogicalPlan>> {
+	let mut result = vec![];
+
+	for statement in statements {
+		result.extend(compile_logical(statement)?);
+	}
+
+	Ok(result)
 }

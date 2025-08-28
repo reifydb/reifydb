@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 reifydb = { path = "../../pkg/rust/reifydb", features = [] }
+reifydb-rql = { path = "../../crates/reifydb-rql" }
 
 tokio = { workspace = true }
 criterion = { workspace = true }
@@ -19,4 +20,19 @@ criterion = { workspace = true }
 [[bench]]
 name = "engine-memory-optimistic"
 path = "benches/engine/01_memory_optimistic.rs"
+harness = false
+
+[[bench]]
+name = "rql-tokenize"
+path = "benches/rql/tokenize.rs"
+harness = false
+
+[[bench]]
+name = "rql-parse"
+path = "benches/rql/parse.rs"
+harness = false
+
+[[bench]]
+name = "rql-logical"
+path = "benches/rql/logical.rs"
 harness = false

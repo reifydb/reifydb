@@ -6,8 +6,8 @@ use std::fmt::Write;
 use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
-	ast::parse,
-	plan::{
+    ast::parse_str,
+    plan::{
 		logical::compile_logical,
 		physical,
 		physical::{PhysicalPlan, compile_physical},
@@ -18,7 +18,7 @@ pub fn explain_physical_plan(
 	rx: &mut impl QueryTransaction,
 	query: &str,
 ) -> crate::Result<String> {
-	let statements = parse(query)?;
+	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {

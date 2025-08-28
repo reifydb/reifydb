@@ -4,6 +4,7 @@
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use reifydb::{sync, MemoryDatabaseOptimistic, Params, SessionSync};
+use reifydb_bench::queries;
 use std::time::Duration;
 
 fn bench_simple_queries(c: &mut Criterion) {
@@ -15,59 +16,35 @@ fn bench_simple_queries(c: &mut Criterion) {
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
-	group.bench_function("MAP", |b| {
-		b.iter(|| db.query_as_root("MAP { 1 }", Params::None).unwrap())
-	});
-
-	group.bench_function("inline_data", |b| {
+	group.bench_function("MAP_ONE", |b| {
 		b.iter(|| {
-			db.query_as_root(
-				"from [{ id: 1, name: \"test\" }]",
-				Params::None,
-			)
-			.unwrap()
-		})
-	});
-
-	group.bench_function("filter", |b| {
-		b.iter(|| {
-			db.query_as_root("from [{ id: 1, active: true }, { id: 2, active: false }] filter active = true", Params::None)
+			db.query_as_root(queries::MAP_ONE, Params::None)
 				.unwrap()
 		})
 	});
 
-	group.bench_function("filter_large", |b| {
-		let large_query = generate_large_filter_query();
+	group.bench_function("INLINE_DATA", |b| {
 		b.iter(|| {
-			db.query_as_root(&large_query, Params::None)
+			db.query_as_root(queries::INLINE_DATA, Params::None)
+				.unwrap()
+		})
+	});
+
+	group.bench_function("SIMPLE_FILTER", |b| {
+		b.iter(|| {
+			db.query_as_root(queries::SIMPLE_FILTER, Params::None)
+				.unwrap()
+		})
+	});
+
+	group.bench_function("COMPLEX_FILTER", |b| {
+		b.iter(|| {
+			db.query_as_root(queries::COMPLEX_FILTER, Params::None)
 				.unwrap()
 		})
 	});
 
 	group.finish();
-}
-
-fn generate_large_filter_query() -> String {
-	use std::collections::hash_map::DefaultHasher;
-	use std::hash::{Hash, Hasher};
-	
-	let mut items = Vec::new();
-	
-	for i in 1..=2049 {
-		let mut hasher = DefaultHasher::new();
-		i.hash(&mut hasher);
-		let hash = hasher.finish();
-		
-		let active = if i <= 1025 {
-			(hash % 2) == 0
-		} else {
-			(hash % 2) == 1
-		};
-		
-		items.push(format!("{{ id: {}, active: {} }}", i, active));
-	}
-	
-	format!("from [{}] filter active = true", items.join(", "))
 }
 
 criterion_group!(benches, bench_simple_queries);

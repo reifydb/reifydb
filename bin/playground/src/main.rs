@@ -36,12 +36,13 @@ fn main() {
 
 	db.start().unwrap();
 
-	for frame in db
-		.query_as_root(&generate_large_filter_query(), Params::None)
-		.unwrap()
-	{
-		println!("{}", frame);
-	}
+	// for frame in db
+	// 	.query_as_root(&generate_large_filter_query(), Params::None)
+	// 	.unwrap()
+	// {
+	// 	println!("{}", frame);
+	// }
+	println!("{}",&generate_large_filter_query());
 }
 
 fn generate_large_filter_query() -> String {

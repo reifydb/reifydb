@@ -20,14 +20,14 @@ use reifydb_core::{
 use crate::{
 	ast,
 	ast::{
-		Ast, AstInfix, AstLiteral, InfixOperator, parse,
-		tokenize::ParameterKind,
+        Ast, AstInfix, AstLiteral, InfixOperator, parse_str,
+        tokenize::ParameterKind,
 	},
 	convert_data_type,
 };
 
 pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
-	let statements = parse(rql)?;
+	let statements = parse_str(rql)?;
 	if statements.is_empty() {
 		return Ok(vec![]);
 	}
