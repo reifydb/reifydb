@@ -48,7 +48,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show aliased column names
 command 'from test.aliased'

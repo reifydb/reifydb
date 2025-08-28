@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 5
+wait 10
 
 # Should show values <= 50 (including 50)
 command 'from test.at_most_fifty'

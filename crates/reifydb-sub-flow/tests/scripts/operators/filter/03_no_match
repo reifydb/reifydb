@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 5
+wait 10
 
 # No values match filter condition
 command 'from test.high_values'

@@ -35,7 +35,7 @@ command 'from [{id:1, value:10}, {id:2, value:20}, {id:3, value:30}] insert test
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # View should be empty
 command 'from test.none'

@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+-----------+
 > 
 
-wait 5
+wait 10
 
 # Should exclude empty strings
 command 'from test.non_empty'

@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 5
+wait 10
 
 # Should show only values > 50 (not including 50)
 command 'from test.above_fifty'

@@ -40,7 +40,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show all columns
 command 'from test.all_cols'

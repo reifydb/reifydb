@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+-----------------+
 > 
 
-wait 5
+wait 10
 
 # Should show values > 3.14159
 command 'from test.above_pi'

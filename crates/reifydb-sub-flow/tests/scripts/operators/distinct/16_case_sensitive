@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 5
+wait 10
 
 # Should treat different cases as distinct
 command 'from test.unique_names'

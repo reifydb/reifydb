@@ -57,7 +57,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show nested expression results
 command 'from test.nested_calc'

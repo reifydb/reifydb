@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+---------------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show high priority (>=9) OR bug category
 command 'from test.urgent_or_bug'

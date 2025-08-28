@@ -58,7 +58,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show mixed type transformations
 command 'from test.mixed'

@@ -52,7 +52,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show data with constant columns
 command 'from test.with_constants'

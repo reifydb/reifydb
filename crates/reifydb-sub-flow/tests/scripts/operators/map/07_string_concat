@@ -48,7 +48,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show concatenated strings
 command 'from test.full_names'

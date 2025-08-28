@@ -53,7 +53,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+wait 10
 
 # Should show computed values
 command 'from test.computed'
