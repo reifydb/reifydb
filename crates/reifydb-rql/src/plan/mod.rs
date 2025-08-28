@@ -9,7 +9,7 @@ use reifydb_core::interface::{
 use crate::{
 	ast::AstStatement,
 	plan::{
-		logical::compile_logical,
+		logical::{LogicalPlan, compile_logical},
 		physical::{PhysicalPlan, compile_physical},
 	},
 };
@@ -29,4 +29,16 @@ where
 	let logical = compile_logical(statement)?;
 	let physical = compile_physical(rx, logical)?;
 	Ok(physical)
+}
+
+pub fn logical_all(
+	statements: Vec<AstStatement>,
+) -> crate::Result<Vec<LogicalPlan>> {
+	let mut result = vec![];
+
+	for statement in statements {
+		result.extend(compile_logical(statement)?);
+	}
+
+	Ok(result)
 }

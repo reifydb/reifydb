@@ -9,6 +9,7 @@ mod create;
 mod create_index;
 mod delete;
 mod describe;
+mod distinct;
 mod extend;
 mod filter;
 mod from;
@@ -55,9 +56,7 @@ pub(crate) enum Precedence {
 	Primary,
 }
 
-pub(crate) fn parse<'a>(
-	tokens: Vec<Token>,
-) -> crate::Result<Vec<AstStatement>> {
+pub fn parse<'a>(tokens: Vec<Token>) -> crate::Result<Vec<AstStatement>> {
 	let mut parser = Parser::new(tokens);
 	parser.parse()
 }

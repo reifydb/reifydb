@@ -51,6 +51,7 @@ keyword! {
     Aggregate  => "AGGREGATE",
     Having     => "HAVING",
     Sort      => "SORT",
+    Distinct   => "DISTINCT",
     Take      => "TAKE",
     Offset     => "OFFSET",
 
@@ -139,6 +140,7 @@ pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
 		("AGGREGATE", Keyword::Aggregate),
 		("HAVING", Keyword::Having),
 		("SORT", Keyword::Sort),
+		("DISTINCT", Keyword::Distinct),
 		("TAKE", Keyword::Take),
 		("OFFSET", Keyword::Offset),
 		("LEFT", Keyword::Left),

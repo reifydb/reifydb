@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct with single row
+# Edge case - single row is unique
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_values { id: int4, value: int4 } with {
+  from test.source
+  distinct { value }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  unique_values  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert single row
+command 'from [
+  {id: 1, value: 42}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     1      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  1   |   42    |
+> +------+---------+
+> 
+
+wait 5
+
+# Should return the single row
+command 'from test.unique_values'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  1   |   42    |
+> +------+---------+
+> 

@@ -11,14 +11,9 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogStore,
-	schema::SchemaToCreate,
-	transaction::{
-		CatalogCommandTransactionOperations,
-		CatalogQueryTransactionOperations,
-		CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
-		TransactionalChangesExt,
-	},
+	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
+	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
+	CatalogStore, TransactionalChangesExt, schema::SchemaToCreate,
 };
 
 // Query operations implementation

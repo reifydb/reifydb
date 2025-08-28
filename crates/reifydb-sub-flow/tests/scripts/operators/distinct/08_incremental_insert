@@ -1,0 +1,110 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct with incremental inserts
+# View should update correctly with each batch
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_values { id: int4, value: int4 } with {
+  from test.source
+  distinct { value }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  unique_values  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# First batch
+command 'from [
+  {id: 1, value: 10},
+  {id: 2, value: 20},
+  {id: 3, value: 10}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     3      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+command 'from test.unique_values'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  3   |   10    |
+> |  2   |   20    |
+> +------+---------+
+> 
+
+# Second batch
+command 'from [
+  {id: 4, value: 30},
+  {id: 5, value: 20},
+  {id: 6, value: 40}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     3      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+command 'from test.unique_values'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  6   |   40    |
+> |  4   |   30    |
+> |  3   |   10    |
+> |  2   |   20    |
+> +------+---------+
+> 
+
+# Third batch with duplicates
+command 'from [
+  {id: 7, value: 10},
+  {id: 8, value: 50}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     2      |
+> +----------+----------+------------+
+> 
+
+wait 5
+
+# Final view state
+command 'from test.unique_values'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  8   |   50    |
+> |  6   |   40    |
+> |  4   |   30    |
+> |  3   |   10    |
+> |  2   |   20    |
+> +------+---------+
+> 

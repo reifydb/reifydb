@@ -1,0 +1,70 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct with mixed data types
+# Distinct on one column with various types in row
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, text: utf8, num: int4, flag: boolean }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_text { id: int4, text: utf8, num: int4, flag: boolean } with {
+  from test.source
+  distinct { text }
+}'
+---
+> +----------+---------------+-----------+
+> |  schema  |     view      |  created  |
+> +----------+---------------+-----------+
+> |   test   |  unique_text  |   true    |
+> +----------+---------------+-----------+
+> 
+
+# Insert mixed type rows
+command 'from [
+  {id: 1, text: "alpha", num: 100, flag: true},
+  {id: 2, text: "beta", num: 200, flag: false},
+  {id: 3, text: "alpha", num: 300, flag: false},
+  {id: 4, text: "gamma", num: 400, flag: true},
+  {id: 5, text: "beta", num: 500, flag: true}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     5      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------+-------+---------+
+> |  id  |  text   |  num  |  flag   |
+> +------+---------+-------+---------+
+> |  5   |  beta   |  500  |  true   |
+> |  4   |  gamma  |  400  |  true   |
+> |  3   |  alpha  |  300  |  false  |
+> |  2   |  beta   |  200  |  false  |
+> |  1   |  alpha  |  100  |  true   |
+> +------+---------+-------+---------+
+> 
+
+wait 5
+
+# Should show unique text values
+command 'from test.unique_text'
+---
+> +------+---------+-------+---------+
+> |  id  |  text   |  num  |  flag   |
+> +------+---------+-------+---------+
+> |  5   |  beta   |  500  |  true   |
+> |  4   |  gamma  |  400  |  true   |
+> |  3   |  alpha  |  300  |  false  |
+> +------+---------+-------+---------+
+> 

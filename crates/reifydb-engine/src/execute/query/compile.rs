@@ -173,6 +173,7 @@ pub(crate) fn compile(
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::Insert(_)
-		| PhysicalPlan::Update(_) => unreachable!(),
+		| PhysicalPlan::Update(_)
+		| PhysicalPlan::Distinct(_) => unreachable!(),
 	}
 }

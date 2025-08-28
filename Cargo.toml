@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
     #    "bin/cli",
+    "bin/bench",
     "bin/examples",
     "bin/playground",
     "bin/server",
@@ -25,11 +26,12 @@ members = [
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
-    "testsuite/regression",
+    "testsuite/regression", "crates/reifydb-hash",
 ]
 
 default-members = [
     #    "bin/cli",
+    "bin/bench",
     "bin/examples",
     "bin/playground",
     "bin/server",
@@ -92,6 +94,7 @@ reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
 reifydb-cdc = { path = "crates/reifydb-cdc", version = "0.0.1" }
 reifydb-core = { path = "crates/reifydb-core", version = "0.0.1" }
 reifydb-engine = { path = "crates/reifydb-engine", version = "0.0.1" }
+reifydb-hash = { path = "crates/reifydb-hash", version = "0.0.1" }
 reifydb-sub-flow = { path = "crates/reifydb-sub-flow", version = "0.0.1" }
 reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
 reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
@@ -138,4 +141,7 @@ heed = { version = "0.22.0", features = ["preserve_order"] }
 # reifydb-testing
 goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
+
+# benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
 

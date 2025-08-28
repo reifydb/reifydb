@@ -168,7 +168,7 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 		cmd: Command<'_>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
-		let statements = ast::parse(cmd.rql)?;
+		let statements = ast::parse_str(cmd.rql)?;
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
@@ -192,7 +192,7 @@ impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
 		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
-		let statements = ast::parse(qry.rql)?;
+		let statements = ast::parse_str(qry.rql)?;
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
@@ -246,7 +246,8 @@ impl Executor {
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateSchema(_)
-			| PhysicalPlan::CreateTable(_) => unreachable!(), /* FIXME return explanatory diagnostic */
+			| PhysicalPlan::CreateTable(_)
+			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 		}
 	}
 
@@ -299,7 +300,8 @@ impl Executor {
 			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::TableScan(_)
-			| PhysicalPlan::ViewScan(_) => self.query(txn, plan, params),
+			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::Distinct(_) => self.query(txn, plan, params),
 		}
 	}
 

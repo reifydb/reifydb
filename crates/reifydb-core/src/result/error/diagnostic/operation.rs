@@ -114,6 +114,29 @@ pub fn select_multiple_expressions_without_braces<'a>(
 	}
 }
 
+/// Multiple DISTINCT columns without braces error
+pub fn distinct_multiple_columns_without_braces<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "DISTINCT_001".to_string(),
+		statement: None,
+		message: "Multiple DISTINCT columns require curly braces".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces around columns".to_string()),
+		help: Some("Wrap multiple DISTINCT columns in curly braces, e.g., 'DISTINCT { category, value } FROM events'".to_string()),
+		notes: vec![
+			"When using DISTINCT with multiple columns, use curly braces: DISTINCT { col1, col2, ... }".to_string(),
+			"Single columns can be written without braces: DISTINCT category FROM events".to_string(),
+			"No arguments means distinct on all columns: DISTINCT FROM events".to_string(),
+			"Curly braces make the query more readable and unambiguous".to_string(),
+		],
+		cause: None,
+	}
+}
+
 /// Multiple MAP expressions without braces error
 pub fn map_multiple_expressions_without_braces<'a>(
 	fragment: impl IntoFragment<'a>,

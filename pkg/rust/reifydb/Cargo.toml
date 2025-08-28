@@ -23,7 +23,7 @@ reifydb-sub-ws = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 
 [features]
-default = ["sub_logging"]
+default = []
 async = ["dep:tokio"]
 
 # Subsystem features

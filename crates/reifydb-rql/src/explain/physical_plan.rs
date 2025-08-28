@@ -7,11 +7,11 @@ use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
-	ast::parse,
+	ast::parse_str,
 	plan::{
 		logical::compile_logical,
 		physical,
-		physical::{PhysicalPlan, compile_physical},
+		physical::{DistinctNode, PhysicalPlan, compile_physical},
 	},
 };
 
@@ -22,7 +22,7 @@ pub fn explain_physical_plan<T>(
 where
 	T: QueryTransaction + CatalogQueryTransaction,
 {
-	let statements = parse(query)?;
+	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
@@ -424,6 +424,29 @@ fn render_physical_plan_inner(
 				total_fields
 			);
 			write_node_header(output, prefix, is_last, &label);
+		}
+		PhysicalPlan::Distinct(DistinctNode {
+			input,
+			columns,
+		}) => {
+			let label = if columns.is_empty() {
+				"Distinct (primary key)".to_string()
+			} else {
+				let cols: Vec<String> = columns
+					.iter()
+					.map(|c| c.text().to_string())
+					.collect();
+				format!("Distinct {{{}}}", cols.join(", "))
+			};
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(
+					input,
+					&child_prefix,
+					true,
+					output,
+				);
+			});
 		}
 		PhysicalPlan::AlterTable(_) => unimplemented!(),
 		PhysicalPlan::AlterView(_) => unimplemented!(),

@@ -40,6 +40,9 @@ help:
 	@echo "  make testpkg    	Run test packages (typescript)"
 	@echo "  make test-examples Build and run all examples"
 	@echo ""
+	@echo "🏎️  Benchmarking:"
+	@echo "  make bench         Run all performance benchmarks"
+	@echo ""
 	@echo "🏗️  Building:"
 	@echo "  make build         Build release version"
 	@echo "  make clean         Clean all reifydb packages"
@@ -103,6 +106,11 @@ include mk/test-local.mk
 include mk/test-pkg.mk
 include mk/test-suites.mk
 include mk/test-examples.mk
+
+# Only include benchmark makefile when benchmark targets are being run
+ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)
+include mk/test-bench.mk
+endif
 
 # =============================================================================
 # Build Targets
