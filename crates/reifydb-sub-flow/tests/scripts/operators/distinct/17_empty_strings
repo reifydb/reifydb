@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct with empty strings
+# Empty strings are valid distinct values
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, text: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_text { id: int4, text: utf8 } with {
+  from test.source
+  distinct { text }
+}'
+---
+> +----------+---------------+-----------+
+> |  schema  |     view      |  created  |
+> +----------+---------------+-----------+
+> |   test   |  unique_text  |   true    |
+> +----------+---------------+-----------+
+> 
+
+# Insert empty and non-empty strings
+command 'from [
+  {id: 1, text: ""},
+  {id: 2, text: "hello"},
+  {id: 3, text: ""},
+  {id: 4, text: undefined},
+  {id: 5, text: "world"},
+  {id: 6, text: ""}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+-------------+
+> |  id  |    text     |
+> +------+-------------+
+> |  6   |             |
+> |  5   |    world    |
+> |  4   |  Undefined  |
+> |  3   |             |
+> |  2   |    hello    |
+> |  1   |             |
+> +------+-------------+
+> 
+
+wait 5
+
+# Should treat empty string as distinct value
+command 'from test.unique_text'
+---
+> +------+-------------+
+> |  id  |    text     |
+> +------+-------------+
+> |  6   |             |
+> |  5   |    world    |
+> |  4   |  Undefined  |
+> |  2   |    hello    |
+> +------+-------------+
+> 

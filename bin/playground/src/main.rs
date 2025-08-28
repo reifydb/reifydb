@@ -8,12 +8,11 @@ use std::{thread::sleep, time::Duration};
 use reifydb::{
 	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
 	WithSubsystem,
-	core::interface::{Params, subsystem::logging::LogLevel::Trace},
-	sync,
+	core::interface::{Params, subsystem::logging::LogLevel::Info},
+	log_info, sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
-// pub type DB = SqliteDatabaseOptimistic;
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	logging.with_console(|console| {
@@ -25,60 +24,100 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	.batch_size(2000)
 	.flush_interval(Duration::from_millis(50))
 	.immediate_on_error(true)
-	.level(Trace)
+	.level(Info)
 }
 
 fn main() {
 	let mut db: DB = sync::memory_optimistic()
 		.with_logging(logger_configuration)
-
-		// .intercept(table_pre_insert(|_ctx| {
-		// 	log_info!("Table pre insert interceptor called!");
-		// 	Ok(())
-		// }))
-		// .intercept(table_post_insert(|_ctx| {
-		// 	log_info!("Table post insert interceptor called!");
-		// 	Ok(())
-		// }))
-		// .intercept(post_commit(|ctx| {
-		// 	log_info!(
-		// 		"Post-commit interceptor called with version: {:?}",
-		// 		ctx.version
-		// 	);
-		// 	Ok(())
-		// }))
 		.build()
 		.unwrap();
-	// let mut db: DB =
-	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
 	db.start().unwrap();
 
-	db.command_as_root(
-		r#"
-	    create schema test;
-	    create table test.raw_data { x: int4, y: int4, z: int4 }
-	"#,
-		Params::None,
-	)
-	.unwrap();
+	log_info!("=== Distinct Operator Implementation Demo ===");
+	log_info!("");
+	log_info!("The DistinctOperator in reifydb-sub-flow:");
+	log_info!("• Uses xxh3_128 to hash each row -> Hash128");
+	log_info!("• Stores Hash128 in FlowDistinctStateKey");
+	log_info!("• Maintains reference counts for duplicates");
+	log_info!("• Emits rows only on first occurrence");
+	log_info!("");
 
+	// Create schema and table
 	db.command_as_root(
 		r#"
-  from [
-    { x: 10, y: 20, z: 30 },
-    { x: 15, y: 25, z: 35 },
-    { x: 5, y: 15, z: 25 }
-  ] insert test.raw_data
+		create schema demo;
+		create table demo.events { 
+			id: int8, 
+			category: text,
+			value: int8
+		};
 		"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Original problematic query - should now work correctly
+	db.command_as_root(
+		r#"
+		create deferred view demo.all_events {
+			id: int8,
+			category: text,
+			value: int8
+		} with {
+			FROM demo.events
+		};
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	log_info!("=== Input Data (with duplicates) ===");
+	log_info!("Inserting 10 rows with only 4 unique category/value pairs:");
+
+	db.command_as_root(
+		r#"
+		from [
+			{ id: 1, category: "A", value: 100 },
+			{ id: 2, category: "B", value: 200 },
+			{ id: 3, category: "A", value: 100 },
+			{ id: 4, category: "C", value: 300 },
+			{ id: 5, category: "B", value: 200 },
+			{ id: 6, category: "A", value: 100 },
+			{ id: 7, category: "D", value: 400 },
+			{ id: 8, category: "B", value: 200 },
+			{ id: 9, category: "A", value: 100 },
+			{ id: 10, category: "C", value: 300 }
+		]
+		insert demo.events;
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Create another view with distinct
+	db.command_as_root(
+		r#"
+		create deferred view demo.unique_events {
+			id: int8,
+			category: text,
+			value: int8
+		} with {
+			FROM demo.events
+			DISTINCT { value }
+		};
+		"#,
+		Params::None,
+	)
+	.unwrap();
+
+	sleep(Duration::from_millis(10));
+
 	for frame in db
-		.command_as_root(
-			r#"from test.raw_data map {id: x, value: y * 2}"#,
+		.query_as_root(
+			r#"
+		FROM demo.all_events
+		"#,
 			Params::None,
 		)
 		.unwrap()
@@ -86,5 +125,17 @@ fn main() {
 		println!("{}", frame);
 	}
 
-	sleep(Duration::from_millis(10))
+	for frame in db
+		.query_as_root(
+			r#"
+		FROM demo.unique_events
+		"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{}", frame);
+	}
+
+	sleep(Duration::from_millis(10));
 }

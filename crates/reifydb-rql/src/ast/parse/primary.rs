@@ -76,6 +76,7 @@ impl<'a> Parser<'a> {
                     Keyword::Natural => Ok(Ast::Join(self.parse_natural_join()?)),
                     Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
                     Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
+                    Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
                     Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
                     Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
                     _ => {

@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct on single column table
+# Simplest distinct case
+
+(command 'create schema test;')
+command 'create table test.source { value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_values { value: int4 } with {
+  from test.source
+  distinct { value }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  unique_values  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert data with duplicates
+command 'from [
+  {value: 10},
+  {value: 20},
+  {value: 10},
+  {value: 30},
+  {value: 20},
+  {value: 40}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     6      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +---------+
+> |  value  |
+> +---------+
+> |   40    |
+> |   20    |
+> |   30    |
+> |   10    |
+> |   20    |
+> |   10    |
+> +---------+
+> 
+
+wait 5
+
+# Should show unique values
+command 'from test.unique_values'
+---
+> +---------+
+> |  value  |
+> +---------+
+> |   40    |
+> |   20    |
+> |   30    |
+> |   10    |
+> +---------+
+> 

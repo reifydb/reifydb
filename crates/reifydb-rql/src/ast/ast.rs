@@ -50,6 +50,7 @@ pub enum Ast<'a> {
 	Create(AstCreate<'a>),
 	Alter(AstAlter<'a>),
 	Describe(AstDescribe<'a>),
+	Distinct(AstDistinct<'a>),
 	Filter(AstFilter<'a>),
 	From(AstFrom<'a>),
 	Identifier(AstIdentifier<'a>),
@@ -95,6 +96,7 @@ impl<'a> Ast<'a> {
 					..
 				} => token,
 			},
+			Ast::Distinct(node) => &node.token,
 			Ast::Filter(node) => &node.token,
 			Ast::From(node) => node.token(),
 			Ast::Aggregate(node) => &node.token,
@@ -923,6 +925,12 @@ impl<'a> AstLiteralUndefined<'a> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.fragment()
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDistinct<'a> {
+	pub token: Token<'a>,
+	pub columns: Vec<AstIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -238,6 +238,17 @@ impl Compiler {
 					));
 				}
 
+				LogicalPlan::Distinct(distinct) => {
+					let input = stack.pop().unwrap(); // FIXME
+					stack.push(PhysicalPlan::Distinct(
+						DistinctNode {
+							columns: distinct
+								.columns,
+							input: Box::new(input),
+						},
+					));
+				}
+
 				LogicalPlan::Map(map) => {
 					let input = stack.pop().map(Box::new);
 					stack.push(PhysicalPlan::Map(
@@ -363,6 +374,7 @@ pub enum PhysicalPlan {
 
 	// Query
 	Aggregate(AggregateNode),
+	Distinct(DistinctNode),
 	Filter(FilterNode),
 	JoinInner(JoinInnerNode),
 	JoinLeft(JoinLeftNode),
@@ -421,6 +433,12 @@ pub struct AggregateNode {
 	pub input: Box<PhysicalPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DistinctNode {
+	pub input: Box<PhysicalPlan>,
+	pub columns: Vec<OwnedFragment>,
 }
 
 #[derive(Debug, Clone)]

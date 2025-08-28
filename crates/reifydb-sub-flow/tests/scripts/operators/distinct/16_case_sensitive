@@ -1,0 +1,71 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct case sensitivity
+# Verifies case-sensitive string comparison
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, name: utf8 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_names { id: int4, name: utf8 } with {
+  from test.source
+  distinct { name }
+}'
+---
+> +----------+----------------+-----------+
+> |  schema  |      view      |  created  |
+> +----------+----------------+-----------+
+> |   test   |  unique_names  |   true    |
+> +----------+----------------+-----------+
+> 
+
+# Insert same word different cases
+command 'from [
+  {id: 1, name: "hello"},
+  {id: 2, name: "HELLO"},
+  {id: 3, name: "Hello"},
+  {id: 4, name: "hello"},
+  {id: 5, name: "HeLLo"}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     5      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------+
+> |  id  |  name   |
+> +------+---------+
+> |  5   |  HeLLo  |
+> |  4   |  hello  |
+> |  3   |  Hello  |
+> |  2   |  HELLO  |
+> |  1   |  hello  |
+> +------+---------+
+> 
+
+wait 5
+
+# Should treat different cases as distinct
+command 'from test.unique_names'
+---
+> +------+---------+
+> |  id  |  name   |
+> +------+---------+
+> |  5   |  HeLLo  |
+> |  4   |  hello  |
+> |  3   |  Hello  |
+> |  2   |  HELLO  |
+> +------+---------+
+> 

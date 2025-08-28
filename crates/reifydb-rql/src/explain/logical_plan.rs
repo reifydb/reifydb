@@ -6,10 +6,10 @@ use reifydb_core::JoinType;
 use crate::{
 	ast::parse_str,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, CreateIndexNode, ExtendNode,
-		FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
-		JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		SourceScanNode, TakeNode, compile_logical,
+		AggregateNode, AlterSequenceNode, CreateIndexNode,
+		DistinctNode, ExtendNode, FilterNode, InlineDataNode,
+		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
+		MapNode, OrderNode, SourceScanNode, TakeNode, compile_logical,
 	},
 };
 
@@ -526,6 +526,42 @@ fn render_logical_plan_inner(
 				rows.len(),
 				total_fields
 			));
+		}
+		LogicalPlan::Distinct(DistinctNode {
+			columns,
+		}) => {
+			output.push_str(&format!(
+				"{}{} Distinct\n",
+				prefix, branch
+			));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+
+			if columns.is_empty() {
+				output.push_str(&format!(
+					"{}└── Columns: (primary key)\n",
+					child_prefix
+				));
+			} else {
+				output.push_str(&format!(
+					"{}└── Columns: ",
+					child_prefix
+				));
+				for (i, col) in columns.iter().enumerate() {
+					if i > 0 {
+						output.push_str(", ");
+					}
+					output.push_str(col.fragment());
+				}
+				output.push_str("\n");
+			}
 		}
 		LogicalPlan::Chain(chain) => {
 			output.push_str(&format!(

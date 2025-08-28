@@ -10,7 +10,7 @@ use crate::{
 	plan::{
 		logical::compile_logical,
 		physical,
-		physical::{PhysicalPlan, compile_physical},
+		physical::{DistinctNode, PhysicalPlan, compile_physical},
 	},
 };
 
@@ -420,6 +420,29 @@ fn render_physical_plan_inner(
 				total_fields
 			);
 			write_node_header(output, prefix, is_last, &label);
+		}
+		PhysicalPlan::Distinct(DistinctNode {
+			input,
+			columns,
+		}) => {
+			let label = if columns.is_empty() {
+				"Distinct (primary key)".to_string()
+			} else {
+				let cols: Vec<String> = columns
+					.iter()
+					.map(|c| c.fragment().to_string())
+					.collect();
+				format!("Distinct {{{}}}", cols.join(", "))
+			};
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(
+					input,
+					&child_prefix,
+					true,
+					output,
+				);
+			});
 		}
 	}
 }

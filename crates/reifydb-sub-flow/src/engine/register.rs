@@ -182,9 +182,11 @@ impl<E: Evaluator> FlowEngine<E> {
 				join_type, left, right,
 			))),
 			Distinct {
-				..
+				expressions,
 			} => Ok(OperatorEnum::Distinct(DistinctOperator::new(
-				flow_id.0, node_id.0,
+				flow_id.0,
+				node_id.0,
+				expressions,
 			))),
 			Union {} => {
 				Ok(OperatorEnum::Union(UnionOperator::new()))
