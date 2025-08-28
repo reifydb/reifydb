@@ -92,7 +92,7 @@ fn test_event_processing() {
 			assert_eq!(table_row.store, TableId(1));
 			assert_eq!(table_row.row, RowNumber(i as u64));
 		} else {
-			panic!("Expected TableRow key");
+			panic!("Expected Row key");
 		}
 	}
 
@@ -416,7 +416,7 @@ fn test_non_table_events_filtered() {
 		assert_eq!(table_row.store, TableId(1));
 		assert_eq!(table_row.row, RowNumber(1));
 	} else {
-		panic!("Expected TableRow key");
+		panic!("Expected Row key");
 	}
 }
 

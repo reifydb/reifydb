@@ -10,7 +10,7 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, QueryTransaction, RowKey,
-		StoreRowKeyRange, ViewDef,
+		RowKeyRange, ViewDef,
 	},
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
@@ -76,7 +76,7 @@ impl ViewScanNode {
 		}
 
 		let batch_size = self.context.batch_size;
-		let range = StoreRowKeyRange {
+		let range = RowKeyRange {
 			store: self.view.id.into(),
 		};
 
@@ -92,6 +92,14 @@ impl ViewScanNode {
 			)
 		};
 
+		use reifydb_core::log_debug;
+		log_debug!(
+			"ViewScan: Scanning view {:?} with range {:?} to {:?}",
+			self.view.id,
+			range.start,
+			range.end
+		);
+
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();
 		let mut rows_collected = 0;
@@ -99,6 +107,12 @@ impl ViewScanNode {
 
 		let versioned_rows: Vec<_> =
 			rx.range(range)?.into_iter().collect();
+
+		log_debug!(
+			"ViewScan: Found {} rows for view {:?}",
+			versioned_rows.len(),
+			self.view.id
+		);
 
 		for versioned in versioned_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&versioned.key) {

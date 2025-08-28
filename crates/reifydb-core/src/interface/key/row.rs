@@ -65,11 +65,11 @@ impl EncodableKey for RowKey {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StoreRowKeyRange {
+pub struct RowKeyRange {
 	pub store: StoreId,
 }
 
-impl StoreRowKeyRange {
+impl RowKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		if key.len() < 2 {
 			return None;
@@ -92,13 +92,13 @@ impl StoreRowKeyRange {
 
 		let store =
 			keycode::deserialize_store_id(&payload[..9]).ok()?;
-		Some(StoreRowKeyRange {
+		Some(RowKeyRange {
 			store,
 		})
 	}
 }
 
-impl EncodableKeyRange for StoreRowKeyRange {
+impl EncodableKeyRange for RowKeyRange {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn start(&self) -> Option<EncodedKey> {

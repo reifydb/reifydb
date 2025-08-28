@@ -9,7 +9,7 @@ pub use columns::ColumnsKey;
 pub use index::{IndexKey, StoreIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
-pub use row::{RowKey, StoreRowKeyRange};
+pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
 pub use schema::SchemaKey;
 pub use schema_table::SchemaTableKey;

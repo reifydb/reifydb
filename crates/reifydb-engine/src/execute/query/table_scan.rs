@@ -10,7 +10,7 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, QueryTransaction, RowKey,
-		StoreRowKeyRange, TableDef,
+		RowKeyRange, TableDef,
 	},
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
@@ -76,7 +76,7 @@ impl TableScanNode {
 		}
 
 		let batch_size = self.context.batch_size;
-		let range = StoreRowKeyRange {
+		let range = RowKeyRange {
 			store: self.table.id.into(),
 		};
 

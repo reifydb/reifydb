@@ -20,8 +20,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Version,
 	interface::{
-		EncodableKeyRange, Key, RowKey, StoreRowKeyRange, TableId,
-		Versioned,
+		EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned,
 	},
 	row::EncodedRow,
 };
@@ -83,7 +82,7 @@ pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
 /// Returns the appropriate table name for a range operation based on range
 /// bounds
 pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> String {
-	if let (Some(start), _) = StoreRowKeyRange::decode(range) {
+	if let (Some(start), _) = RowKeyRange::decode(range) {
 		return format!("table_{}", start.store);
 	}
 	"versioned".to_string()

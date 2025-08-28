@@ -142,6 +142,22 @@ impl<E: Evaluator> FlowEngine<E> {
 					change.diffs.len(),
 					view
 				);
+				for diff in &change.diffs {
+					match diff {
+						FlowDiff::Insert {
+							row_ids,
+							..
+						} => {
+							log_debug!(
+								"FlowEngine: Inserting {} rows to view {:?}: {:?}",
+								row_ids.len(),
+								view,
+								row_ids
+							);
+						}
+						_ => {}
+					}
+				}
 				// Sinks persist the final results
 				self.apply_to_view(txn, *view, &change)?;
 				change
@@ -250,6 +266,14 @@ impl<E: Evaluator> FlowEngine<E> {
 							row: row_id,
 						}
 						.encode();
+
+						use reifydb_core::log_debug;
+						log_debug!(
+							"Writing row to view {:?} with row_id {:?}, key: {:?}",
+							view_id,
+							row_id,
+							key
+						);
 
 						// Insert or update the row
 						txn.set(&key, row)?;

@@ -232,43 +232,47 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					);
 				}
 
-				// Convert CDC events to FlowChange events
-				let flowchange = match &event.change {
-					CdcChange::Insert {
-						after,
-						..
-					} => Change::Insert {
-						table_id: table_row
-							.store
-							.to_table_id()?,
-						row_number: table_row.row,
-						row: after.to_vec(),
-					},
-					CdcChange::Update {
-						before,
-						after,
-						..
-					} => Change::Update {
-						table_id: table_row
-							.store
-							.to_table_id()?,
-						row_number: table_row.row,
-						before: before.to_vec(),
-						after: after.to_vec(),
-					},
-					CdcChange::Delete {
-						before,
-						..
-					} => Change::Delete {
-						table_id: table_row
-							.store
-							.to_table_id()?,
-						row_number: table_row.row,
-						row: before.to_vec(),
-					},
-				};
+				// Only process events for tables, not views
+				// Views are managed by the flow system itself
+				if let Ok(table_id) =
+					table_row.store.to_table_id()
+				{
+					// Convert CDC events to FlowChange
+					// events
+					let flowchange = match &event.change {
+						CdcChange::Insert {
+							after,
+							..
+						} => Change::Insert {
+							table_id,
+							row_number: table_row
+								.row,
+							row: after.to_vec(),
+						},
+						CdcChange::Update {
+							before,
+							after,
+							..
+						} => Change::Update {
+							table_id,
+							row_number: table_row
+								.row,
+							before: before.to_vec(),
+							after: after.to_vec(),
+						},
+						CdcChange::Delete {
+							before,
+							..
+						} => Change::Delete {
+							table_id,
+							row_number: table_row
+								.row,
+							row: before.to_vec(),
+						},
+					};
 
-				changes.push(flowchange);
+					changes.push(flowchange);
+				}
 			}
 		}
 
