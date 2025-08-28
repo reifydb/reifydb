@@ -7,7 +7,7 @@ use super::{
 };
 
 /// Scan for an identifier token
-pub fn scan_identifier(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_identifier<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -45,6 +45,6 @@ mod tests {
 		let tokens = tokenize("user_referral").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.fragment(), "user_referral");
+		assert_eq!(tokens[0].fragment.value(), "user_referral");
 	}
 }

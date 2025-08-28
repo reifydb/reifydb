@@ -5,6 +5,7 @@ use std::{ops::Deref, rc::Rc, sync::Arc};
 
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
+	Frame,
 	hook::{Hook, Hooks},
 	interceptor::InterceptorFactory,
 	interface::{
@@ -12,14 +13,13 @@ use reifydb_core::{
 		ExecuteQuery, Identity, Params, Query, QueryTransaction,
 		Transaction, VersionedTransaction, WithHooks,
 	},
-	Frame,
 };
 
 use crate::{
-	execute::Executor, function::{math, Functions},
+	StandardCommandTransaction, StandardQueryTransaction,
+	execute::Executor,
+	function::{Functions, math},
 	interceptor::materialized_catalog::MaterializedCatalogInterceptor,
-	StandardCommandTransaction,
-	StandardQueryTransaction,
 };
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);

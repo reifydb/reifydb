@@ -3,20 +3,26 @@
 
 use crate::ast::{AstCallFunction, parse::Parser, tokenize::Operator};
 
-impl Parser {
+impl<'a> Parser<'a> {
 	pub(crate) fn parse_function_call(
 		&mut self,
-	) -> crate::Result<AstCallFunction> {
+	) -> crate::Result<AstCallFunction<'a>> {
 		let mut namespaces = Vec::new();
-		let first_ident = self.parse_identifier()?;
-		let start_token = first_ident.0.clone();
+		let first_ident_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let start_token = first_ident_token.clone();
 
 		// Check if this is a simple function call: identifier(
 		if self.current()?.is_operator(Operator::OpenParen) {
 			// Simple function call like func()
 			let open_paren_token = self.advance()?; // Consume the opening parenthesis
+
 			let arguments =
 				self.parse_tuple_call(open_paren_token)?;
+
+			let first_ident = crate::ast::ast::AstIdentifier(
+				first_ident_token,
+			);
 			return Ok(AstCallFunction {
 				token: start_token,
 				namespaces: Vec::new(),
@@ -26,25 +32,35 @@ impl Parser {
 		}
 
 		// Collect namespace chain:
-		// identifier::identifier::...::identifier( The first_ident we
-		// parsed is part of the namespace chain
-		let mut current_ident = first_ident;
+		// identifier::identifier::...::identifier( The
+		// first_ident_token we consumed is part of the namespace
+		// chain
+		let mut current_ident_token = first_ident_token;
 
 		while self.current()?.is_operator(Operator::DoubleColon) {
 			// Add current identifier to namespace chain before
 			// parsing next
-			namespaces.push(current_ident);
+			namespaces.push(crate::ast::ast::AstIdentifier(
+				current_ident_token,
+			));
 
 			self.advance()?; // consume ::
-			let next_ident = self.parse_identifier()?;
+			let next_ident_token = self.consume(
+				crate::ast::tokenize::TokenKind::Identifier,
+			)?;
 
 			// Check if this is the function name (followed by
 			// opening paren)
 			if self.current()?.is_operator(Operator::OpenParen) {
 				// This is the function name, parse arguments
 				let open_paren_token = self.advance()?; // Consume the opening parenthesis
+
 				let arguments = self
 					.parse_tuple_call(open_paren_token)?;
+
+				let next_ident = crate::ast::ast::AstIdentifier(
+					next_ident_token,
+				);
 				return Ok(AstCallFunction {
 					token: start_token,
 					namespaces,
@@ -53,7 +69,7 @@ impl Parser {
 				});
 			} else {
 				// Continue with next identifier in the chain
-				current_ident = next_ident;
+				current_ident_token = next_ident_token;
 			}
 		}
 

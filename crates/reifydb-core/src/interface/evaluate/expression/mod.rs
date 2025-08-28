@@ -41,11 +41,11 @@ pub enum Expression {
 
 	Div(DivExpression),
 
-	Call(Caltokenizepression),
+	Call(CallExpression),
 
 	Rem(RemExpression),
 
-	Mul(Mutokenizepression),
+	Mul(MulExpression),
 
 	Sub(SubExpression),
 
@@ -55,15 +55,15 @@ pub enum Expression {
 
 	GreaterThan(GreaterThanExpression),
 
-	GreaterThanEqual(GreaterThanEquatokenizepression),
+	GreaterThanEqual(GreaterThanEqExpression),
 
 	LessThan(LessThanExpression),
 
-	LessThanEqual(LessThanEquatokenizepression),
+	LessThanEqual(LessThanEqExpression),
 
-	Equal(Equatokenizepression),
+	Equal(EqExpression),
 
-	NotEqual(NotEquatokenizepression),
+	NotEqual(NotEqExpression),
 
 	Between(BetweenExpression),
 
@@ -203,7 +203,7 @@ pub struct RemExpression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Mutokenizepression {
+pub struct MulExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: OwnedFragment,
@@ -227,13 +227,13 @@ impl GreaterThanExpression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GreaterThanEquatokenizepression {
+pub struct GreaterThanEqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: OwnedFragment,
 }
 
-impl GreaterThanEquatokenizepression {
+impl GreaterThanEqExpression {
 	pub fn fragment(&self) -> OwnedFragment {
 		OwnedFragment::merge_all([
 			self.left.fragment(),
@@ -261,13 +261,13 @@ impl LessThanExpression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LessThanEquatokenizepression {
+pub struct LessThanEqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: OwnedFragment,
 }
 
-impl LessThanEquatokenizepression {
+impl LessThanEqExpression {
 	pub fn fragment(&self) -> OwnedFragment {
 		OwnedFragment::merge_all([
 			self.left.fragment(),
@@ -278,13 +278,13 @@ impl LessThanEquatokenizepression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Equatokenizepression {
+pub struct EqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: OwnedFragment,
 }
 
-impl Equatokenizepression {
+impl EqExpression {
 	pub fn fragment(&self) -> OwnedFragment {
 		OwnedFragment::merge_all([
 			self.left.fragment(),
@@ -295,13 +295,13 @@ impl Equatokenizepression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotEquatokenizepression {
+pub struct NotEqExpression {
 	pub left: Box<Expression>,
 	pub right: Box<Expression>,
 	pub fragment: OwnedFragment,
 }
 
-impl NotEquatokenizepression {
+impl NotEqExpression {
 	pub fn fragment(&self) -> OwnedFragment {
 		OwnedFragment::merge_all([
 			self.left.fragment(),
@@ -443,7 +443,7 @@ impl Display for Expression {
 			}) => {
 				write!(f, "({} % {})", left, right)
 			}
-			Expression::Mul(Mutokenizepression {
+			Expression::Mul(MulExpression {
 				left,
 				right,
 				..
@@ -467,7 +467,7 @@ impl Display for Expression {
 				write!(f, "({} > {})", left, right)
 			}
 			Expression::GreaterThanEqual(
-				GreaterThanEquatokenizepression {
+				GreaterThanEqExpression {
 					left,
 					right,
 					..
@@ -482,23 +482,21 @@ impl Display for Expression {
 			}) => {
 				write!(f, "({} < {})", left, right)
 			}
-			Expression::LessThanEqual(
-				LessThanEquatokenizepression {
-					left,
-					right,
-					..
-				},
-			) => {
+			Expression::LessThanEqual(LessThanEqExpression {
+				left,
+				right,
+				..
+			}) => {
 				write!(f, "({} <= {})", left, right)
 			}
-			Expression::Equal(Equatokenizepression {
+			Expression::Equal(EqExpression {
 				left,
 				right,
 				..
 			}) => {
 				write!(f, "({} == {})", left, right)
 			}
-			Expression::NotEqual(NotEquatokenizepression {
+			Expression::NotEqual(NotEqExpression {
 				left,
 				right,
 				..
@@ -556,13 +554,13 @@ impl Display for Expression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Caltokenizepression {
+pub struct CallExpression {
 	pub func: IdentExpression,
 	pub args: Vec<Expression>,
 	pub fragment: OwnedFragment,
 }
 
-impl Caltokenizepression {
+impl CallExpression {
 	pub fn fragment(&self) -> OwnedFragment {
 		OwnedFragment::Statement {
 			column: self.func.0.column(),
@@ -583,7 +581,7 @@ impl Caltokenizepression {
 	}
 }
 
-impl Display for Caltokenizepression {
+impl Display for CallExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let args = self
 			.args

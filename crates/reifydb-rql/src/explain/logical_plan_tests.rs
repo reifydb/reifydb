@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests {
 	use crate::{
-        ast::parse_str, explain::logical_plan::explain_logical_plans,
-        plan::logical::compile_logical,
+		ast::parse_str, explain::logical_plan::explain_logical_plans,
+		plan::logical::compile_logical,
 	};
 
 	// Helper function to compile and explain a query

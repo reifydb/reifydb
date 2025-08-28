@@ -6,8 +6,8 @@ use std::fmt::Write;
 use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
-    ast::parse_str,
-    plan::{
+	ast::parse_str,
+	plan::{
 		logical::compile_logical,
 		physical,
 		physical::{PhysicalPlan, compile_physical},

@@ -7,8 +7,10 @@ use crate::ast::{
 	tokenize::{Keyword::Describe, Operator},
 };
 
-impl Parser {
-	pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_describe(
+		&mut self,
+	) -> crate::Result<AstDescribe<'a>> {
 		let token = self.consume_keyword(Describe)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = Box::new(self.parse_node(Precedence::None)?);

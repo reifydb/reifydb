@@ -4,10 +4,11 @@
 //!
 //! Run with: `cargo bench --bench rql-parse`
 
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use reifydb_bench::queries;
 use reifydb_rql::ast::{parse, tokenize};
-use std::time::Duration;
 
 fn bench_parsing(c: &mut Criterion) {
 	let mut group = c.benchmark_group("rql_parsing");

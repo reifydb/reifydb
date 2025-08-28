@@ -56,19 +56,19 @@ pub(crate) enum Precedence {
 }
 
 pub fn parse<'a>(
-	tokens: Vec<Token>,
-) -> crate::Result<Vec<AstStatement>> {
+	tokens: Vec<Token<'a>>,
+) -> crate::Result<Vec<AstStatement<'a>>> {
 	let mut parser = Parser::new(tokens);
 	parser.parse()
 }
 
-struct Parser {
-	tokens: Vec<Token>,
+struct Parser<'a> {
+	tokens: Vec<Token<'a>>,
 	precedence_map: HashMap<Operator, Precedence>,
 }
 
-impl Parser {
-	fn new(mut tokens: Vec<Token>) -> Self {
+impl<'a> Parser<'a> {
+	fn new(mut tokens: Vec<Token<'a>>) -> Self {
 		let mut precedence_map = HashMap::new();
 		precedence_map.insert(Operator::As, Precedence::Assignment);
 		precedence_map.insert(Operator::Equal, Precedence::Comparison);
@@ -118,7 +118,7 @@ impl Parser {
 		}
 	}
 
-	fn parse(&mut self) -> crate::Result<Vec<AstStatement>> {
+	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'a>>> {
 		let mut result = Vec::new();
 		loop {
 			if self.is_eof() {
@@ -153,16 +153,25 @@ impl Parser {
 	pub(crate) fn parse_node(
 		&mut self,
 		precedence: Precedence,
-	) -> crate::Result<Ast> {
+	) -> crate::Result<Ast<'a>> {
 		let mut left = self.parse_primary()?;
 
-		while !self.is_eof()
-			&& precedence < self.current_precedence()?
-		{
-			let current = self.current()?;
-			if let TokenKind::Keyword(Keyword::Between) =
-				current.kind
-			{
+		while !self.is_eof() {
+			if precedence >= self.current_precedence()? {
+				break;
+			}
+
+			// Check token type before consuming
+			let is_between = if let Ok(current) = self.current() {
+				matches!(
+					current.kind,
+					TokenKind::Keyword(Keyword::Between)
+				)
+			} else {
+				break;
+			};
+
+			if is_between {
 				left = Ast::Between(self.parse_between(left)?);
 			} else {
 				left = Ast::Infix(self.parse_infix(left)?);
@@ -171,7 +180,7 @@ impl Parser {
 		Ok(left)
 	}
 
-	pub(crate) fn advance(&mut self) -> crate::Result<Token> {
+	pub(crate) fn advance(&mut self) -> crate::Result<Token<'a>> {
 		self.tokens
 			.pop()
 			.ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
@@ -180,7 +189,7 @@ impl Parser {
 	pub(crate) fn consume(
 		&mut self,
 		expected: TokenKind,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect(expected)?;
 		self.advance()
 	}
@@ -188,7 +197,7 @@ impl Parser {
 	pub(crate) fn consume_if(
 		&mut self,
 		expected: TokenKind,
-	) -> crate::Result<Option<Token>> {
+	) -> crate::Result<Option<Token<'a>>> {
 		if self.is_eof() || self.current()?.kind != expected {
 			return Ok(None);
 		}
@@ -211,7 +220,7 @@ impl Parser {
 	pub(crate) fn consume_literal(
 		&mut self,
 		expected: Literal,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect_literal(expected)?;
 		self.advance()
 	}
@@ -219,7 +228,7 @@ impl Parser {
 	pub(crate) fn consume_operator(
 		&mut self,
 		expected: Operator,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect_operator(expected)?;
 		self.advance()
 	}
@@ -227,12 +236,12 @@ impl Parser {
 	pub(crate) fn consume_keyword(
 		&mut self,
 		expected: Keyword,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn current(&self) -> crate::Result<&Token> {
+	pub(crate) fn current(&self) -> crate::Result<&Token<'a>> {
 		self.tokens
 			.last()
 			.ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
@@ -314,8 +323,8 @@ impl Parser {
 
 	pub(crate) fn parse_between(
 		&mut self,
-		value: Ast,
-	) -> crate::Result<crate::ast::AstBetween> {
+		value: Ast<'a>,
+	) -> crate::Result<crate::ast::AstBetween<'a>> {
 		let token = self.consume_keyword(Keyword::Between)?;
 		let lower = Box::new(self.parse_node(Precedence::Comparison)?);
 		self.consume_operator(Operator::And)?;
@@ -334,7 +343,7 @@ impl Parser {
 	pub(crate) fn parse_expressions(
 		&mut self,
 		allow_colon_alias: bool,
-	) -> crate::Result<(Vec<Ast>, bool)> {
+	) -> crate::Result<(Vec<Ast<'a>>, bool)> {
 		let has_braces =
 			self.current()?.is_operator(Operator::OpenCurly);
 
@@ -382,7 +391,9 @@ impl Parser {
 
 	/// Try to parse "identifier: expression" syntax and convert it to
 	/// "expression AS identifier"
-	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
+	pub(crate) fn try_parse_colon_alias(
+		&mut self,
+	) -> crate::Result<Ast<'a>> {
 		// Check if we have at least identifier + colon + something
 		// ahead
 		if self.tokens.len() < 2 {

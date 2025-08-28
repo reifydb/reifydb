@@ -17,8 +17,8 @@ use crate::ast::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'a>> {
 		let token = self.consume_keyword(Create)?;
 
 		if (self.consume_if(TokenKind::Keyword(Schema))?).is_some() {
@@ -60,18 +60,30 @@ impl Parser {
 		unimplemented!();
 	}
 
-	fn parse_schema(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_schema(
+		&mut self,
+		token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
+		let name_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let name = crate::ast::ast::AstIdentifier(name_token);
 		Ok(AstCreate::Schema(AstCreateSchema {
 			token,
-			name: self.parse_identifier()?,
+			name,
 		}))
 	}
 
-	fn parse_series(&mut self, token: Token) -> crate::Result<AstCreate> {
-		let schema = self.parse_identifier()?;
+	fn parse_series(
+		&mut self,
+		token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
+		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier()?;
+		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
+
+		let schema = crate::ast::ast::AstIdentifier(schema_token);
+		let name = crate::ast::ast::AstIdentifier(name_token);
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
@@ -83,12 +95,15 @@ impl Parser {
 
 	fn parse_deferred_view(
 		&mut self,
-		token: Token,
-	) -> crate::Result<AstCreate> {
-		let schema = self.parse_identifier()?;
+		token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
+		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier()?;
+		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
+
+		let schema = crate::ast::ast::AstIdentifier(schema_token);
+		let name = crate::ast::ast::AstIdentifier(name_token);
 
 		// Parse optional WITH clause
 		let with = if self
@@ -136,12 +151,15 @@ impl Parser {
 
 	fn parse_transactional_view(
 		&mut self,
-		token: Token,
-	) -> crate::Result<AstCreate> {
-		let schema = self.parse_identifier()?;
+		token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
+		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier()?;
+		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
+
+		let schema = crate::ast::ast::AstIdentifier(schema_token);
+		let name = crate::ast::ast::AstIdentifier(name_token);
 
 		// Parse optional WITH clause
 		let with = if self
@@ -187,11 +205,17 @@ impl Parser {
 		}))
 	}
 
-	fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
-		let schema = self.parse_identifier()?;
+	fn parse_table(
+		&mut self,
+		token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
+		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_as_identifier()?;
+		let name_token = self.advance()?;
 		let columns = self.parse_columns()?;
+
+		let schema = crate::ast::ast::AstIdentifier(schema_token);
+		let name = crate::ast::ast::AstIdentifier(name_token);
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
@@ -201,7 +225,9 @@ impl Parser {
 		}))
 	}
 
-	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate>> {
+	fn parse_columns(
+		&mut self,
+	) -> crate::Result<Vec<AstColumnToCreate<'a>>> {
 		let mut result = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -228,10 +254,13 @@ impl Parser {
 		Ok(result)
 	}
 
-	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate> {
-		let name = self.parse_as_identifier()?;
+	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'a>> {
+		let name_token = self.advance()?;
 		self.consume_operator(Colon)?;
-		let ty = self.parse_identifier()?;
+		let ty_token = self.consume(TokenKind::Identifier)?;
+
+		let name = crate::ast::ast::AstIdentifier(name_token);
+		let ty = crate::ast::ast::AstIdentifier(ty_token);
 
 		let auto_increment =
 			if self.current()?.is_keyword(Keyword::Auto) {

@@ -4,8 +4,8 @@
 use reifydb_core::JoinType;
 
 use crate::{
-    ast::parse_str,
-    plan::logical::{
+	ast::parse_str,
+	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, ExtendNode,
 		FilterNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
 		JoinNaturalNode, LogicalPlan, MapNode, OrderNode,

@@ -7,8 +7,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, Token},
 };
 
-impl Parser {
-	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter<'a>> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
 		if self.current()?.is_keyword(Keyword::Sequence) {
@@ -21,23 +21,44 @@ impl Parser {
 
 	fn parse_alter_sequence(
 		&mut self,
-		token: Token,
-	) -> crate::Result<AstAlter> {
+		token: Token<'a>,
+	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.table.column or table.column
-		let first_identifier = self.parse_identifier()?;
+		let first_identifier_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		if self.current()?.is_operator(Operator::Dot) {
 			self.consume_operator(Operator::Dot)?;
-			let second_identifier = self.parse_identifier()?;
+			let second_identifier_token = self.consume(
+				crate::ast::tokenize::TokenKind::Identifier,
+			)?;
 
 			if self.current()?.is_operator(Operator::Dot) {
 				self.consume_operator(Operator::Dot)?;
-				let column = self.parse_identifier()?;
+				let column_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 				// Expect SET VALUE <number>
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value = self.parse_literal_number()?;
+				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+
+				// Create AST nodes from tokens
+				let first_identifier =
+					crate::ast::ast::AstIdentifier(
+						first_identifier_token,
+					);
+				let second_identifier =
+					crate::ast::ast::AstIdentifier(
+						second_identifier_token,
+					);
+				let column = crate::ast::ast::AstIdentifier(
+					column_token,
+				);
+				let value = crate::ast::AstLiteral::Number(
+					crate::ast::ast::AstLiteralNumber(
+						value_token,
+					),
+				);
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -50,7 +71,22 @@ impl Parser {
 				// table.column
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value = self.parse_literal_number()?;
+				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+
+				// Create AST nodes from tokens
+				let first_identifier =
+					crate::ast::ast::AstIdentifier(
+						first_identifier_token,
+					);
+				let second_identifier =
+					crate::ast::ast::AstIdentifier(
+						second_identifier_token,
+					);
+				let value = crate::ast::AstLiteral::Number(
+					crate::ast::ast::AstLiteralNumber(
+						value_token,
+					),
+				);
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,

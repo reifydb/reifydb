@@ -23,8 +23,8 @@ pub use token::{
 	Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind,
 };
 
-/// Tokenize the input string into a vector of tokens
-pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
+/// Tokenize the input string into a vector of tokens  
+pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 	let mut cursor = Cursor::new(input);
 	let mut tokens = Vec::new();
 
@@ -37,12 +37,19 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 		}
 
 		// Try to scan for each token type in order of precedence
-		let token = scan_keyword(&mut cursor)
-			.or_else(|| scan_literal(&mut cursor))
-			.or_else(|| scan_operator(&mut cursor))
-			.or_else(|| scan_parameter(&mut cursor))
-			.or_else(|| scan_identifier(&mut cursor))
-			.or_else(|| scan_separator(&mut cursor));
+		let token = if let Some(token) = scan_keyword(&mut cursor) {
+			Some(token)
+		} else if let Some(token) = scan_literal(&mut cursor) {
+			Some(token)
+		} else if let Some(token) = scan_operator(&mut cursor) {
+			Some(token)
+		} else if let Some(token) = scan_parameter(&mut cursor) {
+			Some(token)
+		} else if let Some(token) = scan_identifier(&mut cursor) {
+			Some(token)
+		} else {
+			scan_separator(&mut cursor)
+		};
 
 		match token {
 			Some(tok) => tokens.push(tok),

@@ -2,10 +2,11 @@
 //!
 //! Run with: `cargo bench --bench engine-memory-optimistic`
 
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use reifydb::{sync, MemoryDatabaseOptimistic, Params, SessionSync};
 use reifydb_bench::queries;
-use std::time::Duration;
 
 fn bench_simple_queries(c: &mut Criterion) {
 	let db = create_benchmark_db_with_data();
@@ -79,17 +80,20 @@ fn create_benchmark_db_with_data() -> MemoryDatabaseOptimistic {
 	// db.command_as_root(
 	// 	r#"
 	// 	from [
-	// 		{ id: 1, username: "alice", email: "alice@example.com", age: 30, is_active: true },
-	// 		{ id: 2, username: "bob", email: "bob@example.com", age: 25, is_active: true },
-	// 		{ id: 3, username: "charlie", email: "charlie@example.com", age: 35, is_active: false },
-	// 		{ id: 4, username: "diana", email: "diana@example.com", age: 28, is_active: true },
-	// 		{ id: 5, username: "eve", email: "eve@example.com", age: 32, is_active: true },
-	// 		{ id: 6, username: "frank", email: "frank@example.com", age: 29, is_active: false },
-	// 		{ id: 7, username: "grace", email: "grace@example.com", age: 27, is_active: true },
-	// 		{ id: 8, username: "henry", email: "henry@example.com", age: 33, is_active: true },
-	// 		{ id: 9, username: "iris", email: "iris@example.com", age: 26, is_active: false },
-	// 		{ id: 10, username: "jack", email: "jack@example.com", age: 31, is_active: true }
-	// 	]
+	// 		{ id: 1, username: "alice", email: "alice@example.com", age: 30,
+	// is_active: true }, 		{ id: 2, username: "bob", email:
+	// "bob@example.com", age: 25, is_active: true }, 		{ id: 3, username:
+	// "charlie", email: "charlie@example.com", age: 35, is_active: false },
+	// 		{ id: 4, username: "diana", email: "diana@example.com", age: 28,
+	// is_active: true }, 		{ id: 5, username: "eve", email:
+	// "eve@example.com", age: 32, is_active: true }, 		{ id: 6, username:
+	// "frank", email: "frank@example.com", age: 29, is_active: false },
+	// 		{ id: 7, username: "grace", email: "grace@example.com", age: 27,
+	// is_active: true }, 		{ id: 8, username: "henry", email:
+	// "henry@example.com", age: 33, is_active: true }, 		{ id: 9,
+	// username: "iris", email: "iris@example.com", age: 26, is_active:
+	// false }, 		{ id: 10, username: "jack", email: "jack@example.com",
+	// age: 31, is_active: true } 	]
 	// 	insert demo.users
 	// 	"#,
 	// 	Params::None,

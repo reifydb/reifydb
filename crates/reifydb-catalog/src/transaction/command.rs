@@ -1,19 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{
-		CommandTransaction, SchemaDef, TableDef, ViewDef,
-	},
-};
-
-use crate::{
-	schema::SchemaToCreate, table::TableToCreate, view::ViewToCreate,
+use reifydb_core::interface::{
+	CommandTransaction, SchemaDef, TableDef, ViewDef,
 };
 
 use super::query::{
 	CatalogQueryTransaction, CatalogQueryTransactionOperations,
 };
+use crate::{schema::SchemaToCreate, table::TableToCreate, view::ViewToCreate};
 
 // Schema command operations
 pub trait CatalogSchemaCommandOperations {
@@ -61,9 +56,10 @@ pub trait CatalogCommandTransaction:
 {
 }
 
-// Context trait that provides access to catalog-specific state and tracking for commands
-pub trait CatalogCommandTransactionOperations: 
-	CommandTransaction + CatalogQueryTransactionOperations 
+// Context trait that provides access to catalog-specific state and tracking for
+// commands
+pub trait CatalogCommandTransactionOperations:
+	CommandTransaction + CatalogQueryTransactionOperations
 {
 	// Schema tracking methods
 	fn track_schema_def_created(

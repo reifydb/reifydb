@@ -65,7 +65,7 @@ operator! {
 }
 
 /// Scan for an operator token
-pub fn scan_operator(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();

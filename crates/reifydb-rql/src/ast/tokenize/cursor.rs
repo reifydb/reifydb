@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OwnedFragment::Statement;
-use reifydb_core::{OwnedFragment, StatementColumn, StatementLine};
+use reifydb_core::{
+	BorrowedFragment, Fragment, StatementColumn, StatementLine,
+};
 
 /// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'a> {
@@ -135,23 +136,35 @@ impl<'a> Cursor<'a> {
 		self.column
 	}
 
-	/// Get a slice of the input from a starting position to current
-	pub fn slice_from(&self, start: usize) -> &'a str {
-		&self.input[start..self.pos]
-	}
-
-	/// Create an OwnedFragment from a start position to current position
+	/// Create a Fragment (borrowed) from a start position to current
+	/// position
 	pub fn make_fragment(
 		&self,
 		start_pos: usize,
 		start_line: u32,
 		start_column: u32,
-	) -> OwnedFragment {
-		Statement {
-			text: self.input[start_pos..self.pos].to_string(),
+	) -> Fragment<'a> {
+		Fragment::Borrowed(BorrowedFragment::Statement {
+			text: &self.input[start_pos..self.pos],
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
-		}
+		})
+	}
+
+	/// Create a fragment for UTF-8 text content (without surrounding
+	/// quotes)
+	pub fn make_utf8_fragment(
+		&self,
+		text_start: usize,
+		text_end: usize,
+		start_line: u32,
+		start_column: u32,
+	) -> Fragment<'a> {
+		Fragment::Borrowed(BorrowedFragment::Statement {
+			text: &self.input[text_start..text_end],
+			line: StatementLine(start_line),
+			column: StatementColumn(start_column),
+		})
 	}
 
 	/// Save current position state

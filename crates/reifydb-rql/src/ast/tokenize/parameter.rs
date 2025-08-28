@@ -14,7 +14,7 @@ pub enum ParameterKind {
 }
 
 /// Scan for a parameter token ($1, $name, etc.)
-pub fn scan_parameter(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_parameter<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if cursor.peek() != Some('$') {
 		return None;
 	}

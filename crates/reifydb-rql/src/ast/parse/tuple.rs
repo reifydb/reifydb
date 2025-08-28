@@ -11,16 +11,16 @@ use crate::ast::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple<'a>> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 		self.parse_tuple_call(token)
 	}
 
 	pub(crate) fn parse_tuple_call(
 		&mut self,
-		operator: Token,
-	) -> crate::Result<AstTuple> {
+		operator: Token<'a>,
+	) -> crate::Result<AstTuple<'a>> {
 		let mut nodes = Vec::new();
 		loop {
 			self.skip_new_line()?;

@@ -22,14 +22,20 @@ pub use loader::MaterializedCatalogLoader;
 pub use materialized::MaterializedCatalog;
 pub use transaction::{
 	// New traits
-	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogQueryTransaction, CatalogQueryTransactionOperations,
-	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
-	CatalogTableCommandOperations, CatalogTableQueryOperations,
-	CatalogViewCommandOperations, CatalogViewQueryOperations,
-	TransactionalChangesExt,
+	CatalogCommandTransaction,
+	CatalogCommandTransactionOperations,
+	CatalogQueryTransaction,
+	CatalogQueryTransactionOperations,
+	CatalogSchemaCommandOperations,
+	CatalogSchemaQueryOperations,
+	CatalogTableCommandOperations,
+	CatalogTableQueryOperations,
 	// Legacy exports (for backward compatibility)
-	CatalogTransaction, CatalogTransactionOperations,
+	CatalogTransaction,
+	CatalogTransactionOperations,
+	CatalogViewCommandOperations,
+	CatalogViewQueryOperations,
+	TransactionalChangesExt,
 };
 
 pub struct CatalogStore;

@@ -11,9 +11,10 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaQueryOperations, CatalogStore, CatalogCommandTransactionOperations,
+	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
+	CatalogSchemaQueryOperations, CatalogStore,
 	CatalogViewCommandOperations, CatalogViewQueryOperations,
-	CatalogQueryTransactionOperations, TransactionalChangesExt, view::ViewToCreate,
+	TransactionalChangesExt, view::ViewToCreate,
 };
 
 impl<T> CatalogViewCommandOperations for T
@@ -48,7 +49,6 @@ where
 
 		Ok(result)
 	}
-
 }
 
 // Query operations implementation
@@ -127,4 +127,5 @@ where
 	}
 }
 
-// TODO: Add CatalogViewQueryOperations implementation for query-only transactions
+// TODO: Add CatalogViewQueryOperations implementation for query-only
+// transactions

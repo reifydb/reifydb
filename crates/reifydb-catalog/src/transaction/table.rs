@@ -11,9 +11,10 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogSchemaQueryOperations, CatalogStore, CatalogTableCommandOperations,
-	CatalogTableQueryOperations, CatalogCommandTransactionOperations,
-	CatalogQueryTransactionOperations, TransactionalChangesExt, table::TableToCreate,
+	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
+	CatalogSchemaQueryOperations, CatalogStore,
+	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	TransactionalChangesExt, table::TableToCreate,
 };
 
 impl<T> CatalogTableCommandOperations for T
@@ -49,10 +50,9 @@ where
 
 		Ok(result)
 	}
-
 }
 
-// Query operations implementation  
+// Query operations implementation
 impl<T> CatalogTableQueryOperations for T
 where
 	T: CommandTransaction
@@ -131,4 +131,5 @@ where
 	}
 }
 
-// TODO: Add CatalogTableQueryOperations implementation for query-only transactions
+// TODO: Add CatalogTableQueryOperations implementation for query-only
+// transactions

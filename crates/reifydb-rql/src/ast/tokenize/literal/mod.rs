@@ -16,11 +16,17 @@ pub use text::scan_text;
 pub use undefined::scan_undefined;
 
 /// Scan for any literal token
-pub fn scan_literal(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_literal<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	// Try each literal type
-	scan_text(cursor)
-		.or_else(|| scan_number(cursor))
-		.or_else(|| scan_boolean(cursor))
-		.or_else(|| scan_undefined(cursor))
-		.or_else(|| scan_temporal(cursor))
+	if let Some(token) = scan_text(cursor) {
+		Some(token)
+	} else if let Some(token) = scan_number(cursor) {
+		Some(token)
+	} else if let Some(token) = scan_boolean(cursor) {
+		Some(token)
+	} else if let Some(token) = scan_undefined(cursor) {
+		Some(token)
+	} else {
+		scan_temporal(cursor)
+	}
 }

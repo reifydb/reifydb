@@ -16,7 +16,7 @@ use crate::ast::{
 	},
 };
 
-impl Parser {
+impl<'a> Parser<'a> {
 	pub(crate) fn peek_is_index_creation(&mut self) -> crate::Result<bool> {
 		Ok(matches!(
 			self.current()?.kind,
@@ -29,17 +29,22 @@ impl Parser {
 
 	pub(crate) fn parse_create_index(
 		&mut self,
-		create_token: Token,
-	) -> crate::Result<AstCreate> {
+		create_token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
 		let index_type = self.parse_index_type()?;
 
-		let name = self.parse_identifier()?;
+		let name_token = self.consume(TokenKind::Identifier)?;
 
 		self.consume_keyword(On)?;
 
-		let schema = self.parse_identifier()?;
+		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let table = self.parse_identifier()?;
+		let table_token = self.consume(TokenKind::Identifier)?;
+
+		// Create AST nodes from tokens
+		let name = crate::ast::ast::AstIdentifier(name_token);
+		let schema = crate::ast::ast::AstIdentifier(schema_token);
+		let table = crate::ast::ast::AstIdentifier(table_token);
 
 		let columns = self.parse_index_columns()?;
 
@@ -85,7 +90,7 @@ impl Parser {
 
 	fn parse_index_columns(
 		&mut self,
-	) -> crate::Result<Vec<AstIndexColumn>> {
+	) -> crate::Result<Vec<AstIndexColumn<'a>>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;

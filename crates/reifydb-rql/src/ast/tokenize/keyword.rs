@@ -116,7 +116,7 @@ keyword! {
 }
 
 /// Scan for a keyword token
-pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_keyword<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
 	if !first_char.is_ascii_alphabetic() {
@@ -345,8 +345,8 @@ mod tests {
 		];
 
 		for input_str in test_cases {
-			let tokens =
-				tokenize(&format!("{input_str} rest")).unwrap();
+			let input = format!("{input_str} rest");
+			let tokens = tokenize(&input).unwrap();
 			assert!(tokens.len() >= 1);
 			// The first token should be an identifier, not a
 			// keyword
@@ -361,7 +361,8 @@ mod tests {
 
 		// Also test that the bare lowercase word IS parsed as a keyword
 		// (since keywords are case-insensitive)
-		let tokens = tokenize(&format!("{repr} rest")).unwrap();
+		let input = format!("{repr} rest");
+		let tokens = tokenize(&input).unwrap();
 		assert!(tokens.len() >= 2);
 		// In a case-insensitive system, "map" should be parsed as the
 		// MAP keyword

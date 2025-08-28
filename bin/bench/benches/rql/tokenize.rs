@@ -4,10 +4,11 @@
 //!
 //! Run with: `cargo bench --bench rql-tokenize`
 
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use reifydb_bench::queries;
 use reifydb_rql::ast::tokenize;
-use std::time::Duration;
 
 fn bench_tokenization(c: &mut Criterion) {
 	let mut group = c.benchmark_group("rql_tokenization");
@@ -31,7 +32,6 @@ fn bench_tokenization(c: &mut Criterion) {
 	group.bench_function("COMPLEX_FILTER", |b| {
 		b.iter(|| tokenize(queries::COMPLEX_FILTER).unwrap().len())
 	});
-
 
 	group.finish();
 }

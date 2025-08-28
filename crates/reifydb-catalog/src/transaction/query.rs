@@ -4,7 +4,7 @@
 use reifydb_core::{
 	Version,
 	interface::{
-		OperationType, SchemaDef, SchemaId, TableDef, TableId, 
+		OperationType, SchemaDef, SchemaId, TableDef, TableId,
 		TransactionalChanges, ViewDef, ViewId,
 	},
 };

@@ -7,15 +7,22 @@ use crate::ast::{
 	tokenize::{Operator, Operator::CloseBracket, Separator},
 };
 
-impl Parser {
-	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList<'a>> {
 		let token = self.consume_operator(Operator::OpenBracket)?;
 
 		let mut nodes = Vec::new();
 		loop {
 			self.skip_new_line()?;
 
-			if self.current()?.is_operator(CloseBracket) {
+			// Check if we've reached the closing bracket
+			let should_break = if let Ok(current) = self.current() {
+				current.is_operator(CloseBracket)
+			} else {
+				true
+			};
+
+			if should_break {
 				break;
 			}
 

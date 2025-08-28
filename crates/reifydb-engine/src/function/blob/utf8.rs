@@ -24,6 +24,10 @@ impl ScalarFunction for BlobUtf8 {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
+		if columns.is_empty() {
+			return Ok(ColumnData::blob([]));
+		}
+
 		let column = columns.get(0).unwrap();
 
 		match &column.data() {

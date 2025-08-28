@@ -7,7 +7,7 @@ use crate::ast::{
 };
 
 /// Scan for a boolean literal (true/false)
-pub fn scan_boolean(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_boolean<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -56,14 +56,14 @@ mod tests {
 	fn test_boolean_true() {
 		let tokens = tokenize("true").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
-		assert_eq!(tokens[0].fragment.fragment(), "true");
+		assert_eq!(tokens[0].fragment.value(), "true");
 	}
 
 	#[test]
 	fn test_boolean_false() {
 		let tokens = tokenize("false").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(False));
-		assert_eq!(tokens[0].fragment.fragment(), "false");
+		assert_eq!(tokens[0].fragment.value(), "false");
 	}
 
 	#[test]
@@ -83,12 +83,12 @@ mod tests {
 		let tokens = tokenize("true123").unwrap();
 		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.fragment(), "true123");
+		assert_eq!(tokens[0].fragment.value(), "true123");
 
 		let tokens = tokenize("false_value").unwrap();
 		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.fragment(), "false_value");
+		assert_eq!(tokens[0].fragment.value(), "false_value");
 	}
 
 	#[test]

@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::OwnedFragment;
-
 use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor};
 
 /// Scan for temporal literal (dates/times starting with @)
-pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_temporal<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if cursor.peek() != Some('@') {
 		return None;
 	}
@@ -35,26 +33,16 @@ pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
 		return None;
 	}
 
-	// Create fragment with the content (excluding @)
-	let fragment =
-		cursor.make_fragment(start_pos, start_line, start_column);
-	// The fragment includes the @, but we want just the temporal content
-	let text_value = fragment.fragment();
-	let text_without_at = if text_value.starts_with('@') {
-		&text_value[1..]
-	} else {
-		text_value
-	}
-	.to_string();
-	let fragment = OwnedFragment::Statement {
-		text: text_without_at,
-		line: fragment.line(),
-		column: fragment.column(),
-	};
+	// Create fragment with just the temporal content (excluding @)
+	let temporal_start = start_pos + 1; // Skip the '@'
 
 	Some(Token {
 		kind: TokenKind::Literal(Literal::Temporal),
-		fragment,
+		fragment: cursor.make_fragment(
+			temporal_start,
+			start_line,
+			start_column + 1, // +1 for '@'
+		),
 	})
 }
 
@@ -69,17 +57,14 @@ mod tests {
 	fn test_temporal_date() {
 		let tokens = tokenize("@2024-01-15").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.fragment(), "2024-01-15");
+		assert_eq!(tokens[0].fragment.value(), "2024-01-15");
 	}
 
 	#[test]
 	fn test_temporal_datetime() {
 		let tokens = tokenize("@2024-01-15T10:30:00").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(
-			tokens[0].fragment.fragment(),
-			"2024-01-15T10:30:00"
-		);
+		assert_eq!(tokens[0].fragment.value(), "2024-01-15T10:30:00");
 	}
 
 	#[test]
@@ -87,7 +72,7 @@ mod tests {
 		let tokens = tokenize("@2024-01-15T10:30:00+05:30").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(
-			tokens[0].fragment.fragment(),
+			tokens[0].fragment.value(),
 			"2024-01-15T10:30:00+05:30"
 		);
 	}
@@ -96,7 +81,7 @@ mod tests {
 	fn test_temporal_time_only() {
 		let tokens = tokenize("@10:30:00").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.fragment(), "10:30:00");
+		assert_eq!(tokens[0].fragment.value(), "10:30:00");
 	}
 
 	#[test]
@@ -104,7 +89,7 @@ mod tests {
 		let tokens = tokenize("@2024-01-15T10:30:00.123456").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(
-			tokens[0].fragment.fragment(),
+			tokens[0].fragment.value(),
 			"2024-01-15T10:30:00.123456"
 		);
 	}
@@ -113,16 +98,16 @@ mod tests {
 	fn test_temporal_alternative_format() {
 		let tokens = tokenize("@2024/01/15").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.fragment(), "2024/01/15");
+		assert_eq!(tokens[0].fragment.value(), "2024/01/15");
 	}
 
 	#[test]
 	fn test_temporal_with_trailing() {
 		let tokens = tokenize("@2024-01-15 rest").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.fragment(), "2024-01-15");
+		assert_eq!(tokens[0].fragment.value(), "2024-01-15");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
-		assert_eq!(tokens[1].fragment.fragment(), "rest");
+		assert_eq!(tokens[1].fragment.value(), "rest");
 	}
 
 	#[test]

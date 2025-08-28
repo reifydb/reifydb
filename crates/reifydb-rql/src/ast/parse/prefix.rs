@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{OwnedFragment, diagnostic::ast, return_error};
+use reifydb_core::{Fragment, OwnedFragment, diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token,
@@ -10,18 +10,14 @@ use crate::ast::{
 	tokenize::{Literal::Number, Operator},
 };
 
-impl Parser {
-	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast<'a>> {
 		let operator = self.parse_prefix_operator()?;
 
-		// NOT operator should have lower precedence than comparison
-		// operator to allow expressions like "not price == 150" to
-		// parse as "not (price == 150)"
-		let precedence = match operator {
-			AstPrefixOperator::Not(_) => Precedence::Assignment, /* Much lower than comparisons */
-			_ => Precedence::Prefix,                             /* Keep existing high
-			                                                       * precedence for +/-
-			                                                       * operator */
+		// Determine precedence based on operator type
+		let precedence = match &operator {
+			AstPrefixOperator::Not(_) => Precedence::Assignment,
+			_ => Precedence::Prefix,
 		};
 
 		let expr = self.parse_node(precedence)?;
@@ -34,24 +30,22 @@ impl Parser {
 						kind: TokenKind::Literal(
 							Number,
 						),
-						fragment: {
-							OwnedFragment::Statement {
-								column: operator
-									.token()
+						fragment: Fragment::Owned(OwnedFragment::Statement {
+							column: operator
+								.token()
+								.fragment
+								.column(),
+							line: operator
+								.token()
+								.fragment
+								.line(),
+							text: format!(
+								"-{}",
+								literal.0
 									.fragment
-									.column(),
-								line: operator
-									.token()
-									.fragment
-									.line(),
-								text: format!(
-									"-{}",
-									literal.0
-										.fragment
-										.fragment()
-								),
-							}
-						},
+									.fragment()
+							),
+						}),
 					}),
 				)));
 			}
@@ -65,7 +59,7 @@ impl Parser {
 
 	fn parse_prefix_operator(
 		&mut self,
-	) -> crate::Result<AstPrefixOperator> {
+	) -> crate::Result<AstPrefixOperator<'a>> {
 		let token = self.advance()?;
 		match &token.kind {
 			TokenKind::Operator(operator) => match operator {

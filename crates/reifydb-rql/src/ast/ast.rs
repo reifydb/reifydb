@@ -8,10 +8,10 @@ use reifydb_core::{IndexType, JoinType, OwnedFragment, SortDirection};
 use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstStatement(pub Vec<Ast>);
+pub struct AstStatement<'a>(pub Vec<Ast<'a>>);
 
-impl AstStatement {
-	pub fn first_unchecked(&self) -> &Ast {
+impl<'a> AstStatement<'a> {
+	pub fn first_unchecked(&self) -> &Ast<'a> {
 		self.0.first().unwrap()
 	}
 
@@ -24,16 +24,16 @@ impl AstStatement {
 	}
 }
 
-impl Index<usize> for AstStatement {
-	type Output = Ast;
+impl<'a> Index<usize> for AstStatement<'a> {
+	type Output = Ast<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		self.0.index(index)
 	}
 }
 
-impl IntoIterator for AstStatement {
-	type Item = Ast;
+impl<'a> IntoIterator for AstStatement<'a> {
+	type Item = Ast<'a>;
 	type IntoIter = std::vec::IntoIter<Self::Item>;
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -42,46 +42,46 @@ impl IntoIterator for AstStatement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Ast {
-	Aggregate(AstAggregate),
-	Between(AstBetween),
-	CallFunction(AstCallFunction),
-	Cast(AstCast),
-	Create(AstCreate),
-	Alter(AstAlter),
-	Describe(AstDescribe),
-	Filter(AstFilter),
-	From(AstFrom),
-	Identifier(AstIdentifier),
-	Infix(AstInfix),
-	Inline(AstInline),
-	AstDelete(AstDelete),
-	AstInsert(AstInsert),
-	AstUpdate(AstUpdate),
-	Join(AstJoin),
-	Take(AstTake),
-	List(AstList),
-	Literal(AstLiteral),
+pub enum Ast<'a> {
+	Aggregate(AstAggregate<'a>),
+	Between(AstBetween<'a>),
+	CallFunction(AstCallFunction<'a>),
+	Cast(AstCast<'a>),
+	Create(AstCreate<'a>),
+	Alter(AstAlter<'a>),
+	Describe(AstDescribe<'a>),
+	Filter(AstFilter<'a>),
+	From(AstFrom<'a>),
+	Identifier(AstIdentifier<'a>),
+	Infix(AstInfix<'a>),
+	Inline(AstInline<'a>),
+	AstDelete(AstDelete<'a>),
+	AstInsert(AstInsert<'a>),
+	AstUpdate(AstUpdate<'a>),
+	Join(AstJoin<'a>),
+	Take(AstTake<'a>),
+	List(AstList<'a>),
+	Literal(AstLiteral<'a>),
 	Nop,
-	ParameterRef(AstParameterRef),
-	Sort(AstSort),
-	Policy(AstPolicy),
-	PolicyBlock(AstPolicyBlock),
-	Prefix(AstPrefix),
-	Map(AstMap),
-	Extend(AstExtend),
-	Tuple(AstTuple),
-	Wildcard(AstWildcard),
+	ParameterRef(AstParameterRef<'a>),
+	Sort(AstSort<'a>),
+	Policy(AstPolicy<'a>),
+	PolicyBlock(AstPolicyBlock<'a>),
+	Prefix(AstPrefix<'a>),
+	Map(AstMap<'a>),
+	Extend(AstExtend<'a>),
+	Tuple(AstTuple<'a>),
+	Wildcard(AstWildcard<'a>),
 }
 
-impl Default for Ast {
+impl<'a> Default for Ast<'a> {
 	fn default() -> Self {
 		Self::Nop
 	}
 }
 
-impl Ast {
-	pub fn token(&self) -> &Token {
+impl<'a> Ast<'a> {
+	pub fn token(&self) -> &Token<'a> {
 		match self {
 			Ast::Inline(node) => &node.token,
 			Ast::Between(node) => &node.token,
@@ -144,11 +144,11 @@ impl Ast {
 	}
 }
 
-impl Ast {
+impl<'a> Ast<'a> {
 	pub fn is_aggregate(&self) -> bool {
 		matches!(self, Ast::Aggregate(_))
 	}
-	pub fn as_aggregate(&self) -> &AstAggregate {
+	pub fn as_aggregate(&self) -> &AstAggregate<'a> {
 		if let Ast::Aggregate(result) = self {
 			result
 		} else {
@@ -159,7 +159,7 @@ impl Ast {
 	pub fn is_between(&self) -> bool {
 		matches!(self, Ast::Between(_))
 	}
-	pub fn as_between(&self) -> &AstBetween {
+	pub fn as_between(&self) -> &AstBetween<'a> {
 		if let Ast::Between(result) = self {
 			result
 		} else {
@@ -170,7 +170,7 @@ impl Ast {
 	pub fn is_call_function(&self) -> bool {
 		matches!(self, Ast::CallFunction(_))
 	}
-	pub fn as_call_function(&self) -> &AstCallFunction {
+	pub fn as_call_function(&self) -> &AstCallFunction<'a> {
 		if let Ast::CallFunction(result) = self {
 			result
 		} else {
@@ -181,7 +181,7 @@ impl Ast {
 	pub fn is_block(&self) -> bool {
 		matches!(self, Ast::Inline(_))
 	}
-	pub fn as_block(&self) -> &AstInline {
+	pub fn as_block(&self) -> &AstInline<'a> {
 		if let Ast::Inline(result) = self {
 			result
 		} else {
@@ -192,7 +192,7 @@ impl Ast {
 	pub fn is_cast(&self) -> bool {
 		matches!(self, Ast::Cast(_))
 	}
-	pub fn as_cast(&self) -> &AstCast {
+	pub fn as_cast(&self) -> &AstCast<'a> {
 		if let Ast::Cast(result) = self {
 			result
 		} else {
@@ -203,7 +203,7 @@ impl Ast {
 	pub fn is_create(&self) -> bool {
 		matches!(self, Ast::Create(_))
 	}
-	pub fn as_create(&self) -> &AstCreate {
+	pub fn as_create(&self) -> &AstCreate<'a> {
 		if let Ast::Create(result) = self {
 			result
 		} else {
@@ -214,7 +214,7 @@ impl Ast {
 	pub fn is_alter(&self) -> bool {
 		matches!(self, Ast::Alter(_))
 	}
-	pub fn as_alter(&self) -> &AstAlter {
+	pub fn as_alter(&self) -> &AstAlter<'a> {
 		if let Ast::Alter(result) = self {
 			result
 		} else {
@@ -225,7 +225,7 @@ impl Ast {
 	pub fn is_describe(&self) -> bool {
 		matches!(self, Ast::Describe(_))
 	}
-	pub fn as_describe(&self) -> &AstDescribe {
+	pub fn as_describe(&self) -> &AstDescribe<'a> {
 		if let Ast::Describe(result) = self {
 			result
 		} else {
@@ -236,7 +236,7 @@ impl Ast {
 	pub fn is_filter(&self) -> bool {
 		matches!(self, Ast::Filter(_))
 	}
-	pub fn as_filter(&self) -> &AstFilter {
+	pub fn as_filter(&self) -> &AstFilter<'a> {
 		if let Ast::Filter(result) = self {
 			result
 		} else {
@@ -247,7 +247,7 @@ impl Ast {
 	pub fn is_from(&self) -> bool {
 		matches!(self, Ast::From(_))
 	}
-	pub fn as_from(&self) -> &AstFrom {
+	pub fn as_from(&self) -> &AstFrom<'a> {
 		if let Ast::From(result) = self {
 			result
 		} else {
@@ -258,7 +258,7 @@ impl Ast {
 	pub fn is_identifier(&self) -> bool {
 		matches!(self, Ast::Identifier(_))
 	}
-	pub fn as_identifier(&self) -> &AstIdentifier {
+	pub fn as_identifier(&self) -> &AstIdentifier<'a> {
 		if let Ast::Identifier(result) = self {
 			result
 		} else {
@@ -269,7 +269,7 @@ impl Ast {
 	pub fn is_infix(&self) -> bool {
 		matches!(self, Ast::Infix(_))
 	}
-	pub fn as_infix(&self) -> &AstInfix {
+	pub fn as_infix(&self) -> &AstInfix<'a> {
 		if let Ast::Infix(result) = self {
 			result
 		} else {
@@ -280,7 +280,7 @@ impl Ast {
 	pub fn is_delete(&self) -> bool {
 		matches!(self, Ast::AstDelete(_))
 	}
-	pub fn as_delete(&self) -> &AstDelete {
+	pub fn as_delete(&self) -> &AstDelete<'a> {
 		if let Ast::AstDelete(result) = self {
 			result
 		} else {
@@ -291,7 +291,7 @@ impl Ast {
 	pub fn is_insert(&self) -> bool {
 		matches!(self, Ast::AstInsert(_))
 	}
-	pub fn as_insert(&self) -> &AstInsert {
+	pub fn as_insert(&self) -> &AstInsert<'a> {
 		if let Ast::AstInsert(result) = self {
 			result
 		} else {
@@ -302,7 +302,7 @@ impl Ast {
 	pub fn is_update(&self) -> bool {
 		matches!(self, Ast::AstUpdate(_))
 	}
-	pub fn as_update(&self) -> &AstUpdate {
+	pub fn as_update(&self) -> &AstUpdate<'a> {
 		if let Ast::AstUpdate(result) = self {
 			result
 		} else {
@@ -313,7 +313,7 @@ impl Ast {
 	pub fn is_join(&self) -> bool {
 		matches!(self, Ast::Join(_))
 	}
-	pub fn as_join(&self) -> &AstJoin {
+	pub fn as_join(&self) -> &AstJoin<'a> {
 		if let Ast::Join(result) = self {
 			result
 		} else {
@@ -324,7 +324,7 @@ impl Ast {
 	pub fn is_take(&self) -> bool {
 		matches!(self, Ast::Take(_))
 	}
-	pub fn as_take(&self) -> &AstTake {
+	pub fn as_take(&self) -> &AstTake<'a> {
 		if let Ast::Take(result) = self {
 			result
 		} else {
@@ -335,7 +335,7 @@ impl Ast {
 	pub fn is_list(&self) -> bool {
 		matches!(self, Ast::List(_))
 	}
-	pub fn as_list(&self) -> &AstList {
+	pub fn as_list(&self) -> &AstList<'a> {
 		if let Ast::List(result) = self {
 			result
 		} else {
@@ -347,7 +347,7 @@ impl Ast {
 		matches!(self, Ast::Literal(_))
 	}
 
-	pub fn as_literal(&self) -> &AstLiteral {
+	pub fn as_literal(&self) -> &AstLiteral<'a> {
 		if let Ast::Literal(result) = self {
 			result
 		} else {
@@ -359,7 +359,7 @@ impl Ast {
 		matches!(self, Ast::Literal(AstLiteral::Boolean(_)))
 	}
 
-	pub fn as_literal_boolean(&self) -> &AstLiteralBoolean {
+	pub fn as_literal_boolean(&self) -> &AstLiteralBoolean<'a> {
 		if let Ast::Literal(AstLiteral::Boolean(result)) = self {
 			result
 		} else {
@@ -371,7 +371,7 @@ impl Ast {
 		matches!(self, Ast::Literal(AstLiteral::Number(_)))
 	}
 
-	pub fn as_literal_number(&self) -> &AstLiteralNumber {
+	pub fn as_literal_number(&self) -> &AstLiteralNumber<'a> {
 		if let Ast::Literal(AstLiteral::Number(result)) = self {
 			result
 		} else {
@@ -383,7 +383,7 @@ impl Ast {
 		matches!(self, Ast::Literal(AstLiteral::Temporal(_)))
 	}
 
-	pub fn as_literal_temporal(&self) -> &AstLiteralTemporal {
+	pub fn as_literal_temporal(&self) -> &AstLiteralTemporal<'a> {
 		if let Ast::Literal(AstLiteral::Temporal(result)) = self {
 			result
 		} else {
@@ -395,7 +395,7 @@ impl Ast {
 		matches!(self, Ast::Literal(AstLiteral::Text(_)))
 	}
 
-	pub fn as_literal_text(&self) -> &AstLiteralText {
+	pub fn as_literal_text(&self) -> &AstLiteralText<'a> {
 		if let Ast::Literal(AstLiteral::Text(result)) = self {
 			result
 		} else {
@@ -407,7 +407,7 @@ impl Ast {
 		matches!(self, Ast::Literal(AstLiteral::Undefined(_)))
 	}
 
-	pub fn as_literal_undefined(&self) -> &AstLiteralUndefined {
+	pub fn as_literal_undefined(&self) -> &AstLiteralUndefined<'a> {
 		if let Ast::Literal(AstLiteral::Undefined(result)) = self {
 			result
 		} else {
@@ -418,7 +418,7 @@ impl Ast {
 	pub fn is_sort(&self) -> bool {
 		matches!(self, Ast::Sort(_))
 	}
-	pub fn as_sort(&self) -> &AstSort {
+	pub fn as_sort(&self) -> &AstSort<'a> {
 		if let Ast::Sort(result) = self {
 			result
 		} else {
@@ -428,7 +428,7 @@ impl Ast {
 	pub fn is_policy(&self) -> bool {
 		matches!(self, Ast::Policy(_))
 	}
-	pub fn as_policy(&self) -> &AstPolicy {
+	pub fn as_policy(&self) -> &AstPolicy<'a> {
 		if let Ast::Policy(result) = self {
 			result
 		} else {
@@ -439,7 +439,7 @@ impl Ast {
 	pub fn is_policy_block(&self) -> bool {
 		matches!(self, Ast::PolicyBlock(_))
 	}
-	pub fn as_policy_block(&self) -> &AstPolicyBlock {
+	pub fn as_policy_block(&self) -> &AstPolicyBlock<'a> {
 		if let Ast::PolicyBlock(result) = self {
 			result
 		} else {
@@ -450,7 +450,7 @@ impl Ast {
 	pub fn is_inline(&self) -> bool {
 		matches!(self, Ast::Inline(_))
 	}
-	pub fn as_inline(&self) -> &AstInline {
+	pub fn as_inline(&self) -> &AstInline<'a> {
 		if let Ast::Inline(result) = self {
 			result
 		} else {
@@ -461,7 +461,7 @@ impl Ast {
 	pub fn is_prefix(&self) -> bool {
 		matches!(self, Ast::Prefix(_))
 	}
-	pub fn as_prefix(&self) -> &AstPrefix {
+	pub fn as_prefix(&self) -> &AstPrefix<'a> {
 		if let Ast::Prefix(result) = self {
 			result
 		} else {
@@ -473,7 +473,7 @@ impl Ast {
 		matches!(self, Ast::Map(_))
 	}
 
-	pub fn as_map(&self) -> &AstMap {
+	pub fn as_map(&self) -> &AstMap<'a> {
 		if let Ast::Map(result) = self {
 			result
 		} else {
@@ -481,7 +481,7 @@ impl Ast {
 		}
 	}
 
-	pub fn as_extend(&self) -> &AstExtend {
+	pub fn as_extend(&self) -> &AstExtend<'a> {
 		if let Ast::Extend(result) = self {
 			result
 		} else {
@@ -493,7 +493,7 @@ impl Ast {
 		matches!(self, Ast::Tuple(_))
 	}
 
-	pub fn as_tuple(&self) -> &AstTuple {
+	pub fn as_tuple(&self) -> &AstTuple<'a> {
 		if let Ast::Tuple(result) = self {
 			result
 		} else {
@@ -503,39 +503,39 @@ impl Ast {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCast {
-	pub token: Token,
-	pub tuple: AstTuple,
+pub struct AstCast<'a> {
+	pub token: Token<'a>,
+	pub tuple: AstTuple<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCallFunction {
-	pub token: Token,
-	pub namespaces: Vec<AstIdentifier>,
-	pub function: AstIdentifier,
-	pub arguments: AstTuple,
+pub struct AstCallFunction<'a> {
+	pub token: Token<'a>,
+	pub namespaces: Vec<AstIdentifier<'a>>,
+	pub function: AstIdentifier<'a>,
+	pub arguments: AstTuple<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstInlineKeyedValue {
-	pub key: AstIdentifier,
-	pub value: Box<Ast>,
+pub struct AstInlineKeyedValue<'a> {
+	pub key: AstIdentifier<'a>,
+	pub value: Box<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstInline {
-	pub token: Token,
-	pub keyed_values: Vec<AstInlineKeyedValue>,
+pub struct AstInline<'a> {
+	pub token: Token<'a>,
+	pub keyed_values: Vec<AstInlineKeyedValue<'a>>,
 }
 
-impl AstInline {
+impl<'a> AstInline<'a> {
 	pub fn len(&self) -> usize {
 		self.keyed_values.len()
 	}
 }
 
-impl Index<usize> for AstInline {
-	type Output = AstInlineKeyedValue;
+impl<'a> Index<usize> for AstInline<'a> {
+	type Output = AstInlineKeyedValue<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.keyed_values[index]
@@ -543,105 +543,105 @@ impl Index<usize> for AstInline {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstCreate {
-	DeferredView(AstCreateDeferredView),
-	TransactionalView(AstCreateTransactionalView),
-	Schema(AstCreateSchema),
-	Series(AstCreateSeries),
-	Table(AstCreateTable),
-	Index(AstCreateIndex),
+pub enum AstCreate<'a> {
+	DeferredView(AstCreateDeferredView<'a>),
+	TransactionalView(AstCreateTransactionalView<'a>),
+	Schema(AstCreateSchema<'a>),
+	Series(AstCreateSeries<'a>),
+	Table(AstCreateTable<'a>),
+	Index(AstCreateIndex<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstAlter {
-	Sequence(AstAlterSequence),
+pub enum AstAlter<'a> {
+	Sequence(AstAlterSequence<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstAlterSequence {
-	pub token: Token,
-	pub schema: Option<AstIdentifier>,
-	pub table: AstIdentifier,
-	pub column: AstIdentifier,
-	pub value: AstLiteral,
+pub struct AstAlterSequence<'a> {
+	pub token: Token<'a>,
+	pub schema: Option<AstIdentifier<'a>>,
+	pub table: AstIdentifier<'a>,
+	pub column: AstIdentifier<'a>,
+	pub value: AstLiteral<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateDeferredView {
-	pub token: Token,
-	pub schema: AstIdentifier,
-	pub view: AstIdentifier,
-	pub columns: Vec<AstColumnToCreate>,
-	pub with: Option<AstStatement>,
+pub struct AstCreateDeferredView<'a> {
+	pub token: Token<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub view: AstIdentifier<'a>,
+	pub columns: Vec<AstColumnToCreate<'a>>,
+	pub with: Option<AstStatement<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateTransactionalView {
-	pub token: Token,
-	pub schema: AstIdentifier,
-	pub view: AstIdentifier,
-	pub columns: Vec<AstColumnToCreate>,
-	pub with: Option<AstStatement>,
+pub struct AstCreateTransactionalView<'a> {
+	pub token: Token<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub view: AstIdentifier<'a>,
+	pub columns: Vec<AstColumnToCreate<'a>>,
+	pub with: Option<AstStatement<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateSchema {
-	pub token: Token,
-	pub name: AstIdentifier,
+pub struct AstCreateSchema<'a> {
+	pub token: Token<'a>,
+	pub name: AstIdentifier<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateSeries {
-	pub token: Token,
-	pub schema: AstIdentifier,
-	pub name: AstIdentifier,
-	pub columns: Vec<AstColumnToCreate>,
+pub struct AstCreateSeries<'a> {
+	pub token: Token<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub name: AstIdentifier<'a>,
+	pub columns: Vec<AstColumnToCreate<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateTable {
-	pub token: Token,
-	pub schema: AstIdentifier,
-	pub table: AstIdentifier,
-	pub columns: Vec<AstColumnToCreate>,
+pub struct AstCreateTable<'a> {
+	pub token: Token<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub table: AstIdentifier<'a>,
+	pub columns: Vec<AstColumnToCreate<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstDescribe {
+pub enum AstDescribe<'a> {
 	Query {
-		token: Token,
-		node: Box<Ast>,
+		token: Token<'a>,
+		node: Box<Ast<'a>>,
 	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstColumnToCreate {
-	pub name: AstIdentifier,
-	pub ty: AstIdentifier,
-	pub policies: Option<AstPolicyBlock>,
+pub struct AstColumnToCreate<'a> {
+	pub name: AstIdentifier<'a>,
+	pub ty: AstIdentifier<'a>,
+	pub policies: Option<AstPolicyBlock<'a>>,
 	pub auto_increment: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateIndex {
-	pub token: Token,
+pub struct AstCreateIndex<'a> {
+	pub token: Token<'a>,
 	pub index_type: IndexType,
-	pub name: AstIdentifier,
-	pub schema: AstIdentifier,
-	pub table: AstIdentifier,
-	pub columns: Vec<AstIndexColumn>,
-	pub filters: Vec<Box<Ast>>,
-	pub map: Option<Box<Ast>>,
+	pub name: AstIdentifier<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub table: AstIdentifier<'a>,
+	pub columns: Vec<AstIndexColumn<'a>>,
+	pub filters: Vec<Box<Ast<'a>>>,
+	pub map: Option<Box<Ast<'a>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstIndexColumn {
-	pub column: AstIdentifier,
+pub struct AstIndexColumn<'a> {
+	pub column: AstIdentifier<'a>,
 	pub order: Option<SortDirection>,
 }
 
-impl AstCreate {
-	pub fn token(&self) -> &Token {
+impl<'a> AstCreate<'a> {
+	pub fn token(&self) -> &Token<'a> {
 		match self {
 			AstCreate::DeferredView(AstCreateDeferredView {
 				token,
@@ -673,8 +673,8 @@ impl AstCreate {
 	}
 }
 
-impl AstAlter {
-	pub fn token(&self) -> &Token {
+impl<'a> AstAlter<'a> {
+	pub fn token(&self) -> &Token<'a> {
 		match self {
 			AstAlter::Sequence(AstAlterSequence {
 				token,
@@ -685,33 +685,33 @@ impl AstAlter {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstFilter {
-	pub token: Token,
-	pub node: Box<Ast>,
+pub struct AstFilter<'a> {
+	pub token: Token<'a>,
+	pub node: Box<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstFrom {
+pub enum AstFrom<'a> {
 	Source {
-		token: Token,
-		schema: Option<AstIdentifier>,
-		source: AstIdentifier,
+		token: Token<'a>,
+		schema: Option<AstIdentifier<'a>>,
+		source: AstIdentifier<'a>,
 	},
 	Inline {
-		token: Token,
-		list: AstList,
+		token: Token<'a>,
+		list: AstList<'a>,
 	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstAggregate {
-	pub token: Token,
-	pub by: Vec<Ast>,
-	pub map: Vec<Ast>,
+pub struct AstAggregate<'a> {
+	pub token: Token<'a>,
+	pub by: Vec<Ast<'a>>,
+	pub map: Vec<Ast<'a>>,
 }
 
-impl AstFrom {
-	pub fn token(&self) -> &Token {
+impl<'a> AstFrom<'a> {
+	pub fn token(&self) -> &Token<'a> {
 		match self {
 			AstFrom::Source {
 				token,
@@ -726,25 +726,25 @@ impl AstFrom {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstTake {
-	pub token: Token,
+pub struct AstTake<'a> {
+	pub token: Token<'a>,
 	pub take: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstList {
-	pub token: Token,
-	pub nodes: Vec<Ast>,
+pub struct AstList<'a> {
+	pub token: Token<'a>,
+	pub nodes: Vec<Ast<'a>>,
 }
 
-impl AstList {
+impl<'a> AstList<'a> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
 }
 
-impl Index<usize> for AstList {
-	type Output = Ast;
+impl<'a> Index<usize> for AstList<'a> {
+	type Output = Ast<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.nodes[index]
@@ -752,30 +752,40 @@ impl Index<usize> for AstList {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstLiteral {
-	Boolean(AstLiteralBoolean),
-	Number(AstLiteralNumber),
-	Text(AstLiteralText),
-	Temporal(AstLiteralTemporal),
-	Undefined(AstLiteralUndefined),
+pub enum AstLiteral<'a> {
+	Boolean(AstLiteralBoolean<'a>),
+	Number(AstLiteralNumber<'a>),
+	Text(AstLiteralText<'a>),
+	Temporal(AstLiteralTemporal<'a>),
+	Undefined(AstLiteralUndefined<'a>),
 }
 
-impl AstLiteral {
+impl<'a> AstLiteral<'a> {
 	pub fn fragment(self) -> OwnedFragment {
 		match self {
-			AstLiteral::Boolean(literal) => literal.0.fragment,
-			AstLiteral::Number(literal) => literal.0.fragment,
-			AstLiteral::Text(literal) => literal.0.fragment,
-			AstLiteral::Temporal(literal) => literal.0.fragment,
-			AstLiteral::Undefined(literal) => literal.0.fragment,
+			AstLiteral::Boolean(literal) => {
+				literal.0.fragment.into_owned()
+			}
+			AstLiteral::Number(literal) => {
+				literal.0.fragment.into_owned()
+			}
+			AstLiteral::Text(literal) => {
+				literal.0.fragment.into_owned()
+			}
+			AstLiteral::Temporal(literal) => {
+				literal.0.fragment.into_owned()
+			}
+			AstLiteral::Undefined(literal) => {
+				literal.0.fragment.into_owned()
+			}
 		}
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstIdentifier(pub Token);
+pub struct AstIdentifier<'a>(pub Token<'a>);
 
-impl AstIdentifier {
+impl<'a> AstIdentifier<'a> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.fragment()
 	}
@@ -785,12 +795,12 @@ impl AstIdentifier {
 	}
 
 	pub fn fragment(self) -> OwnedFragment {
-		self.0.fragment
+		self.0.fragment.into_owned()
 	}
 }
 
-impl Deref for AstIdentifier {
-	type Target = Token;
+impl<'a> Deref for AstIdentifier<'a> {
+	type Target = Token<'a>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
@@ -798,128 +808,128 @@ impl Deref for AstIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum InfixOperator {
-	Add(Token),
-	As(Token),
-	Arrow(Token),
-	AccessNamespace(Token),
-	AccessTable(Token),
-	Assign(Token),
-	Call(Token),
-	Subtract(Token),
-	Multiply(Token),
-	Divide(Token),
-	Rem(Token),
-	Equal(Token),
-	NotEqual(Token),
-	LessThan(Token),
-	LessThanEqual(Token),
-	GreaterThan(Token),
-	GreaterThanEqual(Token),
-	TypeAscription(Token),
-	And(Token),
-	Or(Token),
-	Xor(Token),
+pub enum InfixOperator<'a> {
+	Add(Token<'a>),
+	As(Token<'a>),
+	Arrow(Token<'a>),
+	AccessNamespace(Token<'a>),
+	AccessTable(Token<'a>),
+	Assign(Token<'a>),
+	Call(Token<'a>),
+	Subtract(Token<'a>),
+	Multiply(Token<'a>),
+	Divide(Token<'a>),
+	Rem(Token<'a>),
+	Equal(Token<'a>),
+	NotEqual(Token<'a>),
+	LessThan(Token<'a>),
+	LessThanEqual(Token<'a>),
+	GreaterThan(Token<'a>),
+	GreaterThanEqual(Token<'a>),
+	TypeAscription(Token<'a>),
+	And(Token<'a>),
+	Or(Token<'a>),
+	Xor(Token<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstInfix {
-	pub token: Token,
-	pub left: Box<Ast>,
-	pub operator: InfixOperator,
-	pub right: Box<Ast>,
+pub struct AstInfix<'a> {
+	pub token: Token<'a>,
+	pub left: Box<Ast<'a>>,
+	pub operator: InfixOperator<'a>,
+	pub right: Box<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstDelete {
-	pub token: Token,
-	pub schema: Option<AstIdentifier>,
-	pub table: Option<AstIdentifier>,
+pub struct AstDelete<'a> {
+	pub token: Token<'a>,
+	pub schema: Option<AstIdentifier<'a>>,
+	pub table: Option<AstIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstInsert {
-	pub token: Token,
-	pub schema: Option<AstIdentifier>,
-	pub table: AstIdentifier,
+pub struct AstInsert<'a> {
+	pub token: Token<'a>,
+	pub schema: Option<AstIdentifier<'a>>,
+	pub table: AstIdentifier<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstUpdate {
-	pub token: Token,
-	pub schema: Option<AstIdentifier>,
-	pub table: Option<AstIdentifier>,
+pub struct AstUpdate<'a> {
+	pub token: Token<'a>,
+	pub schema: Option<AstIdentifier<'a>>,
+	pub table: Option<AstIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstJoin {
+pub enum AstJoin<'a> {
 	InnerJoin {
-		token: Token,
-		with: Box<Ast>,
-		on: Vec<Ast>,
+		token: Token<'a>,
+		with: Box<Ast<'a>>,
+		on: Vec<Ast<'a>>,
 	},
 	LeftJoin {
-		token: Token,
-		with: Box<Ast>,
-		on: Vec<Ast>,
+		token: Token<'a>,
+		with: Box<Ast<'a>>,
+		on: Vec<Ast<'a>>,
 	},
 	NaturalJoin {
-		token: Token,
-		with: Box<Ast>,
+		token: Token<'a>,
+		with: Box<Ast<'a>>,
 		join_type: Option<JoinType>,
 	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLiteralNumber(pub Token);
+pub struct AstLiteralNumber<'a>(pub Token<'a>);
 
-impl AstLiteralNumber {
+impl<'a> AstLiteralNumber<'a> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.fragment()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLiteralTemporal(pub Token);
+pub struct AstLiteralTemporal<'a>(pub Token<'a>);
 
-impl AstLiteralTemporal {
+impl<'a> AstLiteralTemporal<'a> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.fragment()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLiteralText(pub Token);
+pub struct AstLiteralText<'a>(pub Token<'a>);
 
-impl AstLiteralText {
+impl<'a> AstLiteralText<'a> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.fragment()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLiteralBoolean(pub Token);
+pub struct AstLiteralBoolean<'a>(pub Token<'a>);
 
-impl<'a> AstLiteralBoolean {
+impl<'a> AstLiteralBoolean<'a> {
 	pub fn value(&self) -> bool {
 		self.0.kind == TokenKind::Literal(Literal::True)
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLiteralUndefined(pub Token);
+pub struct AstLiteralUndefined<'a>(pub Token<'a>);
 
-impl AstLiteralUndefined {
+impl<'a> AstLiteralUndefined<'a> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.fragment()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstSort {
-	pub token: Token,
-	pub columns: Vec<AstIdentifier>,
-	pub directions: Vec<Option<AstIdentifier>>,
+pub struct AstSort<'a> {
+	pub token: Token<'a>,
+	pub columns: Vec<AstIdentifier<'a>>,
+	pub directions: Vec<Option<AstIdentifier<'a>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -930,33 +940,33 @@ pub enum AstPolicyKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstPolicy {
-	pub token: Token,
+pub struct AstPolicy<'a> {
+	pub token: Token<'a>,
 	pub policy: AstPolicyKind,
-	pub value: Box<Ast>,
+	pub value: Box<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstPolicyBlock {
-	pub token: Token,
-	pub policies: Vec<AstPolicy>,
+pub struct AstPolicyBlock<'a> {
+	pub token: Token<'a>,
+	pub policies: Vec<AstPolicy<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstPrefix {
-	pub operator: AstPrefixOperator,
-	pub node: Box<Ast>,
+pub struct AstPrefix<'a> {
+	pub operator: AstPrefixOperator<'a>,
+	pub node: Box<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstPrefixOperator {
-	Plus(Token),
-	Negate(Token),
-	Not(Token),
+pub enum AstPrefixOperator<'a> {
+	Plus(Token<'a>),
+	Negate(Token<'a>),
+	Not(Token<'a>),
 }
 
-impl AstPrefixOperator {
-	pub fn token(&self) -> &Token {
+impl<'a> AstPrefixOperator<'a> {
+	pub fn token(&self) -> &Token<'a> {
 		match self {
 			AstPrefixOperator::Plus(token) => token,
 			AstPrefixOperator::Negate(token) => token,
@@ -966,59 +976,59 @@ impl AstPrefixOperator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstMap {
-	pub token: Token,
-	pub nodes: Vec<Ast>,
+pub struct AstMap<'a> {
+	pub token: Token<'a>,
+	pub nodes: Vec<Ast<'a>>,
 }
 
-impl Index<usize> for AstMap {
-	type Output = Ast;
+impl<'a> Index<usize> for AstMap<'a> {
+	type Output = Ast<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.nodes[index]
 	}
 }
 
-impl AstMap {
+impl<'a> AstMap<'a> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstExtend {
-	pub token: Token,
-	pub nodes: Vec<Ast>,
+pub struct AstExtend<'a> {
+	pub token: Token<'a>,
+	pub nodes: Vec<Ast<'a>>,
 }
 
-impl Index<usize> for AstExtend {
-	type Output = Ast;
+impl<'a> Index<usize> for AstExtend<'a> {
+	type Output = Ast<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.nodes[index]
 	}
 }
 
-impl AstExtend {
+impl<'a> AstExtend<'a> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstTuple {
-	pub token: Token,
-	pub nodes: Vec<Ast>,
+pub struct AstTuple<'a> {
+	pub token: Token<'a>,
+	pub nodes: Vec<Ast<'a>>,
 }
 
-impl AstTuple {
+impl<'a> AstTuple<'a> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
 }
 
-impl Index<usize> for AstTuple {
-	type Output = Ast;
+impl<'a> Index<usize> for AstTuple<'a> {
+	type Output = Ast<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.nodes[index]
@@ -1026,23 +1036,23 @@ impl Index<usize> for AstTuple {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstBetween {
-	pub token: Token,
-	pub value: Box<Ast>,
-	pub lower: Box<Ast>,
-	pub upper: Box<Ast>,
+pub struct AstBetween<'a> {
+	pub token: Token<'a>,
+	pub value: Box<Ast<'a>>,
+	pub lower: Box<Ast<'a>>,
+	pub upper: Box<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstWildcard(pub Token);
+pub struct AstWildcard<'a>(pub Token<'a>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstParameterRef {
-	pub token: Token,
+pub struct AstParameterRef<'a> {
+	pub token: Token<'a>,
 	pub kind: ParameterKind,
 }
 
-impl AstParameterRef {
+impl<'a> AstParameterRef<'a> {
 	pub fn position(&self) -> Option<u32> {
 		match self.kind {
 			ParameterKind::Positional(n) => Some(n),
