@@ -60,7 +60,7 @@ bench-all:
 	first_error=0; \
 	echo "=== Engine Benchmarks ==="; \
 	echo ""; \
-	for bench in bench-memory-optimistic; do \
+	for bench in bench-memory-optimistic bench-rql-tokenize bench-rql-parse bench-rql-logical; do \
 		echo "--- Running $$bench ---"; \
 		if $(MAKE) $$bench; then \
 			true; \
