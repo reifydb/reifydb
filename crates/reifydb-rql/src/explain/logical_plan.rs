@@ -4,7 +4,7 @@
 use reifydb_core::JoinType;
 
 use crate::{
-	ast::parse,
+	ast::parse_str,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode,
 		DistinctNode, ExtendNode, FilterNode, InlineDataNode,
@@ -14,7 +14,7 @@ use crate::{
 };
 
 pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
-	let statements = parse(query)?;
+	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {

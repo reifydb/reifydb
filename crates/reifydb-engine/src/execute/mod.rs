@@ -168,7 +168,7 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 		cmd: Command<'_>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
-		let statements = ast::parse(cmd.rql)?;
+		let statements = ast::parse_str(cmd.rql)?;
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
@@ -192,7 +192,7 @@ impl ExecuteQuery for Executor {
 		qry: Query<'_>,
 	) -> reifydb_core::Result<Vec<Frame>> {
 		let mut result = vec![];
-		let statements = ast::parse(qry.rql)?;
+		let statements = ast::parse_str(qry.rql)?;
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {

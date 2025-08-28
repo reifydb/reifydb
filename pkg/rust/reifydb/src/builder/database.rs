@@ -62,6 +62,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 	}
 
 	/// Add default subsystems that are always required
+	#[allow(unused_mut)]
 	pub fn with_default_subsystems(mut self) -> Self {
 		// Add default logging subsystem first so it's initialized
 		// before other subsystems Note: This can be overridden by
