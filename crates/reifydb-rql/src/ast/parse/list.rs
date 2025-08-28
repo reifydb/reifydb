@@ -11,7 +11,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList<'a>> {
 		let token = self.consume_operator(Operator::OpenBracket)?;
 
-		let mut nodes = Vec::new();
+		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;
 

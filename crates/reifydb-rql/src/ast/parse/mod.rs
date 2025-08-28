@@ -30,7 +30,7 @@ mod take;
 mod tuple;
 mod update;
 
-use std::{cmp::PartialOrd, collections::HashMap};
+use std::{cmp::PartialOrd, collections::HashMap, sync::LazyLock};
 
 use reifydb_core::{result::error::diagnostic::ast, return_error};
 
@@ -56,6 +56,33 @@ pub(crate) enum Precedence {
 	Primary,
 }
 
+static PRECEDENCE_MAP: LazyLock<HashMap<Operator, Precedence>> =
+	LazyLock::new(|| {
+		let mut map = HashMap::new();
+		map.insert(Operator::As, Precedence::Assignment);
+		map.insert(Operator::Equal, Precedence::Comparison);
+		map.insert(Operator::DoubleEqual, Precedence::Comparison);
+		map.insert(Operator::BangEqual, Precedence::Comparison);
+		map.insert(Operator::LeftAngle, Precedence::Comparison);
+		map.insert(Operator::LeftAngleEqual, Precedence::Comparison);
+		map.insert(Operator::RightAngle, Precedence::Comparison);
+		map.insert(Operator::RightAngleEqual, Precedence::Comparison);
+		map.insert(Operator::Plus, Precedence::Term);
+		map.insert(Operator::Minus, Precedence::Term);
+		map.insert(Operator::Asterisk, Precedence::Factor);
+		map.insert(Operator::Slash, Precedence::Factor);
+		map.insert(Operator::Percent, Precedence::Factor);
+		map.insert(Operator::OpenParen, Precedence::Call);
+		map.insert(Operator::Dot, Precedence::Primary);
+		map.insert(Operator::DoubleColon, Precedence::Primary);
+		map.insert(Operator::Arrow, Precedence::Primary);
+		map.insert(Operator::Colon, Precedence::Assignment);
+		map.insert(Operator::Or, Precedence::LogicOr);
+		map.insert(Operator::Xor, Precedence::LogicOr);
+		map.insert(Operator::And, Precedence::LogicAnd);
+		map
+	});
+
 pub fn parse<'a>(
 	tokens: Vec<Token<'a>>,
 ) -> crate::Result<Vec<AstStatement<'a>>> {
@@ -65,68 +92,25 @@ pub fn parse<'a>(
 
 struct Parser<'a> {
 	tokens: Vec<Token<'a>>,
-	precedence_map: HashMap<Operator, Precedence>,
+	position: usize,
 }
 
 impl<'a> Parser<'a> {
-	fn new(mut tokens: Vec<Token<'a>>) -> Self {
-		let mut precedence_map = HashMap::new();
-		precedence_map.insert(Operator::As, Precedence::Assignment);
-		precedence_map.insert(Operator::Equal, Precedence::Comparison);
-
-		precedence_map
-			.insert(Operator::DoubleEqual, Precedence::Comparison);
-		precedence_map
-			.insert(Operator::BangEqual, Precedence::Comparison);
-
-		precedence_map
-			.insert(Operator::LeftAngle, Precedence::Comparison);
-		precedence_map.insert(
-			Operator::LeftAngleEqual,
-			Precedence::Comparison,
-		);
-		precedence_map
-			.insert(Operator::RightAngle, Precedence::Comparison);
-		precedence_map.insert(
-			Operator::RightAngleEqual,
-			Precedence::Comparison,
-		);
-
-		precedence_map.insert(Operator::Plus, Precedence::Term);
-		precedence_map.insert(Operator::Minus, Precedence::Term);
-
-		precedence_map.insert(Operator::Asterisk, Precedence::Factor);
-		precedence_map.insert(Operator::Slash, Precedence::Factor);
-		precedence_map.insert(Operator::Percent, Precedence::Factor);
-
-		precedence_map.insert(Operator::OpenParen, Precedence::Call);
-
-		precedence_map.insert(Operator::Dot, Precedence::Primary);
-		precedence_map
-			.insert(Operator::DoubleColon, Precedence::Primary);
-
-		precedence_map.insert(Operator::Arrow, Precedence::Primary);
-		precedence_map.insert(Operator::Colon, Precedence::Assignment);
-
-		precedence_map.insert(Operator::Or, Precedence::LogicOr);
-		precedence_map.insert(Operator::Xor, Precedence::LogicOr);
-		precedence_map.insert(Operator::And, Precedence::LogicAnd);
-
-		tokens.reverse();
+	fn new(tokens: Vec<Token<'a>>) -> Self {
 		Self {
 			tokens,
-			precedence_map,
+			position: 0,
 		}
 	}
 
 	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'a>>> {
-		let mut result = Vec::new();
+		let mut result = Vec::with_capacity(4);
 		loop {
 			if self.is_eof() {
 				break;
 			}
 
-			let mut nodes = vec![];
+			let mut nodes = Vec::with_capacity(8);
 			loop {
 				if self.is_eof()
 					|| self.consume_if(
@@ -182,9 +166,14 @@ impl<'a> Parser<'a> {
 	}
 
 	pub(crate) fn advance(&mut self) -> crate::Result<Token<'a>> {
-		self.tokens
-			.pop()
-			.ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
+		if self.position >= self.tokens.len() {
+			return Err(reifydb_core::Error(
+				ast::unexpected_eof_error(),
+			));
+		}
+		let token = self.tokens[self.position].clone();
+		self.position += 1;
+		Ok(token)
 	}
 
 	pub(crate) fn consume(
@@ -243,9 +232,12 @@ impl<'a> Parser<'a> {
 	}
 
 	pub(crate) fn current(&self) -> crate::Result<&Token<'a>> {
-		self.tokens
-			.last()
-			.ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
+		if self.position >= self.tokens.len() {
+			return Err(reifydb_core::Error(
+				ast::unexpected_eof_error(),
+			));
+		}
+		Ok(&self.tokens[self.position])
 	}
 
 	pub(crate) fn current_expect(
@@ -300,10 +292,8 @@ impl<'a> Parser<'a> {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Operator(operator) => {
-				let precedence = self
-					.precedence_map
-					.get(&operator)
-					.cloned();
+				let precedence =
+					PRECEDENCE_MAP.get(&operator).cloned();
 				Ok(precedence.unwrap_or(Precedence::None))
 			}
 			TokenKind::Keyword(Keyword::Between) => {
@@ -314,7 +304,7 @@ impl<'a> Parser<'a> {
 	}
 
 	fn is_eof(&self) -> bool {
-		self.tokens.is_empty()
+		self.position >= self.tokens.len()
 	}
 
 	pub(crate) fn skip_new_line(&mut self) -> crate::Result<()> {
@@ -352,7 +342,7 @@ impl<'a> Parser<'a> {
 			self.advance()?; // consume opening brace
 		}
 
-		let mut nodes = Vec::new();
+		let mut nodes = Vec::with_capacity(4);
 		loop {
 			if allow_colon_alias {
 				if let Ok(alias_expr) =
@@ -395,25 +385,23 @@ impl<'a> Parser<'a> {
 	pub(crate) fn try_parse_colon_alias(
 		&mut self,
 	) -> crate::Result<Ast<'a>> {
-		// Check if we have at least identifier + colon + something
-		// ahead
-		if self.tokens.len() < 2 {
+		// Check if we have enough tokens from current position
+		if self.position + 1 >= self.tokens.len() {
 			return_error!(ast::unsupported_token_error(
 				self.current()?.clone().fragment
 			));
 		}
 
-		// Peek at the tokens to see if we have identifier:
-		let len = self.tokens.len();
-		match &self.tokens[len - 1].kind {
-			TokenKind::Identifier => {}
-			_ => return_error!(ast::unsupported_token_error(
+		// Check if current token is identifier
+		if !self.tokens[self.position].is_identifier() {
+			return_error!(ast::unsupported_token_error(
 				self.current()?.clone().fragment
-			)),
-		};
+			));
+		}
 
-		// Check if second token is colon
-		if !self.tokens[len - 2].is_operator(Operator::Colon) {
+		// Check if next token is colon
+		if !self.tokens[self.position + 1].is_operator(Operator::Colon)
+		{
 			return_error!(ast::unsupported_token_error(
 				self.current()?.clone().fragment
 			));

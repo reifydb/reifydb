@@ -7,7 +7,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_function_call(
 		&mut self,
 	) -> crate::Result<AstCallFunction<'a>> {
-		let mut namespaces = Vec::new();
+		let mut namespaces = Vec::with_capacity(2);
 		let first_ident_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		let start_token = first_ident_token.clone();
@@ -83,74 +83,50 @@ impl<'a> Parser<'a> {
 	}
 
 	pub(crate) fn is_function_call_pattern(&self) -> bool {
-		// Now I understand: tokens are in REVERSE order!
-		// For "func()", tokens are: [), (, func] - indices [0, 1, 2]
-		// current() returns tokens[2] which is the identifier
-
 		let tokens_len = self.tokens.len();
-		if tokens_len < 2 {
-			return false; // Need at least identifier + open paren
-		}
-
-		// Check if current token (last in vector) is identifier
-		if !self.tokens[tokens_len - 1].is_identifier() {
+		if self.position >= tokens_len {
 			return false;
 		}
 
-		// Check if the token before current (moving backwards) is open
-		// paren
-		if self.tokens[tokens_len - 2].is_operator(Operator::OpenParen)
-		{
-			return true; // Simple function call: func()
-		}
-
-		// For namespaced calls: "blob::hex()" tokens are [), (, hex,
-		// ::, blob] We need to match pattern: identifier ::
-		// identifier ( ) The tokens in reverse are: [), (,
-		// identifier, ::, identifier, ::, ...]
-
-		if tokens_len < 4 {
-			return false; // Need at least: namespace :: func (
-		}
-
-		// Current token is identifier (func name)
-		// Next token should be ::
-		if !self.tokens[tokens_len - 2]
-			.is_operator(Operator::DoubleColon)
+		if !unsafe { self.tokens.get_unchecked(self.position) }
+			.is_identifier()
 		{
 			return false;
 		}
 
-		// Look for the pattern backwards: identifier :: identifier ::
-		// ... ( )
-		let mut i = tokens_len - 3; // Start checking from the namespace identifier
-
-		loop {
-			// Should be an identifier (namespace part)
-			if i >= tokens_len || !self.tokens[i].is_identifier() {
-				return false;
+		if self.position + 1 < tokens_len
+			&& unsafe {
+				self.tokens.get_unchecked(self.position + 1)
 			}
-
-			if i == 0 {
-				return false; // Need something before identifier
-			}
-			i -= 1;
-
-			// Check what follows this identifier
-			if self.tokens[i].is_operator(Operator::OpenParen) {
-				return true; // Found pattern: namespace::func(
-			}
-
-			// Should be another :: for deeper nesting
-			if !self.tokens[i].is_operator(Operator::DoubleColon) {
-				return false;
-			}
-
-			if i == 0 {
-				return false;
-			}
-			i -= 1; // Move to next identifier in the chain
+			.is_operator(Operator::OpenParen)
+		{
+			return true;
 		}
+
+		let mut pos = self.position + 1;
+		while pos + 2 < tokens_len {
+			if !unsafe { self.tokens.get_unchecked(pos) }
+				.is_operator(Operator::DoubleColon)
+			{
+				return false;
+			}
+			pos += 1;
+
+			if !unsafe { self.tokens.get_unchecked(pos) }
+				.is_identifier()
+			{
+				return false;
+			}
+			pos += 1;
+
+			if unsafe { self.tokens.get_unchecked(pos) }
+				.is_operator(Operator::OpenParen)
+			{
+				return true;
+			}
+		}
+
+		false
 	}
 }
 

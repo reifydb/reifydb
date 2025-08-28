@@ -21,7 +21,7 @@ impl<'a> Parser<'a> {
 		&mut self,
 		operator: Token<'a>,
 	) -> crate::Result<AstTuple<'a>> {
-		let mut nodes = Vec::new();
+		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;
 

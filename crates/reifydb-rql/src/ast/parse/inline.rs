@@ -15,7 +15,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_inline(&mut self) -> crate::Result<AstInline<'a>> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
-		let mut keyed_values = Vec::new();
+		let mut keyed_values = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;
 
