@@ -6,10 +6,10 @@
 use std::time::Duration;
 
 use reifydb::{
-	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
+	core::interface::{subsystem::logging::LogLevel::Trace, Params}, sync, FormatStyle, LoggingBuilder,
+	MemoryDatabaseOptimistic,
+	SessionSync,
 	WithSubsystem,
-	core::interface::{Params, subsystem::logging::LogLevel::Trace},
-	log_info, sync,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -31,73 +31,38 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 fn main() {
 	let mut db: DB = sync::memory_optimistic()
 		.with_logging(logger_configuration)
-
-		// .intercept(table_pre_insert(|_ctx| {
-		// 	log_info!("Table pre insert interceptor called!");
-		// 	Ok(())
-		// }))
-		// .intercept(table_post_insert(|_ctx| {
-		// 	log_info!("Table post insert interceptor called!");
-		// 	Ok(())
-		// }))
-		// .intercept(post_commit(|ctx| {
-		// 	log_info!(
-		// 		"Post-commit interceptor called with version: {:?}",
-		// 		ctx.version
-		// 	);
-		// 	Ok(())
-		// }))
 		.build()
 		.unwrap();
-	// let mut db: DB =
-	// sync::sqlite_optimistic(SqliteConfig::new("/tmp/reifydb"));
 
 	db.start().unwrap();
 
-	for frame in
-		db.query_as_root(r#"MAP 1 != undefined"#, Params::None).unwrap()
-	{
-		log_info!("{}", frame);
-	}
-
-	db.command_as_root(
-		r#"
-	    create schema test;
-	    create table test.users { id: int4, name: utf8, active: bool };
-	"#,
-		Params::None,
-	)
-	.unwrap();
-
-	db.command_as_root(
-		r#"
-  from [
-    { id: 1, name: "Alice", active: true },
-    { id: 2, name: "Bob", active: false },
-    { id: 3, name: "Charlie", active: true }
-  ] insert test.users
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	db.command_as_root(
-		r#"
-from test.users filter active = true map { id: id, name: "ACTIVE", active: false } update
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
 	for frame in db
-		.command_as_root(
-			r#"
-from test.users
-		"#,
-			Params::None,
-		)
+		.query_as_root(&generate_large_filter_query(), Params::None)
 		.unwrap()
 	{
 		println!("{}", frame);
 	}
+}
+
+fn generate_large_filter_query() -> String {
+	use std::collections::hash_map::DefaultHasher;
+	use std::hash::{Hash, Hasher};
+
+	let mut items = Vec::new();
+
+	for i in 1..=2049 {
+		let mut hasher = DefaultHasher::new();
+		i.hash(&mut hasher);
+		let hash = hasher.finish();
+
+		let active = if i <= 1025 {
+			(hash % 2) == 0
+		} else {
+			(hash % 2) == 1
+		};
+
+		items.push(format!("{{ id: {}, active: {} }}", i, active));
+	}
+
+	format!("from [{}] filter active = true", items.join(", "))
 }

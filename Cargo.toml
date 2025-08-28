@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
     #    "bin/cli",
+    "bin/bench",
     "bin/examples",
     "bin/playground",
     "bin/server",
@@ -30,6 +31,7 @@ members = [
 
 default-members = [
     #    "bin/cli",
+    "bin/bench",
     "bin/examples",
     "bin/playground",
     "bin/server",
@@ -138,4 +140,7 @@ heed = { version = "0.22.0", features = ["preserve_order"] }
 # reifydb-testing
 goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
+
+# benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
 
