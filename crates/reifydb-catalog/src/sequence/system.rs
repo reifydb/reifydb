@@ -19,6 +19,7 @@ pub(crate) const TABLE_SEQ_ID: SystemSequenceId = SystemSequenceId(2);
 pub(crate) const COLUMN_SEQ_ID: SystemSequenceId = SystemSequenceId(3);
 pub(crate) const COLUMN_POLICY_SEQ_ID: SystemSequenceId = SystemSequenceId(4);
 pub(crate) const VIEW_SEQ_ID: SystemSequenceId = SystemSequenceId(5);
+#[allow(dead_code)]
 pub(crate) const PK_SEQ_ID: SystemSequenceId = SystemSequenceId(6);
 pub(crate) const FLOW_SEQ_ID: SystemSequenceId = SystemSequenceId(7);
 pub(crate) const FLOW_NODE_SEQ_ID: SystemSequenceId = SystemSequenceId(8);
@@ -59,6 +60,7 @@ static VIEW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	.encode()
 });
 
+#[allow(dead_code)]
 static PK_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
 		sequence: PK_SEQ_ID,
@@ -90,6 +92,7 @@ pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
+	#[allow(dead_code)]
 	pub(crate) fn next_primary_key_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<PrimaryKeyId> {

@@ -11,10 +11,14 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
-	CatalogSchemaQueryOperations, CatalogStore,
-	CatalogViewCommandOperations, CatalogViewQueryOperations,
-	TransactionalChangesExt, view::ViewToCreate,
+	CatalogStore,
+	transaction::{
+		CatalogCommandTransactionOperations,
+		CatalogQueryTransactionOperations,
+		CatalogSchemaQueryOperations, CatalogViewCommandOperations,
+		CatalogViewQueryOperations, TransactionalChangesExt,
+	},
+	view::ViewToCreate,
 };
 
 impl<T> CatalogViewCommandOperations for T

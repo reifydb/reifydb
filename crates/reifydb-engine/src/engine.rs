@@ -10,8 +10,8 @@ use reifydb_core::{
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, Identity, Params, Query, QueryTransaction,
-		Transaction, VersionedTransaction, WithHooks,
+		ExecuteQuery, Identity, Params, Query, Transaction,
+		VersionedTransaction, WithHooks,
 	},
 };
 

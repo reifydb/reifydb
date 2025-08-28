@@ -21,19 +21,11 @@ pub mod view_column;
 pub use loader::MaterializedCatalogLoader;
 pub use materialized::MaterializedCatalog;
 pub use transaction::{
-	CatalogCommandTransaction,
-	CatalogCommandTransactionOperations,
-	CatalogQueryTransaction,
-	CatalogQueryTransactionOperations,
-	CatalogSchemaCommandOperations,
-	CatalogSchemaQueryOperations,
-	CatalogTableCommandOperations,
-	CatalogTableQueryOperations,
-	// Legacy exports (for backward compatibility)
-	CatalogTransaction,
-	CatalogTransactionOperations,
-	CatalogViewCommandOperations,
-	CatalogViewQueryOperations,
+	CatalogCommandTransaction, CatalogCommandTransactionOperations,
+	CatalogQueryTransaction, CatalogQueryTransactionOperations,
+	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
+	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogViewCommandOperations, CatalogViewQueryOperations,
 	TransactionalChangesExt,
 };
 
