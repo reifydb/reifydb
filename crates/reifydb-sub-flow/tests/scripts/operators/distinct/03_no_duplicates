@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test distinct when all values are unique
+# Should return all rows
+
+(command 'create schema test;')
+command 'create table test.source { id: int4, value: int4 }'
+---
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  source  |   true    |
+> +----------+----------+-----------+
+> 
+
+command 'create deferred view test.unique_values { id: int4, value: int4 } with {
+  from test.source
+  distinct { value }
+}'
+---
+> +----------+-----------------+-----------+
+> |  schema  |      view       |  created  |
+> +----------+-----------------+-----------+
+> |   test   |  unique_values  |   true    |
+> +----------+-----------------+-----------+
+> 
+
+# Insert all unique values
+command 'from [
+  {id: 1, value: 100},
+  {id: 2, value: 200},
+  {id: 3, value: 300},
+  {id: 4, value: 400},
+  {id: 5, value: 500}
+] insert test.source'
+---
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  source  |     5      |
+> +----------+----------+------------+
+> 
+
+command 'from test.source'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  5   |   500   |
+> |  4   |   400   |
+> |  3   |   300   |
+> |  2   |   200   |
+> |  1   |   100   |
+> +------+---------+
+> 
+
+wait 5
+
+# Should return all rows since all are unique
+command 'from test.unique_values'
+---
+> +------+---------+
+> |  id  |  value  |
+> +------+---------+
+> |  5   |   500   |
+> |  4   |   400   |
+> |  3   |   300   |
+> |  2   |   200   |
+> |  1   |   100   |
+> +------+---------+
+> 

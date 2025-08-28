@@ -104,8 +104,7 @@ fn main() {
 			value: int8
 		} with {
 			FROM demo.events
-			filter { value <= 200 }
-			DISTINCT {category }
+			DISTINCT { value }
 		};
 		"#,
 		Params::None,

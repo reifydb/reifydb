@@ -9,8 +9,8 @@ mod view;
 
 // Re-export the new transaction traits
 // Legacy re-exports for backward compatibility (to be removed later)
-pub use command::CatalogCommandTransaction as CatalogTransaction;
 pub use command::{
+	CatalogCommandTransaction as CatalogTransaction,
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
 	CatalogCommandTransactionOperations as CatalogTransactionOperations,
 	CatalogSchemaCommandOperations, CatalogTableCommandOperations,
