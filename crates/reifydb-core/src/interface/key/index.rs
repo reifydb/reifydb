@@ -5,28 +5,31 @@ use std::collections::Bound;
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, RowNumber,
-	interface::{EncodableKeyRange, catalog::TableId},
+	EncodedKey, EncodedKeyRange,
+	interface::{
+		EncodableKeyRange,
+		catalog::{IndexId, StoreId},
+	},
 	util::encoding::keycode,
 };
 
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableRowKey {
-	pub table: TableId,
-	pub row: RowNumber,
+pub struct IndexKey {
+	pub store: StoreId,
+	pub index: IndexId,
 }
 
-impl EncodableKey for TableRowKey {
-	const KIND: KeyKind = KeyKind::TableRow;
+impl EncodableKey for IndexKey {
+	const KIND: KeyKind = KeyKind::Index;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(18);
+		let mut out = Vec::with_capacity(19);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
-		out.extend(&keycode::serialize(&self.row));
+		out.extend(keycode::serialize_store_id(&self.store));
+		out.extend(&keycode::serialize(&self.index));
 
 		EncodedKey::new(out)
 	}
@@ -47,26 +50,29 @@ impl EncodableKey for TableRowKey {
 		}
 
 		let payload = &key[2..];
-		if payload.len() != 16 {
+		if payload.len() != 17 {
+			// 9 bytes for store + 8 bytes for index
 			return None;
 		}
 
-		keycode::deserialize(&payload[..8])
-			.ok()
-			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(table, row)| Self {
-				table,
-				row,
-			})
+		let store =
+			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let index: IndexId =
+			keycode::deserialize(&payload[9..]).ok()?;
+
+		Some(Self {
+			store,
+			index,
+		})
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableRowKeyRange {
-	pub table: TableId,
+pub struct StoreIndexKeyRange {
+	pub store: StoreId,
 }
 
-impl TableRowKeyRange {
+impl StoreIndexKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		if key.len() < 2 {
 			return None;
@@ -83,34 +89,34 @@ impl TableRowKeyRange {
 		}
 
 		let payload = &key[2..];
-		if payload.len() < 8 {
+		if payload.len() < 9 {
 			return None;
 		}
 
-		let table: TableId =
-			keycode::deserialize(&payload[..8]).ok()?;
-		Some(TableRowKeyRange {
-			table,
+		let store =
+			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		Some(StoreIndexKeyRange {
+			store,
 		})
 	}
 }
 
-impl EncodableKeyRange for TableRowKeyRange {
-	const KIND: KeyKind = KeyKind::TableRow;
+impl EncodableKeyRange for StoreIndexKeyRange {
+	const KIND: KeyKind = KeyKind::Index;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(10);
+		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
+		out.extend(&keycode::serialize_store_id(&self.store));
 		Some(EncodedKey::new(out))
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(10);
+		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*self.table - 1)));
+		out.extend(&keycode::serialize_store_id(&self.store.prev()));
 		Some(EncodedKey::new(out))
 	}
 
@@ -136,71 +142,77 @@ impl EncodableKeyRange for TableRowKeyRange {
 	}
 }
 
-impl TableRowKey {
-	pub fn full_scan(table: TableId) -> EncodedKeyRange {
+impl IndexKey {
+	pub fn full_scan(store: impl Into<StoreId>) -> EncodedKeyRange {
+		let store = store.into();
 		EncodedKeyRange::start_end(
-			Some(Self::table_start(table)),
-			Some(Self::table_end(table)),
+			Some(Self::store_start(store)),
+			Some(Self::store_end(store)),
 		)
 	}
 
-	pub fn table_start(table: TableId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+	pub fn store_start(store: impl Into<StoreId>) -> EncodedKey {
+		let store = store.into();
+		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&table));
+		out.extend(&keycode::serialize_store_id(&store));
 		EncodedKey::new(out)
 	}
 
-	pub fn table_end(table: TableId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+	pub fn store_end(store: impl Into<StoreId>) -> EncodedKey {
+		let store = store.into();
+		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*table - 1)));
+		out.extend(&keycode::serialize_store_id(&store.prev()));
 		EncodedKey::new(out)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, TableRowKey};
-	use crate::{RowNumber, interface::catalog::TableId};
+	use super::{EncodableKey, IndexKey};
+	use crate::interface::catalog::{IndexId, StoreId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = TableRowKey {
-			table: TableId(0xABCD),
-			row: RowNumber(0x123456789ABCDEF0),
+		let key = IndexKey {
+			store: StoreId::table(0xABCD),
+			index: IndexId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
 		let expected: Vec<u8> = vec![
 			0xFE, // version
-			0xFC, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
-			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
+			0xF3, // kind
+			0x01, // StoreId type discriminator (Table)
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
+			0x32, // store id bytes
+			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
+			0x0F, // index id bytes
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = TableRowKey::decode(&encoded).unwrap();
-		assert_eq!(key.table, 0xABCD);
-		assert_eq!(key.row, 0x123456789ABCDEF0);
+		let key = IndexKey::decode(&encoded).unwrap();
+		assert_eq!(key.store, 0xABCD);
+		assert_eq!(key.index, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = TableRowKey {
-			table: TableId(1),
-			row: RowNumber(100),
+		let key1 = IndexKey {
+			store: StoreId::table(1),
+			index: IndexId(100),
 		};
-		let key2 = TableRowKey {
-			table: TableId(1),
-			row: RowNumber(200),
+		let key2 = IndexKey {
+			store: StoreId::table(1),
+			index: IndexId(200),
 		};
-		let key3 = TableRowKey {
-			table: TableId(2),
-			row: RowNumber(0),
+		let key3 = IndexKey {
+			store: StoreId::table(2),
+			index: IndexId(0),
 		};
 
 		let encoded1 = key1.encode();

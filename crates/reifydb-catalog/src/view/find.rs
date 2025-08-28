@@ -40,7 +40,7 @@ impl CatalogStore {
 			name,
 			schema,
 			kind,
-			columns: Self::list_view_columns(rx, id)?,
+			columns: Self::list_table_columns(rx, id)?,
 		}))
 	}
 

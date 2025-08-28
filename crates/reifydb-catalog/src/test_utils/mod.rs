@@ -11,10 +11,10 @@ use reifydb_core::{
 
 use crate::{
 	CatalogStore,
+	column::{ColumnIndex, ColumnToCreate},
 	schema::SchemaToCreate,
 	table,
 	table::TableToCreate,
-	table_column::{ColumnIndex, TableColumnToCreate},
 	view,
 	view::ViewToCreate,
 };
@@ -77,7 +77,7 @@ pub fn create_table(
 	.unwrap()
 }
 
-pub fn create_test_table_column(
+pub fn create_test_column(
 	txn: &mut impl CommandTransaction,
 	name: &str,
 	value: Type,
@@ -88,10 +88,10 @@ pub fn create_test_table_column(
 	let columns =
 		CatalogStore::list_table_columns(txn, TableId(1)).unwrap();
 
-	CatalogStore::create_table_column(
+	CatalogStore::create_column(
 		txn,
 		TableId(1),
-		TableColumnToCreate {
+		ColumnToCreate {
 			fragment: None,
 			schema_name: "test_schema",
 			table: TableId(1025),

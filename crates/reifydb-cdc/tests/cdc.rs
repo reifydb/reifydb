@@ -10,7 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use Key::TableRow;
+use Key::Row;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
@@ -21,9 +21,9 @@ use reifydb_core::{
 	interface::{
 		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
 		CommandTransaction, ConsumerId, EncodableKey,
-		Engine as EngineInterface, Key, TableId,
+		Engine as EngineInterface, Key, StoreId, TableId,
 		VersionedCommandTransaction, VersionedQueryTransaction,
-		key::TableRowKey,
+		key::RowKey,
 	},
 	row::EncodedRow,
 	util::{CowVec, mock_time_set},
@@ -88,8 +88,8 @@ fn test_event_processing() {
 	assert_eq!(events.len(), 5, "Should have processed 5 events");
 
 	for (i, event) in events.iter().enumerate() {
-		if let Some(TableRow(table_row)) = Key::decode(event.key()) {
-			assert_eq!(table_row.table, TableId(1));
+		if let Some(Row(table_row)) = Key::decode(event.key()) {
+			assert_eq!(table_row.store, TableId(1));
 			assert_eq!(table_row.row, RowNumber(i as u64));
 		} else {
 			panic!("Expected TableRow key");
@@ -382,8 +382,8 @@ fn test_non_table_events_filtered() {
 	let mut txn =
 		engine.begin_command().expect("Failed to begin transaction");
 
-	let table_key = TableRowKey {
-		table: TableId(1),
+	let table_key = RowKey {
+		store: StoreId::table(1),
 		row: RowNumber(1),
 	};
 	txn.set(
@@ -412,8 +412,8 @@ fn test_non_table_events_filtered() {
 	let events = consumer_clone.get_events();
 	assert_eq!(events.len(), 1, "Should have processed only 1 table event");
 
-	if let Some(TableRow(table_row)) = Key::decode(events[0].key()) {
-		assert_eq!(table_row.table, TableId(1));
+	if let Some(Row(table_row)) = Key::decode(events[0].key()) {
+		assert_eq!(table_row.store, TableId(1));
 		assert_eq!(table_row.row, RowNumber(1));
 	} else {
 		panic!("Expected TableRow key");
@@ -544,8 +544,8 @@ fn insert_test_events(
 ) -> Result<()> {
 	for i in 0..count {
 		let mut txn = engine.begin_command()?;
-		let key = TableRowKey {
-			table: TableId(1),
+		let key = RowKey {
+			store: StoreId::table(1),
 			row: RowNumber(i as u64),
 		};
 		let value = format!("value_{}", i);

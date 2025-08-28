@@ -3,13 +3,13 @@
 
 use reifydb_core::{
 	Error, Type,
-	interface::{EncodableKey, QueryTransaction, TableColumnsKey},
+	interface::{ColumnsKey, EncodableKey, QueryTransaction},
 	internal_error,
 };
 
 use crate::{
 	CatalogStore,
-	table_column::{ColumnDef, ColumnId, ColumnIndex, layout::column},
+	column::{ColumnDef, ColumnId, ColumnIndex, layout::column},
 };
 
 impl CatalogStore {
@@ -18,7 +18,7 @@ impl CatalogStore {
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
 		let versioned = rx
-			.get(&TableColumnsKey { column }.encode())?
+			.get(&ColumnsKey { column }.encode())?
 			.ok_or_else(|| {
 				Error(internal_error!(
 					"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -59,16 +59,15 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		CatalogStore, table_column::ColumnId,
-		test_utils::create_test_table_column,
+		CatalogStore, column::ColumnId, test_utils::create_test_column,
 	};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
-		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
-		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
+		create_test_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_column(&mut txn, "col_2", Type::Int2, vec![]);
+		create_test_column(&mut txn, "col_3", Type::Int4, vec![]);
 
 		let result =
 			CatalogStore::get_table_column(&mut txn, ColumnId(2))
@@ -83,9 +82,9 @@ mod tests {
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
-		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
-		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
-		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
+		create_test_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_column(&mut txn, "col_2", Type::Int2, vec![]);
+		create_test_column(&mut txn, "col_3", Type::Int4, vec![]);
 
 		let err = CatalogStore::get_table_column(&mut txn, ColumnId(4))
 			.unwrap_err();

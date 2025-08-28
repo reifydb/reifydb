@@ -9,8 +9,8 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, QueryTransaction, ViewDef,
-		ViewRowKey, ViewRowKeyRange,
+		EncodableKey, EncodableKeyRange, QueryTransaction, RowKey,
+		StoreRowKeyRange, ViewDef,
 	},
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
@@ -76,8 +76,8 @@ impl ViewScanNode {
 		}
 
 		let batch_size = self.context.batch_size;
-		let range = ViewRowKeyRange {
-			view: self.view.id,
+		let range = StoreRowKeyRange {
+			store: self.view.id.into(),
 		};
 
 		let range = if let Some(_) = &self.last_key {
@@ -101,7 +101,7 @@ impl ViewScanNode {
 			rx.range(range)?.into_iter().collect();
 
 		for versioned in versioned_rows.into_iter() {
-			if let Some(key) = ViewRowKey::decode(&versioned.key) {
+			if let Some(key) = RowKey::decode(&versioned.key) {
 				batch_rows.push(versioned.row);
 				row_numbers.push(key.row);
 				new_last_key = Some(versioned.key);

@@ -32,20 +32,20 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
+					store,
 					row_ids,
 					after,
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
 					output.push(FlowDiff::Insert {
-						source: *source,
+						store: *store,
 						row_ids: row_ids.clone(),
 						after: projected_columns,
 					});
 				}
 				FlowDiff::Update {
-					source,
+					store,
 					row_ids,
 					before,
 					after,
@@ -53,14 +53,14 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 					let projected_columns =
 						self.project(ctx, &after)?;
 					output.push(FlowDiff::Update {
-						source: *source,
+						store: *store,
 						row_ids: row_ids.clone(),
 						before: before.clone(),
 						after: projected_columns,
 					});
 				}
 				FlowDiff::Remove {
-					source,
+					store,
 					row_ids,
 					before,
 				} => {
@@ -69,7 +69,7 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 					let projected_columns =
 						self.project(ctx, &before)?;
 					output.push(FlowDiff::Remove {
-						source: *source,
+						store: *store,
 						row_ids: row_ids.clone(),
 						before: projected_columns,
 					});

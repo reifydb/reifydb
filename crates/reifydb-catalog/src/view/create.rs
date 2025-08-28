@@ -6,8 +6,8 @@ use reifydb_core::{
 	OwnedFragment, Type,
 	diagnostic::catalog::view_already_exists,
 	interface::{
-		CommandTransaction, EncodableKey, Key, SchemaId, SchemaViewKey,
-		ViewDef, ViewId, ViewKey, ViewKind,
+		ColumnIndex, CommandTransaction, EncodableKey, Key, SchemaId,
+		SchemaViewKey, TableId, ViewDef, ViewId, ViewKey, ViewKind,
 	},
 	return_error,
 };
@@ -16,8 +16,6 @@ use crate::{
 	CatalogStore,
 	sequence::SystemSequence,
 	view::layout::{view, view_schema},
-	view_column,
-	view_column::ColumnIndex,
 };
 
 #[derive(Debug, Clone)]
@@ -146,20 +144,22 @@ impl CatalogStore {
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
-			Self::create_view_column(
+			Self::create_column(
 				txn,
 				view,
-				view_column::ViewColumnToCreate {
+				crate::column::ColumnToCreate {
 					fragment: column_to_create
 						.fragment
 						.clone(),
 					schema_name: &schema.name,
-					view,
-					view_name: &to_create.name,
+					table: TableId(view.0), /* Convert ViewId to TableId (both are u64) */
+					table_name: &to_create.name,
 					column: column_to_create.name,
 					value: column_to_create.ty,
 					if_not_exists: false,
+					policies: vec![],
 					index: ColumnIndex(idx as u16),
+					auto_increment: false,
 				},
 			)?;
 		}

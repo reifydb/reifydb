@@ -3,25 +3,25 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::catalog::ViewColumnId,
+	EncodedKey, EncodedKeyRange, interface::catalog::StoreId,
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ViewColumnsKey {
-	pub column: ViewColumnId,
+pub struct RowSequenceKey {
+	pub store: StoreId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for ViewColumnsKey {
-	const KIND: KeyKind = KeyKind::ViewColumns;
+impl EncodableKey for RowSequenceKey {
+	const KIND: KeyKind = KeyKind::RowSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+		let mut out = Vec::with_capacity(11); // 1 + 1 + 9
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.column));
+		out.extend(&keycode::serialize_store_id(&self.store));
 		EncodedKey::new(out)
 	}
 
@@ -41,32 +41,35 @@ impl EncodableKey for ViewColumnsKey {
 		}
 
 		let payload = &key[2..];
-		if payload.len() != 8 {
+		if payload.len() != 9 {
+			// 9 bytes for store
 			return None;
 		}
 
-		keycode::deserialize(&payload[..8]).ok().map(|column| Self {
-			column,
+		keycode::deserialize_store_id(&payload[..9]).ok().map(|store| {
+			Self {
+				store,
+			}
 		})
 	}
 }
 
-impl ViewColumnsKey {
+impl RowSequenceKey {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::column_start()),
-			Some(Self::column_end()),
+			Some(Self::sequence_start()),
+			Some(Self::sequence_end()),
 		)
 	}
 
-	fn column_start() -> EncodedKey {
+	fn sequence_start() -> EncodedKey {
 		let mut out = Vec::with_capacity(2);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
 		EncodedKey::new(out)
 	}
 
-	fn column_end() -> EncodedKey {
+	fn sequence_end() -> EncodedKey {
 		let mut out = Vec::with_capacity(2);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
@@ -76,23 +79,25 @@ impl ViewColumnsKey {
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, ViewColumnsKey};
-	use crate::interface::catalog::ViewColumnId;
+	use super::{EncodableKey, RowSequenceKey};
+	use crate::interface::catalog::StoreId;
 
 	#[test]
 	fn test_encode_decode() {
-		let key = ViewColumnsKey {
-			column: ViewColumnId(0xABCD),
+		let key = RowSequenceKey {
+			store: StoreId::table(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
 			0xFE, // version
-			0xED, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
+			0xF7, // kind
+			0x01, // StoreId type discriminator (Table)
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
+			0x32, // store id bytes
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = ViewColumnsKey::decode(&encoded).unwrap();
-		assert_eq!(key.column, 0xABCD);
+		let key = RowSequenceKey::decode(&encoded).unwrap();
+		assert_eq!(key.store, 0xABCD);
 	}
 }

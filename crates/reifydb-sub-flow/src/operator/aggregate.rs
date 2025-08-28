@@ -6,7 +6,7 @@ use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
-		SourceId::View, Transaction, ViewId, expression::Expression,
+		StoreId, Transaction, ViewId, expression::Expression,
 	},
 	row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	util::encoding::keycode,
@@ -599,7 +599,7 @@ impl AggregateOperator {
 						columns
 					);
 					output_diffs.push(FlowDiff::Update {
-						source: View(ViewId(0)),
+						store: StoreId::View(ViewId(1)),
 						row_ids: update_row_ids,
 						before: previous.clone(),
 						after: columns.clone(),
@@ -624,7 +624,7 @@ impl AggregateOperator {
 					}
 
 					output_diffs.push(FlowDiff::Insert {
-						source: View(ViewId(0)),
+						store: StoreId::View(ViewId(1)),
 						row_ids: insert_row_ids,
 						after: columns.clone(),
 					});
@@ -661,7 +661,7 @@ impl AggregateOperator {
 				}
 
 				output_diffs.push(FlowDiff::Remove {
-					source: View(ViewId(0)),
+					store: StoreId::View(ViewId(1)),
 					row_ids: remove_row_ids,
 					before: before_columns,
 				});

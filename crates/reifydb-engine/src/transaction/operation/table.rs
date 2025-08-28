@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::sequence::TableRowSequence;
+use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
 	RowNumber,
 	hook::table::{TablePostInsertHook, TablePreInsertHook},
 	interface::{
-		EncodableKey, TableDef, TableRowKey, Transaction,
+		EncodableKey, RowKey, TableDef, Transaction,
 		VersionedCommandTransaction, interceptor::TableInterceptor,
 	},
 	row::EncodedRow,
@@ -41,8 +41,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		table: TableDef,
 		row: EncodedRow,
 	) -> crate::Result<()> {
-		let row_number =
-			TableRowSequence::next_row_number(self, table.id)?;
+		let row_number = RowSequence::next_row_number(self, table.id)?;
 
 		TableInterceptor::pre_insert(self, &table, &row)?;
 
@@ -55,8 +54,8 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 			.unwrap();
 
 		self.set(
-			&TableRowKey {
-				table: table.id,
+			&RowKey {
+				store: table.id.into(),
 				row: row_number,
 			}
 			.encode(),
@@ -89,8 +88,8 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		id: RowNumber,
 		row: EncodedRow,
 	) -> crate::Result<()> {
-		let key = TableRowKey {
-			table: table.id,
+		let key = RowKey {
+			store: table.id.into(),
 			row: id,
 		}
 		.encode();
@@ -122,8 +121,8 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		table: TableDef,
 		id: RowNumber,
 	) -> crate::Result<()> {
-		let key = TableRowKey {
-			table: table.id,
+		let key = RowKey {
+			store: table.id.into(),
 			row: id,
 		}
 		.encode();

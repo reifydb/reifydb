@@ -19,7 +19,7 @@ impl VersionedGet for Sqlite {
 	) -> Result<Option<Versioned>> {
 		let conn = self.get_conn();
 
-		let table = table_name(key);
+		let table = table_name(key)?;
 		let query = format!(
 			"SELECT key, value, version FROM {} WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
 			table

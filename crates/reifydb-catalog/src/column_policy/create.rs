@@ -3,20 +3,20 @@
 
 use reifydb_core::{
 	interface::{
-		ColumnPolicy, ColumnPolicyKind, CommandTransaction,
-		EncodableKey, TableColumnPolicyKey,
+		ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind,
+		CommandTransaction, EncodableKey,
 	},
 	result::error::diagnostic::catalog::table_column_policy_already_exists,
 	return_error,
 };
 
 use crate::{
-	CatalogStore, sequence::SystemSequence, table_column::ColumnId,
-	table_column_policy::layout::column_policy,
+	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
+	sequence::SystemSequence,
 };
 
 impl CatalogStore {
-	pub(crate) fn create_table_column_policy(
+	pub(crate) fn create_column_policy(
 		txn: &mut impl CommandTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
@@ -62,7 +62,7 @@ impl CatalogStore {
 		}
 
 		txn.set(
-			&TableColumnPolicyKey {
+			&ColumnPolicyKey {
 				column,
 				policy: id,
 			}
@@ -92,19 +92,19 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
-		test_utils::{create_test_table_column, ensure_test_table},
+		column::{ColumnId, ColumnIndex, ColumnToCreate},
+		test_utils::{create_test_column, ensure_test_table},
 	};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
-		create_test_table_column(&mut txn, "col_1", Type::Int2, vec![]);
+		create_test_column(&mut txn, "col_1", Type::Int2, vec![]);
 
 		let policy = Saturation(Error);
 
-		let result = CatalogStore::create_table_column_policy(
+		let result = CatalogStore::create_column_policy(
 			&mut txn,
 			ColumnId(1),
 			policy.clone(),
@@ -119,10 +119,10 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "schema",
 				table: TableId(1),
@@ -138,14 +138,14 @@ mod tests {
 		.unwrap();
 
 		let policy = Saturation(ColumnSaturationPolicy::Undefined);
-		CatalogStore::create_table_column_policy(
+		CatalogStore::create_column_policy(
 			&mut txn,
 			ColumnId(1),
 			policy.clone(),
 		)
 		.unwrap();
 
-		let err = CatalogStore::create_table_column_policy(
+		let err = CatalogStore::create_column_policy(
 			&mut txn,
 			ColumnId(1),
 			policy.clone(),

@@ -11,7 +11,7 @@ impl VersionedContains for Sqlite {
 	fn contains(&self, key: &EncodedKey, version: Version) -> Result<bool> {
 		let conn = self.get_conn();
 
-		let table = table_name(key);
+		let table = table_name(key)?;
 		let query = format!(
 			"SELECT EXISTS(SELECT 1 FROM {} WHERE key = ? AND version <= ?)",
 			table

@@ -122,7 +122,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
+					store,
 					row_ids,
 					after,
 				} => {
@@ -171,7 +171,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 						// top N
 						output_diffs
 							.push(FlowDiff::Remove {
-							source: *source,
+							store: *store,
 							row_ids: rows_to_remove,
 							before: after.clone(), /* Simplified - should track actual data */
 						});
@@ -181,7 +181,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 						// These are new top N rows
 						output_diffs
 							.push(FlowDiff::Insert {
-							source: *source,
+							store: *store,
 							row_ids: rows_to_add,
 							after: after.clone(),
 						});
@@ -193,7 +193,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 						state.row_ids.len();
 				}
 				FlowDiff::Remove {
-					source,
+					store,
 					row_ids,
 					before,
 				} => {
@@ -221,7 +221,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 					if !rows_to_remove.is_empty() {
 						output_diffs
 							.push(FlowDiff::Remove {
-							source: *source,
+							store: *store,
 							row_ids: rows_to_remove,
 							before: before.clone(),
 						});
@@ -238,7 +238,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 					// N to replace removed ones
 				}
 				FlowDiff::Update {
-					source,
+					store,
 					row_ids,
 					before,
 					after,
@@ -258,7 +258,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 					if !rows_to_update.is_empty() {
 						output_diffs
 							.push(FlowDiff::Update {
-							source: *source,
+							store: *store,
 							row_ids: rows_to_update,
 							before: before.clone(),
 							after: after.clone(),

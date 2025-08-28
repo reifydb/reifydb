@@ -1,29 +1,28 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{TableColumnId, TableId},
+	interface::{ColumnId, EncodableKey, KeyKind, StoreId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableColumnKey {
-	pub table: TableId,
-	pub column: TableColumnId,
+pub struct ColumnKey {
+	pub store: StoreId,
+	pub column: ColumnId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for TableColumnKey {
-	const KIND: KeyKind = KeyKind::TableColumn;
+impl EncodableKey for ColumnKey {
+	const KIND: KeyKind = KeyKind::Column;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(18);
+		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.table));
+		out.extend(&keycode::serialize_store_id(&self.store));
 		out.extend(&keycode::serialize(&self.column));
 		EncodedKey::new(out)
 	}
@@ -44,41 +43,45 @@ impl EncodableKey for TableColumnKey {
 		}
 
 		let payload = &key[2..];
-		if payload.len() != 16 {
+		if payload.len() != 17 {
+			// 9 bytes for store + 8 bytes for column
 			return None;
 		}
 
-		keycode::deserialize(&payload[..8])
-			.ok()
-			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(table, column)| Self {
-				table,
-				column,
-			})
+		let store =
+			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let column: ColumnId =
+			keycode::deserialize(&payload[9..]).ok()?;
+
+		Some(Self {
+			store,
+			column,
+		})
 	}
 }
 
-impl TableColumnKey {
-	pub fn full_scan(table: TableId) -> EncodedKeyRange {
+impl ColumnKey {
+	pub fn full_scan(store: impl Into<StoreId>) -> EncodedKeyRange {
+		let store = store.into();
 		EncodedKeyRange::start_end(
-			Some(Self::start(table)),
-			Some(Self::end(table)),
+			Some(Self::start(store)),
+			Some(Self::end(store)),
 		)
 	}
 
-	fn start(table: TableId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+	fn start(store: StoreId) -> EncodedKey {
+		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&table));
+		out.extend(&keycode::serialize_store_id(&store));
 		EncodedKey::new(out)
 	}
 
-	fn end(table: TableId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
+	fn end(store: StoreId) -> EncodedKey {
+		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*table - 1)));
+		out.extend(&keycode::serialize_store_id(&store.prev()));
 		EncodedKey::new(out)
 	}
 }
@@ -87,45 +90,48 @@ impl TableColumnKey {
 mod tests {
 	use super::EncodableKey;
 	use crate::interface::{
-		TableColumnKey,
-		catalog::{TableColumnId, TableId},
+		ColumnKey,
+		catalog::{ColumnId, StoreId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = TableColumnKey {
-			table: TableId(0xABCD),
-			column: TableColumnId(0x123456789ABCDEF0),
+		let key = ColumnKey {
+			store: StoreId::table(0xABCD),
+			column: ColumnId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
 		let expected: Vec<u8> = vec![
 			0xFE, // version
 			0xF8, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
-			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
+			0x01, // StoreId type discriminator (Table)
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
+			0x32, // store id bytes
+			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
+			0x0F, // column id bytes
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = TableColumnKey::decode(&encoded).unwrap();
-		assert_eq!(key.table, 0xABCD);
+		let key = ColumnKey::decode(&encoded).unwrap();
+		assert_eq!(key.store, 0xABCD);
 		assert_eq!(key.column, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = TableColumnKey {
-			table: TableId(1),
-			column: TableColumnId(100),
+		let key1 = ColumnKey {
+			store: StoreId::table(1),
+			column: ColumnId(100),
 		};
-		let key2 = TableColumnKey {
-			table: TableId(1),
-			column: TableColumnId(200),
+		let key2 = ColumnKey {
+			store: StoreId::table(1),
+			column: ColumnId(200),
 		};
-		let key3 = TableColumnKey {
-			table: TableId(2),
-			column: TableColumnId(0),
+		let key3 = ColumnKey {
+			store: StoreId::table(2),
+			column: ColumnId(0),
 		};
 
 		let encoded1 = key1.encode();

@@ -7,7 +7,7 @@ mod id;
 mod layout;
 mod policy;
 mod schema;
-mod source;
+mod store;
 mod table;
 mod view;
 
@@ -17,6 +17,6 @@ pub use id::*;
 pub use layout::*;
 pub use policy::*;
 pub use schema::*;
-pub use source::*;
+pub use store::*;
 pub use table::*;
 pub use view::*;
