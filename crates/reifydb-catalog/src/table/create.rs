@@ -13,9 +13,9 @@ use reifydb_core::{
 
 use crate::{
 	CatalogStore,
+	column::ColumnIndex,
 	sequence::SystemSequence,
 	table::layout::{table, table_schema},
-	table_column::ColumnIndex,
 };
 
 #[derive(Debug, Clone)]
@@ -130,10 +130,10 @@ impl CatalogStore {
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
 		{
-			Self::create_table_column(
+			Self::create_column(
 				txn,
 				table,
-				crate::table_column::TableColumnToCreate {
+				crate::column::ColumnToCreate {
 					fragment: column_to_create
 						.fragment
 						.clone(),

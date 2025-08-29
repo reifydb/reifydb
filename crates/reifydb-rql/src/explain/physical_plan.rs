@@ -448,7 +448,16 @@ fn render_physical_plan_inner(
 				);
 			});
 		}
-		PhysicalPlan::AlterTable(_) => unimplemented!(),
-		PhysicalPlan::AlterView(_) => unimplemented!(),
+		PhysicalPlan::AlterTable(_) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				"AlterTable",
+			);
+		}
+		PhysicalPlan::AlterView(_) => {
+			write_node_header(output, prefix, is_last, "AlterView");
+		}
 	}
 }

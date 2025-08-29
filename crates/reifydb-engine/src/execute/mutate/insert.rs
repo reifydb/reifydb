@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{CatalogStore, sequence::TableColumnSequence};
+use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor, IntoFragment, Type, Value,
 	interface::{ColumnPolicyKind, Params, Transaction},
@@ -105,7 +105,7 @@ impl Executor {
 							value,
 							Value::Undefined
 						) {
-						value = TableColumnSequence::next_value(txn, table.id, table_column.id)?;
+						value = ColumnSequence::next_value(txn, table.id, table_column.id)?;
 					}
 
 					let policies: Vec<ColumnPolicyKind> =

@@ -30,7 +30,7 @@ mod take;
 mod tuple;
 mod update;
 
-use std::{cmp::PartialOrd, collections::HashMap};
+use std::cmp::PartialOrd;
 
 use reifydb_core::{result::error::diagnostic::ast, return_error};
 
@@ -56,75 +56,54 @@ pub(crate) enum Precedence {
 	Primary,
 }
 
-pub fn parse<'a>(tokens: Vec<Token>) -> crate::Result<Vec<AstStatement>> {
+// Compile-time precedence lookup using const evaluation
+const fn get_precedence_for_operator(op: Operator) -> Precedence {
+	use Operator::*;
+	use Precedence::*;
+
+	match op {
+		As => Assignment,
+		Equal | DoubleEqual | BangEqual | LeftAngle
+		| LeftAngleEqual | RightAngle | RightAngleEqual => Comparison,
+		Plus | Minus => Term,
+		Asterisk | Slash | Percent => Factor,
+		OpenParen => Call,
+		Dot | DoubleColon | Arrow => Primary,
+		Colon => Assignment,
+		Or | Xor => LogicOr,
+		And => LogicAnd,
+		_ => None,
+	}
+}
+
+pub fn parse<'a>(
+	tokens: Vec<Token<'a>>,
+) -> crate::Result<Vec<AstStatement<'a>>> {
 	let mut parser = Parser::new(tokens);
 	parser.parse()
 }
 
-struct Parser {
-	tokens: Vec<Token>,
-	precedence_map: HashMap<Operator, Precedence>,
+struct Parser<'a> {
+	tokens: Vec<Token<'a>>,
+	position: usize,
 }
 
-impl Parser {
-	fn new(mut tokens: Vec<Token>) -> Self {
-		let mut precedence_map = HashMap::new();
-		precedence_map.insert(Operator::As, Precedence::Assignment);
-		precedence_map.insert(Operator::Equal, Precedence::Comparison);
-
-		precedence_map
-			.insert(Operator::DoubleEqual, Precedence::Comparison);
-		precedence_map
-			.insert(Operator::BangEqual, Precedence::Comparison);
-
-		precedence_map
-			.insert(Operator::LeftAngle, Precedence::Comparison);
-		precedence_map.insert(
-			Operator::LeftAngleEqual,
-			Precedence::Comparison,
-		);
-		precedence_map
-			.insert(Operator::RightAngle, Precedence::Comparison);
-		precedence_map.insert(
-			Operator::RightAngleEqual,
-			Precedence::Comparison,
-		);
-
-		precedence_map.insert(Operator::Plus, Precedence::Term);
-		precedence_map.insert(Operator::Minus, Precedence::Term);
-
-		precedence_map.insert(Operator::Asterisk, Precedence::Factor);
-		precedence_map.insert(Operator::Slash, Precedence::Factor);
-		precedence_map.insert(Operator::Percent, Precedence::Factor);
-
-		precedence_map.insert(Operator::OpenParen, Precedence::Call);
-
-		precedence_map.insert(Operator::Dot, Precedence::Primary);
-		precedence_map
-			.insert(Operator::DoubleColon, Precedence::Primary);
-
-		precedence_map.insert(Operator::Arrow, Precedence::Primary);
-		precedence_map.insert(Operator::Colon, Precedence::Assignment);
-
-		precedence_map.insert(Operator::Or, Precedence::LogicOr);
-		precedence_map.insert(Operator::Xor, Precedence::LogicOr);
-		precedence_map.insert(Operator::And, Precedence::LogicAnd);
-
-		tokens.reverse();
+impl<'a> Parser<'a> {
+	fn new(tokens: Vec<Token<'a>>) -> Self {
 		Self {
 			tokens,
-			precedence_map,
+			position: 0,
 		}
 	}
 
-	fn parse(&mut self) -> crate::Result<Vec<AstStatement>> {
-		let mut result = Vec::new();
+	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'a>>> {
+		let mut result = Vec::with_capacity(4);
 		loop {
 			if self.is_eof() {
 				break;
 			}
 
-			let mut nodes = vec![];
+			let mut nodes = Vec::with_capacity(8);
 			loop {
 				if self.is_eof()
 					|| self.consume_if(
@@ -152,16 +131,25 @@ impl Parser {
 	pub(crate) fn parse_node(
 		&mut self,
 		precedence: Precedence,
-	) -> crate::Result<Ast> {
+	) -> crate::Result<Ast<'a>> {
 		let mut left = self.parse_primary()?;
 
-		while !self.is_eof()
-			&& precedence < self.current_precedence()?
-		{
-			let current = self.current()?;
-			if let TokenKind::Keyword(Keyword::Between) =
-				current.kind
-			{
+		while !self.is_eof() {
+			if precedence >= self.current_precedence()? {
+				break;
+			}
+
+			// Check token type before consuming
+			let is_between = if let Ok(current) = self.current() {
+				matches!(
+					current.kind,
+					TokenKind::Keyword(Keyword::Between)
+				)
+			} else {
+				break;
+			};
+
+			if is_between {
 				left = Ast::Between(self.parse_between(left)?);
 			} else {
 				left = Ast::Infix(self.parse_infix(left)?);
@@ -170,16 +158,21 @@ impl Parser {
 		Ok(left)
 	}
 
-	pub(crate) fn advance(&mut self) -> crate::Result<Token> {
-		self.tokens
-			.pop()
-			.ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
+	pub(crate) fn advance(&mut self) -> crate::Result<Token<'a>> {
+		if self.position >= self.tokens.len() {
+			return Err(reifydb_core::Error(
+				ast::unexpected_eof_error(),
+			));
+		}
+		let token = self.tokens[self.position].clone();
+		self.position += 1;
+		Ok(token)
 	}
 
 	pub(crate) fn consume(
 		&mut self,
 		expected: TokenKind,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect(expected)?;
 		self.advance()
 	}
@@ -187,7 +180,7 @@ impl Parser {
 	pub(crate) fn consume_if(
 		&mut self,
 		expected: TokenKind,
-	) -> crate::Result<Option<Token>> {
+	) -> crate::Result<Option<Token<'a>>> {
 		if self.is_eof() || self.current()?.kind != expected {
 			return Ok(None);
 		}
@@ -210,7 +203,7 @@ impl Parser {
 	pub(crate) fn consume_literal(
 		&mut self,
 		expected: Literal,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect_literal(expected)?;
 		self.advance()
 	}
@@ -218,7 +211,7 @@ impl Parser {
 	pub(crate) fn consume_operator(
 		&mut self,
 		expected: Operator,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect_operator(expected)?;
 		self.advance()
 	}
@@ -226,15 +219,18 @@ impl Parser {
 	pub(crate) fn consume_keyword(
 		&mut self,
 		expected: Keyword,
-	) -> crate::Result<Token> {
+	) -> crate::Result<Token<'a>> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn current(&self) -> crate::Result<&Token> {
-		self.tokens
-			.last()
-			.ok_or(reifydb_core::Error(ast::unexpected_eof_error()))
+	pub(crate) fn current(&self) -> crate::Result<&Token<'a>> {
+		if self.position >= self.tokens.len() {
+			return Err(reifydb_core::Error(
+				ast::unexpected_eof_error(),
+			));
+		}
+		Ok(&self.tokens[self.position])
 	}
 
 	pub(crate) fn current_expect(
@@ -289,11 +285,7 @@ impl Parser {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Operator(operator) => {
-				let precedence = self
-					.precedence_map
-					.get(&operator)
-					.cloned();
-				Ok(precedence.unwrap_or(Precedence::None))
+				Ok(get_precedence_for_operator(operator))
 			}
 			TokenKind::Keyword(Keyword::Between) => {
 				Ok(Precedence::Comparison)
@@ -303,7 +295,7 @@ impl Parser {
 	}
 
 	fn is_eof(&self) -> bool {
-		self.tokens.is_empty()
+		self.position >= self.tokens.len()
 	}
 
 	pub(crate) fn skip_new_line(&mut self) -> crate::Result<()> {
@@ -313,8 +305,8 @@ impl Parser {
 
 	pub(crate) fn parse_between(
 		&mut self,
-		value: Ast,
-	) -> crate::Result<crate::ast::AstBetween> {
+		value: Ast<'a>,
+	) -> crate::Result<crate::ast::AstBetween<'a>> {
 		let token = self.consume_keyword(Keyword::Between)?;
 		let lower = Box::new(self.parse_node(Precedence::Comparison)?);
 		self.consume_operator(Operator::And)?;
@@ -333,7 +325,7 @@ impl Parser {
 	pub(crate) fn parse_expressions(
 		&mut self,
 		allow_colon_alias: bool,
-	) -> crate::Result<(Vec<Ast>, bool)> {
+	) -> crate::Result<(Vec<Ast<'a>>, bool)> {
 		let has_braces =
 			self.current()?.is_operator(Operator::OpenCurly);
 
@@ -341,7 +333,7 @@ impl Parser {
 			self.advance()?; // consume opening brace
 		}
 
-		let mut nodes = Vec::new();
+		let mut nodes = Vec::with_capacity(4);
 		loop {
 			if allow_colon_alias {
 				if let Ok(alias_expr) =
@@ -381,26 +373,26 @@ impl Parser {
 
 	/// Try to parse "identifier: expression" syntax and convert it to
 	/// "expression AS identifier"
-	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
-		// Check if we have at least identifier + colon + something
-		// ahead
-		if self.tokens.len() < 2 {
+	pub(crate) fn try_parse_colon_alias(
+		&mut self,
+	) -> crate::Result<Ast<'a>> {
+		// Check if we have enough tokens from current position
+		if self.position + 1 >= self.tokens.len() {
 			return_error!(ast::unsupported_token_error(
 				self.current()?.clone().fragment
 			));
 		}
 
-		// Peek at the tokens to see if we have identifier:
-		let len = self.tokens.len();
-		match &self.tokens[len - 1].kind {
-			TokenKind::Identifier => {}
-			_ => return_error!(ast::unsupported_token_error(
+		// Check if current token is identifier
+		if !self.tokens[self.position].is_identifier() {
+			return_error!(ast::unsupported_token_error(
 				self.current()?.clone().fragment
-			)),
-		};
+			));
+		}
 
-		// Check if second token is colon
-		if !self.tokens[len - 2].is_operator(Operator::Colon) {
+		// Check if next token is colon
+		if !self.tokens[self.position + 1].is_operator(Operator::Colon)
+		{
 			return_error!(ast::unsupported_token_error(
 				self.current()?.clone().fragment
 			));

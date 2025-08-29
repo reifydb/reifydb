@@ -17,8 +17,8 @@ use crate::ast::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Join)?;
 
 		self.consume_operator(OpenCurly)?;
@@ -69,7 +69,9 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_natural_join(&mut self) -> crate::Result<AstJoin> {
+	pub(crate) fn parse_natural_join(
+		&mut self,
+	) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Natural)?;
 
 		let join_type = if self.current()?.is_keyword(Left) {
@@ -96,7 +98,9 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_inner_join(&mut self) -> crate::Result<AstJoin> {
+	pub(crate) fn parse_inner_join(
+		&mut self,
+	) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
@@ -148,7 +152,7 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_left_join(&mut self) -> crate::Result<AstJoin> {
+	pub(crate) fn parse_left_join(&mut self) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
 

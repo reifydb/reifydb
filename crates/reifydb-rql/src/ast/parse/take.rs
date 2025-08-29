@@ -9,8 +9,8 @@ use crate::ast::{
 	tokenize::Keyword,
 };
 
-impl Parser {
-	pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake<'a>> {
 		let token = self.consume_keyword(Keyword::Take)?;
 		let take = self.parse_node(Precedence::None)?;
 		match take {

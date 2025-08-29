@@ -261,12 +261,6 @@ impl Executor {
 			PhysicalPlan::AlterSequence(plan) => {
 				self.alter_table_sequence(txn, plan)
 			}
-			PhysicalPlan::AlterTable(_plan) => {
-				unimplemented!()
-			}
-			PhysicalPlan::AlterView(_plan) => {
-				unimplemented!()
-			}
 			PhysicalPlan::CreateDeferredView(plan) => {
 				self.create_deferred_view(txn, plan)
 			}
@@ -302,6 +296,13 @@ impl Executor {
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::Distinct(_) => self.query(txn, plan, params),
+
+			PhysicalPlan::AlterTable(_)
+			| PhysicalPlan::AlterView(_) => {
+				todo!(
+					"ALTER TABLE/VIEW execution not yet implemented"
+				)
+			}
 		}
 	}
 

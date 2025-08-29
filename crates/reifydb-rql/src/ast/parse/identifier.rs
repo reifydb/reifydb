@@ -3,17 +3,17 @@
 
 use crate::ast::{ast::AstIdentifier, parse::Parser, tokenize::TokenKind};
 
-impl Parser {
+impl<'a> Parser<'a> {
 	pub(crate) fn parse_identifier(
 		&mut self,
-	) -> crate::Result<AstIdentifier> {
+	) -> crate::Result<AstIdentifier<'a>> {
 		let token = self.consume(TokenKind::Identifier)?;
 		Ok(AstIdentifier(token))
 	}
 
 	pub(crate) fn parse_as_identifier(
 		&mut self,
-	) -> crate::Result<AstIdentifier> {
+	) -> crate::Result<AstIdentifier<'a>> {
 		let token = self.advance()?;
 		debug_assert!(matches!(
 			token.kind,

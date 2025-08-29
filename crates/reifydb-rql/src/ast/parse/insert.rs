@@ -7,8 +7,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator},
 };
 
-impl Parser {
-	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'a>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
 		let identifier = self.parse_identifier()?;

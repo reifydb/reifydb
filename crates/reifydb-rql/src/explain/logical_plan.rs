@@ -578,14 +578,12 @@ fn render_logical_plan_inner(
 				"{}{} AlterTable\n",
 				prefix, branch
 			));
-			// TODO: Add detailed output for AlterTable operations
 		}
 		LogicalPlan::AlterView(_) => {
 			output.push_str(&format!(
 				"{}{} AlterView\n",
 				prefix, branch
 			));
-			// TODO: Add detailed output for AlterView operations
 		}
 	}
 }

@@ -37,7 +37,7 @@ impl VersionedCommit for Sqlite {
                 Err(_) => return_error!(sequence::transaction_sequence_exhausted()),
             };
 
-			let table = table_name(delta.key());
+			let table = table_name(delta.key())?;
 			let before_value =
 				fetch_before_value(&tx, delta.key(), table)
 					.ok()
@@ -49,7 +49,7 @@ impl VersionedCommit for Sqlite {
 					key,
 					row,
 				} => {
-					let table = table_name(&key);
+					let table = table_name(&key)?;
 
 					if table != "versioned" {
 						let ensured_tables =
@@ -94,7 +94,7 @@ impl VersionedCommit for Sqlite {
 				Delta::Remove {
 					key,
 				} => {
-					let table = table_name(&key);
+					let table = table_name(&key)?;
 					let query = format!(
 						"INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
 						table

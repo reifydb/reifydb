@@ -1,18 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::OwnedFragment;
-
 use crate::ast::tokenize::{Literal::Text, Token, TokenKind, cursor::Cursor};
 
 /// Scan for a text literal ('...' or "...")
-pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_text<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let quote = cursor.peek()?;
 	if quote != '\'' && quote != '"' {
 		return None;
 	}
 
-	let start_pos = cursor.pos();
+	let _start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
@@ -25,30 +23,15 @@ pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
 			let text_end = cursor.pos();
 			cursor.consume(); // consume closing quote
 
-			// Create fragment with just the text content (no
-			// quotes)
-			let fragment = cursor.make_fragment(
-				start_pos,
-				start_line,
-				start_column,
-			);
-			// The fragment already has the correct text including
-			// quotes, but we want just the content without
-			// quotes. We'll modify it to contain just the text
-			// content.
-			let text_content = cursor.slice_from(text_start)
-				[..text_end - text_start]
-				.to_string();
-
-			let fragment = OwnedFragment::Statement {
-				text: text_content,
-				line: fragment.line(),
-				column: fragment.column(),
-			};
-
 			return Some(Token {
 				kind: TokenKind::Literal(Text),
-				fragment,
+				fragment: cursor.make_utf8_fragment(
+					text_start,
+					text_end,
+					start_line,
+					start_column + 1, /* +1 for opening
+					                   * quote */
+				),
 			});
 		}
 
@@ -67,14 +50,14 @@ mod tests {
 	fn test_text_single_quotes() {
 		let tokens = tokenize("'hello'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(tokens[0].fragment.text(), "hello");
+		assert_eq!(tokens[0].fragment.value(), "hello");
 	}
 
 	#[test]
 	fn test_text_double_quotes() {
 		let tokens = tokenize("\"hello\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(tokens[0].fragment.text(), "hello");
+		assert_eq!(tokens[0].fragment.value(), "hello");
 	}
 
 	#[test]
@@ -82,7 +65,7 @@ mod tests {
 		let tokens = tokenize("'some text\"xx\"no problem'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(
-			tokens[0].fragment.text(),
+			tokens[0].fragment.value(),
 			"some text\"xx\"no problem"
 		);
 	}
@@ -92,7 +75,7 @@ mod tests {
 		let tokens = tokenize("\"some text'xx'no problem\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(
-			tokens[0].fragment.text(),
+			tokens[0].fragment.value(),
 			"some text'xx'no problem"
 		);
 	}
@@ -100,17 +83,17 @@ mod tests {
 	#[test]
 	fn test_text_with_trailing() {
 		let tokens = tokenize("'data' 123").unwrap();
-		assert_eq!(tokens[0].fragment.text(), "data");
+		assert_eq!(tokens[0].fragment.value(), "data");
 		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[1].fragment.text(), "123");
+		assert_eq!(tokens[1].fragment.value(), "123");
 	}
 
 	#[test]
 	fn test_text_double_quotes_with_trailing() {
 		let tokens = tokenize("\"data\" 123").unwrap();
-		assert_eq!(tokens[0].fragment.text(), "data");
+		assert_eq!(tokens[0].fragment.value(), "data");
 		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[1].fragment.text(), "123");
+		assert_eq!(tokens[1].fragment.value(), "123");
 	}
 
 	#[test]
@@ -139,14 +122,14 @@ mod tests {
 	fn test_text_empty_single_quotes() {
 		let tokens = tokenize("''").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(tokens[0].fragment.text(), "");
+		assert_eq!(tokens[0].fragment.value(), "");
 	}
 
 	#[test]
 	fn test_text_empty_double_quotes() {
 		let tokens = tokenize("\"\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(tokens[0].fragment.text(), "");
+		assert_eq!(tokens[0].fragment.value(), "");
 	}
 
 	#[test]
@@ -156,7 +139,7 @@ mod tests {
 				.unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(
-			tokens[0].fragment.text(),
+			tokens[0].fragment.value(),
 			"He said \"Hello\" and she replied \"Hi\""
 		);
 	}
@@ -167,7 +150,7 @@ mod tests {
 			tokenize("\"It's a 'nice' day, isn't it?\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(
-			tokens[0].fragment.text(),
+			tokens[0].fragment.value(),
 			"It's a 'nice' day, isn't it?"
 		);
 	}

@@ -49,10 +49,6 @@ impl Executor {
 
 		self.create_flow(txn, &result, plan.with)?;
 
-		// TODO: Populate view with existing data from source tables
-		// This would require executing the flow's query plan on
-		// existing data
-
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
 			("view", Value::Utf8(plan.view.to_string())),

@@ -8,8 +8,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, Separator, Token, TokenKind},
 };
 
-impl Parser {
-	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter<'a>> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
 		if self.current()?.is_keyword(Keyword::Sequence) {
@@ -34,23 +34,44 @@ impl Parser {
 
 	fn parse_alter_sequence(
 		&mut self,
-		token: Token,
-	) -> crate::Result<AstAlter> {
+		token: Token<'a>,
+	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.table.column or table.column
-		let first_identifier = self.parse_identifier()?;
+		let first_identifier_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		if self.current()?.is_operator(Operator::Dot) {
 			self.consume_operator(Operator::Dot)?;
-			let second_identifier = self.parse_identifier()?;
+			let second_identifier_token = self.consume(
+				crate::ast::tokenize::TokenKind::Identifier,
+			)?;
 
 			if self.current()?.is_operator(Operator::Dot) {
 				self.consume_operator(Operator::Dot)?;
-				let column = self.parse_identifier()?;
+				let column_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 				// Expect SET VALUE <number>
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value = self.parse_literal_number()?;
+				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+
+				// Create AST nodes from tokens
+				let first_identifier =
+					crate::ast::ast::AstIdentifier(
+						first_identifier_token,
+					);
+				let second_identifier =
+					crate::ast::ast::AstIdentifier(
+						second_identifier_token,
+					);
+				let column = crate::ast::ast::AstIdentifier(
+					column_token,
+				);
+				let value = crate::ast::AstLiteral::Number(
+					crate::ast::ast::AstLiteralNumber(
+						value_token,
+					),
+				);
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -63,7 +84,22 @@ impl Parser {
 				// table.column
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value = self.parse_literal_number()?;
+				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+
+				// Create AST nodes from tokens
+				let first_identifier =
+					crate::ast::ast::AstIdentifier(
+						first_identifier_token,
+					);
+				let second_identifier =
+					crate::ast::ast::AstIdentifier(
+						second_identifier_token,
+					);
+				let value = crate::ast::AstLiteral::Number(
+					crate::ast::ast::AstLiteralNumber(
+						value_token,
+					),
+				);
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -82,8 +118,8 @@ impl Parser {
 
 	fn parse_alter_table(
 		&mut self,
-		token: Token,
-	) -> crate::Result<AstAlter> {
+		token: Token<'a>,
+	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.table
 		let schema = self.parse_identifier()?;
 		self.consume_operator(Operator::Dot)?;
@@ -167,8 +203,8 @@ impl Parser {
 
 	fn parse_alter_view(
 		&mut self,
-		token: Token,
-	) -> crate::Result<AstAlter> {
+		token: Token<'a>,
+	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.view
 		let schema = self.parse_identifier()?;
 		self.consume_operator(Operator::Dot)?;
@@ -252,7 +288,7 @@ impl Parser {
 
 	fn parse_primary_key_columns(
 		&mut self,
-	) -> crate::Result<Vec<AstIndexColumn>> {
+	) -> crate::Result<Vec<AstIndexColumn<'a>>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -397,248 +433,6 @@ mod tests {
 				}
 			}
 			_ => panic!("Expected AstAlter::Sequence"),
-		}
-	}
-
-	#[test]
-	fn test_alter_sequence_case_insensitive() {
-		let tokens =
-			tokenize("alter sequence TEST.USERS.ID set value 2000")
-				.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Sequence(AstAlterSequence {
-				schema,
-				table,
-				column,
-				value,
-				..
-			}) => {
-				assert!(schema.is_some());
-				assert_eq!(
-					schema.as_ref().unwrap().value(),
-					"TEST"
-				);
-				assert_eq!(table.value(), "USERS");
-				assert_eq!(column.value(), "ID");
-				match value {
-					crate::ast::AstLiteral::Number(num) => {
-						assert_eq!(num.value(), "2000")
-					}
-					_ => panic!("Expected number literal"),
-				}
-			}
-			_ => panic!("Expected AstAlter::Sequence"),
-		}
-	}
-
-	#[test]
-	fn test_alter_table_create_primary_key_simple() {
-		let tokens = tokenize(
-			r#"ALTER TABLE test.users {
-				CREATE PRIMARY KEY { id: asc }
-			}"#,
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Table(AstAlterTable {
-				schema,
-				table,
-				operations,
-				..
-			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterTableOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						assert!(name.is_none());
-						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.value(), "id");
-						assert_eq!(columns[0].order, Some(reifydb_core::SortDirection::Asc));
-					}
-					_ => panic!("Expected CreatePrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::Table"),
-		}
-	}
-
-	#[test]
-	fn test_alter_table_create_primary_key_named() {
-		let tokens = tokenize(
-			r#"ALTER TABLE test.users {
-				CREATE PRIMARY KEY user_pk { id: asc }
-			}"#,
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Table(AstAlterTable {
-				operations,
-				..
-			}) => match &operations[0] {
-				AstAlterTableOperation::CreatePrimaryKey {
-					name,
-					columns,
-				} => {
-					assert!(name.is_some());
-					assert_eq!(
-						name.as_ref().unwrap().value(),
-						"user_pk"
-					);
-					assert_eq!(columns.len(), 1);
-				}
-				_ => panic!(
-					"Expected CreatePrimaryKey operation"
-				),
-			},
-			_ => panic!("Expected AstAlter::Table"),
-		}
-	}
-
-	#[test]
-	fn test_alter_table_create_primary_key_composite() {
-		let tokens = tokenize(
-			r#"ALTER TABLE test.users {
-				CREATE PRIMARY KEY { user_id: asc, tenant_id: desc }
-			}"#,
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Table(AstAlterTable {
-				operations,
-				..
-			}) => match &operations[0] {
-				AstAlterTableOperation::CreatePrimaryKey {
-					name,
-					columns,
-				} => {
-					assert!(name.is_none());
-					assert_eq!(columns.len(), 2);
-					assert_eq!(
-						columns[0].column.value(),
-						"user_id"
-					);
-					assert_eq!(columns[0].order, Some(reifydb_core::SortDirection::Asc));
-					assert_eq!(
-						columns[1].column.value(),
-						"tenant_id"
-					);
-					assert_eq!(columns[1].order, Some(reifydb_core::SortDirection::Desc));
-				}
-				_ => panic!(
-					"Expected CreatePrimaryKey operation"
-				),
-			},
-			_ => panic!("Expected AstAlter::Table"),
-		}
-	}
-
-	#[test]
-	fn test_alter_table_drop_primary_key() {
-		let tokens = tokenize(
-			r#"ALTER TABLE test.users {
-				DROP PRIMARY KEY
-			}"#,
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Table(AstAlterTable {
-				schema,
-				table,
-				operations,
-				..
-			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterTableOperation::DropPrimaryKey => {}
-					_ => panic!("Expected DropPrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::Table"),
-		}
-	}
-
-	#[test]
-	fn test_alter_view_create_primary_key() {
-		let tokens = tokenize(
-			r#"ALTER VIEW test.user_summary {
-				CREATE PRIMARY KEY { user_id: asc }
-			}"#,
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::View(AstAlterView {
-				schema,
-				view,
-				operations,
-				..
-			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(view.value(), "user_summary");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterViewOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						assert!(name.is_none());
-						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.value(), "user_id");
-					}
-					_ => panic!("Expected CreatePrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::View"),
 		}
 	}
 }

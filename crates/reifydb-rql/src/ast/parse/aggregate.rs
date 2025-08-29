@@ -18,10 +18,10 @@ use crate::ast::{
 		Separator::Comma,
 	},
 };
-impl Parser {
+impl<'a> Parser<'a> {
 	pub(crate) fn parse_aggregate(
 		&mut self,
-	) -> crate::Result<AstAggregate> {
+	) -> crate::Result<AstAggregate<'a>> {
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 
 		let mut projections = Vec::new();

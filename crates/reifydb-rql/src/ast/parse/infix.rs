@@ -9,21 +9,23 @@ use crate::ast::{
 	tokenize::{Operator, TokenKind},
 };
 
-impl Parser {
+impl<'a> Parser<'a> {
 	pub(crate) fn parse_infix(
 		&mut self,
-		left: Ast,
-	) -> crate::Result<AstInfix> {
+		left: Ast<'a>,
+	) -> crate::Result<AstInfix<'a>> {
 		let precedence = self.current_precedence()?;
-
 		let operator = self.parse_infix_operator()?;
 
-		let right = if let InfixOperator::Call(token) = &operator {
-			Ast::Tuple(self.parse_tuple_call(token.clone())?)
-		} else if let InfixOperator::As(_token) = &operator {
-			self.parse_node(Precedence::None)?
-		} else {
-			self.parse_node(precedence)?
+		// Determine the right side based on operator type
+		let right = match &operator {
+			InfixOperator::Call(token) => Ast::Tuple(
+				self.parse_tuple_call(token.clone())?,
+			),
+			InfixOperator::As(_) => {
+				self.parse_node(Precedence::None)?
+			}
+			_ => self.parse_node(precedence)?,
 		};
 
 		Ok(AstInfix {
@@ -36,7 +38,7 @@ impl Parser {
 
 	pub(crate) fn parse_infix_operator(
 		&mut self,
-	) -> crate::Result<InfixOperator> {
+	) -> crate::Result<InfixOperator<'a>> {
 		let token = self.advance()?;
 		match &token.kind {
 			TokenKind::Operator(operator) => match operator {

@@ -116,7 +116,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			.filter(|event| {
 				matches!(
 					Key::decode(event.key()),
-					Some(Key::TableRow(_))
+					Some(Key::Row(_))
 				)
 			})
 			.collect::<Vec<_>>();

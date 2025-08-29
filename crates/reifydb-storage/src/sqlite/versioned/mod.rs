@@ -20,8 +20,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Version,
 	interface::{
-		EncodableKeyRange, Key, TableId, TableRowKey, TableRowKeyRange,
-		Versioned,
+		EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned,
 	},
 	row::EncodedRow,
 };
@@ -31,34 +30,38 @@ use rusqlite::{Connection, Statement, params};
 static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> =
 	OnceLock::new();
 
-/// Checks if an EncodedKey represents a TableRowKey
-pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<TableRowKey> {
+/// Checks if an EncodedKey represents a RowKey
+pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<RowKey> {
 	match Key::decode(key) {
 		None => None,
 		Some(key) => match key {
-			Key::TableRow(key) => Some(key),
+			Key::Row(key) => Some(key),
 			_ => None,
 		},
 	}
 }
 
 /// Returns the appropriate table name for a given key, with caching
-pub(crate) fn table_name(key: &EncodedKey) -> &'static str {
+pub(crate) fn table_name(
+	key: &EncodedKey,
+) -> reifydb_core::Result<&'static str> {
 	if let Some(key) = as_table_row_key(key) {
 		let cache = TABLE_NAME_CACHE
 			.get_or_init(|| Mutex::new(HashMap::new()));
 		let mut cache_guard = cache.lock().unwrap();
 
+		let table_id = key.store.to_table_id()?;
+
 		let table_name = cache_guard
-			.entry(key.table)
-			.or_insert_with(|| format!("table_{}", key.table.0));
+			.entry(table_id)
+			.or_insert_with(|| format!("table_{}", table_id));
 
 		// SAFETY: We're returning a reference to a string that's stored
 		// in the static cache The cache is never cleared, so the
 		// reference remains valid for the lifetime of the program
-		unsafe { std::mem::transmute(table_name.as_str()) }
+		unsafe { Ok(std::mem::transmute(table_name.as_str())) }
 	} else {
-		"versioned"
+		Ok("versioned")
 	}
 }
 
@@ -79,8 +82,8 @@ pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
 /// Returns the appropriate table name for a range operation based on range
 /// bounds
 pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> String {
-	if let (Some(start), _) = TableRowKeyRange::decode(range) {
-		return format!("table_{}", start.table);
+	if let (Some(start), _) = RowKeyRange::decode(range) {
+		return format!("table_{}", start.store);
 	}
 	"versioned".to_string()
 }

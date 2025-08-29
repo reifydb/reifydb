@@ -12,25 +12,51 @@ use crate::ast::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_from(&mut self) -> crate::Result<AstFrom> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_from(&mut self) -> crate::Result<AstFrom<'a>> {
 		let token = self.consume_keyword(Keyword::From)?;
 
-		if self.current()?.is_operator(OpenBracket) {
+		// Check token type first
+		let is_inline = if let Ok(current) = self.current() {
+			current.is_operator(OpenBracket)
+		} else {
+			false
+		};
+
+		if is_inline {
 			Ok(AstFrom::Inline {
 				token,
 				list: self.parse_static()?,
 			})
 		} else {
-			let identifier = self.parse_as_identifier()?;
+			// Get the first identifier token
+			let first_token = self.advance()?;
 
-			let (schema, table) = if !self.is_eof()
-				&& self.current()?.is_operator(Operator::Dot)
-			{
+			// Check if there's a dot following
+			let has_dot = if !self.is_eof() {
+				if let Ok(current) = self.current() {
+					current.is_operator(Operator::Dot)
+				} else {
+					false
+				}
+			} else {
+				false
+			};
+
+			let (schema, table) = if has_dot {
 				self.consume_operator(Operator::Dot)?;
-				let table = self.parse_as_identifier()?;
+				let second_token = self.advance()?;
+				let identifier = crate::ast::ast::AstIdentifier(
+					first_token,
+				);
+				let table = crate::ast::ast::AstIdentifier(
+					second_token,
+				);
 				(Some(identifier), table)
 			} else {
+				let identifier = crate::ast::ast::AstIdentifier(
+					first_token,
+				);
 				(None, identifier)
 			};
 
@@ -42,16 +68,24 @@ impl Parser {
 		}
 	}
 
-	pub(crate) fn parse_static(&mut self) -> crate::Result<AstList> {
+	pub(crate) fn parse_static(&mut self) -> crate::Result<AstList<'a>> {
 		let token = self.consume_operator(OpenBracket)?;
 
 		let mut nodes = Vec::new();
 		loop {
 			self.skip_new_line()?;
 
-			if self.current()?.is_operator(CloseBracket) {
+			// Check if we've reached the closing bracket
+			let should_break = if let Ok(current) = self.current() {
+				current.is_operator(CloseBracket)
+			} else {
+				true
+			};
+
+			if should_break {
 				break;
 			}
+
 			nodes.push(Ast::Inline(self.parse_inline()?));
 
 			self.consume_if(TokenKind::Separator(

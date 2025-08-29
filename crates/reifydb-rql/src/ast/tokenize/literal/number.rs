@@ -7,7 +7,7 @@ use crate::ast::tokenize::{
 };
 
 /// Scan for a number literal
-pub fn scan_number(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -166,72 +166,72 @@ mod tests {
 	fn test_decimal_integer() {
 		let tokens = tokenize("42").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "42");
+		assert_eq!(tokens[0].fragment.value(), "42");
 	}
 
 	#[test]
 	fn test_decimal_float() {
 		let tokens = tokenize("3.14").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "3.14");
+		assert_eq!(tokens[0].fragment.value(), "3.14");
 	}
 
 	#[test]
 	fn test_decimal_with_underscores() {
 		let tokens = tokenize("1_234_567").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "1_234_567");
+		assert_eq!(tokens[0].fragment.value(), "1_234_567");
 	}
 
 	#[test]
 	fn test_scientific_notation() {
 		let tokens = tokenize("1.23e10").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "1.23e10");
+		assert_eq!(tokens[0].fragment.value(), "1.23e10");
 
 		let tokens = tokenize("5E-3").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "5E-3");
+		assert_eq!(tokens[0].fragment.value(), "5E-3");
 	}
 
 	#[test]
 	fn test_hex_number() {
 		let tokens = tokenize("0x2A").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "0x2A");
+		assert_eq!(tokens[0].fragment.value(), "0x2A");
 
 		let tokens = tokenize("0xDEAD_BEEF").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "0xDEAD_BEEF");
+		assert_eq!(tokens[0].fragment.value(), "0xDEAD_BEEF");
 	}
 
 	#[test]
 	fn test_binary_number() {
 		let tokens = tokenize("0b1010").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "0b1010");
+		assert_eq!(tokens[0].fragment.value(), "0b1010");
 
 		let tokens = tokenize("0b1111_0000").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "0b1111_0000");
+		assert_eq!(tokens[0].fragment.value(), "0b1111_0000");
 	}
 
 	#[test]
 	fn test_octal_number() {
 		let tokens = tokenize("0o777").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "0o777");
+		assert_eq!(tokens[0].fragment.value(), "0o777");
 
 		let tokens = tokenize("0o12_34").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "0o12_34");
+		assert_eq!(tokens[0].fragment.value(), "0o12_34");
 	}
 
 	#[test]
 	fn test_leading_dot() {
 		let tokens = tokenize(".5").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), ".5");
+		assert_eq!(tokens[0].fragment.value(), ".5");
 	}
 
 	#[test]
@@ -245,9 +245,9 @@ mod tests {
 		// With proper spacing, it works
 		let tokens = tokenize("42 abc").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "42");
+		assert_eq!(tokens[0].fragment.value(), "42");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
-		assert_eq!(tokens[1].fragment.text(), "abc");
+		assert_eq!(tokens[1].fragment.value(), "abc");
 	}
 
 	#[test]
@@ -255,13 +255,13 @@ mod tests {
 		// Invalid hex (starts with _)
 		let result = tokenize("0x_FF");
 		assert!(result.is_err()
-			|| result.unwrap()[0].fragment.text() != "0x_FF");
+			|| result.unwrap()[0].fragment.value() != "0x_FF");
 
 		// Invalid binary (contains 2)
 		let result = tokenize("0b102");
 		assert!(result.is_ok()); // Will be parsed as 0b10 followed by 2
 		let tokens = result.unwrap();
-		assert_eq!(tokens[0].fragment.text(), "0b10");
-		assert_eq!(tokens[1].fragment.text(), "2");
+		assert_eq!(tokens[0].fragment.value(), "0b10");
+		assert_eq!(tokens[1].fragment.value(), "2");
 	}
 }

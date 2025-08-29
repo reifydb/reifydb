@@ -7,7 +7,7 @@ use crate::ast::tokenize::{
 };
 
 /// Scan for undefined literal
-pub fn scan_undefined(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_undefined<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -39,7 +39,7 @@ mod tests {
 	fn test_undefined() {
 		let tokens = tokenize("undefined").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Undefined));
-		assert_eq!(tokens[0].fragment.text(), "undefined");
+		assert_eq!(tokens[0].fragment.value(), "undefined");
 	}
 
 	#[test]
@@ -59,12 +59,12 @@ mod tests {
 		let tokens = tokenize("undefined123").unwrap();
 		// Should parse as identifier, not undefined
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.text(), "undefined123");
+		assert_eq!(tokens[0].fragment.value(), "undefined123");
 
 		let tokens = tokenize("undefined_value").unwrap();
 		// Should parse as identifier, not undefined
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.text(), "undefined_value");
+		assert_eq!(tokens[0].fragment.value(), "undefined_value");
 	}
 
 	#[test]
@@ -78,7 +78,7 @@ mod tests {
 	fn test_undefined_in_expression() {
 		let tokens = tokenize("value == undefined").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Value));
-		assert_eq!(tokens[0].fragment.text(), "value");
+		assert_eq!(tokens[0].fragment.value(), "value");
 		assert_eq!(tokens[2].kind, TokenKind::Literal(Undefined));
 	}
 }

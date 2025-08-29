@@ -4,27 +4,27 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{ViewColumnId, ViewId},
+	interface::catalog::{ColumnId, ColumnPolicyId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ViewColumnKey {
-	pub view: ViewId,
-	pub column: ViewColumnId,
+pub struct ColumnPolicyKey {
+	pub column: ColumnId,
+	pub policy: ColumnPolicyId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for ViewColumnKey {
-	const KIND: KeyKind = KeyKind::ViewColumn;
+impl EncodableKey for ColumnPolicyKey {
+	const KIND: KeyKind = KeyKind::ColumnPolicy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(18);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.view));
 		out.extend(&keycode::serialize(&self.column));
+		out.extend(&keycode::serialize(&self.policy));
 		EncodedKey::new(out)
 	}
 
@@ -51,78 +51,78 @@ impl EncodableKey for ViewColumnKey {
 		keycode::deserialize(&payload[..8])
 			.ok()
 			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(view, column)| Self {
-				view,
+			.map(|(column, policy)| Self {
 				column,
+				policy,
 			})
 	}
 }
 
-impl ViewColumnKey {
-	pub fn full_scan(view: ViewId) -> EncodedKeyRange {
+impl ColumnPolicyKey {
+	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::start(view)),
-			Some(Self::end(view)),
+			Some(Self::link_start(column)),
+			Some(Self::link_end(column)),
 		)
 	}
 
-	fn start(view: ViewId) -> EncodedKey {
+	fn link_start(column: ColumnId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&view));
+		out.extend(&keycode::serialize(&column));
 		EncodedKey::new(out)
 	}
 
-	fn end(view: ViewId) -> EncodedKey {
+	fn link_end(column: ColumnId) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*view - 1)));
+		out.extend(&keycode::serialize(&(*column - 1)));
 		EncodedKey::new(out)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, ViewColumnKey};
-	use crate::interface::catalog::{ViewColumnId, ViewId};
+	use super::{ColumnPolicyKey, EncodableKey};
+	use crate::interface::catalog::{ColumnId, ColumnPolicyId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = ViewColumnKey {
-			view: ViewId(0xABCD),
-			column: ViewColumnId(0x123456789ABCDEF0),
+		let key = ColumnPolicyKey {
+			column: ColumnId(0xABCD),
+			policy: ColumnPolicyId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
 		let expected: Vec<u8> = vec![
 			0xFE, // version
-			0xEC, // kind
+			0xF6, // kind
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
 			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = ViewColumnKey::decode(&encoded).unwrap();
-		assert_eq!(key.view, 0xABCD);
-		assert_eq!(key.column, 0x123456789ABCDEF0);
+		let key = ColumnPolicyKey::decode(&encoded).unwrap();
+		assert_eq!(key.column, 0xABCD);
+		assert_eq!(key.policy, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = ViewColumnKey {
-			view: ViewId(1),
-			column: ViewColumnId(100),
+		let key1 = ColumnPolicyKey {
+			column: ColumnId(1),
+			policy: ColumnPolicyId(100),
 		};
-		let key2 = ViewColumnKey {
-			view: ViewId(1),
-			column: ViewColumnId(200),
+		let key2 = ColumnPolicyKey {
+			column: ColumnId(1),
+			policy: ColumnPolicyId(200),
 		};
-		let key3 = ViewColumnKey {
-			view: ViewId(2),
-			column: ViewColumnId(0),
+		let key3 = ColumnPolicyKey {
+			column: ColumnId(2),
+			policy: ColumnPolicyId(0),
 		};
 
 		let encoded1 = key1.encode();

@@ -5,15 +5,15 @@ use reifydb_core::{
 	OwnedFragment,
 	interface::expression::{
 		AccessSourceExpression, AddExpression, AliasExpression,
-		AndExpression, BetweenExpression, Caltokenizepression,
+		AndExpression, BetweenExpression, CallExpression,
 		CastExpression, ColumnExpression, ConstantExpression,
-		DivExpression, Equatokenizepression, Expression,
-		GreaterThanEquatokenizepression, GreaterThanExpression,
-		IdentExpression, LessThanEquatokenizepression,
-		LessThanExpression, Mutokenizepression,
-		NotEquatokenizepression, OrExpression, ParameterExpression,
-		PrefixExpression, PrefixOperator, RemExpression, SubExpression,
-		TupleExpression, TypeExpression, XorExpression,
+		DivExpression, EqExpression, Expression,
+		GreaterThanEqExpression, GreaterThanExpression,
+		IdentExpression, LessThanEqExpression, LessThanExpression,
+		MulExpression, NotEqExpression, OrExpression,
+		ParameterExpression, PrefixExpression, PrefixOperator,
+		RemExpression, SubExpression, TupleExpression, TypeExpression,
+		XorExpression,
 	},
 };
 
@@ -83,10 +83,10 @@ impl ExpressionCompiler {
                     arg_expressions.push(Self::compile(arg_ast)?);
                 }
 
-                Ok(Expression::Call(Caltokenizepression {
+                Ok(Expression::Call(CallExpression {
                     func: IdentExpression(OwnedFragment::testing(&full_name)),
                     args: arg_expressions,
-                    fragment: call.token.fragment,
+                    fragment: call.token.fragment.into_owned(),
                 }))
             }
             Ast::Infix(ast) => Self::infix(ast),
@@ -99,7 +99,7 @@ impl ExpressionCompiler {
                     value: Box::new(value),
                     lower: Box::new(lower),
                     upper: Box::new(upper),
-                    fragment: between.token.fragment,
+                    fragment: between.token.fragment.into_owned(),
                 }))
             }
             Ast::Tuple(tuple) => {
@@ -109,18 +109,18 @@ impl ExpressionCompiler {
                     expressions.push(Self::compile(ast)?);
                 }
 
-                Ok(Expression::Tuple(TupleExpression { expressions, fragment: tuple.token.fragment }))
+                Ok(Expression::Tuple(TupleExpression { expressions, fragment: tuple.token.fragment.into_owned() }))
             }
             Ast::Prefix(prefix) => {
                 let (fragment, operator) = match prefix.operator {
                     ast::AstPrefixOperator::Plus(token) => {
-                        (token.fragment.clone(), PrefixOperator::Plus(token.fragment))
+                        (token.fragment.clone().into_owned(), PrefixOperator::Plus(token.fragment.into_owned()))
                     }
                     ast::AstPrefixOperator::Negate(token) => {
-                        (token.fragment.clone(), PrefixOperator::Minus(token.fragment))
+                        (token.fragment.clone().into_owned(), PrefixOperator::Minus(token.fragment.into_owned()))
                     }
                     ast::AstPrefixOperator::Not(token) => {
-                        (token.fragment.clone(), PrefixOperator::Not(token.fragment))
+                        (token.fragment.clone().into_owned(), PrefixOperator::Not(token.fragment.into_owned()))
                     }
                 };
 
@@ -140,7 +140,7 @@ impl ExpressionCompiler {
                 let expr = tuple.nodes.pop().unwrap();
 
                 Ok(Expression::Cast(CastExpression {
-                    fragment: tuple.token.fragment,
+                    fragment: tuple.token.fragment.into_owned(),
                     expression: Box::new(Self::compile(expr)?),
                     to: TypeExpression { fragment, ty },
                 }))
@@ -149,12 +149,12 @@ impl ExpressionCompiler {
                 match param.kind {
                     ParameterKind::Positional(_) => {
                         Ok(Expression::Parameter(ParameterExpression::Positional {
-                            fragment: param.token.fragment,
+                            fragment: param.token.fragment.into_owned(),
                         }))
                     }
                     ParameterKind::Named => {
                         Ok(Expression::Parameter(ParameterExpression::Named {
-                            fragment: param.token.fragment,
+                            fragment: param.token.fragment.into_owned(),
                         }))
                     }
                 }
@@ -187,7 +187,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Add(AddExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::Divide(token) => {
@@ -196,7 +196,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Div(DivExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::Subtract(token) => {
@@ -205,7 +205,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Sub(SubExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::Rem(token) => {
@@ -214,16 +214,16 @@ impl ExpressionCompiler {
 				Ok(Expression::Rem(RemExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::Multiply(token) => {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
-				Ok(Expression::Mul(Mutokenizepression {
+				Ok(Expression::Mul(MulExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::Call(token) => {
@@ -240,10 +240,10 @@ impl ExpressionCompiler {
 					panic!()
 				};
 
-				Ok(Expression::Call(Caltokenizepression {
+				Ok(Expression::Call(CallExpression {
 					func: IdentExpression(fragment),
 					args: tuple.expressions,
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::GreaterThan(token) => {
@@ -254,7 +254,9 @@ impl ExpressionCompiler {
 					GreaterThanExpression {
 						left: Box::new(left),
 						right: Box::new(right),
-						fragment: token.fragment,
+						fragment: token
+							.fragment
+							.into_owned(),
 					},
 				))
 			}
@@ -263,10 +265,12 @@ impl ExpressionCompiler {
 				let right = Self::compile(*ast.right)?;
 
 				Ok(Expression::GreaterThanEqual(
-					GreaterThanEquatokenizepression {
+					GreaterThanEqExpression {
 						left: Box::new(left),
 						right: Box::new(right),
-						fragment: token.fragment,
+						fragment: token
+							.fragment
+							.into_owned(),
 					},
 				))
 			}
@@ -277,7 +281,7 @@ impl ExpressionCompiler {
 				Ok(Expression::LessThan(LessThanExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::LessThanEqual(token) => {
@@ -285,10 +289,12 @@ impl ExpressionCompiler {
 				let right = Self::compile(*ast.right)?;
 
 				Ok(Expression::LessThanEqual(
-					LessThanEquatokenizepression {
+					LessThanEqExpression {
 						left: Box::new(left),
 						right: Box::new(right),
-						fragment: token.fragment,
+						fragment: token
+							.fragment
+							.into_owned(),
 					},
 				))
 			}
@@ -296,23 +302,21 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::Equal(Equatokenizepression {
+				Ok(Expression::Equal(EqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			InfixOperator::NotEqual(token) => {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::NotEqual(
-					NotEquatokenizepression {
-						left: Box::new(left),
-						right: Box::new(right),
-						fragment: token.fragment,
-					},
-				))
+				Ok(Expression::NotEqual(NotEqExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					fragment: token.fragment.into_owned(),
+				}))
 			}
 			InfixOperator::As(token) => {
 				let left = Self::compile(*ast.left)?;
@@ -325,7 +329,7 @@ impl ExpressionCompiler {
 						right.fragment(),
 					),
 					expression: Box::new(left),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 
@@ -336,7 +340,7 @@ impl ExpressionCompiler {
 				Ok(Expression::And(AndExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 
@@ -347,7 +351,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Or(OrExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 
@@ -358,7 +362,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Xor(XorExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 
@@ -368,10 +372,10 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::Equal(Equatokenizepression {
+				Ok(Expression::Equal(EqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 
@@ -384,10 +388,12 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Alias(AliasExpression {
 					alias: IdentExpression(
-						alias.fragment.clone(),
+						alias.fragment
+							.clone()
+							.into_owned(),
 					),
 					expression: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.into_owned(),
 				}))
 			}
 			operator => {

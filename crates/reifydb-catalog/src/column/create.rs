@@ -7,22 +7,22 @@ use reifydb_core::{
 		auto_increment_invalid_type, table_column_already_exists,
 	},
 	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
-		TableColumnKey, TableColumnsKey, TableId,
+		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction,
+		EncodableKey, Key, StoreId, TableId,
 	},
 	return_error,
 };
 
 use crate::{
 	CatalogStore,
-	sequence::SystemSequence,
-	table_column::{
+	column::{
 		ColumnDef, ColumnIndex,
 		layout::{column, table_column},
 	},
+	sequence::SystemSequence,
 };
 
-pub struct TableColumnToCreate<'a> {
+pub struct ColumnToCreate<'a> {
 	pub fragment: Option<OwnedFragment>,
 	pub schema_name: &'a str,
 	pub table: TableId,
@@ -36,15 +36,17 @@ pub struct TableColumnToCreate<'a> {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_table_column(
+	pub(crate) fn create_column(
 		txn: &mut impl CommandTransaction,
-		table: TableId,
-		column_to_create: TableColumnToCreate,
+		store: impl Into<StoreId>,
+		column_to_create: ColumnToCreate,
 	) -> crate::Result<ColumnDef> {
+		let store = store.into();
+
 		// FIXME policies
-		if let Some(column) = Self::find_table_column_by_name(
+		if let Some(column) = Self::find_column_by_name(
 			txn,
-			table,
+			store,
 			&column_to_create.column,
 		)? {
 			return_error!(table_column_already_exists(
@@ -78,7 +80,7 @@ impl CatalogStore {
 
 		let mut row = column::LAYOUT.allocate_row();
 		column::LAYOUT.set_u64(&mut row, column::ID, id);
-		column::LAYOUT.set_u64(&mut row, column::TABLE, table);
+		column::LAYOUT.set_u64(&mut row, column::TABLE, store);
 		column::LAYOUT.set_utf8(
 			&mut row,
 			column::NAME,
@@ -101,7 +103,7 @@ impl CatalogStore {
 		);
 
 		txn.set(
-			&Key::TableColumns(TableColumnsKey {
+			&Key::Columns(ColumnsKey {
 				column: id,
 			})
 			.encode(),
@@ -121,8 +123,8 @@ impl CatalogStore {
 			column_to_create.index,
 		);
 		txn.set(
-			&TableColumnKey {
-				table,
+			&ColumnKey {
+				store,
 				column: id,
 			}
 			.encode(),
@@ -130,7 +132,7 @@ impl CatalogStore {
 		)?;
 
 		for policy in column_to_create.policies {
-			Self::create_table_column_policy(txn, id, policy)?;
+			Self::create_column_policy(txn, id, policy)?;
 		}
 
 		Ok(ColumnDef {
@@ -148,13 +150,13 @@ impl CatalogStore {
 mod test {
 	use reifydb_core::{
 		Type,
-		interface::{TableColumnId, TableId},
+		interface::{ColumnId, TableId},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		table_column::{ColumnIndex, TableColumnToCreate},
+		column::{ColumnIndex, ColumnToCreate},
 		test_utils::ensure_test_table,
 	};
 
@@ -163,10 +165,10 @@ mod test {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -181,10 +183,10 @@ mod test {
 		)
 		.unwrap();
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -199,22 +201,18 @@ mod test {
 		)
 		.unwrap();
 
-		let column_1 = CatalogStore::get_table_column(
-			&mut txn,
-			TableColumnId(1),
-		)
-		.unwrap();
+		let column_1 =
+			CatalogStore::get_table_column(&mut txn, ColumnId(1))
+				.unwrap();
 
 		assert_eq!(column_1.id, 1);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.ty, Type::Bool);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 = CatalogStore::get_table_column(
-			&mut txn,
-			TableColumnId(2),
-		)
-		.unwrap();
+		let column_2 =
+			CatalogStore::get_table_column(&mut txn, ColumnId(2))
+				.unwrap();
 
 		assert_eq!(column_2.id, 2);
 		assert_eq!(column_2.name, "col_2");
@@ -227,10 +225,10 @@ mod test {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -245,11 +243,9 @@ mod test {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_table_column(
-			&mut txn,
-			TableColumnId(1),
-		)
-		.unwrap();
+		let column =
+			CatalogStore::get_table_column(&mut txn, ColumnId(1))
+				.unwrap();
 
 		assert_eq!(column.id, 1);
 		assert_eq!(column.name, "id");
@@ -264,10 +260,10 @@ mod test {
 
 		// Try to create a text column with auto_increment
 
-		let err = CatalogStore::create_table_column(
+		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -289,10 +285,10 @@ mod test {
 			.contains("auto increment is not supported for type"));
 
 		// Try with bool type
-		let err = CatalogStore::create_table_column(
+		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -310,10 +306,10 @@ mod test {
 		assert_eq!(err.diagnostic().code, "CA_006");
 
 		// Try with float type
-		let err = CatalogStore::create_table_column(
+		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -336,10 +332,10 @@ mod test {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -355,10 +351,10 @@ mod test {
 		.unwrap();
 
 		// Tries to create a column with the same name again
-		let err = CatalogStore::create_table_column(
+		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),

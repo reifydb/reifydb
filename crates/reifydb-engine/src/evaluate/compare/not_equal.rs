@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_core::{
 	OwnedFragment,
 	Type::Bool,
-	interface::{Evaluator, evaluate::expression::NotEquatokenizepression},
+	interface::{Evaluator, evaluate::expression::NotEqExpression},
 	result::error::diagnostic::operator::not_equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -29,7 +29,7 @@ impl StandardEvaluator {
 	pub(crate) fn not_equal(
 		&self,
 		ctx: &EvaluationContext,
-		ne: &NotEquatokenizepression,
+		ne: &NotEqExpression,
 	) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &ne.left)?;
 		let right = self.evaluate(ctx, &ne.right)?;

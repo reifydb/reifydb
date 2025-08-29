@@ -23,10 +23,13 @@ pub use token::{
 	Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind,
 };
 
-/// Tokenize the input string into a vector of tokens
-pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
+/// Tokenize the input string into a vector of tokens  
+pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 	let mut cursor = Cursor::new(input);
-	let mut tokens = Vec::new();
+	// Estimate token count: rough heuristic of 1 token per 6 characters
+	// with minimum of 8 and maximum reasonable limit
+	let estimated_tokens = (input.len() / 6).max(8).min(2048);
+	let mut tokens = Vec::with_capacity(estimated_tokens);
 
 	while !cursor.is_eof() {
 		// Skip whitespace at the beginning of each token
@@ -36,13 +39,94 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 			break;
 		}
 
-		// Try to scan for each token type in order of precedence
-		let token = scan_keyword(&mut cursor)
-			.or_else(|| scan_literal(&mut cursor))
-			.or_else(|| scan_operator(&mut cursor))
-			.or_else(|| scan_parameter(&mut cursor))
-			.or_else(|| scan_identifier(&mut cursor))
-			.or_else(|| scan_separator(&mut cursor));
+		// Character-based dispatch for better performance
+		let token = match cursor.peek() {
+			Some(ch) => match ch {
+				// Parameters start with $
+				'$' => scan_parameter(&mut cursor),
+
+				// String literals
+				'\'' | '"' => scan_literal(&mut cursor),
+
+				// Numbers
+				'0'..='9' => scan_literal(&mut cursor),
+
+				// Dot could be operator or start of decimal
+				// literal
+				'.' => {
+					// Check if followed by digit - if so,
+					// try literal first
+					if cursor
+						.peek_ahead(1)
+						.map_or(false, |ch| {
+							ch.is_ascii_digit()
+						}) {
+						scan_literal(&mut cursor)
+							.or_else(|| {
+								scan_operator(&mut cursor)
+							})
+					} else {
+						scan_operator(&mut cursor)
+							.or_else(|| {
+								scan_literal(&mut cursor)
+							})
+					}
+				}
+
+				// Pure punctuation operators
+				'(' | ')' | '[' | ']' | '{' | '}' | '+'
+				| '*' | '/' | '^' | '%' | '?' => scan_operator(&mut cursor),
+
+				// Multi-char operators starting with these
+				// chars - try operator first
+				'<' | '>' | ':' | '&' | '|' | '=' | '!' => {
+					scan_operator(&mut cursor)
+				}
+
+				// Minus could be operator or negative number
+				'-' => scan_operator(&mut cursor)
+					.or_else(|| scan_literal(&mut cursor)),
+
+				// Separators
+				',' | ';' => scan_separator(&mut cursor),
+
+				// Letters could be keywords, literals
+				// (true/false/undefined), word operators, or
+				// identifiers
+				'a'..='z' | 'A'..='Z' | '_' => {
+					// Try in order: keyword, literal,
+					// operator, identifier
+					scan_keyword(&mut cursor)
+						.or_else(|| {
+							scan_literal(
+								&mut cursor,
+							)
+						})
+						.or_else(|| {
+							scan_operator(
+								&mut cursor,
+							)
+						})
+						.or_else(|| {
+							scan_identifier(
+								&mut cursor,
+							)
+						})
+				}
+
+				// Everything else - try all scanners in order
+				_ => scan_literal(&mut cursor)
+					.or_else(|| scan_operator(&mut cursor))
+					.or_else(|| scan_parameter(&mut cursor))
+					.or_else(|| {
+						scan_identifier(&mut cursor)
+					})
+					.or_else(|| {
+						scan_separator(&mut cursor)
+					}),
+			},
+			None => None,
+		};
 
 		match token {
 			Some(tok) => tokens.push(tok),

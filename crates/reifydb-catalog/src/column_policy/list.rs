@@ -2,13 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicy, ColumnPolicyId, ColumnPolicyKind, QueryTransaction,
-	TableColumnPolicyKey,
+	ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind,
+	QueryTransaction,
 };
 
 use crate::{
-	CatalogStore, table_column::ColumnId,
-	table_column_policy::layout::column_policy,
+	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
 };
 
 impl CatalogStore {
@@ -16,7 +15,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		Ok(rx.range(TableColumnPolicyKey::full_scan(column))?
+		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
 			.map(|versioned| {
 				let row = versioned.row;
 				let id = ColumnPolicyId(
@@ -67,7 +66,7 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		table_column::{ColumnId, ColumnIndex, TableColumnToCreate},
+		column::{ColumnId, ColumnIndex, ColumnToCreate},
 		test_utils::ensure_test_table,
 	};
 
@@ -76,10 +75,10 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),

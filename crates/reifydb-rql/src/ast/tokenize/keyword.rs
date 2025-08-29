@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::{collections::HashMap, sync::LazyLock};
+
 use reifydb_core::result::error::diagnostic::ast;
 
 use super::{
@@ -116,8 +118,78 @@ keyword! {
     Value => "VALUE",
 }
 
-/// Scan for a keyword token
-pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
+static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> =
+	LazyLock::new(|| {
+		let mut map = HashMap::new();
+		map.insert("MAP", Keyword::Map);
+		map.insert("SELECT", Keyword::Select);
+		map.insert("EXTEND", Keyword::Extend);
+		map.insert("BY", Keyword::By);
+		map.insert("FROM", Keyword::From);
+		map.insert("WHERE", Keyword::Where);
+		map.insert("AGGREGATE", Keyword::Aggregate);
+		map.insert("HAVING", Keyword::Having);
+		map.insert("SORT", Keyword::Sort);
+		map.insert("DISTINCT", Keyword::Distinct);
+		map.insert("TAKE", Keyword::Take);
+		map.insert("OFFSET", Keyword::Offset);
+		map.insert("LEFT", Keyword::Left);
+		map.insert("INNER", Keyword::Inner);
+		map.insert("NATURAL", Keyword::Natural);
+		map.insert("JOIN", Keyword::Join);
+		map.insert("ON", Keyword::On);
+		map.insert("USING", Keyword::Using);
+		map.insert("UNION", Keyword::Union);
+		map.insert("INTERSECT", Keyword::Intersect);
+		map.insert("EXCEPT", Keyword::Except);
+		map.insert("INSERT", Keyword::Insert);
+		map.insert("INTO", Keyword::Into);
+		map.insert("UPDATE", Keyword::Update);
+		map.insert("SET", Keyword::Set);
+		map.insert("DELETE", Keyword::Delete);
+		map.insert("LET", Keyword::Let);
+		map.insert("IF", Keyword::If);
+		map.insert("ELSE", Keyword::Else);
+		map.insert("END", Keyword::End);
+		map.insert("LOOP", Keyword::Loop);
+		map.insert("RETURN", Keyword::Return);
+		map.insert("DEFINE", Keyword::Define);
+		map.insert("FUNCTION", Keyword::Function);
+		map.insert("CALL", Keyword::Call);
+		map.insert("CAST", Keyword::Cast);
+		map.insert("DESCRIBE", Keyword::Describe);
+		map.insert("SHOW", Keyword::Show);
+		map.insert("CREATE", Keyword::Create);
+		map.insert("ALTER", Keyword::Alter);
+		map.insert("DROP", Keyword::Drop);
+		map.insert("FILTER", Keyword::Filter);
+		map.insert("IN", Keyword::In);
+		map.insert("BETWEEN", Keyword::Between);
+		map.insert("LIKE", Keyword::Like);
+		map.insert("IS", Keyword::Is);
+		map.insert("WITH", Keyword::With);
+		map.insert("SCHEMA", Keyword::Schema);
+		map.insert("SEQUENCE", Keyword::Sequence);
+		map.insert("SERIES", Keyword::Series);
+		map.insert("TABLE", Keyword::Table);
+		map.insert("POLICY", Keyword::Policy);
+		map.insert("VIEW", Keyword::View);
+		map.insert("DEFERRED", Keyword::Deferred);
+		map.insert("TRANSACTIONAL", Keyword::Transactional);
+		map.insert("INDEX", Keyword::Index);
+		map.insert("UNIQUE", Keyword::Unique);
+		map.insert("PRIMARY", Keyword::Primary);
+		map.insert("KEY", Keyword::Key);
+		map.insert("ASC", Keyword::Asc);
+		map.insert("DESC", Keyword::Desc);
+		map.insert("AUTO", Keyword::Auto);
+		map.insert("INCREMENT", Keyword::Increment);
+		map.insert("VALUE", Keyword::Value);
+		map
+	});
+
+/// Scan for a keyword token  
+pub fn scan_keyword<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
 	if !first_char.is_ascii_alphabetic() {
@@ -128,94 +200,44 @@ pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	// Keywords are case-insensitive and must be followed by a
-	// non-identifier character
-	const KEYWORDS: &[(&str, Keyword)] = &[
-		("MAP", Keyword::Map),
-		("SELECT", Keyword::Select),
-		("EXTEND", Keyword::Extend),
-		("BY", Keyword::By),
-		("FROM", Keyword::From),
-		("WHERE", Keyword::Where),
-		("AGGREGATE", Keyword::Aggregate),
-		("HAVING", Keyword::Having),
-		("SORT", Keyword::Sort),
-		("DISTINCT", Keyword::Distinct),
-		("TAKE", Keyword::Take),
-		("OFFSET", Keyword::Offset),
-		("LEFT", Keyword::Left),
-		("INNER", Keyword::Inner),
-		("NATURAL", Keyword::Natural),
-		("JOIN", Keyword::Join),
-		("ON", Keyword::On),
-		("USING", Keyword::Using),
-		("UNION", Keyword::Union),
-		("INTERSECT", Keyword::Intersect),
-		("EXCEPT", Keyword::Except),
-		("INSERT", Keyword::Insert),
-		("INTO", Keyword::Into),
-		("UPDATE", Keyword::Update),
-		("SET", Keyword::Set),
-		("DELETE", Keyword::Delete),
-		("LET", Keyword::Let),
-		("IF", Keyword::If),
-		("ELSE", Keyword::Else),
-		("END", Keyword::End),
-		("LOOP", Keyword::Loop),
-		("RETURN", Keyword::Return),
-		("DEFINE", Keyword::Define),
-		("FUNCTION", Keyword::Function),
-		("CALL", Keyword::Call),
-		("CAST", Keyword::Cast),
-		("DESCRIBE", Keyword::Describe),
-		("SHOW", Keyword::Show),
-		("CREATE", Keyword::Create),
-		("ALTER", Keyword::Alter),
-		("DROP", Keyword::Drop),
-		("FILTER", Keyword::Filter),
-		("IN", Keyword::In),
-		("BETWEEN", Keyword::Between),
-		("LIKE", Keyword::Like),
-		("IS", Keyword::Is),
-		("WITH", Keyword::With),
-		("SCHEMA", Keyword::Schema),
-		("SEQUENCE", Keyword::Sequence),
-		("SERIES", Keyword::Series),
-		("TABLE", Keyword::Table),
-		("POLICY", Keyword::Policy),
-		("VIEW", Keyword::View),
-		("DEFERRED", Keyword::Deferred),
-		("TRANSACTIONAL", Keyword::Transactional),
-		("INDEX", Keyword::Index),
-		("UNIQUE", Keyword::Unique),
-		("PRIMARY", Keyword::Primary),
-		("KEY", Keyword::Key),
-		("ASC", Keyword::Asc),
-		("DESC", Keyword::Desc),
-		("AUTO", Keyword::Auto),
-		("INCREMENT", Keyword::Increment),
-		("VALUE", Keyword::Value),
-	];
+	// Consume identifier characters to get the potential keyword
+	let remaining = cursor.remaining_input();
+	let word_len = remaining
+		.chars()
+		.take_while(|&c| is_identifier_char(c))
+		.map(|c| c.len_utf8())
+		.sum::<usize>();
 
-	for (keyword_str, keyword) in KEYWORDS {
-		let peek = cursor.peek_str(keyword_str.len());
-		if peek.eq_ignore_ascii_case(keyword_str) {
-			// Check that the next character is not an identifier
-			// continuation
-			let next_char = cursor.peek_ahead(keyword_str.len());
-			if next_char.map_or(true, |ch| {
-				!is_identifier_char(ch) && ch != '.'
-			}) {
-				cursor.consume_str_ignore_case(keyword_str);
-				return Some(Token {
-					kind: TokenKind::Keyword(*keyword),
-					fragment: cursor.make_fragment(
-						start_pos,
-						start_line,
-						start_column,
-					),
-				});
+	let word = &remaining[..word_len];
+
+	// Check if it's a keyword (case-insensitive)
+	let uppercase_word;
+	let lookup_word = if word.chars().all(|c| c.is_uppercase()) {
+		word
+	} else {
+		uppercase_word = word.to_uppercase();
+		&uppercase_word
+	};
+
+	if let Some(&keyword) = KEYWORD_MAP.get(lookup_word) {
+		// Check that the next character is not an identifier
+		// continuation
+		let next_char = cursor.peek_ahead(word.chars().count());
+		if next_char
+			.map_or(true, |ch| !is_identifier_char(ch) && ch != '.')
+		{
+			// Consume the keyword
+			for _ in 0..word.chars().count() {
+				cursor.consume();
 			}
+			return Some(Token {
+				kind: TokenKind::Keyword(keyword),
+				fragment: cursor.make_fragment(
+					start_pos,
+					start_line,
+					start_column,
+				),
+			});
 		}
 	}
 
@@ -347,8 +369,8 @@ mod tests {
 		];
 
 		for input_str in test_cases {
-			let tokens =
-				tokenize(&format!("{input_str} rest")).unwrap();
+			let input = format!("{input_str} rest");
+			let tokens = tokenize(&input).unwrap();
 			assert!(tokens.len() >= 1);
 			// The first token should be an identifier, not a
 			// keyword
@@ -363,7 +385,8 @@ mod tests {
 
 		// Also test that the bare lowercase word IS parsed as a keyword
 		// (since keywords are case-insensitive)
-		let tokens = tokenize(&format!("{repr} rest")).unwrap();
+		let input = format!("{repr} rest");
+		let tokens = tokenize(&input).unwrap();
 		assert!(tokens.len() >= 2);
 		// In a case-insensitive system, "map" should be parsed as the
 		// MAP keyword

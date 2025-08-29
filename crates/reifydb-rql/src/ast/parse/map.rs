@@ -8,8 +8,8 @@ use reifydb_core::{
 
 use crate::ast::{AstMap, parse::Parser, tokenize::Keyword};
 
-impl Parser {
-	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
+impl<'a> Parser<'a> {
+	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap<'a>> {
 		let token = self.consume_keyword(Keyword::Map)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true)?;

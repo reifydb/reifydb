@@ -3,19 +3,19 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::catalog::TableColumnId,
+	EncodedKey, EncodedKeyRange, interface::catalog::ColumnId,
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TableColumnsKey {
-	pub column: TableColumnId,
+pub struct ColumnsKey {
+	pub column: ColumnId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for TableColumnsKey {
-	const KIND: KeyKind = KeyKind::TableColumns;
+impl EncodableKey for ColumnsKey {
+	const KIND: KeyKind = KeyKind::Columns;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
@@ -51,7 +51,7 @@ impl EncodableKey for TableColumnsKey {
 	}
 }
 
-impl TableColumnsKey {
+impl ColumnsKey {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
 			Some(Self::column_start()),
@@ -76,13 +76,13 @@ impl TableColumnsKey {
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, TableColumnsKey};
-	use crate::interface::catalog::TableColumnId;
+	use super::{ColumnsKey, EncodableKey};
+	use crate::interface::catalog::ColumnId;
 
 	#[test]
 	fn test_encode_decode() {
-		let key = TableColumnsKey {
-			column: TableColumnId(0xABCD),
+		let key = ColumnsKey {
+			column: ColumnId(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
@@ -92,7 +92,7 @@ mod tests {
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = TableColumnsKey::decode(&encoded).unwrap();
+		let key = ColumnsKey::decode(&encoded).unwrap();
 		assert_eq!(key.column, 0xABCD);
 	}
 }

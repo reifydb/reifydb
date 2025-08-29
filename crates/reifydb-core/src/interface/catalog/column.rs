@@ -9,7 +9,20 @@ use super::policy::{
 	ColumnPolicyKind, ColumnSaturationPolicy,
 	DEFAULT_COLUMN_SATURATION_POLICY,
 };
-use crate::Type;
+use crate::{
+	Type,
+	interface::{ColumnId, ColumnPolicy},
+};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ColumnDef {
+	pub id: ColumnId,
+	pub name: String,
+	pub ty: Type,
+	pub policies: Vec<ColumnPolicy>,
+	pub index: ColumnIndex,
+	pub auto_increment: bool,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnDescriptor<'a> {

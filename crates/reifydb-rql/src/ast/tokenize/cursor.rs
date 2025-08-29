@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OwnedFragment::Statement;
-use reifydb_core::{OwnedFragment, StatementColumn, StatementLine};
+use reifydb_core::{
+	BorrowedFragment, Fragment, StatementColumn, StatementLine,
+};
 
 /// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'a> {
@@ -11,28 +12,40 @@ pub struct Cursor<'a> {
 	line: u32,
 	column: u32,
 	line_start: usize,
+	// Cache current character to avoid repeated UTF-8 validation
+	current_char: Option<char>,
+	current_char_len: usize,
 }
 
 impl<'a> Cursor<'a> {
 	/// Create a new cursor at the beginning of the input
 	pub fn new(input: &'a str) -> Self {
+		let (current_char, current_char_len) = if input.is_empty() {
+			(None, 0)
+		} else {
+			let ch = input.chars().next().unwrap();
+			(Some(ch), ch.len_utf8())
+		};
+
 		Self {
 			input,
 			pos: 0,
 			line: 1,
 			column: 1,
 			line_start: 0,
+			current_char,
+			current_char_len,
 		}
 	}
 
 	/// Check if we've reached the end of input
 	pub fn is_eof(&self) -> bool {
-		self.pos >= self.input.len()
+		self.current_char.is_none()
 	}
 
 	/// Peek at the current character without consuming
 	pub fn peek(&self) -> Option<char> {
-		self.input[self.pos..].chars().next()
+		self.current_char
 	}
 
 	/// Peek at the next n bytes without consuming
@@ -60,8 +73,8 @@ impl<'a> Cursor<'a> {
 
 	/// Consume and return the current character
 	pub fn consume(&mut self) -> Option<char> {
-		if let Some(ch) = self.peek() {
-			self.pos += ch.len_utf8();
+		if let Some(ch) = self.current_char {
+			self.pos += self.current_char_len;
 			if ch == '\n' {
 				self.line += 1;
 				self.column = 1;
@@ -69,6 +82,19 @@ impl<'a> Cursor<'a> {
 			} else {
 				self.column += 1;
 			}
+
+			// Update cached character
+			if self.pos < self.input.len() {
+				let remaining = &self.input[self.pos..];
+				let next_char =
+					remaining.chars().next().unwrap();
+				self.current_char = Some(next_char);
+				self.current_char_len = next_char.len_utf8();
+			} else {
+				self.current_char = None;
+				self.current_char_len = 0;
+			}
+
 			Some(ch)
 		} else {
 			None
@@ -115,9 +141,25 @@ impl<'a> Cursor<'a> {
 		}
 	}
 
-	/// Skip whitespace characters
+	/// Skip whitespace characters - optimized for common ASCII cases
 	pub fn skip_whitespace(&mut self) {
-		self.consume_while(|ch| ch.is_whitespace());
+		// Fast path for ASCII whitespace (most common case)
+		while let Some(ch) = self.current_char {
+			match ch {
+				' ' | '\t' | '\r' | '\n' => {
+					self.consume();
+				}
+				_ => {
+					// Fall back to full Unicode whitespace
+					// check for non-ASCII
+					if ch.is_whitespace() {
+						self.consume();
+					} else {
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	/// Get the current position in the input
@@ -135,23 +177,35 @@ impl<'a> Cursor<'a> {
 		self.column
 	}
 
-	/// Get a slice of the input from a starting position to current
-	pub fn slice_from(&self, start: usize) -> &'a str {
-		&self.input[start..self.pos]
-	}
-
-	/// Create an OwnedFragment from a start position to current position
+	/// Create a Fragment (borrowed) from a start position to current
+	/// position
 	pub fn make_fragment(
 		&self,
 		start_pos: usize,
 		start_line: u32,
 		start_column: u32,
-	) -> OwnedFragment {
-		Statement {
-			text: self.input[start_pos..self.pos].to_string(),
+	) -> Fragment<'a> {
+		Fragment::Borrowed(BorrowedFragment::Statement {
+			text: &self.input[start_pos..self.pos],
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
-		}
+		})
+	}
+
+	/// Create a fragment for UTF-8 text content (without surrounding
+	/// quotes)
+	pub fn make_utf8_fragment(
+		&self,
+		text_start: usize,
+		text_end: usize,
+		start_line: u32,
+		start_column: u32,
+	) -> Fragment<'a> {
+		Fragment::Borrowed(BorrowedFragment::Statement {
+			text: &self.input[text_start..text_end],
+			line: StatementLine(start_line),
+			column: StatementColumn(start_column),
+		})
 	}
 
 	/// Save current position state
@@ -161,6 +215,8 @@ impl<'a> Cursor<'a> {
 			line: self.line,
 			column: self.column,
 			line_start: self.line_start,
+			current_char: self.current_char,
+			current_char_len: self.current_char_len,
 		}
 	}
 
@@ -170,6 +226,13 @@ impl<'a> Cursor<'a> {
 		self.line = state.line;
 		self.column = state.column;
 		self.line_start = state.line_start;
+		self.current_char = state.current_char;
+		self.current_char_len = state.current_char_len;
+	}
+
+	/// Get a slice of the remaining input from current position
+	pub fn remaining_input(&self) -> &'a str {
+		&self.input[self.pos..]
 	}
 }
 
@@ -180,4 +243,6 @@ pub struct CursorState {
 	line: u32,
 	column: u32,
 	line_start: usize,
+	current_char: Option<char>,
+	current_char_len: usize,
 }

@@ -72,9 +72,7 @@ impl MaterializedCatalog {
 mod tests {
 	use reifydb_core::{
 		Type,
-		interface::{
-			ColumnIndex, ViewColumnDef, ViewColumnId, ViewKind,
-		},
+		interface::{ColumnDef, ColumnId, ColumnIndex, ViewKind},
 	};
 
 	use super::*;
@@ -90,17 +88,21 @@ mod tests {
 			name: name.to_string(),
 			kind: ViewKind::Deferred,
 			columns: vec![
-				ViewColumnDef {
-					id: ViewColumnId(1),
+				ColumnDef {
+					id: ColumnId(1),
 					name: "id".to_string(),
 					ty: Type::Int1,
+					policies: vec![],
 					index: ColumnIndex(0),
+					auto_increment: false,
 				},
-				ViewColumnDef {
-					id: ViewColumnId(2),
+				ColumnDef {
+					id: ColumnId(2),
 					name: "name".to_string(),
 					ty: Type::Utf8,
+					policies: vec![],
 					index: ColumnIndex(1),
+					auto_increment: false,
 				},
 			],
 			primary_key: None,

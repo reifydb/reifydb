@@ -10,9 +10,7 @@ use reifydb_core::{
 			MapTerminal, Sort, Take, Union,
 		},
 	},
-	interface::{
-		Evaluator, FlowId, FlowNodeId, QueryTransaction, SourceId,
-	},
+	interface::{Evaluator, FlowId, FlowNodeId, QueryTransaction, StoreId},
 };
 
 use crate::{
@@ -47,7 +45,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				} => {
 					self.add_source(
 						flow.id,
-						SourceId::Table(*table),
+						StoreId::from(*table),
 					);
 				}
 				FlowNodeType::Operator {
@@ -63,7 +61,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				} => {
 					self.add_sink(
 						flow.id,
-						SourceId::View(*view),
+						StoreId::from(*view),
 					);
 				}
 			}
@@ -74,7 +72,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		Ok(())
 	}
 
-	fn add_source(&mut self, flow: FlowId, source: SourceId) {
+	fn add_source(&mut self, flow: FlowId, source: StoreId) {
 		let flows = self.sources.entry(source).or_insert_with(Vec::new);
 
 		debug_assert!(
@@ -87,7 +85,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		flows.push(flow);
 	}
 
-	fn add_sink(&mut self, flow: FlowId, sink: SourceId) {
+	fn add_sink(&mut self, flow: FlowId, sink: StoreId) {
 		let flows = self.sinks.entry(sink).or_insert_with(Vec::new);
 
 		debug_assert!(

@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use Type::Bool;
 use reifydb_core::{
 	OwnedFragment, Type,
-	interface::{Evaluator, evaluate::expression::Equatokenizepression},
+	interface::{Evaluator, evaluate::expression::EqExpression},
 	result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
@@ -30,7 +30,7 @@ impl StandardEvaluator {
 	pub(crate) fn equal(
 		&self,
 		ctx: &EvaluationContext,
-		eq: &Equatokenizepression,
+		eq: &EqExpression,
 	) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &eq.left)?;
 		let right = self.evaluate(ctx, &eq.right)?;
