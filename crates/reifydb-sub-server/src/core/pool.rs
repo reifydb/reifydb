@@ -17,7 +17,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::{
 	config::ServerConfig,
-	protocols::{HttpHandler, ProtocolHandler, WebSocketHandler},
+	protocols::{HttpHandler, WebSocketHandler},
 };
 
 /// Worker pool that manages multiple worker threads for handling connections

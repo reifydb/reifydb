@@ -342,7 +342,7 @@ async fn async_main() -> Result<()> {
 				println!("Usage: {} [options]", args[0]);
 				println!("Options:");
 				println!(
-					"  --url <url>           WebSocket server URL (default: old_ws://127.0.0.1:8091)"
+					"  --url <url>           WebSocket server URL (default: ws://127.0.0.1:8091)"
 				);
 				println!(
 					"  -c, --connections <n> Number of concurrent connections (default: 10)"

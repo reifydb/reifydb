@@ -19,7 +19,7 @@ export default defineConfig({
         pool: 'threads',
         poolOptions: {
             threads: {
-                singleThread: true
+                singleThread: false
             }
         },
 
@@ -33,7 +33,7 @@ export default defineConfig({
 
         env: {
             NODE_ENV: 'test',
-            REIFYDB_WS_URL: process.env.REIFYDB_WS_URL || 'old_ws://127.0.0.1:8090',
+            REIFYDB_WS_URL: process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090',
         }
     },
 

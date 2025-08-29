@@ -146,7 +146,7 @@ where
 		let socket_addr = busy_wait(|| server.ws_socket_addr());
 		self.client = Some(runtime.block_on(async {
 			let client = WsClient::connect(&format!(
-				"old_ws://[::1]:{}",
+				"ws://[::1]:{}",
 				socket_addr.port()
 			))
 			.await?;

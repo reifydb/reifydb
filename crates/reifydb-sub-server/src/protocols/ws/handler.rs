@@ -3,19 +3,19 @@
 
 use std::io::{Read, Write};
 
-use reifydb_core::{
-	interface::{Engine, Identity, Params, Transaction},
-	log_info,
-};
+use reifydb_core::interface::{Engine, Identity, Params, Transaction};
 
-use super::{WebSocketConnectionData, WsState};
+use super::{
+	CommandResponse, QueryResponse, Request, Response, ResponsePayload,
+	WebSocketConnectionData, WebsocketColumn, WebsocketFrame, WsState,
+};
 use crate::{
 	core::Connection,
 	protocols::{
 		ProtocolError, ProtocolHandler, ProtocolResult,
 		utils::{
-			RequestMsg, ResponseMsg, build_ws_frame,
-			build_ws_response, find_header_end, parse_ws_frame,
+			build_ws_frame, build_ws_response, find_header_end,
+			parse_ws_frame,
 		},
 	},
 };
@@ -136,6 +136,9 @@ impl WebSocketHandler {
 				{
 					data.handshake_response = Some(resp);
 				}
+
+				// Clear the handshake data from buffer
+				conn.buffer_mut().drain(0..hlen);
 				return Ok(());
 			}
 		}
@@ -155,6 +158,9 @@ impl WebSocketHandler {
                         if let crate::core::ConnectionState::WebSocket(WsState::Handshake(data)) = conn.state_mut() {
                             data.handshake_response = Some(resp);
                         }
+
+                        // Clear the handshake data from buffer
+                        conn.buffer_mut().drain(0..hlen);
                         return Ok(());
                     }
                     if conn.buffer().len() > 16 * 1024 {
@@ -233,7 +239,12 @@ impl WebSocketHandler {
 			match conn.stream().read(&mut buf) {
                 Ok(0) => return Err(ProtocolError::ConnectionClosed),
                 Ok(n) => {
-                    self.process_ws_data(conn, &buf[..n])?;
+                    // Add data to connection buffer
+                    conn.buffer_mut().extend_from_slice(&buf[..n]);
+
+                    // Process complete frames from buffer
+                    self.process_buffered_ws_data(conn)?;
+
                     if n < buf.len() {
                         break;
                     }
@@ -291,130 +302,424 @@ impl WebSocketHandler {
 		Ok(())
 	}
 
-	fn process_ws_data<T: Transaction>(
+	fn process_buffered_ws_data<T: Transaction>(
 		&self,
 		conn: &mut Connection<T>,
-		data: &[u8],
 	) -> ProtocolResult<()> {
-		if let Some((opcode, payload)) =
-			parse_ws_frame(data).map_err(|e| {
-				ProtocolError::Custom(format!(
-					"Frame parse error: {}",
-					e
-				))
-			})? {
-			match opcode {
-				1 => {
-					// Text frame - try to parse as JSON
-					// query
-					let text = String::from_utf8_lossy(
-						&payload,
-					);
+		// Extract frames data to avoid borrowing issues
+		let mut frames_to_process = Vec::new();
+		let mut total_processed = 0;
 
-					match serde_json::from_str::<RequestMsg>(
-						&text,
-					) {
-						Ok(req) => {
-							// Execute the query
-							// using the engine
-							match conn.engine().query_as(
-                                &Identity::System { id: 1, name: "root".to_string() },
-                                &req.q,
-                                Params::None
-                            ) {
-                                Ok(result) => {
-                                    let response = ResponseMsg {
-                                        ok: true,
-                                        result: format!("Query executed successfully, {} frames returned", result.len()),
-                                    };
-                                    let response_json = serde_json::to_string(&response)
-                                        .map_err(|e| ProtocolError::Custom(format!("JSON error: {}", e)))?;
-                                    let response_frame = build_ws_frame(1, response_json.as_bytes());
-                                    self.send_frame(conn, response_frame)?;
-                                }
-                                Err(e) => {
-                                    let response = ResponseMsg {
-                                        ok: false,
-                                        result: format!("Query error: {}", e),
-                                    };
-                                    let response_json = serde_json::to_string(&response)
-                                        .map_err(|e| ProtocolError::Custom(format!("JSON error: {}", e)))?;
-                                    let response_frame = build_ws_frame(1, response_json.as_bytes());
-                                    self.send_frame(conn, response_frame)?;
-                                }
-                            }
-						}
-						Err(_) => {
-							// Not a valid JSON
-							// request, echo back
-							// the text
-							let response_frame = build_ws_frame(1, &payload);
-							self.send_frame(
-								conn,
-								response_frame,
+		{
+			let buffer = conn.buffer();
+			let mut processed = 0;
+
+			while processed < buffer.len() {
+				let remaining_data = &buffer[processed..];
+
+				match parse_ws_frame(remaining_data).map_err(
+					|e| {
+						ProtocolError::Custom(format!(
+							"Frame parse error: {}",
+							e
+						))
+					},
+				)? {
+					Some((opcode, payload)) => {
+						// Calculate frame size to know
+						// how much to consume from
+						// buffer
+						let frame_size = self
+							.calculate_frame_size(
+								remaining_data,
 							)?;
-						}
+						processed += frame_size;
+
+						// Store frame data for
+						// processing after we release
+						// buffer borrow
+						frames_to_process.push((
+							opcode, payload,
+						));
+					}
+					None => {
+						// Incomplete frame, wait for
+						// more data
+						break;
 					}
 				}
-				2 => {
-					// Binary frame - echo it back
-					let response_frame =
-						build_ws_frame(2, &payload);
-					self.send_frame(conn, response_frame)?;
-				}
-				8 => {
-					// Close frame - send close response and
-					// mark connection for closure
-					let close_code = if payload.len() >= 2 {
-						u16::from_be_bytes([
-							payload[0], payload[1],
-						])
-					} else {
-						1000 // Normal closure
-					};
+			}
+			total_processed = processed;
+		}
 
-					let close_reason =
-						if payload.len() > 2 {
-							String::from_utf8_lossy(
-								&payload[2..],
-							)
-							.to_string()
-						} else {
-							"Connection closed by client".to_string()
+		// Now process the extracted frames
+		for (opcode, payload) in frames_to_process {
+			self.process_ws_frame(conn, opcode, payload)?;
+		}
+
+		// Remove processed data from connection buffer
+		if total_processed > 0 {
+			conn.buffer_mut().drain(0..total_processed);
+		}
+
+		Ok(())
+	}
+
+	fn calculate_frame_size(&self, data: &[u8]) -> ProtocolResult<usize> {
+		if data.len() < 2 {
+			return Ok(0);
+		}
+
+		let second_byte = data[1];
+		let masked = (second_byte & 0x80) != 0;
+		let mut payload_len = (second_byte & 0x7F) as usize;
+		let mut pos = 2;
+
+		// Extended payload length
+		if payload_len == 126 {
+			if data.len() < pos + 2 {
+				return Ok(0);
+			}
+			payload_len =
+				u16::from_be_bytes([data[pos], data[pos + 1]])
+					as usize;
+			pos += 2;
+		} else if payload_len == 127 {
+			if data.len() < pos + 8 {
+				return Ok(0);
+			}
+			payload_len = u64::from_be_bytes([
+				data[pos],
+				data[pos + 1],
+				data[pos + 2],
+				data[pos + 3],
+				data[pos + 4],
+				data[pos + 5],
+				data[pos + 6],
+				data[pos + 7],
+			]) as usize;
+			pos += 8;
+		}
+
+		// Add masking key size
+		if masked {
+			pos += 4;
+		}
+
+		// Add payload size
+		pos += payload_len;
+
+		Ok(pos)
+	}
+
+	fn process_ws_frame<T: Transaction>(
+		&self,
+		conn: &mut Connection<T>,
+		opcode: u8,
+		payload: Vec<u8>,
+	) -> ProtocolResult<()> {
+		match opcode {
+			1 => {
+				// Text frame - try to parse as WebSocket
+				// Request
+				let text = String::from_utf8_lossy(&payload);
+
+				match serde_json::from_str::<Request>(&text) {
+					Ok(request) => {
+						let response_payload = self
+							.handle_request(
+								conn, &request,
+							)?;
+						let response = Response {
+							id: request.id,
+							payload:
+								response_payload,
 						};
+						let response_json =
+							serde_json::to_string(
+								&response,
+							)
+							.map_err(
+								|e| {
+									ProtocolError::Custom(format!("JSON error: {}", e))
+								},
+							)?;
+						let response_frame =
+							build_ws_frame(
+								1,
+								response_json
+									.as_bytes(
+									),
+							);
+						self.send_frame(
+							conn,
+							response_frame,
+						)?;
+					}
+					Err(parse_error) => {
+						// Not a valid WebSocket Request
+						// - send error response
+						eprintln!(
+							"WebSocket request parse error: {}",
+							parse_error
+						);
+						let error_response = serde_json::json!({
+							"error": "Invalid request format",
+							"message": format!("Failed to parse WebSocket request: {}", parse_error)
+						});
+						let error_json =
+							serde_json::to_string(
+								&error_response,
+							)
+							.map_err(
+								|e| {
+									ProtocolError::Custom(format!("JSON error: {}", e))
+								},
+							)?;
+						let error_frame =
+							build_ws_frame(
+								1,
+								error_json
+									.as_bytes(
+									),
+							);
+						self.send_frame(
+							conn,
+							error_frame,
+						)?;
+					}
+				}
+			}
+			2 => {
+				// Binary frame - echo it back
+				let response_frame =
+					build_ws_frame(2, &payload);
+				self.send_frame(conn, response_frame)?;
+			}
+			8 => {
+				// Close frame - send close response and mark
+				// connection for closure
+				let close_code = if payload.len() >= 2 {
+					u16::from_be_bytes([
+						payload[0], payload[1],
+					])
+				} else {
+					1000 // Normal closure
+				};
 
-					// Send close response with same code
-					let mut close_payload = close_code
-						.to_be_bytes()
-						.to_vec();
-					close_payload.extend_from_slice(
-						b"Server closing connection",
-					);
-					let close_response = build_ws_frame(
-						8,
-						&close_payload,
-					);
-					self.send_frame(conn, close_response)?;
+				let _close_reason = if payload.len() > 2 {
+					String::from_utf8_lossy(&payload[2..])
+						.to_string()
+				} else {
+					"Connection closed by client"
+						.to_string()
+				};
 
-					// Mark connection as closed
-					conn.set_state(crate::core::ConnectionState::WebSocket(WsState::Closed));
-				}
-				9 => {
-					// Ping frame - respond with pong
-					let pong_response =
-						build_ws_frame(10, &payload);
-					self.send_frame(conn, pong_response)?;
-				}
-				10 => {
-					// Pong frame - client response to our
-					// ping, no action needed
-				}
-				_ => {
-					// Ignore other opcodes for now
-				}
+				// Send close response with same code
+				let mut close_payload =
+					close_code.to_be_bytes().to_vec();
+				close_payload.extend_from_slice(
+					b"Server closing connection",
+				);
+				let close_response =
+					build_ws_frame(8, &close_payload);
+				self.send_frame(conn, close_response)?;
+
+				// Mark connection as closed
+				conn.set_state(
+					crate::core::ConnectionState::WebSocket(
+						WsState::Closed,
+					),
+				);
+			}
+			9 => {
+				// Ping frame - respond with pong
+				let pong_response =
+					build_ws_frame(10, &payload);
+				self.send_frame(conn, pong_response)?;
+			}
+			10 => {
+				// Pong frame - client response to our ping, no
+				// action needed
+			}
+			_ => {
+				// Ignore other opcodes for now
 			}
 		}
 		Ok(())
+	}
+
+	fn handle_request<T: Transaction>(
+		&self,
+		conn: &mut Connection<T>,
+		request: &Request,
+	) -> ProtocolResult<ResponsePayload> {
+		use super::{AuthResponse, RequestPayload};
+
+		match &request.payload {
+			RequestPayload::Auth(_auth_req) => {
+				// For now, always return success for auth
+				Ok(ResponsePayload::Auth(AuthResponse {}))
+			}
+			RequestPayload::Command(cmd_req) => {
+				self.handle_command_request(conn, cmd_req)
+			}
+			RequestPayload::Query(query_req) => {
+				self.handle_query_request(conn, query_req)
+			}
+		}
+	}
+
+	fn handle_command_request<T: Transaction>(
+		&self,
+		conn: &mut Connection<T>,
+		cmd_req: &super::CommandRequest,
+	) -> ProtocolResult<ResponsePayload> {
+		// Execute each statement and collect results
+		let mut all_frames = Vec::new();
+
+		for statement in &cmd_req.statements {
+			let params = self.convert_params(&cmd_req.params)?;
+
+			match conn.engine().command_as(
+				&Identity::System {
+					id: 1,
+					name: "root".to_string(),
+				},
+				statement,
+				params,
+			) {
+				Ok(result) => {
+					let frames = self
+						.convert_result_to_frames(
+							result,
+						)?;
+					all_frames.extend(frames);
+				}
+				Err(e) => {
+					// Get the diagnostic from the error and
+					// add statement context
+					let mut diagnostic = e.diagnostic();
+					diagnostic.with_statement(
+						statement.clone(),
+					);
+
+					return Ok(ResponsePayload::Err(
+						super::ErrResponse {
+							diagnostic,
+						},
+					));
+				}
+			}
+		}
+
+		Ok(ResponsePayload::Command(CommandResponse {
+			frames: all_frames,
+		}))
+	}
+
+	fn handle_query_request<T: Transaction>(
+		&self,
+		conn: &mut Connection<T>,
+		query_req: &super::QueryRequest,
+	) -> ProtocolResult<ResponsePayload> {
+		// Execute each statement and collect results
+		let mut all_frames = Vec::new();
+
+		for statement in &query_req.statements {
+			let params = self.convert_params(&query_req.params)?;
+
+			match conn.engine().query_as(
+				&Identity::System {
+					id: 1,
+					name: "root".to_string(),
+				},
+				statement,
+				params,
+			) {
+				Ok(result) => {
+					let frames = self
+						.convert_result_to_frames(
+							result,
+						)?;
+					all_frames.extend(frames);
+				}
+				Err(e) => {
+					// Get the diagnostic from the error and
+					// add statement context
+					let mut diagnostic = e.diagnostic();
+					diagnostic.with_statement(
+						statement.clone(),
+					);
+
+					return Ok(ResponsePayload::Err(
+						super::ErrResponse {
+							diagnostic,
+						},
+					));
+				}
+			}
+		}
+
+		Ok(ResponsePayload::Query(QueryResponse {
+			frames: all_frames,
+		}))
+	}
+
+	fn convert_params(
+		&self,
+		params: &Option<super::WsParams>,
+	) -> ProtocolResult<Params> {
+		match params {
+			Some(super::WsParams::Positional(values)) => {
+				Ok(Params::Positional(values.clone()))
+			}
+			Some(super::WsParams::Named(map)) => {
+				Ok(Params::Named(map.clone()))
+			}
+			None => Ok(Params::None),
+		}
+	}
+
+	fn convert_result_to_frames(
+		&self,
+		result: Vec<reifydb_core::Frame>,
+	) -> ProtocolResult<Vec<WebsocketFrame>> {
+		let mut ws_frames = Vec::new();
+
+		for frame in result {
+			let mut ws_columns = Vec::new();
+
+			for column in frame.iter() {
+				let column_data: Vec<String> = column
+					.data
+					.iter()
+					.map(|value| {
+						match value {
+						reifydb_core::Value::Undefined => String::new(),
+						reifydb_core::Value::Blob(b) => reifydb_core::util::hex::encode(&b),
+						_ => value.to_string(),
+					}
+					})
+					.collect();
+
+				ws_columns.push(WebsocketColumn {
+					name: column.name.clone(),
+					r#type: column.data.get_type(),
+					data: column_data,
+					frame: None, /* Frame doesn't have a
+					              * name method */
+				});
+			}
+
+			ws_frames.push(WebsocketFrame {
+				name: "result".to_string(), /* Default frame
+				                             * name */
+				columns: ws_columns,
+			});
+		}
+
+		Ok(ws_frames)
 	}
 
 	fn send_frame<T: Transaction>(

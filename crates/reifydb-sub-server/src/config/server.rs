@@ -71,7 +71,7 @@ impl ServerConfig {
 impl Default for ServerConfig {
 	fn default() -> Self {
 		Self {
-			bind_addr: "0.0.0.0:8091".to_string(),
+			bind_addr: "0.0.0.0:8090".to_string(),
 			network: NetworkConfig::default(),
 			protocols: ProtocolConfigs::default(),
 		}
