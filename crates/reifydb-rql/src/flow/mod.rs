@@ -223,5 +223,5 @@ pub(crate) trait CompileOperator<T: CommandTransaction> {
 	fn compile(
 		self,
 		compiler: &mut FlowCompiler<T>,
-	) -> reifydb_core::Result<FlowNodeId>;
+	) -> crate::Result<FlowNodeId>;
 }

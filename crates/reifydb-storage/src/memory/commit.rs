@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 
 use crate::{
-	cdc::generate_cdc_event,
+	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
 	memory::{Memory, VersionedRow},
 };
 
@@ -25,8 +25,7 @@ impl VersionedCommit for Memory {
 	) -> Result<()> {
 		let timestamp = now_millis();
 
-		// Collect all CDC events for this version
-		let mut cdc_events = Vec::new();
+		let mut cdc_changes = Vec::new();
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
@@ -76,21 +75,23 @@ impl VersionedCommit for Memory {
 				}
 			}
 
-			let cdc_event = generate_cdc_event(
-				delta.clone(),
-				version,
+			cdc_changes.push(CdcTransactionChange {
 				sequence,
-				timestamp,
-				transaction,
-				before_value,
-			);
-			cdc_events.push(cdc_event);
+				change: generate_cdc_change(
+					delta.clone(),
+					before_value,
+				),
+			});
 		}
 
-		// Insert all CDC events for this version atomically
-		// CDC consumers will either see all events or none
-		if !cdc_events.is_empty() {
-			self.cdc_events.insert(version, cdc_events);
+		if !cdc_changes.is_empty() {
+			let cdc_transaction = CdcTransaction::new(
+				version,
+				timestamp,
+				transaction,
+				cdc_changes,
+			);
+			self.cdc_transactions.insert(version, cdc_transaction);
 		}
 
 		Ok(())

@@ -21,12 +21,14 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	EncodedKey, Version,
 	interface::{
-		CdcEvent, UnversionedInsert, UnversionedRemove,
-		UnversionedStorage, VersionedStorage,
+		UnversionedInsert, UnversionedRemove, UnversionedStorage,
+		VersionedStorage,
 	},
 	row::EncodedRow,
 	util::VersionedContainer,
 };
+
+use crate::cdc::CdcTransaction;
 
 pub type VersionedRow = VersionedContainer<EncodedRow>;
 
@@ -36,7 +38,7 @@ pub struct Memory(Arc<MemoryInner>);
 pub struct MemoryInner {
 	versioned: SkipMap<EncodedKey, VersionedRow>,
 	unversioned: SkipMap<EncodedKey, EncodedRow>,
-	cdc_events: SkipMap<Version, Vec<CdcEvent>>,
+	cdc_transactions: SkipMap<Version, CdcTransaction>,
 }
 
 impl Deref for Memory {
@@ -58,7 +60,7 @@ impl Memory {
 		Self(Arc::new(MemoryInner {
 			versioned: SkipMap::new(),
 			unversioned: SkipMap::new(),
-			cdc_events: SkipMap::new(),
+			cdc_transactions: SkipMap::new(),
 		}))
 	}
 }

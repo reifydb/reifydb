@@ -207,10 +207,7 @@ impl SharedTask {
 }
 
 impl PoolTask for SharedTask {
-	fn execute(
-		&self,
-		ctx: &super::task::TaskContext,
-	) -> reifydb_core::Result<()> {
+	fn execute(&self, ctx: &super::task::TaskContext) -> crate::Result<()> {
 		self.0.execute(ctx)
 	}
 

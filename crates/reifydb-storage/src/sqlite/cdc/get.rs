@@ -6,9 +6,9 @@ use reifydb_core::{
 	interface::{CdcEvent, CdcGet},
 	row::EncodedRow,
 };
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
-use crate::{cdc::codec::decode_cdc_event, sqlite::Sqlite};
+use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcGet for Sqlite {
 	fn get(&self, version: Version) -> Result<Vec<CdcEvent>> {
@@ -16,24 +16,24 @@ impl CdcGet for Sqlite {
 
 		let mut stmt = conn
 			.prepare_cached(
-				"SELECT value FROM cdc WHERE version = ? ORDER BY sequence ASC",
+				"SELECT value FROM cdc WHERE version = ?",
 			)
 			.unwrap();
 
-		let events = stmt
-			.query_map(params![version as i64], |row| {
+		let result = stmt
+			.query_row(params![version as i64], |row| {
 				let bytes: Vec<u8> = row.get(0)?;
 				Ok(EncodedRow(CowVec::new(bytes)))
 			})
-			.unwrap()
-			.collect::<rusqlite::Result<Vec<_>>>()
+			.optional()
 			.unwrap();
 
-		let mut result = Vec::new();
-		for encoded in events {
-			result.push(decode_cdc_event(&encoded)?);
+		if let Some(encoded_transaction) = result {
+			let transaction =
+				decode_cdc_transaction(&encoded_transaction)?;
+			Ok(transaction.to_events().collect())
+		} else {
+			Ok(vec![])
 		}
-
-		Ok(result)
 	}
 }
