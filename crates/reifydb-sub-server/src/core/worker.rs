@@ -231,6 +231,32 @@ impl<T: Transaction> Worker<T> {
 			// for benchmarks)
 			self.close_connection(connections, key);
 		} else {
+			// Check if connection should be closed after successful
+			// event processing
+			if let Some(conn) = connections.get(key) {
+				let should_close = match conn.state() {
+					crate::core::ConnectionState::WebSocket(_) => {
+						self.websocket_handler
+							.as_ref()
+							.map(|h| h.should_close(conn))
+							.unwrap_or(false)
+					}
+					crate::core::ConnectionState::Http(_) => {
+						self.http_handler
+							.as_ref()
+							.map(|h| h.should_close(conn))
+							.unwrap_or(false)
+					}
+					crate::core::ConnectionState::Closed => true,
+					_ => false,
+				};
+
+				if should_close {
+					self.close_connection(connections, key);
+					return;
+				}
+			}
+
 			// Periodically optimize buffer for active connections
 			if let Some(conn) = connections.get_mut(key) {
 				// Optimize buffer every ~1000 events (rough

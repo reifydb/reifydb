@@ -29,6 +29,7 @@ use tokio_tungstenite::{
 static mut GLOBAL_DB: Option<Arc<Database<MemoryOptimisticTransaction>>> = None;
 static INIT: Once = Once::new();
 
+#[allow(static_mut_refs)]
 fn get_or_start_server(
 	rt: &Runtime,
 ) -> Arc<Database<MemoryOptimisticTransaction>> {
@@ -184,6 +185,71 @@ fn websocket_sequential_requests_benchmark(c: &mut Criterion) {
 	group.finish();
 }
 
+fn websocket_pipelined_requests_benchmark(c: &mut Criterion) {
+	let rt = Runtime::new().unwrap();
+	let _db = get_or_start_server(&rt);
+
+	let mut group = c.benchmark_group("ws_pipelined_requests");
+	group.measurement_time(Duration::from_secs(10));
+	group.warm_up_time(Duration::from_secs(3));
+	group.throughput(Throughput::Elements(1));
+
+	for request_count in [10, 50, 100, 500].iter() {
+		let mut ws = rt.block_on(async {
+			create_websocket_connection().await.unwrap()
+		});
+
+		group.bench_with_input(
+			BenchmarkId::new("requests", request_count),
+			request_count,
+			|b, &request_count| {
+				b.iter(|| {
+					rt.block_on(async {
+						// Send all requests without
+						// waiting for responses
+						for i in 0..request_count {
+							let request = serde_json::json!({
+							    "id": format!("req_{}", i),
+							    "type": "Query",
+							    "payload": {
+								"statements": ["MAP 1"],
+								"params": null
+							    }
+							});
+
+							let request_str = serde_json::to_string(&request).unwrap();
+							ws.send(Message::Text(Utf8Bytes::from(request_str))).await.unwrap();
+						}
+
+						// Now collect all responses
+						for _i in 0..request_count {
+							if let Some(msg) =
+								ws.next().await
+							{
+								match msg.unwrap() {
+									Message::Text(_text) => {
+										// Response received successfully
+										black_box(());
+									}
+									Message::Close(_) => {
+										panic!("Connection closed during pipelined benchmark");
+									}
+									_ => {
+										// Ignore other message types
+									}
+								}
+							} else {
+								panic!("No response received during pipelined benchmark");
+							}
+						}
+					})
+				});
+			},
+		);
+	}
+	group.finish();
+}
+
 fn websocket_concurrent_connections_benchmark(c: &mut Criterion) {
 	let rt = Runtime::new().unwrap();
 	let _db = get_or_start_server(&rt);
@@ -193,7 +259,7 @@ fn websocket_concurrent_connections_benchmark(c: &mut Criterion) {
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
-	for connection_count in [1, 5, 10, 20].iter() {
+	for connection_count in [1, 5, 10, 20, 50, 100, 500].iter() {
 		group.bench_with_input(
 			BenchmarkId::new("connections", connection_count),
 			connection_count,
@@ -208,6 +274,8 @@ fn websocket_concurrent_connections_benchmark(c: &mut Criterion) {
 									async move {
 										let mut ws = create_websocket_connection().await.unwrap();
 										send_single_request(&mut ws, i).await.unwrap();
+										// Explicitly close the WebSocket connection
+										let _ = ws.close(None).await;
 									},
 								);
 							handles.push(handle);
@@ -397,6 +465,7 @@ criterion_group!(
 	websocket_benches,
 	websocket_single_request_benchmark,
 	websocket_sequential_requests_benchmark,
+	websocket_pipelined_requests_benchmark,
 	websocket_concurrent_connections_benchmark,
 	websocket_query_execution_benchmark,
 	websocket_concurrent_query_benchmark
