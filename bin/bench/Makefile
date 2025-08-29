@@ -8,6 +8,9 @@ help:
 	@echo "Engine Benchmarks:"
 	@echo "  make bench-memory-optimistic - Memory optimistic transaction benchmarks"
 	@echo ""
+	@echo "Server Benchmarks:"
+	@echo "  make bench-ws-server         - WebSocket server performance"
+	@echo ""
 	@echo "RQL Pipeline Benchmarks:"
 	@echo "  make bench-rql-tokenize      - RQL tokenization performance"
 	@echo "  make bench-rql-parse         - RQL parsing performance" 
@@ -27,6 +30,11 @@ help:
 .PHONY: bench-memory-optimistic
 bench-memory-optimistic:
 	cargo bench --bench engine-memory-optimistic $(BENCH_FLAGS)
+
+# Server benchmarks
+.PHONY: bench-ws-server
+bench-ws-server:
+	cargo bench --bench ws-server $(BENCH_FLAGS)
 
 # RQL pipeline benchmarks
 .PHONY: bench-rql-tokenize
@@ -54,7 +62,7 @@ bench-all:
 	first_error=0; \
 	echo "=== Engine Benchmarks ==="; \
 	echo ""; \
-	for bench in bench-memory-optimistic bench-rql-tokenize bench-rql-parse bench-rql-logical; do \
+	for bench in bench-memory-optimistic bench-ws-server bench-rql-tokenize bench-rql-parse bench-rql-logical; do \
 		echo "--- Running $$bench ---"; \
 		if $(MAKE) $$bench; then \
 			true; \
@@ -93,22 +101,6 @@ bench-compare:
 	@BASELINE_NAME=$${BASELINE:-main}; \
 	echo "Comparing benchmark results to baseline: $$BASELINE_NAME"; \
 	cargo bench --bench engine-memory-optimistic -- --baseline $$BASELINE_NAME
-
-# Open benchmark reports in browser
-.PHONY: bench-report
-bench-report:
-	@echo "Opening benchmark reports in browser..."
-	@if [ -d "target/criterion" ]; then \
-		if command -v xdg-open >/dev/null 2>&1; then \
-			xdg-open target/criterion/report/index.html; \
-		elif command -v open >/dev/null 2>&1; then \
-			open target/criterion/report/index.html; \
-		else \
-			echo "Please open target/criterion/report/index.html in your browser"; \
-		fi \
-	else \
-		echo "No benchmark reports found. Run 'make bench-all' first."; \
-	fi
 
 # List available benchmarks
 .PHONY: list

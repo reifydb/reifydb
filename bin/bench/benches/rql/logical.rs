@@ -11,7 +11,7 @@ use reifydb_bench::queries;
 use reifydb_rql::{ast::parse_str, plan::logical_all};
 
 fn bench_parsing(c: &mut Criterion) {
-	let mut group = c.benchmark_group("rql_parsing");
+	let mut group = c.benchmark_group("rql_logical");
 	group.sample_size(1000);
 	group.measurement_time(Duration::from_secs(10));
 	group.warm_up_time(Duration::from_secs(3));

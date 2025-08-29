@@ -221,16 +221,14 @@ impl<T: Transaction> Worker<T> {
 			return;
 		}
 
-		if let Err(e) = self.on_connection_event(
+		if let Err(_e) = self.on_connection_event(
 			connections,
 			&_poll,
 			key,
 			event,
 		) {
-			eprintln!(
-				"Connection {} event error in worker {}: {:?} -> closing",
-				key, self.worker_id, e
-			);
+			// Silently close connection on error (suppress logging
+			// for benchmarks)
 			self.close_connection(connections, key);
 		} else {
 			// Periodically optimize buffer for active connections

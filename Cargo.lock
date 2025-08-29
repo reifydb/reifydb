@@ -91,9 +91,13 @@ name = "bench"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "futures-util",
  "reifydb",
  "reifydb-rql",
+ "reifydb-sub-server",
+ "serde_json",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
