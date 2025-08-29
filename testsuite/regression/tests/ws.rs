@@ -16,7 +16,7 @@ use reifydb::{
 	},
 	engine::StandardTransaction,
 	memory,
-	network::old_ws::{client::WsClient, server::WsConfig},
+	network::ws::{client::WsClient, server::WsConfig},
 	optimistic,
 };
 use reifydb_testing::{network::busy_wait, testscript, testscript::Command};

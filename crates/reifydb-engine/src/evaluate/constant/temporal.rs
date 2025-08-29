@@ -32,7 +32,7 @@ impl TemporalParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		let value = fragment.value();
+		let value = fragment.text();
 
 		// Route based on character patterns
 		if value.starts_with('P') || value.starts_with('p') {

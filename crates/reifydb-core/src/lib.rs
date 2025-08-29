@@ -18,7 +18,7 @@ pub mod value;
 
 pub use common::*;
 pub use interface::{
-	ColumnDescriptor,
+	ColumnDescriptor, TransactionId,
 	fragment::{
 		BorrowedFragment, Fragment, IntoFragment, OwnedFragment,
 		StatementColumn, StatementLine,

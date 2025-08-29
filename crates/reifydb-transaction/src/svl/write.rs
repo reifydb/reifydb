@@ -30,7 +30,7 @@ where
 	fn get(
 		&mut self,
 		key: &EncodedKey,
-	) -> reifydb_core::Result<Option<Unversioned>> {
+	) -> crate::Result<Option<Unversioned>> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
@@ -49,10 +49,7 @@ where
 		self.storage.get(key)
 	}
 
-	fn contains_key(
-		&mut self,
-		key: &EncodedKey,
-	) -> reifydb_core::Result<bool> {
+	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {

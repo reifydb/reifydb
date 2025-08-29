@@ -19,7 +19,7 @@ pub use transaction::{CommandTransaction, QueryTransaction};
 pub use unversioned::*;
 pub use versioned::*;
 
-use crate::value::uuid::Uuid7;
+use crate::{return_internal_error, value::uuid::Uuid7};
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness
@@ -44,6 +44,23 @@ impl Deref for TransactionId {
 impl TransactionId {
 	pub fn generate() -> Self {
 		Self(Uuid7::generate())
+	}
+}
+
+impl TryFrom<&[u8]> for TransactionId {
+	type Error = crate::Error;
+
+	fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+		if bytes.len() != 16 {
+			return_internal_error!(
+				"Invalid transaction ID length: expected 16 bytes, got {}",
+				bytes.len()
+			);
+		}
+		let mut uuid_bytes = [0u8; 16];
+		uuid_bytes.copy_from_slice(bytes);
+		let uuid = uuid::Uuid::from_bytes(uuid_bytes);
+		Ok(Self(Uuid7::from(uuid)))
 	}
 }
 

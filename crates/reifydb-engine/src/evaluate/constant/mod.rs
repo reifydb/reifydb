@@ -37,7 +37,7 @@ impl StandardEvaluator {
 	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.fragment().fragment().into(),
+			name: expr.full_fragment_owned().fragment().into(),
 			data: Self::constant_value(&expr, row_count)?,
 		}))
 	}
@@ -61,7 +61,7 @@ impl StandardEvaluator {
 			}
 		};
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.fragment().fragment().into(),
+			name: expr.full_fragment_owned().fragment().into(),
 			data: casted,
 		}))
 	}
@@ -248,7 +248,7 @@ impl StandardEvaluator {
 					} => Type::Undefined,
 				};
 				return_error!(cast::unsupported_cast(
-					expr.fragment(),
+					expr.full_fragment_owned(),
 					source_type,
 					target
 				));

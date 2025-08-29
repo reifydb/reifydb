@@ -10,7 +10,7 @@ pub fn invalid_date_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"expected YYYY-MM-DD format, found '{}'",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_001".to_string(),
@@ -35,7 +35,7 @@ pub fn invalid_datetime_format<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"expected YYYY-MM-DDTHH:MM:SS format, found '{}'",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_002".to_string(),
@@ -57,7 +57,7 @@ pub fn invalid_time_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"expected HH:MM:SS format, found '{}'",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_003".to_string(),
@@ -78,7 +78,7 @@ pub fn invalid_interval_format<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"expected P[n]Y[n]M[n]W[n]D[T[n]H[n]M[n]S] format, found '{}'",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_004".to_string(),
@@ -104,12 +104,12 @@ pub fn invalid_year<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"year '{}' cannot be parsed as a number",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_005".to_string(),
 		statement: None,
-		message: format!("invalid year value '{}'", fragment.value()),
+		message: format!("invalid year value '{}'", fragment.text()),
 		fragment,
 		label,
 		help: Some(
@@ -125,12 +125,12 @@ pub fn invalid_month<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"month '{}' cannot be parsed as a number (expected 1-12)",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_006".to_string(),
 		statement: None,
-		message: format!("invalid month value '{}'", fragment.value()),
+		message: format!("invalid month value '{}'", fragment.text()),
 		fragment,
 		label,
 		help: Some(
@@ -147,12 +147,12 @@ pub fn invalid_day<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"day '{}' cannot be parsed as a number (expected 1-31)",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_007".to_string(),
 		statement: None,
-		message: format!("invalid day value '{}'", fragment.value()),
+		message: format!("invalid day value '{}'", fragment.text()),
 		fragment,
 		label,
 		help: Some("ensure the day is a valid number between 1 and 31"
@@ -167,12 +167,12 @@ pub fn invalid_hour<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"hour '{}' cannot be parsed as a number (expected 0-23)",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_008".to_string(),
         statement: None,
-        message: format!("invalid hour value '{}'", fragment.value()),
+        message: format!("invalid hour value '{}'", fragment.text()),
         fragment,
         label,
         help: Some(
@@ -191,12 +191,12 @@ pub fn invalid_minute<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"minute '{}' cannot be parsed as a number (expected 0-59)",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_009".to_string(),
 		statement: None,
-		message: format!("invalid minute value '{}'", fragment.value()),
+		message: format!("invalid minute value '{}'", fragment.text()),
 		fragment,
 		label,
 		help: Some(
@@ -213,12 +213,12 @@ pub fn invalid_second<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"second '{}' cannot be parsed as a number (expected 0-59)",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_010".to_string(),
 		statement: None,
-		message: format!("invalid second value '{}'", fragment.value()),
+		message: format!("invalid second value '{}'", fragment.text()),
 		fragment,
 		label,
 		help: Some(
@@ -237,14 +237,14 @@ pub fn invalid_fractional_seconds<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"fractional seconds '{}' cannot be parsed as a number",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_011".to_string(),
 		statement: None,
 		message: format!(
 			"invalid fractional seconds value '{}'",
-			fragment.value()
+			fragment.text()
 		),
 		fragment,
 		label,
@@ -260,7 +260,7 @@ pub fn invalid_date_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"date '{}' represents an invalid calendar date",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_012".to_string(),
@@ -282,7 +282,7 @@ pub fn invalid_time_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"time '{}' contains out-of-range values",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_013".to_string(),
@@ -306,12 +306,12 @@ pub fn invalid_interval_character<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"character '{}' is not valid in ISO 8601 duration",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_014".to_string(),
         statement: None,
-        message: format!("invalid character in interval '{}'", fragment.value()),
+        message: format!("invalid character in interval '{}'", fragment.text()),
         fragment,
         label,
         help: Some("use only valid duration units: Y, M, W, D, H, m, S".to_string()),
@@ -330,7 +330,7 @@ pub fn incomplete_interval_specification<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"number '{}' is missing a unit specifier",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
         code: "TEMPORAL_015".to_string(),
@@ -389,7 +389,7 @@ pub fn invalid_interval_component_value<'a>(
 	let label = Some(format!(
 		"{} value '{}' cannot be parsed as a number",
 		unit_name(unit),
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_017".to_string(),
@@ -397,7 +397,7 @@ pub fn invalid_interval_component_value<'a>(
 		message: format!(
 			"invalid {} value '{}'",
 			unit_name(unit),
-			fragment.value()
+			fragment.text()
 		),
 		fragment,
 		label,
@@ -417,7 +417,7 @@ pub fn unrecognized_temporal_pattern<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"value '{}' does not match any temporal format",
-		fragment.value()
+		fragment.text()
 	));
 	Diagnostic {
 		code: "TEMPORAL_018".to_string(),
@@ -440,7 +440,7 @@ pub fn unrecognized_temporal_pattern<'a>(
 pub fn empty_date_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label =
-		Some(format!("date component '{}' is empty", fragment.value()));
+		Some(format!("date component '{}' is empty", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_019".to_string(),
 		statement: None,
@@ -461,7 +461,7 @@ pub fn empty_date_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 pub fn empty_time_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label =
-		Some(format!("time component '{}' is empty", fragment.value()));
+		Some(format!("time component '{}' is empty", fragment.text()));
 	Diagnostic {
         code: "TEMPORAL_020".to_string(),
         statement: None,

@@ -8,9 +8,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence(
-		ast: AstAlterSequence,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_alter_sequence<'a>(
+		ast: AstAlterSequence<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
 			schema: ast.schema.map(|s| s.fragment()),
 			table: ast.table.fragment(),
@@ -65,7 +65,7 @@ mod tests {
 						}
 					)
 				));
-				let fragment = node.value.fragment();
+				let fragment = node.value.full_fragment_owned();
 				assert_eq!(fragment.fragment(), "1000");
 			}
 			_ => panic!("Expected AlterSequence plan"),
@@ -96,7 +96,7 @@ mod tests {
 						}
 					)
 				));
-				let fragment = node.value.fragment();
+				let fragment = node.value.full_fragment_owned();
 				assert_eq!(fragment.fragment(), "500");
 			}
 			_ => panic!("Expected AlterSequence plan"),

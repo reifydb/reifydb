@@ -15,16 +15,16 @@ use crate::{
 	},
 };
 
-pub(crate) struct ExtendNode {
-	input: Box<ExecutionPlan>,
-	expressions: Vec<Expression>,
+pub(crate) struct ExtendNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl ExtendNode {
+impl<'a> ExtendNode<'a> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
-		expressions: Vec<Expression>,
+		input: Box<ExecutionPlan<'a>>,
+		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -33,13 +33,13 @@ impl ExtendNode {
 		}
 	}
 
-	fn create_evaluation_context<'a>(
+	fn create_evaluation_context<'b>(
 		&self,
 		expr: &Expression,
-		ctx: &'a ExecutionContext,
+		ctx: &'b ExecutionContext,
 		columns: Columns,
 		row_count: usize,
-	) -> EvaluationContext<'a> {
+	) -> EvaluationContext<'b> {
 		let mut result = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
@@ -84,7 +84,7 @@ impl ExtendNode {
 	}
 }
 
-impl ExtendNode {
+impl<'a> ExtendNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
@@ -155,13 +155,13 @@ impl ExtendNode {
 	}
 }
 
-pub(crate) struct ExtendWithoutInputNode {
-	expressions: Vec<Expression>,
+pub(crate) struct ExtendWithoutInputNode<'a> {
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl ExtendWithoutInputNode {
-	pub fn new(expressions: Vec<Expression>) -> Self {
+impl<'a> ExtendWithoutInputNode<'a> {
+	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
 			layout: None,
@@ -169,7 +169,7 @@ impl ExtendWithoutInputNode {
 	}
 }
 
-impl ExtendWithoutInputNode {
+impl<'a> ExtendWithoutInputNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

@@ -9,10 +9,10 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence(
+	pub(crate) fn compile_alter_sequence<'a>(
 		_rx: &mut impl QueryTransaction,
-		alter: AlterSequenceNode,
-	) -> crate::Result<PhysicalPlan> {
+		alter: AlterSequenceNode<'a>,
+	) -> crate::Result<PhysicalPlan<'a>> {
 		// For ALTER SEQUENCE, we just pass through the logical plan
 		// info The actual execution will happen in the engine
 		Ok(PhysicalPlan::AlterSequence(AlterSequencePlan {
@@ -76,7 +76,7 @@ mod tests {
 						}
 					)
 				));
-				let fragment = plan.value.fragment();
+				let fragment = plan.value.full_fragment_owned();
 				assert_eq!(fragment.fragment(), "1000");
 			}
 			_ => panic!("Expected AlterSequence physical plan"),

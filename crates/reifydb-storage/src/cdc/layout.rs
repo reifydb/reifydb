@@ -5,28 +5,6 @@ use std::sync::LazyLock;
 
 use reifydb_core::{Type, row::EncodedRowLayout};
 
-pub(crate) static CDC_EVENT_LAYOUT: LazyLock<EncodedRowLayout> =
-	LazyLock::new(|| {
-		EncodedRowLayout::new(&[
-			Type::Uint8, // version
-			Type::Uint2, // sequence
-			Type::Uint8, // timestamp
-			Type::Uint1, /* change_type (1=Insert, 2=Update,*
-			              * 3=Delete) */
-			Type::Blob, // key
-			Type::Blob, // before (optional, undefined for Insert)
-			Type::Blob, // after (optional, undefined for Delete)
-		])
-	});
-
-pub(crate) const CDC_VERSION_FIELD: usize = 0;
-pub(crate) const CDC_SEQUENCE_FIELD: usize = 1;
-pub(crate) const CDC_TIMESTAMP_FIELD: usize = 2;
-pub(crate) const CDC_CHANGE_TYPE_FIELD: usize = 3;
-pub(crate) const CDC_KEY_FIELD: usize = 4;
-pub(crate) const CDC_BEFORE_FIELD: usize = 5;
-pub(crate) const CDC_AFTER_FIELD: usize = 6;
-
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ChangeType {
@@ -45,3 +23,36 @@ impl From<u8> for ChangeType {
 		}
 	}
 }
+
+// Layout for efficient transaction storage (shared metadata + packed changes)
+pub(crate) static CDC_TRANSACTION_LAYOUT: LazyLock<EncodedRowLayout> =
+	LazyLock::new(|| {
+		EncodedRowLayout::new(&[
+			Type::Uint8, // version
+			Type::Uint8, // timestamp
+			Type::Blob,  // transaction
+			Type::Blob,  // packed changes array
+		])
+	});
+
+pub(crate) const CDC_TX_VERSION_FIELD: usize = 0;
+pub(crate) const CDC_TX_TIMESTAMP_FIELD: usize = 1;
+pub(crate) const CDC_TX_TRANSACTION_FIELD: usize = 2;
+pub(crate) const CDC_TX_CHANGES_FIELD: usize = 3;
+
+// Layout for individual changes (without metadata)
+pub(crate) static CDC_CHANGE_LAYOUT: LazyLock<EncodedRowLayout> =
+	LazyLock::new(|| {
+		EncodedRowLayout::new(&[
+			Type::Uint1, /* change_type (1=Insert, 2=Update,
+			              * 3=Delete) */
+			Type::Blob, // key
+			Type::Blob, // before (optional, undefined for Insert)
+			Type::Blob, // after (optional, undefined for Delete)
+		])
+	});
+
+pub(crate) const CDC_COMPACT_CHANGE_TYPE_FIELD: usize = 0;
+pub(crate) const CDC_COMPACT_CHANGE_KEY_FIELD: usize = 1;
+pub(crate) const CDC_COMPACT_CHANGE_BEFORE_FIELD: usize = 2;
+pub(crate) const CDC_COMPACT_CHANGE_AFTER_FIELD: usize = 3;

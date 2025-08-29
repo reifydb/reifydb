@@ -60,7 +60,7 @@ impl Evaluator for StandardEvaluator {
 		&self,
 		ctx: &EvaluationContext,
 		expr: &Expression,
-	) -> reifydb_core::Result<Column> {
+	) -> crate::Result<Column> {
 		match expr {
 			Expression::AccessSource(expr) => {
 				self.access(ctx, expr)

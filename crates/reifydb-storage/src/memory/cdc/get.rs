@@ -10,9 +10,10 @@ use crate::memory::Memory;
 
 impl CdcGet for Memory {
 	fn get(&self, version: Version) -> Result<Vec<CdcEvent>> {
-		// Get the events for this specific version
-		if let Some(entry) = self.cdc_events.get(&version) {
-			Ok(entry.value().clone())
+		// Get the transaction for this specific version and convert to
+		// events
+		if let Some(entry) = self.cdc_transactions.get(&version) {
+			Ok(entry.value().to_events().collect())
 		} else {
 			Ok(vec![])
 		}

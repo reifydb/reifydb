@@ -54,7 +54,10 @@ impl StandardEvaluator {
 				}
 
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: expr.fragment().fragment().into(),
+					name: expr
+						.full_fragment_owned()
+						.fragment()
+						.into(),
 					data: ColumnData::bool_with_bitvec(
 						data, bitvec,
 					),
@@ -64,25 +67,25 @@ impl StandardEvaluator {
 				if l.is_number() || r.is_number() {
 					return_error!(
 						and_can_not_applied_to_number(
-							expr.fragment()
+							expr.full_fragment_owned()
 						)
 					);
 				} else if l.is_text() || r.is_text() {
 					return_error!(
 						and_can_not_applied_to_text(
-							expr.fragment()
+							expr.full_fragment_owned()
 						)
 					);
 				} else if l.is_temporal() || r.is_temporal() {
 					return_error!(
 						and_can_not_applied_to_temporal(
-							expr.fragment()
+							expr.full_fragment_owned()
 						)
 					);
 				} else {
 					return_error!(
 						and_can_not_applied_to_uuid(
-							expr.fragment()
+							expr.full_fragment_owned()
 						)
 					);
 				}

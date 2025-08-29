@@ -7,9 +7,10 @@ use crate::memory::Memory;
 
 impl CdcCount for Memory {
 	fn count(&self, version: Version) -> Result<usize> {
-		// Get the events for this specific version
-		if let Some(entry) = self.cdc_events.get(&version) {
-			Ok(entry.value().len())
+		// Get the transaction for this specific version and count
+		// changes
+		if let Some(entry) = self.cdc_transactions.get(&version) {
+			Ok(entry.value().changes.len())
 		} else {
 			Ok(0)
 		}

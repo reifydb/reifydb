@@ -4,4 +4,4 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 #[cfg(any(feature = "websocket", test))]
-pub mod old_ws;
+pub mod ws;

@@ -70,7 +70,7 @@ impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
 	fn create(
 		self: Box<Self>,
 		_ioc: &IocContainer,
-	) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	) -> crate::Result<Box<dyn Subsystem>> {
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(LoggingBuilder::new())
 		} else {

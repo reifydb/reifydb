@@ -41,7 +41,7 @@ pub fn expected_identifier_error<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.value();
+	let value = fragment.text();
 	let label = Some(format!("found `{}`", value));
 
 	Diagnostic {
@@ -60,7 +60,7 @@ pub fn expected_identifier_error<'a>(
 /// Error for invalid policy tokens
 pub fn invalid_policy_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.value();
+	let value = fragment.text();
 	let message = format!("Invalid policy token: {}", value);
 	let label = Some(format!("found `{}`", value));
 
@@ -83,7 +83,7 @@ pub fn unexpected_token_error<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.value();
+	let value = fragment.text();
 	let message = format!(
 		"Unexpected token: expected {}, got {}",
 		expected, value
@@ -107,7 +107,7 @@ pub fn unsupported_token_error<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.value();
+	let value = fragment.text();
 	let message = format!("Unsupported token: {}", value);
 	let label = Some(format!("found `{}`", value));
 
@@ -130,7 +130,7 @@ pub fn multiple_expressions_without_braces<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let keyword = fragment.value().to_string();
+	let keyword = fragment.text().to_string();
 	Diagnostic {
 		code: "AST_007".to_string(),
 		statement: None,
@@ -153,7 +153,7 @@ pub fn multiple_expressions_without_braces<'a>(
 /// Type not found error
 pub fn unrecognized_type<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let type_name = fragment.value().to_string();
+	let type_name = fragment.text().to_string();
 	Diagnostic {
 		code: "AST_008".to_string(),
 		statement: None,

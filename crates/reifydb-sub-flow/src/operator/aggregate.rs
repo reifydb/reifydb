@@ -294,9 +294,9 @@ pub struct AggregateOperator {
 	/// Node ID within the flow
 	node_id: u64,
 	/// GROUP BY expressions
-	by: Vec<Expression>,
+	by: Vec<Expression<'static>>,
 	/// Aggregate expressions (SUM, COUNT, etc.)
-	map: Vec<Expression>,
+	map: Vec<Expression<'static>>,
 	/// Column names to aggregate
 	agg_columns: Vec<String>,
 }
@@ -305,8 +305,8 @@ impl AggregateOperator {
 	pub fn new(
 		flow_id: u64,
 		node_id: u64,
-		by: Vec<Expression>,
-		map: Vec<Expression>,
+		by: Vec<Expression<'static>>,
+		map: Vec<Expression<'static>>,
 	) -> Self {
 		// Extract column names from aggregate expressions
 		let agg_columns = extract_aggregate_columns(&map);

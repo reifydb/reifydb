@@ -31,7 +31,7 @@ use tokio_tungstenite::{
 	tungstenite::{Message, Utf8Bytes},
 };
 
-use crate::old_ws::{
+use crate::ws::{
 	AuthRequest, AuthResponse, CommandRequest, CommandResponse,
 	ErrResponse, QueryRequest, QueryResponse, Request, RequestPayload,
 	RequestPayload::Auth, ResponsePayload, WebsocketColumn, WebsocketFrame,
@@ -117,7 +117,7 @@ impl<T: Transaction> WsServer<T> {
 			sleep(Duration::from_millis(50)).await;
 		}
 
-		println!("old_ws server stopped");
+		println!("ws server stopped");
 		Ok(())
 	}
 
@@ -130,7 +130,7 @@ impl<T: Transaction> WsServer<T> {
 
 		self.socket_addr.set(listener.local_addr().unwrap()).unwrap();
 		println!(
-			"old_ws server listening on {}",
+			"ws server listening on {}",
 			listener.local_addr().unwrap()
 		);
 
@@ -263,7 +263,7 @@ impl<T: Transaction> WsServer<T> {
 								peer_addr
 							);
 
-							let response = crate::old_ws::response::Response {
+							let response = crate::ws::response::Response {
                             id: request.id,
                             payload: ResponsePayload::Auth(AuthResponse {}),
                         };
@@ -295,7 +295,7 @@ impl<T: Transaction> WsServer<T> {
 												    params,
 												) {
 												    Ok(result) => {
-													let response = crate::old_ws::response::Response {
+													let response = crate::ws::response::Response {
 													    id: request.id,
 													    payload: ResponsePayload::Command(CommandResponse {
 														frames: result.into_iter().map(|frame| {
@@ -327,7 +327,7 @@ impl<T: Transaction> WsServer<T> {
 													    let mut diagnostic = e.diagnostic();
 													    diagnostic.with_statement(statement.clone());
 
-													    let response = crate::old_ws::response::Response {
+													    let response = crate::ws::response::Response {
 													    id: request.id,
 													    payload: ResponsePayload::Err(ErrResponse {
 														diagnostic
@@ -354,7 +354,7 @@ impl<T: Transaction> WsServer<T> {
 												    params,
 												) {
 												    Ok(result) => {
-													let response = crate::old_ws::response::Response {
+													let response = crate::ws::response::Response {
 													    id: request.id,
 													    payload: ResponsePayload::Query(QueryResponse {
 														frames: result.into_iter().map(|frame| {
@@ -386,7 +386,7 @@ impl<T: Transaction> WsServer<T> {
 													    let mut diagnostic = e.diagnostic();
 													    diagnostic.with_statement(statement.clone());
 
-													    let response = crate::old_ws::response::Response {
+													    let response = crate::ws::response::Response {
 													    id: request.id,
 													    payload: ResponsePayload::Err(ErrResponse {
 														diagnostic

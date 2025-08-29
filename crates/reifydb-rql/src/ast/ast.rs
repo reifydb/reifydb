@@ -3,7 +3,7 @@
 
 use std::ops::{Deref, Index};
 
-use reifydb_core::{IndexType, JoinType, OwnedFragment, SortDirection};
+use reifydb_core::{Fragment, IndexType, JoinType, SortDirection};
 
 use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
 
@@ -763,22 +763,20 @@ pub enum AstLiteral<'a> {
 }
 
 impl<'a> AstLiteral<'a> {
-	pub fn fragment(self) -> OwnedFragment {
+	pub fn fragment(self) -> Fragment<'a> {
 		match self {
 			AstLiteral::Boolean(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
 			AstLiteral::Number(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
-			AstLiteral::Text(literal) => {
-				literal.0.fragment.into_owned()
-			}
+			AstLiteral::Text(literal) => literal.0.fragment.clone(),
 			AstLiteral::Temporal(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
 			AstLiteral::Undefined(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
 		}
 	}
@@ -796,8 +794,8 @@ impl<'a> AstIdentifier<'a> {
 		self.value().to_string()
 	}
 
-	pub fn fragment(self) -> OwnedFragment {
-		self.0.fragment.into_owned()
+	pub fn fragment(self) -> Fragment<'a> {
+		self.0.fragment.clone()
 	}
 }
 

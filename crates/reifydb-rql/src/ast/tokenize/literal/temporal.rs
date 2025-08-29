@@ -57,14 +57,14 @@ mod tests {
 	fn test_temporal_date() {
 		let tokens = tokenize("@2024-01-15").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.value(), "2024-01-15");
+		assert_eq!(tokens[0].fragment.text(), "2024-01-15");
 	}
 
 	#[test]
 	fn test_temporal_datetime() {
 		let tokens = tokenize("@2024-01-15T10:30:00").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.value(), "2024-01-15T10:30:00");
+		assert_eq!(tokens[0].fragment.text(), "2024-01-15T10:30:00");
 	}
 
 	#[test]
@@ -72,7 +72,7 @@ mod tests {
 		let tokens = tokenize("@2024-01-15T10:30:00+05:30").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(
-			tokens[0].fragment.value(),
+			tokens[0].fragment.text(),
 			"2024-01-15T10:30:00+05:30"
 		);
 	}
@@ -81,7 +81,7 @@ mod tests {
 	fn test_temporal_time_only() {
 		let tokens = tokenize("@10:30:00").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.value(), "10:30:00");
+		assert_eq!(tokens[0].fragment.text(), "10:30:00");
 	}
 
 	#[test]
@@ -89,7 +89,7 @@ mod tests {
 		let tokens = tokenize("@2024-01-15T10:30:00.123456").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(
-			tokens[0].fragment.value(),
+			tokens[0].fragment.text(),
 			"2024-01-15T10:30:00.123456"
 		);
 	}
@@ -98,16 +98,16 @@ mod tests {
 	fn test_temporal_alternative_format() {
 		let tokens = tokenize("@2024/01/15").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.value(), "2024/01/15");
+		assert_eq!(tokens[0].fragment.text(), "2024/01/15");
 	}
 
 	#[test]
 	fn test_temporal_with_trailing() {
 		let tokens = tokenize("@2024-01-15 rest").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(tokens[0].fragment.value(), "2024-01-15");
+		assert_eq!(tokens[0].fragment.text(), "2024-01-15");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
-		assert_eq!(tokens[1].fragment.value(), "rest");
+		assert_eq!(tokens[1].fragment.text(), "rest");
 	}
 
 	#[test]

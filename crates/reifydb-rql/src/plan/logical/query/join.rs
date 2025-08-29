@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{JoinType, OwnedFragment};
+use reifydb_core::{Fragment, JoinType, OwnedFragment};
 
 use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
@@ -13,7 +13,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_join(ast: AstJoin) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_join<'a>(
+		ast: AstJoin<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstJoin::InnerJoin {
 				with,
@@ -22,7 +24,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -69,7 +71,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -116,7 +118,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: OwnedFragment::testing("default"), source: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment() })]
 					}
 					Ast::Infix(AstInfix {
 						left,

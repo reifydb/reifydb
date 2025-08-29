@@ -11,7 +11,7 @@ use reifydb_core::{
 	row::EncodedRow,
 };
 
-use crate::{cdc::codec::decode_cdc_event, sqlite::Sqlite};
+use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcScan for Sqlite {
 	type ScanIter<'a> = Scan;
@@ -25,7 +25,6 @@ pub struct Scan {
 	conn: PooledConnection<SqliteConnectionManager>,
 	buffer: VecDeque<CdcEvent>,
 	last_version: Option<Version>,
-	last_sequence: Option<u16>,
 	batch_size: usize,
 	exhausted: bool,
 }
@@ -39,7 +38,6 @@ impl Scan {
 			conn,
 			buffer: VecDeque::new(),
 			last_version: None,
-			last_sequence: None,
 			batch_size,
 			exhausted: false,
 		}
@@ -52,25 +50,21 @@ impl Scan {
 
 		self.buffer.clear();
 
-		let (where_clause, params) = if let (
-			Some(last_version),
-			Some(last_sequence),
-		) =
-			(self.last_version, self.last_sequence)
-		{
-			(
-                "WHERE (version > ? OR (version = ? AND sequence > ?))".to_string(),
-                vec![last_version as i64, last_version as i64, last_sequence as i64]
-            )
-		} else {
-			(String::new(), vec![])
-		};
+		let (where_clause, params) =
+			if let Some(last_version) = self.last_version {
+				(
+					"WHERE version > ?".to_string(),
+					vec![last_version as i64],
+				)
+			} else {
+				(String::new(), vec![])
+			};
 
 		let query = if where_clause.is_empty() {
-			"SELECT value FROM cdc ORDER BY version ASC, sequence ASC LIMIT ?".to_string()
+			"SELECT version, value FROM cdc ORDER BY version ASC LIMIT ?".to_string()
 		} else {
 			format!(
-				"SELECT value FROM cdc {} ORDER BY version ASC, sequence ASC LIMIT ?",
+				"SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?",
 				where_clause
 			)
 		};
@@ -80,25 +74,34 @@ impl Scan {
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);
 
-		let events: Vec<EncodedRow> = stmt
+		let transactions: Vec<(Version, EncodedRow)> = stmt
 			.query_map(
 				rusqlite::params_from_iter(query_params),
 				|row| {
-					let bytes: Vec<u8> = row.get(0)?;
-					Ok(EncodedRow(CowVec::new(bytes)))
+					let version: i64 = row.get(0)?;
+					let bytes: Vec<u8> = row.get(1)?;
+					Ok((
+						version as Version,
+						EncodedRow(CowVec::new(bytes)),
+					))
 				},
 			)
 			.unwrap()
 			.collect::<rusqlite::Result<Vec<_>>>()
 			.unwrap();
 
-		let count = events.len();
+		let count = transactions.len();
 
-		for encoded in events {
-			if let Ok(event) = decode_cdc_event(&encoded) {
-				self.last_version = Some(event.version);
-				self.last_sequence = Some(event.sequence);
-				self.buffer.push_back(event);
+		for (version, encoded_transaction) in transactions {
+			if let Ok(transaction) =
+				decode_cdc_transaction(&encoded_transaction)
+			{
+				self.last_version = Some(version);
+				// Add all events from this transaction to the
+				// buffer
+				for event in transaction.to_events() {
+					self.buffer.push_back(event);
+				}
 			}
 		}
 

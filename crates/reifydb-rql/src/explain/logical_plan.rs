@@ -212,9 +212,13 @@ fn render_logical_plan_inner(
 					"{}├── target table: {}\n",
 					child_prefix,
 					if let Some(schema) = &delete.schema {
-						format!("{}.{}", schema, table)
+						format!(
+							"{}.{}",
+							schema.fragment(),
+							table.fragment()
+						)
 					} else {
-						table.to_string()
+						table.fragment().to_string()
 					}
 				));
 			} else {
@@ -253,9 +257,13 @@ fn render_logical_plan_inner(
 					"{}├── target table: {}\n",
 					child_prefix,
 					if let Some(schema) = &update.schema {
-						format!("{}.{}", schema, table)
+						format!(
+							"{}.{}",
+							schema.fragment(),
+							table.fragment()
+						)
 					} else {
-						table.to_string()
+						table.fragment().to_string()
 					}
 				));
 			} else {

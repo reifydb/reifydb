@@ -54,7 +54,7 @@ impl StandardEvaluator {
 			let lower = self.evaluate(ctx, &expr.lower)?;
 			return_error!(
 				between_cannot_be_applied_to_incompatible_types(
-					expr.fragment(),
+					expr.full_fragment_owned(),
 					value.get_type(),
 					lower.get_type(),
 				)

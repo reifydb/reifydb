@@ -141,7 +141,7 @@ mod tests {
 	use ConstantExpression::Number;
 	use Expression::{Cast, Constant};
 	use reifydb_core::{
-		OwnedFragment, Type,
+		Fragment, Type,
 		interface::expression::{
 			CastExpression, ConstantExpression, Expression::Prefix,
 			PrefixExpression, PrefixOperator, TypeExpression,
@@ -159,13 +159,14 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing("42"),
+					fragment: Fragment::owned_internal(
+						"42",
+					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Int4,
 				},
 			}),
@@ -181,13 +182,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
             &Cast(CastExpression {
-                fragment: OwnedFragment::testing_empty(),
+                fragment: Fragment::owned_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(OwnedFragment::testing_empty()),
-                    expression: Box::new(Constant(Number { fragment: OwnedFragment::testing("42") })),
-                    fragment: OwnedFragment::testing_empty(),
+                    operator: PrefixOperator::Minus(Fragment::owned_empty()),
+                    expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("42") })),
+                    fragment: Fragment::owned_empty(),
                 })),
-                to: TypeExpression { fragment: OwnedFragment::testing_empty(), ty: Type::Int4 },
+                to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int4 },
             }),
         )
         .unwrap();
@@ -201,13 +202,13 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
             &Cast(CastExpression {
-                fragment: OwnedFragment::testing_empty(),
+                fragment: Fragment::owned_empty(),
                 expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(OwnedFragment::testing_empty()),
-                    expression: Box::new(Constant(Number { fragment: OwnedFragment::testing("128") })),
-                    fragment: OwnedFragment::testing_empty(),
+                    operator: PrefixOperator::Minus(Fragment::owned_empty()),
+                    expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("128") })),
+                    fragment: Fragment::owned_empty(),
                 })),
-                to: TypeExpression { fragment: OwnedFragment::testing_empty(), ty: Type::Int1 },
+                to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int1 },
             }),
         )
         .unwrap();
@@ -221,13 +222,14 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing("4.2"),
+					fragment: Fragment::owned_internal(
+						"4.2",
+					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Float8,
 				},
 			}),
@@ -243,13 +245,14 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing("4.2"),
+					fragment: Fragment::owned_internal(
+						"4.2",
+					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Float4,
 				},
 			}),
@@ -265,15 +268,14 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing(
+					fragment: Fragment::owned_internal(
 						"-1.1",
 					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Float4,
 				},
 			}),
@@ -289,15 +291,14 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: OwnedFragment::testing(
+					fragment: Fragment::owned_internal(
 						"-1.1",
 					),
 				})),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Float8,
 				},
 			}),
@@ -313,18 +314,17 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
 						fragment:
-							OwnedFragment::testing(
+							Fragment::owned_internal(
 								"0",
 							),
 					},
 				)),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Bool,
 				},
 			}),
@@ -340,18 +340,17 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Text {
 						fragment:
-							OwnedFragment::testing(
+							Fragment::owned_internal(
 								"-1",
 							),
 					},
 				)),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Bool,
 				},
 			}),
@@ -375,18 +374,17 @@ mod tests {
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: OwnedFragment::testing_empty(),
+				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(
 					ConstantExpression::Bool {
 						fragment:
-							OwnedFragment::testing(
+							Fragment::owned_internal(
 								"true",
 							),
 					},
 				)),
 				to: TypeExpression {
-					fragment: OwnedFragment::testing_empty(
-					),
+					fragment: Fragment::owned_empty(),
 					ty: Type::Date,
 				},
 			}),

@@ -7,14 +7,14 @@ use reifydb_core::{
 	interface::{CdcEvent, CdcScan},
 };
 
-use crate::memory::Memory;
+use crate::{cdc::CdcTransaction, memory::Memory};
 
 impl CdcScan for Memory {
 	type ScanIter<'a> = Scan<'a>;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
 		Ok(Scan {
-			version_iter: Box::new(self.cdc_events.iter()),
+			version_iter: Box::new(self.cdc_transactions.iter()),
 			current_events: vec![],
 			current_index: 0,
 		})
@@ -23,7 +23,7 @@ impl CdcScan for Memory {
 
 pub struct Scan<'a> {
 	version_iter: Box<
-		dyn Iterator<Item = Entry<'a, Version, Vec<CdcEvent>>> + 'a,
+		dyn Iterator<Item = Entry<'a, Version, CdcTransaction>> + 'a,
 	>,
 	current_events: Vec<CdcEvent>,
 	current_index: usize,
@@ -43,7 +43,8 @@ impl<'a> Iterator for Scan<'a> {
 
 		// Otherwise, get the next version's events
 		if let Some(entry) = self.version_iter.next() {
-			self.current_events = entry.value().clone();
+			self.current_events =
+				entry.value().to_events().collect();
 			self.current_index = 0;
 
 			// Recursively call next() to get the first event from

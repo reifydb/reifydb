@@ -7,9 +7,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_delete(
-		ast: AstDelete,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_delete<'a>(
+		ast: AstDelete<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Delete(DeleteNode {
 			schema: ast.schema.map(|s| s.fragment()),
 			table: ast.table.map(|t| t.fragment()),
