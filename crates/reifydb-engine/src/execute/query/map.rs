@@ -16,16 +16,16 @@ use crate::{
 	},
 };
 
-pub(crate) struct MapNode {
-	input: Box<ExecutionPlan>,
-	expressions: Vec<Expression>,
+pub(crate) struct MapNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl MapNode {
+impl<'a> MapNode<'a> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
-		expressions: Vec<Expression>,
+		input: Box<ExecutionPlan<'a>>,
+		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -38,13 +38,13 @@ impl MapNode {
 	/// target column information when the expression is an alias
 	/// expression that targets a table column during UPDATE/INSERT
 	/// operations.
-	fn create_evaluation_context<'a>(
+	fn create_evaluation_context<'b>(
 		&self,
 		expr: &Expression,
-		ctx: &'a ExecutionContext,
+		ctx: &'b ExecutionContext,
 		columns: Columns,
 		row_count: usize,
-	) -> EvaluationContext<'a> {
+	) -> EvaluationContext<'b> {
 		let mut result = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
@@ -89,7 +89,7 @@ impl MapNode {
 	}
 }
 
-impl MapNode {
+impl<'a> MapNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
@@ -150,13 +150,13 @@ impl MapNode {
 	}
 }
 
-pub(crate) struct MapWithoutInputNode {
-	expressions: Vec<Expression>,
+pub(crate) struct MapWithoutInputNode<'a> {
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl MapWithoutInputNode {
-	pub fn new(expressions: Vec<Expression>) -> Self {
+impl<'a> MapWithoutInputNode<'a> {
+	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
 			layout: None,
@@ -164,7 +164,7 @@ impl MapWithoutInputNode {
 	}
 }
 
-impl MapWithoutInputNode {
+impl<'a> MapWithoutInputNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

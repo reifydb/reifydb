@@ -12,19 +12,15 @@ use crate::{
 	},
 };
 
-impl Expression {
-	pub fn lazy_fragment<'a>(&'a self) -> impl Fn() -> Fragment<'a> + 'a {
+impl<'a> Expression<'a> {
+	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
 		move || match self {
-			Expression::AccessSource(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
-			Expression::Alias(expr) => {
-				Fragment::Owned(expr.expression.fragment())
-			}
+			Expression::AccessSource(expr) => expr.fragment(),
+			Expression::Alias(expr) => expr.expression.fragment(),
 			Expression::Cast(CastExpression {
 				expression: expr,
 				..
-			}) => Fragment::Owned(expr.fragment()),
+			}) => expr.fragment(),
 			Expression::Constant(expr) => match expr {
 				ConstantExpression::Undefined {
 					fragment,
@@ -40,105 +36,71 @@ impl Expression {
 				}
 				| ConstantExpression::Text {
 					fragment,
-				} => Fragment::Owned(fragment.clone()),
+				} => fragment.clone(),
 			},
-			Expression::Column(expr) => {
-				Fragment::Owned(expr.0.clone())
-			}
+			Expression::Column(expr) => expr.0.clone(),
 
-			Expression::Add(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
-			Expression::Sub(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
-			Expression::GreaterThan(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
+			Expression::Add(expr) => expr.fragment(),
+			Expression::Sub(expr) => expr.fragment(),
+			Expression::GreaterThan(expr) => expr.fragment.clone(),
 			Expression::GreaterThanEqual(expr) => {
-				Fragment::Owned(expr.fragment.clone())
+				expr.fragment.clone()
 			}
-			Expression::LessThan(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
+			Expression::LessThan(expr) => expr.fragment.clone(),
 			Expression::LessThanEqual(expr) => {
-				Fragment::Owned(expr.fragment.clone())
+				expr.fragment.clone()
 			}
-			Expression::Equal(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
-			Expression::NotEqual(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
-			Expression::Between(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
-			Expression::And(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
-			Expression::Or(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
-			Expression::Xor(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
+			Expression::Equal(expr) => expr.fragment.clone(),
+			Expression::NotEqual(expr) => expr.fragment.clone(),
+			Expression::Between(expr) => expr.fragment(),
+			Expression::And(expr) => expr.fragment.clone(),
+			Expression::Or(expr) => expr.fragment.clone(),
+			Expression::Xor(expr) => expr.fragment.clone(),
 
-			Expression::Mul(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
-			Expression::Div(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
-			Expression::Rem(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
+			Expression::Mul(expr) => expr.fragment(),
+			Expression::Div(expr) => expr.fragment(),
+			Expression::Rem(expr) => expr.fragment(),
 
 			Expression::Tuple(expr) => {
 				let fragments = expr
 					.expressions
 					.iter()
-					.map(|e| e.fragment())
+					.map(|e| e.fragment().into_owned())
 					.collect::<Vec<_>>();
 				Fragment::Owned(OwnedFragment::merge_all(
 					fragments,
 				))
 			}
-			Expression::Type(expr) => {
-				Fragment::Owned(expr.fragment.clone())
-			}
+			Expression::Type(expr) => expr.fragment.clone(),
 
-			Expression::Prefix(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
+			Expression::Prefix(expr) => expr.fragment(),
 
-			Expression::Call(expr) => {
-				Fragment::Owned(expr.fragment())
-			}
+			Expression::Call(expr) => expr.fragment(),
 			Expression::Parameter(param) => match param {
 				ParameterExpression::Positional {
 					fragment,
 					..
-				} => Fragment::Owned(fragment.clone()),
+				} => fragment.clone(),
 				ParameterExpression::Named {
 					fragment,
-				} => Fragment::Owned(fragment.clone()),
+				} => fragment.clone(),
 			},
 		}
 	}
 }
 
-impl AddExpression {
-	pub fn fragment(&self) -> OwnedFragment {
-		OwnedFragment::merge_all([
-			self.left.fragment(),
-			self.fragment.clone(),
-			self.right.fragment(),
-		])
+impl<'a> AddExpression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
+		Fragment::Owned(OwnedFragment::merge_all([
+			self.left.fragment().into_owned(),
+			self.fragment.clone().into_owned(),
+			self.right.fragment().into_owned(),
+		]))
 	}
 }
 
-impl ConstantExpression {
-	pub fn fragment(&self) -> OwnedFragment {
+impl<'a> ConstantExpression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
 		match self {
 			ConstantExpression::Undefined {
 				fragment,
@@ -159,48 +121,48 @@ impl ConstantExpression {
 	}
 }
 
-impl SubExpression {
-	pub fn fragment(&self) -> OwnedFragment {
-		OwnedFragment::merge_all([
-			self.left.fragment(),
-			self.fragment.clone(),
-			self.right.fragment(),
-		])
+impl<'a> SubExpression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
+		Fragment::Owned(OwnedFragment::merge_all([
+			self.left.fragment().into_owned(),
+			self.fragment.clone().into_owned(),
+			self.right.fragment().into_owned(),
+		]))
 	}
 }
 
-impl MulExpression {
-	pub fn fragment(&self) -> OwnedFragment {
-		OwnedFragment::merge_all([
-			self.left.fragment(),
-			self.fragment.clone(),
-			self.right.fragment(),
-		])
+impl<'a> MulExpression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
+		Fragment::Owned(OwnedFragment::merge_all([
+			self.left.fragment().into_owned(),
+			self.fragment.clone().into_owned(),
+			self.right.fragment().into_owned(),
+		]))
 	}
 }
 
-impl DivExpression {
-	pub fn fragment(&self) -> OwnedFragment {
-		OwnedFragment::merge_all([
-			self.left.fragment(),
-			self.fragment.clone(),
-			self.right.fragment(),
-		])
+impl<'a> DivExpression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
+		Fragment::Owned(OwnedFragment::merge_all([
+			self.left.fragment().into_owned(),
+			self.fragment.clone().into_owned(),
+			self.right.fragment().into_owned(),
+		]))
 	}
 }
 
-impl RemExpression {
-	pub fn fragment(&self) -> OwnedFragment {
-		OwnedFragment::merge_all([
-			self.left.fragment(),
-			self.fragment.clone(),
-			self.right.fragment(),
-		])
+impl<'a> RemExpression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
+		Fragment::Owned(OwnedFragment::merge_all([
+			self.left.fragment().into_owned(),
+			self.fragment.clone().into_owned(),
+			self.right.fragment().into_owned(),
+		]))
 	}
 }
 
-impl Expression {
-	pub fn fragment(&self) -> OwnedFragment {
-		self.lazy_fragment()().into_owned()
+impl<'a> Expression<'a> {
+	pub fn fragment(&self) -> Fragment<'a> {
+		self.lazy_fragment()()
 	}
 }

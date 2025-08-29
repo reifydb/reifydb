@@ -8,9 +8,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence(
-		ast: AstAlterSequence,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_alter_sequence<'a>(
+		ast: AstAlterSequence<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
 			schema: ast.schema.map(|s| s.fragment()),
 			table: ast.table.fragment(),

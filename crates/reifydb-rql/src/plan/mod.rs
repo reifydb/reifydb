@@ -16,20 +16,20 @@ use crate::{
 pub mod logical;
 pub mod physical;
 
-pub type RowToInsert = Vec<Expression>;
+pub type RowToInsert = Vec<Expression<'static>>;
 
-pub fn plan(
+pub fn plan<'a>(
 	rx: &mut impl QueryTransaction,
-	statement: AstStatement,
-) -> crate::Result<Option<PhysicalPlan>> {
+	statement: AstStatement<'a>,
+) -> crate::Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(statement)?;
 	let physical = compile_physical(rx, logical)?;
 	Ok(physical)
 }
 
-pub fn logical_all(
-	statements: Vec<AstStatement>,
-) -> crate::Result<Vec<LogicalPlan>> {
+pub fn logical_all<'a>(
+	statements: Vec<AstStatement<'a>>,
+) -> crate::Result<Vec<LogicalPlan<'a>>> {
 	let mut result = vec![];
 
 	for statement in statements {

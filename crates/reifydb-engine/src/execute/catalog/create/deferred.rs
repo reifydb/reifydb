@@ -16,8 +16,8 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(_) =
-			txn.find_view_by_name(plan.schema.id, &plan.view)?
+		if let Some(_) = txn
+			.find_view_by_name(plan.schema.id, plan.view.value())?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -32,7 +32,9 @@ impl Executor {
 					(
 						"view",
 						Value::Utf8(
-							plan.view.to_string(),
+							plan.view
+								.value()
+								.to_string(),
 						),
 					),
 					("created", Value::Bool(false)),
@@ -41,8 +43,8 @@ impl Executor {
 		}
 
 		let result = txn.create_view(ViewToCreate {
-			fragment: Some(plan.view.clone()),
-			name: plan.view.to_string(),
+			fragment: Some(plan.view.clone().into_owned()),
+			name: plan.view.value().to_string(),
 			schema: plan.schema.id,
 			columns: plan.columns,
 		})?;
@@ -51,7 +53,7 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("view", Value::Utf8(plan.view.to_string())),
+			("view", Value::Utf8(plan.view.value().to_string())),
 			("created", Value::Bool(true)),
 		]))
 	}
@@ -62,7 +64,7 @@ mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
 	use reifydb_core::{
-		OwnedFragment, Value,
+		Fragment, Value,
 		interface::{Params, SchemaDef, SchemaId},
 	};
 	use reifydb_rql::plan::physical::{
@@ -86,7 +88,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			view: OwnedFragment::testing("test_view"),
+			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -160,7 +162,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			view: OwnedFragment::testing("test_view"),
+			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -189,7 +191,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: OwnedFragment::testing("test_view"),
+			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -225,7 +227,7 @@ mod tests {
 				id: SchemaId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: OwnedFragment::testing("my_view"),
+			view: Fragment::owned_internal("my_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {

@@ -26,7 +26,7 @@ impl Executor {
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
 		let schema_name = match &plan.schema {
-			Some(schema) => schema.as_ref(),
+			Some(schema) => schema.value(),
 			None => unimplemented!(),
 		};
 
@@ -34,7 +34,7 @@ impl Executor {
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(schema_not_found(
-				plan.schema.clone(),
+				plan.schema.clone().map(|s| s.into_owned()),
 				schema_name,
 			));
 		};
@@ -42,23 +42,25 @@ impl Executor {
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
-			&plan.table,
+			plan.table.value(),
 		)?
 		else {
 			return_error!(table_not_found(
-				plan.table.clone(),
+				plan.table.clone().into_owned(),
 				&schema.name,
-				&plan.table.as_ref(),
+				plan.table.value(),
 			));
 		};
 
 		let Some(column) = CatalogStore::find_table_column_by_name(
 			txn,
 			table.id,
-			plan.column.as_ref(),
+			plan.column.value(),
 		)?
 		else {
-			return_error!(column_not_found(plan.column.clone()));
+			return_error!(column_not_found(
+				plan.column.clone().into_owned()
+			));
 		};
 
 		if !column.auto_increment {
@@ -116,7 +118,7 @@ mod tests {
 		test_utils::ensure_test_schema,
 	};
 	use reifydb_core::{
-		OwnedFragment, Type, Value,
+		Fragment, Type, Value,
 		interface::{
 			Params,
 			expression::{
@@ -164,11 +166,11 @@ mod tests {
 
 		// Alter the sequence to start at 1000
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedFragment::testing("test_schema")),
-			table: OwnedFragment::testing("users"),
-			column: OwnedFragment::testing("id"),
+			schema: Some(Fragment::owned_internal("test_schema")),
+			table: Fragment::owned_internal("users"),
+			column: Fragment::owned_internal("id"),
 			value: Constant(Number {
-				fragment: OwnedFragment::testing("1000"),
+				fragment: Fragment::owned_internal("1000"),
 			}),
 		};
 
@@ -212,11 +214,11 @@ mod tests {
 
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedFragment::testing("test_schema")),
-			table: OwnedFragment::testing("items"),
-			column: OwnedFragment::testing("id"),
+			schema: Some(Fragment::owned_internal("test_schema")),
+			table: Fragment::owned_internal("items"),
+			column: Fragment::owned_internal("id"),
 			value: Constant(Number {
-				fragment: OwnedFragment::testing("100"),
+				fragment: Fragment::owned_internal("100"),
 			}),
 		};
 
@@ -237,13 +239,13 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedFragment::testing(
+			schema: Some(Fragment::owned_internal(
 				"non_existent_schema",
 			)),
-			table: OwnedFragment::testing("some_table"),
-			column: OwnedFragment::testing("id"),
+			table: Fragment::owned_internal("some_table"),
+			column: Fragment::owned_internal("id"),
 			value: Constant(Number {
-				fragment: OwnedFragment::testing("1000"),
+				fragment: Fragment::owned_internal("1000"),
 			}),
 		};
 
@@ -264,11 +266,11 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedFragment::testing("test_schema")),
-			table: OwnedFragment::testing("non_existent_table"),
-			column: OwnedFragment::testing("id"),
+			schema: Some(Fragment::owned_internal("test_schema")),
+			table: Fragment::owned_internal("non_existent_table"),
+			column: Fragment::owned_internal("id"),
 			value: Constant(Number {
-				fragment: OwnedFragment::testing("1000"),
+				fragment: Fragment::owned_internal("1000"),
 			}),
 		};
 
@@ -307,11 +309,11 @@ mod tests {
 
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequencePlan {
-			schema: Some(OwnedFragment::testing("test_schema")),
-			table: OwnedFragment::testing("posts"),
-			column: OwnedFragment::testing("non_existent_column"),
+			schema: Some(Fragment::owned_internal("test_schema")),
+			table: Fragment::owned_internal("posts"),
+			column: Fragment::owned_internal("non_existent_column"),
 			value: Constant(Number {
-				fragment: OwnedFragment::testing("1000"),
+				fragment: Fragment::owned_internal("1000"),
 			}),
 		};
 

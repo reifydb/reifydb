@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, OwnedFragment, Type,
+	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::AddExpression},
 	result::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types,
 	return_error,
@@ -575,7 +575,7 @@ fn add_numeric<L, R>(
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> crate::Result<Column>
 where
 	L: GetType + Promote<R> + Copy + IsNumber + Clone + Debug + Default,
@@ -586,12 +586,13 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
+	let owned_fragment = fragment.into_owned();
 	let mut data = ctx.pooled(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
 				if let Some(value) =
-					ctx.add(*l, *r, &fragment)?
+					ctx.add(*l, *r, &owned_fragment)?
 				{
 					data.push(value);
 				} else {
@@ -602,7 +603,7 @@ where
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: owned_fragment.value().into(),
 		data,
 	}))
 }
@@ -634,7 +635,7 @@ fn concat_strings(
 	l: &StringContainer,
 	r: &StringContainer,
 	target: Type,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> crate::Result<Column> {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -650,7 +651,7 @@ fn concat_strings(
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: fragment.value().into(),
 		data,
 	}))
 }
@@ -661,7 +662,7 @@ fn concat_string_with_other(
 	other_data: &ColumnData,
 	string_is_left: bool,
 	target: Type,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> crate::Result<Column> {
 	debug_assert_eq!(string_data.len(), other_data.len());
 
@@ -681,7 +682,7 @@ fn concat_string_with_other(
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: fragment.value().into(),
 		data,
 	}))
 }

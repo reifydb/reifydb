@@ -3,25 +3,31 @@
 
 use reifydb_core::{
 	flow::{FlowNodeType::Operator, OperatorType::Filter},
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{
+		CommandTransaction, FlowNodeId,
+		evaluate::expression::Expression,
+	},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler,
+	conversion::{to_owned_expressions, to_owned_physical_plan},
+};
 use crate::{
 	Result,
 	plan::physical::{FilterNode, PhysicalPlan},
 };
 
 pub(crate) struct FilterCompiler {
-	pub input: Box<PhysicalPlan>,
-	pub conditions: Vec<Expression>,
+	pub input: Box<PhysicalPlan<'static>>,
+	pub conditions: Vec<Expression<'static>>,
 }
 
-impl From<FilterNode> for FilterCompiler {
-	fn from(node: FilterNode) -> Self {
+impl<'a> From<FilterNode<'a>> for FilterCompiler {
+	fn from(node: FilterNode<'a>) -> Self {
 		Self {
-			input: node.input,
-			conditions: node.conditions,
+			input: Box::new(to_owned_physical_plan(*node.input)),
+			conditions: to_owned_expressions(node.conditions),
 		}
 	}
 }

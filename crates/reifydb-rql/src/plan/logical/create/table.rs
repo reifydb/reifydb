@@ -13,9 +13,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_table(
-		ast: AstCreateTable,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_create_table<'a>(
+		ast: AstCreateTable<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		for col in ast.columns.into_iter() {
@@ -34,8 +34,8 @@ impl Compiler {
 			};
 
 			let fragment = Some(OwnedFragment::merge_all([
-				col.name.fragment(),
-				col.ty.fragment(),
+				col.name.fragment().into_owned(),
+				col.ty.fragment().into_owned(),
 			]));
 
 			columns.push(TableColumnToCreate {

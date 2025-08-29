@@ -14,18 +14,18 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_transactional(
+	pub(crate) fn compile_create_transactional<'a>(
 		rx: &mut impl QueryTransaction,
-		create: CreateTransactionalViewNode,
-	) -> crate::Result<PhysicalPlan> {
+		create: CreateTransactionalViewNode<'a>,
+	) -> crate::Result<PhysicalPlan<'a>> {
 		let Some(schema) = CatalogStore::find_schema_by_name(
 			rx,
-			&create.schema.fragment(),
+			create.schema.fragment(),
 		)?
 		else {
 			return_error!(schema_not_found(
-				Some(create.schema.clone()),
-				&create.schema.fragment()
+				create.schema.clone(),
+				create.schema.fragment()
 			));
 		};
 

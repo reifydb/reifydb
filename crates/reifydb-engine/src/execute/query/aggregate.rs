@@ -32,19 +32,19 @@ enum Projection {
 	},
 }
 
-pub(crate) struct AggregateNode {
-	input: Box<ExecutionPlan>,
-	by: Vec<Expression>,
-	map: Vec<Expression>,
+pub(crate) struct AggregateNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
+	by: Vec<Expression<'a>>,
+	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 }
 
-impl AggregateNode {
+impl<'a> AggregateNode<'a> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
-		by: Vec<Expression>,
-		map: Vec<Expression>,
+		input: Box<ExecutionPlan<'a>>,
+		by: Vec<Expression<'a>>,
+		map: Vec<Expression<'a>>,
 		context: Arc<ExecutionContext>,
 	) -> Self {
 		Self {
@@ -57,7 +57,7 @@ impl AggregateNode {
 	}
 }
 
-impl AggregateNode {
+impl<'a> AggregateNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
@@ -189,7 +189,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.fragment());
 				projections.push(Projection::Group {
 					column: c.0.fragment().to_string(),
-					alias: c.fragment(),
+					alias: c.fragment().into_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -201,7 +201,7 @@ fn parse_keys_and_aggregates<'a>(
 						.column
 						.fragment()
 						.to_string(),
-					alias: access.fragment(),
+					alias: access.fragment().into_owned(),
 				})
 			}
 			// _ => return
@@ -221,13 +221,13 @@ fn parse_keys_and_aggregates<'a>(
 				// "total_count: count(value)"
 				(
 					alias_expr.expression.as_ref(),
-					alias_expr.alias.0.clone(),
+					alias_expr.alias.0.clone().into_owned(),
 				)
 			}
 			expr => {
 				// Non-aliased expression, use the expression's
 				// fragment as alias
-				(expr, expr.fragment())
+				(expr, expr.fragment().into_owned())
 			}
 		};
 

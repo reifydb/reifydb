@@ -10,12 +10,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Flow {
+pub struct Flow<'a> {
 	pub id: FlowId,
-	pub graph: DirectedGraph<FlowNode>,
+	pub graph: DirectedGraph<FlowNode<'a>>,
 }
 
-impl Flow {
+impl<'a> Flow<'a> {
 	pub fn new(id: impl Into<FlowId>) -> Self {
 		Self {
 			id: id.into(),
@@ -23,7 +23,7 @@ impl Flow {
 		}
 	}
 
-	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
+	pub fn add_node(&mut self, node: FlowNode<'a>) -> FlowNodeId {
 		let node_id = node.id.clone();
 		self.graph.add_node(node_id.clone(), node);
 		node_id
@@ -51,14 +51,14 @@ impl Flow {
 		Ok(self.graph.topological_sort())
 	}
 
-	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&FlowNode> {
+	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&FlowNode<'a>> {
 		self.graph.get_node(node_id)
 	}
 
 	pub fn get_node_mut(
 		&mut self,
 		node_id: &FlowNodeId,
-	) -> Option<&mut FlowNode> {
+	) -> Option<&mut FlowNode<'a>> {
 		self.graph.get_node_mut(node_id)
 	}
 

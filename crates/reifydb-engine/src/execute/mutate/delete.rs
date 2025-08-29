@@ -49,7 +49,9 @@ impl Executor {
 					)?
 				else {
 					return_error!(schema_not_found(
-						Some(schema_ref.clone()),
+						Some(schema_ref
+							.clone()
+							.into_owned()),
 						schema_name
 					));
 				};

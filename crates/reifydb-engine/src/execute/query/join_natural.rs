@@ -13,17 +13,17 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct NaturalJoinNode {
-	left: Box<ExecutionPlan>,
-	right: Box<ExecutionPlan>,
+pub(crate) struct NaturalJoinNode<'a> {
+	left: Box<ExecutionPlan<'a>>,
+	right: Box<ExecutionPlan<'a>>,
 	join_type: JoinType,
 	layout: Option<ColumnsLayout>,
 }
 
-impl NaturalJoinNode {
+impl<'a> NaturalJoinNode<'a> {
 	pub fn new(
-		left: Box<ExecutionPlan>,
-		right: Box<ExecutionPlan>,
+		left: Box<ExecutionPlan<'a>>,
+		right: Box<ExecutionPlan<'a>>,
 		join_type: JoinType,
 	) -> Self {
 		Self {
@@ -80,7 +80,7 @@ impl NaturalJoinNode {
 	}
 }
 
-impl NaturalJoinNode {
+impl<'a> NaturalJoinNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

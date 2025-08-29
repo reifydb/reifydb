@@ -58,14 +58,14 @@ struct DistinctEntry {
 pub struct DistinctOperator {
 	flow_id: u64,
 	node_id: u64,
-	expressions: Vec<Expression>,
+	expressions: Vec<Expression<'static>>,
 }
 
 impl DistinctOperator {
 	pub fn new(
 		flow_id: u64,
 		node_id: u64,
-		expressions: Vec<Expression>,
+		expressions: Vec<Expression<'static>>,
 	) -> Self {
 		Self {
 			flow_id,

@@ -93,9 +93,9 @@ pub struct WindowOperator {
 	flow_id: u64,
 	node_id: u64,
 	window_type: WindowType,
-	partition_keys: Vec<Expression>,
-	order_key: Option<Expression>, // Usually a timestamp
-	aggregate_exprs: Vec<Expression>,
+	partition_keys: Vec<Expression<'static>>,
+	order_key: Option<Expression<'static>>,
+	aggregate_exprs: Vec<Expression<'static>>,
 }
 
 impl WindowOperator {
@@ -103,9 +103,9 @@ impl WindowOperator {
 		flow_id: u64,
 		node_id: u64,
 		window_type: WindowType,
-		partition_keys: Vec<Expression>,
-		order_key: Option<Expression>,
-		aggregate_exprs: Vec<Expression>,
+		partition_keys: Vec<Expression<'static>>,
+		order_key: Option<Expression<'static>>,
+		aggregate_exprs: Vec<Expression<'static>>,
 	) -> Self {
 		Self {
 			flow_id,

@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	OwnedFragment,
+	Fragment,
 	Type::Bool,
 	interface::{Evaluator, evaluate::expression::NotEqExpression},
 	result::error::diagnostic::operator::not_equal_cannot_be_applied_to_incompatible_types,
@@ -509,7 +509,7 @@ fn compare_bool(
 	ctx: &EvaluationContext,
 	l: &BoolContainer,
 	r: &BoolContainer,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -533,7 +533,7 @@ fn compare_number<L, R>(
 	ctx: &EvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column
 where
 	L: Promote<R> + IsNumber + Clone + Debug + Default,
@@ -561,7 +561,7 @@ where
 fn compare_temporal<T>(
 	l: &TemporalContainer<T>,
 	r: &TemporalContainer<T>,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column
 where
 	T: IsTemporal + Clone + Debug + Default,
@@ -593,7 +593,7 @@ where
 fn compare_utf8(
 	l: &StringContainer,
 	r: &StringContainer,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 

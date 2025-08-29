@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, OwnedFragment, Type,
+	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::MulExpression},
 	result::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types,
 	return_error,
@@ -557,7 +557,7 @@ fn mul_numeric<L, R>(
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> crate::Result<Column>
 where
 	L: GetType + Promote<R> + Copy + IsNumber + Clone + Debug + Default,
@@ -568,12 +568,13 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
+	let owned_fragment = fragment.into_owned();
 	let mut data = ctx.pooled(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
 				if let Some(value) =
-					ctx.mul(*l, *r, &fragment)?
+					ctx.mul(*l, *r, &owned_fragment)?
 				{
 					data.push(value);
 				} else {
@@ -584,7 +585,7 @@ where
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
+		name: owned_fragment.value().into(),
 		data,
 	}))
 }

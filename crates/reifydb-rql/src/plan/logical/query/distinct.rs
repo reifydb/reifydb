@@ -7,9 +7,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_distinct(
-		ast: AstDistinct,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_distinct<'a>(
+		ast: AstDistinct<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Distinct(DistinctNode {
 			columns: ast
 				.columns

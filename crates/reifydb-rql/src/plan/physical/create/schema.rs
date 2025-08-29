@@ -9,10 +9,10 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_schema(
+	pub(crate) fn compile_create_schema<'a>(
 		_rx: &mut impl QueryTransaction,
-		create: CreateSchemaNode,
-	) -> crate::Result<PhysicalPlan> {
+		create: CreateSchemaNode<'a>,
+	) -> crate::Result<PhysicalPlan<'a>> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateSchema(CreateSchemaPlan {
 			schema: create.schema,

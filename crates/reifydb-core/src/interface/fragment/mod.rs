@@ -366,3 +366,35 @@ impl IntoFragment<'_> for String {
 		})
 	}
 }
+
+// Serialize Fragment<'a> by converting to OwnedFragment
+impl<'a> serde::Serialize for Fragment<'a> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.clone().into_owned().serialize(serializer)
+	}
+}
+
+// Deserialize always creates Fragment::Owned with OwnedFragment
+impl<'de, 'a> serde::Deserialize<'de> for Fragment<'a> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let owned = OwnedFragment::deserialize(deserializer)?;
+		Ok(Fragment::Owned(owned))
+	}
+}
+
+// PartialEq implementation for Fragment<'a>
+impl<'a> PartialEq for Fragment<'a> {
+	fn eq(&self, other: &Self) -> bool {
+		self.value() == other.value()
+			&& self.line() == other.line()
+			&& self.column() == other.column()
+	}
+}
+
+impl<'a> Eq for Fragment<'a> {}

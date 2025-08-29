@@ -28,7 +28,7 @@ impl<E: Evaluator> FlowEngine<E> {
 	pub fn register(
 		&mut self,
 		txn: &mut impl QueryTransaction,
-		flow: Flow,
+		flow: Flow<'static>,
 	) -> crate::Result<()> {
 		debug_assert!(
 			!self.flows.contains_key(&flow.id),
@@ -105,7 +105,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		txn: &mut T,
 		flow_id: FlowId,
 		node: FlowNodeId,
-		operator: &OperatorType,
+		operator: &OperatorType<'static>,
 	) -> crate::Result<()> {
 		let operator = self.create_operator(
 			txn,
@@ -127,7 +127,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		txn: &mut T,
 		flow_id: FlowId,
 		node_id: FlowNodeId,
-		operator: OperatorType,
+		operator: OperatorType<'static>,
 	) -> crate::Result<OperatorEnum<E>> {
 		match operator {
 			Filter {

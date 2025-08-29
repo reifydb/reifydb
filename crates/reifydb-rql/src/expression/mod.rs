@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedFragment,
-	interface::expression::{
+	Fragment, OwnedFragment,
+	interface::evaluate::expression::{
 		AccessSourceExpression, AddExpression, AliasExpression,
 		AndExpression, BetweenExpression, CallExpression,
 		CastExpression, ColumnExpression, ConstantExpression,
@@ -45,7 +45,7 @@ pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
-	pub fn compile(ast: Ast) -> crate::Result<Expression> {
+	pub fn compile<'a>(ast: Ast<'a>) -> crate::Result<Expression<'a>> {
 		match ast {
             Ast::Literal(literal) => match literal {
                 AstLiteral::Boolean(_) => {
@@ -84,9 +84,9 @@ impl ExpressionCompiler {
                 }
 
                 Ok(Expression::Call(CallExpression {
-                    func: IdentExpression(OwnedFragment::testing(&full_name)),
+                    func: IdentExpression(Fragment::Owned(OwnedFragment::testing(&full_name))),
                     args: arg_expressions,
-                    fragment: call.token.fragment.into_owned(),
+                    fragment: call.token.fragment,
                 }))
             }
             Ast::Infix(ast) => Self::infix(ast),
@@ -99,7 +99,7 @@ impl ExpressionCompiler {
                     value: Box::new(value),
                     lower: Box::new(lower),
                     upper: Box::new(upper),
-                    fragment: between.token.fragment.into_owned(),
+                    fragment: between.token.fragment,
                 }))
             }
             Ast::Tuple(tuple) => {
@@ -109,18 +109,18 @@ impl ExpressionCompiler {
                     expressions.push(Self::compile(ast)?);
                 }
 
-                Ok(Expression::Tuple(TupleExpression { expressions, fragment: tuple.token.fragment.into_owned() }))
+                Ok(Expression::Tuple(TupleExpression { expressions, fragment: tuple.token.fragment }))
             }
             Ast::Prefix(prefix) => {
                 let (fragment, operator) = match prefix.operator {
                     ast::AstPrefixOperator::Plus(token) => {
-                        (token.fragment.clone().into_owned(), PrefixOperator::Plus(token.fragment.into_owned()))
+                        (token.fragment.clone(), PrefixOperator::Plus(token.fragment))
                     }
                     ast::AstPrefixOperator::Negate(token) => {
-                        (token.fragment.clone().into_owned(), PrefixOperator::Minus(token.fragment.into_owned()))
+                        (token.fragment.clone(), PrefixOperator::Minus(token.fragment))
                     }
                     ast::AstPrefixOperator::Not(token) => {
-                        (token.fragment.clone().into_owned(), PrefixOperator::Not(token.fragment.into_owned()))
+                        (token.fragment.clone(), PrefixOperator::Not(token.fragment))
                     }
                 };
 
@@ -140,7 +140,7 @@ impl ExpressionCompiler {
                 let expr = tuple.nodes.pop().unwrap();
 
                 Ok(Expression::Cast(CastExpression {
-                    fragment: tuple.token.fragment.into_owned(),
+                    fragment: tuple.token.fragment,
                     expression: Box::new(Self::compile(expr)?),
                     to: TypeExpression { fragment, ty },
                 }))
@@ -149,12 +149,12 @@ impl ExpressionCompiler {
                 match param.kind {
                     ParameterKind::Positional(_) => {
                         Ok(Expression::Parameter(ParameterExpression::Positional {
-                            fragment: param.token.fragment.into_owned(),
+                            fragment: param.token.fragment,
                         }))
                     }
                     ParameterKind::Named => {
                         Ok(Expression::Parameter(ParameterExpression::Named {
-                            fragment: param.token.fragment.into_owned(),
+                            fragment: param.token.fragment,
                         }))
                     }
                 }
@@ -163,7 +163,7 @@ impl ExpressionCompiler {
         }
 	}
 
-	fn infix(ast: AstInfix) -> crate::Result<Expression> {
+	fn infix<'a>(ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {
 		match ast.operator {
 			InfixOperator::AccessTable(_) => {
 				let Ast::Identifier(left) = *ast.left else {
@@ -187,7 +187,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Add(AddExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::Divide(token) => {
@@ -196,7 +196,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Div(DivExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::Subtract(token) => {
@@ -205,7 +205,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Sub(SubExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::Rem(token) => {
@@ -214,7 +214,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Rem(RemExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::Multiply(token) => {
@@ -223,7 +223,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Mul(MulExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::Call(token) => {
@@ -243,7 +243,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Call(CallExpression {
 					func: IdentExpression(fragment),
 					args: tuple.expressions,
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::GreaterThan(token) => {
@@ -254,9 +254,7 @@ impl ExpressionCompiler {
 					GreaterThanExpression {
 						left: Box::new(left),
 						right: Box::new(right),
-						fragment: token
-							.fragment
-							.into_owned(),
+						fragment: token.fragment,
 					},
 				))
 			}
@@ -268,9 +266,7 @@ impl ExpressionCompiler {
 					GreaterThanEqExpression {
 						left: Box::new(left),
 						right: Box::new(right),
-						fragment: token
-							.fragment
-							.into_owned(),
+						fragment: token.fragment,
 					},
 				))
 			}
@@ -281,7 +277,7 @@ impl ExpressionCompiler {
 				Ok(Expression::LessThan(LessThanExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::LessThanEqual(token) => {
@@ -292,9 +288,7 @@ impl ExpressionCompiler {
 					LessThanEqExpression {
 						left: Box::new(left),
 						right: Box::new(right),
-						fragment: token
-							.fragment
-							.into_owned(),
+						fragment: token.fragment,
 					},
 				))
 			}
@@ -305,7 +299,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Equal(EqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::NotEqual(token) => {
@@ -315,7 +309,7 @@ impl ExpressionCompiler {
 				Ok(Expression::NotEqual(NotEqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			InfixOperator::As(token) => {
@@ -329,7 +323,7 @@ impl ExpressionCompiler {
 						right.fragment(),
 					),
 					expression: Box::new(left),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 
@@ -340,7 +334,7 @@ impl ExpressionCompiler {
 				Ok(Expression::And(AndExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 
@@ -351,7 +345,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Or(OrExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 
@@ -362,7 +356,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Xor(XorExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 
@@ -375,7 +369,7 @@ impl ExpressionCompiler {
 				Ok(Expression::Equal(EqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 
@@ -388,12 +382,10 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Alias(AliasExpression {
 					alias: IdentExpression(
-						alias.fragment
-							.clone()
-							.into_owned(),
+						alias.fragment.clone(),
 					),
 					expression: Box::new(right),
-					fragment: token.fragment.into_owned(),
+					fragment: token.fragment,
 				}))
 			}
 			operator => {

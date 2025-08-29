@@ -56,24 +56,24 @@ pub(crate) struct Batch {
 	pub columns: Columns,
 }
 
-pub(crate) enum ExecutionPlan {
-	Aggregate(AggregateNode),
-	Filter(FilterNode),
-	InlineData(InlineDataNode),
-	InnerJoin(InnerJoinNode),
-	LeftJoin(LeftJoinNode),
-	NaturalJoin(NaturalJoinNode),
-	Map(MapNode),
-	MapWithoutInput(MapWithoutInputNode),
-	Extend(ExtendNode),
-	ExtendWithoutInput(ExtendWithoutInputNode),
-	Sort(SortNode),
+pub(crate) enum ExecutionPlan<'a> {
+	Aggregate(AggregateNode<'a>),
+	Filter(FilterNode<'a>),
+	InlineData(InlineDataNode<'a>),
+	InnerJoin(InnerJoinNode<'a>),
+	LeftJoin(LeftJoinNode<'a>),
+	NaturalJoin(NaturalJoinNode<'a>),
+	Map(MapNode<'a>),
+	MapWithoutInput(MapWithoutInputNode<'a>),
+	Extend(ExtendNode<'a>),
+	ExtendWithoutInput(ExtendWithoutInputNode<'a>),
+	Sort(SortNode<'a>),
 	TableScan(TableScanNode),
-	Take(TakeNode),
+	Take(TakeNode<'a>),
 	ViewScan(ViewScanNode),
 }
 
-impl ExecutionPlan {
+impl<'a> ExecutionPlan<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

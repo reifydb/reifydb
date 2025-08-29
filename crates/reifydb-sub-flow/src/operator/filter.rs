@@ -11,11 +11,11 @@ use reifydb_core::{
 use crate::operator::{Operator, OperatorContext};
 
 pub struct FilterOperator {
-	conditions: Vec<Expression>,
+	conditions: Vec<Expression<'static>>,
 }
 
 impl FilterOperator {
-	pub fn new(conditions: Vec<Expression>) -> Self {
+	pub fn new(conditions: Vec<Expression<'static>>) -> Self {
 		Self {
 			conditions,
 		}

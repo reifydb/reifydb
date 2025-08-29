@@ -15,13 +15,16 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct SortNode {
-	input: Box<ExecutionPlan>,
+pub(crate) struct SortNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	by: Vec<SortKey>,
 }
 
-impl SortNode {
-	pub(crate) fn new(input: Box<ExecutionPlan>, by: Vec<SortKey>) -> Self {
+impl<'a> SortNode<'a> {
+	pub(crate) fn new(
+		input: Box<ExecutionPlan<'a>>,
+		by: Vec<SortKey>,
+	) -> Self {
 		Self {
 			input,
 			by,
@@ -29,7 +32,7 @@ impl SortNode {
 	}
 }
 
-impl SortNode {
+impl<'a> SortNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

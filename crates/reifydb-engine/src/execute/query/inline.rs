@@ -23,16 +23,16 @@ use crate::{
 	execute::{Batch, ExecutionContext},
 };
 
-pub(crate) struct InlineDataNode {
-	rows: Vec<Vec<AliasExpression>>,
+pub(crate) struct InlineDataNode<'a> {
+	rows: Vec<Vec<AliasExpression<'a>>>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 	executed: bool,
 }
 
-impl InlineDataNode {
+impl<'a> InlineDataNode<'a> {
 	pub fn new(
-		rows: Vec<Vec<AliasExpression>>,
+		rows: Vec<Vec<AliasExpression<'a>>>,
 		context: Arc<ExecutionContext>,
 	) -> Self {
 		let layout = context.table.as_ref().map(|table| {
@@ -64,7 +64,7 @@ impl InlineDataNode {
 	}
 }
 
-impl InlineDataNode {
+impl<'a> InlineDataNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		_ctx: &ExecutionContext,
@@ -101,7 +101,7 @@ impl InlineDataNode {
 	}
 }
 
-impl InlineDataNode {
+impl<'a> InlineDataNode<'a> {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {

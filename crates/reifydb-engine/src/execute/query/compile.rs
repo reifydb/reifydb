@@ -24,11 +24,11 @@ use crate::execute::{
 	},
 };
 
-pub(crate) fn compile(
-	plan: PhysicalPlan,
+pub(crate) fn compile<'a>(
+	plan: PhysicalPlan<'a>,
 	rx: &mut impl QueryTransaction,
 	context: Arc<ExecutionContext>,
-) -> ExecutionPlan {
+) -> ExecutionPlan<'a> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
