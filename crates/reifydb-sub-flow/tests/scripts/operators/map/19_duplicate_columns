@@ -58,7 +58,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show same column with different transformations
 command 'from test.duplicated'

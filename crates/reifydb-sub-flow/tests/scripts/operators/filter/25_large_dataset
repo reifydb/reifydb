@@ -83,7 +83,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 100
+await
 
 # Count even numbers
 command 'from test.even_numbers take 10'

@@ -7,8 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange, Value,
 	interface::{
-		EncodableKey, EncodableKeyRange, Params, TableRowKey,
-		TableRowKeyRange, Transaction, VersionedCommandTransaction,
+		EncodableKey, EncodableKeyRange, Params, RowKey, RowKeyRange,
+		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 	},
 	result::error::diagnostic::{
@@ -163,8 +163,8 @@ impl Executor {
 				for row_numberx in 0..columns.row_count() {
 					let row_number =
 						row_numbers[row_numberx];
-					txn.remove(&TableRowKey {
-						table: table.id,
+					txn.remove(&RowKey {
+						store: table.id.into(),
 						row: row_number,
 					}
 					.encode())?;
@@ -173,8 +173,8 @@ impl Executor {
 			}
 		} else {
 			// Delete entire table - scan all rows and delete them
-			let range = TableRowKeyRange {
-				table: table.id,
+			let range = RowKeyRange {
+				store: table.id.into(),
 			};
 
 			let keys = txn

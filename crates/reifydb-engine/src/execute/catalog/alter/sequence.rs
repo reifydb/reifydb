@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use catalog::schema_not_found;
-use reifydb_catalog::{CatalogStore, sequence::TableColumnSequence};
+use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor, Value,
 	diagnostic::{
@@ -52,7 +52,7 @@ impl Executor {
 			));
 		};
 
-		let Some(column) = CatalogStore::find_table_column_by_name(
+		let Some(column) = CatalogStore::find_column_by_name(
 			txn,
 			table.id,
 			plan.column.value(),
@@ -94,7 +94,7 @@ impl Executor {
 		debug_assert_eq!(data.len(), 1);
 
 		let value = data.get_value(0);
-		TableColumnSequence::set_value(
+		ColumnSequence::set_value(
 			txn,
 			table.id,
 			column.id,

@@ -61,7 +61,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show boolean expression results
 command 'from test.eligibility'

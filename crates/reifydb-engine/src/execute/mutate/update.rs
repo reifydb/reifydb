@@ -7,8 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	ColumnDescriptor, Type, Value,
 	interface::{
-		ColumnPolicyKind, EncodableKey, Params, TableRowKey,
-		Transaction, VersionedCommandTransaction,
+		ColumnPolicyKind, EncodableKey, Params, RowKey, Transaction,
+		VersionedCommandTransaction,
 	},
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
@@ -331,8 +331,8 @@ impl Executor {
 				// from the columns
 				let row_number = row_numbers[row_numberx];
 				txn.set(
-					&TableRowKey {
-						table: table.id,
+					&RowKey {
+						store: table.id.into(),
 						row: row_number,
 					}
 					.encode(),

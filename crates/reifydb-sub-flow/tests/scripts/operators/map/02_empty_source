@@ -35,7 +35,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 5
+await
 
 # View should be empty
 command 'from test.mapped'

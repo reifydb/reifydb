@@ -4,28 +4,28 @@
 use crate::{
 	EncodedKey,
 	interface::{
-		ViewColumnId, ViewId,
+		ColumnId, StoreId,
 		key::{EncodableKey, KeyKind},
 	},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ViewColumnSequenceKey {
-	pub view: ViewId,
-	pub column: ViewColumnId,
+pub struct ColumnSequenceKey {
+	pub store: StoreId,
+	pub column: ColumnId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for ViewColumnSequenceKey {
-	const KIND: KeyKind = KeyKind::ViewColumnSequence;
+impl EncodableKey for ColumnSequenceKey {
+	const KIND: KeyKind = KeyKind::ColumnSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(18);
+		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.view));
+		out.extend(&keycode::serialize_store_id(&self.store));
 		out.extend(&keycode::serialize(&self.column));
 		EncodedKey::new(out)
 	}
@@ -46,14 +46,16 @@ impl EncodableKey for ViewColumnSequenceKey {
 		}
 
 		let payload = &key[2..];
-		if payload.len() != 16 {
+		if payload.len() != 17 {
+			// 9 bytes for store + 8 bytes for column
 			return None;
 		}
 
-		let view = keycode::deserialize(&payload[..8]).ok()?;
-		let column = keycode::deserialize(&payload[8..16]).ok()?;
+		let store =
+			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let column = keycode::deserialize(&payload[9..17]).ok()?;
 		Some(Self {
-			view,
+			store,
 			column,
 		})
 	}
@@ -61,27 +63,27 @@ impl EncodableKey for ViewColumnSequenceKey {
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, ViewColumnSequenceKey};
+	use super::{ColumnSequenceKey, EncodableKey};
 	use crate::{
 		EncodedKey,
-		interface::{ViewColumnId, ViewId},
+		interface::{ColumnId, StoreId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = ViewColumnSequenceKey {
-			view: ViewId(0x1234),
-			column: ViewColumnId(0x5678),
+		let key = ColumnSequenceKey {
+			store: StoreId::table(0x1234),
+			column: ColumnId(0x5678),
 		};
 		let encoded = key.encode();
 
 		assert_eq!(encoded[0], 0xFE); // version serialized
-		assert_eq!(encoded[1], 0xEB); // KeyKind::ViewColumnSequence serialized
+		assert_eq!(encoded[1], 0xF1); // KeyKind::StoreColumnSequence serialized
 
 		// Test decode
-		let decoded = ViewColumnSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.view, ViewId(0x1234));
-		assert_eq!(decoded.column, ViewColumnId(0x5678));
+		let decoded = ColumnSequenceKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.store, StoreId::table(0x1234));
+		assert_eq!(decoded.column, ColumnId(0x5678));
 	}
 
 	#[test]
@@ -90,9 +92,8 @@ mod tests {
 		encoded.push(0x0E); // correct kind
 		encoded.extend(&[0; 16]); // payload
 
-		let decoded = ViewColumnSequenceKey::decode(&EncodedKey::new(
-			encoded,
-		));
+		let decoded =
+			ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}
 
@@ -102,18 +103,16 @@ mod tests {
 		encoded.push(0xFF); // wrong kind
 		encoded.extend(&[0; 16]); // payload
 
-		let decoded = ViewColumnSequenceKey::decode(&EncodedKey::new(
-			encoded,
-		));
+		let decoded =
+			ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}
 
 	#[test]
 	fn test_decode_invalid_length() {
 		let encoded = vec![0x01, 0x0E]; // version and kind only, missing payload
-		let decoded = ViewColumnSequenceKey::decode(&EncodedKey::new(
-			encoded,
-		));
+		let decoded =
+			ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}
 }

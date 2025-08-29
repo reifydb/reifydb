@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+-----------+------------+
 > 
 
-wait 5
+await
 
 # Should only show active records
 command 'from test.active_only'

@@ -12,8 +12,7 @@ use reifydb_core::{
 	},
 	interface::{
 		CommandTransaction, EncodableKey, Evaluator,
-		GetEncodedRowLayout, SourceId, SourceId::Table, ViewId,
-		ViewRowKey,
+		GetEncodedRowLayout, RowKey, StoreId, ViewId,
 	},
 };
 
@@ -29,7 +28,7 @@ impl<E: Evaluator> FlowEngine<E> {
 
 		for diff in change.diffs {
 			diffs_by_source
-				.entry(diff.source())
+				.entry(diff.store())
 				.or_insert_with(Vec::new)
 				.push(diff);
 		}
@@ -143,6 +142,22 @@ impl<E: Evaluator> FlowEngine<E> {
 					change.diffs.len(),
 					view
 				);
+				for diff in &change.diffs {
+					match diff {
+						FlowDiff::Insert {
+							row_ids,
+							..
+						} => {
+							log_debug!(
+								"FlowEngine: Inserting {} rows to view {:?}: {:?}",
+								row_ids.len(),
+								view,
+								row_ids
+							);
+						}
+						_ => {}
+					}
+				}
 				// Sinks persist the final results
 				self.apply_to_view(txn, *view, &change)?;
 				change
@@ -244,11 +259,21 @@ impl<E: Evaluator> FlowEngine<E> {
 						// Check if this row already
 						// exists (for idempotent
 						// updates)
-						let key = ViewRowKey {
-							view: view_id,
+						let key = RowKey {
+							store: StoreId::view(
+								view_id,
+							),
 							row: row_id,
 						}
 						.encode();
+
+						use reifydb_core::log_debug;
+						log_debug!(
+							"Writing row to view {:?} with row_id {:?}, key: {:?}",
+							view_id,
+							row_id,
+							key
+						);
 
 						// Insert or update the row
 						txn.set(&key, row)?;
@@ -323,8 +348,10 @@ impl<E: Evaluator> FlowEngine<E> {
 
 						// Directly update the row using
 						// its row_id
-						let key = ViewRowKey {
-							view: view_id,
+						let key = RowKey {
+							store: StoreId::view(
+								view_id,
+							),
 							row: row_id,
 						}
 						.encode();
@@ -352,8 +379,10 @@ impl<E: Evaluator> FlowEngine<E> {
 
 					// Remove each row by its row_id
 					for &row_id in row_ids {
-						let key = ViewRowKey {
-							view: view_id,
+						let key = RowKey {
+							store: StoreId::view(
+								view_id,
+							),
 							row: row_id,
 						}
 						.encode();
@@ -371,7 +400,7 @@ impl<E: Evaluator> FlowEngine<E> {
 /// Find the source node in a flow that corresponds to the given source
 fn find_source_node<'a>(
 	flow: &'a Flow<'static>,
-	source: &SourceId,
+	source: &StoreId,
 ) -> Option<&'a FlowNode<'static>> {
 	for node_id in flow.get_node_ids() {
 		if let Some(node) = flow.get_node(&node_id) {
@@ -380,7 +409,7 @@ fn find_source_node<'a>(
 				..
 			} = &node.ty
 			{
-				if *source == Table(*table) {
+				if *source == StoreId::table(*table) {
 					return Some(node);
 				}
 			}

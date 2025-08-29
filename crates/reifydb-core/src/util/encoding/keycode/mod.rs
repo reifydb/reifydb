@@ -9,10 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use serde::{Deserialize, Serialize};
+
+mod catalog;
 mod deserialize;
 mod serialize;
 
-use serde::{Deserialize, Serialize};
+pub use catalog::{deserialize_store_id, serialize_store_id};
 
 use crate::{
 	error::diagnostic::serialization,

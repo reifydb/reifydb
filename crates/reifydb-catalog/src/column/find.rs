@@ -1,22 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{QueryTransaction, TableColumnKey, TableId};
+use reifydb_core::interface::{ColumnKey, QueryTransaction, StoreId};
 
 use crate::{
 	CatalogStore,
-	table_column::{ColumnDef, ColumnId, layout::table_column},
+	column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl CatalogStore {
-	pub fn find_table_column_by_name(
+	pub fn find_column_by_name(
 		rx: &mut impl QueryTransaction,
-		table: TableId,
+		store: impl Into<StoreId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx
-			.range(TableColumnKey::full_scan(table))?
-			.find_map(|versioned| {
+		let maybe_id = rx.range(ColumnKey::full_scan(store))?.find_map(
+			|versioned| {
 				let row = versioned.row;
 				let column =
 					ColumnId(table_column::LAYOUT.get_u64(
@@ -31,7 +30,8 @@ impl CatalogStore {
 				} else {
 					None
 				}
-			});
+			},
+		);
 
 		if let Some(id) = maybe_id {
 			Ok(Some(Self::get_table_column(rx, id)?))
@@ -46,16 +46,16 @@ mod tests {
 	use reifydb_core::{Type, interface::TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
-	use crate::{CatalogStore, test_utils::create_test_table_column};
+	use crate::{CatalogStore, test_utils::create_test_column};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
-		create_test_table_column(&mut txn, "col_2", Type::Int2, vec![]);
-		create_test_table_column(&mut txn, "col_3", Type::Int4, vec![]);
+		create_test_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_column(&mut txn, "col_2", Type::Int2, vec![]);
+		create_test_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let result = CatalogStore::find_table_column_by_name(
+		let result = CatalogStore::find_column_by_name(
 			&mut txn,
 			TableId(1),
 			"col_3",
@@ -72,9 +72,9 @@ mod tests {
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
-		create_test_table_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_column(&mut txn, "col_1", Type::Int1, vec![]);
 
-		let result = CatalogStore::find_table_column_by_name(
+		let result = CatalogStore::find_column_by_name(
 			&mut txn,
 			TableId(1),
 			"not_found",

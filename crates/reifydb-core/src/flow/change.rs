@@ -2,43 +2,43 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{RowNumber, Value, interface::SourceId, value::columnar::Columns};
+use crate::{RowNumber, Value, interface::StoreId, value::columnar::Columns};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowDiff {
 	Insert {
-		source: SourceId,
+		store: StoreId,
 		row_ids: Vec<RowNumber>,
 		after: Columns,
 	},
 	Update {
-		source: SourceId,
+		store: StoreId,
 		row_ids: Vec<RowNumber>,
 		before: Columns,
 		after: Columns,
 	},
 	Remove {
-		source: SourceId,
+		store: StoreId,
 		row_ids: Vec<RowNumber>,
 		before: Columns,
 	},
 }
 
 impl FlowDiff {
-	pub fn source(&self) -> SourceId {
+	pub fn store(&self) -> StoreId {
 		match self {
 			FlowDiff::Insert {
-				source,
+				store,
 				..
-			} => *source,
+			} => *store,
 			FlowDiff::Update {
-				source,
+				store,
 				..
-			} => *source,
+			} => *store,
 			FlowDiff::Remove {
-				source,
+				store,
 				..
-			} => *source,
+			} => *store,
 		}
 	}
 

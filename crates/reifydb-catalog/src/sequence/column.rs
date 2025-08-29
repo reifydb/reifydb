@@ -4,8 +4,8 @@
 use reifydb_core::{
 	Type, Value,
 	interface::{
-		CommandTransaction, EncodableKey, ViewColumnId,
-		ViewColumnSequenceKey, ViewId,
+		ColumnId, ColumnSequenceKey, CommandTransaction, EncodableKey,
+		StoreId,
 	},
 };
 
@@ -19,17 +19,17 @@ use crate::{
 	},
 };
 
-pub struct ViewColumnSequence {}
+pub struct ColumnSequence {}
 
-impl ViewColumnSequence {
+impl ColumnSequence {
 	pub fn next_value(
 		txn: &mut impl CommandTransaction,
-		view: ViewId,
-		column: ViewColumnId,
+		store: impl Into<StoreId>,
+		column: ColumnId,
 	) -> crate::Result<Value> {
-		let column = CatalogStore::get_view_column(txn, column)?;
-		let key = ViewColumnSequenceKey {
-			view,
+		let column = CatalogStore::get_table_column(txn, column)?;
+		let key = ColumnSequenceKey {
+			store: store.into(),
 			column: column.id,
 		}
 		.encode();
@@ -71,22 +71,26 @@ impl ViewColumnSequence {
 
 	pub fn set_value(
 		txn: &mut impl CommandTransaction,
-		view: ViewId,
-		column: ViewColumnId,
+		store: impl Into<StoreId>,
+		column: ColumnId,
 		value: Value,
 	) -> crate::Result<()> {
-		let view = CatalogStore::get_view(txn, view)?;
+		// let table = CatalogStore::get_table(txn, table)?;
+		let column = CatalogStore::get_table_column(txn, column)?;
 
-		let column = CatalogStore::get_view_column(txn, column)?;
+		if !column.auto_increment {
+			// return_error!(can_not_alter_not_auto_increment(plan.
+			// column, column.ty));
+			unimplemented!()
+		}
 
 		debug_assert!(value.get_type() == column.ty);
 
-		let key = ViewColumnSequenceKey {
-			view: view.id,
+		let key = ColumnSequenceKey {
+			store: store.into(),
 			column: column.id,
 		}
 		.encode();
-
 		match value {
 			Value::Int1(v) => GeneratorI8::set(txn, &key, v),
 			Value::Int2(v) => GeneratorI16::set(txn, &key, v),

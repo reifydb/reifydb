@@ -59,7 +59,7 @@ command 'from test.source'
 > +------+-----------+---------+
 > 
 
-wait 5
+await
 
 # Should show only unique complete rows
 command 'from test.unique_rows'

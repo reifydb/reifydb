@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{
 		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
 		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
-		TableId, Transaction,
+		StoreId, TableId, Transaction,
 	},
 	log_debug,
 	row::EncodedRow,
@@ -98,8 +98,6 @@ impl<T: Transaction> FlowConsumer<T> {
 		txn: &mut CT,
 		changes: Vec<Change>,
 	) -> Result<()> {
-		use reifydb_core::interface::SourceId;
-
 		// Create a new FlowEngine for this processing batch
 		let mut flow_engine =
 			FlowEngine::new(StandardEvaluator::default());
@@ -134,9 +132,7 @@ impl<T: Transaction> FlowConsumer<T> {
 					)?;
 
 					let diff = FlowDiff::Insert {
-						source: SourceId::Table(
-							table_id,
-						),
+						store: StoreId::from(table_id),
 						row_ids: vec![row_number],
 						after: columns,
 					};
@@ -162,9 +158,7 @@ impl<T: Transaction> FlowConsumer<T> {
 					)?;
 
 					let diff = FlowDiff::Update {
-						source: SourceId::Table(
-							table_id,
-						),
+						store: StoreId::from(table_id),
 						row_ids: vec![row_number],
 						before: before_columns,
 						after: after_columns,
@@ -187,9 +181,7 @@ impl<T: Transaction> FlowConsumer<T> {
 					)?;
 
 					let diff = FlowDiff::Remove {
-						source: SourceId::Table(
-							table_id,
-						),
+						store: StoreId::from(table_id),
 						row_ids: vec![row_number],
 						before: columns,
 					};
@@ -222,52 +214,63 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 
 		// Process all events and detect if we have flow table inserts
 		for event in events {
-			if let Some(Key::TableRow(table_row)) =
+			if let Some(Key::Row(table_row)) =
 				Key::decode(event.key())
 			{
 				// Check if this is an insert to the flows table
 				if matches!(
 					&event.change,
 					CdcChange::Insert { .. }
-				) && table_row.table.0 == FLOWS_TABLE_ID
+				) && table_row.store.as_u64()
+					== FLOWS_TABLE_ID
 				{
 					log_debug!(
 						"FlowConsumer: Detected flow table insert (table={:?})",
-						table_row.table
+						table_row.store
 					);
 				}
 
-				// Convert CDC events to FlowChange events
-				let flowchange = match &event.change {
-					CdcChange::Insert {
-						after,
-						..
-					} => Change::Insert {
-						table_id: table_row.table,
-						row_number: table_row.row,
-						row: after.to_vec(),
-					},
-					CdcChange::Update {
-						before,
-						after,
-						..
-					} => Change::Update {
-						table_id: table_row.table,
-						row_number: table_row.row,
-						before: before.to_vec(),
-						after: after.to_vec(),
-					},
-					CdcChange::Delete {
-						before,
-						..
-					} => Change::Delete {
-						table_id: table_row.table,
-						row_number: table_row.row,
-						row: before.to_vec(),
-					},
-				};
+				// Only process events for tables, not views
+				// Views are managed by the flow system itself
+				if let Ok(table_id) =
+					table_row.store.to_table_id()
+				{
+					// Convert CDC events to FlowChange
+					// events
+					let flowchange = match &event.change {
+						CdcChange::Insert {
+							after,
+							..
+						} => Change::Insert {
+							table_id,
+							row_number: table_row
+								.row,
+							row: after.to_vec(),
+						},
+						CdcChange::Update {
+							before,
+							after,
+							..
+						} => Change::Update {
+							table_id,
+							row_number: table_row
+								.row,
+							before: before.to_vec(),
+							after: after.to_vec(),
+						},
+						CdcChange::Delete {
+							before,
+							..
+						} => Change::Delete {
+							table_id,
+							row_number: table_row
+								.row,
+							row: before.to_vec(),
+						},
+					};
 
-				changes.push(flowchange);
+					changes.push(flowchange);
+				}
 			}
 		}
 

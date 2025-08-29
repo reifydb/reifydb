@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+-----------+---------------+
 > 
 
-wait 5
+await
 
 # Should show only New York residents
 command 'from test.ny_residents'

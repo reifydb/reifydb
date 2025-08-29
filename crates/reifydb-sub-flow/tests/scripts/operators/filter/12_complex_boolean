@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+-------+------------+---------+
 > 
 
-wait 5
+await
 
 # Should show: (active adults) OR (any VIP)
 command 'from test.special_users'

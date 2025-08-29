@@ -1,22 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{QueryTransaction, TableColumnKey, TableId};
+use reifydb_core::interface::{ColumnKey, QueryTransaction, StoreId};
 
 use crate::{
 	CatalogStore,
-	table_column::{ColumnDef, ColumnId, layout::table_column},
+	column::{ColumnDef, ColumnId, layout::table_column},
 };
 
 impl CatalogStore {
 	pub fn list_table_columns(
 		rx: &mut impl QueryTransaction,
-		table: TableId,
+		store: impl Into<StoreId>,
 	) -> crate::Result<Vec<ColumnDef>> {
+		let store = store.into();
 		let mut result = vec![];
 
 		let ids =
-			rx.range(TableColumnKey::full_scan(table))?
+			rx.range(ColumnKey::full_scan(store))?
 				.map(|versioned| {
 					let row = versioned.row;
 					ColumnId(table_column::LAYOUT.get_u64(
@@ -43,7 +44,7 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		table_column::{ColumnIndex, TableColumnToCreate},
+		column::{ColumnIndex, ColumnToCreate},
 		test_utils::ensure_test_table,
 	};
 
@@ -54,10 +55,10 @@ mod tests {
 
 		// Create columns out of order
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),
@@ -72,10 +73,10 @@ mod tests {
 		)
 		.unwrap();
 
-		CatalogStore::create_table_column(
+		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
-			TableColumnToCreate {
+			ColumnToCreate {
 				fragment: None,
 				schema_name: "test_schema",
 				table: TableId(1),

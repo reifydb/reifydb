@@ -5,12 +5,12 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{ColumnPolicyId, TableColumnId};
+use crate::interface::catalog::{ColumnId, ColumnPolicyId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnPolicy {
 	pub id: ColumnPolicyId,
-	pub column: TableColumnId,
+	pub column: ColumnId,
 	pub policy: ColumnPolicyKind,
 }
 

@@ -59,7 +59,7 @@ command 'from test.source'
 > +------+---------+------------+
 > 
 
-wait 5
+await
 
 # Should pass all three filters
 command 'from test.filtered_chain'

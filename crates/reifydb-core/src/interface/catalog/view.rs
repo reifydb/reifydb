@@ -3,10 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Type,
-	interface::{ColumnIndex, SchemaId, ViewColumnId, ViewId},
-};
+use crate::interface::{ColumnDef, SchemaId, ViewId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ViewKind {
@@ -15,18 +12,10 @@ pub enum ViewKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ViewColumnDef {
-	pub id: ViewColumnId,
-	pub name: String,
-	pub ty: Type,
-	pub index: ColumnIndex,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ViewDef {
 	pub id: ViewId,
 	pub schema: SchemaId,
 	pub name: String,
 	pub kind: ViewKind,
-	pub columns: Vec<ViewColumnDef>,
+	pub columns: Vec<ColumnDef>,
 }

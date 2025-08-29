@@ -122,7 +122,7 @@ mod tests {
 		};
 		let key3 = SchemaViewKey {
 			schema: SchemaId(2),
-			view: ViewId(0),
+			view: ViewId(1),
 		};
 
 		let encoded1 = key1.encode();
