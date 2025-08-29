@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CowVec, Result, Version,
 	delta::Delta,
-	interface::{UnversionedCommit, VersionedCommit},
+	interface::{TransactionId, UnversionedCommit, VersionedCommit},
 	result::error::diagnostic::sequence,
 	return_error,
 	row::EncodedRow,
@@ -17,7 +17,12 @@ use crate::{
 };
 
 impl VersionedCommit for Memory {
-	fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
+	fn commit(
+		&self,
+		delta: CowVec<Delta>,
+		version: Version,
+		transaction: TransactionId,
+	) -> Result<()> {
 		let timestamp = now_millis();
 
 		// Collect all CDC events for this version
@@ -76,6 +81,7 @@ impl VersionedCommit for Memory {
 				version,
 				sequence,
 				timestamp,
+				transaction,
 				before_value,
 			);
 			cdc_events.push(cdc_event);

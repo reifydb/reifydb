@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Blob, CowVec, EncodedKey,
-	interface::{CdcChange, CdcEvent},
+	interface::{CdcChange, CdcEvent, TransactionId},
 	row::EncodedRow,
 };
 
@@ -21,6 +21,11 @@ pub(crate) fn encode_cdc_event(
 		&mut row,
 		CDC_TIMESTAMP_FIELD,
 		event.timestamp,
+	);
+	CDC_EVENT_LAYOUT.set_blob(
+		&mut row,
+		CDC_TRANSACTION_FIELD,
+		&Blob::from_slice(event.transaction.as_bytes()),
 	);
 
 	// Encode change type and variable-length fields
@@ -106,6 +111,9 @@ pub(crate) fn decode_cdc_event(
 	let version = CDC_EVENT_LAYOUT.get_u64(row, CDC_VERSION_FIELD);
 	let sequence = CDC_EVENT_LAYOUT.get_u16(row, CDC_SEQUENCE_FIELD);
 	let timestamp = CDC_EVENT_LAYOUT.get_u64(row, CDC_TIMESTAMP_FIELD);
+	let transaction_blob =
+		CDC_EVENT_LAYOUT.get_blob(row, CDC_TRANSACTION_FIELD);
+	let transaction = TransactionId::try_from(transaction_blob.as_bytes())?;
 	let change_type = ChangeType::from(
 		CDC_EVENT_LAYOUT.get_u8(row, CDC_CHANGE_TYPE_FIELD),
 	);
@@ -155,12 +163,12 @@ pub(crate) fn decode_cdc_event(
 		}
 	};
 
-	Ok(CdcEvent::new(version, sequence, timestamp, change))
+	Ok(CdcEvent::new(version, sequence, timestamp, transaction, change))
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{CdcChange, CdcEvent};
+	use reifydb_core::interface::{CdcChange, CdcEvent, TransactionId};
 
 	use super::*;
 
@@ -172,7 +180,13 @@ mod tests {
 			key: key.clone(),
 			after: after.clone(),
 		};
-		let event = CdcEvent::new(123456789, 42, 1234567890, change);
+		let event = CdcEvent::new(
+			123456789,
+			42,
+			1234567890,
+			TransactionId::default(),
+			change,
+		);
 
 		let encoded = encode_cdc_event(&event).unwrap();
 		let decoded = decode_cdc_event(&encoded).unwrap();
@@ -203,7 +217,13 @@ mod tests {
 			before: before.clone(),
 			after: after.clone(),
 		};
-		let event = CdcEvent::new(123456789, 43, 1234567890, change);
+		let event = CdcEvent::new(
+			123456789,
+			43,
+			1234567890,
+			TransactionId::default(),
+			change,
+		);
 
 		let encoded = encode_cdc_event(&event).unwrap();
 		let decoded = decode_cdc_event(&encoded).unwrap();
@@ -234,7 +254,13 @@ mod tests {
 			key: key.clone(),
 			before: before.clone(),
 		};
-		let event = CdcEvent::new(123456789, 44, 1234567890, change);
+		let event = CdcEvent::new(
+			123456789,
+			44,
+			1234567890,
+			TransactionId::default(),
+			change,
+		);
 
 		let encoded = encode_cdc_event(&event).unwrap();
 		let decoded = decode_cdc_event(&encoded).unwrap();

@@ -7,7 +7,7 @@ mod layout;
 use reifydb_core::{
 	Version,
 	delta::Delta,
-	interface::{CdcChange, CdcEvent},
+	interface::{CdcChange, CdcEvent, TransactionId},
 	row::EncodedRow,
 };
 
@@ -17,6 +17,7 @@ pub(crate) fn generate_cdc_event(
 	version: Version,
 	sequence: u16,
 	timestamp: u64,
+	transaction: TransactionId,
 	before_value: Option<EncodedRow>,
 ) -> CdcEvent {
 	let change = match delta {
@@ -47,5 +48,5 @@ pub(crate) fn generate_cdc_event(
 		},
 	};
 
-	CdcEvent::new(version, sequence, timestamp, change)
+	CdcEvent::new(version, sequence, timestamp, transaction, change)
 }

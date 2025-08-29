@@ -7,8 +7,12 @@ use std::{
 };
 
 use reifydb_core::{
-	CowVec, Result, Version, delta::Delta, interface::VersionedCommit,
-	result::error::diagnostic::sequence, return_error, row::EncodedRow,
+	CowVec, Result, Version,
+	delta::Delta,
+	interface::{TransactionId, VersionedCommit},
+	result::error::diagnostic::sequence,
+	return_error,
+	row::EncodedRow,
 };
 use rusqlite::params;
 
@@ -25,7 +29,12 @@ static ENSURED_TABLES: LazyLock<RwLock<HashSet<String>>> =
 	LazyLock::new(|| RwLock::new(HashSet::new()));
 
 impl VersionedCommit for Sqlite {
-	fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
+	fn commit(
+		&self,
+		delta: CowVec<Delta>,
+		version: Version,
+		transaction: TransactionId,
+	) -> Result<()> {
 		let mut conn = self.get_conn();
 		let tx = conn.transaction().unwrap();
 
@@ -118,6 +127,7 @@ impl VersionedCommit for Sqlite {
 				version,
 				sequence,
 				timestamp,
+				transaction,
 				before_value,
 			);
 			store_cdc_event(&tx, cdc_event, version, sequence)
