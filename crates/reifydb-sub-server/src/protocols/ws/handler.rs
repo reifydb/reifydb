@@ -306,16 +306,26 @@ impl WebSocketHandler {
 		&self,
 		conn: &mut Connection<T>,
 	) -> ProtocolResult<()> {
-		// Extract frames data to avoid borrowing issues
-		let mut frames_to_process = Vec::new();
 		let mut total_processed = 0;
 
-		{
-			let buffer = conn.buffer();
-			let mut processed = 0;
+		// Process frames directly from buffer to avoid copies
+		loop {
+			let remaining_len = {
+				let buffer = conn.buffer();
+				if total_processed >= buffer.len() {
+					break;
+				}
+				buffer.len() - total_processed
+			};
 
-			while processed < buffer.len() {
-				let remaining_data = &buffer[processed..];
+			if remaining_len == 0 {
+				break;
+			}
+
+			// Parse frame directly from buffer slice
+			let frame_result = {
+				let buffer = conn.buffer();
+				let remaining_data = &buffer[total_processed..];
 
 				match parse_ws_frame(remaining_data).map_err(
 					|e| {
@@ -326,40 +336,43 @@ impl WebSocketHandler {
 					},
 				)? {
 					Some((opcode, payload)) => {
-						// Calculate frame size to know
-						// how much to consume from
-						// buffer
 						let frame_size = self
 							.calculate_frame_size(
 								remaining_data,
 							)?;
-						processed += frame_size;
-
-						// Store frame data for
-						// processing after we release
-						// buffer borrow
-						frames_to_process.push((
+						Some((
 							opcode, payload,
-						));
+							frame_size,
+						))
 					}
-					None => {
-						// Incomplete frame, wait for
-						// more data
-						break;
-					}
+					None => None, // Incomplete frame
+				}
+			};
+
+			match frame_result {
+				Some((opcode, payload, frame_size)) => {
+					total_processed += frame_size;
+
+					// Process frame immediately to avoid
+					// storing payload
+					self.process_ws_frame(
+						conn, opcode, payload,
+					)?;
+				}
+				None => {
+					// Incomplete frame, wait for more data
+					break;
 				}
 			}
-			total_processed = processed;
-		}
-
-		// Now process the extracted frames
-		for (opcode, payload) in frames_to_process {
-			self.process_ws_frame(conn, opcode, payload)?;
 		}
 
 		// Remove processed data from connection buffer
 		if total_processed > 0 {
 			conn.buffer_mut().drain(0..total_processed);
+
+			// Optimize buffer after processing to manage memory
+			// efficiently
+			conn.optimize_buffer();
 		}
 
 		Ok(())

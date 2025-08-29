@@ -113,7 +113,7 @@ impl<T: Transaction> Worker<T> {
 
 			if let Err(e) = poll.poll(
 				&mut events,
-				Some(std::time::Duration::from_millis(100)),
+				Some(std::time::Duration::from_millis(1)),
 			) {
 				if e.kind() == std::io::ErrorKind::Interrupted {
 					continue;
@@ -232,6 +232,15 @@ impl<T: Transaction> Worker<T> {
 				key, self.worker_id, e
 			);
 			self.close_connection(connections, key);
+		} else {
+			// Periodically optimize buffer for active connections
+			if let Some(conn) = connections.get_mut(key) {
+				// Optimize buffer every ~1000 events (rough
+				// heuristic)
+				if key % 1000 == 0 {
+					conn.optimize_buffer();
+				}
+			}
 		}
 	}
 
@@ -247,10 +256,12 @@ impl<T: Transaction> Worker<T> {
 		let key = entry.key();
 		let token = Token(TOKEN_BASE + key);
 
+		// Start with combined interests to minimize reregistration for
+		// WebSocket connections
 		poll.registry().register(
 			&mut stream,
 			token,
-			Interest::READABLE,
+			Interest::READABLE | Interest::WRITABLE,
 		)?;
 
 		let conn = Connection::new(
@@ -282,44 +293,64 @@ impl<T: Transaction> Worker<T> {
 			}
 			self.handle_read_event(conn)?;
 
-			// Check if we need to switch to writable after
-			// processing
-			let needs_write = match conn.state() {
-                crate::core::ConnectionState::Http(crate::protocols::http::HttpState::WritingResponse(_)) => true,
-                crate::core::ConnectionState::WebSocket(crate::protocols::ws::WsState::Handshake(data)) => data.handshake_response.is_some(),
-                crate::core::ConnectionState::WebSocket(crate::protocols::ws::WsState::Active(data)) => !data.outbox.is_empty(),
-                _ => false,
-            };
-
-			if needs_write {
-				let token = conn.token();
-				poll.registry().reregister(
-					conn.stream(),
-					token,
-					Interest::WRITABLE,
-				)?;
+			// Optimize interest registration based on protocol
+			match conn.state() {
+				crate::core::ConnectionState::Http(crate::protocols::http::HttpState::WritingResponse(_)) => {
+					// HTTP needs to switch to writable for response
+					let token = conn.token();
+					poll.registry().reregister(
+						conn.stream(),
+						token,
+						Interest::WRITABLE,
+					)?;
+				}
+				crate::core::ConnectionState::WebSocket(crate::protocols::ws::WsState::Handshake(data)) if data.handshake_response.is_some() => {
+					// WebSocket handshake needs to write response, then maintain both interests
+					let token = conn.token();
+					poll.registry().reregister(
+						conn.stream(),
+						token,
+						Interest::READABLE | Interest::WRITABLE,
+					)?;
+				}
+				crate::core::ConnectionState::WebSocket(crate::protocols::ws::WsState::Active(_)) => {
+					// WebSocket active connections should have both interests to avoid reregistration
+					let token = conn.token();
+					poll.registry().reregister(
+						conn.stream(),
+						token,
+						Interest::READABLE | Interest::WRITABLE,
+					)?;
+				}
+				_ => {
+					// No reregistration needed for other states
+				}
 			}
 		}
 
 		if event.is_writable() {
 			self.handle_write_event(conn)?;
 
-			// After writing, check if we should switch back to
-			// readable or close
-			let next_interest = match conn.state() {
-                crate::core::ConnectionState::Http(crate::protocols::http::HttpState::ReadingRequest(_)) => Some(Interest::READABLE),
-                crate::core::ConnectionState::WebSocket(_) => Some(Interest::READABLE | Interest::WRITABLE), // Keep both for WebSocket
-                crate::core::ConnectionState::Closed => None,
-                _ => Some(Interest::READABLE),
-            };
-
-			if let Some(interest) = next_interest {
-				let token = conn.token();
-				poll.registry().reregister(
-					conn.stream(),
-					token,
-					interest,
-				)?;
+			// For WebSocket connections, we maintain read/write
+			// interests to avoid frequent reregistration
+			// Only reregister if connection is closed or requires
+			// different handling
+			match conn.state() {
+				crate::core::ConnectionState::Closed => {
+					// Connection is closed, will be cleaned up
+				}
+				crate::core::ConnectionState::Http(crate::protocols::http::HttpState::ReadingRequest(_)) => {
+					// HTTP may need to switch back to readable only
+					let token = conn.token();
+					poll.registry().reregister(
+						conn.stream(),
+						token,
+						Interest::READABLE,
+					)?;
+				}
+				_ => {
+					// For WebSocket and other states, interests are already optimal
+				}
 			}
 		}
 
@@ -522,7 +553,9 @@ impl<T: Transaction> Worker<T> {
 		connections: &mut Slab<Connection<T>>,
 		key: usize,
 	) {
-		if let Some(_conn) = connections.try_remove(key) {
+		if let Some(mut conn) = connections.try_remove(key) {
+			// Reset buffer for potential reuse patterns
+			conn.reset_buffer();
 			// Connection automatically deregistered when dropped
 		}
 	}

@@ -9,6 +9,11 @@ use reifydb_engine::StandardEngine;
 
 use crate::protocols::{http::HttpState, ws::WsState};
 
+/// Buffer management for connection buffers
+const INITIAL_BUFFER_SIZE: usize = 8192;
+const MAX_BUFFER_SIZE: usize = 1024 * 1024; // 1MB max
+const SHRINK_THRESHOLD: usize = 64 * 1024; // Shrink if buffer grows above 64KB and is mostly empty
+
 /// Connection state for protocol detection and handling
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionState {
@@ -50,7 +55,7 @@ impl<T: Transaction> Connection<T> {
 			engine,
 			created_at: now,
 			last_activity: now,
-			buffer: Vec::with_capacity(8192),
+			buffer: Vec::with_capacity(INITIAL_BUFFER_SIZE),
 		}
 	}
 
@@ -91,6 +96,46 @@ impl<T: Transaction> Connection<T> {
 	pub fn buffer_mut(&mut self) -> &mut Vec<u8> {
 		self.last_activity = Instant::now();
 		&mut self.buffer
+	}
+
+	/// Smart buffer management - shrink if buffer has grown large but is
+	/// mostly empty
+	pub fn optimize_buffer(&mut self) {
+		let buffer_capacity = self.buffer.capacity();
+		let buffer_len = self.buffer.len();
+
+		// If buffer capacity is large but usage is low, shrink it
+		if buffer_capacity > SHRINK_THRESHOLD
+			&& buffer_len < buffer_capacity / 4
+		{
+			// Shrink to 2x current usage or initial size, whichever
+			// is larger
+			let new_capacity = std::cmp::max(
+				buffer_len * 2,
+				INITIAL_BUFFER_SIZE,
+			);
+
+			if new_capacity < buffer_capacity {
+				self.buffer.shrink_to(new_capacity);
+			}
+		}
+
+		// Ensure buffer doesn't grow beyond max size
+		if buffer_capacity > MAX_BUFFER_SIZE {
+			self.buffer.truncate(MAX_BUFFER_SIZE);
+			self.buffer.shrink_to(MAX_BUFFER_SIZE);
+		}
+	}
+
+	/// Clear buffer and reset to optimal size for reuse
+	pub fn reset_buffer(&mut self) {
+		self.buffer.clear();
+
+		// If buffer has grown significantly, shrink it back to initial
+		// size
+		if self.buffer.capacity() > INITIAL_BUFFER_SIZE * 4 {
+			self.buffer.shrink_to(INITIAL_BUFFER_SIZE);
+		}
 	}
 
 	pub fn interests(&self) -> Interest {
