@@ -42,9 +42,7 @@ pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<RowKey> {
 }
 
 /// Returns the appropriate table name for a given key, with caching
-pub(crate) fn table_name(
-	key: &EncodedKey,
-) -> reifydb_core::Result<&'static str> {
+pub(crate) fn table_name(key: &EncodedKey) -> crate::Result<&'static str> {
 	if let Some(key) = as_table_row_key(key) {
 		let cache = TABLE_NAME_CACHE
 			.get_or_init(|| Mutex::new(HashMap::new()));

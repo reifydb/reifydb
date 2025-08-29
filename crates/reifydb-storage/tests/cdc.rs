@@ -10,7 +10,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
-		VersionedCommit, VersionedGet, VersionedStorage,
+		TransactionId, VersionedCommit, VersionedGet, VersionedStorage,
 	},
 	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -155,6 +155,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 						})
 					],
 					version,
+					TransactionId::default(),
 				)?;
 				writeln!(output, "ok")?;
 			}
@@ -253,7 +254,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 						CowVec::new(std::mem::take(
 							&mut self.deltas,
 						));
-					self.storage.commit(deltas, version)?;
+					self.storage.commit(
+						deltas,
+						version,
+						TransactionId::default(),
+					)?;
 					self.next_version += 1;
 				}
 				writeln!(output, "ok")?;
@@ -659,8 +664,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					});
 				}
 
-				self.storage
-					.commit(CowVec::new(deltas), version)?;
+				self.storage.commit(
+					CowVec::new(deltas),
+					version,
+					TransactionId::default(),
+				)?;
 				writeln!(output, "ok")?;
 			}
 

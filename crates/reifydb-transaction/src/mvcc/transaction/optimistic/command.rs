@@ -51,6 +51,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	) -> Result<reifydb_core::Version, reifydb_core::Error> {
 		let mut version: Option<Version> = None;
 		let mut deltas = CowVec::with_capacity(8);
+		let transaction_id = self.tm.id();
 
 		self.tm.commit(|pending| {
 			for p in pending {
@@ -63,9 +64,11 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 			}
 
 			if let Some(version) = version {
-				self.engine
-					.versioned
-					.commit(deltas.clone(), version)?;
+				self.engine.versioned.commit(
+					deltas.clone(),
+					version,
+					transaction_id,
+				)?;
 			}
 			Ok(())
 		})?;

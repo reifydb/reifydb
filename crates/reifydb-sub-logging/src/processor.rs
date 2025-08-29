@@ -63,7 +63,7 @@ impl LogProcessor {
 	}
 
 	/// Process a batch of logs
-	pub fn process_batch(&self) -> reifydb_core::Result<bool> {
+	pub fn process_batch(&self) -> crate::Result<bool> {
 		let now = Instant::now();
 		let should_flush = {
 			let last = *self.last_flush.read();
@@ -102,7 +102,7 @@ impl LogProcessor {
 	}
 
 	/// Force flush all pending logs
-	pub fn flush(&self) -> reifydb_core::Result<()> {
+	pub fn flush(&self) -> crate::Result<()> {
 		let records = self.buffer.drain_all();
 		if records.is_empty() {
 			return Ok(());

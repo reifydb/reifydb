@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CowVec, Result, Version,
 	delta::Delta,
-	interface::{UnversionedCommit, VersionedCommit},
+	interface::{TransactionId, UnversionedCommit, VersionedCommit},
 };
 
 use crate::lmdb::Lmdb;
@@ -14,6 +14,7 @@ impl VersionedCommit for Lmdb {
 		&self,
 		delta: CowVec<Delta>,
 		_version: Version,
+		_transaction: TransactionId,
 	) -> Result<()> {
 		let mut tx = self.env.write_txn().unwrap();
 		for delta in delta {

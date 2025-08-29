@@ -5,5 +5,6 @@ mod factory;
 mod subsystem;
 
 pub use factory::WsSubsystemFactory;
+pub use reifydb_core::Result;
 pub use reifydb_network::ws::server::WsConfig;
 pub use subsystem::WsSubsystem;

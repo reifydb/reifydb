@@ -166,7 +166,7 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		cmd: Command<'_>,
-	) -> reifydb_core::Result<Vec<Frame>> {
+	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
 
@@ -190,7 +190,7 @@ impl ExecuteQuery for Executor {
 		&self,
 		txn: &mut impl QueryTransaction,
 		qry: Query<'_>,
-	) -> reifydb_core::Result<Vec<Frame>> {
+	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
 
