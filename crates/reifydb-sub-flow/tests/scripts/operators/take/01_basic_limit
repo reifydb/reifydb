@@ -49,7 +49,7 @@ command 'from test.source'
 > 
 
 
-wait 5
+await
 
 command 'from test.top_three'
 ---

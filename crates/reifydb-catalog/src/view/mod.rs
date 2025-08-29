@@ -4,7 +4,7 @@
 mod create;
 mod find;
 mod get;
-mod layout;
+pub(crate) mod layout;
 
 pub use create::{ViewColumnToCreate, ViewToCreate};
 use layout::view;

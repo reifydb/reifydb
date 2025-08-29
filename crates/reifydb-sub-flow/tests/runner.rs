@@ -4,7 +4,13 @@
 use std::{error::Error as StdError, fmt::Write, thread, time::Duration};
 
 use reifydb::{MemoryDatabaseOptimistic, SessionSync, sync};
-use reifydb_core::{Frame, interface::Params};
+use reifydb_core::{
+	Frame,
+	interface::{
+		CdcCheckpoint, ConsumerId, Engine, Params,
+		VersionedQueryTransaction,
+	},
+};
 use reifydb_testing::testscript;
 
 /// Test runner for Flow tests with Frame-based output
@@ -32,6 +38,47 @@ impl FlowTestRunner {
 			.map(|arg| arg.value.clone())
 			.collect::<Vec<_>>()
 			.join(" ")
+	}
+
+	/// Wait for flow processing to complete by checking CDC consumer
+	/// checkpoint
+	fn await_flows_completion(
+		&mut self,
+		timeout: Duration,
+	) -> Result<(), Box<dyn StdError>> {
+		let start = std::time::Instant::now();
+		let poll_interval = Duration::from_millis(10);
+		let consumer_id = ConsumerId::flow_consumer();
+
+		// Wait for initial catch-up
+		let latest_version = {
+			let txn = self.instance.engine().begin_query()?;
+			txn.version()
+		};
+
+		loop {
+			let flow_checkpoint = {
+				let mut txn =
+					self.instance.engine().begin_query()?;
+				CdcCheckpoint::fetch(&mut txn, &consumer_id)?
+			};
+
+			if flow_checkpoint >= latest_version {
+				break;
+			}
+
+			if start.elapsed() > timeout {
+				return Err(format!(
+					"Timeout waiting for flows to complete after {}ms. Latest version: {}, Flow checkpoint: {}",
+					timeout.as_millis(),
+					latest_version,
+					flow_checkpoint
+				).into());
+			}
+
+			thread::sleep(poll_interval);
+		}
+		Ok(())
 	}
 }
 
@@ -65,15 +112,20 @@ impl testscript::Runner for FlowTestRunner {
 				}
 			}
 
-			"wait" => {
-				if command.args.is_empty() {
-					return Err("wait command requires milliseconds argument".into());
-				}
-				let ms: u64 =
-					command.args[0].value.parse().map_err(
-						|_| "wait argument must be a valid number of milliseconds",
-					)?;
-				thread::sleep(Duration::from_millis(ms));
+			"await" => {
+				// Parse optional timeout parameter (default
+				// 5000ms)
+				let timeout_ms = command
+					.args
+					.first()
+					.and_then(|arg| {
+						arg.value.parse::<u64>().ok()
+					})
+					.unwrap_or(5000);
+
+				self.await_flows_completion(
+					Duration::from_millis(timeout_ms),
+				)?;
 			}
 
 			name => {

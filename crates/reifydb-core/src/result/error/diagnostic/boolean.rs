@@ -10,7 +10,7 @@ pub fn invalid_boolean_format<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.text();
+	let value = fragment.fragment();
 	let label =
 		Some(format!("expected 'true' or 'false', found '{}'", value));
 	Diagnostic {
@@ -52,7 +52,7 @@ pub fn invalid_number_boolean<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.text();
+	let value = fragment.fragment();
 	let label = Some(format!(
 		"number '{}' cannot be cast to boolean, only 1 or 0 are allowed",
 		value

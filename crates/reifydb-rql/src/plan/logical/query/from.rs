@@ -105,11 +105,11 @@ mod tests {
 				assert_eq!(node.rows.len(), 1); // One row
 				assert_eq!(node.rows[0].len(), 2); // Two KeyedExpressions: id and name
 				assert_eq!(
-					node.rows[0][0].alias.0.text(),
+					node.rows[0][0].alias.0.fragment(),
 					"id"
 				);
 				assert_eq!(
-					node.rows[0][1].alias.0.text(),
+					node.rows[0][1].alias.0.fragment(),
 					"name"
 				);
 			}
@@ -136,29 +136,29 @@ mod tests {
 				// First row: id: 1, name: 'Alice'
 				assert_eq!(node.rows[0].len(), 2);
 				assert_eq!(
-					node.rows[0][0].alias.0.text(),
+					node.rows[0][0].alias.0.fragment(),
 					"id"
 				);
 				assert_eq!(
-					node.rows[0][1].alias.0.text(),
+					node.rows[0][1].alias.0.fragment(),
 					"name"
 				);
 
 				// Second row: id: 2, email: 'bob@test.com'
 				assert_eq!(node.rows[1].len(), 2);
 				assert_eq!(
-					node.rows[1][0].alias.0.text(),
+					node.rows[1][0].alias.0.fragment(),
 					"id"
 				);
 				assert_eq!(
-					node.rows[1][1].alias.0.text(),
+					node.rows[1][1].alias.0.fragment(),
 					"email"
 				);
 
 				// Third row: name: 'Charlie'
 				assert_eq!(node.rows[2].len(), 1);
 				assert_eq!(
-					node.rows[2][0].alias.0.text(),
+					node.rows[2][0].alias.0.fragment(),
 					"name"
 				);
 
@@ -170,7 +170,7 @@ mod tests {
 						},
 					) => {
 						assert_eq!(
-							fragment.text(),
+							fragment.fragment(),
 							"1"
 						);
 					}
@@ -186,7 +186,7 @@ mod tests {
 						},
 					) => {
 						assert_eq!(
-							fragment.text(),
+							fragment.fragment(),
 							"Alice"
 						);
 					}

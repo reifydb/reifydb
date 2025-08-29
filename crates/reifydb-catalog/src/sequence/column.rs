@@ -27,7 +27,7 @@ impl ColumnSequence {
 		store: impl Into<StoreId>,
 		column: ColumnId,
 	) -> crate::Result<Value> {
-		let column = CatalogStore::get_table_column(txn, column)?;
+		let column = CatalogStore::get_column(txn, column)?;
 		let key = ColumnSequenceKey {
 			store: store.into(),
 			column: column.id,
@@ -76,7 +76,7 @@ impl ColumnSequence {
 		value: Value,
 	) -> crate::Result<()> {
 		// let table = CatalogStore::get_table(txn, table)?;
-		let column = CatalogStore::get_table_column(txn, column)?;
+		let column = CatalogStore::get_column(txn, column)?;
 
 		if !column.auto_increment {
 			// return_error!(can_not_alter_not_auto_increment(plan.

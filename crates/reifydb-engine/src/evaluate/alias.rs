@@ -17,7 +17,7 @@ impl StandardEvaluator {
 		expr: &AliasExpression,
 	) -> crate::Result<Column> {
 		let evaluated = self.evaluate(ctx, &expr.expression)?;
-		let alias_name = expr.alias.0.text().to_string();
+		let alias_name = expr.alias.0.fragment().to_string();
 
 		let columns: Option<String> = ctx
 			.target_column

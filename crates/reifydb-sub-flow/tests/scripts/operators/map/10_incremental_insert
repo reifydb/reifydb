@@ -49,7 +49,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 command 'from test.transformed'
 ---
@@ -74,7 +74,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 command 'from test.transformed'
 ---
@@ -100,7 +100,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Final view state
 command 'from test.transformed'

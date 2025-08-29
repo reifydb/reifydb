@@ -34,7 +34,7 @@ impl CatalogStore {
 		);
 
 		if let Some(id) = maybe_id {
-			Ok(Some(Self::get_table_column(rx, id)?))
+			Ok(Some(Self::get_column(rx, id)?))
 		} else {
 			Ok(None)
 		}

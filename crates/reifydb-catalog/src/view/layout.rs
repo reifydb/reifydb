@@ -9,6 +9,7 @@ pub(crate) mod view {
 	pub(crate) const SCHEMA: usize = 1;
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const KIND: usize = 3;
+	pub(crate) const PRIMARY_KEY: usize = 4;
 
 	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
@@ -16,6 +17,8 @@ pub(crate) mod view {
 			Type::Uint8, // schema id
 			Type::Utf8,  // name
 			Type::Uint1, // kind (0 = Deferred, 1 = Transactional)
+			Type::Uint8, /* primary_key - Primary key ID (0 if
+			              * none) */
 		])
 	});
 }

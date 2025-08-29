@@ -14,7 +14,7 @@ pub fn invalid_number_format<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"'{}' is not a valid {} number",
-		fragment.text(),
+		fragment.fragment(),
 		target
 	));
 
@@ -75,14 +75,14 @@ pub fn number_out_of_range<'a>(
 	let label = if let Some(desc) = descriptor {
 		Some(format!(
 			"value '{}' exceeds the valid range for {} column {}",
-			fragment.text(),
+			fragment.fragment(),
 			desc.column_type.as_ref().unwrap_or(&target),
 			desc.location_string()
 		))
 	} else {
 		Some(format!(
 			"value '{}' exceeds the valid range for type {} ({})",
-			fragment.text(),
+			fragment.fragment(),
 			target,
 			range
 		))
@@ -176,7 +176,7 @@ pub fn integer_precision_loss<'a>(
 
 	let label = Some(format!(
 		"converting '{}' from {} to {} would lose precision",
-		fragment.text(),
+		fragment.fragment(),
 		source_type,
 		target
 	));

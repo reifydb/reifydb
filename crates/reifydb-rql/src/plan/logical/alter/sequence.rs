@@ -48,11 +48,14 @@ mod tests {
 			LogicalPlan::AlterSequence(node) => {
 				assert!(node.schema.is_some());
 				assert_eq!(
-					node.schema.as_ref().unwrap().text(),
+					node.schema
+						.as_ref()
+						.unwrap()
+						.fragment(),
 					"test"
 				);
-				assert_eq!(node.table.text(), "users");
-				assert_eq!(node.column.text(), "id");
+				assert_eq!(node.table.fragment(), "users");
+				assert_eq!(node.column.fragment(), "id");
 
 				assert!(matches!(
 					node.value,
@@ -63,7 +66,7 @@ mod tests {
 					)
 				));
 				let fragment = node.value.fragment();
-				assert_eq!(fragment.text(), "1000");
+				assert_eq!(fragment.fragment(), "1000");
 			}
 			_ => panic!("Expected AlterSequence plan"),
 		}
@@ -82,8 +85,8 @@ mod tests {
 		match &plans[0] {
 			LogicalPlan::AlterSequence(node) => {
 				assert!(node.schema.is_none());
-				assert_eq!(node.table.text(), "users");
-				assert_eq!(node.column.text(), "id");
+				assert_eq!(node.table.fragment(), "users");
+				assert_eq!(node.column.fragment(), "id");
 
 				assert!(matches!(
 					node.value,
@@ -94,7 +97,7 @@ mod tests {
 					)
 				));
 				let fragment = node.value.fragment();
-				assert_eq!(fragment.text(), "500");
+				assert_eq!(fragment.fragment(), "500");
 			}
 			_ => panic!("Expected AlterSequence plan"),
 		}

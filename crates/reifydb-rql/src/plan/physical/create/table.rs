@@ -22,11 +22,11 @@ impl Compiler {
 		T: QueryTransaction + CatalogQueryTransaction,
 	{
 		let Some(schema) =
-			rx.find_schema_by_name(&create.schema.text())?
+			rx.find_schema_by_name(&create.schema.fragment())?
 		else {
 			return_error!(schema_not_found(
 				Some(create.schema.clone()),
-				&create.schema.text()
+				&create.schema.fragment()
 			));
 		};
 

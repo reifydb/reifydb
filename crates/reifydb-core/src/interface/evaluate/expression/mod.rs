@@ -123,16 +123,16 @@ impl Display for ConstantExpression {
 			} => write!(f, "undefined"),
 			ConstantExpression::Bool {
 				fragment,
-			} => write!(f, "{}", fragment.text()),
+			} => write!(f, "{}", fragment.fragment()),
 			ConstantExpression::Number {
 				fragment,
-			} => write!(f, "{}", fragment.text()),
+			} => write!(f, "{}", fragment.fragment()),
 			ConstantExpression::Text {
 				fragment,
-			} => write!(f, "\"{}\"", fragment.text()),
+			} => write!(f, "\"{}\"", fragment.fragment()),
 			ConstantExpression::Temporal {
 				fragment,
-			} => write!(f, "{}", fragment.text()),
+			} => write!(f, "{}", fragment.fragment()),
 		}
 	}
 }
@@ -400,8 +400,8 @@ impl Display for Expression {
 				write!(
 					f,
 					"{}.{}",
-					target.text(),
-					property.text()
+					target.fragment(),
+					property.fragment()
 				)
 			}
 			Expression::Alias(AliasExpression {
@@ -419,7 +419,7 @@ impl Display for Expression {
 				write!(f, "Constant({})", fragment)
 			}
 			Expression::Column(ColumnExpression(fragment)) => {
-				write!(f, "Column({})", fragment.text())
+				write!(f, "Column({})", fragment.fragment())
 			}
 			Expression::Add(AddExpression {
 				left,
@@ -539,15 +539,15 @@ impl Display for Expression {
 			Expression::Type(TypeExpression {
 				fragment,
 				..
-			}) => write!(f, "{}", fragment.text()),
+			}) => write!(f, "{}", fragment.fragment()),
 			Expression::Parameter(param) => match param {
 				ParameterExpression::Positional {
 					fragment,
 					..
-				} => write!(f, "{}", fragment.text()),
+				} => write!(f, "{}", fragment.fragment()),
 				ParameterExpression::Named {
 					fragment,
-				} => write!(f, "{}", fragment.text()),
+				} => write!(f, "{}", fragment.fragment()),
 			},
 		}
 	}
@@ -567,12 +567,12 @@ impl CallExpression {
 			line: self.func.0.line(),
 			text: format!(
 				"{}({})",
-				self.func.0.text(),
+				self.func.0.fragment(),
 				self.args
 					.iter()
 					.map(|arg| arg
 						.fragment()
-						.text()
+						.fragment()
 						.to_string())
 					.collect::<Vec<_>>()
 					.join(",")
@@ -611,7 +611,7 @@ impl ParameterExpression {
 		match self {
 			ParameterExpression::Positional {
 				fragment,
-			} => fragment.text()[1..].parse().ok(),
+			} => fragment.fragment()[1..].parse().ok(),
 			ParameterExpression::Named {
 				..
 			} => None,
@@ -622,7 +622,7 @@ impl ParameterExpression {
 		match self {
 			ParameterExpression::Named {
 				fragment,
-			} => Some(&fragment.text()[1..]),
+			} => Some(&fragment.fragment()[1..]),
 			ParameterExpression::Positional {
 				..
 			} => None,
@@ -632,13 +632,13 @@ impl ParameterExpression {
 
 impl IdentExpression {
 	pub fn name(&self) -> &str {
-		self.0.text()
+		self.0.fragment()
 	}
 }
 
 impl Display for IdentExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", self.0.text())
+		write!(f, "{}", self.0.fragment())
 	}
 }
 

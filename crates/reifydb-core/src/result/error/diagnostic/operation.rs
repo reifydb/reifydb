@@ -8,7 +8,7 @@ use crate::{
 
 pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.text();
+	let value = fragment.fragment();
 	Diagnostic {
 		code: "TAKE_001".to_string(),
 		statement: None,

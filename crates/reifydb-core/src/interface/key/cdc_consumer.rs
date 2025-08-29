@@ -6,6 +6,26 @@ use keycode::{deserialize, serialize};
 use super::{EncodableKey, KeyKind};
 use crate::{EncodedKey, interface::cdc::ConsumerId, util::encoding::keycode};
 
+/// Trait for types that can be converted to a consumer key
+pub trait ToConsumerKey {
+	fn to_consumer_key(&self) -> EncodedKey;
+}
+
+impl ToConsumerKey for EncodedKey {
+	fn to_consumer_key(&self) -> EncodedKey {
+		self.clone()
+	}
+}
+
+impl ToConsumerKey for ConsumerId {
+	fn to_consumer_key(&self) -> EncodedKey {
+		CdcConsumerKey {
+			consumer: self.clone(),
+		}
+		.encode()
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CdcConsumerKey {
 	pub consumer: ConsumerId,

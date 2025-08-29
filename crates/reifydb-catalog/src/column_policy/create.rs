@@ -25,8 +25,7 @@ impl CatalogStore {
 		for existing in Self::list_table_column_policies(txn, column)? {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
-				let column =
-					Self::get_table_column(txn, column)?;
+				let column = Self::get_column(txn, column)?;
 
 				return_error!(
 					table_column_policy_already_exists(

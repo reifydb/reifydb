@@ -86,24 +86,24 @@ fn render_logical_plan_inner(
 				output.push_str(&format!(
 					"{}├── Schema: {}\n",
 					child_prefix,
-					schema_fragment.text()
+					schema_fragment.fragment()
 				));
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
 					child_prefix,
-					table.text()
+					table.fragment()
 				));
 			} else {
 				output.push_str(&format!(
 					"{}├── Table: {}\n",
 					child_prefix,
-					table.text()
+					table.fragment()
 				));
 			}
 			output.push_str(&format!(
 				"{}├── Column: {}\n",
 				child_prefix,
-				column.text()
+				column.fragment()
 			));
 			output.push_str(&format!(
 				"{}└── Value: {}\n",
@@ -140,17 +140,17 @@ fn render_logical_plan_inner(
 			output.push_str(&format!(
 				"{}├── Name: {}\n",
 				child_prefix,
-				name.text()
+				name.fragment()
 			));
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
 				child_prefix,
-				schema.text()
+				schema.fragment()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.text()
+				table.fragment()
 			));
 
 			let columns_str = columns
@@ -159,11 +159,13 @@ fn render_logical_plan_inner(
 					if let Some(order) = &col.order {
 						format!(
 							"{} {:?}",
-							col.column.text(),
+							col.column.fragment(),
 							order
 						)
 					} else {
-						col.column.text().to_string()
+						col.column
+							.fragment()
+							.to_string()
 					}
 				})
 				.collect::<Vec<_>>()
@@ -497,8 +499,11 @@ fn render_logical_plan_inner(
 			schema,
 			source: table,
 		}) => {
-			let name =
-				format!("{}.{}", schema.text(), table.text());
+			let name = format!(
+				"{}.{}",
+				schema.fragment(),
+				table.fragment()
+			);
 
 			output.push_str(&format!(
 				"{}{} TableScan {}\n",
@@ -553,7 +558,7 @@ fn render_logical_plan_inner(
 					if i > 0 {
 						output.push_str(", ");
 					}
-					output.push_str(col.text());
+					output.push_str(col.fragment());
 				}
 				output.push_str("\n");
 			}

@@ -31,7 +31,7 @@ impl Executor {
 		params: Params,
 	) -> crate::Result<Columns> {
 		let schema_name =
-			plan.schema.as_ref().map(|s| s.text()).unwrap(); // FIXME
+			plan.schema.as_ref().map(|s| s.fragment()).unwrap(); // FIXME
 
 		let schema =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
@@ -40,7 +40,7 @@ impl Executor {
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
-			&plan.table.text(),
+			&plan.table.fragment(),
 		)?
 		else {
 			let fragment = plan.table.into_fragment();

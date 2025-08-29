@@ -22,8 +22,8 @@ impl StandardEvaluator {
 		ctx: &EvaluationContext,
 		expr: &AccessSourceExpression,
 	) -> crate::Result<Column> {
-		let source = expr.source.text().to_string();
-		let column = expr.column.text().to_string();
+		let source = expr.source.fragment().to_string();
+		let column = expr.column.fragment().to_string();
 
 		let data = self
 			.evaluate(

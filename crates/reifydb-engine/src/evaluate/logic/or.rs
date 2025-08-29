@@ -54,7 +54,7 @@ impl StandardEvaluator {
 				}
 
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: expr.fragment().text().into(),
+					name: expr.fragment().fragment().into(),
 					data: ColumnData::bool_with_bitvec(
 						data, bitvec,
 					),

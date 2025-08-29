@@ -28,7 +28,7 @@ impl CatalogStore {
 				.collect::<Vec<_>>();
 
 		for id in ids {
-			result.push(Self::get_table_column(rx, id)?);
+			result.push(Self::get_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);

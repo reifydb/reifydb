@@ -276,7 +276,7 @@ mod tests {
 			"type mismatch for symbol: {}",
 			symbol
 		);
-		assert_eq!(tokens[0].fragment.text(), symbol);
+		assert_eq!(tokens[0].fragment.fragment(), symbol);
 		assert_eq!(tokens[0].fragment.column().0, 1);
 		assert_eq!(tokens[0].fragment.line().0, 1);
 	}

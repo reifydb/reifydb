@@ -77,14 +77,14 @@ mod tests {
 			tokens[0].kind,
 			TokenKind::Parameter(ParameterKind::Positional(1))
 		);
-		assert_eq!(tokens[0].fragment.text(), "$1");
+		assert_eq!(tokens[0].fragment.fragment(), "$1");
 
 		let tokens = tokenize("$42").unwrap();
 		assert_eq!(
 			tokens[0].kind,
 			TokenKind::Parameter(ParameterKind::Positional(42))
 		);
-		assert_eq!(tokens[0].fragment.text(), "$42");
+		assert_eq!(tokens[0].fragment.fragment(), "$42");
 	}
 
 	#[test]
@@ -94,21 +94,21 @@ mod tests {
 			tokens[0].kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(tokens[0].fragment.text(), "$name");
+		assert_eq!(tokens[0].fragment.fragment(), "$name");
 
 		let tokens = tokenize("$user_id").unwrap();
 		assert_eq!(
 			tokens[0].kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(tokens[0].fragment.text(), "$user_id");
+		assert_eq!(tokens[0].fragment.fragment(), "$user_id");
 
 		let tokens = tokenize("$_private").unwrap();
 		assert_eq!(
 			tokens[0].kind,
 			TokenKind::Parameter(ParameterKind::Named)
 		);
-		assert_eq!(tokens[0].fragment.text(), "$_private");
+		assert_eq!(tokens[0].fragment.fragment(), "$_private");
 	}
 
 	#[test]
@@ -136,8 +136,8 @@ mod tests {
 			tokens[0].kind,
 			TokenKind::Parameter(ParameterKind::Positional(123))
 		);
-		assert_eq!(tokens[0].fragment.text(), "$123");
+		assert_eq!(tokens[0].fragment.fragment(), "$123");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
-		assert_eq!(tokens[1].fragment.text(), "name");
+		assert_eq!(tokens[1].fragment.fragment(), "name");
 	}
 }

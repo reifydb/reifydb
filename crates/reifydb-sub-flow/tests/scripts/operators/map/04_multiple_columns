@@ -41,7 +41,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show only first, last, and dept columns
 command 'from test.selected'

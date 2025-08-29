@@ -8,8 +8,10 @@ use crate::{
 
 pub fn invalid_uuid4_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let label =
-		Some(format!("'{}' is not a valid UUID v4", fragment.text()));
+	let label = Some(format!(
+		"'{}' is not a valid UUID v4",
+		fragment.fragment()
+	));
 
 	let help = "use UUID v4 format (e.g., 550e8400-e29b-41d4-a716-446655440000)".to_string();
 	let notes = vec![
@@ -33,8 +35,10 @@ pub fn invalid_uuid4_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 
 pub fn invalid_uuid7_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let label =
-		Some(format!("'{}' is not a valid UUID v7", fragment.text()));
+	let label = Some(format!(
+		"'{}' is not a valid UUID v7",
+		fragment.fragment()
+	));
 
 	let help = "use UUID v7 format (e.g., 017f22e2-79b0-7cc3-98c4-dc0c0c07398f)".to_string();
 	let notes = vec![

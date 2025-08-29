@@ -33,6 +33,6 @@ impl Display for SortDirection {
 
 impl Display for SortKey {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "{} {}", self.column.text(), self.direction)
+		write!(f, "{} {}", self.column.fragment(), self.direction)
 	}
 }

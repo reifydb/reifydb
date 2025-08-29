@@ -294,7 +294,7 @@ impl Compiler {
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) = rx
 						.find_schema_by_name(
-							&scan.schema.text(),
+							&scan.schema.fragment(),
 						)?
 					else {
 						return_error!(
@@ -304,7 +304,8 @@ impl Compiler {
 									.clone(
 									)),
 								&scan.schema
-									.text()
+									.fragment(
+									)
 							)
 						);
 					};
@@ -312,7 +313,7 @@ impl Compiler {
 					if let Some(table) = rx
 						.find_table_by_name(
 							schema.id,
-							&scan.source.text(),
+							&scan.source.fragment(),
 						)? {
 						stack.push(TableScan(
 							TableScanNode {
@@ -323,7 +324,7 @@ impl Compiler {
 					} else if let Some(view) = rx
 						.find_view_by_name(
 							schema.id,
-							&scan.source.text(),
+							&scan.source.fragment(),
 						)? {
 						stack.push(ViewScan(
 							ViewScanNode {
@@ -336,8 +337,8 @@ impl Compiler {
 							Some(scan
 								.source
 								.clone()),
-							&scan.schema.text(),
-							&scan.source.text()
+							&scan.schema.fragment(),
+							&scan.source.fragment()
 						));
 					}
 				}

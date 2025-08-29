@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+------+------+-------+-----+
 > 
 
-wait 5
+await
 
 # Should match complex nested condition
 command 'from test.complex_filter'

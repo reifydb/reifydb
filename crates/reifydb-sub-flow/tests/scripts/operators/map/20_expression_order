@@ -59,7 +59,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show different results based on evaluation order
 command 'from test.precedence'

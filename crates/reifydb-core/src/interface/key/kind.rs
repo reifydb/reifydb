@@ -24,6 +24,7 @@ pub enum KeyKind {
 	CdcConsumer = 0x0F,
 	View = 0x10,
 	SchemaView = 0x11,
+	PrimaryKey = 0x12,
 }
 
 impl From<KeyKind> for u8 {
@@ -53,6 +54,7 @@ impl TryFrom<u8> for KeyKind {
 			0x0F => Ok(Self::CdcConsumer),
 			0x10 => Ok(Self::View),
 			0x11 => Ok(Self::SchemaView),
+			0x12 => Ok(Self::PrimaryKey),
 			_ => Err(serde::de::Error::custom(format!(
 				"Invalid KeyKind value: {value:#04x}"
 			))),

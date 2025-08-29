@@ -37,7 +37,7 @@ impl StandardEvaluator {
 	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.fragment().text().into(),
+			name: expr.fragment().fragment().into(),
 			data: Self::constant_value(&expr, row_count)?,
 		}))
 	}
@@ -61,7 +61,7 @@ impl StandardEvaluator {
 			}
 		};
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.fragment().text().into(),
+			name: expr.fragment().fragment().into(),
 			data: casted,
 		}))
 	}
@@ -84,8 +84,8 @@ impl StandardEvaluator {
 			ConstantExpression::Number {
 				fragment,
 			} => {
-				if fragment.text().contains(".")
-					|| fragment.text().contains("e")
+				if fragment.fragment().contains(".")
+					|| fragment.fragment().contains("e")
 				{
 					return match parse_float(
 						fragment.clone(),
@@ -148,7 +148,7 @@ impl StandardEvaluator {
 					}
 					Err(err) => {
 						if fragment
-							.text()
+							.fragment()
 							.starts_with("-")
 						{
 							return Err(err);
@@ -170,7 +170,7 @@ impl StandardEvaluator {
 			ConstantExpression::Text {
 				fragment,
 			} => ColumnData::utf8(
-				std::iter::repeat(fragment.text())
+				std::iter::repeat(fragment.fragment())
 					.take(row_count),
 			),
 			ConstantExpression::Temporal {

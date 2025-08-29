@@ -50,7 +50,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show columns with colon-aliased names
 command 'from test.invoice'

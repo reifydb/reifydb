@@ -18,7 +18,7 @@ impl StandardEvaluator {
 			ParameterExpression::Positional {
 				fragment,
 			} => {
-				let index = fragment.text()[1..]
+				let index = fragment.fragment()[1..]
 					.parse::<usize>()
 					.map_err(|_| {
 						error!(engine::invalid_parameter_reference(fragment.clone()))
@@ -33,7 +33,7 @@ impl StandardEvaluator {
 			ParameterExpression::Named {
 				fragment,
 			} => {
-				let name = &fragment.text()[1..];
+				let name = &fragment.fragment()[1..];
 
 				ctx.params.get_named(name).ok_or_else(|| {
 					error!(engine::parameter_not_found(

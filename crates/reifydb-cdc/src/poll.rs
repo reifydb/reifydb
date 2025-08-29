@@ -14,15 +14,14 @@ use std::{
 use reifydb_core::{
 	EncodedKey, Result, Version,
 	interface::{
-		CdcConsume, CdcConsumer, CdcEvent, CdcQueryTransaction,
-		CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
-		Transaction, VersionedCommandTransaction,
+		CdcCheckpoint, CdcConsume, CdcConsumer, CdcEvent,
+		CdcQueryTransaction, CommandTransaction, ConsumerId,
+		Engine as EngineInterface, Key, Transaction,
+		VersionedCommandTransaction,
 		key::{CdcConsumerKey, EncodableKey},
 		subsystem::workerpool::Priority,
 	},
 	log_debug, log_error,
-	row::EncodedRow,
-	util::CowVec,
 };
 use reifydb_engine::StandardEngine;
 
@@ -95,12 +94,12 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 	) -> Result<()> {
 		let mut transaction = engine.begin_command()?;
 
-		let checkpoint = fetch_checkpoint(
+		let checkpoint = CdcCheckpoint::fetch(
 			&mut transaction,
 			&state.consumer_key,
 		)?;
-		let events = fetch_events_since(&mut transaction, checkpoint)?;
 
+		let events = fetch_events_since(&mut transaction, checkpoint)?;
 		if events.is_empty() {
 			return transaction.rollback();
 		}
@@ -125,7 +124,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			consumer.consume(&mut transaction, table_events)?;
 		}
 
-		persist_checkpoint(
+		CdcCheckpoint::persist(
 			&mut transaction,
 			&state.consumer_key,
 			latest_version,
@@ -209,33 +208,6 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 	fn is_running(&self) -> bool {
 		self.state.running.load(Ordering::Acquire)
 	}
-}
-
-fn fetch_checkpoint(
-	txn: &mut impl CommandTransaction,
-	consumer_key: &EncodedKey,
-) -> Result<Version> {
-	txn.get(consumer_key)?
-		.and_then(|record| {
-			if record.row.len() >= 8 {
-				let mut buffer = [0u8; 8];
-				buffer.copy_from_slice(&record.row[0..8]);
-				Some(u64::from_be_bytes(buffer))
-			} else {
-				None
-			}
-		})
-		.map(Ok)
-		.unwrap_or(Ok(1))
-}
-
-fn persist_checkpoint(
-	txn: &mut impl CommandTransaction,
-	consumer_key: &EncodedKey,
-	version: Version,
-) -> Result<()> {
-	let version_bytes = version.to_be_bytes().to_vec();
-	txn.set(consumer_key, EncodedRow(CowVec::new(version_bytes)))
 }
 
 fn fetch_events_since(

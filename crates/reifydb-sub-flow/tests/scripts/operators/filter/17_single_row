@@ -36,7 +36,7 @@ command 'from [{id: 1, value: 42}] insert test.source'
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show the single matching row
 command 'from test.filtered'
@@ -67,7 +67,7 @@ command 'from [{id: 2, value: 100}] insert test.source'
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should be empty now
 command 'from test.filtered'

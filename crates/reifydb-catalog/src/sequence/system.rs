@@ -7,7 +7,7 @@ use reifydb_core::{
 	EncodedKey,
 	interface::{
 		ColumnId, ColumnPolicyId, CommandTransaction, EncodableKey,
-		SchemaId, SystemSequenceKey, TableId, ViewId,
+		PrimaryKeyId, SchemaId, SystemSequenceKey, TableId, ViewId,
 	},
 };
 
@@ -20,6 +20,7 @@ pub(crate) const COLUMN_POLICY_SEQ_ID: SystemSequenceId = SystemSequenceId(4);
 pub(crate) const FLOW_SEQ_ID: SystemSequenceId = SystemSequenceId(5);
 pub(crate) const FLOW_NODE_SEQ_ID: SystemSequenceId = SystemSequenceId(6);
 pub(crate) const FLOW_EDGE_SEQ_ID: SystemSequenceId = SystemSequenceId(7);
+pub(crate) const PRIMARY_KEY_SEQ_ID: SystemSequenceId = SystemSequenceId(8);
 
 static SCHEMA_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
@@ -70,6 +71,13 @@ pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	.encode()
 });
 
+static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+	SystemSequenceKey {
+		sequence: PRIMARY_KEY_SEQ_ID,
+	}
+	.encode()
+});
+
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
@@ -85,7 +93,7 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &STORE_KEY, Some(1025)).map(TableId)
 	}
 
-	pub(crate) fn next_table_column_id(
+	pub(crate) fn next_column_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ColumnId)
@@ -104,9 +112,10 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &STORE_KEY, Some(1025)).map(ViewId)
 	}
 
-	pub(crate) fn next_view_column_id(
+	pub(crate) fn next_primary_key_id(
 		txn: &mut impl CommandTransaction,
-	) -> crate::Result<ColumnId> {
-		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ColumnId)
+	) -> crate::Result<PrimaryKeyId> {
+		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, None)
+			.map(PrimaryKeyId)
 	}
 }

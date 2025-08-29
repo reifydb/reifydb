@@ -56,7 +56,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show how undefined propagates
 command 'from test.with_undefined'

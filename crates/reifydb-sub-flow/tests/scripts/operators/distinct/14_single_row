@@ -47,7 +47,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 5
+await
 
 # Should return the single row
 command 'from test.unique_values'

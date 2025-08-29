@@ -76,7 +76,7 @@ mod tests {
 			"type mismatch for symbol: {}",
 			symbol
 		);
-		assert_eq!(tokens[0].fragment.text(), symbol);
+		assert_eq!(tokens[0].fragment.fragment(), symbol);
 		assert_eq!(tokens[0].fragment.column().0, 1);
 		assert_eq!(tokens[0].fragment.line().0, 1);
 	}
@@ -108,7 +108,7 @@ mod tests {
 		let tokens = tokenize("\n rest").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.text(), "rest");
+		assert_eq!(tokens[0].fragment.fragment(), "rest");
 		// The token is on line 2 because the newline was consumed
 		assert_eq!(tokens[0].fragment.line().0, 2);
 		assert_eq!(tokens[0].fragment.column().0, 2);

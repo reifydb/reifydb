@@ -30,7 +30,7 @@ pub enum OwnedFragment {
 }
 
 impl OwnedFragment {
-	pub fn text(&self) -> &str {
+	pub fn fragment(&self) -> &str {
 		match self {
 			OwnedFragment::None => "",
 			OwnedFragment::Statement {
@@ -78,7 +78,7 @@ impl OwnedFragment {
 		offset: usize,
 		length: usize,
 	) -> OwnedFragment {
-		let text = self.text();
+		let text = self.fragment();
 		let end = std::cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {
 			&text[offset..end]
@@ -146,10 +146,10 @@ impl OwnedFragment {
 		let first = fragments.first().unwrap();
 
 		let mut text = String::with_capacity(
-			fragments.iter().map(|f| f.text().len()).sum(),
+			fragments.iter().map(|f| f.fragment().len()).sum(),
 		);
 		for fragment in &fragments {
-			text.push_str(fragment.text());
+			text.push_str(fragment.fragment());
 		}
 
 		match first {
@@ -180,13 +180,13 @@ impl Default for OwnedFragment {
 
 impl AsRef<str> for OwnedFragment {
 	fn as_ref(&self) -> &str {
-		self.text()
+		self.fragment()
 	}
 }
 
 impl Display for OwnedFragment {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		Display::fmt(self.text(), f)
+		Display::fmt(self.fragment(), f)
 	}
 }
 

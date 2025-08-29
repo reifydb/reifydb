@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use column::LAYOUT;
 use reifydb_core::{
 	Error, Type,
 	interface::{ColumnsKey, EncodableKey, QueryTransaction},
@@ -13,7 +14,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn get_table_column(
+	pub fn get_column(
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<ColumnDef> {
@@ -28,17 +29,12 @@ impl CatalogStore {
 
 		let row = versioned.row;
 
-		let id = ColumnId(column::LAYOUT.get_u64(&row, column::ID));
-		let name =
-			column::LAYOUT.get_utf8(&row, column::NAME).to_string();
-		let value = Type::from_u8(
-			column::LAYOUT.get_u8(&row, column::VALUE),
-		);
-		let index = ColumnIndex(
-			column::LAYOUT.get_u16(&row, column::INDEX),
-		);
+		let id = ColumnId(LAYOUT.get_u64(&row, column::ID));
+		let name = LAYOUT.get_utf8(&row, column::NAME).to_string();
+		let value = Type::from_u8(LAYOUT.get_u8(&row, column::VALUE));
+		let index = ColumnIndex(LAYOUT.get_u16(&row, column::INDEX));
 		let auto_increment =
-			column::LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
+			LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
 
 		let policies = Self::list_table_column_policies(rx, id)?;
 
@@ -69,9 +65,8 @@ mod tests {
 		create_test_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let result =
-			CatalogStore::get_table_column(&mut txn, ColumnId(2))
-				.unwrap();
+		let result = CatalogStore::get_column(&mut txn, ColumnId(2))
+			.unwrap();
 
 		assert_eq!(result.id, 2);
 		assert_eq!(result.name, "col_2");
@@ -86,7 +81,7 @@ mod tests {
 		create_test_column(&mut txn, "col_2", Type::Int2, vec![]);
 		create_test_column(&mut txn, "col_3", Type::Int4, vec![]);
 
-		let err = CatalogStore::get_table_column(&mut txn, ColumnId(4))
+		let err = CatalogStore::get_column(&mut txn, ColumnId(4))
 			.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));

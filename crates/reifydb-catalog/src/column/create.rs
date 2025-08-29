@@ -76,7 +76,7 @@ impl CatalogStore {
 			}
 		}
 
-		let id = SystemSequence::next_table_column_id(txn)?;
+		let id = SystemSequence::next_column_id(txn)?;
 
 		let mut row = column::LAYOUT.allocate_row();
 		column::LAYOUT.set_u64(&mut row, column::ID, id);
@@ -201,18 +201,16 @@ mod test {
 		)
 		.unwrap();
 
-		let column_1 =
-			CatalogStore::get_table_column(&mut txn, ColumnId(1))
-				.unwrap();
+		let column_1 = CatalogStore::get_column(&mut txn, ColumnId(1))
+			.unwrap();
 
 		assert_eq!(column_1.id, 1);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.ty, Type::Bool);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 =
-			CatalogStore::get_table_column(&mut txn, ColumnId(2))
-				.unwrap();
+		let column_2 = CatalogStore::get_column(&mut txn, ColumnId(2))
+			.unwrap();
 
 		assert_eq!(column_2.id, 2);
 		assert_eq!(column_2.name, "col_2");
@@ -243,9 +241,8 @@ mod test {
 		)
 		.unwrap();
 
-		let column =
-			CatalogStore::get_table_column(&mut txn, ColumnId(1))
-				.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(1))
+			.unwrap();
 
 		assert_eq!(column.id, 1);
 		assert_eq!(column.name, "id");

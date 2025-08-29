@@ -135,7 +135,7 @@ impl<'a> Fragment<'a> {
 	/// Get the text value of the fragment
 	pub fn value(&self) -> &str {
 		match self {
-			Fragment::Owned(f) => f.text(),
+			Fragment::Owned(f) => f.fragment(),
 			Fragment::Borrowed(f) => f.value(),
 			Fragment::None => "",
 		}

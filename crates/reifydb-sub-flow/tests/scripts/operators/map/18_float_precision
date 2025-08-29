@@ -59,7 +59,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show float calculation results with precision
 command 'from test.float_calc'

@@ -95,13 +95,13 @@ fn render_physical_plan_inner(
 		}) => {
 			let schema_str = schema
 				.as_ref()
-				.map(|s| format!("{}.", s.text()))
+				.map(|s| format!("{}.", s.fragment()))
 				.unwrap_or_default();
 			let label = format!(
 				"AlterSequence {}{}.{} SET VALUE {}",
 				schema_str,
-				table.text(),
-				column.text(),
+				table.fragment(),
+				column.fragment(),
 				value
 			);
 			write_node_header(output, prefix, is_last, &label);
@@ -434,7 +434,7 @@ fn render_physical_plan_inner(
 			} else {
 				let cols: Vec<String> = columns
 					.iter()
-					.map(|c| c.text().to_string())
+					.map(|c| c.fragment().to_string())
 					.collect();
 				format!("Distinct {{{}}}", cols.join(", "))
 			};

@@ -492,7 +492,7 @@ impl StandardEvaluator {
             (ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
                 let fragment = ne.fragment();
                 Ok(Column::ColumnQualified(ColumnQualified {
-                    name: fragment.text().into(),
+                    name: fragment.fragment().into(),
                     data: ColumnData::bool(vec![false; container.len()]),
                 }))
             }
@@ -524,7 +524,7 @@ fn compare_bool(
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: fragment.text().into(),
+		name: fragment.fragment().into(),
 		data,
 	})
 }
@@ -553,7 +553,7 @@ where
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: fragment.text().into(),
+		name: fragment.fragment().into(),
 		data,
 	})
 }
@@ -585,7 +585,7 @@ where
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: fragment.text().into(),
+		name: fragment.fragment().into(),
 		data: ColumnData::bool_with_bitvec(data, bitvec),
 	})
 }
@@ -614,7 +614,7 @@ fn compare_utf8(
 	}
 
 	Column::ColumnQualified(ColumnQualified {
-		name: fragment.text().into(),
+		name: fragment.fragment().into(),
 		data: ColumnData::bool_with_bitvec(data, bitvec),
 	})
 }

@@ -57,7 +57,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 5
+await
 
 # Should show type conversion results
 command 'from test.casted'

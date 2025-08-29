@@ -93,9 +93,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let column =
-			CatalogStore::get_table_column(&mut txn, ColumnId(1))
-				.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(1))
+			.unwrap();
 
 		let policies = CatalogStore::list_table_column_policies(
 			&mut txn, column.id,

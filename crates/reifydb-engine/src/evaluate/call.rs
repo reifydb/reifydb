@@ -23,7 +23,7 @@ impl StandardEvaluator {
 		call: &CallExpression,
 	) -> crate::Result<Column> {
 		let arguments = self.evaluate_arguments(ctx, &call.args)?;
-		let function = call.func.0.text();
+		let function = call.func.0.fragment();
 
 		let functor = self.functions.get_scalar(function).ok_or(
 			error!(function::unknown_function(
@@ -33,7 +33,7 @@ impl StandardEvaluator {
 
 		let row_count = ctx.row_count;
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: call.fragment().text().into(),
+			name: call.fragment().fragment().into(),
 			data: functor.scalar(ScalarFunctionContext {
 				columns: &arguments,
 				row_count,
