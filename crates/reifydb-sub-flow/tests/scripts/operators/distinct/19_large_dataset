@@ -57,7 +57,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 10
+await
 
 # Should show only 5 unique groups
 command 'from test.unique_groups'

@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+------------+---------+
 > 
 
-wait 10
+await
 
 # Should show first occurrence per category
 command 'from test.unique_categories'

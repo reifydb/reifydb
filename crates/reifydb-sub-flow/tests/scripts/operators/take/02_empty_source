@@ -26,7 +26,7 @@ command 'create deferred view test.top_five { id: int4, value: int4} with {
 > 
 
 # No data inserted, view should be empty
-wait 10
+await
 
 command 'from test.top_five'
 ---

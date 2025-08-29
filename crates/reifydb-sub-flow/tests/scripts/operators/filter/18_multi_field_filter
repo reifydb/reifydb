@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+-------+----------+---------------+
 > 
 
-wait 10
+await
 
 # Should show senior engineers only
 command 'from test.senior_engineers'

@@ -59,7 +59,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 10
+await
 
 # Should show complex computed values
 command 'from test.order_summary'

@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+-------------+
 > 
 
-wait 10
+await
 
 # Should treat undefined as distinct value
 command 'from test.unique_values'

@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod checkpoint;
 mod consumer;
 mod storage;
 
+pub use checkpoint::CdcCheckpoint;
 pub use consumer::{CdcConsume, CdcConsumer};
 use serde::{Deserialize, Serialize};
 pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStorage};

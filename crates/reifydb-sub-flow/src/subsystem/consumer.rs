@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{
 		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
 		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
-		TableId, Transaction,
+		StoreId, TableId, Transaction,
 	},
 	log_debug,
 	row::EncodedRow,
@@ -98,8 +98,6 @@ impl<T: Transaction> FlowConsumer<T> {
 		txn: &mut CT,
 		changes: Vec<Change>,
 	) -> Result<()> {
-		use reifydb_core::interface::StoreId;
-
 		// Create a new FlowEngine for this processing batch
 		let mut flow_engine =
 			FlowEngine::new(StandardEvaluator::default());

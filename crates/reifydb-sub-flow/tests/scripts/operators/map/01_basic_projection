@@ -53,7 +53,7 @@ command 'from test.source'
 > +------+-----------+-------+-----------+
 > 
 
-wait 10
+await
 
 # Should only show id and name columns
 command 'from test.projection'

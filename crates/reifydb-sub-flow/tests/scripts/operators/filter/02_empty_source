@@ -35,7 +35,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 10
+await
 
 # Filter on empty source should return empty
 command 'from test.filtered'

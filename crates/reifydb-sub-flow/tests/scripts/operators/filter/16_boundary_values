@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+------------------------+
 > 
 
-wait 10
+await
 
 # Should show only positive values (> 0)
 command 'from test.positive_only'

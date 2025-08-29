@@ -40,7 +40,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 10
+await
 
 # Should only show name column
 command 'from test.names_only'

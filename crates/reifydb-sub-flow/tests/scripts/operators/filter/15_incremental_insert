@@ -40,7 +40,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 10
+await
 
 command 'from test.high_scores'
 ---
@@ -66,7 +66,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 10
+await
 
 # View should now include new high scores
 command 'from test.high_scores'
@@ -94,7 +94,7 @@ command 'from [
 > +----------+----------+------------+
 > 
 
-wait 10
+await
 
 # Final view state
 command 'from test.high_scores'

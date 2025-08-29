@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use cdc_consumer::CdcConsumerKey;
+pub use cdc_consumer::{CdcConsumerKey, ToConsumerKey};
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;

@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+-----------+-------------+---------------+
 > 
 
-wait 10
+await
 
 # Should show only active users
 command 'from test.active_users'

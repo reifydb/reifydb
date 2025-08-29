@@ -57,7 +57,7 @@ command 'from test.source'
 > +------+-----------+---------+----------+
 > 
 
-wait 10
+await
 
 # Should match all type conditions
 command 'from test.top_active'

@@ -55,7 +55,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 10
+await
 
 # Should return all rows since all are unique
 command 'from test.unique_values'

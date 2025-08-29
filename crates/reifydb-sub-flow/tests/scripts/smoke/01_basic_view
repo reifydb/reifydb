@@ -78,7 +78,7 @@ command 'FROM test.users'
 > 
 
 # Wait for flow processor to complete processing
-wait 10
+await
 ---
 ok
 

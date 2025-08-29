@@ -53,7 +53,7 @@ command 'from test.source'
 > +------+---------+
 > 
 
-wait 10
+await
 
 # All rows match - should see all data
 command 'from test.positive'
