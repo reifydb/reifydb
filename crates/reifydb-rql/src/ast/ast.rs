@@ -3,7 +3,7 @@
 
 use std::ops::{Deref, Index};
 
-use reifydb_core::{IndexType, JoinType, OwnedFragment, SortDirection};
+use reifydb_core::{Fragment, IndexType, JoinType, SortDirection};
 
 use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
 
@@ -807,22 +807,20 @@ pub enum AstLiteral<'a> {
 }
 
 impl<'a> AstLiteral<'a> {
-	pub fn fragment(self) -> OwnedFragment {
+	pub fn fragment(self) -> Fragment<'a> {
 		match self {
 			AstLiteral::Boolean(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
 			AstLiteral::Number(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
-			AstLiteral::Text(literal) => {
-				literal.0.fragment.into_owned()
-			}
+			AstLiteral::Text(literal) => literal.0.fragment.clone(),
 			AstLiteral::Temporal(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
 			AstLiteral::Undefined(literal) => {
-				literal.0.fragment.into_owned()
+				literal.0.fragment.clone()
 			}
 		}
 	}
@@ -833,15 +831,15 @@ pub struct AstIdentifier<'a>(pub Token<'a>);
 
 impl<'a> AstIdentifier<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.value()
+		self.0.fragment.text()
 	}
 
 	pub fn name(&self) -> String {
 		self.value().to_string()
 	}
 
-	pub fn fragment(self) -> OwnedFragment {
-		self.0.fragment.into_owned()
+	pub fn fragment(self) -> Fragment<'a> {
+		self.0.fragment.clone()
 	}
 }
 
@@ -931,7 +929,7 @@ pub struct AstLiteralNumber<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralNumber<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.value()
+		self.0.fragment.text()
 	}
 }
 
@@ -940,7 +938,7 @@ pub struct AstLiteralTemporal<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralTemporal<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.value()
+		self.0.fragment.text()
 	}
 }
 
@@ -949,7 +947,7 @@ pub struct AstLiteralText<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralText<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.value()
+		self.0.fragment.text()
 	}
 }
 
@@ -967,7 +965,7 @@ pub struct AstLiteralUndefined<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralUndefined<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.value()
+		self.0.fragment.text()
 	}
 }
 

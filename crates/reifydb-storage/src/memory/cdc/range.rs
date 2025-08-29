@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{CdcEvent, CdcRange},
 };
 
-use crate::memory::Memory;
+use crate::{cdc::CdcTransaction, memory::Memory};
 
 impl CdcRange for Memory {
 	type RangeIter<'a> = Range<'a>;
@@ -21,7 +21,7 @@ impl CdcRange for Memory {
 	) -> Result<Self::RangeIter<'_>> {
 		Ok(Range {
 			version_iter: Box::new(
-				self.cdc_events.range((start, end)),
+				self.cdc_transactions.range((start, end)),
 			),
 			current_events: vec![],
 			current_index: 0,
@@ -31,7 +31,7 @@ impl CdcRange for Memory {
 
 pub struct Range<'a> {
 	version_iter: Box<
-		dyn Iterator<Item = Entry<'a, Version, Vec<CdcEvent>>> + 'a,
+		dyn Iterator<Item = Entry<'a, Version, CdcTransaction>> + 'a,
 	>,
 	current_events: Vec<CdcEvent>,
 	current_index: usize,
@@ -51,7 +51,8 @@ impl<'a> Iterator for Range<'a> {
 
 		// Otherwise, get the next version's events
 		if let Some(entry) = self.version_iter.next() {
-			self.current_events = entry.value().clone();
+			self.current_events =
+				entry.value().to_events().collect();
 			self.current_index = 0;
 
 			// Recursively call next() to get the first event from

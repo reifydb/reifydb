@@ -8,7 +8,7 @@ mod query;
 
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	IndexType, JoinType, OwnedFragment, SortDirection, SortKey,
+	Fragment, IndexType, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
 		expression::{AliasExpression, Expression},
@@ -25,12 +25,16 @@ use crate::{
 
 struct Compiler {}
 
-pub fn compile_logical(ast: AstStatement) -> crate::Result<Vec<LogicalPlan>> {
+pub fn compile_logical<'a>(
+	ast: AstStatement<'a>,
+) -> crate::Result<Vec<LogicalPlan<'a>>> {
 	Compiler::compile(ast)
 }
 
 impl Compiler {
-	fn compile(ast: AstStatement) -> crate::Result<Vec<LogicalPlan>> {
+	fn compile<'a>(
+		ast: AstStatement<'a>,
+	) -> crate::Result<Vec<LogicalPlan<'a>>> {
 		if ast.is_empty() {
 			return Ok(vec![]);
 		}
@@ -130,7 +134,9 @@ impl Compiler {
 		}
 	}
 
-	fn build_chain(plans: Vec<LogicalPlan>) -> crate::Result<LogicalPlan> {
+	fn build_chain<'a>(
+		plans: Vec<LogicalPlan<'a>>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		// The pipeline should be properly structured with inputs
 		// For now, we'll wrap them in a special Pipeline plan
 		// that the physical compiler can handle
@@ -146,157 +152,157 @@ impl Compiler {
 }
 
 #[derive(Debug)]
-pub enum LogicalPlan {
-	CreateDeferredView(CreateDeferredViewNode),
-	CreateTransactionalView(CreateTransactionalViewNode),
-	CreateSchema(CreateSchemaNode),
-	CreateSequence(CreateSequenceNode),
-	CreateTable(CreateTableNode),
-	CreateIndex(CreateIndexNode),
+pub enum LogicalPlan<'a> {
+	CreateDeferredView(CreateDeferredViewNode<'a>),
+	CreateTransactionalView(CreateTransactionalViewNode<'a>),
+	CreateSchema(CreateSchemaNode<'a>),
+	CreateSequence(CreateSequenceNode<'a>),
+	CreateTable(CreateTableNode<'a>),
+	CreateIndex(CreateIndexNode<'a>),
 	// Alter
-	AlterSequence(AlterSequenceNode),
-	AlterTable(AlterTableNode),
-	AlterView(AlterViewNode),
+	AlterSequence(AlterSequenceNode<'a>),
+	AlterTable(AlterTableNode<'a>),
+	AlterView(AlterViewNode<'a>),
 	// Mutate
-	Delete(DeleteNode),
-	Insert(InsertNode),
-	Update(UpdateNode),
+	Delete(DeleteNode<'a>),
+	Insert(InsertNode<'a>),
+	Update(UpdateNode<'a>),
 	// Query
-	Aggregate(AggregateNode),
-	Distinct(DistinctNode),
-	Filter(FilterNode),
-	JoinInner(JoinInnerNode),
-	JoinLeft(JoinLeftNode),
-	JoinNatural(JoinNaturalNode),
+	Aggregate(AggregateNode<'a>),
+	Distinct(DistinctNode<'a>),
+	Filter(FilterNode<'a>),
+	JoinInner(JoinInnerNode<'a>),
+	JoinLeft(JoinLeftNode<'a>),
+	JoinNatural(JoinNaturalNode<'a>),
 	Take(TakeNode),
 	Order(OrderNode),
-	Map(MapNode),
-	Extend(ExtendNode),
-	InlineData(InlineDataNode),
-	SourceScan(SourceScanNode),
+	Map(MapNode<'a>),
+	Extend(ExtendNode<'a>),
+	InlineData(InlineDataNode<'a>),
+	SourceScan(SourceScanNode<'a>),
 	// Chain wrapper for chained operations
-	Chain(ChainedNode),
+	Chain(ChainedNode<'a>),
 }
 
 #[derive(Debug)]
-pub struct ChainedNode {
-	pub steps: Vec<LogicalPlan>,
+pub struct ChainedNode<'a> {
+	pub steps: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
-pub struct CreateDeferredViewNode {
-	pub schema: OwnedFragment,
-	pub view: OwnedFragment,
+pub struct CreateDeferredViewNode<'a> {
+	pub schema: Fragment<'a>,
+	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Vec<LogicalPlan>,
+	pub with: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
-pub struct CreateTransactionalViewNode {
-	pub schema: OwnedFragment,
-	pub view: OwnedFragment,
+pub struct CreateTransactionalViewNode<'a> {
+	pub schema: Fragment<'a>,
+	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Vec<LogicalPlan>,
+	pub with: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
-pub struct CreateSchemaNode {
-	pub schema: OwnedFragment,
+pub struct CreateSchemaNode<'a> {
+	pub schema: Fragment<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
-pub struct CreateSequenceNode {
-	pub schema: OwnedFragment,
+pub struct CreateSequenceNode<'a> {
+	pub schema: Fragment<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
-pub struct CreateTableNode {
-	pub schema: OwnedFragment,
-	pub table: OwnedFragment,
+pub struct CreateTableNode<'a> {
+	pub schema: Fragment<'a>,
+	pub table: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug)]
-pub struct AlterSequenceNode {
-	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
-	pub column: OwnedFragment,
-	pub value: Expression,
+pub struct AlterSequenceNode<'a> {
+	pub schema: Option<Fragment<'a>>,
+	pub table: Fragment<'a>,
+	pub column: Fragment<'a>,
+	pub value: Expression<'a>,
 }
 
 #[derive(Debug)]
-pub struct CreateIndexNode {
+pub struct CreateIndexNode<'a> {
 	pub index_type: IndexType,
-	pub name: OwnedFragment,
-	pub schema: OwnedFragment,
-	pub table: OwnedFragment,
-	pub columns: Vec<IndexColumn>,
-	pub filter: Vec<Expression>,
-	pub map: Option<Expression>,
+	pub name: Fragment<'a>,
+	pub schema: Fragment<'a>,
+	pub table: Fragment<'a>,
+	pub columns: Vec<IndexColumn<'a>>,
+	pub filter: Vec<Expression<'a>>,
+	pub map: Option<Expression<'a>>,
 }
 
 #[derive(Debug)]
-pub struct IndexColumn {
-	pub column: OwnedFragment,
+pub struct IndexColumn<'a> {
+	pub column: Fragment<'a>,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
-pub struct DeleteNode {
-	pub schema: Option<OwnedFragment>,
-	pub table: Option<OwnedFragment>,
-	pub input: Option<Box<LogicalPlan>>,
+pub struct DeleteNode<'a> {
+	pub schema: Option<Fragment<'a>>,
+	pub table: Option<Fragment<'a>>,
+	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
-pub struct InsertNode {
-	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+pub struct InsertNode<'a> {
+	pub schema: Option<Fragment<'a>>,
+	pub table: Fragment<'a>,
 }
 
 #[derive(Debug)]
-pub struct UpdateNode {
-	pub schema: Option<OwnedFragment>,
-	pub table: Option<OwnedFragment>,
-	pub input: Option<Box<LogicalPlan>>,
+pub struct UpdateNode<'a> {
+	pub schema: Option<Fragment<'a>>,
+	pub table: Option<Fragment<'a>>,
+	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
-pub struct AggregateNode {
-	pub by: Vec<Expression>,
-	pub map: Vec<Expression>,
+pub struct AggregateNode<'a> {
+	pub by: Vec<Expression<'a>>,
+	pub map: Vec<Expression<'a>>,
 }
 
 #[derive(Debug)]
-pub struct DistinctNode {
-	pub columns: Vec<OwnedFragment>,
+pub struct DistinctNode<'a> {
+	pub columns: Vec<Fragment<'a>>,
 }
 
 #[derive(Debug)]
-pub struct FilterNode {
-	pub condition: Expression,
+pub struct FilterNode<'a> {
+	pub condition: Expression<'a>,
 }
 
 #[derive(Debug)]
-pub struct JoinInnerNode {
-	pub with: Vec<LogicalPlan>,
-	pub on: Vec<Expression>,
+pub struct JoinInnerNode<'a> {
+	pub with: Vec<LogicalPlan<'a>>,
+	pub on: Vec<Expression<'a>>,
 }
 
 #[derive(Debug)]
-pub struct JoinLeftNode {
-	pub with: Vec<LogicalPlan>,
-	pub on: Vec<Expression>,
+pub struct JoinLeftNode<'a> {
+	pub with: Vec<LogicalPlan<'a>>,
+	pub on: Vec<Expression<'a>>,
 }
 
 #[derive(Debug)]
-pub struct JoinNaturalNode {
-	pub with: Vec<LogicalPlan>,
+pub struct JoinNaturalNode<'a> {
+	pub with: Vec<LogicalPlan<'a>>,
 	pub join_type: JoinType,
 }
 
@@ -311,24 +317,24 @@ pub struct OrderNode {
 }
 
 #[derive(Debug)]
-pub struct MapNode {
-	pub map: Vec<Expression>,
+pub struct MapNode<'a> {
+	pub map: Vec<Expression<'a>>,
 }
 
 #[derive(Debug)]
-pub struct ExtendNode {
-	pub extend: Vec<Expression>,
+pub struct ExtendNode<'a> {
+	pub extend: Vec<Expression<'a>>,
 }
 
 #[derive(Debug)]
-pub struct InlineDataNode {
-	pub rows: Vec<Vec<AliasExpression>>,
+pub struct InlineDataNode<'a> {
+	pub rows: Vec<Vec<AliasExpression<'a>>>,
 }
 
 #[derive(Debug)]
-pub struct SourceScanNode {
-	pub schema: OwnedFragment,
-	pub source: OwnedFragment,
+pub struct SourceScanNode<'a> {
+	pub schema: Fragment<'a>,
+	pub source: Fragment<'a>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

@@ -3,27 +3,33 @@
 
 use reifydb_core::{
 	flow::{FlowNodeType::Operator, OperatorType::Aggregate},
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{
+		CommandTransaction, FlowNodeId,
+		evaluate::expression::Expression,
+	},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler,
+	conversion::{to_owned_expressions, to_owned_physical_plan},
+};
 use crate::{
 	Result,
 	plan::physical::{AggregateNode, PhysicalPlan},
 };
 
 pub(crate) struct AggregateCompiler {
-	pub input: Box<PhysicalPlan>,
-	pub by: Vec<Expression>,
-	pub map: Vec<Expression>,
+	pub input: Box<PhysicalPlan<'static>>,
+	pub by: Vec<Expression<'static>>,
+	pub map: Vec<Expression<'static>>,
 }
 
-impl From<AggregateNode> for AggregateCompiler {
-	fn from(node: AggregateNode) -> Self {
+impl<'a> From<AggregateNode<'a>> for AggregateCompiler {
+	fn from(node: AggregateNode<'a>) -> Self {
 		Self {
-			input: node.input,
-			by: node.by,
-			map: node.map,
+			input: Box::new(to_owned_physical_plan(*node.input)),
+			by: to_owned_expressions(node.by),
+			map: to_owned_expressions(node.map),
 		}
 	}
 }

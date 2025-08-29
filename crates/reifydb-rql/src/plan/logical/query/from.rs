@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedFragment, err,
+	Fragment, OwnedFragment, err,
 	interface::evaluate::expression::{AliasExpression, IdentExpression},
 	result::error::diagnostic::Diagnostic,
 };
@@ -16,7 +16,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_from(ast: AstFrom) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_from<'a>(
+		ast: AstFrom<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstFrom::Source {
 				schema,
@@ -25,8 +27,10 @@ impl Compiler {
 			} => Ok(LogicalPlan::SourceScan(SourceScanNode {
 				schema: schema
 					.map(|schema| schema.fragment())
-					.unwrap_or(OwnedFragment::testing(
-						"default",
+					.unwrap_or(Fragment::Owned(
+						OwnedFragment::testing(
+							"default",
+						),
 					)),
 				source: table.fragment(),
 			})),

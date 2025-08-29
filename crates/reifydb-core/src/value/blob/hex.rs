@@ -14,7 +14,7 @@ impl Blob {
 		fragment: impl IntoFragment<'a>,
 	) -> Result<Self, Error> {
 		let fragment = fragment.into_fragment();
-		let hex_str = fragment.value();
+		let hex_str = fragment.text();
 		let clean_hex = if hex_str.starts_with("0x")
 			|| hex_str.starts_with("0X")
 		{

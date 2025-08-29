@@ -82,7 +82,7 @@ pub fn invalid_parameter_reference<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.fragment();
+	let value = fragment.text();
 	Diagnostic {
         code: "ENG_005".to_string(),
         statement: None,
@@ -99,7 +99,7 @@ pub fn invalid_parameter_reference<'a>(
 /// Parameter not found error
 pub fn parameter_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
-	let value = fragment.fragment();
+	let value = fragment.text();
 	Diagnostic {
         code: "ENG_006".to_string(),
         statement: None,

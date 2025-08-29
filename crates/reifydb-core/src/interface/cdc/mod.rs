@@ -10,7 +10,10 @@ pub use consumer::{CdcConsume, CdcConsumer};
 use serde::{Deserialize, Serialize};
 pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStorage};
 
-use crate::{EncodedKey, Version, row::EncodedRow};
+use crate::{
+	EncodedKey, Version, interface::transaction::TransactionId,
+	row::EncodedRow,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -50,6 +53,7 @@ pub struct CdcEvent {
 	pub version: Version,
 	pub sequence: u16,
 	pub timestamp: u64,
+	pub transaction: TransactionId,
 	pub change: CdcChange,
 }
 
@@ -58,12 +62,14 @@ impl CdcEvent {
 		version: Version,
 		sequence: u16,
 		timestamp: u64,
+		transaction: TransactionId,
 		change: CdcChange,
 	) -> Self {
 		Self {
 			version,
 			sequence,
 			timestamp,
+			transaction,
 			change,
 		}
 	}

@@ -41,13 +41,13 @@ impl<'a> BorrowedFragment<'a> {
 
 	/// Compatibility: expose fragment field
 	pub fn fragment(&self) -> &str {
-		self.value()
+		self.text()
 	}
 }
 
 impl<'a> BorrowedFragment<'a> {
 	/// Get the text value of the fragment
-	pub fn value(&self) -> &str {
+	pub fn text(&self) -> &str {
 		match self {
 			BorrowedFragment::None => "",
 			BorrowedFragment::Statement {
@@ -111,7 +111,7 @@ impl<'a> BorrowedFragment<'a> {
 		offset: usize,
 		length: usize,
 	) -> OwnedFragment {
-		let text = self.value();
+		let text = self.text();
 		let end = std::cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {
 			&text[offset..end]

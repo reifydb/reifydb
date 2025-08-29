@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 use Type::Bool;
 use reifydb_core::{
-	OwnedFragment, Type,
+	Fragment, Type,
 	interface::{Evaluator, evaluate::expression::EqExpression},
 	result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
@@ -37,7 +37,12 @@ impl StandardEvaluator {
 
 		match (&left.data(), &right.data()) {
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => {
-				Ok(compare_bool(ctx, l, r, eq.fragment()))
+				Ok(compare_bool(
+					ctx,
+					l,
+					r,
+					eq.full_fragment_owned(),
+				))
 			}
 			// Float4
 			(ColumnData::Float4(l), ColumnData::Float4(r)) => {
@@ -45,7 +50,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Float8(r)) => {
@@ -53,7 +58,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int1(r)) => {
@@ -61,7 +66,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int2(r)) => {
@@ -69,7 +74,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int4(r)) => {
@@ -77,7 +82,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int8(r)) => {
@@ -85,7 +90,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Int16(r)) => {
@@ -93,7 +98,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint1(r)) => {
@@ -101,7 +106,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint2(r)) => {
@@ -109,7 +114,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint4(r)) => {
@@ -117,7 +122,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint8(r)) => {
@@ -125,7 +130,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float4(l), ColumnData::Uint16(r)) => {
@@ -133,7 +138,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Float8
@@ -142,7 +147,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Float8(r)) => {
@@ -150,7 +155,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int1(r)) => {
@@ -158,7 +163,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int2(r)) => {
@@ -166,7 +171,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int4(r)) => {
@@ -174,7 +179,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int8(r)) => {
@@ -182,7 +187,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Int16(r)) => {
@@ -190,7 +195,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint1(r)) => {
@@ -198,7 +203,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint2(r)) => {
@@ -206,7 +211,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint4(r)) => {
@@ -214,7 +219,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint8(r)) => {
@@ -222,7 +227,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Float8(l), ColumnData::Uint16(r)) => {
@@ -230,7 +235,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Int1
@@ -239,7 +244,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Float8(r)) => {
@@ -247,7 +252,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Int1(r)) => {
@@ -255,7 +260,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Int2(r)) => {
@@ -263,7 +268,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Int4(r)) => {
@@ -271,7 +276,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Int8(r)) => {
@@ -279,7 +284,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Int16(r)) => {
@@ -287,7 +292,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Uint1(r)) => {
@@ -295,7 +300,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Uint2(r)) => {
@@ -303,7 +308,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Uint4(r)) => {
@@ -311,7 +316,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Uint8(r)) => {
@@ -319,7 +324,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int1(l), ColumnData::Uint16(r)) => {
@@ -327,7 +332,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Int2
@@ -336,7 +341,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Float8(r)) => {
@@ -344,7 +349,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int1(r)) => {
@@ -352,7 +357,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int2(r)) => {
@@ -360,7 +365,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int4(r)) => {
@@ -368,7 +373,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int8(r)) => {
@@ -376,7 +381,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Int16(r)) => {
@@ -384,7 +389,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint1(r)) => {
@@ -392,7 +397,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint2(r)) => {
@@ -400,7 +405,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint4(r)) => {
@@ -408,7 +413,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint8(r)) => {
@@ -416,7 +421,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int2(l), ColumnData::Uint16(r)) => {
@@ -424,7 +429,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Int4
@@ -433,7 +438,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Float8(r)) => {
@@ -441,7 +446,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int1(r)) => {
@@ -449,7 +454,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int2(r)) => {
@@ -457,7 +462,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int4(r)) => {
@@ -465,7 +470,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int8(r)) => {
@@ -473,7 +478,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Int16(r)) => {
@@ -481,7 +486,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint1(r)) => {
@@ -489,7 +494,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint2(r)) => {
@@ -497,7 +502,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint4(r)) => {
@@ -505,7 +510,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint8(r)) => {
@@ -513,7 +518,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int4(l), ColumnData::Uint16(r)) => {
@@ -521,7 +526,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Int8
@@ -530,7 +535,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Float8(r)) => {
@@ -538,7 +543,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int1(r)) => {
@@ -546,7 +551,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int2(r)) => {
@@ -554,7 +559,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int4(r)) => {
@@ -562,7 +567,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int8(r)) => {
@@ -570,7 +575,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Int16(r)) => {
@@ -578,7 +583,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint1(r)) => {
@@ -586,7 +591,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint2(r)) => {
@@ -594,7 +599,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint4(r)) => {
@@ -602,7 +607,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint8(r)) => {
@@ -610,7 +615,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int8(l), ColumnData::Uint16(r)) => {
@@ -618,7 +623,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Int16
@@ -627,7 +632,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Float8(r)) => {
@@ -635,7 +640,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int1(r)) => {
@@ -643,7 +648,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int2(r)) => {
@@ -651,7 +656,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int4(r)) => {
@@ -659,7 +664,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int8(r)) => {
@@ -667,7 +672,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Int16(r)) => {
@@ -675,7 +680,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint1(r)) => {
@@ -683,7 +688,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint2(r)) => {
@@ -691,7 +696,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint4(r)) => {
@@ -699,7 +704,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint8(r)) => {
@@ -707,7 +712,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Int16(l), ColumnData::Uint16(r)) => {
@@ -715,7 +720,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Uint1
@@ -724,7 +729,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Float8(r)) => {
@@ -732,7 +737,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Int1(r)) => {
@@ -740,7 +745,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Int2(r)) => {
@@ -748,7 +753,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Int4(r)) => {
@@ -756,7 +761,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Int8(r)) => {
@@ -764,7 +769,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Int16(r)) => {
@@ -772,7 +777,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
@@ -780,7 +785,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
@@ -788,7 +793,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
@@ -796,7 +801,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
@@ -804,7 +809,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
@@ -812,7 +817,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Uint2
@@ -821,7 +826,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Float8(r)) => {
@@ -829,7 +834,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int1(r)) => {
@@ -837,7 +842,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int2(r)) => {
@@ -845,7 +850,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int4(r)) => {
@@ -853,7 +858,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int8(r)) => {
@@ -861,7 +866,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Int16(r)) => {
@@ -869,7 +874,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
@@ -877,7 +882,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
@@ -885,7 +890,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
@@ -893,7 +898,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
@@ -901,7 +906,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
@@ -909,7 +914,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Uint4
@@ -918,7 +923,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Float8(r)) => {
@@ -926,7 +931,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int1(r)) => {
@@ -934,7 +939,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int2(r)) => {
@@ -942,7 +947,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int4(r)) => {
@@ -950,7 +955,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int8(r)) => {
@@ -958,7 +963,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Int16(r)) => {
@@ -966,7 +971,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
@@ -974,7 +979,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
@@ -982,7 +987,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
@@ -990,7 +995,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
@@ -998,7 +1003,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
@@ -1006,7 +1011,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Uint8
@@ -1015,7 +1020,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Float8(r)) => {
@@ -1023,7 +1028,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int1(r)) => {
@@ -1031,7 +1036,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int2(r)) => {
@@ -1039,7 +1044,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int4(r)) => {
@@ -1047,7 +1052,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int8(r)) => {
@@ -1055,7 +1060,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Int16(r)) => {
@@ -1063,7 +1068,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
@@ -1071,7 +1076,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
@@ -1079,7 +1084,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
@@ -1087,7 +1092,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
@@ -1095,7 +1100,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
@@ -1103,7 +1108,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			// Uint16
@@ -1112,7 +1117,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Float8(r)) => {
@@ -1120,7 +1125,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int1(r)) => {
@@ -1128,7 +1133,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int2(r)) => {
@@ -1136,7 +1141,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int4(r)) => {
@@ -1144,7 +1149,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int8(r)) => {
@@ -1152,7 +1157,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Int16(r)) => {
@@ -1160,7 +1165,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
@@ -1168,7 +1173,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
@@ -1176,7 +1181,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
@@ -1184,7 +1189,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
@@ -1192,7 +1197,7 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
@@ -1200,27 +1205,43 @@ impl StandardEvaluator {
 					ctx,
 					l,
 					r,
-					eq.fragment(),
+					eq.full_fragment_owned(),
 				))
 			}
 			(ColumnData::Date(l), ColumnData::Date(r)) => {
-				Ok(compare_temporal(l, r, eq.fragment()))
+				Ok(compare_temporal(
+					l,
+					r,
+					eq.full_fragment_owned(),
+				))
 			}
 			(ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
-				Ok(compare_temporal(l, r, eq.fragment()))
+				Ok(compare_temporal(
+					l,
+					r,
+					eq.full_fragment_owned(),
+				))
 			}
 			(ColumnData::Time(l), ColumnData::Time(r)) => {
-				Ok(compare_temporal(l, r, eq.fragment()))
+				Ok(compare_temporal(
+					l,
+					r,
+					eq.full_fragment_owned(),
+				))
 			}
 			(ColumnData::Interval(l), ColumnData::Interval(r)) => {
-				Ok(compare_temporal(l, r, eq.fragment()))
+				Ok(compare_temporal(
+					l,
+					r,
+					eq.full_fragment_owned(),
+				))
 			}
 			(ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
-				Ok(compare_utf8(l, r, eq.fragment()))
+				Ok(compare_utf8(l, r, eq.full_fragment_owned()))
 			}
 			(ColumnData::Undefined(container), _)
 			| (_, ColumnData::Undefined(container)) => {
-				let fragment = eq.fragment();
+				let fragment = eq.full_fragment_owned();
 				Ok(Column::ColumnQualified(ColumnQualified {
 					name: fragment.fragment().into(),
 					data: ColumnData::bool(vec![
@@ -1233,7 +1254,7 @@ impl StandardEvaluator {
 			}
 			_ => return_error!(
 				equal_cannot_be_applied_to_incompatible_types(
-					eq.fragment(),
+					eq.full_fragment_owned(),
 					left.get_type(),
 					right.get_type(),
 				)
@@ -1246,7 +1267,7 @@ fn compare_bool(
 	ctx: &EvaluationContext,
 	l: &BoolContainer,
 	r: &BoolContainer,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -1270,7 +1291,7 @@ fn compare_number<L, R>(
 	ctx: &EvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column
 where
 	L: Promote<R> + IsNumber + Clone + Debug + Default,
@@ -1298,7 +1319,7 @@ where
 fn compare_temporal<T>(
 	l: &TemporalContainer<T>,
 	r: &TemporalContainer<T>,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column
 where
 	T: IsTemporal + Clone + Debug + Default,
@@ -1330,7 +1351,7 @@ where
 fn compare_utf8(
 	l: &StringContainer,
 	r: &StringContainer,
-	fragment: OwnedFragment,
+	fragment: Fragment<'_>,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 

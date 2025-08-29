@@ -12,23 +12,23 @@ use super::FlowCompiler;
 use crate::Result;
 
 /// Builder for creating flow nodes with automatic edge management
-pub(crate) struct FlowNodeBuilder<'a, 'b, T>
+pub(crate) struct FlowNodeBuilder<'a, T>
 where
 	T: CommandTransaction,
 {
-	compiler: &'a mut FlowCompiler<'b, T>,
-	node_type: FlowNodeType,
+	compiler: &'a mut FlowCompiler<T>,
+	node_type: FlowNodeType<'static>,
 	input_nodes: Vec<FlowNodeId>,
 }
 
-impl<'a, 'b, T> FlowNodeBuilder<'a, 'b, T>
+impl<'a, T> FlowNodeBuilder<'a, T>
 where
 	T: CommandTransaction,
 {
 	/// Creates a new FlowNodeBuilder
 	pub fn new(
-		compiler: &'a mut FlowCompiler<'b, T>,
-		node_type: FlowNodeType,
+		compiler: &'a mut FlowCompiler<T>,
+		node_type: FlowNodeType<'static>,
 	) -> Self {
 		Self {
 			compiler,
@@ -67,15 +67,15 @@ where
 }
 
 /// Extension trait to provide builder methods on FlowCompiler
-impl<'a, T> FlowCompiler<'a, T>
+impl<T> FlowCompiler<T>
 where
 	T: CommandTransaction,
 {
 	/// Creates a new FlowNodeBuilder for this compiler
 	pub(crate) fn build_node(
 		&mut self,
-		node_type: FlowNodeType,
-	) -> FlowNodeBuilder<'_, 'a, T> {
+		node_type: FlowNodeType<'static>,
+	) -> FlowNodeBuilder<'_, T> {
 		FlowNodeBuilder::new(self, node_type)
 	}
 }

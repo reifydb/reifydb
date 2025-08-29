@@ -7,9 +7,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_insert(
-		ast: AstInsert,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_insert<'a>(
+		ast: AstInsert<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Insert(InsertNode {
 			schema: ast.schema.map(|s| s.fragment()),
 			table: ast.table.fragment(),

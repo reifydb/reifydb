@@ -3,7 +3,7 @@
 
 use crate::{
 	CowVec, EncodedKey, EncodedKeyRange, Version, delta::Delta,
-	row::EncodedRow,
+	interface::TransactionId, row::EncodedRow,
 };
 
 #[derive(Debug)]
@@ -39,6 +39,7 @@ pub trait VersionedCommit {
 		&self,
 		delta: CowVec<Delta>,
 		version: Version,
+		transaction: TransactionId,
 	) -> crate::Result<()>;
 }
 

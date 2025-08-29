@@ -7,22 +7,24 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowNodeId},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,
+};
 use crate::{
 	Result,
 	plan::physical::{PhysicalPlan, SortNode},
 };
 
 pub(crate) struct SortCompiler {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<PhysicalPlan<'static>>,
 	pub by: Vec<SortKey>,
 }
 
-impl From<SortNode> for SortCompiler {
-	fn from(node: SortNode) -> Self {
+impl<'a> From<SortNode<'a>> for SortCompiler {
+	fn from(node: SortNode<'a>) -> Self {
 		Self {
-			input: node.input,
-			by: node.by,
+			input: Box::new(to_owned_physical_plan(*node.input)),
+			by: node.by, // SortKey doesn't contain fragments
 		}
 	}
 }

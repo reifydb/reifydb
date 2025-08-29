@@ -11,7 +11,7 @@ pub fn parse_datetime<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<DateTime, Error> {
 	let fragment = fragment.into_fragment();
-	let parts: Vec<&str> = fragment.value().split('T').collect();
+	let parts: Vec<&str> = fragment.text().split('T').collect();
 	if parts.len() != 2 {
 		return_error!(temporal::invalid_datetime_format(fragment));
 	}

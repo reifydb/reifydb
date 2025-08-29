@@ -8,6 +8,7 @@
 //! RQL queries.
 
 mod builder;
+mod conversion;
 mod operator;
 mod source;
 
@@ -20,6 +21,7 @@ use reifydb_core::{
 };
 
 use self::{
+	conversion::{to_owned_expressions, to_owned_physical_plan},
 	operator::{
 		aggregate::AggregateCompiler, distinct::DistinctCompiler,
 		extend::ExtendCompiler, filter::FilterCompiler,
@@ -37,36 +39,38 @@ pub fn compile_flow(
 	txn: &mut impl CommandTransaction,
 	plan: PhysicalPlan,
 	sink: &ViewDef,
-) -> crate::Result<Flow> {
+) -> crate::Result<Flow<'static>> {
+	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
+	let owned_plan = to_owned_physical_plan(plan);
 	let compiler = FlowCompiler::new(txn)?;
-	compiler.compile(plan, sink)
+	compiler.compile(owned_plan, sink)
 }
 
 /// Compiler for converting RQL plans into executable Flows
-pub(crate) struct FlowCompiler<'a, T: CommandTransaction> {
+pub(crate) struct FlowCompiler<T: CommandTransaction> {
 	/// The flow graph being built
-	flow: Flow,
-	/// Transaction for accessing catalog and sequences
-	txn: &'a mut T,
+	flow: Flow<'static>,
+	/// Reference to transaction for ID generation
+	txn: *mut T,
 }
 
-impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
+impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Creates a new FlowCompiler instance
-	pub fn new(txn: &'a mut T) -> crate::Result<Self> {
+	pub fn new(txn: &mut T) -> crate::Result<Self> {
 		Ok(Self {
 			flow: Flow::new(next_flow_id(txn)?),
-			txn,
+			txn: txn as *mut T,
 		})
 	}
 
 	/// Gets the next available node ID
 	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
-		next_flow_node_id(self.txn)
+		unsafe { next_flow_node_id(&mut *self.txn) }
 	}
 
 	/// Gets the next available edge ID
 	fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
-		next_flow_edge_id(self.txn)
+		unsafe { next_flow_edge_id(&mut *self.txn) }
 	}
 
 	/// Adds an edge between two nodes
@@ -82,7 +86,7 @@ impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 	/// Adds a node to the flow graph
 	fn add_node(
 		&mut self,
-		node_type: FlowNodeType,
+		node_type: FlowNodeType<'static>,
 	) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
 		let flow_node_id =
@@ -95,7 +99,7 @@ impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 		mut self,
 		plan: PhysicalPlan,
 		sink: &ViewDef,
-	) -> crate::Result<Flow> {
+	) -> crate::Result<Flow<'static>> {
 		// Check if the root plan is a Map node that should be terminal
 		let root_node_id = match &plan {
 			PhysicalPlan::Map(map_node) => {
@@ -202,11 +206,14 @@ impl<'a, T: CommandTransaction> FlowCompiler<'a, T> {
 			None
 		};
 
-		// Create a MapTerminal operator with the view ID
+		// Create a MapTerminal operator with the view ID - convert
+		// expressions to static
 		let mut builder = self.build_node(FlowNodeType::Operator {
 			operator:
 				reifydb_core::flow::OperatorType::MapTerminal {
-					expressions: map_node.map,
+					expressions: to_owned_expressions(
+						map_node.map,
+					),
 					view_id: sink.id,
 				},
 		});
@@ -225,5 +232,5 @@ pub(crate) trait CompileOperator<T: CommandTransaction> {
 	fn compile(
 		self,
 		compiler: &mut FlowCompiler<T>,
-	) -> reifydb_core::Result<FlowNodeId>;
+	) -> crate::Result<FlowNodeId>;
 }

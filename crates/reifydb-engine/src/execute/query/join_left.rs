@@ -15,18 +15,18 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct LeftJoinNode {
-	left: Box<ExecutionPlan>,
-	right: Box<ExecutionPlan>,
-	on: Vec<Expression>,
+pub(crate) struct LeftJoinNode<'a> {
+	left: Box<ExecutionPlan<'a>>,
+	right: Box<ExecutionPlan<'a>>,
+	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl LeftJoinNode {
+impl<'a> LeftJoinNode<'a> {
 	pub fn new(
-		left: Box<ExecutionPlan>,
-		right: Box<ExecutionPlan>,
-		on: Vec<Expression>,
+		left: Box<ExecutionPlan<'a>>,
+		right: Box<ExecutionPlan<'a>>,
+		on: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			left,
@@ -37,7 +37,7 @@ impl LeftJoinNode {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<ExecutionPlan>,
+		node: &mut Box<ExecutionPlan<'a>>,
 		ctx: &ExecutionContext,
 		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Columns> {
@@ -59,7 +59,7 @@ impl LeftJoinNode {
 	}
 }
 
-impl LeftJoinNode {
+impl<'a> LeftJoinNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

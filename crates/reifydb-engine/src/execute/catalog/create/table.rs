@@ -18,8 +18,8 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		// Check if table already exists using the transaction's catalog
 		// operations
-		if let Some(_) =
-			txn.find_table_by_name(plan.schema.id, &plan.table)?
+		if let Some(_) = txn
+			.find_table_by_name(plan.schema.id, plan.table.text())?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -34,7 +34,9 @@ impl Executor {
 					(
 						"table",
 						Value::Utf8(
-							plan.table.to_string(),
+							plan.table
+								.text()
+								.to_string(),
 						),
 					),
 					("created", Value::Bool(false)),
@@ -45,15 +47,15 @@ impl Executor {
 		}
 
 		txn.create_table(TableToCreate {
-			fragment: Some(plan.table.clone()),
-			table: plan.table.to_string(),
+			fragment: Some(plan.table.clone().into_owned()),
+			table: plan.table.text().to_string(),
 			schema: plan.schema.id,
 			columns: plan.columns,
 		})?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("table", Value::Utf8(plan.table.to_string())),
+			("table", Value::Utf8(plan.table.text().to_string())),
 			("created", Value::Bool(true)),
 		]))
 	}
@@ -63,7 +65,7 @@ impl Executor {
 mod tests {
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
 	use reifydb_core::{
-		OwnedFragment, Value,
+		Fragment, Value,
 		interface::{Params, SchemaDef, SchemaId},
 	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
@@ -84,7 +86,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			table: OwnedFragment::testing("test_table"),
+			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -152,7 +154,7 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			table: OwnedFragment::testing("test_table"),
+			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -178,7 +180,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			table: OwnedFragment::testing("test_table"),
+			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -210,7 +212,7 @@ mod tests {
 				id: SchemaId(999),
 				name: "missing_schema".to_string(),
 			},
-			table: OwnedFragment::testing("my_table"),
+			table: Fragment::owned_internal("my_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};

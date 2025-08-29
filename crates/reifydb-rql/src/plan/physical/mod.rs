@@ -5,11 +5,11 @@ mod alter;
 mod create;
 
 use reifydb_catalog::{
-	CatalogQueryTransaction, table::TableColumnToCreate,
+	CatalogQueryTransaction, CatalogStore, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	JoinType, OwnedFragment, SortKey,
+	Fragment, JoinType, SortKey,
 	interface::{
 		QueryTransaction, SchemaDef, TableDef, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
@@ -30,29 +30,23 @@ use crate::plan::{
 
 struct Compiler {}
 
-pub fn compile_physical<T>(
-	rx: &mut T,
-	logical: Vec<LogicalPlan>,
-) -> crate::Result<Option<PhysicalPlan>>
-where
-	T: QueryTransaction + CatalogQueryTransaction,
-{
+pub fn compile_physical<'a>(
+	rx: &mut impl QueryTransaction,
+	logical: Vec<LogicalPlan<'a>>,
+) -> crate::Result<Option<PhysicalPlan<'a>>> {
 	Compiler::compile(rx, logical)
 }
 
 impl Compiler {
-	fn compile<T>(
-		rx: &mut T,
-		logical: Vec<LogicalPlan>,
-	) -> crate::Result<Option<PhysicalPlan>>
-	where
-		T: QueryTransaction + CatalogQueryTransaction,
-	{
+	fn compile<'a>(
+		rx: &mut impl QueryTransaction,
+		logical: Vec<LogicalPlan<'a>>,
+	) -> crate::Result<Option<PhysicalPlan<'a>>> {
 		if logical.is_empty() {
 			return Ok(None);
 		}
 
-		let mut stack: Vec<PhysicalPlan> = Vec::new();
+		let mut stack: Vec<PhysicalPlan<'a>> = Vec::new();
 		for plan in logical {
 			match plan {
 				LogicalPlan::Aggregate(aggregate) => {
@@ -292,28 +286,23 @@ impl Compiler {
 				}
 
 				LogicalPlan::SourceScan(scan) => {
-					let Some(schema) = rx
-						.find_schema_by_name(
-							&scan.schema.fragment(),
+					let Some(schema) = CatalogStore::find_schema_by_name(
+							rx,
+							scan.schema.fragment(),
 						)?
 					else {
 						return_error!(
 							schema_not_found(
-								Some(scan
-									.schema
-									.clone(
-									)),
-								&scan.schema
-									.fragment(
-									)
+								scan.schema.clone(),
+								scan.schema.fragment()
 							)
 						);
 					};
 
-					if let Some(table) = rx
-						.find_table_by_name(
+					if let Some(table) = CatalogStore::find_table_by_name(
+							rx,
 							schema.id,
-							&scan.source.fragment(),
+							scan.source.fragment(),
 						)? {
 						stack.push(TableScan(
 							TableScanNode {
@@ -321,10 +310,10 @@ impl Compiler {
 								table,
 							},
 						));
-					} else if let Some(view) = rx
-						.find_view_by_name(
+					} else if let Some(view) = CatalogStore::find_view_by_name(
+						rx,
 							schema.id,
-							&scan.source.fragment(),
+							scan.source.fragment(),
 						)? {
 						stack.push(ViewScan(
 							ViewScanNode {
@@ -333,13 +322,13 @@ impl Compiler {
 							},
 						));
 					} else {
-						return_error!(table_not_found(
-							Some(scan
-								.source
-								.clone()),
-							&scan.schema.fragment(),
-							&scan.source.fragment()
-						));
+						return_error!(
+							table_not_found(
+								scan.source.clone(),
+								scan.schema.fragment(),
+								scan.source.fragment()
+							)
+						);
 					}
 				}
 
@@ -382,158 +371,158 @@ impl Compiler {
 }
 
 #[derive(Debug, Clone)]
-pub enum PhysicalPlan {
-	CreateDeferredView(CreateDeferredViewPlan),
-	CreateTransactionalView(CreateTransactionalViewPlan),
-	CreateSchema(CreateSchemaPlan),
-	CreateTable(CreateTablePlan),
+pub enum PhysicalPlan<'a> {
+	CreateDeferredView(CreateDeferredViewPlan<'a>),
+	CreateTransactionalView(CreateTransactionalViewPlan<'a>),
+	CreateSchema(CreateSchemaPlan<'a>),
+	CreateTable(CreateTablePlan<'a>),
 	// Alter
-	AlterSequence(AlterSequencePlan),
-	AlterTable(AlterTablePlan),
-	AlterView(AlterViewPlan),
+	AlterSequence(AlterSequencePlan<'a>),
+	AlterTable(AlterTablePlan<'a>),
+	AlterView(AlterViewPlan<'a>),
 	// Mutate
-	Delete(DeletePlan),
-	Insert(InsertPlan),
-	Update(UpdatePlan),
+	Delete(DeletePlan<'a>),
+	Insert(InsertPlan<'a>),
+	Update(UpdatePlan<'a>),
 
 	// Query
-	Aggregate(AggregateNode),
-	Distinct(DistinctNode),
-	Filter(FilterNode),
-	JoinInner(JoinInnerNode),
-	JoinLeft(JoinLeftNode),
-	JoinNatural(JoinNaturalNode),
-	Take(TakeNode),
-	Sort(SortNode),
-	Map(MapNode),
-	Extend(ExtendNode),
-	InlineData(InlineDataNode),
+	Aggregate(AggregateNode<'a>),
+	Distinct(DistinctNode<'a>),
+	Filter(FilterNode<'a>),
+	JoinInner(JoinInnerNode<'a>),
+	JoinLeft(JoinLeftNode<'a>),
+	JoinNatural(JoinNaturalNode<'a>),
+	Take(TakeNode<'a>),
+	Sort(SortNode<'a>),
+	Map(MapNode<'a>),
+	Extend(ExtendNode<'a>),
+	InlineData(InlineDataNode<'a>),
 	TableScan(TableScanNode),
 	ViewScan(ViewScanNode),
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateDeferredViewPlan {
+pub struct CreateDeferredViewPlan<'a> {
 	pub schema: SchemaDef,
-	pub view: OwnedFragment,
+	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Box<PhysicalPlan>,
+	pub with: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTransactionalViewPlan {
+pub struct CreateTransactionalViewPlan<'a> {
 	pub schema: SchemaDef,
-	pub view: OwnedFragment,
+	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Box<PhysicalPlan>,
+	pub with: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateSchemaPlan {
-	pub schema: OwnedFragment,
+pub struct CreateSchemaPlan<'a> {
+	pub schema: Fragment<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTablePlan {
+pub struct CreateTablePlan<'a> {
 	pub schema: SchemaDef,
-	pub table: OwnedFragment,
+	pub table: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
-pub struct AlterSequencePlan {
-	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
-	pub column: OwnedFragment,
-	pub value: Expression,
+pub struct AlterSequencePlan<'a> {
+	pub schema: Option<Fragment<'a>>,
+	pub table: Fragment<'a>,
+	pub column: Fragment<'a>,
+	pub value: Expression<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct AggregateNode {
-	pub input: Box<PhysicalPlan>,
-	pub by: Vec<Expression>,
-	pub map: Vec<Expression>,
+pub struct AggregateNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub by: Vec<Expression<'a>>,
+	pub map: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DistinctNode {
-	pub input: Box<PhysicalPlan>,
-	pub columns: Vec<OwnedFragment>,
+pub struct DistinctNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub columns: Vec<Fragment<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct FilterNode {
-	pub input: Box<PhysicalPlan>,
-	pub conditions: Vec<Expression>,
+pub struct FilterNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub conditions: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DeletePlan {
-	pub input: Option<Box<PhysicalPlan>>,
-	pub schema: Option<OwnedFragment>,
-	pub table: Option<OwnedFragment>,
+pub struct DeletePlan<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub schema: Option<Fragment<'a>>,
+	pub table: Option<Fragment<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertPlan {
-	pub input: Box<PhysicalPlan>,
-	pub schema: Option<OwnedFragment>,
-	pub table: OwnedFragment,
+pub struct InsertPlan<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub schema: Option<Fragment<'a>>,
+	pub table: Fragment<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdatePlan {
-	pub input: Box<PhysicalPlan>,
-	pub schema: Option<OwnedFragment>,
-	pub table: Option<OwnedFragment>,
+pub struct UpdatePlan<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub schema: Option<Fragment<'a>>,
+	pub table: Option<Fragment<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct JoinInnerNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
-	pub on: Vec<Expression>,
+pub struct JoinInnerNode<'a> {
+	pub left: Box<PhysicalPlan<'a>>,
+	pub right: Box<PhysicalPlan<'a>>,
+	pub on: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct JoinLeftNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
-	pub on: Vec<Expression>,
+pub struct JoinLeftNode<'a> {
+	pub left: Box<PhysicalPlan<'a>>,
+	pub right: Box<PhysicalPlan<'a>>,
+	pub on: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct JoinNaturalNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+pub struct JoinNaturalNode<'a> {
+	pub left: Box<PhysicalPlan<'a>>,
+	pub right: Box<PhysicalPlan<'a>>,
 	pub join_type: JoinType,
 }
 
 #[derive(Debug, Clone)]
-pub struct SortNode {
-	pub input: Box<PhysicalPlan>,
+pub struct SortNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
 	pub by: Vec<SortKey>,
 }
 
 #[derive(Debug, Clone)]
-pub struct MapNode {
-	pub input: Option<Box<PhysicalPlan>>,
-	pub map: Vec<Expression>,
+pub struct MapNode<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub map: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExtendNode {
-	pub input: Option<Box<PhysicalPlan>>,
-	pub extend: Vec<Expression>,
+pub struct ExtendNode<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub extend: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InlineDataNode {
-	pub rows: Vec<Vec<AliasExpression>>,
+pub struct InlineDataNode<'a> {
+	pub rows: Vec<Vec<AliasExpression<'a>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -549,7 +538,7 @@ pub struct ViewScanNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct TakeNode {
-	pub input: Box<PhysicalPlan>,
+pub struct TakeNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
 	pub take: usize,
 }

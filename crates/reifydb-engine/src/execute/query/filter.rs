@@ -12,15 +12,15 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct FilterNode {
-	input: Box<ExecutionPlan>,
-	expressions: Vec<Expression>,
+pub(crate) struct FilterNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
+	expressions: Vec<Expression<'a>>,
 }
 
-impl FilterNode {
+impl<'a> FilterNode<'a> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
-		expressions: Vec<Expression>,
+		input: Box<ExecutionPlan<'a>>,
+		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -29,7 +29,7 @@ impl FilterNode {
 	}
 }
 
-impl FilterNode {
+impl<'a> FilterNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

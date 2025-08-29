@@ -62,7 +62,7 @@ impl<T: Transaction> FlowConsumer<T> {
 	fn load_flows(
 		&self,
 		_txn: &impl QueryTransaction,
-	) -> Result<Vec<Flow>> {
+	) -> Result<Vec<Flow<'static>>> {
 		let mut flows = Vec::new();
 
 		// Query the reifydb.flows table

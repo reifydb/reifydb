@@ -7,8 +7,8 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewNode {
-	pub view: AstAlterView<'static>, // TODO: Fix lifetime
+pub struct AlterViewNode<'a> {
+	pub view: AstAlterView<'a>, // TODO: Fix lifetime
 }
 
 #[derive(Debug, Clone, PartialEq)]

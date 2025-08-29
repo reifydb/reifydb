@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CowVec, EncodedKey, Version, interface::CdcEvent, row::EncodedRow,
-};
+use reifydb_core::{CowVec, EncodedKey, row::EncodedRow};
 use rusqlite::{
 	Error::ToSqlConversionFailure, OptionalExtension, Transaction, params,
 };
 
-use crate::cdc::codec::encode_cdc_event;
+use crate::cdc::{CdcTransaction, codec::encode_cdc_transaction};
 
 mod count;
 mod get;
@@ -35,19 +33,17 @@ pub(crate) fn fetch_before_value(
 	.optional()
 }
 
-/// Store a CDC event in the database
-pub(crate) fn store_cdc_event(
+/// Store a CDC transaction in the database
+pub(crate) fn store_cdc_transaction(
 	tx: &Transaction,
-	event: CdcEvent,
-	version: Version,
-	sequence: u16,
+	transaction: CdcTransaction,
 ) -> rusqlite::Result<()> {
-	let encoded_event = encode_cdc_event(&event)
+	let encoded_transaction = encode_cdc_transaction(&transaction)
 		.map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
 
 	tx.execute(
-		"INSERT OR REPLACE INTO cdc (version, sequence, value) VALUES (?1, ?2, ?3)",
-		params![version, sequence, encoded_event.to_vec()],
+		"INSERT OR REPLACE INTO cdc (version, value) VALUES (?1, ?2)",
+		params![transaction.version, encoded_transaction.to_vec()],
 	)?;
 
 	Ok(())

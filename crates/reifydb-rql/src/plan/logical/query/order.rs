@@ -25,7 +25,9 @@ impl Compiler {
 						.unwrap_or(SortDirection::Desc);
 
 					SortKey {
-						column: column.fragment(),
+						column: column
+							.fragment()
+							.into_owned(),
 						direction,
 					}
 				})

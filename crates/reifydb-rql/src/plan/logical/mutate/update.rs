@@ -7,9 +7,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_update(
-		ast: AstUpdate,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_update<'a>(
+		ast: AstUpdate<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Update(UpdateNode {
 			schema: ast.schema.map(|s| s.fragment()),
 			table: ast.table.map(|t| t.fragment()),

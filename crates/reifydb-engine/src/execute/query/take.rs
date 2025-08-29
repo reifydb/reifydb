@@ -8,13 +8,13 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct TakeNode {
-	input: Box<ExecutionPlan>,
+pub(crate) struct TakeNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	remaining: usize,
 }
 
-impl TakeNode {
-	pub(crate) fn new(input: Box<ExecutionPlan>, take: usize) -> Self {
+impl<'a> TakeNode<'a> {
+	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, take: usize) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -22,7 +22,7 @@ impl TakeNode {
 	}
 }
 
-impl TakeNode {
+impl<'a> TakeNode<'a> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,

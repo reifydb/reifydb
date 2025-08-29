@@ -14,7 +14,7 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{Versioned, VersionedStorage},
+	interface::{TransactionId, Versioned, VersionedStorage},
 	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
@@ -223,6 +223,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
 						})
 					],
 					version,
+					TransactionId::default(),
 				)?
 			}
 
@@ -246,6 +247,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
 						})
 					],
 					version,
+					TransactionId::default(),
 				)?
 			}
 

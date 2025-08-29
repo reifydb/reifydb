@@ -88,10 +88,7 @@ impl<'a> Iterator for Scan<'a> {
 }
 
 impl CdcGet for Lmdb {
-	fn get(
-		&self,
-		_version: Version,
-	) -> reifydb_core::Result<Vec<CdcEvent>> {
+	fn get(&self, _version: Version) -> crate::Result<Vec<CdcEvent>> {
 		todo!()
 	}
 }
@@ -103,7 +100,7 @@ impl CdcRange for Lmdb {
 		&self,
 		_start: Bound<Version>,
 		_end: Bound<Version>,
-	) -> reifydb_core::Result<Self::RangeIter<'_>> {
+	) -> crate::Result<Self::RangeIter<'_>> {
 		todo!()
 	}
 }
@@ -111,13 +108,13 @@ impl CdcRange for Lmdb {
 impl CdcScan for Lmdb {
 	type ScanIter<'a> = Scan<'a>;
 
-	fn scan(&self) -> reifydb_core::Result<Self::ScanIter<'_>> {
+	fn scan(&self) -> crate::Result<Self::ScanIter<'_>> {
 		todo!()
 	}
 }
 
 impl CdcCount for Lmdb {
-	fn count(&self, _version: Version) -> reifydb_core::Result<usize> {
+	fn count(&self, _version: Version) -> crate::Result<usize> {
 		todo!()
 	}
 }

@@ -14,7 +14,7 @@ pub fn unsupported_cast<'a>(
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!(
 		"cannot cast {} of type {} to {}",
-		fragment.fragment(),
+		fragment.text(),
 		from_type,
 		to_type
 	));

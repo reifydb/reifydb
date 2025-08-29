@@ -399,9 +399,9 @@ impl<E: Evaluator> FlowEngine<E> {
 
 /// Find the source node in a flow that corresponds to the given source
 fn find_source_node<'a>(
-	flow: &'a Flow,
+	flow: &'a Flow<'static>,
 	source: &StoreId,
-) -> Option<&'a FlowNode> {
+) -> Option<&'a FlowNode<'static>> {
 	for node_id in flow.get_node_ids() {
 		if let Some(node) = flow.get_node(&node_id) {
 			if let SourceTable {

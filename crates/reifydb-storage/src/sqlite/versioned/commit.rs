@@ -7,17 +7,21 @@ use std::{
 };
 
 use reifydb_core::{
-	CowVec, Result, Version, delta::Delta, interface::VersionedCommit,
-	result::error::diagnostic::sequence, return_error, row::EncodedRow,
+	CowVec, Result, Version,
+	delta::Delta,
+	interface::{TransactionId, VersionedCommit},
+	result::error::diagnostic::sequence,
+	return_error,
+	row::EncodedRow,
 };
 use rusqlite::params;
 
 use super::{ensure_table_exists, table_name};
 use crate::{
-	cdc::generate_cdc_event,
+	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
 	sqlite::{
 		Sqlite,
-		cdc::{fetch_before_value, store_cdc_event},
+		cdc::{fetch_before_value, store_cdc_transaction},
 	},
 };
 
@@ -25,11 +29,19 @@ static ENSURED_TABLES: LazyLock<RwLock<HashSet<String>>> =
 	LazyLock::new(|| RwLock::new(HashSet::new()));
 
 impl VersionedCommit for Sqlite {
-	fn commit(&self, delta: CowVec<Delta>, version: Version) -> Result<()> {
+	fn commit(
+		&self,
+		delta: CowVec<Delta>,
+		version: Version,
+		transaction: TransactionId,
+	) -> Result<()> {
 		let mut conn = self.get_conn();
 		let tx = conn.transaction().unwrap();
 
 		let timestamp = reifydb_core::util::now_millis();
+
+		// Collect all CDC changes for this transaction
+		let mut cdc_changes = Vec::new();
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
@@ -112,16 +124,24 @@ impl VersionedCommit for Sqlite {
 				}
 			}
 
-			// Generate and store CDC event
-			let cdc_event = generate_cdc_event(
-				delta.clone(),
-				version,
+			cdc_changes.push(CdcTransactionChange {
 				sequence,
+				change: generate_cdc_change(
+					delta.clone(),
+					before_value,
+				),
+			});
+		}
+
+		// Store CDC transaction using optimized format
+		if !cdc_changes.is_empty() {
+			let cdc_transaction = CdcTransaction::new(
+				version,
 				timestamp,
-				before_value,
+				transaction,
+				cdc_changes,
 			);
-			store_cdc_event(&tx, cdc_event, version, sequence)
-				.unwrap();
+			store_cdc_transaction(&tx, cdc_transaction).unwrap();
 		}
 
 		tx.commit().unwrap();

@@ -56,14 +56,14 @@ mod tests {
 	fn test_boolean_true() {
 		let tokens = tokenize("true").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
-		assert_eq!(tokens[0].fragment.value(), "true");
+		assert_eq!(tokens[0].fragment.text(), "true");
 	}
 
 	#[test]
 	fn test_boolean_false() {
 		let tokens = tokenize("false").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(False));
-		assert_eq!(tokens[0].fragment.value(), "false");
+		assert_eq!(tokens[0].fragment.text(), "false");
 	}
 
 	#[test]
@@ -83,12 +83,12 @@ mod tests {
 		let tokens = tokenize("true123").unwrap();
 		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.value(), "true123");
+		assert_eq!(tokens[0].fragment.text(), "true123");
 
 		let tokens = tokenize("false_value").unwrap();
 		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(tokens[0].fragment.value(), "false_value");
+		assert_eq!(tokens[0].fragment.text(), "false_value");
 	}
 
 	#[test]

@@ -1,10 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Result, Version, interface::CdcCount};
-use rusqlite::params;
+use reifydb_core::{
+	CowVec, Result, Version, interface::CdcCount, row::EncodedRow,
+};
+use rusqlite::{OptionalExtension, params};
 
-use crate::sqlite::Sqlite;
+use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcCount for Sqlite {
 	fn count(&self, version: Version) -> Result<usize> {
@@ -12,14 +14,24 @@ impl CdcCount for Sqlite {
 
 		let mut stmt = conn
 			.prepare_cached(
-				"SELECT COUNT(*) FROM cdc WHERE version = ?",
+				"SELECT value FROM cdc WHERE version = ?",
 			)
 			.unwrap();
 
-		let count: usize = stmt
-			.query_row(params![version as i64], |row| row.get(0))
+		let result = stmt
+			.query_row(params![version as i64], |row| {
+				let bytes: Vec<u8> = row.get(0)?;
+				Ok(EncodedRow(CowVec::new(bytes)))
+			})
+			.optional()
 			.unwrap();
 
-		Ok(count)
+		if let Some(encoded_transaction) = result {
+			let transaction =
+				decode_cdc_transaction(&encoded_transaction)?;
+			Ok(transaction.changes.len())
+		} else {
+			Ok(0)
+		}
 	}
 }

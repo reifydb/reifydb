@@ -1,5 +1,5 @@
 use reifydb_core::{
-	OwnedFragment, Type,
+	Fragment, Type,
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
@@ -12,12 +12,15 @@ use reifydb_core::{
 use crate::operator::{Operator, OperatorContext};
 
 pub struct MapTerminalOperator {
-	expressions: Vec<Expression>,
+	expressions: Vec<Expression<'static>>,
 	view_def: ViewDef,
 }
 
 impl MapTerminalOperator {
-	pub fn new(expressions: Vec<Expression>, view_def: ViewDef) -> Self {
+	pub fn new(
+		expressions: Vec<Expression<'static>>,
+		view_def: ViewDef,
+	) -> Self {
 		Self {
 			expressions,
 			view_def,
@@ -130,10 +133,10 @@ impl MapTerminalOperator {
 						// Create a cast expression to
 						// coerce the type
 						let cast_expr = Expression::Cast(CastExpression {
-						fragment: OwnedFragment::internal("auto_cast"),
+						fragment: Fragment::owned_internal("auto_cast"),
 						expression: Box::new(expr.clone()),
 						to: TypeExpression {
-							fragment: OwnedFragment::internal(target_type.to_string()),
+							fragment: Fragment::owned_internal(target_type.to_string()),
 							ty: target_type,
 						},
 					});

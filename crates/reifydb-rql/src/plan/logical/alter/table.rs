@@ -7,8 +7,8 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableNode {
-	pub table: AstAlterTable<'static>, // TODO: Fix lifetime
+pub struct AlterTableNode<'a> {
+	pub table: AstAlterTable<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
