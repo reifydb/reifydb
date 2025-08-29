@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::interface::{ColumnDef, PrimaryKeyId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TablePrimaryKeyDef {
+pub struct PrimaryKeyDef {
 	pub id: PrimaryKeyId,
 	pub columns: Vec<ColumnDef>,
 }

@@ -7,7 +7,6 @@ pub use reifydb_core::Result;
 
 pub mod column;
 pub mod column_policy;
-mod loader;
 mod materialized;
 pub mod primary_key;
 pub mod row;
@@ -19,8 +18,7 @@ pub mod test_utils;
 pub mod transaction;
 pub mod view;
 
-pub use loader::MaterializedCatalogLoader;
-pub use materialized::MaterializedCatalog;
+pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
 	CatalogQueryTransaction, CatalogQueryTransactionOperations,

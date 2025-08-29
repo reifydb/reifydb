@@ -13,7 +13,9 @@ use reifydb_core::{
 	ioc::IocContainer,
 	log_timed_debug,
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_engine::{
+	StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
+};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]
@@ -162,15 +164,12 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		let cdc = self.ioc.resolve::<T::Cdc>()?;
 		let hooks = self.ioc.resolve::<Hooks>()?;
 
-		// Load the materialized catalog from storage
-		log_timed_debug!("Loading materialized catalog", {
-			versioned.with_query(|tx| {
-				MaterializedCatalogLoader::load_all(
-					tx, &catalog,
-				)?;
-				Ok(())
-			})?;
-		});
+		Self::load_materialized_catalog(
+			&versioned,
+			&unversioned,
+			&cdc,
+			&catalog,
+		)?;
 
 		let engine = StandardEngine::new(
 			versioned,
@@ -199,6 +198,28 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			self.config,
 			health_monitor,
 		))
+	}
+
+	/// Load the materialized catalog from storage
+	fn load_materialized_catalog(
+		versioned: &T::Versioned,
+		unversioned: &T::Unversioned,
+		cdc: &T::Cdc,
+		catalog: &MaterializedCatalog,
+	) -> crate::Result<()> {
+		let mut qt: StandardQueryTransaction<T> =
+			StandardQueryTransaction::new(
+				versioned.begin_query()?,
+				unversioned.clone(),
+				cdc.clone(),
+				catalog.clone(),
+			);
+
+		log_timed_debug!("Loading materialized catalog", {
+			MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
+		});
+
+		Ok(())
 	}
 }
 

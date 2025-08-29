@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, SchemaId, TableId, TablePrimaryKeyDef};
+use crate::interface::{ColumnDef, PrimaryKeyDef, SchemaId, TableId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableDef {
@@ -11,5 +11,5 @@ pub struct TableDef {
 	pub schema: SchemaId,
 	pub name: String,
 	pub columns: Vec<ColumnDef>,
-	pub primary_key: Option<TablePrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }

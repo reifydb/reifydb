@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	interface::{
-		ColumnDef, Key, PrimaryKeyKey, QueryTransaction, StoreId,
-		TableId, TablePrimaryKeyDef, ViewId,
+		ColumnDef, Key, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction,
+		StoreId, TableId, ViewId,
 	},
 	return_internal_error,
 };
@@ -20,7 +20,7 @@ impl CatalogStore {
 	pub fn find_primary_key(
 		rx: &mut impl QueryTransaction,
 		store: impl Into<StoreId>,
-	) -> crate::Result<Option<TablePrimaryKeyDef>> {
+	) -> crate::Result<Option<PrimaryKeyDef>> {
 		let store_id = store.into();
 
 		// Get the primary key ID for the table or view
@@ -74,7 +74,7 @@ impl CatalogStore {
 			});
 		}
 
-		Ok(Some(TablePrimaryKeyDef {
+		Ok(Some(PrimaryKeyDef {
 			id: primary_key_id,
 			columns,
 		}))
@@ -84,7 +84,7 @@ impl CatalogStore {
 	pub fn find_table_primary_key(
 		rx: &mut impl QueryTransaction,
 		table_id: TableId,
-	) -> crate::Result<Option<TablePrimaryKeyDef>> {
+	) -> crate::Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, table_id)
 	}
 
@@ -92,7 +92,7 @@ impl CatalogStore {
 	pub fn find_view_primary_key(
 		rx: &mut impl QueryTransaction,
 		view_id: ViewId,
-	) -> crate::Result<Option<TablePrimaryKeyDef>> {
+	) -> crate::Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, view_id)
 	}
 }

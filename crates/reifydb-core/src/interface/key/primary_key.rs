@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{EncodableKey, KeyKind};
+use super::{EncodableKey, EncodedKeyRange, KeyKind};
 use crate::{EncodedKey, interface::PrimaryKeyId, util::encoding::keycode};
 
 #[derive(Debug, Clone)]
@@ -35,5 +35,28 @@ impl EncodableKey for PrimaryKeyKey {
 		Some(Self {
 			primary_key,
 		})
+	}
+}
+
+impl PrimaryKeyKey {
+	pub fn full_scan() -> EncodedKeyRange {
+		EncodedKeyRange::start_end(
+			Some(Self::primary_key_start()),
+			Some(Self::primary_key_end()),
+		)
+	}
+
+	fn primary_key_start() -> EncodedKey {
+		let mut out = Vec::with_capacity(2);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		EncodedKey::new(out)
+	}
+
+	fn primary_key_end() -> EncodedKey {
+		let mut out = Vec::with_capacity(2);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
+		EncodedKey::new(out)
 	}
 }
