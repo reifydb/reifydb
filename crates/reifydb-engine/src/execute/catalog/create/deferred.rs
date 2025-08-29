@@ -16,8 +16,8 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(_) = txn
-			.find_view_by_name(plan.schema.id, plan.view.value())?
+		if let Some(_) =
+			txn.find_view_by_name(plan.schema.id, plan.view.text())?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -33,7 +33,7 @@ impl Executor {
 						"view",
 						Value::Utf8(
 							plan.view
-								.value()
+								.text()
 								.to_string(),
 						),
 					),
@@ -44,7 +44,7 @@ impl Executor {
 
 		let result = txn.create_view(ViewToCreate {
 			fragment: Some(plan.view.clone().into_owned()),
-			name: plan.view.value().to_string(),
+			name: plan.view.text().to_string(),
 			schema: plan.schema.id,
 			columns: plan.columns,
 		})?;
@@ -53,7 +53,7 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("view", Value::Utf8(plan.view.value().to_string())),
+			("view", Value::Utf8(plan.view.text().to_string())),
 			("created", Value::Bool(true)),
 		]))
 	}

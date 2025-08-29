@@ -85,11 +85,8 @@ pub struct AccessSourceExpression<'a> {
 }
 
 impl<'a> AccessSourceExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.source.clone().into_owned(),
-			self.column.clone().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([self.source.clone(), self.column.clone()])
 	}
 }
 
@@ -145,16 +142,16 @@ pub struct CastExpression<'a> {
 }
 
 impl<'a> CastExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.fragment.clone().into_owned(),
-			self.expression.fragment().into_owned(),
-			self.to.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.fragment.clone(),
+			self.expression.full_fragment_owned(),
+			self.to.full_fragment_owned(),
+		])
 	}
 
 	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
-		move || self.fragment()
+		move || self.full_fragment_owned()
 	}
 }
 
@@ -165,12 +162,12 @@ pub struct TypeExpression<'a> {
 }
 
 impl<'a> TypeExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
 		self.fragment.clone()
 	}
 
 	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
-		move || self.fragment()
+		move || self.full_fragment_owned()
 	}
 }
 
@@ -217,12 +214,12 @@ pub struct GreaterThanExpression<'a> {
 }
 
 impl<'a> GreaterThanExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -234,12 +231,12 @@ pub struct GreaterThanEqExpression<'a> {
 }
 
 impl<'a> GreaterThanEqExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -251,12 +248,12 @@ pub struct LessThanExpression<'a> {
 }
 
 impl<'a> LessThanExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -268,12 +265,12 @@ pub struct LessThanEqExpression<'a> {
 }
 
 impl<'a> LessThanEqExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -285,12 +282,12 @@ pub struct EqExpression<'a> {
 }
 
 impl<'a> EqExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -302,12 +299,12 @@ pub struct NotEqExpression<'a> {
 }
 
 impl<'a> NotEqExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -320,13 +317,13 @@ pub struct BetweenExpression<'a> {
 }
 
 impl<'a> BetweenExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.value.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.lower.fragment().into_owned(),
-			self.upper.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.value.full_fragment_owned(),
+			self.fragment.clone(),
+			self.lower.full_fragment_owned(),
+			self.upper.full_fragment_owned(),
+		])
 	}
 }
 
@@ -338,12 +335,12 @@ pub struct AndExpression<'a> {
 }
 
 impl<'a> AndExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -355,12 +352,12 @@ pub struct OrExpression<'a> {
 }
 
 impl<'a> OrExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -372,12 +369,12 @@ pub struct XorExpression<'a> {
 }
 
 impl<'a> XorExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.left.fragment().into_owned(),
-			self.fragment.clone().into_owned(),
-			self.right.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.left.full_fragment_owned(),
+			self.fragment.clone(),
+			self.right.full_fragment_owned(),
+		])
 	}
 }
 
@@ -385,7 +382,7 @@ impl<'a> XorExpression<'a> {
 pub struct ColumnExpression<'a>(pub Fragment<'a>);
 
 impl<'a> ColumnExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
 		self.0.clone()
 	}
 }
@@ -561,7 +558,7 @@ pub struct CallExpression<'a> {
 }
 
 impl<'a> CallExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
 		Fragment::Owned(OwnedFragment::Statement {
 			column: self.func.0.column(),
 			line: self.func.0.line(),
@@ -571,7 +568,7 @@ impl<'a> CallExpression<'a> {
 				self.args
 					.iter()
 					.map(|arg| arg
-						.fragment()
+						.full_fragment_owned()
 						.fragment()
 						.to_string())
 					.collect::<Vec<_>>()
@@ -650,7 +647,7 @@ pub enum PrefixOperator<'a> {
 }
 
 impl<'a> PrefixOperator<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
 		match self {
 			PrefixOperator::Minus(fragment) => fragment.clone(),
 			PrefixOperator::Plus(fragment) => fragment.clone(),
@@ -677,11 +674,11 @@ pub struct PrefixExpression<'a> {
 }
 
 impl<'a> PrefixExpression<'a> {
-	pub fn fragment(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::merge_all([
-			self.operator.fragment().into_owned(),
-			self.expression.fragment().into_owned(),
-		]))
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.operator.full_fragment_owned(),
+			self.expression.full_fragment_owned(),
+		])
 	}
 }
 

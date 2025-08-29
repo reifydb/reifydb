@@ -189,7 +189,8 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.fragment());
 				projections.push(Projection::Group {
 					column: c.0.fragment().to_string(),
-					alias: c.fragment().into_owned(),
+					alias: c.full_fragment_owned()
+						.into_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -201,7 +202,9 @@ fn parse_keys_and_aggregates<'a>(
 						.column
 						.fragment()
 						.to_string(),
-					alias: access.fragment().into_owned(),
+					alias: access
+						.full_fragment_owned()
+						.into_owned(),
 				})
 			}
 			// _ => return
@@ -227,7 +230,7 @@ fn parse_keys_and_aggregates<'a>(
 			expr => {
 				// Non-aliased expression, use the expression's
 				// fragment as alias
-				(expr, expr.fragment().into_owned())
+				(expr, expr.full_fragment_owned().into_owned())
 			}
 		};
 

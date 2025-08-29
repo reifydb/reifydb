@@ -76,7 +76,7 @@ mod tests {
 						}
 					)
 				));
-				let fragment = plan.value.fragment();
+				let fragment = plan.value.full_fragment_owned();
 				assert_eq!(fragment.fragment(), "1000");
 			}
 			_ => panic!("Expected AlterSequence physical plan"),

@@ -18,14 +18,14 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		// Check if schema already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_schema_by_name(plan.schema.value())? {
+		if let Some(_) = txn.find_schema_by_name(plan.schema.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
 						"schema",
 						Value::Utf8(
 							plan.schema
-								.value()
+								.text()
 								.to_string(),
 						),
 					),
@@ -38,7 +38,7 @@ impl Executor {
 
 		let result = txn.create_schema(SchemaToCreate {
 			schema_fragment: Some(plan.schema.clone().into_owned()),
-			name: plan.schema.value().to_string(),
+			name: plan.schema.text().to_string(),
 		})?;
 
 		Ok(Columns::single_row([

@@ -133,17 +133,17 @@ impl Fragment<'_> {
 
 impl<'a> Fragment<'a> {
 	/// Get the text value of the fragment
-	pub fn value(&self) -> &str {
+	pub fn text(&self) -> &str {
 		match self {
-			Fragment::Owned(f) => f.value(),
-			Fragment::Borrowed(f) => f.value(),
+			Fragment::Owned(f) => f.text(),
+			Fragment::Borrowed(f) => f.text(),
 			Fragment::None => "",
 		}
 	}
 
 	/// Alias for value() for compatibility
 	pub fn fragment(&self) -> &str {
-		self.value()
+		self.text()
 	}
 
 	/// Get line position
@@ -219,6 +219,16 @@ impl<'a> Fragment<'a> {
 			Fragment::Borrowed(f) => f.sub_fragment(offset, length),
 			Fragment::None => OwnedFragment::None,
 		}
+	}
+
+	/// Merge multiple fragments (in any order) into one encompassing
+	/// fragment
+	pub fn merge_all(
+		fragments: impl IntoIterator<Item = Fragment<'a>>,
+	) -> Fragment<'a> {
+		let owned_fragments: Vec<OwnedFragment> =
+			fragments.into_iter().map(|f| f.into_owned()).collect();
+		Fragment::Owned(OwnedFragment::merge_all(owned_fragments))
 	}
 }
 
@@ -391,7 +401,7 @@ impl<'de, 'a> serde::Deserialize<'de> for Fragment<'a> {
 // PartialEq implementation for Fragment<'a>
 impl<'a> PartialEq for Fragment<'a> {
 	fn eq(&self, other: &Self) -> bool {
-		self.value() == other.value()
+		self.text() == other.text()
 			&& self.line() == other.line()
 			&& self.column() == other.column()
 	}

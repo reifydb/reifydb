@@ -10,7 +10,7 @@ pub fn parse_interval<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<Interval, Error> {
 	let fragment = fragment.into_fragment();
-	let fragment_value = fragment.value();
+	let fragment_value = fragment.text();
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
 	if fragment_value.len() == 1

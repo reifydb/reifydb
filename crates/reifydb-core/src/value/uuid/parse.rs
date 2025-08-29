@@ -16,7 +16,7 @@ pub fn parse_uuid4<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<Uuid4, Error> {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value().trim();
+	let value = fragment.text().trim();
 
 	if let Ok(uuid) = Uuid::parse_str(value) {
 		if uuid.get_version_num() == 4 {
@@ -30,7 +30,7 @@ pub fn parse_uuid7<'a>(
 	fragment: impl IntoFragment<'a>,
 ) -> Result<Uuid7, Error> {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value().trim();
+	let value = fragment.text().trim();
 	if let Ok(uuid) = Uuid::parse_str(value) {
 		if uuid.get_version_num() == 7 {
 			return Ok(Uuid7(uuid));

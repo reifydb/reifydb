@@ -4,12 +4,8 @@
 use std::{error::Error as StdError, fmt::Write, thread, time::Duration};
 
 use reifydb::{MemoryDatabaseOptimistic, SessionSync, sync};
-use reifydb_core::{
-	Frame,
-	interface::{
-		CdcCheckpoint, ConsumerId, Engine, Params,
-		VersionedQueryTransaction,
-	},
+use reifydb_core::interface::{
+	CdcCheckpoint, ConsumerId, Engine, Params, VersionedQueryTransaction,
 };
 use reifydb_testing::testscript;
 
@@ -26,13 +22,7 @@ impl FlowTestRunner {
 		}
 	}
 
-	/// Format a Frame for output
-	fn format_frame(&self, frame: &Frame) -> String {
-		format!("{}", frame)
-	}
-
-	/// Read the entire RQL command from the command body
-	fn read_rql_command(&self, command: &testscript::Command) -> String {
+	fn read_rql(&self, command: &testscript::Command) -> String {
 		command.args
 			.iter()
 			.map(|arg| arg.value.clone())
@@ -40,8 +30,6 @@ impl FlowTestRunner {
 			.join(" ")
 	}
 
-	/// Wait for flow processing to complete by checking CDC consumer
-	/// checkpoint
 	fn await_flows_completion(
 		&mut self,
 		timeout: Duration,
@@ -101,7 +89,7 @@ impl testscript::Runner for FlowTestRunner {
 
 		match command.name.as_str() {
 			"command" => {
-				let rql = self.read_rql_command(command);
+				let rql = self.read_rql(command);
 				println!("command: {rql}");
 
 				for frame in self.instance.command_as_root(
@@ -113,8 +101,6 @@ impl testscript::Runner for FlowTestRunner {
 			}
 
 			"await" => {
-				// Parse optional timeout parameter (default
-				// 5000ms)
 				let timeout_ms = command
 					.args
 					.first()

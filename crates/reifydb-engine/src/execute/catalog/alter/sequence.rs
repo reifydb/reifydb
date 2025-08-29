@@ -26,7 +26,7 @@ impl Executor {
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
 		let schema_name = match &plan.schema {
-			Some(schema) => schema.value(),
+			Some(schema) => schema.text(),
 			None => unimplemented!(),
 		};
 
@@ -42,20 +42,20 @@ impl Executor {
 		let Some(table) = CatalogStore::find_table_by_name(
 			txn,
 			schema.id,
-			plan.table.value(),
+			plan.table.text(),
 		)?
 		else {
 			return_error!(table_not_found(
 				plan.table.clone().into_owned(),
 				&schema.name,
-				plan.table.value(),
+				plan.table.text(),
 			));
 		};
 
 		let Some(column) = CatalogStore::find_column_by_name(
 			txn,
 			table.id,
-			plan.column.value(),
+			plan.column.text(),
 		)?
 		else {
 			return_error!(column_not_found(

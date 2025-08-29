@@ -46,7 +46,7 @@ impl<'a> Token<'a> {
 		self.kind == TokenKind::Operator(operator)
 	}
 	pub fn value(&self) -> &str {
-		self.fragment.value()
+		self.fragment.text()
 	}
 }
 

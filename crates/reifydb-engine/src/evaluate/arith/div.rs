@@ -33,473 +33,1340 @@ impl StandardEvaluator {
 		match (&left.data(), &right.data()) {
 			// Float4
 			(ColumnData::Float4(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float4(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int1(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint1(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			// Float8
 			(ColumnData::Float8(l), ColumnData::Float4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Float8(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int1(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint1(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Float8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			// Signed × Signed
 			(ColumnData::Int1(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int2(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int4(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int8(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int16(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			// Signed × Unsigned
 			(ColumnData::Int1(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int1(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int2(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int2(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int4(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int4(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int8(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int8(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Int16(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Int16(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			// Unsigned × Signed
 			(ColumnData::Uint1(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint2(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint4(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint8(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint16(l), ColumnData::Int1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Int2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Int4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Int8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Int16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			// Unsigned × Unsigned
 			(ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			(ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
-				div_numeric(ctx, l, r, target, div.fragment())
+				div_numeric(
+					ctx,
+					l,
+					r,
+					target,
+					div.full_fragment_owned(),
+				)
 			}
 
 			// Handle undefined values - any operation with
 			// undefined results in undefined
 			(ColumnData::Undefined(l), _) => {
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: div.fragment().fragment().into(),
+					name: div
+						.full_fragment_owned()
+						.fragment()
+						.into(),
 					data: ColumnData::Undefined(
 						UndefinedContainer::new(
 							l.len(),
@@ -509,7 +1376,10 @@ impl StandardEvaluator {
 			}
 			(_, ColumnData::Undefined(r)) => {
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: div.fragment().fragment().into(),
+					name: div
+						.full_fragment_owned()
+						.fragment()
+						.into(),
 					data: ColumnData::Undefined(
 						UndefinedContainer::new(
 							r.len(),
@@ -520,7 +1390,7 @@ impl StandardEvaluator {
 
 			_ => return_error!(
 				div_cannot_be_applied_to_incompatible_types(
-					div.fragment(),
+					div.full_fragment_owned(),
 					left.get_type(),
 					right.get_type(),
 				)
@@ -562,7 +1432,7 @@ where
 		}
 	}
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: owned_fragment.value().into(),
+		name: owned_fragment.text().into(),
 		data,
 	}))
 }

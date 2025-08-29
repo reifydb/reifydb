@@ -19,7 +19,7 @@ impl Executor {
 		if let Some(view) = CatalogStore::find_view_by_name(
 			txn,
 			plan.schema.id,
-			plan.view.value(),
+			plan.view.text(),
 		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -35,7 +35,7 @@ impl Executor {
 						"view",
 						Value::Utf8(
 							plan.view
-								.value()
+								.text()
 								.to_string(),
 						),
 					),
@@ -54,7 +54,7 @@ impl Executor {
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone().into_owned()),
-				name: plan.view.value().to_string(),
+				name: plan.view.text().to_string(),
 				schema: plan.schema.id,
 				columns: plan.columns,
 			},
@@ -64,7 +64,7 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("view", Value::Utf8(plan.view.value().to_string())),
+			("view", Value::Utf8(plan.view.text().to_string())),
 			("created", Value::Bool(true)),
 		]))
 	}

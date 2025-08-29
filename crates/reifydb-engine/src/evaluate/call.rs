@@ -33,7 +33,7 @@ impl StandardEvaluator {
 
 		let row_count = ctx.row_count;
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: call.fragment().fragment().into(),
+			name: call.full_fragment_owned().fragment().into(),
 			data: functor.scalar(ScalarFunctionContext {
 				columns: &arguments,
 				row_count,

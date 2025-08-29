@@ -8,7 +8,7 @@ use crate::{
 
 pub fn parse_date<'a>(fragment: impl IntoFragment<'a>) -> Result<Date, Error> {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value();
+	let value = fragment.text();
 	let parts: Vec<&str> = value.split('-').collect();
 
 	if parts.len() != 3 {

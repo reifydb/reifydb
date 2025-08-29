@@ -18,10 +18,9 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		// Check if table already exists using the transaction's catalog
 		// operations
-		if let Some(_) = txn.find_table_by_name(
-			plan.schema.id,
-			plan.table.value(),
-		)? {
+		if let Some(_) = txn
+			.find_table_by_name(plan.schema.id, plan.table.text())?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
@@ -36,7 +35,7 @@ impl Executor {
 						"table",
 						Value::Utf8(
 							plan.table
-								.value()
+								.text()
 								.to_string(),
 						),
 					),
@@ -49,14 +48,14 @@ impl Executor {
 
 		txn.create_table(TableToCreate {
 			fragment: Some(plan.table.clone().into_owned()),
-			table: plan.table.value().to_string(),
+			table: plan.table.text().to_string(),
 			schema: plan.schema.id,
 			columns: plan.columns,
 		})?;
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("table", Value::Utf8(plan.table.value().to_string())),
+			("table", Value::Utf8(plan.table.text().to_string())),
 			("created", Value::Bool(true)),
 		]))
 	}

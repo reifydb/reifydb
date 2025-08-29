@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::table::TableColumnToCreate;
-use reifydb_core::{OwnedFragment, interface::ColumnPolicyKind};
+use reifydb_core::{Fragment, interface::ColumnPolicyKind};
 
 use crate::{
 	ast::AstCreateTable,
@@ -33,10 +33,11 @@ impl Compiler {
 				vec![]
 			};
 
-			let fragment = Some(OwnedFragment::merge_all([
-				col.name.fragment().into_owned(),
-				col.ty.fragment().into_owned(),
-			]));
+			let fragment = Some(Fragment::merge_all([
+				col.name.0.fragment.clone(),
+				col.ty.0.fragment.clone(),
+			])
+			.into_owned());
 
 			columns.push(TableColumnToCreate {
 				name: column_name,

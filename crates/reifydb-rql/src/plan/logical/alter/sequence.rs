@@ -65,7 +65,7 @@ mod tests {
 						}
 					)
 				));
-				let fragment = node.value.fragment();
+				let fragment = node.value.full_fragment_owned();
 				assert_eq!(fragment.fragment(), "1000");
 			}
 			_ => panic!("Expected AlterSequence plan"),
@@ -96,7 +96,7 @@ mod tests {
 						}
 					)
 				));
-				let fragment = node.value.fragment();
+				let fragment = node.value.full_fragment_owned();
 				assert_eq!(fragment.fragment(), "500");
 			}
 			_ => panic!("Expected AlterSequence plan"),
