@@ -25,13 +25,12 @@ pub struct NetworkConfig {
 impl Default for NetworkConfig {
 	fn default() -> Self {
 		Self {
-			workers: None, /* Will default to
-			                * num_cpus::get_physical() */
+			workers: None,
 			reuse_port: true,
 			pin_threads: true,
 			nodelay: true,
 			max_outbox_bytes: 1 << 20, // 1MB per connection
-			max_connections_per_worker: 10000,
+			max_connections_per_worker: 1_000,
 		}
 	}
 }

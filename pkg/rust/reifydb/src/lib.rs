@@ -52,6 +52,7 @@ pub use reifydb_sub_flow as flow;
 // subsystems
 #[cfg(feature = "sub_logging")]
 pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};
+#[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as fix_me_server;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{

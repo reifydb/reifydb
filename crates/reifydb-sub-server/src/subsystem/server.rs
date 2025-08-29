@@ -38,10 +38,7 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 			return Ok(());
 		}
 
-		println!(
-			"Starting server on {} with WebSocket and HTTP protocol support",
-			self.config.bind_addr
-		);
+		// Starting server
 
 		let mut server = ProtocolServer::new(
 			self.config.clone(),
@@ -63,7 +60,7 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 
 	fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if let Some(mut server) = self.server.take() {
-			println!("Stopping server");
+			// Stopping server
 			server.stop();
 		}
 		Ok(())

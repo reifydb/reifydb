@@ -19,7 +19,7 @@ use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 use slab::Slab;
 
-use super::Connection;
+use super::{Connection, ConnectionState};
 use crate::{
 	config::ServerConfig,
 	protocols::{HttpHandler, ProtocolHandler, WebSocketHandler},
@@ -31,7 +31,6 @@ const TOKEN_BASE: usize = 2;
 
 pub struct Worker<T: Transaction> {
 	worker_id: usize,
-	worker_count: usize,
 	listener: TcpListener,
 	config: ServerConfig,
 	shutdown: Arc<AtomicBool>,
@@ -43,7 +42,6 @@ pub struct Worker<T: Transaction> {
 impl<T: Transaction> Worker<T> {
 	pub fn new(
 		worker_id: usize,
-		worker_count: usize,
 		std_listener: std::net::TcpListener,
 		config: ServerConfig,
 		shutdown: Arc<AtomicBool>,
@@ -53,7 +51,6 @@ impl<T: Transaction> Worker<T> {
 
 		Self {
 			worker_id,
-			worker_count,
 			listener,
 			config,
 			shutdown,
@@ -102,6 +99,7 @@ impl<T: Transaction> Worker<T> {
 		let _ctrl = Arc::new(waker);
 
 		let mut connections = Slab::<Connection<T>>::new();
+		let mut last_cleanup = std::time::Instant::now();
 
 		// Worker started, entering event loop
 
@@ -118,10 +116,7 @@ impl<T: Transaction> Worker<T> {
 				if e.kind() == std::io::ErrorKind::Interrupted {
 					continue;
 				}
-				eprintln!(
-					"Poll error in worker {}: {:?}",
-					self.worker_id, e
-				);
+				// Poll error - break from event loop
 				break;
 			}
 
@@ -147,6 +142,14 @@ impl<T: Transaction> Worker<T> {
 					}
 				}
 			}
+
+			// Periodic cleanup every 30 seconds
+			if last_cleanup.elapsed().as_secs() >= 30 {
+				self.cleanup_abandoned_connections(
+					&mut connections,
+				);
+				last_cleanup = std::time::Instant::now();
+			}
 		}
 
 		// Clean up connections on shutdown
@@ -154,15 +157,11 @@ impl<T: Transaction> Worker<T> {
 			connections.iter().map(|(key, _)| key).collect();
 		for key in keys {
 			if let Some(mut conn) = connections.try_remove(key) {
-				if let Err(e) = poll
+				let _ = poll
 					.registry()
-					.deregister(conn.stream())
-				{
-					eprintln!(
-						"Failed to deregister connection {}: {:?}",
-						key, e
-					);
-				}
+					.deregister(conn.stream());
+				// Properly close TCP connection
+				conn.shutdown();
 			}
 		}
 
@@ -183,10 +182,8 @@ impl<T: Transaction> Worker<T> {
 						stream,
 						peer,
 					) {
-						eprintln!(
-							"Accept error in worker {}: {:?}",
-							self.worker_id, e
-						);
+						// Accept error - ignore and
+						// continue
 					}
 				}
 				Err(e) if e.kind()
@@ -195,10 +192,12 @@ impl<T: Transaction> Worker<T> {
 					break;
 				}
 				Err(e) => {
-					eprintln!(
-						"Listener accept fatal in worker {}: {:?}",
-						self.worker_id, e
-					);
+					// If it's "too many open files", force
+					// immediate cleanup
+					if e.kind() == std::io::ErrorKind::Other
+					{
+						self.cleanup_abandoned_connections(connections);
+					}
 					break;
 				}
 			}
@@ -235,19 +234,17 @@ impl<T: Transaction> Worker<T> {
 			// event processing
 			if let Some(conn) = connections.get(key) {
 				let should_close = match conn.state() {
-					crate::core::ConnectionState::WebSocket(_) => {
-						self.websocket_handler
-							.as_ref()
-							.map(|h| h.should_close(conn))
-							.unwrap_or(false)
-					}
-					crate::core::ConnectionState::Http(_) => {
-						self.http_handler
-							.as_ref()
-							.map(|h| h.should_close(conn))
-							.unwrap_or(false)
-					}
-					crate::core::ConnectionState::Closed => true,
+					ConnectionState::WebSocket(_) => self
+						.websocket_handler
+						.as_ref()
+						.map(|h| h.should_close(conn))
+						.unwrap_or(false),
+					ConnectionState::Http(_) => self
+						.http_handler
+						.as_ref()
+						.map(|h| h.should_close(conn))
+						.unwrap_or(false),
+					ConnectionState::Closed => true,
 					_ => false,
 				};
 
@@ -276,6 +273,16 @@ impl<T: Transaction> Worker<T> {
 		peer: SocketAddr,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		stream.set_nodelay(true)?;
+
+		// Apply socket tuning to reduce TIME_WAIT accumulation
+		// Use socket2 to access advanced socket options
+		use socket2::SockRef;
+		let socket_ref = SockRef::from(&stream);
+
+		// Set linger to 0 to force immediate close without TIME_WAIT
+		socket_ref
+			.set_linger(Some(std::time::Duration::from_secs(0)))?;
+
 		let entry = connections.vacant_entry();
 		let key = entry.key();
 		let token = Token(TOKEN_BASE + key);
@@ -319,7 +326,7 @@ impl<T: Transaction> Worker<T> {
 
 			// Optimize interest registration based on protocol
 			match conn.state() {
-				crate::core::ConnectionState::Http(crate::protocols::http::HttpState::WritingResponse(_)) => {
+				ConnectionState::Http(crate::protocols::http::HttpState::WritingResponse(_)) => {
 					// HTTP needs to switch to writable for response
 					let token = conn.token();
 					poll.registry().reregister(
@@ -328,7 +335,7 @@ impl<T: Transaction> Worker<T> {
 						Interest::WRITABLE,
 					)?;
 				}
-				crate::core::ConnectionState::WebSocket(crate::protocols::ws::WsState::Handshake(data)) if data.handshake_response.is_some() => {
+				ConnectionState::WebSocket(crate::protocols::ws::WsState::Handshake(data)) if data.handshake_response.is_some() => {
 					// WebSocket handshake needs to write response, then maintain both interests
 					let token = conn.token();
 					poll.registry().reregister(
@@ -337,7 +344,7 @@ impl<T: Transaction> Worker<T> {
 						Interest::READABLE | Interest::WRITABLE,
 					)?;
 				}
-				crate::core::ConnectionState::WebSocket(crate::protocols::ws::WsState::Active(_)) => {
+				ConnectionState::WebSocket(crate::protocols::ws::WsState::Active(_)) => {
 					// WebSocket active connections should have both interests to avoid reregistration
 					let token = conn.token();
 					poll.registry().reregister(
@@ -360,10 +367,10 @@ impl<T: Transaction> Worker<T> {
 			// Only reregister if connection is closed or requires
 			// different handling
 			match conn.state() {
-				crate::core::ConnectionState::Closed => {
+				ConnectionState::Closed => {
 					// Connection is closed, will be cleaned up
 				}
-				crate::core::ConnectionState::Http(crate::protocols::http::HttpState::ReadingRequest(_)) => {
+				ConnectionState::Http(crate::protocols::http::HttpState::ReadingRequest(_)) => {
 					// HTTP may need to switch back to readable only
 					let token = conn.token();
 					poll.registry().reregister(
@@ -491,7 +498,7 @@ impl<T: Transaction> Worker<T> {
 		conn: &mut Connection<T>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		match conn.state() {
-			crate::core::ConnectionState::WebSocket(_) => {
+			ConnectionState::WebSocket(_) => {
 				if let Some(ref ws_handler) =
 					self.websocket_handler
 				{
@@ -505,7 +512,7 @@ impl<T: Transaction> Worker<T> {
 					)?;
 				}
 			}
-			crate::core::ConnectionState::Http(_) => {
+			ConnectionState::Http(_) => {
 				if let Some(ref http_handler) =
 					self.http_handler
 				{
@@ -519,10 +526,10 @@ impl<T: Transaction> Worker<T> {
 						})?;
 				}
 			}
-			crate::core::ConnectionState::Detecting => {
+			ConnectionState::Detecting => {
 				// Already handled in detect_and_init_protocol
 			}
-			crate::core::ConnectionState::Closed => {
+			ConnectionState::Closed => {
 				// Connection is closed, nothing to read
 			}
 		}
@@ -534,7 +541,7 @@ impl<T: Transaction> Worker<T> {
 		conn: &mut Connection<T>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		match conn.state() {
-			crate::core::ConnectionState::WebSocket(_) => {
+			ConnectionState::WebSocket(_) => {
 				if let Some(ref ws_handler) =
 					self.websocket_handler
 				{
@@ -548,7 +555,7 @@ impl<T: Transaction> Worker<T> {
 					)?;
 				}
 			}
-			crate::core::ConnectionState::Http(_) => {
+			ConnectionState::Http(_) => {
 				if let Some(ref http_handler) =
 					self.http_handler
 				{
@@ -562,10 +569,10 @@ impl<T: Transaction> Worker<T> {
 						})?;
 				}
 			}
-			crate::core::ConnectionState::Detecting => {
+			ConnectionState::Detecting => {
 				// Nothing to write during detection
 			}
-			crate::core::ConnectionState::Closed => {
+			ConnectionState::Closed => {
 				// Connection is closed, nothing to write
 			}
 		}
@@ -578,9 +585,70 @@ impl<T: Transaction> Worker<T> {
 		key: usize,
 	) {
 		if let Some(mut conn) = connections.try_remove(key) {
-			// Reset buffer for potential reuse patterns
-			conn.reset_buffer();
-			// Connection automatically deregistered when dropped
+			conn.shutdown();
+		}
+	}
+
+	fn cleanup_abandoned_connections(
+		&self,
+		connections: &mut Slab<Connection<T>>,
+	) {
+		let mut to_close = Vec::new();
+		let mut state_closed = 0;
+		let mut eof_connections = 0;
+		let mut error_connections = 0;
+		let mut active_connections = 0;
+
+		// Collect keys to check for abandoned connections
+		let keys_to_check: Vec<usize> =
+			connections.iter().map(|(key, _)| key).collect();
+
+		for key in keys_to_check {
+			if let Some(conn) = connections.get_mut(key) {
+				match conn.state() {
+					ConnectionState::WebSocket(crate::protocols::ws::WsState::Closed) => {
+						to_close.push(key);
+						state_closed += 1;
+					}
+					ConnectionState::Closed => {
+						to_close.push(key);
+						state_closed += 1;
+					}
+					_ => {
+						// For active connections, try to detect abandoned ones
+						// by attempting a non-blocking read
+						let mut buf = [0u8; 1];
+						match conn.stream().read(&mut buf) {
+							Ok(0) => {
+								// EOF - connection is closed on the other end
+								to_close.push(key);
+								eof_connections += 1;
+							}
+							Ok(_n) => {
+								// Got data - put it back in buffer for proper processing
+								conn.buffer_mut().extend_from_slice(&buf[..1]);
+								active_connections += 1;
+							}
+							Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+								// Connection is alive but no data available - this is fine
+								active_connections += 1;
+							}
+							Err(_) => {
+								// Connection error - mark for closure
+								to_close.push(key);
+								error_connections += 1;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Close abandoned connections
+
+		// Close all identified abandoned connections
+		for key in to_close {
+			self.close_connection(connections, key);
 		}
 	}
 }

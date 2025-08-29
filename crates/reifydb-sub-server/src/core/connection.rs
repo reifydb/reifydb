@@ -127,15 +127,27 @@ impl<T: Transaction> Connection<T> {
 		}
 	}
 
-	/// Clear buffer and reset to optimal size for reuse
 	pub fn reset_buffer(&mut self) {
 		self.buffer.clear();
-
-		// If buffer has grown significantly, shrink it back to initial
-		// size
 		if self.buffer.capacity() > INITIAL_BUFFER_SIZE * 4 {
 			self.buffer.shrink_to(INITIAL_BUFFER_SIZE);
 		}
+	}
+
+	/// Properly close the TCP connection with shutdown
+	pub fn shutdown(&mut self) {
+		use std::io::Write;
+
+		// Flush any remaining data
+		let _ = self.stream.flush();
+
+		// Attempt graceful shutdown of TCP connection
+		let _ = self.stream.shutdown(std::net::Shutdown::Both);
+
+		// Mark connection state as closed
+		self.state = ConnectionState::Closed;
+
+		self.reset_buffer()
 	}
 
 	pub fn interests(&self) -> Interest {

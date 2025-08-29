@@ -58,11 +58,7 @@ impl<T: Transaction> ProtocolServer<T> {
             ));
 		}
 
-		println!(
-			"Starting protocol server on {} with protocols: {}",
-			self.config.bind_addr,
-			enabled_protocols.join(", ")
-		);
+		// Starting protocol server
 
 		// Create worker pool with enabled protocols
 		let worker_pool = WorkerPool::new(

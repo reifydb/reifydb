@@ -77,7 +77,7 @@ fn get_or_start_server(
 	}
 }
 
-async fn create_websocket_connection() -> Result<
+async fn connect() -> Result<
 	WebSocketStream<MaybeTlsStream<TcpStream>>,
 	Box<dyn std::error::Error>,
 > {
@@ -133,6 +133,26 @@ async fn send_single_request(
 	Ok(())
 }
 
+async fn close(
+	mut ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	// Send close frame with proper close handshake
+	let _ = ws.close(None).await;
+
+	// Wait for close confirmation or timeout
+	let timeout_duration = Duration::from_millis(100);
+	match tokio::time::timeout(timeout_duration, ws.next()).await {
+		Ok(Some(Ok(Message::Close(_)))) => {
+			// Proper close handshake completed
+		}
+		_ => {
+			// Timeout or other response, close completed
+		}
+	}
+
+	Ok(())
+}
+
 fn websocket_single_request_benchmark(c: &mut Criterion) {
 	let rt = Runtime::new().unwrap();
 	let _db = get_or_start_server(&rt);
@@ -141,14 +161,13 @@ fn websocket_single_request_benchmark(c: &mut Criterion) {
 	c.bench_function("ws_single_request", |b| {
 		b.iter(|| {
 			rt.block_on(async {
-				let mut ws = create_websocket_connection()
-					.await
-					.unwrap();
+				let mut ws = connect().await.unwrap();
 				black_box(
 					send_single_request(&mut ws, 1)
 						.await
 						.unwrap(),
 				);
+				let _ = close(ws).await;
 			})
 		});
 	});
@@ -159,24 +178,24 @@ fn websocket_sequential_requests_benchmark(c: &mut Criterion) {
 	let _db = get_or_start_server(&rt);
 
 	let mut group = c.benchmark_group("ws_sequential_requests");
-	group.measurement_time(Duration::from_secs(10));
+	group.sample_size(50);
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
 	for request_count in [10, 50, 100, 500].iter() {
-		let mut ws = rt.block_on(async {
-			create_websocket_connection().await.unwrap()
-		});
-
 		group.bench_with_input(
 			BenchmarkId::new("requests", request_count),
 			request_count,
 			|b, &request_count| {
 				b.iter(|| {
 					rt.block_on(async {
+						let mut ws = connect()
+							.await
+							.unwrap();
 						for i in 0..request_count {
 							black_box(send_single_request(&mut ws, i).await.unwrap());
 						}
+						let _ = close(ws).await;
 					})
 				});
 			},
@@ -190,25 +209,23 @@ fn websocket_pipelined_requests_benchmark(c: &mut Criterion) {
 	let _db = get_or_start_server(&rt);
 
 	let mut group = c.benchmark_group("ws_pipelined_requests");
-	group.measurement_time(Duration::from_secs(10));
+	group.sample_size(50);
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
 	for request_count in [10, 50, 100, 500].iter() {
-		let mut ws = rt.block_on(async {
-			create_websocket_connection().await.unwrap()
-		});
-
 		group.bench_with_input(
-			BenchmarkId::new("requests", request_count),
-			request_count,
-			|b, &request_count| {
-				b.iter(|| {
-					rt.block_on(async {
-						// Send all requests without
-						// waiting for responses
-						for i in 0..request_count {
-							let request = serde_json::json!({
+            BenchmarkId::new("requests", request_count),
+            request_count,
+            |b, &request_count| {
+                b.iter(|| {
+                    rt.block_on(async {
+                        let mut ws = connect().await.unwrap();
+
+                        // Send all requests without
+                        // waiting for responses
+                        for i in 0..request_count {
+                            let request = serde_json::json!({
 							    "id": format!("req_{}", i),
 							    "type": "Query",
 							    "payload": {
@@ -217,35 +234,37 @@ fn websocket_pipelined_requests_benchmark(c: &mut Criterion) {
 							    }
 							});
 
-							let request_str = serde_json::to_string(&request).unwrap();
-							ws.send(Message::Text(Utf8Bytes::from(request_str))).await.unwrap();
-						}
+                            let request_str = serde_json::to_string(&request).unwrap();
+                            ws.send(Message::Text(Utf8Bytes::from(request_str))).await.unwrap();
+                        }
 
-						// Now collect all responses
-						for _i in 0..request_count {
-							if let Some(msg) =
-								ws.next().await
-							{
-								match msg.unwrap() {
-									Message::Text(_text) => {
-										// Response received successfully
-										black_box(());
-									}
-									Message::Close(_) => {
-										panic!("Connection closed during pipelined benchmark");
-									}
-									_ => {
-										// Ignore other message types
-									}
-								}
-							} else {
-								panic!("No response received during pipelined benchmark");
-							}
-						}
-					})
-				});
-			},
-		);
+                        // Now collect all responses
+                        for _i in 0..request_count {
+                            if let Some(msg) =
+                                ws.next().await
+                            {
+                                match msg.unwrap() {
+                                    Message::Text(_text) => {
+                                        // Response received successfully
+                                        black_box(());
+                                    }
+                                    Message::Close(_) => {
+                                        panic!("Connection closed during pipelined benchmark");
+                                    }
+                                    _ => {
+                                        // Ignore other message types
+                                    }
+                                }
+                            } else {
+                                panic!("No response received during pipelined benchmark");
+                            }
+                        }
+
+                        let _ = close(ws).await;
+                    })
+                });
+            },
+        );
 	}
 	group.finish();
 }
@@ -255,11 +274,11 @@ fn websocket_concurrent_connections_benchmark(c: &mut Criterion) {
 	let _db = get_or_start_server(&rt);
 
 	let mut group = c.benchmark_group("ws_concurrent_connections");
-	group.measurement_time(Duration::from_secs(10));
+	group.sample_size(50);
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
-	for connection_count in [1, 5, 10, 20, 50, 100, 500].iter() {
+	for connection_count in [50, 100, 200].iter() {
 		group.bench_with_input(
 			BenchmarkId::new("connections", connection_count),
 			connection_count,
@@ -272,10 +291,9 @@ fn websocket_concurrent_connections_benchmark(c: &mut Criterion) {
 							let handle =
 								tokio::spawn(
 									async move {
-										let mut ws = create_websocket_connection().await.unwrap();
+										let mut ws = connect().await.unwrap();
 										send_single_request(&mut ws, i).await.unwrap();
-										// Explicitly close the WebSocket connection
-										let _ = ws.close(None).await;
+										let _ = close(ws).await;
 									},
 								);
 							handles.push(handle);
@@ -300,18 +318,16 @@ fn websocket_query_execution_benchmark(c: &mut Criterion) {
 	let rt = Runtime::new().unwrap();
 	let _db = get_or_start_server(&rt);
 
-	let mut ws = rt.block_on(async {
-		create_websocket_connection().await.unwrap()
-	});
-
 	let mut group = c.benchmark_group("ws_query_execution");
-	group.measurement_time(Duration::from_secs(10));
+	group.sample_size(50);
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
 	group.bench_function("map_one", |b| {
 		b.iter(|| {
 			rt.block_on(async {
+				let mut ws = connect().await.unwrap();
+
 				let request = serde_json::json!({
 				    "id": "map_one",
 				    "type": "Query",
@@ -334,6 +350,8 @@ fn websocket_query_execution_benchmark(c: &mut Criterion) {
 				if let Some(msg) = ws.next().await {
 					black_box(msg.unwrap());
 				}
+
+				let _ = close(ws).await;
 			})
 		});
 	});
@@ -341,6 +359,8 @@ fn websocket_query_execution_benchmark(c: &mut Criterion) {
 	group.bench_function("multiple_queries_same_connection", |b| {
 		b.iter(|| {
 			rt.block_on(async {
+				let mut ws = connect().await.unwrap();
+
 				for i in 0..50 {
 					let request = serde_json::json!({
 					    "id": format!("query_{}", i),
@@ -365,6 +385,8 @@ fn websocket_query_execution_benchmark(c: &mut Criterion) {
 						black_box(msg.unwrap());
 					}
 				}
+
+				let _ = close(ws).await;
 			})
 		});
 	});
@@ -372,6 +394,8 @@ fn websocket_query_execution_benchmark(c: &mut Criterion) {
 	group.bench_function("complex_filter", |b| {
 		b.iter(|| {
 			rt.block_on(async {
+				let mut ws = connect().await.unwrap();
+
 				let query = queries::COMPLEX_FILTER;
 
 				let request = serde_json::json!({
@@ -395,6 +419,8 @@ fn websocket_query_execution_benchmark(c: &mut Criterion) {
 				if let Some(msg) = ws.next().await {
 					black_box(msg.unwrap());
 				}
+
+				let _ = close(ws).await;
 			})
 		});
 	});
@@ -409,14 +435,13 @@ fn websocket_concurrent_query_benchmark(c: &mut Criterion) {
 	let _db = get_or_start_server(&rt);
 
 	let mut group = c.benchmark_group("ws_concurrent_queries");
-	group.measurement_time(Duration::from_secs(10));
+	group.sample_size(50);
 	group.warm_up_time(Duration::from_secs(3));
 	group.throughput(Throughput::Elements(1));
 
-	for connection_count in [1, 10, 100, 1000].iter() {
+	for connection_count in [50, 100, 200].iter() {
 		group.bench_with_input(
             BenchmarkId::new("concurrent_connections_queries", connection_count),
-
             connection_count,
             |b, &connection_count| {
                 b.iter(|| {
@@ -425,7 +450,7 @@ fn websocket_concurrent_query_benchmark(c: &mut Criterion) {
 
                         for i in 0..connection_count {
                             let handle = tokio::spawn(async move {
-                                let mut ws = create_websocket_connection().await.unwrap();
+                                let mut ws = connect().await.unwrap();
 
                                 // Send multiple queries on each connection
                                 for j in 0..5 {
@@ -445,6 +470,8 @@ fn websocket_concurrent_query_benchmark(c: &mut Criterion) {
                                         let _ = msg.unwrap();
                                     }
                                 }
+
+                                let _ = close(ws).await;
                             });
                             handles.push(handle);
                         }

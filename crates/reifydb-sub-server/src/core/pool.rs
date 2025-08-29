@@ -46,31 +46,18 @@ impl<T: Transaction> WorkerPool<T> {
 			.collect();
 		let addr = *addrs.first().expect("no resolved addr");
 
-		let enabled_protocols = Self::get_protocol_names(
+		let _enabled_protocols = Self::get_protocol_names(
 			&websocket_handler,
 			&http_handler,
-		);
-		println!(
-			"Creating {} workers for protocols: {}",
-			worker_count,
-			enabled_protocols.join(", ")
 		);
 
 		// Create worker threads using the existing mio-based Worker
 		for worker_id in 0..worker_count {
-			println!(
-				"Creating listener for worker {} on {}",
-				worker_id, addr
-			);
 			let listener = Self::create_listener(
 				addr,
 				config.network.reuse_port,
 			)
 			.expect("failed to create listener");
-			println!(
-				"Successfully created listener for worker {}",
-				worker_id
-			);
 
 			let config_clone = config.clone();
 			let engine_clone = engine.clone();
@@ -84,7 +71,6 @@ impl<T: Transaction> WorkerPool<T> {
 					let mut worker =
 						super::worker::Worker::new(
 							worker_id,
-							worker_count,
 							listener,
 							config_clone,
 							shutdown_clone,
@@ -148,25 +134,25 @@ impl<T: Transaction> WorkerPool<T> {
 
 		socket.set_reuse_address(true)?;
 		socket.set_nonblocking(true)?;
+
+		// TCP tuning to reduce TIME_WAIT accumulation
+		socket.set_tcp_nodelay(true)?;
+
 		socket.bind(&addr.into())?;
-		socket.listen(1024)?;
+
+		// Increase backlog to handle burst connections better
+		socket.listen(4096)?;
 
 		Ok(socket.into())
 	}
 
 	pub fn stop(self) {
-		println!("Shutting down worker pool...");
-
 		// Signal all workers to stop
 		self.shutdown.store(true, Ordering::Relaxed);
 
 		// Wait for all workers to complete
 		for handle in self.workers {
-			if let Err(e) = handle.join() {
-				eprintln!("Worker thread panicked: {:?}", e);
-			}
+			let _ = handle.join();
 		}
-
-		println!("Worker pool stopped");
 	}
 }

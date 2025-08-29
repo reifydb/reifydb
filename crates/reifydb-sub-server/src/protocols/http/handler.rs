@@ -163,18 +163,11 @@ impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
 	}
 
 	fn handle_read(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
-		println!(
-			"HttpHandler: handle_read called, current state: {:?}",
-			conn.state()
-		);
 		if let crate::core::ConnectionState::Http(http_state) =
 			conn.state()
 		{
 			match http_state {
 				HttpState::ReadingRequest(_) => {
-					println!(
-						"HttpHandler: Processing ReadingRequest state"
-					);
 					self.handle_request_read(conn)
 				}
 				HttpState::Processing(_) => {
@@ -236,9 +229,6 @@ impl HttpHandler {
 			if let Some(header_end) =
 				self.find_header_end(conn.buffer())
 			{
-				println!(
-					"HttpHandler: Found complete headers in existing buffer"
-				);
 				self.process_http_request(conn, header_end)?;
 				return Ok(());
 			}
@@ -251,13 +241,11 @@ impl HttpHandler {
 			match conn.stream().read(&mut buf) {
                 Ok(0) => return Err(ProtocolError::ConnectionClosed),
                 Ok(n) => {
-                    println!("HttpHandler: Read {} additional bytes", n);
                     // Add data to connection buffer
                     conn.buffer_mut().extend_from_slice(&buf[..n]);
 
                     // Check if we have complete HTTP headers
                     if let Some(header_end) = self.find_header_end(conn.buffer()) {
-                        println!("HttpHandler: Found complete headers after reading more data");
                         self.process_http_request(conn, header_end)?;
                         return Ok(());
                     }
