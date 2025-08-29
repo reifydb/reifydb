@@ -4,7 +4,9 @@
 mod create;
 mod find;
 mod get;
+mod get_pk_id;
 pub(crate) mod layout;
+mod set_pk;
 
 pub use create::{TableColumnToCreate, TableToCreate};
 use layout::table;
@@ -20,8 +22,7 @@ pub(crate) fn convert_table(versioned: Versioned) -> TableDef {
 		id,
 		name,
 		schema,
-		columns: vec![], // Columns will be loaded separately if needed
-		primary_key: None, /* Primary key will be loaded separately if
-		                  * needed */
+		columns: vec![],
+		primary_key: None,
 	}
 }

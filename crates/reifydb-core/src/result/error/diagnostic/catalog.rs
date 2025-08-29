@@ -445,3 +445,38 @@ pub fn cannot_delete_already_deleted_view<'a>(
 		cause: None,
 	}
 }
+
+pub fn primary_key_empty<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_020".to_string(),
+		statement: None,
+		message: "primary key must contain at least one column"
+			.to_string(),
+		fragment,
+		label: Some("empty primary key definition".to_string()),
+		help: Some("specify at least one column for the primary key"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn primary_key_column_not_found<'a>(
+	fragment: impl IntoFragment<'a>,
+	column_id: u64,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_021".to_string(),
+		statement: None,
+		message: format!("column with ID {} not found for primary key", column_id),
+		fragment,
+		label: Some("invalid column reference in primary key".to_string()),
+		help: Some("ensure all columns referenced in the primary key exist in the table or view".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}

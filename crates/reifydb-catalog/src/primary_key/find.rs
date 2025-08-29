@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use layout::view;
 use reifydb_core::{
 	interface::{
-		ColumnDef, Key, PrimaryKeyId, PrimaryKeyKey, QueryTransaction,
-		StoreId, TableId, TableKey, TablePrimaryKeyDef, ViewId,
-		ViewKey,
+		ColumnDef, Key, PrimaryKeyKey, QueryTransaction, StoreId,
+		TableId, TablePrimaryKeyDef, ViewId,
 	},
 	return_internal_error,
 };
@@ -16,8 +14,6 @@ use crate::{
 	primary_key::layout::{
 		primary_key, primary_key::deserialize_column_ids,
 	},
-	table::layout::table,
-	view::{layout, layout::view::PRIMARY_KEY},
 };
 
 impl CatalogStore {
@@ -27,51 +23,32 @@ impl CatalogStore {
 	) -> crate::Result<Option<TablePrimaryKeyDef>> {
 		let store_id = store.into();
 
+		// Get the primary key ID for the table or view
 		let primary_key_id = match store_id {
 			StoreId::Table(table_id) => {
-				let versioned =
-					match rx.get(&Key::Table(TableKey {
-						table: table_id,
-					})
-					.encode())?
-					{
-						Some(v) => v,
-						None => return Ok(None),
-					};
-				table::LAYOUT.get_u64(
-					&versioned.row,
-					table::PRIMARY_KEY,
-				)
+				match Self::get_table_pk_id(rx, table_id)? {
+					Some(pk_id) => pk_id,
+					None => return Ok(None),
+				}
 			}
 			StoreId::View(view_id) => {
-				let versioned =
-					match rx.get(&Key::View(ViewKey {
-						view: view_id,
-					})
-					.encode())?
-					{
-						Some(v) => v,
-						None => return Ok(None),
-					};
-				view::LAYOUT
-					.get_u64(&versioned.row, PRIMARY_KEY)
+				match Self::get_view_pk_id(rx, view_id)? {
+					Some(pk_id) => pk_id,
+					None => return Ok(None),
+				}
 			}
 		};
-
-		if primary_key_id == 0 {
-			return Ok(None); // No primary key
-		}
 
 		// Fetch the primary key details
 		let primary_key_versioned =
 			match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: PrimaryKeyId(primary_key_id),
+				primary_key: primary_key_id,
 			})
 			.encode())?
 			{
 				Some(versioned) => versioned,
 				None => return_internal_error!(format!(
-					"Primary key with ID {} referenced but not found",
+					"Primary key with ID {:?} referenced but not found",
 					primary_key_id
 				)),
 			};
@@ -98,12 +75,12 @@ impl CatalogStore {
 		}
 
 		Ok(Some(TablePrimaryKeyDef {
-			id: PrimaryKeyId(primary_key_id),
+			id: primary_key_id,
 			columns,
 		}))
 	}
 
-	// Convenience methods for backward compatibility
+	#[inline]
 	pub fn find_table_primary_key(
 		rx: &mut impl QueryTransaction,
 		table_id: TableId,
@@ -111,6 +88,7 @@ impl CatalogStore {
 		Self::find_primary_key(rx, table_id)
 	}
 
+	#[inline]
 	pub fn find_view_primary_key(
 		rx: &mut impl QueryTransaction,
 		view_id: ViewId,
