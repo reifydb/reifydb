@@ -4,6 +4,7 @@
 mod alter;
 mod create;
 
+pub use alter::AlterTablePlan;
 use reifydb_catalog::{
 	CatalogQueryTransaction, CatalogStore, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
@@ -24,7 +25,7 @@ use crate::plan::{
 	logical::LogicalPlan,
 	physical::{
 		PhysicalPlan::{TableScan, ViewScan},
-		alter::{AlterTablePlan, AlterViewPlan},
+		alter::AlterViewPlan,
 	},
 };
 

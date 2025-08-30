@@ -123,13 +123,13 @@ impl<'a> ExecutionPlan<'a> {
 	}
 }
 
-pub(crate) struct Executor {
+pub struct Executor {
 	pub functions: Functions,
 }
 
 impl Executor {
 	#[allow(dead_code)]
-	pub(crate) fn testing() -> Self {
+	pub fn testing() -> Self {
 		Self {
 			functions: Functions::builder()
 				.register_aggregate(
@@ -251,7 +251,7 @@ impl Executor {
 		}
 	}
 
-	pub(crate) fn execute_command_plan<T: Transaction>(
+	pub fn execute_command_plan<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: PhysicalPlan,
@@ -297,10 +297,12 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::Distinct(_) => self.query(txn, plan, params),
 
-			PhysicalPlan::AlterTable(_)
-			| PhysicalPlan::AlterView(_) => {
+			PhysicalPlan::AlterTable(plan) => {
+				self.alter_table(txn, plan)
+			}
+			PhysicalPlan::AlterView(_) => {
 				todo!(
-					"ALTER TABLE/VIEW execution not yet implemented"
+					"ALTER VIEW execution not yet implemented"
 				)
 			}
 		}
