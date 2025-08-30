@@ -19,6 +19,12 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<SchemaDef>> {
 		let name = name.as_ref();
+
+		// Special case for system schema - hardcoded with fixed ID
+		if name == "system" {
+			return Ok(Some(SchemaDef::system()));
+		}
+
 		Ok(rx.range(SchemaKey::full_scan())?.find_map(|versioned| {
 			let row: &EncodedRow = &versioned.row;
 			let schema_name =
@@ -35,6 +41,11 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		id: SchemaId,
 	) -> crate::Result<Option<SchemaDef>> {
+		// Special case for system schema - hardcoded with fixed ID
+		if id == SchemaId(1) {
+			return Ok(Some(SchemaDef::system()));
+		}
+
 		Ok(rx.get(&SchemaKey {
 			schema: id,
 		}

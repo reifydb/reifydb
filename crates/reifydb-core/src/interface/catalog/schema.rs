@@ -8,3 +8,12 @@ pub struct SchemaDef {
 	pub id: SchemaId,
 	pub name: String,
 }
+
+impl SchemaDef {
+	pub fn system() -> Self {
+		Self {
+			id: SchemaId(1),
+			name: "system".to_string(),
+		}
+	}
+}

@@ -13,6 +13,7 @@ mod function;
 pub(crate) mod interceptor;
 pub mod test_utils;
 pub mod transaction;
+pub mod virtual_table;
 
 pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;

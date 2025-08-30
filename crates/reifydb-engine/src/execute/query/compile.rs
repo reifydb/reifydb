@@ -3,25 +3,29 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::QueryTransaction;
+use reifydb_core::interface::{QueryTransaction, SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
-use crate::execute::{
-	ExecutionContext, ExecutionPlan,
-	query::{
-		aggregate::AggregateNode,
-		extend::{ExtendNode, ExtendWithoutInputNode},
-		filter::FilterNode,
-		inline::InlineDataNode,
-		join_inner::InnerJoinNode,
-		join_left::LeftJoinNode,
-		join_natural::NaturalJoinNode,
-		map::{MapNode, MapWithoutInputNode},
-		sort::SortNode,
-		table_scan::TableScanNode,
-		take::TakeNode,
-		view_scan::ViewScanNode,
+use crate::{
+	execute::{
+		ExecutionContext, ExecutionPlan,
+		query::{
+			aggregate::AggregateNode,
+			extend::{ExtendNode, ExtendWithoutInputNode},
+			filter::FilterNode,
+			inline::InlineDataNode,
+			join_inner::InnerJoinNode,
+			join_left::LeftJoinNode,
+			join_natural::NaturalJoinNode,
+			map::{MapNode, MapWithoutInputNode},
+			sort::SortNode,
+			table_scan::TableScanNode,
+			take::TakeNode,
+			view_scan::ViewScanNode,
+			virtual_table_scan::VirtualScanNode,
+		},
 	},
+	virtual_table::{VirtualTable, system::Sequences},
 };
 
 pub(crate) fn compile(
@@ -163,6 +167,32 @@ pub(crate) fn compile(
 		}) => ExecutionPlan::ViewScan(
 			ViewScanNode::new(view, context).unwrap(),
 		),
+
+		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
+			schema,
+			virtual_table,
+		}) => {
+			// Create the appropriate virtual table implementation
+			let virtual_table_impl: Box<dyn VirtualTable> =
+				if schema.id == SchemaId(1)
+					&& virtual_table.name == "sequences"
+				{
+					Box::new(Sequences::new(virtual_table))
+				} else {
+					panic!(
+						"Unknown virtual table type: {}",
+						virtual_table.name
+					)
+				};
+
+			ExecutionPlan::VirtualScan(
+				VirtualScanNode::new(
+					virtual_table_impl,
+					context,
+				)
+				.unwrap(),
+			)
+		}
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::CreateDeferredView(_)

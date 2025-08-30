@@ -310,6 +310,38 @@ impl Compiler {
 								view,
 							},
 						));
+					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
+						// System virtual table - sequences
+						let virtual_table = reifydb_core::interface::virtual_table::VirtualTableDef {
+							id: reifydb_core::interface::virtual_table::VirtualTableId(1),
+							schema: schema.id,
+							name: "sequences".to_string(),
+							columns: vec![
+								reifydb_core::interface::ColumnDef {
+									id: reifydb_core::interface::ColumnId(1),
+									name: "sequence_name".to_string(),
+									ty: reifydb_core::Type::Utf8,
+									policies: vec![],
+									index: reifydb_core::interface::ColumnIndex(0),
+									auto_increment: false,
+								},
+								reifydb_core::interface::ColumnDef {
+									id: reifydb_core::interface::ColumnId(2),
+									name: "current_value".to_string(),
+									ty: reifydb_core::Type::Int8,
+									policies: vec![],
+									index: reifydb_core::interface::ColumnIndex(1),
+									auto_increment: false,
+								},
+							],
+							provider: "system".to_string(),
+						};
+						stack.push(PhysicalPlan::VirtualScan(
+							VirtualScanNode {
+								schema,
+								virtual_table,
+							},
+						));
 					} else {
 						return_error!(
 							table_not_found(
@@ -386,6 +418,7 @@ pub enum PhysicalPlan {
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
 	ViewScan(ViewScanNode),
+	VirtualScan(VirtualScanNode),
 }
 
 #[derive(Debug, Clone)]
@@ -522,6 +555,13 @@ pub struct TableScanNode {
 pub struct ViewScanNode {
 	pub schema: SchemaDef,
 	pub view: ViewDef,
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualScanNode {
+	pub schema: SchemaDef,
+	pub virtual_table:
+		reifydb_core::interface::virtual_table::VirtualTableDef,
 }
 
 #[derive(Debug, Clone)]

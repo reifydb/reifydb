@@ -17,6 +17,7 @@ use query::{
 	table_scan::TableScanNode,
 	take::TakeNode,
 	view_scan::ViewScanNode,
+	virtual_table_scan::VirtualScanNode,
 };
 use reifydb_core::{
 	Frame,
@@ -71,6 +72,7 @@ pub(crate) enum ExecutionPlan {
 	TableScan(TableScanNode),
 	Take(TakeNode),
 	ViewScan(ViewScanNode),
+	VirtualScan(VirtualScanNode),
 }
 
 impl ExecutionPlan {
@@ -98,6 +100,7 @@ impl ExecutionPlan {
 			ExecutionPlan::TableScan(node) => node.next(ctx, rx),
 			ExecutionPlan::Take(node) => node.next(ctx, rx),
 			ExecutionPlan::ViewScan(node) => node.next(ctx, rx),
+			ExecutionPlan::VirtualScan(node) => node.next(ctx, rx),
 		}
 	}
 
@@ -119,6 +122,7 @@ impl ExecutionPlan {
 			ExecutionPlan::TableScan(node) => node.layout(),
 			ExecutionPlan::Take(node) => node.layout(),
 			ExecutionPlan::ViewScan(node) => node.layout(),
+			ExecutionPlan::VirtualScan(node) => node.layout(),
 		}
 	}
 }
@@ -234,7 +238,8 @@ impl Executor {
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::TableScan(_)
-			| PhysicalPlan::ViewScan(_) => self.query(rx, plan, params),
+			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::VirtualScan(_) => self.query(rx, plan, params),
 
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::CreateDeferredView(_)
@@ -289,6 +294,7 @@ impl Executor {
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::VirtualScan(_)
 			| PhysicalPlan::Distinct(_) => self.query(txn, plan, params),
 		}
 	}
