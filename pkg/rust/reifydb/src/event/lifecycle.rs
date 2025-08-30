@@ -5,13 +5,12 @@
 
 use reifydb_core::{
 	Frame,
-	hook::{BoxedHookIter, Callback, lifecycle::OnCreateHook},
+	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as _, Identity, Params, Transaction},
-	return_hooks,
 };
 use reifydb_engine::StandardEngine;
 
-/// Context provided to on_create hooks
+/// Context provided to on_create eventbus
 pub struct OnCreateContext<T: Transaction> {
 	engine: StandardEngine<T>,
 }
@@ -68,7 +67,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 }
 
 /// Shared callback implementation for OnCreate hook
-pub struct OnCreateCallback<T: Transaction, F>
+pub struct OnCreateEventListener<T: Transaction, F>
 where
 	F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
@@ -76,16 +75,18 @@ where
 	pub engine: StandardEngine<T>,
 }
 
-impl<T: Transaction, F> Callback<OnCreateHook> for OnCreateCallback<T, F>
+impl<T: Transaction, F> EventListener<OnCreateEvent>
+	for OnCreateEventListener<T, F>
 where
 	F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {
-	fn on(
-		&self,
-		_hook: &OnCreateHook,
-	) -> Result<BoxedHookIter, reifydb_core::Error> {
+	fn on(&self, _hook: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());
-		(self.callback)(&context)?;
-		return_hooks!()
+		if let Err(e) = (self.callback)(&context) {
+			reifydb_core::log_error!(
+				"Failed to handle OnCreate event: {}",
+				e
+			);
+		}
 	}
 }

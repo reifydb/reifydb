@@ -3,12 +3,12 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Error, Version,
-	hook::Hooks,
+	event::EventBus,
 	interface::{
 		BoxedVersionedIter, TransactionId, UnversionedTransaction,
 		Versioned, VersionedCommandTransaction,
 		VersionedQueryTransaction, VersionedStorage,
-		VersionedTransaction, WithHooks,
+		VersionedTransaction, WithEventBus,
 	},
 	row::EncodedRow,
 };
@@ -17,11 +17,11 @@ use crate::mvcc::transaction::serializable::{
 	CommandTransaction, QueryTransaction, Serializable,
 };
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> WithHooks
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WithEventBus
 	for Serializable<VS, UT>
 {
-	fn hooks(&self) -> &Hooks {
-		&self.hooks
+	fn event_bus(&self) -> &EventBus {
+		&self.event_bus
 	}
 }
 

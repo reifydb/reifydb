@@ -141,7 +141,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::hook::Hooks;
+	use reifydb_core::event::EventBus;
 	use reifydb_storage::memory::Memory;
 
 	use super::*;
@@ -151,7 +151,7 @@ mod tests {
 	fn test_new_version_provider() {
 		let memory = Memory::new();
 		let unversioned =
-			SingleVersionLock::new(memory, Hooks::default());
+			SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(unversioned).unwrap();
 
 		// Should start at version 0
@@ -162,7 +162,7 @@ mod tests {
 	fn test_next_version_sequential() {
 		let memory = Memory::new();
 		let unversioned =
-			SingleVersionLock::new(memory, Hooks::default());
+			SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(unversioned).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -179,7 +179,7 @@ mod tests {
 	fn test_version_persistence() {
 		let memory = Memory::new();
 		let unversioned =
-			SingleVersionLock::new(memory, Hooks::default());
+			SingleVersionLock::new(memory, EventBus::default());
 
 		// Create first provider and get some versions
 		{
@@ -203,7 +203,7 @@ mod tests {
 	fn test_block_exhaustion_and_allocation() {
 		let memory = Memory::new();
 		let unversioned =
-			SingleVersionLock::new(memory, Hooks::default());
+			SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(unversioned).unwrap();
 
 		// Exhaust the first block
@@ -227,7 +227,7 @@ mod tests {
 
 		let memory = Memory::new();
 		let unversioned =
-			SingleVersionLock::new(memory, Hooks::default());
+			SingleVersionLock::new(memory, EventBus::default());
 		let provider =
 			Arc::new(StdVersionProvider::new(unversioned).unwrap());
 
@@ -311,7 +311,7 @@ mod tests {
 	fn test_load_existing_version() {
 		let memory = Memory::new();
 		let unversioned =
-			SingleVersionLock::new(memory, Hooks::default());
+			SingleVersionLock::new(memory, EventBus::default());
 
 		// Manually set a version in storage
 		let layout = EncodedRowLayout::new(&[Type::Uint8]);

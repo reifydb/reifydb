@@ -7,7 +7,7 @@ use reifydb::{
 	Database, ServerBuilder,
 	core::{
 		Error as ReifyDBError,
-		hook::Hooks,
+		event::EventBus,
 		interface::{
 			CdcTransaction, Params, UnversionedTransaction,
 			VersionedTransaction,
@@ -41,17 +41,19 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, Hooks)) -> Self {
-		let (versioned, unversioned, cdc, hooks) = input;
-		let instance =
-			ServerBuilder::new(versioned, unversioned, cdc, hooks)
-				.with_ws(WsConfig {
-					socket: Some("[::1]:0"
-						.parse()
-						.unwrap()),
-				})
-				.build()
-				.unwrap();
+	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+		let (versioned, unversioned, cdc, eventbus) = input;
+		let instance = ServerBuilder::new(
+			versioned,
+			unversioned,
+			cdc,
+			eventbus,
+		)
+		.with_ws(WsConfig {
+			socket: Some("[::1]:0".parse().unwrap()),
+		})
+		.build()
+		.unwrap();
 
 		Self {
 			instance: Some(instance),

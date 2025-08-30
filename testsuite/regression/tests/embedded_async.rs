@@ -6,7 +6,7 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	AsyncBuilder, Database, SessionAsync,
 	core::{
-		hook::Hooks,
+		event::EventBus,
 		interface::{
 			CdcTransaction, Params, UnversionedTransaction,
 			VersionedTransaction,
@@ -35,14 +35,14 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, Hooks)) -> Self {
-		let (versioned, unversioned, cdc, hooks) = input;
+	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+		let (versioned, unversioned, cdc, eventbus) = input;
 		Self {
 			instance: AsyncBuilder::new(
 				versioned,
 				unversioned,
 				cdc,
-				hooks,
+				eventbus,
 			)
 			.build()
 			.unwrap(),

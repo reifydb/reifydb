@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use reifydb_catalog::{MaterializedCatalog, MaterializedCatalogLoader};
 use reifydb_core::{
-	hook::Hooks,
+	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
 		Transaction, VersionedTransaction, subsystem::SubsystemFactory,
@@ -42,11 +42,11 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-		hooks: Hooks,
+		eventbus: EventBus,
 	) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
-			.register(hooks.clone())
+			.register(eventbus.clone())
 			.register(versioned.clone())
 			.register(unversioned.clone())
 			.register(cdc.clone());
@@ -160,7 +160,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		let versioned = self.ioc.resolve::<T::Versioned>()?;
 		let unversioned = self.ioc.resolve::<T::Unversioned>()?;
 		let cdc = self.ioc.resolve::<T::Cdc>()?;
-		let hooks = self.ioc.resolve::<Hooks>()?;
+		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		// Load the materialized catalog from storage
 		log_timed_debug!("Loading materialized catalog", {
@@ -176,7 +176,7 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			versioned,
 			unversioned,
 			cdc,
-			hooks,
+			eventbus,
 			Box::new(self.interceptors.build()),
 			catalog,
 		);
