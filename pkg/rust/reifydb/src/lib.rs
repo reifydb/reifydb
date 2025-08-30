@@ -6,8 +6,8 @@ mod boot;
 mod builder;
 mod context;
 mod database;
+pub mod event;
 mod health;
-mod hook;
 mod presets;
 mod session;
 pub mod subsystem;
@@ -20,15 +20,15 @@ pub use builder::*;
 pub use context::TokioRuntimeProvider;
 pub use context::{AsyncContext, RuntimeProvider, SystemContext, TokioContext};
 pub use database::{Database, DatabaseConfig};
+pub use event::{OnCreateContext, WithEventBus};
 pub use health::HealthMonitor;
-pub use hook::{OnCreateContext, WithHooks};
 pub use presets::*;
 pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
 pub use reifydb_core::{
 	Error, Result,
-	hook::Hooks,
+	event::EventBus,
 	interface::{
 		Identity, Params, UnversionedTransaction, VersionedStorage,
 		VersionedTransaction,

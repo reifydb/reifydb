@@ -7,7 +7,7 @@ use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Version,
 	diagnostic::transaction,
-	hook::Hooks,
+	event::EventBus,
 	interceptor,
 	interceptor::{
 		Chain, Interceptors, PostCommitInterceptor,
@@ -20,7 +20,7 @@ use reifydb_core::{
 		QueryTransaction, Transaction, TransactionId,
 		TransactionalChanges, UnversionedTransaction, Versioned,
 		VersionedCommandTransaction, VersionedQueryTransaction,
-		VersionedTransaction, WithHooks,
+		VersionedTransaction, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
@@ -37,7 +37,7 @@ pub struct StandardCommandTransaction<T: Transaction> {
 	pub(crate) unversioned: T::Unversioned,
 	pub(crate) cdc: T::Cdc,
 	state: TransactionState,
-	pub(crate) hooks: Hooks,
+	pub(crate) event_bus: EventBus,
 	pub(crate) changes: TransactionalChanges,
 	pub(crate) catalog: MaterializedCatalog,
 
@@ -59,7 +59,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		versioned: <T::Versioned as VersionedTransaction>::Command,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-		hooks: Hooks,
+		event_bus: EventBus,
 		catalog: MaterializedCatalog,
 		interceptors: Interceptors<Self>,
 	) -> Self {
@@ -69,7 +69,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			unversioned,
 			cdc,
 			state: TransactionState::Active,
-			hooks,
+			event_bus,
 			catalog,
 			interceptors,
 			changes: TransactionalChanges::new(txn_id),
@@ -77,8 +77,8 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		}
 	}
 
-	pub fn hooks(&self) -> &Hooks {
-		&self.hooks
+	pub fn event_bus(&self) -> &EventBus {
+		&self.event_bus
 	}
 
 	/// Check if transaction is still active and return appropriate error if
@@ -328,9 +328,9 @@ impl<T: Transaction> VersionedCommandTransaction
 	}
 }
 
-impl<T: Transaction> WithHooks for StandardCommandTransaction<T> {
-	fn hooks(&self) -> &Hooks {
-		&self.hooks
+impl<T: Transaction> WithEventBus for StandardCommandTransaction<T> {
+	fn event_bus(&self) -> &EventBus {
+		&self.event_bus
 	}
 }
 

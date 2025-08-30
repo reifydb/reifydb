@@ -4,7 +4,7 @@
 use reifydb_core::{
 	diagnostic::catalog::view_already_exists,
 	interface::{
-		CommandTransaction, SchemaId, ViewDef, ViewId, WithHooks,
+		CommandTransaction, SchemaId, ViewDef, ViewId, WithEventBus,
 		interceptor::{ViewDefInterceptor, WithInterceptors},
 	},
 	log_warn, return_error,
@@ -24,7 +24,7 @@ where
 		+ CatalogSchemaQueryOperations
 		+ CatalogViewQueryOperations
 		+ WithInterceptors<T>
-		+ WithHooks
+		+ WithEventBus
 		+ ViewDefInterceptor<T>,
 {
 	fn create_view(

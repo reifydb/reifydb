@@ -3,7 +3,7 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{Unversioned, WithHooks},
+	interface::{Unversioned, WithEventBus},
 	row::EncodedRow,
 };
 
@@ -11,7 +11,7 @@ pub type BoxedUnversionedIter<'a> =
 	Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
 pub trait UnversionedTransaction:
-	WithHooks + Send + Sync + Clone + 'static
+	WithEventBus + Send + Sync + Clone + 'static
 {
 	type Query<'a>: UnversionedQueryTransaction;
 	type Command<'a>: UnversionedCommandTransaction;

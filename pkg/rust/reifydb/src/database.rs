@@ -7,10 +7,10 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	Result,
-	hook::lifecycle::OnStartHook,
+	event::lifecycle::OnStartEvent,
 	interface::{
 		CdcTransaction, Transaction, UnversionedTransaction,
-		VersionedTransaction, WithHooks, subsystem::HealthStatus,
+		VersionedTransaction, WithEventBus, subsystem::HealthStatus,
 	},
 	log_debug, log_error, log_timed_trace, log_warn,
 };
@@ -156,7 +156,7 @@ impl<T: Transaction> Database<T> {
 		);
 
 		log_timed_trace!("Database initialization", {
-			self.engine.hooks().trigger(OnStartHook {})?
+			self.engine.event_bus().emit(OnStartEvent {});
 		});
 
 		// Start all subsystems

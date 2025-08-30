@@ -4,10 +4,10 @@
 mod create;
 mod start;
 
-use reifydb_core::interface::{Transaction, WithHooks};
+use reifydb_core::interface::{Transaction, WithEventBus};
 use reifydb_engine::StandardEngine;
 
-use crate::boot::{create::CreateCallback, start::StartCallback};
+use crate::boot::{create::CreateEventListener, start::StartEventListener};
 
 pub struct Bootloader<T: Transaction> {
 	engine: StandardEngine<T>,
@@ -24,10 +24,12 @@ impl<T: Transaction> Bootloader<T> {
 impl<T: Transaction> Bootloader<T> {
 	pub fn load(&self) -> crate::Result<()> {
 		let engine = self.engine.clone();
-		let hooks = engine.hooks();
+		let eventbus = engine.event_bus();
 
-		hooks.register(StartCallback::new(engine.unversioned_owned()));
-		hooks.register(CreateCallback::new(engine.clone()));
+		eventbus.register(StartEventListener::new(
+			engine.unversioned_owned(),
+		));
+		eventbus.register(CreateEventListener::new(engine.clone()));
 
 		Ok(())
 	}

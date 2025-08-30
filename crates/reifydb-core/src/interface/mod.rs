@@ -26,8 +26,8 @@ pub use params::*;
 pub use storage::*;
 pub use transaction::*;
 
-use crate::hook::Hooks;
+use crate::event::EventBus;
 
-pub trait WithHooks {
-	fn hooks(&self) -> &Hooks;
+pub trait WithEventBus {
+	fn event_bus(&self) -> &EventBus;
 }
