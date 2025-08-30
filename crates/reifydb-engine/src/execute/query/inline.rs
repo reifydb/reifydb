@@ -9,13 +9,11 @@ use std::{
 use reifydb_core::{
 	ColumnDescriptor, Fragment, Type, Value,
 	interface::{
-		QueryTransaction, TableDef, Transaction,
-		evaluate::expression::AliasExpression,
+		TableDef, Transaction, evaluate::expression::AliasExpression,
 	},
 };
 
 use crate::{
-	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
@@ -24,14 +22,15 @@ use crate::{
 	execute::{Batch, ExecutionContext},
 };
 
-pub(crate) struct InlineDataNode {
+pub(crate) struct InlineDataNode<T: Transaction> {
 	rows: Vec<Vec<AliasExpression>>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 	executed: bool,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl InlineDataNode {
+impl<T: Transaction> InlineDataNode<T> {
 	pub fn new(
 		rows: Vec<Vec<AliasExpression>>,
 		context: Arc<ExecutionContext>,
@@ -45,6 +44,7 @@ impl InlineDataNode {
 			layout,
 			context,
 			executed: false,
+			_phantom: std::marker::PhantomData,
 		}
 	}
 
@@ -65,11 +65,11 @@ impl InlineDataNode {
 	}
 }
 
-impl InlineDataNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> InlineDataNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		_ctx: &ExecutionContext,
-		_rx: &mut StandardCommandTransaction<T>,
+		_rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.executed {
 			return Ok(None);
@@ -102,7 +102,7 @@ impl InlineDataNode {
 	}
 }
 
-impl InlineDataNode {
+impl<T: Transaction> InlineDataNode<T> {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {

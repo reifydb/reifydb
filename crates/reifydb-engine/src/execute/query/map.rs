@@ -3,14 +3,11 @@
 
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{
-		QueryTransaction, Transaction, evaluate::expression::Expression,
-	},
+	interface::{Transaction, evaluate::expression::Expression},
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::{
-	StandardCommandTransaction,
 	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
@@ -19,15 +16,15 @@ use crate::{
 	},
 };
 
-pub(crate) struct MapNode {
-	input: Box<ExecutionPlan>,
+pub(crate) struct MapNode<T: Transaction> {
+	input: Box<ExecutionPlan<T>>,
 	expressions: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl MapNode {
+impl<T: Transaction> MapNode<T> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
+		input: Box<ExecutionPlan<T>>,
 		expressions: Vec<Expression>,
 	) -> Self {
 		Self {
@@ -92,11 +89,11 @@ impl MapNode {
 	}
 }
 
-impl MapNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> MapNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut StandardCommandTransaction<T>,
+		rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
@@ -153,25 +150,27 @@ impl MapNode {
 	}
 }
 
-pub(crate) struct MapWithoutInputNode {
+pub(crate) struct MapWithoutInputNode<T: Transaction> {
 	expressions: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl MapWithoutInputNode {
+impl<T: Transaction> MapWithoutInputNode<T> {
 	pub fn new(expressions: Vec<Expression>) -> Self {
 		Self {
 			expressions,
 			layout: None,
+			_phantom: std::marker::PhantomData,
 		}
 	}
 }
 
-impl MapWithoutInputNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> MapWithoutInputNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		_rx: &mut StandardCommandTransaction<T>,
+		_rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

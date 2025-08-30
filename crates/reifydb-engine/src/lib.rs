@@ -11,15 +11,15 @@ mod execute;
 #[allow(dead_code)]
 mod function;
 pub(crate) mod interceptor;
+pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
-pub mod virtual_table;
 
 pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;
 pub use reifydb_core::Result;
 pub use transaction::{
-	StandardCdcQueryTransaction, StandardCdcTransaction,
+	EngineTransaction, StandardCdcQueryTransaction, StandardCdcTransaction,
 	StandardCommandTransaction, StandardQueryTransaction,
 	StandardTransaction,
 };

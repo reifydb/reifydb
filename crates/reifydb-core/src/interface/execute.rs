@@ -23,8 +23,10 @@ pub struct Query<'a> {
 	pub identity: &'a Identity,
 }
 
-pub trait Execute<CT: CommandTransaction + WithInterceptors<CT> + WithHooks>:
-	ExecuteCommand<CT> + ExecuteQuery
+pub trait Execute<
+	CT: CommandTransaction + WithInterceptors<CT> + WithHooks,
+	QT: QueryTransaction,
+>: ExecuteCommand<CT> + ExecuteQuery<QT>
 {
 }
 
@@ -39,10 +41,10 @@ pub trait ExecuteCommand<
 	) -> crate::Result<Vec<Frame>>;
 }
 
-pub trait ExecuteQuery {
+pub trait ExecuteQuery<QT: QueryTransaction> {
 	fn execute_query(
 		&self,
-		txn: &mut impl QueryTransaction,
+		txn: &mut QT,
 		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>>;
 }

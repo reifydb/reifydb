@@ -447,7 +447,7 @@ fn render_physical_plan_inner(
 		&PhysicalPlan::VirtualScan(ref scan) => {
 			output.push_str(&format!(
 				"{}VirtualScan: {}\n",
-				prefix, scan.virtual_table.name
+				prefix, scan.table.name
 			));
 		}
 	}

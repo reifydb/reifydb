@@ -8,9 +8,10 @@ use reifydb_catalog::{
 	CatalogStore, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	JoinType, OwnedFragment, SortKey,
+	JoinType, OwnedFragment, SortKey, Type,
 	interface::{
-		QueryTransaction, SchemaDef, TableDef, ViewDef,
+		ColumnDef, ColumnId, ColumnIndex, QueryTransaction, SchemaDef,
+		TableDef, ViewDef, VirtualTableDef, VirtualTableId,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::{
@@ -312,26 +313,50 @@ impl Compiler {
 						));
 					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
 						// System virtual table - sequences
-						let virtual_table = reifydb_core::interface::virtual_table::VirtualTableDef {
-							id: reifydb_core::interface::virtual_table::VirtualTableId(1),
+						let virtual_table = VirtualTableDef {
+							id: VirtualTableId(1),
 							schema: schema.id,
 							name: "sequences".to_string(),
 							columns: vec![
-								reifydb_core::interface::ColumnDef {
-									id: reifydb_core::interface::ColumnId(1),
-									name: "sequence_name".to_string(),
-									ty: reifydb_core::Type::Utf8,
+								ColumnDef {
+									id: ColumnId(1),
+									name: "id".to_string(),
+									ty: Type::Uint4,
 									policies: vec![],
-									index: reifydb_core::interface::ColumnIndex(0),
+									index: ColumnIndex(0),
 									auto_increment: false,
 								},
-								reifydb_core::interface::ColumnDef {
-									id: reifydb_core::interface::ColumnId(2),
-									name: "current_value".to_string(),
-									ty: reifydb_core::Type::Int8,
+								ColumnDef {
+									id: ColumnId(1),
+									name: "schema_id".to_string(),
+									ty: Type::Uint8,
 									policies: vec![],
-									index: reifydb_core::interface::ColumnIndex(1),
+									index: ColumnIndex(0),
 									auto_increment: false,
+								},
+								ColumnDef {
+									id: ColumnId(1),
+									name: "schema_name".to_string(),
+									ty: Type::Utf8,
+									policies: vec![],
+									index: ColumnIndex(0),
+									auto_increment: false,
+								},
+								ColumnDef {
+									id: ColumnId(1),
+									name: "name".to_string(),
+									ty: Type::Utf8,
+									policies: vec![],
+									index: ColumnIndex(0),
+									auto_increment: false,
+								},
+								ColumnDef {
+									id: ColumnId(2),
+									name: "value".to_string(),
+									ty: Type::Uint8,
+									policies: vec![],
+									index: ColumnIndex(1),
+									auto_increment: true,
 								},
 							],
 							provider: "system".to_string(),
@@ -339,7 +364,7 @@ impl Compiler {
 						stack.push(PhysicalPlan::VirtualScan(
 							VirtualScanNode {
 								schema,
-								virtual_table,
+								table: virtual_table,
 							},
 						));
 					} else {
@@ -560,8 +585,7 @@ pub struct ViewScanNode {
 #[derive(Debug, Clone)]
 pub struct VirtualScanNode {
 	pub schema: SchemaDef,
-	pub virtual_table:
-		reifydb_core::interface::virtual_table::VirtualTableDef,
+	pub table: VirtualTableDef,
 }
 
 #[derive(Debug, Clone)]

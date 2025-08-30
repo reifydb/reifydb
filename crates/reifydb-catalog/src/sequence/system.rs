@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-pub use reifydb_core::interface::SystemSequenceId;
+pub use reifydb_core::interface::SequenceId;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
@@ -13,13 +13,23 @@ use reifydb_core::{
 
 use crate::sequence::generator::u64::GeneratorU64;
 
-pub(crate) const SCHEMA_SEQ_ID: SystemSequenceId = SystemSequenceId(1);
-pub(crate) const STORE_SEQ_ID: SystemSequenceId = SystemSequenceId(2);
-pub(crate) const COLUMN_SEQ_ID: SystemSequenceId = SystemSequenceId(3);
-pub(crate) const COLUMN_POLICY_SEQ_ID: SystemSequenceId = SystemSequenceId(4);
-pub(crate) const FLOW_SEQ_ID: SystemSequenceId = SystemSequenceId(5);
-pub(crate) const FLOW_NODE_SEQ_ID: SystemSequenceId = SystemSequenceId(6);
-pub(crate) const FLOW_EDGE_SEQ_ID: SystemSequenceId = SystemSequenceId(7);
+pub(crate) const SCHEMA_SEQ_ID: SequenceId = SequenceId(1);
+pub(crate) const STORE_SEQ_ID: SequenceId = SequenceId(2);
+pub(crate) const COLUMN_SEQ_ID: SequenceId = SequenceId(3);
+pub(crate) const COLUMN_POLICY_SEQ_ID: SequenceId = SequenceId(4);
+pub(crate) const FLOW_SEQ_ID: SequenceId = SequenceId(5);
+pub(crate) const FLOW_NODE_SEQ_ID: SequenceId = SequenceId(6);
+pub(crate) const FLOW_EDGE_SEQ_ID: SequenceId = SequenceId(7);
+
+pub(crate) const ALL_SYSTEM_SEQUENCE_IDS: [SequenceId; 7] = [
+	SCHEMA_SEQ_ID,
+	STORE_SEQ_ID,
+	COLUMN_SEQ_ID,
+	COLUMN_POLICY_SEQ_ID,
+	FLOW_SEQ_ID,
+	FLOW_NODE_SEQ_ID,
+	FLOW_EDGE_SEQ_ID,
+];
 
 static SCHEMA_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {

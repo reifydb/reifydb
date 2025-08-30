@@ -12,7 +12,7 @@ use reifydb::{
 			VersionedTransaction,
 		},
 	},
-	engine::StandardTransaction,
+	engine::EngineTransaction,
 	memory, optimistic,
 };
 use reifydb_testing::{testscript, testscript::Command};
@@ -25,7 +25,7 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	instance: Database<StandardTransaction<VT, UT, C>>,
+	instance: Database<EngineTransaction<VT, UT, C>>,
 	runtime: Runtime,
 }
 

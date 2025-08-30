@@ -40,14 +40,14 @@ fn main() {
 	for frame in
 		db.query_as_root("from system.sequences", Params::None).unwrap()
 	{
-		log_info!("Basic query: {}", frame);
+		log_info!("Basic query\n{}", frame);
 	}
 
 	// Test with projection
 	log_info!("=== Testing system.sequences with projection ===");
 	for frame in db
 		.query_as_root(
-			"from system.sequences map { name: sequence_name, value: current_value }",
+			"from system.sequences map { name, value }",
 			Params::None,
 		)
 		.unwrap()

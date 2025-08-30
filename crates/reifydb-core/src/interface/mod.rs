@@ -13,7 +13,6 @@ mod params;
 mod storage;
 pub mod subsystem;
 mod transaction;
-pub mod virtual_table;
 
 pub use auth::*;
 pub use catalog::*;
@@ -26,7 +25,6 @@ pub use key::*;
 pub use params::*;
 pub use storage::*;
 pub use transaction::*;
-pub use virtual_table::*;
 
 use crate::hook::Hooks;
 

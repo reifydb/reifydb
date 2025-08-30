@@ -2,16 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	SortKey,
-	interface::{QueryTransaction, VirtualTableDef},
-	value::columnar::Columns,
+	SortKey, interface::VirtualTableDef, value::columnar::Columns,
 };
 
 mod provider;
 pub mod system;
+use reifydb_core::interface::{Params, Transaction, expression::Expression};
 
-pub use provider::*;
-use reifydb_core::interface::{Params, expression::Expression};
+use crate::StandardTransaction;
 
 /// Context passed to virtual table queries with pushdown operations
 pub struct VirtualTableQueryContext {
@@ -29,11 +27,12 @@ pub struct VirtualTableQueryContext {
 
 /// Trait for virtual table instances that can execute queries with pushdown
 /// optimization
-pub trait VirtualTable: Send + Sync {
+pub trait VirtualTable<T: Transaction>: Send + Sync {
 	/// Execute a query with pushdown context
 	fn query(
 		&self,
 		ctx: VirtualTableQueryContext,
+		txn: &mut StandardTransaction<T>,
 	) -> crate::Result<Columns>;
 
 	/// Get the table definition

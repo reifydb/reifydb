@@ -10,8 +10,8 @@ use reifydb_core::{
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, Identity, Params, Query, QueryTransaction,
-		Transaction, VersionedTransaction, WithHooks,
+		ExecuteQuery, Identity, Params, Query, Transaction,
+		VersionedTransaction, WithHooks,
 	},
 };
 
@@ -113,11 +113,13 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 	}
 }
 
-impl<T: Transaction> ExecuteQuery for StandardEngine<T> {
+impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>>
+	for StandardEngine<T>
+{
 	#[inline]
 	fn execute_query(
 		&self,
-		txn: &mut impl QueryTransaction,
+		txn: &mut StandardQueryTransaction<T>,
 		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)

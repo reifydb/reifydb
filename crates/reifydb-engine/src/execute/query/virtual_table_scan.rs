@@ -3,57 +3,25 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{
-	QueryTransaction, Transaction, virtual_table::VirtualTableDef,
-};
+use reifydb_core::interface::Transaction;
 
 use crate::{
-	StandardCommandTransaction,
+	StandardTransaction,
 	columnar::layout::ColumnsLayout,
 	execute::{Batch, ExecutionContext},
-	virtual_table::{
-		VirtualTable, VirtualTableQueryContext, system::Sequences,
-	},
+	table_virtual::{VirtualTable, VirtualTableQueryContext},
 };
 
-/// Enum of all available virtual system table implementations
-pub(crate) enum VirtualSystemTables {
-	Sequences(Sequences),
-	// Future: Tables(TablesTable),
-	// Future: Columns(ColumnsTable),
-}
-
-impl VirtualSystemTables {
-	fn definition(&self) -> &VirtualTableDef {
-		match self {
-			VirtualSystemTables::Sequences(table) => {
-				table.definition()
-			}
-		}
-	}
-
-	fn query<T: QueryTransaction>(
-		&self,
-		ctx: VirtualTableQueryContext,
-	) -> crate::Result<crate::columnar::Columns> {
-		match self {
-			VirtualSystemTables::Sequences(table) => {
-				table.query(ctx)
-			}
-		}
-	}
-}
-
-pub(crate) struct VirtualScanNode {
-	virtual_table: Box<dyn VirtualTable>,
+pub(crate) struct VirtualScanNode<T: Transaction> {
+	virtual_table: Box<dyn VirtualTable<T>>,
 	context: Arc<ExecutionContext>,
 	layout: ColumnsLayout,
 	exhausted: bool,
 }
 
-impl VirtualScanNode {
+impl<T: Transaction> VirtualScanNode<T> {
 	pub fn new(
-		virtual_table: Box<dyn VirtualTable>,
+		virtual_table: Box<dyn VirtualTable<T>>,
 		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
 		let def = virtual_table.definition();
@@ -81,11 +49,11 @@ impl VirtualScanNode {
 	}
 }
 
-impl VirtualScanNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> VirtualScanNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		_ctx: &ExecutionContext,
-		rx: &mut StandardCommandTransaction<T>,
+		rx: &mut StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
@@ -102,7 +70,7 @@ impl VirtualScanNode {
 		};
 
 		// Execute the virtual table query
-		let columns = self.virtual_table.query(query_ctx)?;
+		let columns = self.virtual_table.query(query_ctx, rx)?;
 
 		self.exhausted = true; // For now, virtual tables return all data at once
 

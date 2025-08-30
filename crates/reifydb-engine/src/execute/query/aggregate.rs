@@ -8,13 +8,10 @@ use std::{
 
 use reifydb_core::{
 	OwnedFragment, Value,
-	interface::{
-		QueryTransaction, Transaction, evaluate::expression::Expression,
-	},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
-	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::ColumnsLayout,
@@ -35,17 +32,17 @@ enum Projection {
 	},
 }
 
-pub(crate) struct AggregateNode {
-	input: Box<ExecutionPlan>,
+pub(crate) struct AggregateNode<T: Transaction> {
+	input: Box<ExecutionPlan<T>>,
 	by: Vec<Expression>,
 	map: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 }
 
-impl AggregateNode {
+impl<T: Transaction> AggregateNode<T> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
+		input: Box<ExecutionPlan<T>>,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 		context: Arc<ExecutionContext>,
@@ -60,11 +57,11 @@ impl AggregateNode {
 	}
 }
 
-impl AggregateNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> AggregateNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut StandardCommandTransaction<T>,
+		rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

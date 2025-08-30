@@ -3,11 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{QueryTransaction, SchemaId, Transaction};
+use reifydb_core::interface::{SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::{
-	StandardCommandTransaction,
 	execute::{
 		ExecutionContext, ExecutionPlan,
 		query::{
@@ -26,14 +25,14 @@ use crate::{
 			virtual_table_scan::VirtualScanNode,
 		},
 	},
-	virtual_table::{VirtualTable, system::Sequences},
+	table_virtual::{VirtualTable, system::Sequences},
 };
 
 pub(crate) fn compile<T: Transaction>(
 	plan: PhysicalPlan,
-	rx: &mut StandardCommandTransaction<T>,
+	rx: &mut crate::StandardTransaction<T>,
 	context: Arc<ExecutionContext>,
-) -> ExecutionPlan {
+) -> ExecutionPlan<T> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
@@ -171,18 +170,18 @@ pub(crate) fn compile<T: Transaction>(
 
 		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
 			schema,
-			virtual_table,
+			table,
 		}) => {
 			// Create the appropriate virtual table implementation
-			let virtual_table_impl: Box<dyn VirtualTable> =
+			let virtual_table_impl: Box<dyn VirtualTable<T>> =
 				if schema.id == SchemaId(1)
-					&& virtual_table.name == "sequences"
+					&& table.name == "sequences"
 				{
-					Box::new(Sequences::new(virtual_table))
+					Box::new(Sequences::new(table))
 				} else {
 					panic!(
 						"Unknown virtual table type: {}",
-						virtual_table.name
+						table.name
 					)
 				};
 

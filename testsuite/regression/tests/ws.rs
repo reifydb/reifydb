@@ -14,7 +14,7 @@ use reifydb::{
 		},
 		retry,
 	},
-	engine::StandardTransaction,
+	engine::EngineTransaction,
 	memory,
 	network::ws::{client::WsClient, server::WsConfig},
 	optimistic,
@@ -29,7 +29,7 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	instance: Option<Database<StandardTransaction<VT, UT, C>>>,
+	instance: Option<Database<EngineTransaction<VT, UT, C>>>,
 	client: Option<WsClient>,
 	runtime: Option<Runtime>,
 	shutdown: Option<oneshot::Sender<()>>,

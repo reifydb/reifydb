@@ -3,13 +3,13 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::catalog::SystemSequenceId,
+	EncodedKey, EncodedKeyRange, interface::catalog::SequenceId,
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SystemSequenceKey {
-	pub sequence: SystemSequenceId,
+	pub sequence: SequenceId,
 }
 
 const VERSION: u8 = 1;
@@ -77,12 +77,12 @@ impl SystemSequenceKey {
 #[cfg(test)]
 mod tests {
 	use super::{EncodableKey, SystemSequenceKey};
-	use crate::interface::catalog::SystemSequenceId;
+	use crate::interface::catalog::SequenceId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = SystemSequenceKey {
-			sequence: SystemSequenceId(0xABCD),
+			sequence: SequenceId(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![

@@ -6,7 +6,7 @@
 //! These type aliases provide non-generic post types that are ready to use
 //! without having to specify the transaction types.
 
-use reifydb_engine::{StandardCdcTransaction, StandardTransaction};
+use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
 use reifydb_storage::{memory::Memory, sqlite::Sqlite};
 use reifydb_transaction::{
 	mvcc::transaction::{
@@ -27,7 +27,7 @@ pub type MemoryCdc = StandardCdcTransaction<Memory>;
 pub type SqliteCdc = StandardCdcTransaction<Sqlite>;
 
 /// In-memory with serializable isolation
-pub type MemorySerializableTransaction = StandardTransaction<
+pub type MemorySerializableTransaction = EngineTransaction<
 	Serializable<Memory, UnversionedMemory>,
 	UnversionedMemory,
 	MemoryCdc,
@@ -37,7 +37,7 @@ pub type MemorySerializableTransaction = StandardTransaction<
 pub type MemoryDatabaseSerializable = Database<MemorySerializableTransaction>;
 
 /// In-memory with optimistic concurrency control
-pub type MemoryOptimisticTransaction = StandardTransaction<
+pub type MemoryOptimisticTransaction = EngineTransaction<
 	Optimistic<Memory, UnversionedMemory>,
 	UnversionedMemory,
 	MemoryCdc,
@@ -47,7 +47,7 @@ pub type MemoryOptimisticTransaction = StandardTransaction<
 pub type MemoryDatabaseOptimistic = Database<MemoryOptimisticTransaction>;
 
 /// SQLite with serializable isolation
-pub type SqliteSerializableTransaction = StandardTransaction<
+pub type SqliteSerializableTransaction = EngineTransaction<
 	Serializable<Sqlite, UnversionedSqlite>,
 	UnversionedSqlite,
 	SqliteCdc,
@@ -57,7 +57,7 @@ pub type SqliteSerializableTransaction = StandardTransaction<
 pub type SqliteDatabaseSerializable = Database<SqliteSerializableTransaction>;
 
 /// SQLite with optimistic concurrency control
-pub type SqliteOptimisticTransaction = StandardTransaction<
+pub type SqliteOptimisticTransaction = EngineTransaction<
 	Optimistic<Sqlite, UnversionedSqlite>,
 	UnversionedSqlite,
 	SqliteCdc,

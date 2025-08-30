@@ -3,13 +3,10 @@
 
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{
-		QueryTransaction, Transaction, evaluate::expression::Expression,
-	},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
-	StandardCommandTransaction,
 	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
@@ -18,15 +15,15 @@ use crate::{
 	},
 };
 
-pub(crate) struct ExtendNode {
-	input: Box<ExecutionPlan>,
+pub(crate) struct ExtendNode<T: Transaction> {
+	input: Box<ExecutionPlan<T>>,
 	expressions: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl ExtendNode {
+impl<T: Transaction> ExtendNode<T> {
 	pub fn new(
-		input: Box<ExecutionPlan>,
+		input: Box<ExecutionPlan<T>>,
 		expressions: Vec<Expression>,
 	) -> Self {
 		Self {
@@ -87,11 +84,11 @@ impl ExtendNode {
 	}
 }
 
-impl ExtendNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> ExtendNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut StandardCommandTransaction<T>,
+		rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
@@ -158,25 +155,27 @@ impl ExtendNode {
 	}
 }
 
-pub(crate) struct ExtendWithoutInputNode {
+pub(crate) struct ExtendWithoutInputNode<T: Transaction> {
 	expressions: Vec<Expression>,
 	layout: Option<ColumnsLayout>,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl ExtendWithoutInputNode {
+impl<T: Transaction> ExtendWithoutInputNode<T> {
 	pub fn new(expressions: Vec<Expression>) -> Self {
 		Self {
 			expressions,
 			layout: None,
+			_phantom: std::marker::PhantomData,
 		}
 	}
 }
 
-impl ExtendWithoutInputNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> ExtendWithoutInputNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		_rx: &mut StandardCommandTransaction<T>,
+		_rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

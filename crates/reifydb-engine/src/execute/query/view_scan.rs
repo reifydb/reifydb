@@ -9,15 +9,14 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, QueryTransaction, RowKey,
-		RowKeyRange, Transaction, VersionedQueryTransaction, ViewDef,
+		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange,
+		Transaction, VersionedQueryTransaction, ViewDef,
 	},
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::{
-	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
@@ -25,16 +24,17 @@ use crate::{
 	execute::{Batch, ExecutionContext},
 };
 
-pub(crate) struct ViewScanNode {
+pub(crate) struct ViewScanNode<T: Transaction> {
 	view: ViewDef,
 	context: Arc<ExecutionContext>,
 	layout: ColumnsLayout,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl ViewScanNode {
+impl<T: Transaction> ViewScanNode<T> {
 	pub fn new(
 		view: ViewDef,
 		context: Arc<ExecutionContext>,
@@ -62,15 +62,16 @@ impl ViewScanNode {
 			row_layout,
 			last_key: None,
 			exhausted: false,
+			_phantom: std::marker::PhantomData,
 		})
 	}
 }
 
-impl ViewScanNode {
-	pub(crate) fn next<T: Transaction>(
+impl<T: Transaction> ViewScanNode<T> {
+	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut StandardCommandTransaction<T>,
+		rx: &mut crate::StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);

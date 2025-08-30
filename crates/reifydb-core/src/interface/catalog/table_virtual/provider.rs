@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::{
 	Result,
-	interface::virtual_table::{VirtualTableDef, VirtualTableId},
+	interface::catalog::table_virtual::{VirtualTableDef, VirtualTableId},
 };
 
 /// Trait for virtual table instances that can execute queries
