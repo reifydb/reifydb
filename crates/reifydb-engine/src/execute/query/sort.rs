@@ -6,11 +6,12 @@ use std::cmp::Ordering::Equal;
 use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
-	interface::QueryTransaction,
+	interface::{QueryTransaction, Transaction},
 	result::error::diagnostic::query,
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{Columns, layout::ColumnsLayout},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
@@ -30,10 +31,10 @@ impl SortNode {
 }
 
 impl SortNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		let mut columns_opt: Option<Columns> = None;
 

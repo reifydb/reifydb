@@ -10,13 +10,14 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, QueryTransaction, RowKey,
-		RowKeyRange, TableDef,
+		RowKeyRange, TableDef, Transaction, VersionedQueryTransaction,
 	},
 	row::EncodedRowLayout,
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
@@ -66,10 +67,10 @@ impl TableScanNode {
 }
 
 impl TableScanNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);

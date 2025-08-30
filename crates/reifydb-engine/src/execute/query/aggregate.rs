@@ -8,10 +8,13 @@ use std::{
 
 use reifydb_core::{
 	OwnedFragment, Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{
+		QueryTransaction, Transaction, evaluate::expression::Expression,
+	},
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::ColumnsLayout,
@@ -58,10 +61,10 @@ impl AggregateNode {
 }
 
 impl AggregateNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

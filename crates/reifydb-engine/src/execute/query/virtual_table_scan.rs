@@ -4,10 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::{
-	QueryTransaction, virtual_table::VirtualTableDef,
+	QueryTransaction, Transaction, virtual_table::VirtualTableDef,
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::layout::ColumnsLayout,
 	execute::{Batch, ExecutionContext},
 	virtual_table::{
@@ -81,10 +82,10 @@ impl VirtualScanNode {
 }
 
 impl VirtualScanNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		_ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);

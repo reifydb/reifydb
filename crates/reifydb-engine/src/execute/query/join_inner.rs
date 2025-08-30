@@ -3,10 +3,13 @@
 
 use reifydb_core::{
 	Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{
+		QueryTransaction, Transaction, evaluate::expression::Expression,
+	},
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
@@ -36,10 +39,10 @@ impl InnerJoinNode {
 		}
 	}
 
-	fn load_and_merge_all(
+	fn load_and_merge_all<T: Transaction>(
 		node: &mut Box<ExecutionPlan>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -60,10 +63,10 @@ impl InnerJoinNode {
 }
 
 impl InnerJoinNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

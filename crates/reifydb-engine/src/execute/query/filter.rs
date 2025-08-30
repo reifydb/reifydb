@@ -3,10 +3,13 @@
 
 use reifydb_core::{
 	BitVec,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{
+		QueryTransaction, Transaction, evaluate::expression::Expression,
+	},
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{ColumnData, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan},
@@ -30,10 +33,10 @@ impl FilterNode {
 }
 
 impl FilterNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,

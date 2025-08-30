@@ -3,10 +3,13 @@
 
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{
+		QueryTransaction, Transaction, evaluate::expression::Expression,
+	},
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
@@ -85,10 +88,10 @@ impl ExtendNode {
 }
 
 impl ExtendNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
@@ -170,10 +173,10 @@ impl ExtendWithoutInputNode {
 }
 
 impl ExtendWithoutInputNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		_rx: &mut impl QueryTransaction,
+		_rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

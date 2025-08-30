@@ -76,10 +76,10 @@ pub(crate) enum ExecutionPlan {
 }
 
 impl ExecutionPlan {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(ctx, rx),
@@ -200,7 +200,7 @@ impl ExecuteQuery for Executor {
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
-				let er = self.execute_query_plan(
+				let er = self.execute_query_plan_generic(
 					txn,
 					plan,
 					qry.params.clone(),
@@ -216,9 +216,45 @@ impl ExecuteQuery for Executor {
 impl<T: Transaction> Execute<StandardCommandTransaction<T>> for Executor {}
 
 impl Executor {
-	pub(crate) fn execute_query_plan(
+	// Generic version for ExecuteQuery trait
+	pub(crate) fn execute_query_plan_generic(
 		&self,
 		rx: &mut impl QueryTransaction,
+		plan: PhysicalPlan,
+		params: Params,
+	) -> crate::Result<Columns> {
+		match plan {
+			// Query
+			PhysicalPlan::Aggregate(_)
+			| PhysicalPlan::Filter(_)
+			| PhysicalPlan::JoinInner(_)
+			| PhysicalPlan::JoinLeft(_)
+			| PhysicalPlan::JoinNatural(_)
+			| PhysicalPlan::Take(_)
+			| PhysicalPlan::Sort(_)
+			| PhysicalPlan::Map(_)
+			| PhysicalPlan::Extend(_)
+			| PhysicalPlan::InlineData(_)
+			| PhysicalPlan::Delete(_)
+			| PhysicalPlan::Insert(_)
+			| PhysicalPlan::Update(_)
+			| PhysicalPlan::TableScan(_)
+			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::VirtualScan(_) => self.query_generic(rx, plan, params),
+
+			PhysicalPlan::AlterSequence(_)
+			| PhysicalPlan::CreateDeferredView(_)
+			| PhysicalPlan::CreateTransactionalView(_)
+			| PhysicalPlan::CreateSchema(_)
+			| PhysicalPlan::CreateTable(_)
+			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
+		}
+	}
+
+	// Concrete version for StandardCommandTransaction
+	pub(crate) fn execute_query_plan<T: Transaction>(
+		&self,
+		rx: &mut StandardCommandTransaction<T>,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -299,9 +335,9 @@ impl Executor {
 		}
 	}
 
-	fn query(
+	fn query<T: Transaction>(
 		&self,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -373,6 +409,25 @@ impl Executor {
 
 					Ok(Columns::new(columns))
 				}
+			}
+		}
+	}
+
+	// Generic query method for trait objects
+	fn query_generic(
+		&self,
+		rx: &mut impl QueryTransaction,
+		plan: PhysicalPlan,
+		params: Params,
+	) -> crate::Result<Columns> {
+		match plan {
+			_ => {
+				// For now, we need to implement this using the
+				// generic interface This is a temporary
+				// solution until we fully refactor
+				unimplemented!(
+					"Generic query execution needs to be implemented with trait objects"
+				)
 			}
 		}
 	}

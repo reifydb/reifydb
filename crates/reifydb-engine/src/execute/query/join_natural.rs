@@ -3,9 +3,13 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::{JoinType, Value, interface::QueryTransaction};
+use reifydb_core::{
+	JoinType, Value,
+	interface::{QueryTransaction, Transaction},
+};
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
@@ -34,10 +38,10 @@ impl NaturalJoinNode {
 		}
 	}
 
-	fn load_and_merge_all(
+	fn load_and_merge_all<T: Transaction>(
 		node: &mut Box<ExecutionPlan>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -81,10 +85,10 @@ impl NaturalJoinNode {
 }
 
 impl NaturalJoinNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

@@ -9,12 +9,13 @@ use std::{
 use reifydb_core::{
 	ColumnDescriptor, Fragment, Type, Value,
 	interface::{
-		QueryTransaction, TableDef,
+		QueryTransaction, TableDef, Transaction,
 		evaluate::expression::AliasExpression,
 	},
 };
 
 use crate::{
+	StandardCommandTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
@@ -65,10 +66,10 @@ impl InlineDataNode {
 }
 
 impl InlineDataNode {
-	pub(crate) fn next(
+	pub(crate) fn next<T: Transaction>(
 		&mut self,
 		_ctx: &ExecutionContext,
-		_rx: &mut impl QueryTransaction,
+		_rx: &mut StandardCommandTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.executed {
 			return Ok(None);

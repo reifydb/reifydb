@@ -7,6 +7,7 @@ use reifydb_core::interface::{QueryTransaction, SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::{
+	StandardCommandTransaction,
 	execute::{
 		ExecutionContext, ExecutionPlan,
 		query::{
@@ -28,9 +29,9 @@ use crate::{
 	virtual_table::{VirtualTable, system::Sequences},
 };
 
-pub(crate) fn compile(
+pub(crate) fn compile<T: Transaction>(
 	plan: PhysicalPlan,
-	rx: &mut impl QueryTransaction,
+	rx: &mut StandardCommandTransaction<T>,
 	context: Arc<ExecutionContext>,
 ) -> ExecutionPlan {
 	match plan {
