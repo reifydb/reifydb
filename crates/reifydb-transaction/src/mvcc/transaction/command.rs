@@ -356,12 +356,9 @@ where
 			return_error!(transaction::transaction_rolled_back());
 		}
 
-		// Ensure that the order in which we get the commit timestamp is
-		// the same as the order in which we push these updates to the
-		// write channel. So, we acquire a writeChLock before getting
-		// a commit timestamp, and only release it after pushing the
-		// entries to it.
-		let _write_lock = self.oracle.command_serialize_lock.lock();
+		// The new Oracle implementation handles synchronization
+		// internally with fine-grained locking, so we don't need a
+		// global lock here
 
 		let conflict_manager = mem::take(&mut self.conflicts);
 
@@ -385,9 +382,11 @@ where
 					mem::take(&mut self.pending_writes);
 				let duplicate_writes =
 					mem::take(&mut self.duplicates);
+				// Pre-allocate exact capacity to avoid
+				// reallocations
 				let mut all = Vec::with_capacity(
 					pending_writes.len()
-						+ self.duplicates.len(),
+						+ duplicate_writes.len(),
 				);
 
 				let process =

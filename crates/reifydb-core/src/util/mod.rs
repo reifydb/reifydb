@@ -3,6 +3,7 @@
 
 pub mod base64;
 pub mod bitvec;
+pub mod bloom;
 pub mod clock;
 pub mod colored;
 pub mod cowvec;

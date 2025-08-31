@@ -16,7 +16,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 };
 
-const BLOCK_SIZE: u64 = 1024;
+const BLOCK_SIZE: u64 = 100_000;
 
 pub trait VersionProvider {
 	fn next(&self) -> crate::Result<Version>;
