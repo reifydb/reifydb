@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Value,
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::{Params, Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 		layout::ColumnsLayout,
 	},
 	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct InnerJoinNode<'a, T: Transaction> {
@@ -21,6 +21,8 @@ pub(crate) struct InnerJoinNode<'a, T: Transaction> {
 	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
+	params: Params,
+	initialized: bool,
 }
 
 impl<'a, T: Transaction> InnerJoinNode<'a, T> {
@@ -34,19 +36,20 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 			right,
 			on,
 			layout: None,
+			params: Params::empty(),
+			initialized: false,
 		}
 	}
 
 	fn load_and_merge_all(
 		node: &mut Box<ExecutionPlan<'a, T>>,
-		ctx: &ExecutionContext,
 		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
 		while let Some(Batch {
 			columns,
-		}) = node.next(ctx, rx)?
+		}) = node.next(rx)?
 		{
 			if let Some(mut acc) = result.take() {
 				acc.append_columns(columns)?;
@@ -60,20 +63,31 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> InnerJoinNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<'a, T>,
+	) -> crate::Result<()> {
+		self.params = ctx.params.clone();
+		self.left.initialize(rx, ctx)?;
+		self.right.initialize(rx, ctx)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
 		}
 
 		let left_columns =
-			Self::load_and_merge_all(&mut self.left, ctx, rx)?;
+			Self::load_and_merge_all(&mut self.left, rx)?;
 		let right_columns =
-			Self::load_and_merge_all(&mut self.right, ctx, rx)?;
+			Self::load_and_merge_all(&mut self.right, rx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
@@ -122,7 +136,7 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
                     ),
                     row_count: 1,
                     take: Some(1),
-                    params: &ctx.params,
+                    params: &self.params,
                 };
 
 				let all_true = self.on.iter().fold(
@@ -186,7 +200,7 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

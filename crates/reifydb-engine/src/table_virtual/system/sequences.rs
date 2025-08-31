@@ -6,25 +6,25 @@ use std::marker::PhantomData;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	Result,
-	interface::{Transaction, VirtualTableDef},
+	interface::{TableVirtualDef, Transaction},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
 
 use crate::{
 	StandardTransaction,
 	execute::Batch,
-	table_virtual::{VirtualTable, VirtualTableContext},
+	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
 /// Virtual table that exposes system sequence information
 pub struct Sequences<T: Transaction> {
-	definition: VirtualTableDef,
+	definition: TableVirtualDef,
 	exhausted: bool,
 	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> Sequences<T> {
-	pub fn new(definition: VirtualTableDef) -> Self {
+	pub fn new(definition: TableVirtualDef) -> Self {
 		Self {
 			definition,
 			exhausted: false,
@@ -33,11 +33,11 @@ impl<T: Transaction> Sequences<T> {
 	}
 }
 
-impl<T: Transaction> VirtualTable<T> for Sequences<T> {
-	fn initialize<'a>(
+impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
+	fn initialize(
 		&mut self,
 		_txn: &mut StandardTransaction<'a, T>,
-		_ctx: VirtualTableContext<'a>,
+		_ctx: TableVirtualContext<'a>,
 	) -> Result<()> {
 		// Store context (we need to handle lifetime properly)
 		// For now, we don't store the context since Sequences doesn't
@@ -50,7 +50,7 @@ impl<T: Transaction> VirtualTable<T> for Sequences<T> {
 		Ok(())
 	}
 
-	fn next<'a>(
+	fn next(
 		&mut self,
 		txn: &mut StandardTransaction<'a, T>,
 	) -> Result<Option<Batch>> {
@@ -105,7 +105,7 @@ impl<T: Transaction> VirtualTable<T> for Sequences<T> {
 		}))
 	}
 
-	fn definition(&self) -> &VirtualTableDef {
+	fn definition(&self) -> &TableVirtualDef {
 		&self.definition
 	}
 }

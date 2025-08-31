@@ -26,7 +26,7 @@ use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	columnar::{ColumnData, Columns},
 	execute::{
-		Batch, ExecutionContext, Executor,
+		Batch, ExecutionContext, Executor, QueryNode,
 		mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
@@ -114,9 +114,12 @@ impl Executor {
 				Arc::new(context.clone()),
 			);
 
+			// Initialize the node before execution
+			input_node.initialize(&mut wrapped_txn, &context)?;
+
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&context, &mut wrapped_txn)?
+			}) = input_node.next(&mut wrapped_txn)?
 			{
 				// Find the RowNumber column - return error if
 				// not found

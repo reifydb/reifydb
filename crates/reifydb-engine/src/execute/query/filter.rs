@@ -3,18 +3,21 @@
 
 use reifydb_core::{
 	BitVec,
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::{Params, Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
+	StandardTransaction,
 	columnar::{ColumnData, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct FilterNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
+	params: Params,
+	initialized: bool,
 }
 
 impl<'a, T: Transaction> FilterNode<'a, T> {
@@ -25,19 +28,31 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 		Self {
 			input,
 			expressions,
+			params: Params::empty(),
+			initialized: false,
 		}
 	}
 }
 
-impl<'a, T: Transaction> FilterNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<'a, T>,
+	) -> crate::Result<()> {
+		self.params = ctx.params.clone();
+		self.input.initialize(rx, ctx)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			let mut row_count = columns.row_count();
 
@@ -56,7 +71,7 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 					columns: columns.clone(),
 					row_count,
 					take: None,
-					params: &ctx.params,
+					params: &self.params,
 				};
 
 				// Evaluate the filter expression
@@ -94,7 +109,7 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 		Ok(None)
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

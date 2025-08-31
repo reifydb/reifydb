@@ -21,12 +21,13 @@ use crate::{
 		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
-	execute::{Batch, ExecutionContext},
+	execute::{Batch, ExecutionContext, QueryNode},
 };
 
 pub(crate) struct TableScanNode<T: Transaction> {
 	table: TableDef,
-	context: Arc<ExecutionContext>,
+	batch_size: usize,
+	preserve_row_numbers: bool,
 	layout: ColumnsLayout,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
@@ -57,7 +58,8 @@ impl<T: Transaction> TableScanNode<T> {
 
 		Ok(Self {
 			table,
-			context,
+			batch_size: context.batch_size,
+			preserve_row_numbers: context.preserve_row_numbers,
 			layout,
 			row_layout,
 			last_key: None,
@@ -67,17 +69,25 @@ impl<T: Transaction> TableScanNode<T> {
 	}
 }
 
-impl<T: Transaction> TableScanNode<T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
+	fn initialize(
 		&mut self,
-		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		_rx: &mut crate::StandardTransaction<'a, T>,
+		_ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		// TableScanNode doesn't need special initialization
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let batch_size = self.context.batch_size;
+		let batch_size = self.batch_size;
 		let range = RowKeyRange {
 			store: self.table.id.into(),
 		};
@@ -126,7 +136,7 @@ impl<T: Transaction> TableScanNode<T> {
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 		// Add the RowNumber column to the columns if requested
-		if ctx.preserve_row_numbers {
+		if self.preserve_row_numbers {
 			let row_number_column =
 				Column::SourceQualified(SourceQualified {
 					source: self.table.name.clone(),
@@ -144,7 +154,7 @@ impl<T: Transaction> TableScanNode<T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		Some(self.layout.clone())
 	}
 }

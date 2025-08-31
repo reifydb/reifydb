@@ -3,14 +3,14 @@
 
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::{Params, Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
-		Batch, ExecutionContext, ExecutionPlan,
+		Batch, ExecutionContext, ExecutionPlan, QueryNode,
 		query::layout::derive_columns_column_layout,
 	},
 };
@@ -19,6 +19,10 @@ pub(crate) struct ExtendNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
+	params: Params,
+	table: Option<reifydb_core::interface::TableDef>,
+	preserve_row_numbers: bool,
+	initialized: bool,
 }
 
 impl<'a, T: Transaction> ExtendNode<'a, T> {
@@ -30,29 +34,32 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 			input,
 			expressions,
 			layout: None,
+			params: Params::empty(),
+			table: None,
+			preserve_row_numbers: false,
+			initialized: false,
 		}
 	}
 
-	fn create_evaluation_context<'b>(
+	fn create_evaluation_context(
 		&self,
 		expr: &Expression,
-		ctx: &'b ExecutionContext,
 		columns: Columns,
 		row_count: usize,
-	) -> EvaluationContext<'b> {
+	) -> EvaluationContext {
 		let mut result = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
 			columns,
 			row_count,
 			take: None,
-			params: &ctx.params,
+			params: &self.params,
 		};
 
 		// Check if this is an alias expression and we have table
 		// information
 		if let (Expression::Alias(alias_expr), Some(table)) =
-			(expr, &ctx.table)
+			(expr, &self.table)
 		{
 			let alias_name = alias_expr.alias.name();
 
@@ -84,15 +91,27 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> ExtendNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		self.params = ctx.params.clone();
+		self.table = ctx.table.clone();
+		self.preserve_row_numbers = ctx.preserve_row_numbers;
+		self.input.initialize(rx, ctx)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			// Start with all existing columns (EXTEND preserves
 			// everything)
@@ -105,7 +124,6 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 				let column = evaluate(
 					&self.create_evaluation_context(
 						expr,
-						ctx,
 						Columns::new(
 							new_columns.clone(),
 						),
@@ -128,7 +146,7 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 					// expression layout
 					let new_expressions_layout = derive_columns_column_layout(
 						&self.expressions,
-						ctx.preserve_row_numbers,
+						self.preserve_row_numbers,
 					);
 					input_layout.extend(
 						&new_expressions_layout,
@@ -136,7 +154,7 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 				} else {
 					derive_columns_column_layout(
 						&self.expressions,
-						ctx.preserve_row_numbers,
+						self.preserve_row_numbers,
 					)
 				};
 
@@ -150,7 +168,7 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 		Ok(None)
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone().or(self.input.layout())
 	}
 }
@@ -158,6 +176,9 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 pub(crate) struct ExtendWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
+	params: Params,
+	preserve_row_numbers: bool,
+	initialized: bool,
 	_phantom: std::marker::PhantomData<T>,
 }
 
@@ -166,15 +187,28 @@ impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 		Self {
 			expressions,
 			layout: None,
+			params: Params::empty(),
+			preserve_row_numbers: false,
+			initialized: false,
 			_phantom: std::marker::PhantomData,
 		}
 	}
 }
 
-impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
+	fn initialize(
 		&mut self,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		self.params = ctx.params.clone();
+		self.preserve_row_numbers = ctx.preserve_row_numbers;
+		self.initialized = true;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
@@ -194,7 +228,7 @@ impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 				columns: columns.clone(),
 				row_count: 1, // Generate single row
 				take: None,
-				params: &ctx.params,
+				params: &self.params,
 			};
 
 			let column = evaluate(&evaluation_context, expr)?;
@@ -203,7 +237,7 @@ impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 
 		let layout = derive_columns_column_layout(
 			&self.expressions,
-			ctx.preserve_row_numbers,
+			self.preserve_row_numbers,
 		);
 
 		self.layout = Some(layout);
@@ -213,7 +247,7 @@ impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

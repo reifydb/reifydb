@@ -6,11 +6,12 @@ use std::collections::HashSet;
 use reifydb_core::{JoinType, Value, interface::Transaction};
 
 use crate::{
+	StandardTransaction,
 	columnar::{
 		Column, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct NaturalJoinNode<'a, T: Transaction> {
@@ -18,6 +19,7 @@ pub(crate) struct NaturalJoinNode<'a, T: Transaction> {
 	right: Box<ExecutionPlan<'a, T>>,
 	join_type: JoinType,
 	layout: Option<ColumnsLayout>,
+	initialized: bool,
 }
 
 impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
@@ -31,19 +33,19 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 			right,
 			join_type,
 			layout: None,
+			initialized: false,
 		}
 	}
 
 	fn load_and_merge_all<'b>(
 		node: &mut Box<ExecutionPlan<'b, T>>,
-		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<'b, T>,
+		rx: &mut StandardTransaction<'b, T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
 		while let Some(Batch {
 			columns,
-		}) = node.next(ctx, rx)?
+		}) = node.next(rx)?
 		{
 			if let Some(mut acc) = result.take() {
 				acc.append_columns(columns)?;
@@ -80,20 +82,30 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<'a, T>,
+	) -> crate::Result<()> {
+		self.left.initialize(rx, ctx)?;
+		self.right.initialize(rx, ctx)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
 		}
 
 		let left_columns =
-			Self::load_and_merge_all(&mut self.left, ctx, rx)?;
+			Self::load_and_merge_all(&mut self.left, rx)?;
 		let right_columns =
-			Self::load_and_merge_all(&mut self.right, ctx, rx)?;
+			Self::load_and_merge_all(&mut self.right, rx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
@@ -230,7 +242,7 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

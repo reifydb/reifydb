@@ -15,9 +15,9 @@ use query::{
 	map::{MapNode, MapWithoutInputNode},
 	sort::SortNode,
 	table_scan::TableScanNode,
+	table_virtual_scan::VirtualScanNode,
 	take::TakeNode,
 	view_scan::ViewScanNode,
-	virtual_table_scan::VirtualScanNode,
 };
 use reifydb_core::{
 	Frame,
@@ -44,6 +44,28 @@ use crate::{
 mod catalog;
 mod mutate;
 mod query;
+
+/// Unified trait for query execution nodes following the volcano iterator
+/// pattern
+pub(crate) trait QueryNode<'a, T: Transaction> {
+	/// Initialize the node with execution context
+	/// Called once before iteration begins
+	fn initialize(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()>;
+
+	/// Get the next batch of results (volcano iterator pattern)
+	/// Returns None when exhausted
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
+	) -> crate::Result<Option<Batch>>;
+
+	/// Get the layout of columns this node produces
+	fn layout(&self) -> Option<ColumnsLayout>;
+}
 
 #[derive(Clone)]
 pub struct ExecutionContext {
@@ -74,39 +96,102 @@ pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 	TableScan(TableScanNode<T>),
 	Take(TakeNode<'a, T>),
 	ViewScan(ViewScanNode<T>),
-	VirtualScan(VirtualScanNode<T>),
+	VirtualScan(VirtualScanNode<'a, T>),
 }
 
-impl<'a, T: Transaction> ExecutionPlan<'a, T> {
-	pub(crate) fn next(
+// Implement QueryNode for Box<ExecutionPlan> to allow chaining
+impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
+	fn initialize(
 		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		(**self).initialize(rx, ctx)
+	}
+
+	fn next(
+		&mut self,
 		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		(**self).next(rx)
+	}
+
+	fn layout(&self) -> Option<ColumnsLayout> {
+		(**self).layout()
+	}
+}
+
+impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
+	fn initialize(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		match self {
-			ExecutionPlan::Aggregate(node) => node.next(ctx, rx),
-			ExecutionPlan::Filter(node) => node.next(ctx, rx),
-			ExecutionPlan::InlineData(node) => node.next(ctx, rx),
-			ExecutionPlan::InnerJoin(node) => node.next(ctx, rx),
-			ExecutionPlan::LeftJoin(node) => node.next(ctx, rx),
-			ExecutionPlan::NaturalJoin(node) => node.next(ctx, rx),
-			ExecutionPlan::Map(node) => node.next(ctx, rx),
+			ExecutionPlan::Aggregate(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
+			ExecutionPlan::InlineData(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::InnerJoin(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::LeftJoin(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::NaturalJoin(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::Map(node) => node.initialize(rx, ctx),
 			ExecutionPlan::MapWithoutInput(node) => {
-				node.next(ctx, rx)
+				node.initialize(rx, ctx)
 			}
-			ExecutionPlan::Extend(node) => node.next(ctx, rx),
+			ExecutionPlan::Extend(node) => node.initialize(rx, ctx),
 			ExecutionPlan::ExtendWithoutInput(node) => {
-				node.next(ctx, rx)
+				node.initialize(rx, ctx)
 			}
-			ExecutionPlan::Sort(node) => node.next(ctx, rx),
-			ExecutionPlan::TableScan(node) => node.next(ctx, rx),
-			ExecutionPlan::Take(node) => node.next(ctx, rx),
-			ExecutionPlan::ViewScan(node) => node.next(ctx, rx),
-			ExecutionPlan::VirtualScan(node) => node.next(ctx, rx),
+			ExecutionPlan::Sort(node) => node.initialize(rx, ctx),
+			ExecutionPlan::TableScan(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::Take(node) => node.initialize(rx, ctx),
+			ExecutionPlan::ViewScan(node) => {
+				node.initialize(rx, ctx)
+			}
+			ExecutionPlan::VirtualScan(node) => {
+				node.initialize(rx, ctx)
+			}
 		}
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
+	) -> crate::Result<Option<Batch>> {
+		match self {
+			ExecutionPlan::Aggregate(node) => node.next(rx),
+			ExecutionPlan::Filter(node) => node.next(rx),
+			ExecutionPlan::InlineData(node) => node.next(rx),
+			ExecutionPlan::InnerJoin(node) => node.next(rx),
+			ExecutionPlan::LeftJoin(node) => node.next(rx),
+			ExecutionPlan::NaturalJoin(node) => node.next(rx),
+			ExecutionPlan::Map(node) => node.next(rx),
+			ExecutionPlan::MapWithoutInput(node) => node.next(rx),
+			ExecutionPlan::Extend(node) => node.next(rx),
+			ExecutionPlan::ExtendWithoutInput(node) => {
+				node.next(rx)
+			}
+			ExecutionPlan::Sort(node) => node.next(rx),
+			ExecutionPlan::TableScan(node) => node.next(rx),
+			ExecutionPlan::Take(node) => node.next(rx),
+			ExecutionPlan::ViewScan(node) => node.next(rx),
+			ExecutionPlan::VirtualScan(node) => node.next(rx),
+		}
+	}
+
+	fn layout(&self) -> Option<ColumnsLayout> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.layout(),
 			ExecutionPlan::Filter(node) => node.layout(),
@@ -337,11 +422,15 @@ impl Executor {
 				});
 				let mut node =
 					compile(plan, rx, context.clone());
+
+				// Initialize the node before execution
+				node.initialize(rx, &context)?;
+
 				let mut result: Option<Columns> = None;
 
 				while let Some(Batch {
 					columns,
-				}) = node.next(&context, rx)?
+				}) = node.next(rx)?
 				{
 					if let Some(mut result_columns) =
 						result.take()

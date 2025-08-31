@@ -17,7 +17,7 @@ use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	columnar::Columns,
 	execute::{
-		Batch, ExecutionContext, Executor,
+		Batch, ExecutionContext, Executor, QueryNode,
 		mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
@@ -73,10 +73,13 @@ impl Executor {
 
 		let mut inserted_count = 0;
 
+		// Initialize the node before execution
+		input_node.initialize(&mut std_txn, &execution_context)?;
+
 		// Process all input batches using volcano iterator pattern
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&execution_context, &mut std_txn)?
+		}) = input_node.next(&mut std_txn)?
 		{
 			let row_count = columns.row_count();
 

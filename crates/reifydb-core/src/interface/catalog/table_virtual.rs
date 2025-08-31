@@ -7,13 +7,13 @@ use crate::interface::{ColumnDef, SchemaId};
 
 /// Unique identifier for a virtual table type
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct VirtualTableId(pub u64);
+pub struct TableVirtualId(pub u64);
 
 /// Definition of a virtual table, similar to TableDef but for virtual tables
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VirtualTableDef {
+pub struct TableVirtualDef {
 	/// Virtual table identifier
-	pub id: VirtualTableId,
+	pub id: TableVirtualId,
 	/// Schema this virtual table belongs to
 	pub schema: SchemaId,
 	/// Name of the virtual table

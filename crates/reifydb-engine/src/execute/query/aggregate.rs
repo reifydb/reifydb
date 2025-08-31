@@ -16,7 +16,7 @@ use crate::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::ColumnsLayout,
 	},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 	function::{AggregateFunction, AggregateFunctionContext, Functions},
 };
 
@@ -37,7 +37,8 @@ pub(crate) struct AggregateNode<'a, T: Transaction> {
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	context: Arc<ExecutionContext>,
+	functions: Functions,
+	initialized: bool,
 }
 
 impl<'a, T: Transaction> AggregateNode<'a, T> {
@@ -52,15 +53,25 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 			by,
 			map,
 			layout: None,
-			context,
+			functions: context.functions.clone(),
+			initialized: false,
 		}
 	}
 }
 
-impl<'a, T: Transaction> AggregateNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		self.input.initialize(rx, ctx)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
@@ -70,7 +81,7 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 		let (keys, mut projections) = parse_keys_and_aggregates(
 			&self.by,
 			&self.map,
-			&self.context.functions,
+			&self.functions,
 		)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
@@ -78,7 +89,7 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			let groups = columns.group_by_view(&keys)?;
 
@@ -170,7 +181,7 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone().or(self.input.layout())
 	}
 }

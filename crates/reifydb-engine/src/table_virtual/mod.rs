@@ -4,7 +4,7 @@
 use reifydb_core::{
 	SortKey,
 	interface::{
-		Params, Transaction, VirtualTableDef, expression::Expression,
+		Params, TableVirtualDef, Transaction, expression::Expression,
 	},
 };
 
@@ -13,7 +13,7 @@ use crate::{StandardTransaction, execute::Batch};
 pub(crate) mod system;
 
 /// Context passed to virtual table queries
-pub enum VirtualTableContext<'a> {
+pub enum TableVirtualContext<'a> {
 	Basic {
 		/// Query parameters
 		params: Params,
@@ -34,21 +34,21 @@ pub enum VirtualTableContext<'a> {
 }
 
 /// Trait for virtual table instances that follow the volcano iterator pattern
-pub trait VirtualTable<T: Transaction>: Send + Sync {
+pub trait TableVirtual<'a, T: Transaction>: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins
-	fn initialize<'a>(
+	fn initialize(
 		&mut self,
 		txn: &mut StandardTransaction<'a, T>,
-		ctx: VirtualTableContext<'a>,
+		ctx: TableVirtualContext<'a>,
 	) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
-	fn next<'a>(
+	fn next(
 		&mut self,
 		txn: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>>;
 
 	/// Get the table definition
-	fn definition(&self) -> &VirtualTableDef;
+	fn definition(&self) -> &TableVirtualDef;
 }

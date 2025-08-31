@@ -11,7 +11,7 @@ use reifydb_core::{
 	Fragment, JoinType, SortKey, Type,
 	interface::{
 		ColumnDef, ColumnId, ColumnIndex, QueryTransaction, SchemaDef,
-		TableDef, ViewDef, VirtualTableDef, VirtualTableId,
+		TableDef, TableVirtualDef, TableVirtualId, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::{
@@ -308,8 +308,8 @@ impl Compiler {
 						));
 					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
 						// System virtual table - sequences
-						let virtual_table = VirtualTableDef {
-							id: VirtualTableId(1),
+						let virtual_table = TableVirtualDef {
+							id: TableVirtualId(1),
 							schema: schema.id,
 							name: "sequences".to_string(),
 							columns: vec![
@@ -582,7 +582,7 @@ pub struct ViewScanNode {
 #[derive(Debug, Clone)]
 pub struct VirtualScanNode {
 	pub schema: SchemaDef,
-	pub table: VirtualTableDef,
+	pub table: TableVirtualDef,
 	pub pushdown_context: Option<VirtualTablePushdownContext>,
 }
 
