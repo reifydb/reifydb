@@ -37,8 +37,7 @@ pub(crate) struct AggregateNode<'a, T: Transaction> {
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	functions: Functions,
-	initialized: bool,
+	context: Option<Arc<ExecutionContext>>,
 }
 
 impl<'a, T: Transaction> AggregateNode<'a, T> {
@@ -53,8 +52,7 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 			by,
 			map,
 			layout: None,
-			functions: context.functions.clone(),
-			initialized: false,
+			context: Some(context),
 		}
 	}
 }
@@ -66,7 +64,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
-		self.initialized = true;
+		// Already has context from constructor
 		Ok(())
 	}
 
@@ -74,6 +72,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"AggregateNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}
@@ -81,7 +85,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		let (keys, mut projections) = parse_keys_and_aggregates(
 			&self.by,
 			&self.map,
-			&self.functions,
+			&ctx.functions,
 		)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();

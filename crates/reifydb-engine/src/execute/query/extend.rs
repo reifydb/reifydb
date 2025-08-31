@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{Params, Transaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
@@ -19,10 +21,7 @@ pub(crate) struct ExtendNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	params: Params,
-	table: Option<reifydb_core::interface::TableDef>,
-	preserve_row_numbers: bool,
-	initialized: bool,
+	context: Option<Arc<ExecutionContext>>,
 }
 
 impl<'a, T: Transaction> ExtendNode<'a, T> {
@@ -34,10 +33,7 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 			input,
 			expressions,
 			layout: None,
-			params: Params::empty(),
-			table: None,
-			preserve_row_numbers: false,
-			initialized: false,
+			context: None,
 		}
 	}
 
@@ -53,13 +49,13 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 			columns,
 			row_count,
 			take: None,
-			params: &self.params,
+			params: &self.context.as_ref().unwrap().params,
 		};
 
 		// Check if this is an alias expression and we have table
 		// information
 		if let (Expression::Alias(alias_expr), Some(table)) =
-			(expr, &self.table)
+			(expr, &self.context.as_ref().unwrap().table)
 		{
 			let alias_name = alias_expr.alias.name();
 
@@ -97,11 +93,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.params = ctx.params.clone();
-		self.table = ctx.table.clone();
-		self.preserve_row_numbers = ctx.preserve_row_numbers;
+		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
-		self.initialized = true;
 		Ok(())
 	}
 
@@ -109,6 +102,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"ExtendNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		while let Some(Batch {
 			columns,
 		}) = self.input.next(rx)?
@@ -146,7 +145,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 					// expression layout
 					let new_expressions_layout = derive_columns_column_layout(
 						&self.expressions,
-						self.preserve_row_numbers,
+						ctx.preserve_row_numbers,
 					);
 					input_layout.extend(
 						&new_expressions_layout,
@@ -154,7 +153,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 				} else {
 					derive_columns_column_layout(
 						&self.expressions,
-						self.preserve_row_numbers,
+						ctx.preserve_row_numbers,
 					)
 				};
 
@@ -176,9 +175,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 pub(crate) struct ExtendWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	params: Params,
-	preserve_row_numbers: bool,
-	initialized: bool,
+	context: Option<Arc<ExecutionContext>>,
 	_phantom: std::marker::PhantomData<T>,
 }
 
@@ -187,9 +184,7 @@ impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 		Self {
 			expressions,
 			layout: None,
-			params: Params::empty(),
-			preserve_row_numbers: false,
-			initialized: false,
+			context: None,
 			_phantom: std::marker::PhantomData,
 		}
 	}
@@ -201,9 +196,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		_rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.params = ctx.params.clone();
-		self.preserve_row_numbers = ctx.preserve_row_numbers;
-		self.initialized = true;
+		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
@@ -211,6 +204,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"ExtendWithoutInputNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}
@@ -228,7 +227,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 				columns: columns.clone(),
 				row_count: 1, // Generate single row
 				take: None,
-				params: &self.params,
+				params: &ctx.params,
 			};
 
 			let column = evaluate(&evaluation_context, expr)?;
@@ -237,7 +236,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 
 		let layout = derive_columns_column_layout(
 			&self.expressions,
-			self.preserve_row_numbers,
+			ctx.preserve_row_numbers,
 		);
 
 		self.layout = Some(layout);

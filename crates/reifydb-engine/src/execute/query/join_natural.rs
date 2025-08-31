@@ -19,7 +19,7 @@ pub(crate) struct NaturalJoinNode<'a, T: Transaction> {
 	right: Box<ExecutionPlan<'a, T>>,
 	join_type: JoinType,
 	layout: Option<ColumnsLayout>,
-	initialized: bool,
+	initialized: Option<()>,
 }
 
 impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
@@ -33,7 +33,7 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 			right,
 			join_type,
 			layout: None,
-			initialized: false,
+			initialized: None,
 		}
 	}
 
@@ -90,7 +90,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 	) -> crate::Result<()> {
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
-		self.initialized = true;
+		self.initialized = Some(());
 		Ok(())
 	}
 
@@ -98,6 +98,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 		&mut self,
 		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.initialized.is_some(),
+			"NaturalJoinNode::next() called before initialize()"
+		);
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}

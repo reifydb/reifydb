@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{
-		Params, TableDef, Transaction, evaluate::expression::Expression,
-	},
+	interface::{Transaction, evaluate::expression::Expression},
 	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
@@ -22,10 +22,7 @@ pub(crate) struct MapNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	params: Params,
-	table: Option<TableDef>,
-	preserve_row_numbers: bool,
-	initialized: bool,
+	context: Option<Arc<ExecutionContext>>,
 }
 
 impl<'a, T: Transaction> MapNode<'a, T> {
@@ -37,10 +34,7 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 			input,
 			expressions,
 			layout: None,
-			params: Params::empty(),
-			table: None,
-			preserve_row_numbers: false,
-			initialized: false,
+			context: None,
 		}
 	}
 
@@ -60,13 +54,13 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 			columns,
 			row_count,
 			take: None,
-			params: &self.params,
+			params: &self.context.as_ref().unwrap().params,
 		};
 
 		// Check if this is an alias expression and we have table
 		// information
 		if let (Expression::Alias(alias_expr), Some(table)) =
-			(expr, &self.table)
+			(expr, &self.context.as_ref().unwrap().table)
 		{
 			let alias_name = alias_expr.alias.name();
 
@@ -104,11 +98,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.params = ctx.params.clone();
-		self.table = ctx.table.clone();
-		self.preserve_row_numbers = ctx.preserve_row_numbers;
+		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
-		self.initialized = true;
 		Ok(())
 	}
 
@@ -116,6 +107,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"MapNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		while let Some(Batch {
 			columns,
 		}) = self.input.next(rx)?
@@ -125,7 +122,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 
 			// Only preserve RowNumber column if the execution
 			// context requires it
-			if self.preserve_row_numbers {
+			if ctx.preserve_row_numbers {
 				if let Some(row_number_column) =
 					columns.iter().find(|col| {
 						col.name() == ROW_NUMBER_COLUMN_NAME
@@ -153,7 +150,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 
 			let layout = derive_columns_column_layout(
 				&self.expressions,
-				self.preserve_row_numbers,
+				ctx.preserve_row_numbers,
 			);
 
 			self.layout = Some(layout);
@@ -173,8 +170,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	params: Params,
-	initialized: bool,
+	context: Option<Arc<ExecutionContext>>,
 	_phantom: std::marker::PhantomData<T>,
 }
 
@@ -183,8 +179,7 @@ impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
 		Self {
 			expressions,
 			layout: None,
-			params: Params::empty(),
-			initialized: false,
+			context: None,
 			_phantom: std::marker::PhantomData,
 		}
 	}
@@ -196,8 +191,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		_rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.params = ctx.params.clone();
-		self.initialized = true;
+		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
@@ -205,6 +199,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"MapWithoutInputNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}
@@ -219,7 +219,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 					columns: Columns::empty(),
 					row_count: 1,
 					take: None,
-					params: &self.params,
+					params: &ctx.params,
 				},
 				&expr,
 			)?;

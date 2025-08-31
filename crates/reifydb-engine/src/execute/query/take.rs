@@ -11,7 +11,7 @@ use crate::{
 pub(crate) struct TakeNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	remaining: usize,
-	initialized: bool,
+	initialized: Option<()>,
 }
 
 impl<'a, T: Transaction> TakeNode<'a, T> {
@@ -22,7 +22,7 @@ impl<'a, T: Transaction> TakeNode<'a, T> {
 		Self {
 			input,
 			remaining: take,
-			initialized: false,
+			initialized: None,
 		}
 	}
 }
@@ -34,7 +34,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
-		self.initialized = true;
+		self.initialized = Some(());
 		Ok(())
 	}
 
@@ -42,6 +42,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.initialized.is_some(),
+			"TakeNode::next() called before initialize()"
+		);
+
 		while let Some(Batch {
 			mut columns,
 		}) = self.input.next(rx)?

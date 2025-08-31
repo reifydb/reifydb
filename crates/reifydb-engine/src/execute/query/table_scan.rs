@@ -26,8 +26,7 @@ use crate::{
 
 pub(crate) struct TableScanNode<T: Transaction> {
 	table: TableDef,
-	batch_size: usize,
-	preserve_row_numbers: bool,
+	context: Option<Arc<ExecutionContext>>,
 	layout: ColumnsLayout,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
@@ -58,8 +57,7 @@ impl<T: Transaction> TableScanNode<T> {
 
 		Ok(Self {
 			table,
-			batch_size: context.batch_size,
-			preserve_row_numbers: context.preserve_row_numbers,
+			context: Some(context),
 			layout,
 			row_layout,
 			last_key: None,
@@ -75,7 +73,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
 		_rx: &mut crate::StandardTransaction<'a, T>,
 		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		// TableScanNode doesn't need special initialization
+		// Already has context from constructor
 		Ok(())
 	}
 
@@ -83,11 +81,17 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"TableScanNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let batch_size = self.batch_size;
+		let batch_size = ctx.batch_size;
 		let range = RowKeyRange {
 			store: self.table.id.into(),
 		};
@@ -136,7 +140,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 		// Add the RowNumber column to the columns if requested
-		if self.preserve_row_numbers {
+		if ctx.preserve_row_numbers {
 			let row_number_column =
 				Column::SourceQualified(SourceQualified {
 					source: self.table.name.clone(),

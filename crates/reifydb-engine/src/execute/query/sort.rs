@@ -18,7 +18,7 @@ use crate::{
 pub(crate) struct SortNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<SortKey>,
-	initialized: bool,
+	initialized: Option<()>,
 }
 
 impl<'a, T: Transaction> SortNode<'a, T> {
@@ -29,7 +29,7 @@ impl<'a, T: Transaction> SortNode<'a, T> {
 		Self {
 			input,
 			by,
-			initialized: false,
+			initialized: None,
 		}
 	}
 }
@@ -41,7 +41,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
-		self.initialized = true;
+		self.initialized = Some(());
 		Ok(())
 	}
 
@@ -49,6 +49,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.initialized.is_some(),
+			"SortNode::next() called before initialize()"
+		);
+
 		let mut columns_opt: Option<Columns> = None;
 
 		while let Some(Batch {

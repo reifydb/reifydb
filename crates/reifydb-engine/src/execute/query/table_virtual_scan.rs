@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{Params, Transaction};
+use reifydb_core::interface::Transaction;
 
 use crate::{
 	StandardTransaction,
@@ -14,7 +14,7 @@ use crate::{
 
 pub(crate) struct VirtualScanNode<'a, T: Transaction> {
 	virtual_table: Box<dyn TableVirtual<'a, T>>,
-	params: Params,
+	context: Option<Arc<ExecutionContext>>,
 	layout: ColumnsLayout,
 	table_context: Option<TableVirtualContext<'a>>,
 }
@@ -43,7 +43,7 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 
 		Ok(Self {
 			virtual_table,
-			params: context.params.clone(),
+			context: Some(context),
 			layout,
 			table_context: Some(table_context),
 		})
@@ -58,7 +58,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
 	) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| {
 			TableVirtualContext::Basic {
-				params: self.params.clone(),
+				params: self
+					.context
+					.as_ref()
+					.unwrap()
+					.params
+					.clone(),
 			}
 		});
 		self.virtual_table.initialize(rx, ctx)?;
@@ -69,6 +74,10 @@ impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
 		&mut self,
 		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"VirtualScanNode::next() called before initialize()"
+		);
 		self.virtual_table.next(rx)
 	}
 
