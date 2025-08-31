@@ -1,20 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	BitVec,
 	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
+	StandardTransaction,
 	columnar::{ColumnData, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct FilterNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
 impl<'a, T: Transaction> FilterNode<'a, T> {
@@ -25,19 +29,35 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 		Self {
 			input,
 			expressions,
+			context: None,
 		}
 	}
 }
 
-impl<'a, T: Transaction> FilterNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<'a, T>,
+	) -> crate::Result<()> {
+		self.context = Some(Arc::new(ctx.clone()));
+		self.input.initialize(rx, ctx)?;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"FilterNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			let mut row_count = columns.row_count();
 
@@ -94,7 +114,7 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 		Ok(None)
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

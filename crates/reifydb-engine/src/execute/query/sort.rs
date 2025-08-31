@@ -12,12 +12,13 @@ use reifydb_core::{
 
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct SortNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<SortKey>,
+	initialized: Option<()>,
 }
 
 impl<'a, T: Transaction> SortNode<'a, T> {
@@ -28,21 +29,36 @@ impl<'a, T: Transaction> SortNode<'a, T> {
 		Self {
 			input,
 			by,
+			initialized: None,
 		}
 	}
 }
 
-impl<'a, T: Transaction> SortNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		self.input.initialize(rx, ctx)?;
+		self.initialized = Some(());
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.initialized.is_some(),
+			"SortNode::next() called before initialize()"
+		);
+
 		let mut columns_opt: Option<Columns> = None;
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			if let Some(existing_columns) = &mut columns_opt {
 				for (i, col) in columns.into_iter().enumerate()
@@ -112,7 +128,7 @@ impl<'a, T: Transaction> SortNode<'a, T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

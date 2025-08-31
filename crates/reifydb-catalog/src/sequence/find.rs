@@ -29,8 +29,8 @@ impl CatalogStore {
 			COLUMN_SEQ_ID => (SchemaId(1), "column"),
 			COLUMN_POLICY_SEQ_ID => (SchemaId(1), "column_policy"),
 			FLOW_SEQ_ID => (SchemaId(1), "flow"),
-			FLOW_NODE_SEQ_ID => (SchemaId(1), "flow_node_seq"),
-			FLOW_EDGE_SEQ_ID => (SchemaId(1), "flow_edge_seq"),
+			FLOW_NODE_SEQ_ID => (SchemaId(1), "flow_node"),
+			FLOW_EDGE_SEQ_ID => (SchemaId(1), "flow_edge"),
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id

@@ -6,36 +6,58 @@ use std::marker::PhantomData;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	Result,
-	interface::{Transaction, VirtualTableDef},
+	interface::{TableVirtualDef, Transaction},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
 
 use crate::{
 	StandardTransaction,
-	table_virtual::{VirtualTable, VirtualTableQueryContext},
+	execute::Batch,
+	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
 /// Virtual table that exposes system sequence information
 pub struct Sequences<T: Transaction> {
-	definition: VirtualTableDef,
+	definition: TableVirtualDef,
+	exhausted: bool,
 	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> Sequences<T> {
-	pub fn new(definition: VirtualTableDef) -> Self {
+	pub fn new(definition: TableVirtualDef) -> Self {
 		Self {
 			definition,
+			exhausted: false,
 			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<T: Transaction> VirtualTable<T> for Sequences<T> {
-	fn query(
-		&self,
-		_ctx: VirtualTableQueryContext,
-		txn: &mut StandardTransaction<T>,
-	) -> Result<Columns> {
+impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
+	fn initialize(
+		&mut self,
+		_txn: &mut StandardTransaction<'a, T>,
+		_ctx: TableVirtualContext<'a>,
+	) -> Result<()> {
+		// Store context (we need to handle lifetime properly)
+		// For now, we don't store the context since Sequences doesn't
+		// use pushdown In a real implementation with pushdown, we'd
+		// process the context here
+		self.exhausted = false;
+		// Note: We're not storing the context as Sequences doesn't
+		// support pushdown and the Basic context only has params
+		// which we don't need
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		txn: &mut StandardTransaction<'a, T>,
+	) -> Result<Option<Batch>> {
+		if self.exhausted {
+			return Ok(None);
+		}
+
 		let mut sequence_ids = Vec::new();
 		let mut schema_ids = Vec::new();
 		let mut schema_names = Vec::new();
@@ -77,10 +99,13 @@ impl<T: Transaction> VirtualTable<T> for Sequences<T> {
 			}),
 		];
 
-		Ok(Columns::new(columns))
+		self.exhausted = true;
+		Ok(Some(Batch {
+			columns: Columns::new(columns),
+		}))
 	}
 
-	fn definition(&self) -> &VirtualTableDef {
+	fn definition(&self) -> &TableVirtualDef {
 		&self.definition
 	}
 }

@@ -21,12 +21,12 @@ use crate::{
 		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
-	execute::{Batch, ExecutionContext},
+	execute::{Batch, ExecutionContext, QueryNode},
 };
 
 pub(crate) struct TableScanNode<T: Transaction> {
 	table: TableDef,
-	context: Arc<ExecutionContext>,
+	context: Option<Arc<ExecutionContext>>,
 	layout: ColumnsLayout,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
@@ -57,7 +57,7 @@ impl<T: Transaction> TableScanNode<T> {
 
 		Ok(Self {
 			table,
-			context,
+			context: Some(context),
 			layout,
 			row_layout,
 			last_key: None,
@@ -67,17 +67,31 @@ impl<T: Transaction> TableScanNode<T> {
 	}
 }
 
-impl<T: Transaction> TableScanNode<T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
+	fn initialize(
 		&mut self,
-		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		_rx: &mut crate::StandardTransaction<'a, T>,
+		_ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		// Already has context from constructor
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"TableScanNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let batch_size = self.context.batch_size;
+		let batch_size = ctx.batch_size;
 		let range = RowKeyRange {
 			store: self.table.id.into(),
 		};
@@ -144,7 +158,7 @@ impl<T: Transaction> TableScanNode<T> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		Some(self.layout.clone())
 	}
 }

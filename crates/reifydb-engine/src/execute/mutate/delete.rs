@@ -25,7 +25,10 @@ use reifydb_rql::plan::{
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	columnar::{ColumnData, Columns},
-	execute::{Batch, ExecutionContext, Executor, query::compile::compile},
+	execute::{
+		Batch, ExecutionContext, Executor, QueryNode,
+		query::compile::compile,
+	},
 };
 
 impl Executor {
@@ -123,9 +126,12 @@ impl Executor {
 				params: params.clone(),
 			};
 
+			// Initialize the node before execution
+			input_node.initialize(&mut std_txn, &context)?;
+
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&context, &mut std_txn)?
+			}) = input_node.next(&mut std_txn)?
 			{
 				// Find the RowNumber column - return error if
 				// not found

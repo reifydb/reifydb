@@ -24,6 +24,10 @@ impl Params {
 			_ => None,
 		}
 	}
+
+	pub fn empty() -> Params {
+		Params::None
+	}
 }
 
 impl From<()> for Params {

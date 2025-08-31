@@ -5,12 +5,13 @@ use reifydb_core::interface::Transaction;
 
 use crate::{
 	columnar::layout::ColumnsLayout,
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct TakeNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	remaining: usize,
+	initialized: Option<()>,
 }
 
 impl<'a, T: Transaction> TakeNode<'a, T> {
@@ -21,19 +22,34 @@ impl<'a, T: Transaction> TakeNode<'a, T> {
 		Self {
 			input,
 			remaining: take,
+			initialized: None,
 		}
 	}
 }
 
-impl<'a, T: Transaction> TakeNode<'a, T> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		self.input.initialize(rx, ctx)?;
+		self.initialized = Some(());
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.initialized.is_some(),
+			"TakeNode::next() called before initialize()"
+		);
+
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			let row_count = columns.row_count();
 			if row_count == 0 {
@@ -55,7 +71,7 @@ impl<'a, T: Transaction> TakeNode<'a, T> {
 		Ok(None)
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }
