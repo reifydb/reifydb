@@ -8,33 +8,25 @@ use reifydb_core::{
 	interface::{ColumnDef, ColumnIndex, SchemaId, TableVirtualDef},
 };
 
-use super::ids::{columns::sequences::*, table_virtual::SEQUENCES};
+use super::ids::{columns::schemas::*, table_virtual::SCHEMAS};
 
-/// Returns the static definition for the system.sequences virtual table
-/// This table exposes information about all sequences in the database
-pub fn sequences() -> Arc<TableVirtualDef> {
+/// Returns the static definition for the system.schemas virtual table
+/// This table exposes information about all schemas in the database
+pub fn schemas() -> Arc<TableVirtualDef> {
 	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(TableVirtualDef {
-			id: SEQUENCES,
+			id: SCHEMAS,
 			schema: SchemaId(1), // system schema
-			name: "sequences".to_string(),
+			name: "schemas".to_string(),
 			columns: vec![
 				ColumnDef {
 					id: ID,
 					name: "id".to_string(),
-					ty: Type::Uint4,
-					policies: vec![],
-					index: ColumnIndex(0),
-					auto_increment: false,
-				},
-				ColumnDef {
-					id: SCHEMA_ID,
-					name: "schema_id".to_string(),
 					ty: Type::Uint8,
 					policies: vec![],
-					index: ColumnIndex(1),
+					index: ColumnIndex(0),
 					auto_increment: false,
 				},
 				ColumnDef {
@@ -42,15 +34,7 @@ pub fn sequences() -> Arc<TableVirtualDef> {
 					name: "name".to_string(),
 					ty: Type::Utf8,
 					policies: vec![],
-					index: ColumnIndex(3),
-					auto_increment: false,
-				},
-				ColumnDef {
-					id: VALUE,
-					name: "value".to_string(),
-					ty: Type::Uint8,
-					policies: vec![],
-					index: ColumnIndex(4),
+					index: ColumnIndex(1),
 					auto_increment: false,
 				},
 			],
