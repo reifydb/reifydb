@@ -6,8 +6,7 @@ mod create;
 
 pub use alter::AlterTablePlan;
 use reifydb_catalog::{
-	CatalogQueryTransaction, CatalogStore, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	CatalogStore, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	Fragment, JoinType, SortKey, Type,

@@ -360,9 +360,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstAlter, AstAlterSequence, AstAlterTable,
-		AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
-		parse::Parser, tokenize::tokenize,
+		AstAlter, AstAlterSequence, parse::Parser, tokenize::tokenize,
 	};
 
 	#[test]

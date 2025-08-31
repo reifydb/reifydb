@@ -94,11 +94,12 @@ impl Executor {
 						column_ids.push(column.id);
 					}
 
-					// Create the primary key
-					let primary_key_id = CatalogStore::create_primary_key(
+					CatalogStore::create_primary_key(
 						txn,
 						PrimaryKeyToCreate {
-							store: StoreId::Table(table.id),
+							store: StoreId::Table(
+								table.id,
+							),
 							column_ids,
 						},
 					)?;

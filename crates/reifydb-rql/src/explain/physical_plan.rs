@@ -462,6 +462,7 @@ fn render_physical_plan_inner(
 		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
 			schema,
 			table,
+			..
 		}) => {
 			let label = format!(
 				"VirtualScan: {}.{}",

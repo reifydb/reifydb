@@ -38,7 +38,7 @@ impl CatalogStore {
 mod tests {
 	use reifydb_core::{
 		Type,
-		interface::{PrimaryKeyId, StoreId, ViewId},
+		interface::{StoreId, ViewId},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
