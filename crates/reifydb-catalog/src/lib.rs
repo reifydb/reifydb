@@ -12,6 +12,7 @@ mod materialized;
 pub mod row;
 pub mod schema;
 pub mod sequence;
+pub mod system;
 pub mod table;
 pub mod test_utils;
 pub mod transaction;

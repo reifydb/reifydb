@@ -20,6 +20,4 @@ pub struct TableVirtualDef {
 	pub name: String,
 	/// Column definitions
 	pub columns: Vec<ColumnDef>,
-	/// Virtual table provider type identifier
-	pub provider: String,
 }

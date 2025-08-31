@@ -4,14 +4,17 @@
 mod alter;
 mod create;
 
+use std::sync::Arc;
+
 use reifydb_catalog::{
-	CatalogStore, table::TableColumnToCreate, view::ViewColumnToCreate,
+	CatalogStore, system::SystemCatalog, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	Fragment, JoinType, SortKey, Type,
+	Fragment, JoinType, SortKey,
 	interface::{
-		ColumnDef, ColumnId, ColumnIndex, QueryTransaction, SchemaDef,
-		TableDef, TableVirtualDef, TableVirtualId, ViewDef,
+		QueryTransaction, SchemaDef, TableDef, TableVirtualDef,
+		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::{
@@ -307,60 +310,10 @@ impl Compiler {
 							},
 						));
 					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
-						// System virtual table - sequences
-						let virtual_table = TableVirtualDef {
-							id: TableVirtualId(1),
-							schema: schema.id,
-							name: "sequences".to_string(),
-							columns: vec![
-								ColumnDef {
-									id: ColumnId(1),
-									name: "id".to_string(),
-									ty: Type::Uint4,
-									policies: vec![],
-									index: ColumnIndex(0),
-									auto_increment: false,
-								},
-								ColumnDef {
-									id: ColumnId(1),
-									name: "schema_id".to_string(),
-									ty: Type::Uint8,
-									policies: vec![],
-									index: ColumnIndex(0),
-									auto_increment: false,
-								},
-								ColumnDef {
-									id: ColumnId(1),
-									name: "schema_name".to_string(),
-									ty: Type::Utf8,
-									policies: vec![],
-									index: ColumnIndex(0),
-									auto_increment: false,
-								},
-								ColumnDef {
-									id: ColumnId(1),
-									name: "name".to_string(),
-									ty: Type::Utf8,
-									policies: vec![],
-									index: ColumnIndex(0),
-									auto_increment: false,
-								},
-
-								ColumnDef {
-									id: ColumnId(2),
-									name: "value".to_string(),
-									ty: Type::Uint8,
-									policies: vec![],
-									index: ColumnIndex(1),
-									auto_increment: true,
-								},
-							],
-							provider: "system".to_string(),
-						};
-						stack.push(PhysicalPlan::VirtualScan(
-							VirtualScanNode {
+						stack.push(PhysicalPlan::TableVirtualScan(
+							TableVirtualScanNode {
 								schema,
-								table: virtual_table,
+								table: SystemCatalog::sequences(),
 								pushdown_context: None, // TODO: Detect pushdown opportunities
 							},
 						));
@@ -439,8 +392,8 @@ pub enum PhysicalPlan<'a> {
 	Extend(ExtendNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	TableScan(TableScanNode),
+	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode),
-	VirtualScan(VirtualScanNode),
 }
 
 #[derive(Debug, Clone)]
@@ -580,16 +533,16 @@ pub struct ViewScanNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct VirtualScanNode {
+pub struct TableVirtualScanNode<'a> {
 	pub schema: SchemaDef,
-	pub table: TableVirtualDef,
-	pub pushdown_context: Option<VirtualTablePushdownContext>,
+	pub table: Arc<TableVirtualDef>,
+	pub pushdown_context: Option<TableVirtualPushdownContext<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct VirtualTablePushdownContext {
-	pub filters: Vec<Expression<'static>>,
-	pub projections: Vec<Expression<'static>>,
+pub struct TableVirtualPushdownContext<'a> {
+	pub filters: Vec<Expression<'a>>,
+	pub projections: Vec<Expression<'a>>,
 	pub order_by: Vec<SortKey>,
 	pub limit: Option<usize>,
 }

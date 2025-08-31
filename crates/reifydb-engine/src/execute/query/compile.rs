@@ -168,17 +168,19 @@ pub(crate) fn compile<'a, T: Transaction>(
 			ViewScanNode::new(view, context).unwrap(),
 		),
 
-		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
-			schema,
-			table,
-			pushdown_context,
-		}) => {
+		PhysicalPlan::TableVirtualScan(
+			physical::TableVirtualScanNode {
+				schema,
+				table,
+				pushdown_context,
+			},
+		) => {
 			// Create the appropriate virtual table implementation
 			let virtual_table_impl: Box<dyn TableVirtual<T>> =
 				if schema.id == SchemaId(1)
 					&& table.name == "sequences"
 				{
-					Box::new(Sequences::new(table))
+					Box::new(Sequences::new())
 				} else {
 					panic!(
 						"Unknown virtual table type: {}",

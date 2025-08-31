@@ -330,7 +330,7 @@ impl Executor {
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
-			| PhysicalPlan::VirtualScan(_) => {
+			| PhysicalPlan::TableVirtualScan(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params)
 			}
@@ -388,7 +388,7 @@ impl Executor {
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
-			| PhysicalPlan::VirtualScan(_)
+			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::Distinct(_) => {
 				let mut std_txn =
 					StandardTransaction::from(txn);

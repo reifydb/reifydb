@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
 	interface::{TableVirtualDef, Transaction},
@@ -18,15 +18,15 @@ use crate::{
 
 /// Virtual table that exposes system sequence information
 pub struct Sequences<T: Transaction> {
-	definition: TableVirtualDef,
+	definition: Arc<TableVirtualDef>,
 	exhausted: bool,
 	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> Sequences<T> {
-	pub fn new(definition: TableVirtualDef) -> Self {
+	pub fn new() -> Self {
 		Self {
-			definition,
+			definition: SystemCatalog::sequences().clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}
@@ -39,14 +39,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 		_txn: &mut StandardTransaction<'a, T>,
 		_ctx: TableVirtualContext<'a>,
 	) -> Result<()> {
-		// Store context (we need to handle lifetime properly)
-		// For now, we don't store the context since Sequences doesn't
-		// use pushdown In a real implementation with pushdown, we'd
-		// process the context here
 		self.exhausted = false;
-		// Note: We're not storing the context as Sequences doesn't
-		// support pushdown and the Basic context only has params
-		// which we don't need
 		Ok(())
 	}
 
@@ -87,11 +80,11 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "schema_schema".to_string(),
-				data: ColumnData::utf8(sequence_names),
+				data: ColumnData::utf8(schema_names),
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "name".to_string(),
-				data: ColumnData::utf8(schema_names),
+				data: ColumnData::utf8(sequence_names),
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "value".to_string(),

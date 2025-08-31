@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use once_cell::sync::Lazy;
-pub use reifydb_core::interface::SequenceId;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
@@ -11,71 +10,59 @@ use reifydb_core::{
 	},
 };
 
-use crate::sequence::generator::u64::GeneratorU64;
-
-pub(crate) const SCHEMA_SEQ_ID: SequenceId = SequenceId(1);
-pub(crate) const STORE_SEQ_ID: SequenceId = SequenceId(2);
-pub(crate) const COLUMN_SEQ_ID: SequenceId = SequenceId(3);
-pub(crate) const COLUMN_POLICY_SEQ_ID: SequenceId = SequenceId(4);
-pub(crate) const FLOW_SEQ_ID: SequenceId = SequenceId(5);
-pub(crate) const FLOW_NODE_SEQ_ID: SequenceId = SequenceId(6);
-pub(crate) const FLOW_EDGE_SEQ_ID: SequenceId = SequenceId(7);
-
-pub(crate) const ALL_SYSTEM_SEQUENCE_IDS: [SequenceId; 7] = [
-	SCHEMA_SEQ_ID,
-	STORE_SEQ_ID,
-	COLUMN_SEQ_ID,
-	COLUMN_POLICY_SEQ_ID,
-	FLOW_SEQ_ID,
-	FLOW_NODE_SEQ_ID,
-	FLOW_EDGE_SEQ_ID,
-];
+use crate::{
+	sequence::generator::u64::GeneratorU64,
+	system::ids::sequences::{
+		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, SCHEMA,
+		STORE,
+	},
+};
 
 static SCHEMA_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: SCHEMA_SEQ_ID,
+		sequence: SCHEMA,
 	}
 	.encode()
 });
 
 static STORE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: STORE_SEQ_ID,
+		sequence: STORE,
 	}
 	.encode()
 });
 
 static COLUMN_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: COLUMN_SEQ_ID,
+		sequence: COLUMN,
 	}
 	.encode()
 });
 
 static COLUMN_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: COLUMN_POLICY_SEQ_ID,
+		sequence: COLUMN_POLICY,
 	}
 	.encode()
 });
 
 pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: FLOW_SEQ_ID,
+		sequence: FLOW,
 	}
 	.encode()
 });
 
 pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: FLOW_NODE_SEQ_ID,
+		sequence: FLOW_NODE,
 	}
 	.encode()
 });
 
 pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: FLOW_EDGE_SEQ_ID,
+		sequence: FLOW_EDGE,
 	}
 	.encode()
 });
@@ -98,13 +85,13 @@ impl SystemSequence {
 	pub(crate) fn next_column_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ColumnId> {
-		GeneratorU64::next(txn, &COLUMN_KEY, None).map(ColumnId)
+		GeneratorU64::next(txn, &COLUMN_KEY, Some(8193)).map(ColumnId)
 	}
 
 	pub(crate) fn next_column_policy_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ColumnPolicyId> {
-		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, None)
+		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, Some(1025))
 			.map(ColumnPolicyId)
 	}
 

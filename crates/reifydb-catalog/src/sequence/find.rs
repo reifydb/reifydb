@@ -14,7 +14,6 @@ use crate::{
 	sequence::{
 		Sequence,
 		layout::sequence::{LAYOUT, VALUE},
-		system::*,
 	},
 };
 
@@ -24,13 +23,27 @@ impl CatalogStore {
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {
 		let (schema, name) = match sequence_id {
-			SCHEMA_SEQ_ID => (SchemaId(1), "schema"),
-			STORE_SEQ_ID => (SchemaId(1), "store"),
-			COLUMN_SEQ_ID => (SchemaId(1), "column"),
-			COLUMN_POLICY_SEQ_ID => (SchemaId(1), "column_policy"),
-			FLOW_SEQ_ID => (SchemaId(1), "flow"),
-			FLOW_NODE_SEQ_ID => (SchemaId(1), "flow_node"),
-			FLOW_EDGE_SEQ_ID => (SchemaId(1), "flow_edge"),
+			crate::system::ids::sequences::SCHEMA => {
+				(SchemaId(1), "schema")
+			}
+			crate::system::ids::sequences::STORE => {
+				(SchemaId(1), "store")
+			}
+			crate::system::ids::sequences::COLUMN => {
+				(SchemaId(1), "column")
+			}
+			crate::system::ids::sequences::COLUMN_POLICY => {
+				(SchemaId(1), "column_policy")
+			}
+			crate::system::ids::sequences::FLOW => {
+				(SchemaId(1), "flow")
+			}
+			crate::system::ids::sequences::FLOW_NODE => {
+				(SchemaId(1), "flow_node")
+			}
+			crate::system::ids::sequences::FLOW_EDGE => {
+				(SchemaId(1), "flow_edge")
+			}
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id
