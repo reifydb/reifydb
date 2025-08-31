@@ -12,7 +12,7 @@ use reifydb_core::{
 
 use crate::{
 	StandardTransaction,
-	table_virtual::{VirtualTable, VirtualTableQueryContext},
+	table_virtual::{VirtualTable, VirtualTableContext},
 };
 
 /// Virtual table that exposes system sequence information
@@ -33,8 +33,8 @@ impl<T: Transaction> Sequences<T> {
 impl<T: Transaction> VirtualTable<T> for Sequences<T> {
 	fn query(
 		&self,
-		_ctx: VirtualTableQueryContext,
 		txn: &mut StandardTransaction<T>,
+		_ctx: VirtualTableContext,
 	) -> Result<Columns> {
 		let mut sequence_ids = Vec::new();
 		let mut schema_ids = Vec::new();

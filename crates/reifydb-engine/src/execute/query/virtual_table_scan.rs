@@ -9,7 +9,7 @@ use crate::{
 	StandardTransaction,
 	columnar::layout::ColumnsLayout,
 	execute::{Batch, ExecutionContext},
-	table_virtual::{VirtualTable, VirtualTableQueryContext},
+	table_virtual::{VirtualTable, VirtualTableContext},
 };
 
 pub(crate) struct VirtualScanNode<T: Transaction> {
@@ -61,7 +61,7 @@ impl<T: Transaction> VirtualScanNode<T> {
 
 		// Build the query context for pushdown operations
 		// TODO: Extract these from the query plan in the future
-		let query_ctx = VirtualTableQueryContext {
+		let query_ctx = VirtualTableContext::PushDown {
 			filters: Vec::new(),
 			projections: Vec::new(),
 			order_by: Vec::new(),
@@ -70,7 +70,7 @@ impl<T: Transaction> VirtualScanNode<T> {
 		};
 
 		// Execute the virtual table query
-		let columns = self.virtual_table.query(query_ctx, rx)?;
+		let columns = self.virtual_table.query(rx, query_ctx)?;
 
 		self.exhausted = true; // For now, virtual tables return all data at once
 

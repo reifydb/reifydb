@@ -2,27 +2,36 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	SortKey, interface::VirtualTableDef, value::columnar::Columns,
+	SortKey,
+	interface::{
+		Params, Transaction, VirtualTableDef, expression::Expression,
+	},
+	value::columnar::Columns,
 };
-
-mod provider;
-pub mod system;
-use reifydb_core::interface::{Params, Transaction, expression::Expression};
 
 use crate::StandardTransaction;
 
-/// Context passed to virtual table queries with pushdown operations
-pub struct VirtualTableQueryContext<'a> {
-	/// Filter conditions from filter operations
-	pub filters: Vec<Expression<'a>>,
-	/// Projection expressions from map operations (empty = select all)
-	pub projections: Vec<Expression<'a>>,
-	/// Sort keys from order operations
-	pub order_by: Vec<SortKey>,
-	/// Limit from take operations
-	pub limit: Option<usize>,
-	/// Query parameters
-	pub params: Params,
+pub(crate) mod system;
+
+/// Context passed to virtual table queries
+pub enum VirtualTableContext<'a> {
+	Basic {
+		/// Query parameters
+		params: Params,
+	},
+	PushDown {
+		/// Filter conditions from filter operations
+		filters: Vec<Expression<'a>>,
+		/// Projection expressions from map operations (empty = select
+		/// all)
+		projections: Vec<Expression<'a>>,
+		/// Sort keys from order operations
+		order_by: Vec<SortKey>,
+		/// Limit from take operations
+		limit: Option<usize>,
+		/// Query parameters
+		params: Params,
+	},
 }
 
 /// Trait for virtual table instances that can execute queries with pushdown
@@ -31,8 +40,8 @@ pub trait VirtualTable<T: Transaction>: Send + Sync {
 	/// Execute a query with pushdown context
 	fn query<'a>(
 		&self,
-		ctx: VirtualTableQueryContext<'a>,
 		txn: &mut StandardTransaction<'a, T>,
+		ctx: VirtualTableContext<'a>,
 	) -> crate::Result<Columns>;
 
 	/// Get the table definition
