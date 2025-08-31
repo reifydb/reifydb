@@ -13,12 +13,12 @@ use reifydb_transaction::{
 };
 
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
+	EngineTransaction, StandardCommandTransaction,
 	transaction::StandardCdcTransaction,
 };
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction<
-	StandardTransaction<
+	EngineTransaction<
 		Serializable<Memory, SingleVersionLock<Memory>>,
 		SingleVersionLock<Memory>,
 		StandardCdcTransaction<Memory>,
@@ -47,7 +47,7 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 
 pub fn create_test_command_transaction_with_internal_schema()
 -> StandardCommandTransaction<
-	StandardTransaction<
+	EngineTransaction<
 		Serializable<Memory, SingleVersionLock<Memory>>,
 		SingleVersionLock<Memory>,
 		StandardCdcTransaction<Memory>,

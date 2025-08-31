@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 	log_debug, log_error, log_timed_trace, log_warn,
 };
-use reifydb_engine::{StandardEngine, StandardTransaction};
+use reifydb_engine::{EngineTransaction, StandardEngine};
 #[cfg(feature = "sub_ws")]
 use reifydb_sub_ws::WsSubsystem;
 
@@ -304,8 +304,8 @@ impl<T: Transaction> Drop for Database<T> {
 	}
 }
 
-impl<VT, UT, C> Session<StandardTransaction<VT, UT, C>>
-	for Database<StandardTransaction<VT, UT, C>>
+impl<VT, UT, C> Session<EngineTransaction<VT, UT, C>>
+	for Database<EngineTransaction<VT, UT, C>>
 where
 	VT: VersionedTransaction,
 	UT: UnversionedTransaction,
@@ -313,21 +313,21 @@ where
 {
 	fn command_session(
 		&self,
-		session: impl IntoCommandSession<StandardTransaction<VT, UT, C>>,
-	) -> Result<CommandSession<StandardTransaction<VT, UT, C>>> {
+		session: impl IntoCommandSession<EngineTransaction<VT, UT, C>>,
+	) -> Result<CommandSession<EngineTransaction<VT, UT, C>>> {
 		session.into_command_session(self.engine.clone())
 	}
 
 	fn query_session(
 		&self,
-		session: impl IntoQuerySession<StandardTransaction<VT, UT, C>>,
-	) -> Result<QuerySession<StandardTransaction<VT, UT, C>>> {
+		session: impl IntoQuerySession<EngineTransaction<VT, UT, C>>,
+	) -> Result<QuerySession<EngineTransaction<VT, UT, C>>> {
 		session.into_query_session(self.engine.clone())
 	}
 }
 
-impl<VT, UT, C> SessionSync<StandardTransaction<VT, UT, C>>
-	for Database<StandardTransaction<VT, UT, C>>
+impl<VT, UT, C> SessionSync<EngineTransaction<VT, UT, C>>
+	for Database<EngineTransaction<VT, UT, C>>
 where
 	VT: VersionedTransaction,
 	UT: UnversionedTransaction,
@@ -336,8 +336,8 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<VT, UT, C> SessionAsync<StandardTransaction<VT, UT, C>>
-	for Database<StandardTransaction<VT, UT, C>>
+impl<VT, UT, C> SessionAsync<EngineTransaction<VT, UT, C>>
+	for Database<EngineTransaction<VT, UT, C>>
 where
 	VT: VersionedTransaction,
 	UT: UnversionedTransaction,

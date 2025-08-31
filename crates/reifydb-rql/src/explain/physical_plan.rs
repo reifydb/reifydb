@@ -459,5 +459,15 @@ fn render_physical_plan_inner(
 		PhysicalPlan::AlterView(_) => {
 			write_node_header(output, prefix, is_last, "AlterView");
 		}
+		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
+			schema,
+			table,
+		}) => {
+			let label = format!(
+				"VirtualScan: {}.{}",
+				schema.name, table.name
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
 	}
 }

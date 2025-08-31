@@ -3,10 +3,11 @@
 
 use reifydb_core::{
 	Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
+	StandardTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
@@ -15,17 +16,17 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct InnerJoinNode<'a> {
-	left: Box<ExecutionPlan<'a>>,
-	right: Box<ExecutionPlan<'a>>,
+pub(crate) struct InnerJoinNode<'a, T: Transaction> {
+	left: Box<ExecutionPlan<'a, T>>,
+	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl<'a> InnerJoinNode<'a> {
+impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	pub fn new(
-		left: Box<ExecutionPlan<'a>>,
-		right: Box<ExecutionPlan<'a>>,
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
 		on: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
@@ -37,9 +38,9 @@ impl<'a> InnerJoinNode<'a> {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<ExecutionPlan<'a>>,
+		node: &mut Box<ExecutionPlan<'a, T>>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -59,11 +60,11 @@ impl<'a> InnerJoinNode<'a> {
 	}
 }
 
-impl<'a> InnerJoinNode<'a> {
+impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

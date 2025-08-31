@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
@@ -15,17 +15,17 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct LeftJoinNode<'a> {
-	left: Box<ExecutionPlan<'a>>,
-	right: Box<ExecutionPlan<'a>>,
+pub(crate) struct LeftJoinNode<'a, T: Transaction> {
+	left: Box<ExecutionPlan<'a, T>>,
+	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl<'a> LeftJoinNode<'a> {
+impl<'a, T: Transaction> LeftJoinNode<'a, T> {
 	pub fn new(
-		left: Box<ExecutionPlan<'a>>,
-		right: Box<ExecutionPlan<'a>>,
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
 		on: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
@@ -37,9 +37,9 @@ impl<'a> LeftJoinNode<'a> {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<ExecutionPlan<'a>>,
+		node: &mut Box<ExecutionPlan<'a, T>>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -59,11 +59,11 @@ impl<'a> LeftJoinNode<'a> {
 	}
 }
 
-impl<'a> LeftJoinNode<'a> {
+impl<'a, T: Transaction> LeftJoinNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

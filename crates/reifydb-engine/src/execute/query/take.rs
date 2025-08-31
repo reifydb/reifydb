@@ -1,20 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::QueryTransaction;
+use reifydb_core::interface::Transaction;
 
 use crate::{
 	columnar::layout::ColumnsLayout,
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct TakeNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct TakeNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	remaining: usize,
 }
 
-impl<'a> TakeNode<'a> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, take: usize) -> Self {
+impl<'a, T: Transaction> TakeNode<'a, T> {
+	pub(crate) fn new(
+		input: Box<ExecutionPlan<'a, T>>,
+		take: usize,
+	) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -22,11 +25,11 @@ impl<'a> TakeNode<'a> {
 	}
 }
 
-impl<'a> TakeNode<'a> {
+impl<'a, T: Transaction> TakeNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,

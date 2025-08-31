@@ -3,32 +3,36 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::QueryTransaction;
+use reifydb_core::interface::{SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
-use crate::execute::{
-	ExecutionContext, ExecutionPlan,
-	query::{
-		aggregate::AggregateNode,
-		extend::{ExtendNode, ExtendWithoutInputNode},
-		filter::FilterNode,
-		inline::InlineDataNode,
-		join_inner::InnerJoinNode,
-		join_left::LeftJoinNode,
-		join_natural::NaturalJoinNode,
-		map::{MapNode, MapWithoutInputNode},
-		sort::SortNode,
-		table_scan::TableScanNode,
-		take::TakeNode,
-		view_scan::ViewScanNode,
+use crate::{
+	execute::{
+		ExecutionContext, ExecutionPlan,
+		query::{
+			aggregate::AggregateNode,
+			extend::{ExtendNode, ExtendWithoutInputNode},
+			filter::FilterNode,
+			inline::InlineDataNode,
+			join_inner::InnerJoinNode,
+			join_left::LeftJoinNode,
+			join_natural::NaturalJoinNode,
+			map::{MapNode, MapWithoutInputNode},
+			sort::SortNode,
+			table_scan::TableScanNode,
+			take::TakeNode,
+			view_scan::ViewScanNode,
+			virtual_table_scan::VirtualScanNode,
+		},
 	},
+	table_virtual::{VirtualTable, system::Sequences},
 };
 
-pub(crate) fn compile<'a>(
+pub(crate) fn compile<'a, T: Transaction>(
 	plan: PhysicalPlan<'a>,
-	rx: &mut impl QueryTransaction,
+	rx: &mut crate::StandardTransaction<'a, T>,
 	context: Arc<ExecutionContext>,
-) -> ExecutionPlan<'a> {
+) -> ExecutionPlan<'a, T> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
@@ -163,6 +167,32 @@ pub(crate) fn compile<'a>(
 		}) => ExecutionPlan::ViewScan(
 			ViewScanNode::new(view, context).unwrap(),
 		),
+
+		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
+			schema,
+			table,
+		}) => {
+			// Create the appropriate virtual table implementation
+			let virtual_table_impl: Box<dyn VirtualTable<T>> =
+				if schema.id == SchemaId(1)
+					&& table.name == "sequences"
+				{
+					Box::new(Sequences::new(table))
+				} else {
+					panic!(
+						"Unknown virtual table type: {}",
+						table.name
+					)
+				};
+
+			ExecutionPlan::VirtualScan(
+				VirtualScanNode::new(
+					virtual_table_impl,
+					context,
+				)
+				.unwrap(),
+			)
+		}
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::AlterTable(_)

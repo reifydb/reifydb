@@ -29,7 +29,7 @@ use reifydb_core::{
 	util::{CowVec, mock_time_set},
 };
 use reifydb_engine::{
-	StandardCdcTransaction, StandardEngine, StandardTransaction,
+	EngineTransaction, StandardCdcTransaction, StandardEngine,
 };
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
@@ -447,7 +447,7 @@ fn test_rapid_start_stop() {
 	}
 }
 
-type TestTransaction = StandardTransaction<
+type TestTransaction = EngineTransaction<
 	Serializable<Memory, SingleVersionLock<Memory>>,
 	SingleVersionLock<Memory>,
 	StandardCdcTransaction<Memory>,

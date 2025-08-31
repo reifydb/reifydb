@@ -6,7 +6,7 @@ use std::cmp::Ordering::Equal;
 use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
-	interface::QueryTransaction,
+	interface::Transaction,
 	result::error::diagnostic::query,
 };
 
@@ -15,14 +15,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct SortNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct SortNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<SortKey>,
 }
 
-impl<'a> SortNode<'a> {
+impl<'a, T: Transaction> SortNode<'a, T> {
 	pub(crate) fn new(
-		input: Box<ExecutionPlan<'a>>,
+		input: Box<ExecutionPlan<'a, T>>,
 		by: Vec<SortKey>,
 	) -> Self {
 		Self {
@@ -32,11 +32,11 @@ impl<'a> SortNode<'a> {
 	}
 }
 
-impl<'a> SortNode<'a> {
+impl<'a, T: Transaction> SortNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		let mut columns_opt: Option<Columns> = None;
 

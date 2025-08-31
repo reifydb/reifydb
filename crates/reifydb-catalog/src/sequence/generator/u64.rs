@@ -13,7 +13,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 };
 
-static LAYOUT: Lazy<EncodedRowLayout> =
+pub(crate) static LAYOUT: Lazy<EncodedRowLayout> =
 	Lazy::new(|| EncodedRowLayout::new(&[Type::Uint8]));
 
 pub(crate) struct GeneratorU64 {}

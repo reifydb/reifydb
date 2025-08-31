@@ -190,6 +190,13 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::Delete(_) => {
 				unreachable!()
 			}
+			PhysicalPlan::VirtualScan(_scan) => {
+				// TODO: Implement VirtualScanCompiler
+				// For now, return a placeholder
+				unimplemented!(
+					"VirtualScan compilation not yet implemented"
+				)
+			}
 		}
 	}
 

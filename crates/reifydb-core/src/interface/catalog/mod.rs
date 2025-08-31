@@ -10,6 +10,7 @@ mod policy;
 mod schema;
 mod store;
 mod table;
+mod table_virtual;
 mod view;
 
 pub use column::*;
@@ -21,4 +22,5 @@ pub use policy::*;
 pub use schema::*;
 pub use store::*;
 pub use table::*;
+pub use table_virtual::*;
 pub use view::*;

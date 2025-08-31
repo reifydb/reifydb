@@ -17,12 +17,13 @@ use query::{
 	table_scan::TableScanNode,
 	take::TakeNode,
 	view_scan::ViewScanNode,
+	virtual_table_scan::VirtualScanNode,
 };
 use reifydb_core::{
 	Frame,
 	interface::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		QueryTransaction, TableDef, Transaction,
+		TableDef, Transaction,
 	},
 };
 use reifydb_rql::{
@@ -32,6 +33,7 @@ use reifydb_rql::{
 
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction,
+	StandardTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
@@ -43,6 +45,7 @@ mod catalog;
 mod mutate;
 mod query;
 
+#[derive(Clone)]
 pub struct ExecutionContext {
 	pub functions: Functions,
 	pub table: Option<TableDef>,
@@ -56,28 +59,29 @@ pub(crate) struct Batch {
 	pub columns: Columns,
 }
 
-pub(crate) enum ExecutionPlan<'a> {
-	Aggregate(AggregateNode<'a>),
-	Filter(FilterNode<'a>),
-	InlineData(InlineDataNode<'a>),
-	InnerJoin(InnerJoinNode<'a>),
-	LeftJoin(LeftJoinNode<'a>),
-	NaturalJoin(NaturalJoinNode<'a>),
-	Map(MapNode<'a>),
-	MapWithoutInput(MapWithoutInputNode<'a>),
-	Extend(ExtendNode<'a>),
-	ExtendWithoutInput(ExtendWithoutInputNode<'a>),
-	Sort(SortNode<'a>),
-	TableScan(TableScanNode),
-	Take(TakeNode<'a>),
-	ViewScan(ViewScanNode),
+pub(crate) enum ExecutionPlan<'a, T: Transaction> {
+	Aggregate(AggregateNode<'a, T>),
+	Filter(FilterNode<'a, T>),
+	InlineData(InlineDataNode<'a, T>),
+	InnerJoin(InnerJoinNode<'a, T>),
+	LeftJoin(LeftJoinNode<'a, T>),
+	NaturalJoin(NaturalJoinNode<'a, T>),
+	Map(MapNode<'a, T>),
+	MapWithoutInput(MapWithoutInputNode<'a, T>),
+	Extend(ExtendNode<'a, T>),
+	ExtendWithoutInput(ExtendWithoutInputNode<'a, T>),
+	Sort(SortNode<'a, T>),
+	TableScan(TableScanNode<T>),
+	Take(TakeNode<'a, T>),
+	ViewScan(ViewScanNode<T>),
+	VirtualScan(VirtualScanNode<T>),
 }
 
-impl<'a> ExecutionPlan<'a> {
+impl<'a, T: Transaction> ExecutionPlan<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(ctx, rx),
@@ -98,6 +102,7 @@ impl<'a> ExecutionPlan<'a> {
 			ExecutionPlan::TableScan(node) => node.next(ctx, rx),
 			ExecutionPlan::Take(node) => node.next(ctx, rx),
 			ExecutionPlan::ViewScan(node) => node.next(ctx, rx),
+			ExecutionPlan::VirtualScan(node) => node.next(ctx, rx),
 		}
 	}
 
@@ -119,6 +124,7 @@ impl<'a> ExecutionPlan<'a> {
 			ExecutionPlan::TableScan(node) => node.layout(),
 			ExecutionPlan::Take(node) => node.layout(),
 			ExecutionPlan::ViewScan(node) => node.layout(),
+			ExecutionPlan::VirtualScan(node) => node.layout(),
 		}
 	}
 }
@@ -216,9 +222,9 @@ impl<T: Transaction>
 }
 
 impl Executor {
-	pub(crate) fn execute_query_plan(
+	pub(crate) fn execute_query_plan<T: Transaction>(
 		&self,
-		rx: &mut impl QueryTransaction,
+		rx: &mut StandardQueryTransaction<T>,
 		plan: PhysicalPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -238,7 +244,11 @@ impl Executor {
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::TableScan(_)
-			| PhysicalPlan::ViewScan(_) => self.query(rx, plan, params),
+			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::VirtualScan(_) => {
+				let mut std_txn = StandardTransaction::from(rx);
+				self.query(&mut std_txn, plan, params)
+			}
 
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
@@ -295,7 +305,12 @@ impl Executor {
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
-			| PhysicalPlan::Distinct(_) => self.query(txn, plan, params),
+			| PhysicalPlan::VirtualScan(_)
+			| PhysicalPlan::Distinct(_) => {
+				let mut std_txn =
+					StandardTransaction::from(txn);
+				self.query(&mut std_txn, plan, params)
+			}
 
 			PhysicalPlan::AlterTable(plan) => {
 				self.alter_table(txn, plan)
@@ -308,10 +323,10 @@ impl Executor {
 		}
 	}
 
-	fn query(
+	fn query<'a, T: Transaction>(
 		&self,
-		rx: &mut impl QueryTransaction,
-		plan: PhysicalPlan,
+		rx: &mut StandardTransaction<'a, T>,
+		plan: PhysicalPlan<'a>,
 		params: Params,
 	) -> crate::Result<Columns> {
 		match plan {

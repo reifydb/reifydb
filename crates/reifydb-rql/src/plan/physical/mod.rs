@@ -10,9 +10,10 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	Fragment, JoinType, SortKey,
+	Fragment, JoinType, SortKey, Type,
 	interface::{
-		QueryTransaction, SchemaDef, TableDef, ViewDef,
+		ColumnDef, ColumnId, ColumnIndex, QueryTransaction, SchemaDef,
+		TableDef, ViewDef, VirtualTableDef, VirtualTableId,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::{
@@ -322,6 +323,63 @@ impl Compiler {
 								view,
 							},
 						));
+					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
+						// System virtual table - sequences
+						let virtual_table = VirtualTableDef {
+							id: VirtualTableId(1),
+							schema: schema.id,
+							name: "sequences".to_string(),
+							columns: vec![
+								ColumnDef {
+									id: ColumnId(1),
+									name: "id".to_string(),
+									ty: Type::Uint4,
+									policies: vec![],
+									index: ColumnIndex(0),
+									auto_increment: false,
+								},
+								ColumnDef {
+									id: ColumnId(1),
+									name: "schema_id".to_string(),
+									ty: Type::Uint8,
+									policies: vec![],
+									index: ColumnIndex(0),
+									auto_increment: false,
+								},
+								ColumnDef {
+									id: ColumnId(1),
+									name: "schema_name".to_string(),
+									ty: Type::Utf8,
+									policies: vec![],
+									index: ColumnIndex(0),
+									auto_increment: false,
+								},
+								ColumnDef {
+									id: ColumnId(1),
+									name: "name".to_string(),
+									ty: Type::Utf8,
+									policies: vec![],
+									index: ColumnIndex(0),
+									auto_increment: false,
+								},
+
+								ColumnDef {
+									id: ColumnId(2),
+									name: "value".to_string(),
+									ty: Type::Uint8,
+									policies: vec![],
+									index: ColumnIndex(1),
+									auto_increment: true,
+								},
+							],
+							provider: "system".to_string(),
+						};
+						stack.push(PhysicalPlan::VirtualScan(
+							VirtualScanNode {
+								schema,
+								table: virtual_table,
+							},
+						));
 					} else {
 						return_error!(
 							table_not_found(
@@ -400,6 +458,7 @@ pub enum PhysicalPlan<'a> {
 	InlineData(InlineDataNode<'a>),
 	TableScan(TableScanNode),
 	ViewScan(ViewScanNode),
+	VirtualScan(VirtualScanNode),
 }
 
 #[derive(Debug, Clone)]
@@ -536,6 +595,12 @@ pub struct TableScanNode {
 pub struct ViewScanNode {
 	pub schema: SchemaDef,
 	pub view: ViewDef,
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualScanNode {
+	pub schema: SchemaDef,
+	pub table: VirtualTableDef,
 }
 
 #[derive(Debug, Clone)]

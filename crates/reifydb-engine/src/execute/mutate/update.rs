@@ -23,11 +23,12 @@ use reifydb_rql::plan::{
 };
 
 use crate::{
-	StandardCommandTransaction,
+	StandardCommandTransaction, StandardTransaction,
 	columnar::{ColumnData, Columns},
 	execute::{
-		Batch, ExecutionContext, Executor, compile,
+		Batch, ExecutionContext, Executor,
 		mutate::coerce::coerce_value_to_column_type,
+		query::compile::compile,
 	},
 };
 
@@ -92,23 +93,7 @@ impl Executor {
 			table.columns.iter().map(|c| c.ty).collect();
 		let layout = EncodedRowLayout::new(&table_types);
 
-		// Compile the input plan into an execution node with table
-		// context
-		let mut input_node = compile(
-			*plan.input,
-			txn,
-			Arc::new(ExecutionContext {
-				functions: self.functions.clone(),
-				table: Some(table.clone()),
-				batch_size: 1024,
-				preserve_row_numbers: true,
-				params: params.clone(),
-			}),
-		);
-
-		let mut updated_count = 0;
-
-		// Process all input batches using volcano iterator pattern
+		// Create execution context
 		let context = ExecutionContext {
 			functions: self.functions.clone(),
 			table: Some(table.clone()),
@@ -116,54 +101,77 @@ impl Executor {
 			preserve_row_numbers: true,
 			params: params.clone(),
 		};
-		while let Some(Batch {
-			columns,
-		}) = input_node.next(&context, txn)?
+
+		let mut updated_count = 0;
+
+		// Process all input batches - we need to handle compilation and
+		// execution with proper transaction borrowing
 		{
-			// Find the RowNumber column - return error if not found
-			let Some(row_number_column) =
-				columns.iter().find(|col| {
-					col.name() == ROW_NUMBER_COLUMN_NAME
-				})
-			else {
-				return_error!(
+			let mut wrapped_txn = StandardTransaction::from(txn);
+			let mut input_node = compile(
+				*plan.input,
+				&mut wrapped_txn,
+				Arc::new(context.clone()),
+			);
+
+			while let Some(Batch {
+				columns,
+			}) = input_node.next(&context, &mut wrapped_txn)?
+			{
+				// Find the RowNumber column - return error if
+				// not found
+				let Some(row_number_column) =
+					columns.iter().find(|col| {
+						col.name() == ROW_NUMBER_COLUMN_NAME
+					})
+				else {
+					return_error!(
 					engine::missing_row_number_column()
 				);
-			};
+				};
 
-			// Extract RowNumber data - panic if any are undefined
-			let row_numbers = match &row_number_column.data() {
-				ColumnData::RowNumber(container) => {
-					// Check that all row IDs are defined
-					for i in 0..container.data().len() {
-						if !container.is_defined(i) {
-							return_error!(engine::invalid_row_number_values());
+				// Extract RowNumber data - panic if any are
+				// undefined
+				let row_numbers = match &row_number_column
+					.data()
+				{
+					ColumnData::RowNumber(container) => {
+						// Check that all row IDs are
+						// defined
+						for i in 0..container
+							.data()
+							.len()
+						{
+							if !container
+								.is_defined(i)
+							{
+								return_error!(engine::invalid_row_number_values());
+							}
 						}
+						container.data()
 					}
-					container.data()
-				}
-				_ => return_error!(
+					_ => return_error!(
 					engine::invalid_row_number_values()
 				),
-			};
+				};
 
-			let row_count = columns.row_count();
+				let row_count = columns.row_count();
 
-			for row_numberx in 0..row_count {
-				let mut row = layout.allocate_row();
+				for row_numberx in 0..row_count {
+					let mut row = layout.allocate_row();
 
-				// For each table column, find if it exists in
-				// the input columns
-				for (table_idx, table_column) in
-					table.columns.iter().enumerate()
-				{
-					let mut value =
-						if let Some(input_column) =
-							columns.iter().find(
-								|col| {
-									col.name() == table_column.name
-								},
-							) {
+					// For each table column, find if it
+					// exists in the input columns
+					for (table_idx, table_column) in
+						table.columns.iter().enumerate()
+					{
+						let mut value = if let Some(
+							input_column,
+						) = columns
+							.iter()
+							.find(|col| {
+								col.name() == table_column.name
+							}) {
 							input_column
 								.data()
 								.get_value(
@@ -173,11 +181,13 @@ impl Executor {
 							Value::Undefined
 						};
 
-					// Apply automatic type coercion
-					// Extract policies (no conversion
-					// needed since types are now unified)
-					let policies: Vec<ColumnPolicyKind> =
-						table_column
+						// Apply automatic type coercion
+						// Extract policies (no
+						// conversion needed since
+						// types are now unified)
+						let policies: Vec<
+							ColumnPolicyKind,
+						> = table_column
 							.policies
 							.iter()
 							.map(|cp| {
@@ -186,7 +196,7 @@ impl Executor {
 							})
 							.collect();
 
-					value = coerce_value_to_column_type(
+						value = coerce_value_to_column_type(
 						value,
 						table_column.ty,
 						ColumnDescriptor::new()
@@ -207,7 +217,7 @@ impl Executor {
 						&context,
 					)?;
 
-					match value {
+						match value {
 						Value::Bool(v) => layout
 							.set_bool(
 								&mut row,
@@ -325,21 +335,23 @@ impl Executor {
 								table_idx,
 							),
 					}
-				}
-
-				// Update the row using the existing RowNumber
-				// from the columns
-				let row_number = row_numbers[row_numberx];
-				txn.set(
-					&RowKey {
-						store: table.id.into(),
-						row: row_number,
 					}
-					.encode(),
-					row,
-				)?;
 
-				updated_count += 1;
+					// Update the row using the existing
+					// RowNumber from the columns
+					let row_number =
+						row_numbers[row_numberx];
+					wrapped_txn.command_mut().set(
+						&RowKey {
+							store: table.id.into(),
+							row: row_number,
+						}
+						.encode(),
+						row,
+					)?;
+
+					updated_count += 1;
+				}
 			}
 		}
 

@@ -15,3 +15,4 @@ pub mod sort;
 pub mod table_scan;
 pub mod take;
 pub mod view_scan;
+pub mod virtual_table_scan;

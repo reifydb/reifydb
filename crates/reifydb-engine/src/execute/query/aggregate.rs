@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	OwnedFragment, Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
@@ -32,17 +32,17 @@ enum Projection {
 	},
 }
 
-pub(crate) struct AggregateNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct AggregateNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 }
 
-impl<'a> AggregateNode<'a> {
+impl<'a, T: Transaction> AggregateNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<'a>>,
+		input: Box<ExecutionPlan<'a, T>>,
 		by: Vec<Expression<'a>>,
 		map: Vec<Expression<'a>>,
 		context: Arc<ExecutionContext>,
@@ -57,11 +57,11 @@ impl<'a> AggregateNode<'a> {
 	}
 }
 
-impl<'a> AggregateNode<'a> {
+impl<'a, T: Transaction> AggregateNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -189,8 +189,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.fragment());
 				projections.push(Projection::Group {
 					column: c.0.fragment().to_string(),
-					alias: c.full_fragment_owned()
-						.into_owned(),
+					alias: c.0.clone().to_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -202,9 +201,7 @@ fn parse_keys_and_aggregates<'a>(
 						.column
 						.fragment()
 						.to_string(),
-					alias: access
-						.full_fragment_owned()
-						.into_owned(),
+					alias: access.column.clone().to_owned(),
 				})
 			}
 			// _ => return
@@ -224,13 +221,13 @@ fn parse_keys_and_aggregates<'a>(
 				// "total_count: count(value)"
 				(
 					alias_expr.expression.as_ref(),
-					alias_expr.alias.0.clone().into_owned(),
+					alias_expr.alias.0.clone(),
 				)
 			}
 			expr => {
 				// Non-aliased expression, use the expression's
 				// fragment as alias
-				(expr, expr.full_fragment_owned().into_owned())
+				(expr, expr.full_fragment_owned())
 			}
 		};
 
@@ -250,7 +247,9 @@ fn parse_keys_and_aggregates<'a>(
 									)
 									.to_string(
 									),
-								alias,
+								alias: alias
+									.to_owned(
+									),
 								function,
 							},
 						);
@@ -272,7 +271,9 @@ fn parse_keys_and_aggregates<'a>(
 									)
 									.to_string(
 									),
-								alias,
+								alias: alias
+									.to_owned(
+									),
 								function,
 							},
 						);

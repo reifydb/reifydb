@@ -183,7 +183,7 @@ mod tests {
 			StoreId,
 			catalog::{
 				ColumnId, ColumnPolicyId, IndexId, SchemaId,
-				SystemSequenceId, TableId,
+				SequenceId, TableId,
 			},
 			key::{
 				index::IndexKey, row::RowKey,
@@ -295,7 +295,7 @@ mod tests {
 	#[test]
 	fn test_system_sequence() {
 		let key = Key::SystemSequence(SystemSequenceKey {
-			sequence: SystemSequenceId(42),
+			sequence: SequenceId(42),
 		});
 
 		let encoded = key.encode();
