@@ -10,9 +10,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_transactional_view(
-		ast: AstCreateTransactionalView,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_transactional_view<'a>(
+		ast: AstCreateTransactionalView<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.value().to_string();
@@ -21,7 +21,10 @@ impl Compiler {
 			columns.push(ViewColumnToCreate {
 				name: column_name,
 				ty: column_type,
-				fragment: Some(col.name.fragment()),
+				fragment: Some(col
+					.name
+					.fragment()
+					.into_owned()),
 			});
 		}
 

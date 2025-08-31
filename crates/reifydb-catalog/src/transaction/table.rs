@@ -4,7 +4,7 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		CommandTransaction, SchemaId, TableDef, TableId, WithHooks,
+		CommandTransaction, SchemaId, TableDef, TableId, WithEventBus,
 		interceptor::{TableDefInterceptor, WithInterceptors},
 	},
 	log_warn, return_error,
@@ -24,7 +24,7 @@ where
 		+ CatalogSchemaQueryOperations
 		+ CatalogTableQueryOperations
 		+ WithInterceptors<T>
-		+ WithHooks
+		+ WithEventBus
 		+ TableDefInterceptor<T>,
 {
 	fn create_table(

@@ -28,11 +28,11 @@ use crate::{
 	table_virtual::{VirtualTable, system::Sequences},
 };
 
-pub(crate) fn compile<T: Transaction>(
-	plan: PhysicalPlan,
-	rx: &mut crate::StandardTransaction<T>,
+pub(crate) fn compile<'a, T: Transaction>(
+	plan: PhysicalPlan<'a>,
+	rx: &mut crate::StandardTransaction<'a, T>,
 	context: Arc<ExecutionContext>,
-) -> ExecutionPlan<T> {
+) -> ExecutionPlan<'a, T> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,

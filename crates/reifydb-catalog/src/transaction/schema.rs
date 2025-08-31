@@ -4,7 +4,7 @@
 use reifydb_core::{
 	diagnostic::catalog::schema_already_exists,
 	interface::{
-		CommandTransaction, SchemaDef, SchemaId, WithHooks,
+		CommandTransaction, SchemaDef, SchemaId, WithEventBus,
 		interceptor::{SchemaDefInterceptor, WithInterceptors},
 	},
 	log_warn, return_error,
@@ -111,7 +111,7 @@ where
 		+ CatalogCommandTransactionOperations
 		+ CatalogSchemaQueryOperations
 		+ WithInterceptors<T>
-		+ WithHooks
+		+ WithEventBus
 		+ SchemaDefInterceptor<T>,
 {
 	fn create_schema(

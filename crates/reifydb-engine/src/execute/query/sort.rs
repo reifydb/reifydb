@@ -15,14 +15,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct SortNode<T: Transaction> {
-	input: Box<ExecutionPlan<T>>,
+pub(crate) struct SortNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<SortKey>,
 }
 
-impl<T: Transaction> SortNode<T> {
+impl<'a, T: Transaction> SortNode<'a, T> {
 	pub(crate) fn new(
-		input: Box<ExecutionPlan<T>>,
+		input: Box<ExecutionPlan<'a, T>>,
 		by: Vec<SortKey>,
 	) -> Self {
 		Self {
@@ -32,11 +32,11 @@ impl<T: Transaction> SortNode<T> {
 	}
 }
 
-impl<T: Transaction> SortNode<T> {
+impl<'a, T: Transaction> SortNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		let mut columns_opt: Option<Columns> = None;
 

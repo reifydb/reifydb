@@ -16,16 +16,16 @@ use crate::{
 	},
 };
 
-pub(crate) struct MapNode<T: Transaction> {
-	input: Box<ExecutionPlan<T>>,
-	expressions: Vec<Expression>,
+pub(crate) struct MapNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl<T: Transaction> MapNode<T> {
+impl<'a, T: Transaction> MapNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<T>>,
-		expressions: Vec<Expression>,
+		input: Box<ExecutionPlan<'a, T>>,
+		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -38,13 +38,13 @@ impl<T: Transaction> MapNode<T> {
 	/// target column information when the expression is an alias
 	/// expression that targets a table column during UPDATE/INSERT
 	/// operations.
-	fn create_evaluation_context<'a>(
+	fn create_evaluation_context<'b>(
 		&self,
 		expr: &Expression,
-		ctx: &'a ExecutionContext,
+		ctx: &'b ExecutionContext,
 		columns: Columns,
 		row_count: usize,
-	) -> EvaluationContext<'a> {
+	) -> EvaluationContext<'b> {
 		let mut result = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
@@ -89,11 +89,11 @@ impl<T: Transaction> MapNode<T> {
 	}
 }
 
-impl<T: Transaction> MapNode<T> {
+impl<'a, T: Transaction> MapNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
@@ -150,14 +150,14 @@ impl<T: Transaction> MapNode<T> {
 	}
 }
 
-pub(crate) struct MapWithoutInputNode<T: Transaction> {
-	expressions: Vec<Expression>,
+pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Transaction> MapWithoutInputNode<T> {
-	pub fn new(expressions: Vec<Expression>) -> Self {
+impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
+	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
 			layout: None,
@@ -166,11 +166,11 @@ impl<T: Transaction> MapWithoutInputNode<T> {
 	}
 }
 
-impl<T: Transaction> MapWithoutInputNode<T> {
+impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		_rx: &mut crate::StandardTransaction<T>,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

@@ -15,7 +15,7 @@ pub use command::CommandTransaction;
 pub use query::QueryTransaction;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Version,
-	hook::Hooks,
+	event::EventBus,
 	interface::{UnversionedTransaction, VersionedStorage},
 };
 use reifydb_storage::memory::Memory;
@@ -58,7 +58,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone
 pub struct Inner<VS: VersionedStorage, UT: UnversionedTransaction> {
 	pub(crate) tm: TransactionManager<StdVersionProvider<UT>>,
 	pub(crate) versioned: VS,
-	pub(crate) hooks: Hooks,
+	pub(crate) event_bus: EventBus,
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
@@ -66,7 +66,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
 		name: &str,
 		versioned: VS,
 		unversioned: UT,
-		hooks: Hooks,
+		event_bus: EventBus,
 	) -> Self {
 		let tm = TransactionManager::new(
 			name,
@@ -76,7 +76,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
 		Self {
 			tm,
 			versioned,
-			hooks,
+			event_bus,
 		}
 	}
 
@@ -86,12 +86,16 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
-	pub fn new(versioned: VS, unversioned: UT, hooks: Hooks) -> Self {
+	pub fn new(
+		versioned: VS,
+		unversioned: UT,
+		event_bus: EventBus,
+	) -> Self {
 		Self(Arc::new(Inner::new(
 			core::any::type_name::<Self>(),
 			versioned,
 			unversioned,
-			hooks,
+			event_bus,
 		)))
 	}
 }
@@ -99,11 +103,11 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
 impl Optimistic<Memory, SingleVersionLock<Memory>> {
 	pub fn testing() -> Self {
 		let memory = Memory::new();
-		let hooks = Hooks::new();
+		let event_bus = EventBus::new();
 		Self::new(
 			Memory::default(),
-			SingleVersionLock::new(memory, hooks.clone()),
-			hooks,
+			SingleVersionLock::new(memory, event_bus.clone()),
+			event_bus,
 		)
 	}
 }

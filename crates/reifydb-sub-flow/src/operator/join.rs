@@ -59,15 +59,15 @@ impl FlowJoinStateKey {
 
 pub struct JoinOperator {
 	join_type: JoinType,
-	left_keys: Vec<Expression>,
-	right_keys: Vec<Expression>,
+	left_keys: Vec<Expression<'static>>,
+	right_keys: Vec<Expression<'static>>,
 }
 
 impl JoinOperator {
 	pub fn new(
 		join_type: JoinType,
-		left_keys: Vec<Expression>,
-		right_keys: Vec<Expression>,
+		left_keys: Vec<Expression<'static>>,
+		right_keys: Vec<Expression<'static>>,
 	) -> Self {
 		Self {
 			join_type,

@@ -16,7 +16,7 @@ use crate::operator::OperatorEnum;
 pub struct FlowEngine<E: Evaluator> {
 	evaluator: E,
 	operators: HashMap<FlowNodeId, OperatorEnum<E>>,
-	flows: HashMap<FlowId, Flow>,
+	flows: HashMap<FlowId, Flow<'static>>,
 	sources: HashMap<StoreId, Vec<FlowId>>,
 	sinks: HashMap<StoreId, Vec<FlowId>>,
 }

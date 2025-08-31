@@ -5,12 +5,12 @@ mod lifecycle;
 
 pub use lifecycle::*;
 use reifydb_core::{
-	hook::lifecycle::OnCreateHook,
-	interface::{Transaction, WithHooks as _},
+	event::lifecycle::OnCreateEvent,
+	interface::{Transaction, WithEventBus as _},
 };
 use reifydb_engine::StandardEngine;
 
-pub trait WithHooks<T: Transaction> {
+pub trait WithEventBus<T: Transaction> {
 	fn engine(&self) -> &StandardEngine<T>;
 
 	fn on_create<F>(self, f: F) -> Self
@@ -21,12 +21,14 @@ pub trait WithHooks<T: Transaction> {
 			+ Sync
 			+ 'static,
 	{
-		let callback = OnCreateCallback {
+		let callback = OnCreateEventListener {
 			callback: f,
 			engine: self.engine().clone(),
 		};
 
-		self.engine().hooks().register::<OnCreateHook, _>(callback);
+		self.engine()
+			.event_bus()
+			.register::<OnCreateEvent, _>(callback);
 		self
 	}
 }

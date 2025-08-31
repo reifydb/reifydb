@@ -10,49 +10,49 @@ use crate::{
 };
 
 pub fn memory_optimistic() -> SyncBuilder<MemoryOptimisticTransaction> {
-	let (storage, unversioned, cdc, hooks) = memory();
+	let (storage, unversioned, cdc, eventbus) = memory();
 	let (versioned, _, _, _) = optimistic((
 		storage.clone(),
 		unversioned.clone(),
 		cdc.clone(),
-		hooks.clone(),
+		eventbus.clone(),
 	));
-	SyncBuilder::new(versioned, unversioned, cdc, hooks)
+	SyncBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
 pub fn memory_serializable() -> SyncBuilder<MemorySerializableTransaction> {
-	let (storage, unversioned, cdc, hooks) = memory();
+	let (storage, unversioned, cdc, eventbus) = memory();
 	let (versioned, _, _, _) = serializable((
 		storage.clone(),
 		unversioned.clone(),
 		cdc.clone(),
-		hooks.clone(),
+		eventbus.clone(),
 	));
-	SyncBuilder::new(versioned, unversioned, cdc, hooks)
+	SyncBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
 ) -> SyncBuilder<SqliteOptimisticTransaction> {
-	let (storage, unversioned, cdc, hooks) = sqlite(config);
+	let (storage, unversioned, cdc, eventbus) = sqlite(config);
 	let (versioned, _, _, _) = optimistic((
 		storage.clone(),
 		unversioned.clone(),
 		cdc.clone(),
-		hooks.clone(),
+		eventbus.clone(),
 	));
-	SyncBuilder::new(versioned, unversioned, cdc, hooks)
+	SyncBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
 ) -> SyncBuilder<SqliteSerializableTransaction> {
-	let (storage, unversioned, cdc, hooks) = sqlite(config);
+	let (storage, unversioned, cdc, eventbus) = sqlite(config);
 	let (versioned, _, _, _) = serializable((
 		storage.clone(),
 		unversioned.clone(),
 		cdc.clone(),
-		hooks.clone(),
+		eventbus.clone(),
 	));
-	SyncBuilder::new(versioned, unversioned, cdc, hooks)
+	SyncBuilder::new(versioned, unversioned, cdc, eventbus)
 }

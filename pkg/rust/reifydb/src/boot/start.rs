@@ -3,27 +3,26 @@
 
 use reifydb_core::{
 	Type,
-	hook::{
-		BoxedHookIter, Callback,
-		lifecycle::{OnCreateHook, OnStartHook},
+	event::{
+		EventListener,
+		lifecycle::{OnCreateEvent, OnStartEvent},
 	},
 	interface::{
 		EncodableKey, SystemVersion, SystemVersionKey,
 		UnversionedCommandTransaction, UnversionedQueryTransaction,
 		UnversionedTransaction,
 	},
-	return_hooks,
 	row::EncodedRowLayout,
 };
 
-pub(crate) struct StartCallback<UT>
+pub(crate) struct StartEventListener<UT>
 where
 	UT: UnversionedTransaction,
 {
 	unversioned: UT,
 }
 
-impl<UT> StartCallback<UT>
+impl<UT> StartEventListener<UT>
 where
 	UT: UnversionedTransaction,
 {
@@ -36,56 +35,68 @@ where
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-impl<UT> Callback<OnStartHook> for StartCallback<UT>
+impl<UT> EventListener<OnStartEvent> for StartEventListener<UT>
 where
 	UT: UnversionedTransaction,
 {
-	fn on(&self, _hook: &OnStartHook) -> crate::Result<BoxedHookIter> {
-		let layout = EncodedRowLayout::new(&[Type::Uint1]);
-		let key = SystemVersionKey {
-			version: SystemVersion::Storage,
-		}
-		.encode();
-
-		let created = self.unversioned.with_command(|tx| {
-			match tx.get(&key)? {
-				None => {
-					let mut row = layout.allocate_row();
-					layout.set_u8(
-						&mut row,
-						0,
-						CURRENT_STORAGE_VERSION,
-					);
-					tx.set(&key, row)?;
-					Ok(true)
-				}
-				Some(unversioned) => {
-					let version = layout
-						.get_u8(&unversioned.row, 0);
-					assert_eq!(
-						CURRENT_STORAGE_VERSION,
-						version,
-						"Storage version mismatch"
-					);
-					Ok(false)
-				}
+	fn on(&self, _hook: &OnStartEvent) {
+		if let Err(e) = (|| -> crate::Result<()> {
+			let layout = EncodedRowLayout::new(&[Type::Uint1]);
+			let key = SystemVersionKey {
+				version: SystemVersion::Storage,
 			}
-		})?;
+			.encode();
 
-		// the database was never started before
-		if created {
-			self.trigger_database_creation()?
+			let created =
+				self.unversioned.with_command(|tx| match tx
+					.get(&key)?
+				{
+					None => {
+						let mut row =
+							layout.allocate_row();
+						layout.set_u8(
+							&mut row,
+							0,
+							CURRENT_STORAGE_VERSION,
+						);
+						tx.set(&key, row)?;
+						Ok(true)
+					}
+					Some(unversioned) => {
+						let version = layout.get_u8(
+							&unversioned.row,
+							0,
+						);
+						assert_eq!(
+							CURRENT_STORAGE_VERSION,
+							version,
+							"Storage version mismatch"
+						);
+						Ok(false)
+					}
+				})?;
+
+			// the database was never started before
+			if created {
+				self.trigger_database_creation()
+			} else {
+				Ok(())
+			}
+		})() {
+			reifydb_core::log_error!(
+				"Failed to handle OnStart event: {}",
+				e
+			);
 		}
-
-		return_hooks!()
 	}
 }
 
-impl<UT> StartCallback<UT>
+impl<UT> StartEventListener<UT>
 where
 	UT: UnversionedTransaction,
 {
 	fn trigger_database_creation(&self) -> crate::Result<()> {
-		self.unversioned.hooks().trigger(OnCreateHook {})
+		self.unversioned.event_bus().emit(OnCreateEvent {});
+		Ok(())
 	}
 }

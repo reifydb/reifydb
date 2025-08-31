@@ -37,7 +37,7 @@ pub fn can_not_alter_not_auto_increment<'a>(
         statement: None,
         message: format!(
             "cannot alter sequence for column `{}` which does not have AUTO INCREMENT",
-            fragment.value()
+            fragment.text()
         ),
         fragment,
         label: Some("column does not have AUTO INCREMENT".to_string()),

@@ -241,7 +241,7 @@ pub fn schema_already_pending_in_transaction<'a>(
 	schema_name: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = schema_name.into_fragment().into_owned();
-	let name = fragment.value();
+	let name = fragment.text();
 	Diagnostic {
         code: "CA_011".to_string(),
         statement: None,
@@ -264,8 +264,8 @@ pub fn table_already_pending_in_transaction<'a>(
 ) -> Diagnostic {
 	let schema_fragment = schema_name.into_fragment().into_owned();
 	let table_fragment = table_name.into_fragment().into_owned();
-	let schema = schema_fragment.value();
-	let table = table_fragment.value();
+	let schema = schema_fragment.text();
+	let table = table_fragment.text();
 	Diagnostic {
         code: "CA_012".to_string(),
         statement: None,
@@ -288,8 +288,8 @@ pub fn view_already_pending_in_transaction<'a>(
 ) -> Diagnostic {
 	let schema_fragment = schema_name.into_fragment().into_owned();
 	let view_fragment = view_name.into_fragment().into_owned();
-	let schema = schema_fragment.value();
-	let view = view_fragment.value();
+	let schema = schema_fragment.text();
+	let view = view_fragment.text();
 	Diagnostic {
         code: "CA_013".to_string(),
         statement: None,
@@ -310,7 +310,7 @@ pub fn cannot_update_deleted_schema<'a>(
 	schema_name: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = schema_name.into_fragment().into_owned();
-	let name = fragment.value();
+	let name = fragment.text();
 	Diagnostic {
         code: "CA_014".to_string(),
         statement: None,
@@ -332,8 +332,8 @@ pub fn cannot_update_deleted_table<'a>(
 ) -> Diagnostic {
 	let schema_fragment = schema_name.into_fragment().into_owned();
 	let table_fragment = table_name.into_fragment().into_owned();
-	let schema = schema_fragment.value();
-	let table = table_fragment.value();
+	let schema = schema_fragment.text();
+	let table = table_fragment.text();
 	Diagnostic {
         code: "CA_015".to_string(),
         statement: None,
@@ -355,8 +355,8 @@ pub fn cannot_update_deleted_view<'a>(
 ) -> Diagnostic {
 	let schema_fragment = schema_name.into_fragment().into_owned();
 	let view_fragment = view_name.into_fragment().into_owned();
-	let schema = schema_fragment.value();
-	let view = view_fragment.value();
+	let schema = schema_fragment.text();
+	let view = view_fragment.text();
 	Diagnostic {
         code: "CA_016".to_string(),
         statement: None,
@@ -376,7 +376,7 @@ pub fn cannot_delete_already_deleted_schema<'a>(
 	schema_name: impl IntoFragment<'a>,
 ) -> Diagnostic {
 	let fragment = schema_name.into_fragment().into_owned();
-	let name = fragment.value();
+	let name = fragment.text();
 	Diagnostic {
 		code: "CA_017".to_string(),
 		statement: None,
@@ -402,8 +402,8 @@ pub fn cannot_delete_already_deleted_table<'a>(
 ) -> Diagnostic {
 	let schema_fragment = schema_name.into_fragment().into_owned();
 	let table_fragment = table_name.into_fragment().into_owned();
-	let schema = schema_fragment.value();
-	let table = table_fragment.value();
+	let schema = schema_fragment.text();
+	let table = table_fragment.text();
 	Diagnostic {
 		code: "CA_018".to_string(),
 		statement: None,
@@ -427,8 +427,8 @@ pub fn cannot_delete_already_deleted_view<'a>(
 ) -> Diagnostic {
 	let schema_fragment = schema_name.into_fragment().into_owned();
 	let view_fragment = view_name.into_fragment().into_owned();
-	let schema = schema_fragment.value();
-	let view = view_fragment.value();
+	let schema = schema_fragment.text();
+	let view = view_fragment.text();
 	Diagnostic {
 		code: "CA_019".to_string(),
 		statement: None,

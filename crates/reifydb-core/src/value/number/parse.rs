@@ -56,7 +56,7 @@ where
 	T: IsFloat + 'static,
 {
 	let fragment = fragment.into_fragment();
-	if fragment.value().to_lowercase().contains("nan") {
+	if fragment.text().to_lowercase().contains("nan") {
 		return_error!(nan_not_allowed());
 	}
 
@@ -174,7 +174,7 @@ where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
 	let fragment = fragment.into_fragment();
-	let raw_value = fragment.value();
+	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value
@@ -270,7 +270,7 @@ where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
 	let fragment = fragment.into_fragment();
-	let raw_value = fragment.value();
+	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value
@@ -378,7 +378,7 @@ where
 		+ 'static,
 {
 	let fragment = fragment.into_fragment();
-	let raw_value = fragment.value();
+	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value

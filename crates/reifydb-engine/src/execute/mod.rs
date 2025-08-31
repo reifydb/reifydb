@@ -59,29 +59,29 @@ pub(crate) struct Batch {
 	pub columns: Columns,
 }
 
-pub(crate) enum ExecutionPlan<T: Transaction> {
-	Aggregate(AggregateNode<T>),
-	Filter(FilterNode<T>),
-	InlineData(InlineDataNode<T>),
-	InnerJoin(InnerJoinNode<T>),
-	LeftJoin(LeftJoinNode<T>),
-	NaturalJoin(NaturalJoinNode<T>),
-	Map(MapNode<T>),
-	MapWithoutInput(MapWithoutInputNode<T>),
-	Extend(ExtendNode<T>),
-	ExtendWithoutInput(ExtendWithoutInputNode<T>),
-	Sort(SortNode<T>),
+pub(crate) enum ExecutionPlan<'a, T: Transaction> {
+	Aggregate(AggregateNode<'a, T>),
+	Filter(FilterNode<'a, T>),
+	InlineData(InlineDataNode<'a, T>),
+	InnerJoin(InnerJoinNode<'a, T>),
+	LeftJoin(LeftJoinNode<'a, T>),
+	NaturalJoin(NaturalJoinNode<'a, T>),
+	Map(MapNode<'a, T>),
+	MapWithoutInput(MapWithoutInputNode<'a, T>),
+	Extend(ExtendNode<'a, T>),
+	ExtendWithoutInput(ExtendWithoutInputNode<'a, T>),
+	Sort(SortNode<'a, T>),
 	TableScan(TableScanNode<T>),
-	Take(TakeNode<T>),
+	Take(TakeNode<'a, T>),
 	ViewScan(ViewScanNode<T>),
 	VirtualScan(VirtualScanNode<T>),
 }
 
-impl<T: Transaction> ExecutionPlan<T> {
+impl<'a, T: Transaction> ExecutionPlan<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut StandardTransaction<T>,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(ctx, rx),
@@ -312,10 +312,10 @@ impl Executor {
 		}
 	}
 
-	fn query<T: Transaction>(
+	fn query<'a, T: Transaction>(
 		&self,
-		rx: &mut StandardTransaction<'_, T>,
-		plan: PhysicalPlan,
+		rx: &mut StandardTransaction<'a, T>,
+		plan: PhysicalPlan<'a>,
 		params: Params,
 	) -> crate::Result<Columns> {
 		match plan {

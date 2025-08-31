@@ -12,11 +12,11 @@ use reifydb_core::interface::{Params, Transaction, expression::Expression};
 use crate::StandardTransaction;
 
 /// Context passed to virtual table queries with pushdown operations
-pub struct VirtualTableQueryContext {
+pub struct VirtualTableQueryContext<'a> {
 	/// Filter conditions from filter operations
-	pub filters: Vec<Expression>,
+	pub filters: Vec<Expression<'a>>,
 	/// Projection expressions from map operations (empty = select all)
-	pub projections: Vec<Expression>,
+	pub projections: Vec<Expression<'a>>,
 	/// Sort keys from order operations
 	pub order_by: Vec<SortKey>,
 	/// Limit from take operations
@@ -29,10 +29,10 @@ pub struct VirtualTableQueryContext {
 /// optimization
 pub trait VirtualTable<T: Transaction>: Send + Sync {
 	/// Execute a query with pushdown context
-	fn query(
+	fn query<'a>(
 		&self,
-		ctx: VirtualTableQueryContext,
-		txn: &mut StandardTransaction<T>,
+		ctx: VirtualTableQueryContext<'a>,
+		txn: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Columns>;
 
 	/// Get the table definition

@@ -16,7 +16,7 @@ use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	EncodedKey, Result, RowNumber,
 	diagnostic::Diagnostic,
-	hook::Hooks,
+	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{
 		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
@@ -457,17 +457,21 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 	let memory = Memory::new();
-	let hooks = Hooks::new();
-	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
+	let eventbus = EventBus::new();
+	let unversioned =
+		SingleVersionLock::new(memory.clone(), eventbus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
-	let versioned =
-		Serializable::new(memory, unversioned.clone(), hooks.clone());
+	let versioned = Serializable::new(
+		memory,
+		unversioned.clone(),
+		eventbus.clone(),
+	);
 
 	StandardEngine::new(
 		versioned,
 		unversioned,
 		cdc,
-		hooks,
+		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
 	)

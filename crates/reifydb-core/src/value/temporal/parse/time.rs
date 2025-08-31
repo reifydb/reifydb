@@ -9,7 +9,7 @@ use crate::{
 pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
 	let fragment = fragment.into_fragment();
-	let fragment_value = fragment.value();
+	let fragment_value = fragment.text();
 	let mut time_str = fragment_value;
 
 	if time_str.ends_with('Z') {

@@ -2,29 +2,36 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	Fragment,
 	flow::{FlowNodeType::Operator, OperatorType::Distinct},
 	interface::{
 		CommandTransaction, FlowNodeId,
-		expression::{ColumnExpression, Expression},
+		evaluate::expression::{ColumnExpression, Expression},
 	},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,
+};
 use crate::{
 	Result,
 	plan::physical::{DistinctNode, PhysicalPlan},
 };
 
 pub(crate) struct DistinctCompiler {
-	pub input: Box<PhysicalPlan>,
-	pub columns: Vec<reifydb_core::OwnedFragment>,
+	pub input: Box<PhysicalPlan<'static>>,
+	pub columns: Vec<Fragment<'static>>,
 }
 
-impl From<DistinctNode> for DistinctCompiler {
-	fn from(node: DistinctNode) -> Self {
+impl<'a> From<DistinctNode<'a>> for DistinctCompiler {
+	fn from(node: DistinctNode<'a>) -> Self {
 		Self {
-			input: node.input,
-			columns: node.columns,
+			input: Box::new(to_owned_physical_plan(*node.input)),
+			columns: node
+				.columns
+				.into_iter()
+				.map(|f| Fragment::Owned(f.into_owned()))
+				.collect(),
 		}
 	}
 }
@@ -34,10 +41,14 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 		let input_node = compiler.compile_plan(*self.input)?;
 
 		// Convert column fragments to column expressions
-		let expressions: Vec<Expression> = self
+		let expressions: Vec<Expression<'static>> = self
 			.columns
 			.into_iter()
-			.map(|col| Expression::Column(ColumnExpression(col)))
+			.map(|col| {
+				Expression::Column(ColumnExpression(
+					Fragment::Owned(col.into_owned()),
+				))
+			})
 			.collect();
 
 		compiler.build_node(Operator {

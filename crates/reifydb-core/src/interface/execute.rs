@@ -5,7 +5,7 @@ use crate::{
 	Frame,
 	interface::{
 		CommandTransaction, Identity, Params, QueryTransaction,
-		WithHooks, interceptor::WithInterceptors,
+		WithEventBus, interceptor::WithInterceptors,
 	},
 };
 
@@ -24,14 +24,14 @@ pub struct Query<'a> {
 }
 
 pub trait Execute<
-	CT: CommandTransaction + WithInterceptors<CT> + WithHooks,
+	CT: CommandTransaction + WithInterceptors<CT> + WithEventBus,
 	QT: QueryTransaction,
 >: ExecuteCommand<CT> + ExecuteQuery<QT>
 {
 }
 
 pub trait ExecuteCommand<
-	CT: CommandTransaction + WithInterceptors<CT> + WithHooks,
+	CT: CommandTransaction + WithInterceptors<CT> + WithEventBus,
 >
 {
 	fn execute_command(

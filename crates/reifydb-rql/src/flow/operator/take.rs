@@ -6,21 +6,23 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowNodeId},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,
+};
 use crate::{
 	Result,
 	plan::physical::{PhysicalPlan, TakeNode},
 };
 
 pub(crate) struct TakeCompiler {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<PhysicalPlan<'static>>,
 	pub limit: usize,
 }
 
-impl From<TakeNode> for TakeCompiler {
-	fn from(node: TakeNode) -> Self {
+impl<'a> From<TakeNode<'a>> for TakeCompiler {
+	fn from(node: TakeNode<'a>) -> Self {
 		Self {
-			input: node.input,
+			input: Box::new(to_owned_physical_plan(*node.input)),
 			limit: node.take,
 		}
 	}

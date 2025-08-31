@@ -3,25 +3,33 @@
 
 use reifydb_core::{
 	flow::{FlowNodeType::Operator, OperatorType::Extend},
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{
+		CommandTransaction, FlowNodeId,
+		evaluate::expression::Expression,
+	},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler,
+	conversion::{to_owned_expressions, to_owned_physical_plan},
+};
 use crate::{
 	Result,
 	plan::physical::{ExtendNode, PhysicalPlan},
 };
 
 pub(crate) struct ExtendCompiler {
-	pub input: Option<Box<PhysicalPlan>>,
-	pub expressions: Vec<Expression>,
+	pub input: Option<Box<PhysicalPlan<'static>>>,
+	pub expressions: Vec<Expression<'static>>,
 }
 
-impl From<ExtendNode> for ExtendCompiler {
-	fn from(node: ExtendNode) -> Self {
+impl<'a> From<ExtendNode<'a>> for ExtendCompiler {
+	fn from(node: ExtendNode<'a>) -> Self {
 		Self {
-			input: node.input,
-			expressions: node.extend,
+			input: node.input.map(|input| {
+				Box::new(to_owned_physical_plan(*input))
+			}),
+			expressions: to_owned_expressions(node.extend),
 		}
 	}
 }

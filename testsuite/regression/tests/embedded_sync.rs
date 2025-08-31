@@ -6,7 +6,7 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, SessionSync, SyncBuilder,
 	core::{
-		hook::Hooks,
+		event::EventBus,
 		interface::{
 			CdcTransaction, Params, UnversionedTransaction,
 			VersionedTransaction,
@@ -33,14 +33,14 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, Hooks)) -> Self {
-		let (versioned, unversioned, cdc, hooks) = input;
+	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+		let (versioned, unversioned, cdc, eventbus) = input;
 		Self {
 			instance: SyncBuilder::new(
 				versioned,
 				unversioned,
 				cdc,
-				hooks,
+				eventbus,
 			)
 			.build()
 			.unwrap(),

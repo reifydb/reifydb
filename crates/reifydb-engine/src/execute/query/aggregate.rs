@@ -32,19 +32,19 @@ enum Projection {
 	},
 }
 
-pub(crate) struct AggregateNode<T: Transaction> {
-	input: Box<ExecutionPlan<T>>,
-	by: Vec<Expression>,
-	map: Vec<Expression>,
+pub(crate) struct AggregateNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
+	by: Vec<Expression<'a>>,
+	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 }
 
-impl<T: Transaction> AggregateNode<T> {
+impl<'a, T: Transaction> AggregateNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<T>>,
-		by: Vec<Expression>,
-		map: Vec<Expression>,
+		input: Box<ExecutionPlan<'a, T>>,
+		by: Vec<Expression<'a>>,
+		map: Vec<Expression<'a>>,
 		context: Arc<ExecutionContext>,
 	) -> Self {
 		Self {
@@ -57,11 +57,11 @@ impl<T: Transaction> AggregateNode<T> {
 	}
 }
 
-impl<T: Transaction> AggregateNode<T> {
+impl<'a, T: Transaction> AggregateNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);
@@ -189,7 +189,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.fragment());
 				projections.push(Projection::Group {
 					column: c.0.fragment().to_string(),
-					alias: c.fragment(),
+					alias: c.0.clone().to_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -201,7 +201,7 @@ fn parse_keys_and_aggregates<'a>(
 						.column
 						.fragment()
 						.to_string(),
-					alias: access.fragment(),
+					alias: access.column.clone().to_owned(),
 				})
 			}
 			// _ => return
@@ -227,7 +227,7 @@ fn parse_keys_and_aggregates<'a>(
 			expr => {
 				// Non-aliased expression, use the expression's
 				// fragment as alias
-				(expr, expr.fragment())
+				(expr, expr.full_fragment_owned())
 			}
 		};
 
@@ -247,7 +247,9 @@ fn parse_keys_and_aggregates<'a>(
 									)
 									.to_string(
 									),
-								alias,
+								alias: alias
+									.to_owned(
+									),
 								function,
 							},
 						);
@@ -269,7 +271,9 @@ fn parse_keys_and_aggregates<'a>(
 									)
 									.to_string(
 									),
-								alias,
+								alias: alias
+									.to_owned(
+									),
 								function,
 							},
 						);

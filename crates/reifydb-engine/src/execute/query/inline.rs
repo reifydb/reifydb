@@ -22,17 +22,17 @@ use crate::{
 	execute::{Batch, ExecutionContext},
 };
 
-pub(crate) struct InlineDataNode<T: Transaction> {
-	rows: Vec<Vec<AliasExpression>>,
+pub(crate) struct InlineDataNode<'a, T: Transaction> {
+	rows: Vec<Vec<AliasExpression<'a>>>,
 	layout: Option<ColumnsLayout>,
 	context: Arc<ExecutionContext>,
 	executed: bool,
 	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Transaction> InlineDataNode<T> {
+impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	pub fn new(
-		rows: Vec<Vec<AliasExpression>>,
+		rows: Vec<Vec<AliasExpression<'a>>>,
 		context: Arc<ExecutionContext>,
 	) -> Self {
 		let layout = context.table.as_ref().map(|table| {
@@ -65,11 +65,11 @@ impl<T: Transaction> InlineDataNode<T> {
 	}
 }
 
-impl<T: Transaction> InlineDataNode<T> {
+impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		_ctx: &ExecutionContext,
-		_rx: &mut crate::StandardTransaction<T>,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.executed {
 			return Ok(None);
@@ -102,7 +102,7 @@ impl<T: Transaction> InlineDataNode<T> {
 	}
 }
 
-impl<T: Transaction> InlineDataNode<T> {
+impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {

@@ -18,13 +18,15 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		// Check if schema already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_schema_by_name(&plan.schema)? {
+		if let Some(_) = txn.find_schema_by_name(plan.schema.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
 						"schema",
 						Value::Utf8(
-							plan.schema.to_string(),
+							plan.schema
+								.text()
+								.to_string(),
 						),
 					),
 					("created", Value::Bool(false)),
@@ -35,8 +37,8 @@ impl Executor {
 		}
 
 		let result = txn.create_schema(SchemaToCreate {
-			schema_fragment: Some(plan.schema.clone()),
-			name: plan.schema.to_string(),
+			schema_fragment: Some(plan.schema.clone().into_owned()),
+			name: plan.schema.text().to_string(),
 		})?;
 
 		Ok(Columns::single_row([
@@ -48,7 +50,7 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{OwnedFragment, Value, interface::Params};
+	use reifydb_core::{Fragment, Value, interface::Params};
 	use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
 
 	use crate::{
@@ -60,7 +62,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let mut plan = CreateSchemaPlan {
-			schema: OwnedFragment::testing("my_schema"),
+			schema: Fragment::owned_internal("my_schema"),
 			if_not_exists: false,
 		};
 

@@ -13,7 +13,7 @@ use crate::{
 
 pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
 	let fragment = fragment.into_fragment();
-	let value = fragment.value().trim();
+	let value = fragment.text().trim();
 
 	if value.is_empty() {
 		return_error!(empty_boolean_value(fragment));

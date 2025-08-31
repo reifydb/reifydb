@@ -8,9 +8,9 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_index(
-		ast: AstCreateIndex,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_create_index<'a>(
+		ast: AstCreateIndex<'a>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		let columns = ast
 			.columns
 			.into_iter()

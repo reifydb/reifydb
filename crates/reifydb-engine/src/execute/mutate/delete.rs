@@ -7,8 +7,9 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange, Value,
 	interface::{
-		EncodableKeyRange, Params, RowKeyRange, Transaction,
-		VersionedCommandTransaction, VersionedQueryTransaction,
+		EncodableKey, EncodableKeyRange, Params, RowKey, RowKeyRange,
+		Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction,
 	},
 	result::error::diagnostic::{
 		catalog::{schema_not_found, table_not_found},
@@ -48,7 +49,9 @@ impl Executor {
 					)?
 				else {
 					return_error!(schema_not_found(
-						Some(schema_ref.clone()),
+						Some(schema_ref
+							.clone()
+							.into_owned()),
 						schema_name
 					));
 				};
@@ -168,15 +171,15 @@ impl Executor {
 				}
 			}
 
-			// Now we need to do the deletes, but we can't use txn
-			// because it was moved We need to get it back from
-			// std_txn or use a different approach For now, let's
-			// skip the row-based deletion and do table scan instead
-			return_error!(
-				reifydb_core::error::diagnostic::engine::frame_error(
-					"Row-based deletion with query input is not yet supported with the new transaction system".to_string()
-				)
-			);
+			let cmd = std_txn.command();
+			for row_number in row_numbers_to_delete {
+				cmd.remove(&RowKey {
+					store: table.id.into(),
+					row: row_number,
+				}
+				.encode())?;
+				deleted_count += 1;
+			}
 		} else {
 			// Delete entire table - scan all rows and delete them
 			let range = RowKeyRange {

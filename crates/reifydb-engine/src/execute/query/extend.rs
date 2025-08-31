@@ -15,16 +15,16 @@ use crate::{
 	},
 };
 
-pub(crate) struct ExtendNode<T: Transaction> {
-	input: Box<ExecutionPlan<T>>,
-	expressions: Vec<Expression>,
+pub(crate) struct ExtendNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl<T: Transaction> ExtendNode<T> {
+impl<'a, T: Transaction> ExtendNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<T>>,
-		expressions: Vec<Expression>,
+		input: Box<ExecutionPlan<'a, T>>,
+		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -33,13 +33,13 @@ impl<T: Transaction> ExtendNode<T> {
 		}
 	}
 
-	fn create_evaluation_context<'a>(
+	fn create_evaluation_context<'b>(
 		&self,
 		expr: &Expression,
-		ctx: &'a ExecutionContext,
+		ctx: &'b ExecutionContext,
 		columns: Columns,
 		row_count: usize,
-	) -> EvaluationContext<'a> {
+	) -> EvaluationContext<'b> {
 		let mut result = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
@@ -84,11 +84,11 @@ impl<T: Transaction> ExtendNode<T> {
 	}
 }
 
-impl<T: Transaction> ExtendNode<T> {
+impl<'a, T: Transaction> ExtendNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			columns,
@@ -155,14 +155,14 @@ impl<T: Transaction> ExtendNode<T> {
 	}
 }
 
-pub(crate) struct ExtendWithoutInputNode<T: Transaction> {
-	expressions: Vec<Expression>,
+pub(crate) struct ExtendWithoutInputNode<'a, T: Transaction> {
+	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Transaction> ExtendWithoutInputNode<T> {
-	pub fn new(expressions: Vec<Expression>) -> Self {
+impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
+	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
 			layout: None,
@@ -171,11 +171,11 @@ impl<T: Transaction> ExtendWithoutInputNode<T> {
 	}
 }
 
-impl<T: Transaction> ExtendWithoutInputNode<T> {
+impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		_rx: &mut crate::StandardTransaction<T>,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

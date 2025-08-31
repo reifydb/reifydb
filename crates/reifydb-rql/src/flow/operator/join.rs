@@ -5,10 +5,16 @@ use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinType,
 	flow::{FlowNodeType::Operator, OperatorType::Join},
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{
+		CommandTransaction, FlowNodeId,
+		evaluate::expression::Expression,
+	},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler,
+	conversion::{to_owned_expressions, to_owned_physical_plan},
+};
 use crate::{
 	Result,
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
@@ -16,29 +22,29 @@ use crate::{
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
-	pub on: Vec<Expression>,
+	pub left: Box<PhysicalPlan<'static>>,
+	pub right: Box<PhysicalPlan<'static>>,
+	pub on: Vec<Expression<'static>>,
 }
 
-impl From<JoinInnerNode> for JoinCompiler {
-	fn from(node: JoinInnerNode) -> Self {
+impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
+	fn from(node: JoinInnerNode<'a>) -> Self {
 		Self {
 			join_type: Inner,
-			left: node.left,
-			right: node.right,
-			on: node.on,
+			left: Box::new(to_owned_physical_plan(*node.left)),
+			right: Box::new(to_owned_physical_plan(*node.right)),
+			on: to_owned_expressions(node.on),
 		}
 	}
 }
 
-impl From<JoinLeftNode> for JoinCompiler {
-	fn from(node: JoinLeftNode) -> Self {
+impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
+	fn from(node: JoinLeftNode<'a>) -> Self {
 		Self {
 			join_type: Left,
-			left: node.left,
-			right: node.right,
-			on: node.on,
+			left: Box::new(to_owned_physical_plan(*node.left)),
+			right: Box::new(to_owned_physical_plan(*node.right)),
+			on: to_owned_expressions(node.on),
 		}
 	}
 }

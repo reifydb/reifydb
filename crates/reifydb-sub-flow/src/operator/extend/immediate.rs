@@ -10,11 +10,11 @@ use reifydb_core::{
 use crate::operator::{Operator, OperatorContext};
 
 pub struct ExtendOperator {
-	expressions: Vec<Expression>,
+	expressions: Vec<Expression<'static>>,
 }
 
 impl ExtendOperator {
-	pub fn new(expressions: Vec<Expression>) -> Self {
+	pub fn new(expressions: Vec<Expression<'static>>) -> Self {
 		Self {
 			expressions,
 		}

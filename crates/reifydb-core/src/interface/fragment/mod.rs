@@ -133,17 +133,17 @@ impl Fragment<'_> {
 
 impl<'a> Fragment<'a> {
 	/// Get the text value of the fragment
-	pub fn value(&self) -> &str {
+	pub fn text(&self) -> &str {
 		match self {
-			Fragment::Owned(f) => f.value(),
-			Fragment::Borrowed(f) => f.value(),
+			Fragment::Owned(f) => f.text(),
+			Fragment::Borrowed(f) => f.text(),
 			Fragment::None => "",
 		}
 	}
 
 	/// Alias for value() for compatibility
 	pub fn fragment(&self) -> &str {
-		self.value()
+		self.text()
 	}
 
 	/// Get line position
@@ -219,6 +219,16 @@ impl<'a> Fragment<'a> {
 			Fragment::Borrowed(f) => f.sub_fragment(offset, length),
 			Fragment::None => OwnedFragment::None,
 		}
+	}
+
+	/// Merge multiple fragments (in any order) into one encompassing
+	/// fragment
+	pub fn merge_all(
+		fragments: impl IntoIterator<Item = Fragment<'a>>,
+	) -> Fragment<'a> {
+		let owned_fragments: Vec<OwnedFragment> =
+			fragments.into_iter().map(|f| f.into_owned()).collect();
+		Fragment::Owned(OwnedFragment::merge_all(owned_fragments))
 	}
 }
 
@@ -366,3 +376,35 @@ impl IntoFragment<'_> for String {
 		})
 	}
 }
+
+// Serialize Fragment<'a> by converting to OwnedFragment
+impl<'a> serde::Serialize for Fragment<'a> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.clone().into_owned().serialize(serializer)
+	}
+}
+
+// Deserialize always creates Fragment::Owned with OwnedFragment
+impl<'de, 'a> serde::Deserialize<'de> for Fragment<'a> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		let owned = OwnedFragment::deserialize(deserializer)?;
+		Ok(Fragment::Owned(owned))
+	}
+}
+
+// PartialEq implementation for Fragment<'a>
+impl<'a> PartialEq for Fragment<'a> {
+	fn eq(&self, other: &Self) -> bool {
+		self.text() == other.text()
+			&& self.line() == other.line()
+			&& self.column() == other.column()
+	}
+}
+
+impl<'a> Eq for Fragment<'a> {}

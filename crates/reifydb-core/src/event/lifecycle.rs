@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::impl_hook;
+use crate::impl_event;
 
 /// Invoked during application startup before database initialization
-pub struct OnStartHook {}
+pub struct OnStartEvent {}
 
-impl_hook!(OnStartHook);
+impl_event!(OnStartEvent);
 
 /// Invoked once during database creation to setup the internal database system
-pub struct OnCreateHook {}
+pub struct OnCreateEvent {}
 
-impl_hook!(OnCreateHook);
+impl_event!(OnCreateEvent);

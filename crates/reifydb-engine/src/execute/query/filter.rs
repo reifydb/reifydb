@@ -12,15 +12,15 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct FilterNode<T: Transaction> {
-	input: Box<ExecutionPlan<T>>,
-	expressions: Vec<Expression>,
+pub(crate) struct FilterNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
+	expressions: Vec<Expression<'a>>,
 }
 
-impl<T: Transaction> FilterNode<T> {
+impl<'a, T: Transaction> FilterNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<T>>,
-		expressions: Vec<Expression>,
+		input: Box<ExecutionPlan<'a, T>>,
+		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -29,11 +29,11 @@ impl<T: Transaction> FilterNode<T> {
 	}
 }
 
-impl<T: Transaction> FilterNode<T> {
+impl<'a, T: Transaction> FilterNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,

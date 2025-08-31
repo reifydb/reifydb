@@ -8,13 +8,16 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct TakeNode<T: Transaction> {
-	input: Box<ExecutionPlan<T>>,
+pub(crate) struct TakeNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	remaining: usize,
 }
 
-impl<T: Transaction> TakeNode<T> {
-	pub(crate) fn new(input: Box<ExecutionPlan<T>>, take: usize) -> Self {
+impl<'a, T: Transaction> TakeNode<'a, T> {
+	pub(crate) fn new(
+		input: Box<ExecutionPlan<'a, T>>,
+		take: usize,
+	) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -22,11 +25,11 @@ impl<T: Transaction> TakeNode<T> {
 	}
 }
 
-impl<T: Transaction> TakeNode<T> {
+impl<'a, T: Transaction> TakeNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		while let Some(Batch {
 			mut columns,

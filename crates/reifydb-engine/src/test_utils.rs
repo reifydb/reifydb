@@ -6,7 +6,7 @@ use reifydb_catalog::{
 	schema::SchemaToCreate,
 	table::{TableColumnToCreate, TableToCreate},
 };
-use reifydb_core::{Type, hook::Hooks, interceptor::Interceptors};
+use reifydb_core::{Type, event::EventBus, interceptor::Interceptors};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
@@ -25,16 +25,21 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	>,
 > {
 	let memory = Memory::new();
-	let hooks = Hooks::new();
-	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
+	let event_bus = EventBus::new();
+	let unversioned =
+		SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	StandardCommandTransaction::new(
-		Serializable::new(memory, unversioned.clone(), hooks.clone())
-			.begin_command()
-			.unwrap(),
+		Serializable::new(
+			memory,
+			unversioned.clone(),
+			event_bus.clone(),
+		)
+		.begin_command()
+		.unwrap(),
 		unversioned,
 		cdc,
-		hooks,
+		event_bus,
 		MaterializedCatalog::new(),
 		Interceptors::new(),
 	)
@@ -49,16 +54,21 @@ pub fn create_test_command_transaction_with_internal_schema()
 	>,
 > {
 	let memory = Memory::new();
-	let hooks = Hooks::new();
-	let unversioned = SingleVersionLock::new(memory.clone(), hooks.clone());
+	let event_bus = EventBus::new();
+	let unversioned =
+		SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	let mut result = StandardCommandTransaction::new(
-		Serializable::new(memory, unversioned.clone(), hooks.clone())
-			.begin_command()
-			.unwrap(),
+		Serializable::new(
+			memory,
+			unversioned.clone(),
+			event_bus.clone(),
+		)
+		.begin_command()
+		.unwrap(),
 		unversioned,
 		cdc,
-		hooks,
+		event_bus,
 		MaterializedCatalog::new(),
 		Interceptors::new(),
 	);

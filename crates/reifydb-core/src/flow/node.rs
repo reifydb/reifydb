@@ -3,19 +3,20 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	JoinType, SortKey,
 	interface::{
-		FlowEdgeId, FlowNodeId, TableId, ViewId, expression::Expression,
+		FlowEdgeId, FlowNodeId, TableId, ViewId,
+		evaluate::expression::Expression,
 	},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FlowNodeType {
+pub enum FlowNodeType<'a> {
 	SourceInlineData {},
 	SourceTable {
 		name: String,
 		table: TableId,
 	},
 	Operator {
-		operator: OperatorType,
+		operator: OperatorType<'a>,
 	},
 	SinkView {
 		name: String,
@@ -24,28 +25,28 @@ pub enum FlowNodeType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OperatorType {
+pub enum OperatorType<'a> {
 	Filter {
-		conditions: Vec<Expression>,
+		conditions: Vec<Expression<'a>>,
 	},
 	Map {
-		expressions: Vec<Expression>,
+		expressions: Vec<Expression<'a>>,
 	},
 	Extend {
-		expressions: Vec<Expression>,
+		expressions: Vec<Expression<'a>>,
 	},
 	MapTerminal {
-		expressions: Vec<Expression>,
+		expressions: Vec<Expression<'a>>,
 		view_id: ViewId,
 	},
 	Join {
 		join_type: JoinType,
-		left: Vec<Expression>,
-		right: Vec<Expression>,
+		left: Vec<Expression<'a>>,
+		right: Vec<Expression<'a>>,
 	},
 	Aggregate {
-		by: Vec<Expression>,
-		map: Vec<Expression>,
+		by: Vec<Expression<'a>>,
+		map: Vec<Expression<'a>>,
 	},
 	Union,
 	Sort {
@@ -55,11 +56,11 @@ pub enum OperatorType {
 		limit: usize,
 	},
 	Distinct {
-		expressions: Vec<Expression>,
+		expressions: Vec<Expression<'a>>,
 	},
 }
 
-impl OperatorType {
+impl<'a> OperatorType<'a> {
 	/// Returns true if this operator maintains internal state that needs to
 	/// be persisted across incremental updates
 	pub fn is_stateful(&self) -> bool {
@@ -99,15 +100,15 @@ impl OperatorType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowNode {
+pub struct FlowNode<'a> {
 	pub id: FlowNodeId,
-	pub ty: FlowNodeType,
+	pub ty: FlowNodeType<'a>,
 	pub inputs: Vec<FlowNodeId>,
 	pub outputs: Vec<FlowNodeId>,
 }
 
-impl FlowNode {
-	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType) -> Self {
+impl<'a> FlowNode<'a> {
+	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType<'a>) -> Self {
 		Self {
 			id: id.into(),
 			ty,

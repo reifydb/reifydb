@@ -16,18 +16,18 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan},
 };
 
-pub(crate) struct InnerJoinNode<T: Transaction> {
-	left: Box<ExecutionPlan<T>>,
-	right: Box<ExecutionPlan<T>>,
-	on: Vec<Expression>,
+pub(crate) struct InnerJoinNode<'a, T: Transaction> {
+	left: Box<ExecutionPlan<'a, T>>,
+	right: Box<ExecutionPlan<'a, T>>,
+	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
 }
 
-impl<T: Transaction> InnerJoinNode<T> {
+impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	pub fn new(
-		left: Box<ExecutionPlan<T>>,
-		right: Box<ExecutionPlan<T>>,
-		on: Vec<Expression>,
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
+		on: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			left,
@@ -38,9 +38,9 @@ impl<T: Transaction> InnerJoinNode<T> {
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<ExecutionPlan<T>>,
+		node: &mut Box<ExecutionPlan<'a, T>>,
 		ctx: &ExecutionContext,
-		rx: &mut StandardTransaction<T>,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
@@ -60,11 +60,11 @@ impl<T: Transaction> InnerJoinNode<T> {
 	}
 }
 
-impl<T: Transaction> InnerJoinNode<T> {
+impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	pub(crate) fn next(
 		&mut self,
 		ctx: &ExecutionContext,
-		rx: &mut crate::StandardTransaction<T>,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
 		if self.layout.is_some() {
 			return Ok(None);

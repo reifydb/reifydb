@@ -3,25 +3,33 @@
 
 use reifydb_core::{
 	flow::{FlowNodeType::Operator, OperatorType::Map},
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{
+		CommandTransaction, FlowNodeId,
+		evaluate::expression::Expression,
+	},
 };
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{
+	CompileOperator, FlowCompiler,
+	conversion::{to_owned_expressions, to_owned_physical_plan},
+};
 use crate::{
 	Result,
 	plan::physical::{MapNode, PhysicalPlan},
 };
 
 pub(crate) struct MapCompiler {
-	pub input: Option<Box<PhysicalPlan>>,
-	pub expressions: Vec<Expression>,
+	pub input: Option<Box<PhysicalPlan<'static>>>,
+	pub expressions: Vec<Expression<'static>>,
 }
 
-impl From<MapNode> for MapCompiler {
-	fn from(node: MapNode) -> Self {
+impl<'a> From<MapNode<'a>> for MapCompiler {
+	fn from(node: MapNode<'a>) -> Self {
 		Self {
-			input: node.input,
-			expressions: node.map,
+			input: node.input.map(|input| {
+				Box::new(to_owned_physical_plan(*input))
+			}),
+			expressions: to_owned_expressions(node.map),
 		}
 	}
 }
