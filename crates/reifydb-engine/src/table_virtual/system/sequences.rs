@@ -12,12 +12,14 @@ use reifydb_core::{
 
 use crate::{
 	StandardTransaction,
+	execute::Batch,
 	table_virtual::{VirtualTable, VirtualTableContext},
 };
 
 /// Virtual table that exposes system sequence information
 pub struct Sequences<T: Transaction> {
 	definition: VirtualTableDef,
+	exhausted: bool,
 	_phantom: PhantomData<T>,
 }
 
@@ -25,17 +27,37 @@ impl<T: Transaction> Sequences<T> {
 	pub fn new(definition: VirtualTableDef) -> Self {
 		Self {
 			definition,
+			exhausted: false,
 			_phantom: PhantomData,
 		}
 	}
 }
 
 impl<T: Transaction> VirtualTable<T> for Sequences<T> {
-	fn query(
-		&self,
-		txn: &mut StandardTransaction<T>,
-		_ctx: VirtualTableContext,
-	) -> Result<Columns> {
+	fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a, T>,
+		_ctx: VirtualTableContext<'a>,
+	) -> Result<()> {
+		// Store context (we need to handle lifetime properly)
+		// For now, we don't store the context since Sequences doesn't
+		// use pushdown In a real implementation with pushdown, we'd
+		// process the context here
+		self.exhausted = false;
+		// Note: We're not storing the context as Sequences doesn't
+		// support pushdown and the Basic context only has params
+		// which we don't need
+		Ok(())
+	}
+
+	fn next<'a>(
+		&mut self,
+		txn: &mut StandardTransaction<'a, T>,
+	) -> Result<Option<Batch>> {
+		if self.exhausted {
+			return Ok(None);
+		}
+
 		let mut sequence_ids = Vec::new();
 		let mut schema_ids = Vec::new();
 		let mut schema_names = Vec::new();
@@ -77,7 +99,10 @@ impl<T: Transaction> VirtualTable<T> for Sequences<T> {
 			}),
 		];
 
-		Ok(Columns::new(columns))
+		self.exhausted = true;
+		Ok(Some(Batch {
+			columns: Columns::new(columns),
+		}))
 	}
 
 	fn definition(&self) -> &VirtualTableDef {

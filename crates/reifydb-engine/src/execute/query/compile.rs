@@ -25,7 +25,7 @@ use crate::{
 			virtual_table_scan::VirtualScanNode,
 		},
 	},
-	table_virtual::{VirtualTable, system::Sequences},
+	table_virtual::{VirtualTable, VirtualTableContext, system::Sequences},
 };
 
 pub(crate) fn compile<'a, T: Transaction>(
@@ -171,6 +171,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 		PhysicalPlan::VirtualScan(physical::VirtualScanNode {
 			schema,
 			table,
+			pushdown_context,
 		}) => {
 			// Create the appropriate virtual table implementation
 			let virtual_table_impl: Box<dyn VirtualTable<T>> =
@@ -185,10 +186,24 @@ pub(crate) fn compile<'a, T: Transaction>(
 					)
 				};
 
+			// Convert pushdown context if present
+			let virtual_context = pushdown_context
+				.map(|ctx| VirtualTableContext::PushDown {
+					filters: ctx.filters,
+					projections: ctx.projections,
+					order_by: ctx.order_by,
+					limit: ctx.limit,
+					params: context.params.clone(),
+				})
+				.unwrap_or(VirtualTableContext::Basic {
+					params: context.params.clone(),
+				});
+
 			ExecutionPlan::VirtualScan(
 				VirtualScanNode::new(
 					virtual_table_impl,
 					context,
+					virtual_context,
 				)
 				.unwrap(),
 			)

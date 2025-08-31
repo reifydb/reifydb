@@ -16,13 +16,15 @@ pub(crate) struct VirtualScanNode<T: Transaction> {
 	virtual_table: Box<dyn VirtualTable<T>>,
 	context: Arc<ExecutionContext>,
 	layout: ColumnsLayout,
-	exhausted: bool,
+	initialized: bool,
+	table_context: Option<VirtualTableContext<'static>>,
 }
 
 impl<T: Transaction> VirtualScanNode<T> {
 	pub fn new(
 		virtual_table: Box<dyn VirtualTable<T>>,
 		context: Arc<ExecutionContext>,
+		table_context: VirtualTableContext<'static>,
 	) -> crate::Result<Self> {
 		let def = virtual_table.definition();
 
@@ -44,7 +46,8 @@ impl<T: Transaction> VirtualScanNode<T> {
 			virtual_table,
 			context,
 			layout,
-			exhausted: false,
+			initialized: false,
+			table_context: Some(table_context),
 		})
 	}
 }
@@ -55,28 +58,20 @@ impl<T: Transaction> VirtualScanNode<T> {
 		_ctx: &ExecutionContext,
 		rx: &mut StandardTransaction<T>,
 	) -> crate::Result<Option<Batch>> {
-		if self.exhausted {
-			return Ok(None);
+		// Initialize on first call
+		if !self.initialized {
+			let ctx = self.table_context.take().unwrap_or_else(
+				|| VirtualTableContext::Basic {
+					params: self.context.params.clone(),
+				},
+			);
+
+			self.virtual_table.initialize(rx, ctx)?;
+			self.initialized = true;
 		}
 
-		// Build the query context for pushdown operations
-		// TODO: Extract these from the query plan in the future
-		let query_ctx = VirtualTableContext::PushDown {
-			filters: Vec::new(),
-			projections: Vec::new(),
-			order_by: Vec::new(),
-			limit: None,
-			params: self.context.params.clone(),
-		};
-
-		// Execute the virtual table query
-		let columns = self.virtual_table.query(rx, query_ctx)?;
-
-		self.exhausted = true; // For now, virtual tables return all data at once
-
-		Ok(Some(Batch {
-			columns,
-		}))
+		// Delegate to virtual table's iterator
+		self.virtual_table.next(rx)
 	}
 
 	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {

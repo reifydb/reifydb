@@ -361,6 +361,7 @@ impl Compiler {
 							VirtualScanNode {
 								schema,
 								table: virtual_table,
+								pushdown_context: None, // TODO: Detect pushdown opportunities
 							},
 						));
 					} else {
@@ -582,6 +583,15 @@ pub struct ViewScanNode {
 pub struct VirtualScanNode {
 	pub schema: SchemaDef,
 	pub table: VirtualTableDef,
+	pub pushdown_context: Option<VirtualTablePushdownContext>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualTablePushdownContext {
+	pub filters: Vec<Expression<'static>>,
+	pub projections: Vec<Expression<'static>>,
+	pub order_by: Vec<SortKey>,
+	pub limit: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

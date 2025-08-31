@@ -48,14 +48,14 @@ mod query;
 #[derive(Clone)]
 pub struct ExecutionContext {
 	pub functions: Functions,
-	pub table: Option<TableDef>,
+	pub table: Option<TableDef>, // FIXME should become store
 	pub batch_size: usize,
 	pub preserve_row_numbers: bool,
 	pub params: Params,
 }
 
 #[derive(Debug)]
-pub(crate) struct Batch {
+pub struct Batch {
 	pub columns: Columns,
 }
 

@@ -6,10 +6,9 @@ use reifydb_core::{
 	interface::{
 		Params, Transaction, VirtualTableDef, expression::Expression,
 	},
-	value::columnar::Columns,
 };
 
-use crate::StandardTransaction;
+use crate::{StandardTransaction, execute::Batch};
 
 pub(crate) mod system;
 
@@ -34,15 +33,21 @@ pub enum VirtualTableContext<'a> {
 	},
 }
 
-/// Trait for virtual table instances that can execute queries with pushdown
-/// optimization
+/// Trait for virtual table instances that follow the volcano iterator pattern
 pub trait VirtualTable<T: Transaction>: Send + Sync {
-	/// Execute a query with pushdown context
-	fn query<'a>(
-		&self,
+	/// Initialize the virtual table iterator with context
+	/// Called once before iteration begins
+	fn initialize<'a>(
+		&mut self,
 		txn: &mut StandardTransaction<'a, T>,
 		ctx: VirtualTableContext<'a>,
-	) -> crate::Result<Columns>;
+	) -> crate::Result<()>;
+
+	/// Get the next batch of results (volcano iterator pattern)
+	fn next<'a>(
+		&mut self,
+		txn: &mut StandardTransaction<'a, T>,
+	) -> crate::Result<Option<Batch>>;
 
 	/// Get the table definition
 	fn definition(&self) -> &VirtualTableDef;
