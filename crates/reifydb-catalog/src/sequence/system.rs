@@ -6,15 +6,15 @@ use reifydb_core::{
 	EncodedKey,
 	interface::{
 		ColumnId, ColumnPolicyId, CommandTransaction, EncodableKey,
-		SchemaId, SystemSequenceKey, TableId, ViewId,
+		PrimaryKeyId, SchemaId, SystemSequenceKey, TableId, ViewId,
 	},
 };
 
 use crate::{
 	sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, SCHEMA,
-		STORE,
+		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, PRIMARY_KEY,
+		SCHEMA, STORE,
 	},
 };
 
@@ -67,6 +67,13 @@ pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	.encode()
 });
 
+static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+	SystemSequenceKey {
+		sequence: PRIMARY_KEY,
+	}
+	.encode()
+});
+
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
@@ -99,5 +106,12 @@ impl SystemSequence {
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ViewId> {
 		GeneratorU64::next(txn, &STORE_KEY, Some(1025)).map(ViewId)
+	}
+
+	pub(crate) fn next_primary_key_id(
+		txn: &mut impl CommandTransaction,
+	) -> crate::Result<PrimaryKeyId> {
+		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, None)
+			.map(PrimaryKeyId)
 	}
 }

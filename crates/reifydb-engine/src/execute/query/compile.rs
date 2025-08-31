@@ -211,6 +211,8 @@ pub(crate) fn compile<'a, T: Transaction>(
 		}
 
 		PhysicalPlan::AlterSequence(_)
+		| PhysicalPlan::AlterTable(_)
+		| PhysicalPlan::AlterView(_)
 		| PhysicalPlan::CreateDeferredView(_)
 		| PhysicalPlan::CreateTransactionalView(_)
 		| PhysicalPlan::CreateSchema(_)

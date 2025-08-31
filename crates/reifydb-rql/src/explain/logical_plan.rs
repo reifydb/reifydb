@@ -586,5 +586,17 @@ fn render_logical_plan_inner(
 				);
 			}
 		}
+		LogicalPlan::AlterTable(_) => {
+			output.push_str(&format!(
+				"{}{} AlterTable\n",
+				prefix, branch
+			));
+		}
+		LogicalPlan::AlterView(_) => {
+			output.push_str(&format!(
+				"{}{} AlterView\n",
+				prefix, branch
+			));
+		}
 	}
 }

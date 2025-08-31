@@ -103,6 +103,7 @@ mod tests {
 					auto_increment: false,
 				},
 			],
+			primary_key: None,
 		}
 	}
 

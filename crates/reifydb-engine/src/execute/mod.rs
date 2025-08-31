@@ -214,13 +214,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 	}
 }
 
-pub(crate) struct Executor {
+pub struct Executor {
 	pub functions: Functions,
 }
 
 impl Executor {
 	#[allow(dead_code)]
-	pub(crate) fn testing() -> Self {
+	pub fn testing() -> Self {
 		Self {
 			functions: Functions::builder()
 				.register_aggregate(
@@ -336,6 +336,8 @@ impl Executor {
 			}
 
 			PhysicalPlan::AlterSequence(_)
+			| PhysicalPlan::AlterTable(_)
+			| PhysicalPlan::AlterView(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateSchema(_)
@@ -344,7 +346,7 @@ impl Executor {
 		}
 	}
 
-	pub(crate) fn execute_command_plan<T: Transaction>(
+	pub fn execute_command_plan<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: PhysicalPlan,
@@ -393,6 +395,15 @@ impl Executor {
 				let mut std_txn =
 					StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params)
+			}
+
+			PhysicalPlan::AlterTable(plan) => {
+				self.alter_table(txn, plan)
+			}
+			PhysicalPlan::AlterView(_) => {
+				todo!(
+					"ALTER VIEW execution not yet implemented"
+				)
 			}
 		}
 	}

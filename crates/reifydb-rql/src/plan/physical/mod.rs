@@ -6,6 +6,7 @@ mod create;
 
 use std::sync::Arc;
 
+pub use alter::AlterTablePlan;
 use reifydb_catalog::{
 	CatalogStore, system::SystemCatalog, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
@@ -25,7 +26,10 @@ use reifydb_core::{
 
 use crate::plan::{
 	logical::LogicalPlan,
-	physical::PhysicalPlan::{TableScan, ViewScan},
+	physical::{
+		PhysicalPlan::{TableScan, ViewScan},
+		alter::AlterViewPlan,
+	},
 };
 
 struct Compiler {}
@@ -98,6 +102,18 @@ impl Compiler {
 							rx, alter,
 						)?,
 					);
+				}
+
+				LogicalPlan::AlterTable(alter) => {
+					stack.push(Self::compile_alter_table(
+						rx, alter,
+					)?);
+				}
+
+				LogicalPlan::AlterView(alter) => {
+					stack.push(Self::compile_alter_view(
+						rx, alter,
+					)?);
 				}
 
 				LogicalPlan::Filter(filter) => {
@@ -299,7 +315,7 @@ impl Compiler {
 							},
 						));
 					} else if let Some(view) = CatalogStore::find_view_by_name(
-							rx,
+						rx,
 							schema.id,
 							scan.source.fragment(),
 						)? {
@@ -374,6 +390,8 @@ pub enum PhysicalPlan<'a> {
 	CreateTable(CreateTablePlan<'a>),
 	// Alter
 	AlterSequence(AlterSequencePlan<'a>),
+	AlterTable(AlterTablePlan<'a>),
+	AlterView(AlterViewPlan<'a>),
 	// Mutate
 	Delete(DeletePlan<'a>),
 	Insert(InsertPlan<'a>),
@@ -536,11 +554,11 @@ pub struct ViewScanNode {
 pub struct TableVirtualScanNode<'a> {
 	pub schema: SchemaDef,
 	pub table: Arc<TableVirtualDef>,
-	pub pushdown_context: Option<TableVirtualPushdownContext<'a>>,
+	pub pushdown_context: Option<VirtualPushdownContext<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TableVirtualPushdownContext<'a> {
+pub struct VirtualPushdownContext<'a> {
 	pub filters: Vec<Expression<'a>>,
 	pub projections: Vec<Expression<'a>>,
 	pub order_by: Vec<SortKey>,

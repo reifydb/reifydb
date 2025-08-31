@@ -4,6 +4,7 @@
 mod column;
 mod flow;
 mod id;
+mod key;
 mod layout;
 mod policy;
 mod schema;
@@ -15,6 +16,7 @@ mod view;
 pub use column::*;
 pub use flow::*;
 pub use id::*;
+pub use key::*;
 pub use layout::*;
 pub use policy::*;
 pub use schema::*;

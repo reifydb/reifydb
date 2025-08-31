@@ -557,6 +557,8 @@ pub enum AstCreate<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstAlter<'a> {
 	Sequence(AstAlterSequence<'a>),
+	Table(AstAlterTable<'a>),
+	View(AstAlterView<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -566,6 +568,40 @@ pub struct AstAlterSequence<'a> {
 	pub table: AstIdentifier<'a>,
 	pub column: AstIdentifier<'a>,
 	pub value: AstLiteral<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterTable<'a> {
+	pub token: Token<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub table: AstIdentifier<'a>,
+	pub operations: Vec<AstAlterTableOperation<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstAlterTableOperation<'a> {
+	CreatePrimaryKey {
+		name: Option<AstIdentifier<'a>>,
+		columns: Vec<AstIndexColumn<'a>>,
+	},
+	DropPrimaryKey,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterView<'a> {
+	pub token: Token<'a>,
+	pub schema: AstIdentifier<'a>,
+	pub view: AstIdentifier<'a>,
+	pub operations: Vec<AstAlterViewOperation<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstAlterViewOperation<'a> {
+	CreatePrimaryKey {
+		name: Option<AstIdentifier<'a>>,
+		columns: Vec<AstIndexColumn<'a>>,
+	},
+	DropPrimaryKey,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -682,6 +718,14 @@ impl<'a> AstAlter<'a> {
 				token,
 				..
 			}) => token,
+			AstAlter::Table(AstAlterTable {
+				token,
+				..
+			}) => token,
+			AstAlter::View(AstAlterView {
+				token,
+				..
+			}) => token,
 		}
 	}
 }
@@ -787,7 +831,7 @@ pub struct AstIdentifier<'a>(pub Token<'a>);
 
 impl<'a> AstIdentifier<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 
 	pub fn name(&self) -> String {
@@ -885,7 +929,7 @@ pub struct AstLiteralNumber<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralNumber<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 
@@ -894,7 +938,7 @@ pub struct AstLiteralTemporal<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralTemporal<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 
@@ -903,7 +947,7 @@ pub struct AstLiteralText<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralText<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 
@@ -921,7 +965,7 @@ pub struct AstLiteralUndefined<'a>(pub Token<'a>);
 
 impl<'a> AstLiteralUndefined<'a> {
 	pub fn value(&self) -> &str {
-		self.0.fragment.fragment()
+		self.0.fragment.text()
 	}
 }
 

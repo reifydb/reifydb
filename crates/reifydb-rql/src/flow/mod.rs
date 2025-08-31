@@ -181,6 +181,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::AlterSequence(_)
+			| PhysicalPlan::AlterTable(_)
+			| PhysicalPlan::AlterView(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::Insert(_)

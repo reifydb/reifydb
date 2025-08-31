@@ -310,6 +310,7 @@ mod tests {
 			schema: SchemaId(schema_id),
 			name: name.to_string(),
 			columns: vec![],
+			primary_key: None,
 		}
 	}
 
@@ -320,6 +321,7 @@ mod tests {
 			name: name.to_string(),
 			columns: vec![],
 			kind: ViewKind::Deferred,
+			primary_key: None,
 		}
 	}
 

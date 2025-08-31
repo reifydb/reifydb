@@ -7,7 +7,7 @@ pub use columnar::{GroupByView, GroupKey};
 pub use reifydb_core::value::columnar;
 mod engine;
 mod evaluate;
-mod execute;
+pub mod execute;
 #[allow(dead_code)]
 mod function;
 pub(crate) mod interceptor;

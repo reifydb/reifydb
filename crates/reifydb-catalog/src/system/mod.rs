@@ -34,8 +34,9 @@ pub mod ids {
 		pub const FLOW: SequenceId = SequenceId(5);
 		pub const FLOW_NODE: SequenceId = SequenceId(6);
 		pub const FLOW_EDGE: SequenceId = SequenceId(7);
+		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
 
-		pub const ALL: [SequenceId; 7] = [
+		pub const ALL: [SequenceId; 8] = [
 			SCHEMA,
 			STORE,
 			COLUMN,
@@ -43,6 +44,7 @@ pub mod ids {
 			FLOW,
 			FLOW_NODE,
 			FLOW_EDGE,
+			PRIMARY_KEY,
 		];
 	}
 

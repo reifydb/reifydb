@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+pub mod load;
+mod primary_key;
 mod schema;
 mod table;
 mod view;
@@ -9,13 +11,17 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	interface::{SchemaDef, SchemaId, TableDef, TableId, ViewDef, ViewId},
+	interface::{
+		PrimaryKeyDef, PrimaryKeyId, SchemaDef, SchemaId, TableDef,
+		TableId, ViewDef, ViewId,
+	},
 	util::VersionedContainer,
 };
 
 pub type VersionedSchemaDef = VersionedContainer<SchemaDef>;
 pub type VersionedTableDef = VersionedContainer<TableDef>;
 pub type VersionedViewDef = VersionedContainer<ViewDef>;
+pub type VersionedPrimaryKeyDef = VersionedContainer<PrimaryKeyDef>;
 
 /// A materialized catalog that stores versioned schema, table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -40,6 +46,9 @@ pub struct MaterializedCatalogInner {
 	pub(crate) views: SkipMap<ViewId, VersionedViewDef>,
 	/// Index from (schema_id, view_name) to view ID for fast name lookups
 	pub(crate) views_by_name: SkipMap<(SchemaId, String), ViewId>,
+
+	/// Versioned primary key definitions indexed by primary key ID
+	pub(crate) primary_keys: SkipMap<PrimaryKeyId, VersionedPrimaryKeyDef>,
 }
 
 impl std::ops::Deref for MaterializedCatalog {
@@ -65,6 +74,7 @@ impl MaterializedCatalog {
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),
 			views_by_name: SkipMap::new(),
+			primary_keys: SkipMap::new(),
 		}))
 	}
 }
