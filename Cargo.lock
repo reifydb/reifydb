@@ -1579,6 +1579,7 @@ name = "reifydb-transaction"
 version = "0.0.1"
 dependencies = [
  "crossbeam-channel",
+ "parking_lot",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-storage",

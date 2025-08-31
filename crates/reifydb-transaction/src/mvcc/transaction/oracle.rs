@@ -4,10 +4,11 @@
 use std::{
 	borrow::Cow,
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-	sync::{Arc, Mutex, RwLock},
+	sync::Arc,
 	thread,
 };
 
+use parking_lot::{Mutex, RwLock};
 use reifydb_core::{EncodedKey, Version, util::bloom::BloomFilter};
 
 use crate::mvcc::{
@@ -23,7 +24,6 @@ const CLEANUP_THRESHOLD: usize = 40;
 pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
 
 /// Time window containing committed transactions
-#[derive(Debug)]
 pub(super) struct CommittedWindow {
 	/// All transactions committed in this window
 	transactions: Vec<CommittedTxn>,
@@ -33,8 +33,9 @@ pub(super) struct CommittedWindow {
 	bloom: BloomFilter,
 	/// Maximum version in this window  
 	max_version: Version,
-	/// Per-window lock for fine-grained synchronization
-	lock: Arc<RwLock<()>>,
+	/// Per-window lock for fine-grained synchronization (parking_lot is
+	/// more efficient)
+	lock: RwLock<()>,
 }
 
 impl CommittedWindow {
@@ -44,7 +45,7 @@ impl CommittedWindow {
 			modified_keys: HashSet::with_capacity(500),
 			bloom: BloomFilter::new(500),
 			max_version: min_version,
-			lock: Arc::new(RwLock::new(())),
+			lock: RwLock::new(()),
 		}
 	}
 
@@ -74,7 +75,6 @@ impl CommittedWindow {
 }
 
 /// Oracle implementation with time-window based conflict detection
-#[derive(Debug)]
 pub(super) struct OracleInner<L>
 where
 	L: VersionProvider,
@@ -105,7 +105,6 @@ pub(super) enum CreateCommitResult {
 }
 
 /// Oracle with time-window based conflict detection
-#[derive(Debug)]
 pub(super) struct Oracle<L>
 where
 	L: VersionProvider,
@@ -171,7 +170,7 @@ where
 	) -> crate::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
-		let inner = self.inner.read().unwrap();
+		let inner = self.inner.read();
 
 		// Get keys involved in this transaction for efficient filtering
 		// Avoid cloning by using references
@@ -264,7 +263,7 @@ where
 
 				// Acquire read lock on the window for conflict
 				// checking
-				let _window_lock = window.lock.read().unwrap();
+				let _window_lock = window.lock.read();
 
 				// Check conflicts with transactions in this
 				// window
@@ -299,15 +298,15 @@ where
 
 		// Get commit version with minimal locking
 		let commit_version = {
-			let _version_guard = self.version_lock.lock().unwrap();
-			let inner = self.inner.read().unwrap();
+			let _version_guard = self.version_lock.lock();
+			let inner = self.inner.read();
 			inner.clock.next()?
 		};
 
 		// Add this transaction to the appropriate window with write
 		// lock
 		{
-			let mut inner = self.inner.write().unwrap();
+			let mut inner = self.inner.write();
 			inner.add_committed_transaction(
 				commit_version,
 				conflicts,
@@ -329,7 +328,7 @@ where
 	}
 
 	pub(super) fn version(&self) -> crate::Result<Version> {
-		self.inner.read().unwrap().clock.current()
+		self.inner.read().clock.current()
 	}
 
 	pub(super) fn discard_at_or_below(&self) -> Version {
@@ -339,8 +338,7 @@ where
 	pub fn stop(&mut self) {
 		// Signal shutdown to cleanup thread
 		{
-			let mut shutdown =
-				self.shutdown_signal.write().unwrap();
+			let mut shutdown = self.shutdown_signal.write();
 			*shutdown = true;
 		}
 
@@ -530,7 +528,7 @@ mod tests {
 				assert!(version >= 1); // Should get a new version
 
 				// Check that keys were indexed
-				let inner = oracle.inner.read().unwrap();
+				let inner = oracle.inner.read();
 				assert!(inner
 					.key_to_windows
 					.contains_key(&key1));
@@ -670,7 +668,7 @@ mod tests {
 		}
 
 		// Check key indexing across multiple windows
-		let inner = oracle.inner.read().unwrap();
+		let inner = oracle.inner.read();
 
 		// key1 should be in windows 0 and 2000 (i=0,2)
 		let key1_windows = inner.key_to_windows.get(&key1).unwrap();
@@ -808,7 +806,7 @@ mod tests {
 		}
 
 		// Check that cleanup occurred
-		let inner = oracle.inner.read().unwrap();
+		let inner = oracle.inner.read();
 		assert!(inner.time_windows.len() <= MAX_WINDOWS);
 
 		// Verify that key index was also cleaned up
@@ -845,7 +843,7 @@ mod tests {
 		// Should succeed but not create any key index entries
 		match result {
 			CreateCommitResult::Success(_) => {
-				let inner = oracle.inner.read().unwrap();
+				let inner = oracle.inner.read();
 				assert!(inner.key_to_windows.is_empty());
 			}
 			CreateCommitResult::Conflict(_) => {
