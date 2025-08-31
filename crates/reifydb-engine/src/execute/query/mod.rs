@@ -13,5 +13,6 @@ mod layout;
 pub mod map;
 pub mod sort;
 pub mod table_scan;
+pub mod table_virtual_scan;
 pub mod take;
 pub mod view_scan;

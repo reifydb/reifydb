@@ -4,5 +4,4 @@
 mod coerce;
 mod delete;
 mod insert;
-mod operation;
 mod update;

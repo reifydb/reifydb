@@ -23,9 +23,12 @@ use reifydb_rql::plan::{
 };
 
 use crate::{
-	StandardCommandTransaction,
+	StandardCommandTransaction, StandardTransaction,
 	columnar::{ColumnData, Columns},
-	execute::{Batch, ExecutionContext, Executor, compile},
+	execute::{
+		Batch, ExecutionContext, Executor, QueryNode,
+		query::compile::compile,
+	},
 };
 
 impl Executor {
@@ -99,9 +102,13 @@ impl Executor {
 
 		if let Some(input_plan) = plan.input {
 			// Delete specific rows based on input plan
+			// First collect all row numbers to delete
+			let mut row_numbers_to_delete = Vec::new();
+
+			let mut std_txn = StandardTransaction::from(txn);
 			let mut input_node = compile(
 				*input_plan,
-				txn,
+				&mut std_txn,
 				Arc::new(ExecutionContext {
 					functions: self.functions.clone(),
 					table: Some(table.clone()),
@@ -119,9 +126,12 @@ impl Executor {
 				params: params.clone(),
 			};
 
+			// Initialize the node before execution
+			input_node.initialize(&mut std_txn, &context)?;
+
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&context, txn)?
+			}) = input_node.next(&mut std_txn)?
 			{
 				// Find the RowNumber column - return error if
 				// not found
@@ -163,13 +173,18 @@ impl Executor {
 				for row_numberx in 0..columns.row_count() {
 					let row_number =
 						row_numbers[row_numberx];
-					txn.remove(&RowKey {
-						store: table.id.into(),
-						row: row_number,
-					}
-					.encode())?;
-					deleted_count += 1;
+					row_numbers_to_delete.push(row_number);
 				}
+			}
+
+			let cmd = std_txn.command();
+			for row_number in row_numbers_to_delete {
+				cmd.remove(&RowKey {
+					store: table.id.into(),
+					row: row_number,
+				}
+				.encode())?;
+				deleted_count += 1;
 			}
 		} else {
 			// Delete entire table - scan all rows and delete them

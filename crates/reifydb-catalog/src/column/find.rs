@@ -34,7 +34,7 @@ impl CatalogStore {
 		);
 
 		if let Some(id) = maybe_id {
-			Ok(Some(Self::get_table_column(rx, id)?))
+			Ok(Some(Self::get_column(rx, id)?))
 		} else {
 			Ok(None)
 		}
@@ -43,7 +43,10 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{Type, interface::TableId};
+	use reifydb_core::{
+		Type,
+		interface::{ColumnId, TableId},
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{CatalogStore, test_utils::create_test_column};
@@ -63,7 +66,7 @@ mod tests {
 		.unwrap()
 		.unwrap();
 
-		assert_eq!(result.id, 3);
+		assert_eq!(result.id, ColumnId(8195));
 		assert_eq!(result.name, "col_3");
 		assert_eq!(result.ty, Type::Int4);
 		assert_eq!(result.auto_increment, false);

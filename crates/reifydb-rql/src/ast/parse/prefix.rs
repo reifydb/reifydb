@@ -43,7 +43,7 @@ impl<'a> Parser<'a> {
 								"-{}",
 								literal.0
 									.fragment
-									.fragment()
+									.text()
 							),
 						}),
 					}),

@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	OwnedFragment, Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::ColumnsLayout,
 	},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 	function::{AggregateFunction, AggregateFunctionContext, Functions},
 };
 
@@ -32,17 +32,17 @@ enum Projection {
 	},
 }
 
-pub(crate) struct AggregateNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct AggregateNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
-	context: Arc<ExecutionContext>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> AggregateNode<'a> {
+impl<'a, T: Transaction> AggregateNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<'a>>,
+		input: Box<ExecutionPlan<'a, T>>,
 		by: Vec<Expression<'a>>,
 		map: Vec<Expression<'a>>,
 		context: Arc<ExecutionContext>,
@@ -52,17 +52,32 @@ impl<'a> AggregateNode<'a> {
 			by,
 			map,
 			layout: None,
-			context,
+			context: Some(context),
 		}
 	}
 }
 
-impl<'a> AggregateNode<'a> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+	) -> crate::Result<()> {
+		self.input.initialize(rx, ctx)?;
+		// Already has context from constructor
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"AggregateNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}
@@ -70,7 +85,7 @@ impl<'a> AggregateNode<'a> {
 		let (keys, mut projections) = parse_keys_and_aggregates(
 			&self.by,
 			&self.map,
-			&self.context.functions,
+			&ctx.functions,
 		)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
@@ -78,7 +93,7 @@ impl<'a> AggregateNode<'a> {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			let groups = columns.group_by_view(&keys)?;
 
@@ -170,7 +185,7 @@ impl<'a> AggregateNode<'a> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone().or(self.input.layout())
 	}
 }
@@ -189,8 +204,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.fragment());
 				projections.push(Projection::Group {
 					column: c.0.fragment().to_string(),
-					alias: c.full_fragment_owned()
-						.into_owned(),
+					alias: c.0.clone().to_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -202,9 +216,7 @@ fn parse_keys_and_aggregates<'a>(
 						.column
 						.fragment()
 						.to_string(),
-					alias: access
-						.full_fragment_owned()
-						.into_owned(),
+					alias: access.column.clone().to_owned(),
 				})
 			}
 			// _ => return
@@ -224,13 +236,13 @@ fn parse_keys_and_aggregates<'a>(
 				// "total_count: count(value)"
 				(
 					alias_expr.expression.as_ref(),
-					alias_expr.alias.0.clone().into_owned(),
+					alias_expr.alias.0.clone(),
 				)
 			}
 			expr => {
 				// Non-aliased expression, use the expression's
 				// fragment as alias
-				(expr, expr.full_fragment_owned().into_owned())
+				(expr, expr.full_fragment_owned())
 			}
 		};
 
@@ -250,7 +262,9 @@ fn parse_keys_and_aggregates<'a>(
 									)
 									.to_string(
 									),
-								alias,
+								alias: alias
+									.to_owned(
+									),
 								function,
 							},
 						);
@@ -272,7 +286,9 @@ fn parse_keys_and_aggregates<'a>(
 									)
 									.to_string(
 									),
-								alias,
+								alias: alias
+									.to_owned(
+									),
 								function,
 							},
 						);

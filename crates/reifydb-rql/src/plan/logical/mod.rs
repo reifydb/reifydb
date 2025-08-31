@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod alter;
+pub mod alter;
 mod create;
 mod mutate;
 mod query;
@@ -17,7 +17,10 @@ use reifydb_core::{
 
 use crate::{
 	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
-	plan::physical::PhysicalPlan,
+	plan::{
+		logical::alter::{AlterTableNode, AlterViewNode},
+		physical::PhysicalPlan,
+	},
 };
 
 struct Compiler {}
@@ -158,6 +161,8 @@ pub enum LogicalPlan<'a> {
 	CreateIndex(CreateIndexNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
+	AlterTable(AlterTableNode<'a>),
+	AlterView(AlterViewNode<'a>),
 	// Mutate
 	Delete(DeleteNode<'a>),
 	Insert(InsertNode<'a>),

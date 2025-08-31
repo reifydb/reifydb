@@ -101,6 +101,7 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
+		view::LAYOUT.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
 
 		txn.set(
 			&ViewKey {

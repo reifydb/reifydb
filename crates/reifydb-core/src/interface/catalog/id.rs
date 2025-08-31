@@ -425,9 +425,77 @@ impl<'de> Deserialize<'de> for ViewId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct SystemSequenceId(pub u32);
+pub struct PrimaryKeyId(pub u64);
 
-impl Deref for SystemSequenceId {
+impl Display for PrimaryKeyId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for PrimaryKeyId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for PrimaryKeyId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<PrimaryKeyId> for u64 {
+	fn from(value: PrimaryKeyId) -> Self {
+		value.0
+	}
+}
+
+impl Serialize for PrimaryKeyId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for PrimaryKeyId {
+	fn deserialize<D>(deserializer: D) -> Result<PrimaryKeyId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = PrimaryKeyId;
+
+			fn expecting(
+				&self,
+				formatter: &mut fmt::Formatter,
+			) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(
+				self,
+				value: u64,
+			) -> Result<Self::Value, E> {
+				Ok(PrimaryKeyId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct SequenceId(pub u32);
+
+impl Deref for SequenceId {
 	type Target = u32;
 
 	fn deref(&self) -> &Self::Target {
@@ -435,13 +503,13 @@ impl Deref for SystemSequenceId {
 	}
 }
 
-impl PartialEq<u32> for SystemSequenceId {
+impl PartialEq<u32> for SequenceId {
 	fn eq(&self, other: &u32) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl Serialize for SystemSequenceId {
+impl Serialize for SequenceId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -450,15 +518,15 @@ impl Serialize for SystemSequenceId {
 	}
 }
 
-impl<'de> Deserialize<'de> for SystemSequenceId {
-	fn deserialize<D>(deserializer: D) -> Result<SystemSequenceId, D::Error>
+impl<'de> Deserialize<'de> for SequenceId {
+	fn deserialize<D>(deserializer: D) -> Result<SequenceId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U32Visitor;
 
 		impl Visitor<'_> for U32Visitor {
-			type Value = SystemSequenceId;
+			type Value = SequenceId;
 
 			fn expecting(
 				&self,
@@ -471,7 +539,7 @@ impl<'de> Deserialize<'de> for SystemSequenceId {
 				self,
 				value: u32,
 			) -> Result<Self::Value, E> {
-				Ok(SystemSequenceId(value))
+				Ok(SequenceId(value))
 			}
 		}
 

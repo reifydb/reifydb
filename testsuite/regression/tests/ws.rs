@@ -7,14 +7,14 @@ use reifydb::{
 	Database, ServerBuilder,
 	core::{
 		Error as ReifyDBError,
-		hook::Hooks,
+		event::EventBus,
 		interface::{
 			CdcTransaction, Params, UnversionedTransaction,
 			VersionedTransaction,
 		},
 		retry,
 	},
-	engine::StandardTransaction,
+	engine::EngineTransaction,
 	memory,
 	network::ws::{client::WsClient, server::WsConfig},
 	optimistic,
@@ -29,7 +29,7 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	instance: Option<Database<StandardTransaction<VT, UT, C>>>,
+	instance: Option<Database<EngineTransaction<VT, UT, C>>>,
 	client: Option<WsClient>,
 	runtime: Option<Runtime>,
 	shutdown: Option<oneshot::Sender<()>>,
@@ -41,17 +41,19 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, Hooks)) -> Self {
-		let (versioned, unversioned, cdc, hooks) = input;
-		let instance =
-			ServerBuilder::new(versioned, unversioned, cdc, hooks)
-				.with_ws(WsConfig {
-					socket: Some("[::1]:0"
-						.parse()
-						.unwrap()),
-				})
-				.build()
-				.unwrap();
+	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+		let (versioned, unversioned, cdc, eventbus) = input;
+		let instance = ServerBuilder::new(
+			versioned,
+			unversioned,
+			cdc,
+			eventbus,
+		)
+		.with_ws(WsConfig {
+			socket: Some("[::1]:0".parse().unwrap()),
+		})
+		.build()
+		.unwrap();
 
 		Self {
 			instance: Some(instance),

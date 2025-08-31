@@ -14,11 +14,12 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::InsertPlan;
 
 use crate::{
-	StandardCommandTransaction,
+	StandardCommandTransaction, StandardTransaction,
 	columnar::Columns,
 	execute::{
-		Batch, ExecutionContext, Executor, compile,
+		Batch, ExecutionContext, Executor, QueryNode,
 		mutate::coerce::coerce_value_to_column_type,
+		query::compile::compile,
 	},
 	transaction::operation::TableOperations,
 };
@@ -63,15 +64,22 @@ impl Executor {
 			params: params.clone(),
 		});
 
-		let mut input_node =
-			compile(*plan.input, txn, execution_context.clone());
+		let mut std_txn = StandardTransaction::from(txn);
+		let mut input_node = compile(
+			*plan.input,
+			&mut std_txn,
+			execution_context.clone(),
+		);
 
 		let mut inserted_count = 0;
+
+		// Initialize the node before execution
+		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Process all input batches using volcano iterator pattern
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&execution_context, txn)?
+		}) = input_node.next(&mut std_txn)?
 		{
 			let row_count = columns.row_count();
 
@@ -105,7 +113,7 @@ impl Executor {
 							value,
 							Value::Undefined
 						) {
-						value = ColumnSequence::next_value(txn, table.id, table_column.id)?;
+						value = ColumnSequence::next_value(std_txn.command_mut(), table.id, table_column.id)?;
 					}
 
 					let policies: Vec<ColumnPolicyKind> =
@@ -283,7 +291,10 @@ impl Executor {
 				//
 				// txn.insert_into_table(table, key, row)
 
-				txn.insert_into_table(table.clone(), row)?;
+				std_txn.command_mut().insert_into_table(
+					table.clone(),
+					row,
+				)?;
 
 				// /////
 				//

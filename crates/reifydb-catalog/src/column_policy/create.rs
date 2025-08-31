@@ -25,8 +25,7 @@ impl CatalogStore {
 		for existing in Self::list_table_column_policies(txn, column)? {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
-				let column =
-					Self::get_table_column(txn, column)?;
+				let column = Self::get_column(txn, column)?;
 
 				return_error!(
 					table_column_policy_already_exists(
@@ -106,11 +105,11 @@ mod tests {
 
 		let result = CatalogStore::create_column_policy(
 			&mut txn,
-			ColumnId(1),
+			ColumnId(8193),
 			policy.clone(),
 		)
 		.unwrap();
-		assert_eq!(result.column, ColumnId(1));
+		assert_eq!(result.column, ColumnId(8193));
 		assert_eq!(result.policy, policy);
 	}
 
@@ -140,14 +139,14 @@ mod tests {
 		let policy = Saturation(ColumnSaturationPolicy::Undefined);
 		CatalogStore::create_column_policy(
 			&mut txn,
-			ColumnId(1),
+			ColumnId(8193),
 			policy.clone(),
 		)
 		.unwrap();
 
 		let err = CatalogStore::create_column_policy(
 			&mut txn,
-			ColumnId(1),
+			ColumnId(8193),
 			policy.clone(),
 		)
 		.unwrap_err();

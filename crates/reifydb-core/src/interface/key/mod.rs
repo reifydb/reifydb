@@ -9,6 +9,7 @@ pub use columns::ColumnsKey;
 pub use index::{IndexKey, StoreIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
+pub use primary_key::PrimaryKeyKey;
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
 pub use schema::SchemaKey;
@@ -30,6 +31,7 @@ mod columns;
 mod index;
 mod index_entry;
 mod kind;
+mod primary_key;
 mod row;
 mod row_sequence;
 mod schema;
@@ -53,6 +55,7 @@ pub enum Key {
 	Columns(ColumnsKey),
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
+	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	RowSequence(RowSequenceKey),
 	TableColumnSequence(ColumnSequenceKey),
@@ -75,6 +78,7 @@ impl Key {
 			Key::TableColumnPolicy(key) => key.encode(),
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
+			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::RowSequence(key) => key.encode(),
 			Key::TableColumnSequence(key) => key.encode(),
@@ -161,6 +165,8 @@ impl Key {
 					.map(Self::TransactionVersion)
 			}
 			KeyKind::View => ViewKey::decode(&key).map(Self::View),
+			KeyKind::PrimaryKey => PrimaryKeyKey::decode(&key)
+				.map(Self::PrimaryKey),
 		}
 	}
 }
@@ -177,7 +183,7 @@ mod tests {
 			StoreId,
 			catalog::{
 				ColumnId, ColumnPolicyId, IndexId, SchemaId,
-				SystemSequenceId, TableId,
+				SequenceId, TableId,
 			},
 			key::{
 				index::IndexKey, row::RowKey,
@@ -289,7 +295,7 @@ mod tests {
 	#[test]
 	fn test_system_sequence() {
 		let key = Key::SystemSequence(SystemSequenceKey {
-			sequence: SystemSequenceId(42),
+			sequence: SequenceId(42),
 		});
 
 		let encoded = key.encode();

@@ -79,6 +79,7 @@ impl CatalogStore {
 		table::LAYOUT.set_u64(&mut row, table::ID, table);
 		table::LAYOUT.set_u64(&mut row, table::SCHEMA, schema);
 		table::LAYOUT.set_utf8(&mut row, table::NAME, &to_create.table);
+		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64); // Initialize with no primary key
 
 		txn.set(
 			&TableKey {

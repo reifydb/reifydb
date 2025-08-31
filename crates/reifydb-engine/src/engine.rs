@@ -6,12 +6,12 @@ use std::{ops::Deref, rc::Rc, sync::Arc};
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	Frame,
-	hook::{Hook, Hooks},
+	event::{Event, EventBus},
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, Identity, Params, Query, QueryTransaction,
-		Transaction, VersionedTransaction, WithHooks,
+		ExecuteQuery, Identity, Params, Query, Transaction,
+		VersionedTransaction, WithEventBus,
 	},
 };
 
@@ -24,9 +24,9 @@ use crate::{
 
 pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
 
-impl<T: Transaction> WithHooks for StandardEngine<T> {
-	fn hooks(&self) -> &Hooks {
-		&self.hooks
+impl<T: Transaction> WithEventBus for StandardEngine<T> {
+	fn event_bus(&self) -> &EventBus {
+		&self.event_bus
 	}
 }
 
@@ -47,7 +47,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 			self.versioned.begin_command()?,
 			self.unversioned.clone(),
 			self.cdc.clone(),
-			self.hooks.clone(),
+			self.event_bus.clone(),
 			self.catalog.clone(),
 			interceptors,
 		))
@@ -113,11 +113,13 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 	}
 }
 
-impl<T: Transaction> ExecuteQuery for StandardEngine<T> {
+impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>>
+	for StandardEngine<T>
+{
 	#[inline]
 	fn execute_query(
 		&self,
-		txn: &mut impl QueryTransaction,
+		txn: &mut StandardQueryTransaction<T>,
 		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)
@@ -142,7 +144,7 @@ pub struct EngineInner<T: Transaction> {
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
-	hooks: Hooks,
+	event_bus: EventBus,
 	executor: Executor,
 	interceptors:
 		Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
@@ -154,7 +156,7 @@ impl<T: Transaction> StandardEngine<T> {
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-		hooks: Hooks,
+		event_bus: EventBus,
 		interceptors: Box<
 			dyn InterceptorFactory<StandardCommandTransaction<T>>,
 		>,
@@ -164,7 +166,7 @@ impl<T: Transaction> StandardEngine<T> {
 			versioned: versioned.clone(),
 			unversioned: unversioned.clone(),
 			cdc: cdc.clone(),
-			hooks,
+			event_bus,
 			executor: Executor {
 				functions: Functions::builder()
 					.register_aggregate(
@@ -233,8 +235,8 @@ impl<T: Transaction> StandardEngine<T> {
 	}
 
 	#[inline]
-	pub fn trigger<H: Hook>(&self, hook: H) -> crate::Result<()> {
-		self.hooks.trigger(hook)
+	pub fn emit<E: Event>(&self, event: E) {
+		self.event_bus.emit(event)
 	}
 
 	#[inline]

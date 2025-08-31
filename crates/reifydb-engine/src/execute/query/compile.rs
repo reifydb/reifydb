@@ -3,32 +3,36 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::QueryTransaction;
+use reifydb_core::interface::{SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
-use crate::execute::{
-	ExecutionContext, ExecutionPlan,
-	query::{
-		aggregate::AggregateNode,
-		extend::{ExtendNode, ExtendWithoutInputNode},
-		filter::FilterNode,
-		inline::InlineDataNode,
-		join_inner::InnerJoinNode,
-		join_left::LeftJoinNode,
-		join_natural::NaturalJoinNode,
-		map::{MapNode, MapWithoutInputNode},
-		sort::SortNode,
-		table_scan::TableScanNode,
-		take::TakeNode,
-		view_scan::ViewScanNode,
+use crate::{
+	execute::{
+		ExecutionContext, ExecutionPlan,
+		query::{
+			aggregate::AggregateNode,
+			extend::{ExtendNode, ExtendWithoutInputNode},
+			filter::FilterNode,
+			inline::InlineDataNode,
+			join_inner::InnerJoinNode,
+			join_left::LeftJoinNode,
+			join_natural::NaturalJoinNode,
+			map::{MapNode, MapWithoutInputNode},
+			sort::SortNode,
+			table_scan::TableScanNode,
+			table_virtual_scan::VirtualScanNode,
+			take::TakeNode,
+			view_scan::ViewScanNode,
+		},
 	},
+	table_virtual::{TableVirtual, TableVirtualContext, system::Sequences},
 };
 
-pub(crate) fn compile<'a>(
+pub(crate) fn compile<'a, T: Transaction>(
 	plan: PhysicalPlan<'a>,
-	rx: &mut impl QueryTransaction,
+	rx: &mut crate::StandardTransaction<'a, T>,
 	context: Arc<ExecutionContext>,
-) -> ExecutionPlan<'a> {
+) -> ExecutionPlan<'a, T> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
@@ -164,7 +168,51 @@ pub(crate) fn compile<'a>(
 			ViewScanNode::new(view, context).unwrap(),
 		),
 
+		PhysicalPlan::TableVirtualScan(
+			physical::TableVirtualScanNode {
+				schema,
+				table,
+				pushdown_context,
+			},
+		) => {
+			// Create the appropriate virtual table implementation
+			let virtual_table_impl: Box<dyn TableVirtual<T>> =
+				if schema.id == SchemaId(1)
+					&& table.name == "sequences"
+				{
+					Box::new(Sequences::new())
+				} else {
+					panic!(
+						"Unknown virtual table type: {}",
+						table.name
+					)
+				};
+
+			let virtual_context = pushdown_context
+				.map(|ctx| TableVirtualContext::PushDown {
+					filters: ctx.filters,
+					projections: ctx.projections,
+					order_by: ctx.order_by,
+					limit: ctx.limit,
+					params: context.params.clone(),
+				})
+				.unwrap_or(TableVirtualContext::Basic {
+					params: context.params.clone(),
+				});
+
+			ExecutionPlan::VirtualScan(
+				VirtualScanNode::new(
+					virtual_table_impl,
+					context,
+					virtual_context,
+				)
+				.unwrap(),
+			)
+		}
+
 		PhysicalPlan::AlterSequence(_)
+		| PhysicalPlan::AlterTable(_)
+		| PhysicalPlan::AlterView(_)
 		| PhysicalPlan::CreateDeferredView(_)
 		| PhysicalPlan::CreateTransactionalView(_)
 		| PhysicalPlan::CreateSchema(_)

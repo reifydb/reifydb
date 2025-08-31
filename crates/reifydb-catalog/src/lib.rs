@@ -7,33 +7,25 @@ pub use reifydb_core::Result;
 
 pub mod column;
 pub mod column_policy;
-mod loader;
 mod materialized;
+pub mod primary_key;
 pub mod row;
 pub mod schema;
 pub mod sequence;
+pub mod store;
+pub mod system;
 pub mod table;
 pub mod test_utils;
 pub mod transaction;
 pub mod view;
 
-pub use loader::MaterializedCatalogLoader;
-pub use materialized::MaterializedCatalog;
+pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
-	// New traits
-	CatalogCommandTransaction,
-	CatalogCommandTransactionOperations,
-	CatalogQueryTransaction,
-	CatalogQueryTransactionOperations,
-	CatalogSchemaCommandOperations,
-	CatalogSchemaQueryOperations,
-	CatalogTableCommandOperations,
-	CatalogTableQueryOperations,
-	// Legacy exports (for backward compatibility)
-	CatalogTransaction,
-	CatalogTransactionOperations,
-	CatalogViewCommandOperations,
-	CatalogViewQueryOperations,
+	CatalogCommandTransaction, CatalogCommandTransactionOperations,
+	CatalogQueryTransaction, CatalogQueryTransactionOperations,
+	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
+	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogViewCommandOperations, CatalogViewQueryOperations,
 	TransactionalChangesExt,
 };
 

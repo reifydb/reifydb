@@ -35,106 +35,25 @@ fn main() {
 
 	db.start().unwrap();
 
-	log_info!("=== Distinct Operator Implementation Demo ===");
-	log_info!("");
-	log_info!("The DistinctOperator in reifydb-sub-flow:");
-	log_info!("• Uses xxh3_128 to hash each row -> Hash128");
-	log_info!("• Stores Hash128 in FlowDistinctStateKey");
-	log_info!("• Maintains reference counts for duplicates");
-	log_info!("• Emits rows only on first occurrence");
-	log_info!("");
-
-	// Create schema and table
-	db.command_as_root(
-		r#"
-		create schema demo;
-		create table demo.events { 
-			id: int8, 
-			category: text,
-			value: int8
-		};
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	db.command_as_root(
-		r#"
-		create deferred view demo.all_events {
-			id: int8,
-			category: text,
-			value: int8
-		} with {
-			FROM demo.events
-		};
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	log_info!("=== Input Data (with duplicates) ===");
-	log_info!("Inserting 10 rows with only 4 unique category/value pairs:");
-
-	db.command_as_root(
-		r#"
-		from [
-			{ id: 1, category: "A", value: 100 },
-			{ id: 2, category: "B", value: 200 },
-			{ id: 3, category: "A", value: 100 },
-			{ id: 4, category: "C", value: 300 },
-			{ id: 5, category: "B", value: 200 },
-			{ id: 6, category: "A", value: 100 },
-			{ id: 7, category: "D", value: 400 },
-			{ id: 8, category: "B", value: 200 },
-			{ id: 9, category: "A", value: 100 },
-			{ id: 10, category: "C", value: 300 }
-		]
-		insert demo.events;
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Create another view with distinct
-	db.command_as_root(
-		r#"
-		create deferred view demo.unique_events {
-			id: int8,
-			category: text,
-			value: int8
-		} with {
-			FROM demo.events
-			DISTINCT { value }
-		};
-		"#,
-		Params::None,
-	)
-	.unwrap();
-
-	sleep(Duration::from_millis(10));
-
+	// Test system.sequences virtual table query
+	log_info!("=== Testing system.sequences virtual table ===");
 	for frame in db
-		.query_as_root(
-			r#"
-		FROM demo.all_events
-		"#,
-			Params::None,
-		)
+		.query_as_root("from system.sequences sort value", Params::None)
 		.unwrap()
 	{
-		println!("{}", frame);
+		log_info!("Basic query\n{}", frame);
 	}
 
+	// Test with projection
+	log_info!("=== Testing system.sequences with projection ===");
 	for frame in db
 		.query_as_root(
-			r#"
-		FROM demo.unique_events
-		"#,
+			"from system.sequences map { name, value }",
 			Params::None,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		log_info!("Projected query: {}", frame);
 	}
 
 	sleep(Duration::from_millis(10));

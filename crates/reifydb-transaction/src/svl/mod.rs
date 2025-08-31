@@ -8,7 +8,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		Unversioned, UnversionedStorage, UnversionedTransaction,
-		WithHooks,
+		WithEventBus,
 	},
 	row::EncodedRow,
 };
@@ -21,7 +21,7 @@ pub(crate) mod scan_rev;
 mod write;
 
 pub use read::SvlReadTransaction;
-use reifydb_core::hook::Hooks;
+use reifydb_core::event::EventBus;
 pub use write::SvlWriteTransaction;
 
 #[derive(Clone)]
@@ -31,29 +31,29 @@ pub struct SingleVersionLock<US> {
 
 struct SvlInner<US> {
 	storage: RwLock<US>,
-	hooks: Hooks,
+	event_bus: EventBus,
 }
 
 impl<US> SingleVersionLock<US>
 where
 	US: UnversionedStorage,
 {
-	pub fn new(storage: US, hooks: Hooks) -> Self {
+	pub fn new(storage: US, event_bus: EventBus) -> Self {
 		Self {
 			inner: Arc::new(SvlInner {
 				storage: RwLock::new(storage),
-				hooks,
+				event_bus,
 			}),
 		}
 	}
 }
 
-impl<US> WithHooks for SingleVersionLock<US>
+impl<US> WithEventBus for SingleVersionLock<US>
 where
 	US: UnversionedStorage,
 {
-	fn hooks(&self) -> &Hooks {
-		&self.inner.hooks
+	fn event_bus(&self) -> &EventBus {
+		&self.inner.event_bus
 	}
 }
 

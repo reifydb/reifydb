@@ -9,8 +9,7 @@ use std::{
 use reifydb_core::{
 	ColumnDescriptor, Fragment, Type, Value,
 	interface::{
-		QueryTransaction, TableDef,
-		evaluate::expression::AliasExpression,
+		TableDef, Transaction, evaluate::expression::AliasExpression,
 	},
 };
 
@@ -20,17 +19,18 @@ use crate::{
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 	evaluate::{EvaluationContext, cast::cast_column_data, evaluate},
-	execute::{Batch, ExecutionContext},
+	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub(crate) struct InlineDataNode<'a> {
+pub(crate) struct InlineDataNode<'a, T: Transaction> {
 	rows: Vec<Vec<AliasExpression<'a>>>,
 	layout: Option<ColumnsLayout>,
-	context: Arc<ExecutionContext>,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a> InlineDataNode<'a> {
+impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	pub fn new(
 		rows: Vec<Vec<AliasExpression<'a>>>,
 		context: Arc<ExecutionContext>,
@@ -42,8 +42,9 @@ impl<'a> InlineDataNode<'a> {
 		Self {
 			rows,
 			layout,
-			context,
+			context: Some(context),
 			executed: false,
+			_phantom: std::marker::PhantomData,
 		}
 	}
 
@@ -64,12 +65,26 @@ impl<'a> InlineDataNode<'a> {
 	}
 }
 
-impl<'a> InlineDataNode<'a> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
+	fn initialize(
 		&mut self,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 		_ctx: &ExecutionContext,
-		_rx: &mut impl QueryTransaction,
+	) -> crate::Result<()> {
+		// Already has context from constructor
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"InlineDataNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap().clone();
+
 		if self.executed {
 			return Ok(None);
 		}
@@ -90,18 +105,18 @@ impl<'a> InlineDataNode<'a> {
 
 		// Choose execution path based on whether we have table schema
 		if self.layout.is_some() {
-			self.next_with_table_schema()
+			self.next_with_table_schema(&ctx)
 		} else {
-			self.next_infer_schema()
+			self.next_infer_schema(&ctx)
 		}
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }
 
-impl<'a> InlineDataNode<'a> {
+impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {
@@ -150,7 +165,10 @@ impl<'a> InlineDataNode<'a> {
 		}
 	}
 
-	fn next_infer_schema(&mut self) -> crate::Result<Option<Batch>> {
+	fn next_infer_schema(
+		&mut self,
+		ctx: &ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		// Collect all unique column names across all rows
 		let mut all_columns: BTreeSet<String> = BTreeSet::new();
 
@@ -201,7 +219,7 @@ impl<'a> InlineDataNode<'a> {
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
-						params: &self.context.params,
+						params: &ctx.params,
 					};
 
 					let evaluated = evaluate(
@@ -279,7 +297,7 @@ impl<'a> InlineDataNode<'a> {
 							columns: Columns::empty(),
 							row_count: 1,
 							take: None,
-							params: &self.context.params,
+							params: &ctx.params,
 						};
 
 							match cast_column_data(
@@ -320,7 +338,7 @@ impl<'a> InlineDataNode<'a> {
 						columns: Columns::empty(),
 						row_count: column_data.len(),
 						take: None,
-						params: &self.context.params,
+						params: &ctx.params,
 					};
 
 					if let Ok(demoted) = cast_column_data(
@@ -352,8 +370,11 @@ impl<'a> InlineDataNode<'a> {
 		}))
 	}
 
-	fn next_with_table_schema(&mut self) -> crate::Result<Option<Batch>> {
-		let table = self.context.table.as_ref().unwrap(); // Safe because layout is Some
+	fn next_with_table_schema(
+		&mut self,
+		ctx: &ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
+		let table = ctx.table.as_ref().unwrap(); // Safe because layout is Some
 		let layout = self.layout.as_ref().unwrap(); // Safe because we're in this path
 
 		// Convert rows to HashMap for easier column lookup
@@ -374,8 +395,8 @@ impl<'a> InlineDataNode<'a> {
 			rows_data.push(row_map);
 		}
 
-		// Create columns columns based on table schema
-		let mut columns_columns = Vec::new();
+		// Create columns based on table schema
+		let mut columns = Vec::new();
 
 		for column_layout in &layout.columns {
 			let mut column_data = ColumnData::undefined(0);
@@ -416,7 +437,7 @@ impl<'a> InlineDataNode<'a> {
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
-						params: &self.context.params,
+						params: &ctx.params,
 					};
 
 					let evaluated = evaluate(
@@ -456,7 +477,7 @@ impl<'a> InlineDataNode<'a> {
 				}
 			}
 
-			columns_columns.push(Column::ColumnQualified(
+			columns.push(Column::ColumnQualified(
 				ColumnQualified {
 					name: column_layout.name.clone(),
 					data: column_data,
@@ -464,7 +485,7 @@ impl<'a> InlineDataNode<'a> {
 			));
 		}
 
-		let columns = Columns::new(columns_columns);
+		let columns = Columns::new(columns);
 
 		Ok(Some(Batch {
 			columns,

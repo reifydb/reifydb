@@ -1,36 +1,55 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::QueryTransaction;
+use reifydb_core::interface::Transaction;
 
 use crate::{
 	columnar::layout::ColumnsLayout,
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct TakeNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct TakeNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	remaining: usize,
+	initialized: Option<()>,
 }
 
-impl<'a> TakeNode<'a> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, take: usize) -> Self {
+impl<'a, T: Transaction> TakeNode<'a, T> {
+	pub(crate) fn new(
+		input: Box<ExecutionPlan<'a, T>>,
+		take: usize,
+	) -> Self {
 		Self {
 			input,
 			remaining: take,
+			initialized: None,
 		}
 	}
 }
 
-impl<'a> TakeNode<'a> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+	) -> crate::Result<()> {
+		self.input.initialize(rx, ctx)?;
+		self.initialized = Some(());
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.initialized.is_some(),
+			"TakeNode::next() called before initialize()"
+		);
+
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			let row_count = columns.row_count();
 			if row_count == 0 {
@@ -52,7 +71,7 @@ impl<'a> TakeNode<'a> {
 		Ok(None)
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.input.layout()
 	}
 }

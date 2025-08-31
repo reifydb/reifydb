@@ -1,58 +1,61 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
-		Batch, ExecutionContext, ExecutionPlan,
+		Batch, ExecutionContext, ExecutionPlan, QueryNode,
 		query::layout::derive_columns_column_layout,
 	},
 };
 
-pub(crate) struct ExtendNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct ExtendNode<'a, T: Transaction> {
+	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> ExtendNode<'a> {
+impl<'a, T: Transaction> ExtendNode<'a, T> {
 	pub fn new(
-		input: Box<ExecutionPlan<'a>>,
+		input: Box<ExecutionPlan<'a, T>>,
 		expressions: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
 			input,
 			expressions,
 			layout: None,
+			context: None,
 		}
 	}
 
-	fn create_evaluation_context<'b>(
+	fn create_evaluation_context(
 		&self,
 		expr: &Expression,
-		ctx: &'b ExecutionContext,
 		columns: Columns,
 		row_count: usize,
-	) -> EvaluationContext<'b> {
+	) -> EvaluationContext {
 		let mut result = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
 			columns,
 			row_count,
 			take: None,
-			params: &ctx.params,
+			params: &self.context.as_ref().unwrap().params,
 		};
 
 		// Check if this is an alias expression and we have table
 		// information
 		if let (Expression::Alias(alias_expr), Some(table)) =
-			(expr, &ctx.table)
+			(expr, &self.context.as_ref().unwrap().table)
 		{
 			let alias_name = alias_expr.alias.name();
 
@@ -84,15 +87,30 @@ impl<'a> ExtendNode<'a> {
 	}
 }
 
-impl<'a> ExtendNode<'a> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+	) -> crate::Result<()> {
+		self.context = Some(Arc::new(ctx.clone()));
+		self.input.initialize(rx, ctx)?;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"ExtendNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(ctx, rx)?
+		}) = self.input.next(rx)?
 		{
 			// Start with all existing columns (EXTEND preserves
 			// everything)
@@ -105,7 +123,6 @@ impl<'a> ExtendNode<'a> {
 				let column = evaluate(
 					&self.create_evaluation_context(
 						expr,
-						ctx,
 						Columns::new(
 							new_columns.clone(),
 						),
@@ -150,31 +167,49 @@ impl<'a> ExtendNode<'a> {
 		Ok(None)
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone().or(self.input.layout())
 	}
 }
 
-pub(crate) struct ExtendWithoutInputNode<'a> {
+pub(crate) struct ExtendWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
+	context: Option<Arc<ExecutionContext>>,
+	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a> ExtendWithoutInputNode<'a> {
+impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
 			layout: None,
+			context: None,
+			_phantom: std::marker::PhantomData,
 		}
 	}
 }
 
-impl<'a> ExtendWithoutInputNode<'a> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
+	fn initialize(
 		&mut self,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		_rx: &mut impl QueryTransaction,
+	) -> crate::Result<()> {
+		self.context = Some(Arc::new(ctx.clone()));
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		_rx: &mut crate::StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"ExtendWithoutInputNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}
@@ -211,7 +246,7 @@ impl<'a> ExtendWithoutInputNode<'a> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

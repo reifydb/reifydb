@@ -1,31 +1,35 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	Value,
-	interface::{QueryTransaction, evaluate::expression::Expression},
+	interface::{Transaction, evaluate::expression::Expression},
 };
 
 use crate::{
+	StandardTransaction,
 	columnar::{
 		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
 	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct InnerJoinNode<'a> {
-	left: Box<ExecutionPlan<'a>>,
-	right: Box<ExecutionPlan<'a>>,
+pub(crate) struct InnerJoinNode<'a, T: Transaction> {
+	left: Box<ExecutionPlan<'a, T>>,
+	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> InnerJoinNode<'a> {
+impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	pub fn new(
-		left: Box<ExecutionPlan<'a>>,
-		right: Box<ExecutionPlan<'a>>,
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
 		on: Vec<Expression<'a>>,
 	) -> Self {
 		Self {
@@ -33,19 +37,19 @@ impl<'a> InnerJoinNode<'a> {
 			right,
 			on,
 			layout: None,
+			context: None,
 		}
 	}
 
 	fn load_and_merge_all(
-		node: &mut Box<ExecutionPlan<'a>>,
-		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+		node: &mut Box<ExecutionPlan<'a, T>>,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Columns> {
 		let mut result: Option<Columns> = None;
 
 		while let Some(Batch {
 			columns,
-		}) = node.next(ctx, rx)?
+		}) = node.next(rx)?
 		{
 			if let Some(mut acc) = result.take() {
 				acc.append_columns(columns)?;
@@ -59,20 +63,36 @@ impl<'a> InnerJoinNode<'a> {
 	}
 }
 
-impl<'a> InnerJoinNode<'a> {
-	pub(crate) fn next(
+impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
+	fn initialize(
 		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 		ctx: &ExecutionContext,
-		rx: &mut impl QueryTransaction,
+	) -> crate::Result<()> {
+		self.context = Some(Arc::new(ctx.clone()));
+		self.left.initialize(rx, ctx)?;
+		self.right.initialize(rx, ctx)?;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
 	) -> crate::Result<Option<Batch>> {
+		debug_assert!(
+			self.context.is_some(),
+			"InnerJoinNode::next() called before initialize()"
+		);
+		let ctx = self.context.as_ref().unwrap();
+
 		if self.layout.is_some() {
 			return Ok(None);
 		}
 
 		let left_columns =
-			Self::load_and_merge_all(&mut self.left, ctx, rx)?;
+			Self::load_and_merge_all(&mut self.left, rx)?;
 		let right_columns =
-			Self::load_and_merge_all(&mut self.right, ctx, rx)?;
+			Self::load_and_merge_all(&mut self.right, rx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
@@ -185,7 +205,7 @@ impl<'a> InnerJoinNode<'a> {
 		}))
 	}
 
-	pub(crate) fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout> {
 		self.layout.clone()
 	}
 }

@@ -3,6 +3,7 @@
 
 use std::fmt::Write;
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
@@ -14,10 +15,13 @@ use crate::{
 	},
 };
 
-pub fn explain_physical_plan(
-	rx: &mut impl QueryTransaction,
+pub fn explain_physical_plan<T>(
+	rx: &mut T,
 	query: &str,
-) -> crate::Result<String> {
+) -> crate::Result<String>
+where
+	T: QueryTransaction + CatalogQueryTransaction,
+{
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
@@ -443,6 +447,30 @@ fn render_physical_plan_inner(
 					output,
 				);
 			});
+		}
+		PhysicalPlan::AlterTable(_) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				"AlterTable",
+			);
+		}
+		PhysicalPlan::AlterView(_) => {
+			write_node_header(output, prefix, is_last, "AlterView");
+		}
+		PhysicalPlan::TableVirtualScan(
+			physical::TableVirtualScanNode {
+				schema,
+				table,
+				..
+			},
+		) => {
+			let label = format!(
+				"VirtualScan: {}.{}",
+				schema.name, table.name
+			);
+			write_node_header(output, prefix, is_last, &label);
 		}
 	}
 }

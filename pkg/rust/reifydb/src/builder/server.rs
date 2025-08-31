@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	hook::Hooks,
+	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 	interface::{Transaction, subsystem::SubsystemFactory},
 };
@@ -22,7 +22,7 @@ pub struct ServerBuilder<T: Transaction> {
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
-	hooks: Hooks,
+	eventbus: EventBus,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 	subsystem_factories: Vec<
 		Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
@@ -35,13 +35,13 @@ impl<T: Transaction> ServerBuilder<T> {
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-		hooks: Hooks,
+		eventbus: EventBus,
 	) -> Self {
 		Self {
 			versioned,
 			unversioned,
 			cdc,
-			hooks,
+			eventbus,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 		}
@@ -81,7 +81,7 @@ impl<T: Transaction> ServerBuilder<T> {
 			self.versioned,
 			self.unversioned,
 			self.cdc,
-			self.hooks,
+			self.eventbus,
 		)
 		.with_interceptor_builder(self.interceptors);
 

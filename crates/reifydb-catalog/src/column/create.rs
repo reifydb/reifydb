@@ -202,19 +202,19 @@ mod test {
 		.unwrap();
 
 		let column_1 =
-			CatalogStore::get_table_column(&mut txn, ColumnId(1))
+			CatalogStore::get_column(&mut txn, ColumnId(8193))
 				.unwrap();
 
-		assert_eq!(column_1.id, 1);
+		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.ty, Type::Bool);
 		assert_eq!(column_1.auto_increment, false);
 
 		let column_2 =
-			CatalogStore::get_table_column(&mut txn, ColumnId(2))
+			CatalogStore::get_column(&mut txn, ColumnId(8194))
 				.unwrap();
 
-		assert_eq!(column_2.id, 2);
+		assert_eq!(column_2.id, 8194);
 		assert_eq!(column_2.name, "col_2");
 		assert_eq!(column_2.ty, Type::Int2);
 		assert_eq!(column_2.auto_increment, false);
@@ -243,11 +243,10 @@ mod test {
 		)
 		.unwrap();
 
-		let column =
-			CatalogStore::get_table_column(&mut txn, ColumnId(1))
-				.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193))
+			.unwrap();
 
-		assert_eq!(column.id, 1);
+		assert_eq!(column.id, ColumnId(8193));
 		assert_eq!(column.name, "id");
 		assert_eq!(column.ty, Type::Uint8);
 		assert_eq!(column.auto_increment, true);

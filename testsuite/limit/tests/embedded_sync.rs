@@ -6,13 +6,13 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, SessionSync, SyncBuilder,
 	core::{
-		hook::Hooks,
+		event::EventBus,
 		interface::{
 			CdcTransaction, Params, UnversionedTransaction,
 			VersionedTransaction,
 		},
 	},
-	engine::StandardTransaction,
+	engine::EngineTransaction,
 	memory, serializable,
 };
 use reifydb_testing::{testscript, testscript::Command};
@@ -24,7 +24,7 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	instance: Database<StandardTransaction<VT, UT, C>>,
+	instance: Database<EngineTransaction<VT, UT, C>>,
 }
 
 impl<VT, UT, C> Runner<VT, UT, C>
@@ -33,14 +33,14 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, Hooks)) -> Self {
-		let (versioned, unversioned, cdc, hooks) = input;
+	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+		let (versioned, unversioned, cdc, eventbus) = input;
 		Self {
 			instance: SyncBuilder::new(
 				versioned,
 				unversioned,
 				cdc,
-				hooks,
+				eventbus,
 			)
 			.build()
 			.unwrap(),

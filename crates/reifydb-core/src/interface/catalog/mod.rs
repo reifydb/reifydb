@@ -4,19 +4,23 @@
 mod column;
 mod flow;
 mod id;
+mod key;
 mod layout;
 mod policy;
 mod schema;
 mod store;
 mod table;
+mod table_virtual;
 mod view;
 
 pub use column::*;
 pub use flow::*;
 pub use id::*;
+pub use key::*;
 pub use layout::*;
 pub use policy::*;
 pub use schema::*;
 pub use store::*;
 pub use table::*;
+pub use table_virtual::*;
 pub use view::*;

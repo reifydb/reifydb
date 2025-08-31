@@ -181,12 +181,21 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::AlterSequence(_)
+			| PhysicalPlan::AlterTable(_)
+			| PhysicalPlan::AlterView(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::Insert(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::Delete(_) => {
 				unreachable!()
+			}
+			PhysicalPlan::TableVirtualScan(_scan) => {
+				// TODO: Implement VirtualScanCompiler
+				// For now, return a placeholder
+				unimplemented!(
+					"VirtualScan compilation not yet implemented"
+				)
 			}
 		}
 	}

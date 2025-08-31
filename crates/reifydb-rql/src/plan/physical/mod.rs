@@ -4,13 +4,18 @@
 mod alter;
 mod create;
 
+use std::sync::Arc;
+
+pub use alter::AlterTablePlan;
 use reifydb_catalog::{
-	CatalogStore, table::TableColumnToCreate, view::ViewColumnToCreate,
+	CatalogStore, system::SystemCatalog, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	Fragment, JoinType, SortKey,
 	interface::{
-		QueryTransaction, SchemaDef, TableDef, ViewDef,
+		QueryTransaction, SchemaDef, TableDef, TableVirtualDef,
+		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
 	result::error::diagnostic::catalog::{
@@ -21,7 +26,10 @@ use reifydb_core::{
 
 use crate::plan::{
 	logical::LogicalPlan,
-	physical::PhysicalPlan::{TableScan, ViewScan},
+	physical::{
+		PhysicalPlan::{TableScan, ViewScan},
+		alter::AlterViewPlan,
+	},
 };
 
 struct Compiler {}
@@ -94,6 +102,18 @@ impl Compiler {
 							rx, alter,
 						)?,
 					);
+				}
+
+				LogicalPlan::AlterTable(alter) => {
+					stack.push(Self::compile_alter_table(
+						rx, alter,
+					)?);
+				}
+
+				LogicalPlan::AlterView(alter) => {
+					stack.push(Self::compile_alter_view(
+						rx, alter,
+					)?);
 				}
 
 				LogicalPlan::Filter(filter) => {
@@ -295,7 +315,7 @@ impl Compiler {
 							},
 						));
 					} else if let Some(view) = CatalogStore::find_view_by_name(
-							rx,
+						rx,
 							schema.id,
 							scan.source.fragment(),
 						)? {
@@ -303,6 +323,14 @@ impl Compiler {
 							ViewScanNode {
 								schema,
 								view,
+							},
+						));
+					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
+						stack.push(PhysicalPlan::TableVirtualScan(
+							TableVirtualScanNode {
+								schema,
+								table: SystemCatalog::sequences(),
+								pushdown_context: None, // TODO: Detect pushdown opportunities
 							},
 						));
 					} else {
@@ -362,6 +390,8 @@ pub enum PhysicalPlan<'a> {
 	CreateTable(CreateTablePlan<'a>),
 	// Alter
 	AlterSequence(AlterSequencePlan<'a>),
+	AlterTable(AlterTablePlan<'a>),
+	AlterView(AlterViewPlan<'a>),
 	// Mutate
 	Delete(DeletePlan<'a>),
 	Insert(InsertPlan<'a>),
@@ -380,6 +410,7 @@ pub enum PhysicalPlan<'a> {
 	Extend(ExtendNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	TableScan(TableScanNode),
+	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode),
 }
 
@@ -517,6 +548,21 @@ pub struct TableScanNode {
 pub struct ViewScanNode {
 	pub schema: SchemaDef,
 	pub view: ViewDef,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableVirtualScanNode<'a> {
+	pub schema: SchemaDef,
+	pub table: Arc<TableVirtualDef>,
+	pub pushdown_context: Option<VirtualPushdownContext<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualPushdownContext<'a> {
+	pub filters: Vec<Expression<'a>>,
+	pub projections: Vec<Expression<'a>>,
+	pub order_by: Vec<SortKey>,
+	pub limit: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

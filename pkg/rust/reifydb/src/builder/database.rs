@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Duration};
 
 use reifydb_catalog::{MaterializedCatalog, MaterializedCatalogLoader};
 use reifydb_core::{
-	hook::Hooks,
+	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
 		Transaction, VersionedTransaction, subsystem::SubsystemFactory,
@@ -13,7 +13,9 @@ use reifydb_core::{
 	ioc::IocContainer,
 	log_timed_debug,
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_engine::{
+	StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
+};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]
@@ -42,11 +44,11 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
-		hooks: Hooks,
+		eventbus: EventBus,
 	) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
-			.register(hooks.clone())
+			.register(eventbus.clone())
 			.register(versioned.clone())
 			.register(unversioned.clone())
 			.register(cdc.clone());
@@ -160,23 +162,20 @@ impl<T: Transaction> DatabaseBuilder<T> {
 		let versioned = self.ioc.resolve::<T::Versioned>()?;
 		let unversioned = self.ioc.resolve::<T::Unversioned>()?;
 		let cdc = self.ioc.resolve::<T::Cdc>()?;
-		let hooks = self.ioc.resolve::<Hooks>()?;
+		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		// Load the materialized catalog from storage
-		log_timed_debug!("Loading materialized catalog", {
-			versioned.with_query(|tx| {
-				MaterializedCatalogLoader::load_all(
-					tx, &catalog,
-				)?;
-				Ok(())
-			})?;
-		});
+		Self::load_materialized_catalog(
+			&versioned,
+			&unversioned,
+			&cdc,
+			&catalog,
+		)?;
 
 		let engine = StandardEngine::new(
 			versioned,
 			unversioned,
 			cdc,
-			hooks,
+			eventbus,
 			Box::new(self.interceptors.build()),
 			catalog,
 		);
@@ -199,6 +198,28 @@ impl<T: Transaction> DatabaseBuilder<T> {
 			self.config,
 			health_monitor,
 		))
+	}
+
+	/// Load the materialized catalog from storage
+	fn load_materialized_catalog(
+		versioned: &T::Versioned,
+		unversioned: &T::Unversioned,
+		cdc: &T::Cdc,
+		catalog: &MaterializedCatalog,
+	) -> crate::Result<()> {
+		let mut qt: StandardQueryTransaction<T> =
+			StandardQueryTransaction::new(
+				versioned.begin_query()?,
+				unversioned.clone(),
+				cdc.clone(),
+				catalog.clone(),
+			);
+
+		log_timed_debug!("Loading materialized catalog", {
+			MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
+		});
+
+		Ok(())
 	}
 }
 

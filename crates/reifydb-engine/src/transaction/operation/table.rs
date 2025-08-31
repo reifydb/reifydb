@@ -4,12 +4,13 @@
 use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
 	RowNumber,
-	hook::table::{TablePostInsertHook, TablePreInsertHook},
+	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, RowKey, TableDef, Transaction,
-		VersionedCommandTransaction, interceptor::TableInterceptor,
+		EncodableKey, GetEncodedRowLayout, RowKey, TableDef,
+		Transaction, VersionedCommandTransaction,
+		interceptor::TableInterceptor,
 	},
-	row::EncodedRow,
+	row::{EncodedRow, Row},
 };
 
 use crate::StandardCommandTransaction;
@@ -45,14 +46,6 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 
 		TableInterceptor::pre_insert(self, &table, &row)?;
 
-		// Still trigger hooks for backward compatibility
-		self.hooks()
-			.trigger(TablePreInsertHook {
-				table: table.clone(),
-				row: row.clone(),
-			})
-			.unwrap();
-
 		self.set(
 			&RowKey {
 				store: table.id.into(),
@@ -64,20 +57,16 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 
 		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
-		// Still trigger hooks for backward compatibility
-		self.hooks()
-			.trigger(TablePostInsertHook {
-				table: table.clone(),
-				id: row_number,
-				row: row.clone(),
-			})
-			.unwrap();
+		let layout = table.get_layout();
 
-		// self.add_pending(TableInsert {
-		// 	table,
-		// 	id: row_number,
-		// 	row,
-		// });
+		self.event_bus().emit(TableInsertedEvent {
+			table,
+			row: Row {
+				number: row_number,
+				encoded: row,
+				layout,
+			},
+		});
 
 		Ok(())
 	}
