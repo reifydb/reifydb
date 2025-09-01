@@ -2,10 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	borrow::Cow,
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
-	thread,
 };
 
 use parking_lot::{Mutex, RwLock};
@@ -122,8 +120,6 @@ where
 	/// to a new query.
 	pub(super) command: WaterMark,
 
-	/// Background cleanup thread handle
-	cleanup_thread: Option<thread::JoinHandle<()>>,
 	/// Shutdown signal for cleanup thread
 	shutdown_signal: Arc<RwLock<bool>>,
 
@@ -136,11 +132,7 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub fn new(
-		query_name: Cow<'static, str>,
-		command_name: Cow<'static, str>,
-		clock: L,
-	) -> Self {
+	pub fn new(clock: L) -> Self {
 		let closer = Closer::new(2);
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
@@ -153,9 +145,14 @@ where
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
 			version_lock: Mutex::new(()),
-			query: WaterMark::new(query_name, closer.clone()),
-			command: WaterMark::new(command_name, closer.clone()),
-			cleanup_thread: None,
+			query: WaterMark::new(
+				"txn-mark-query".into(),
+				closer.clone(),
+			),
+			command: WaterMark::new(
+				"txn-mark-cmd".into(),
+				closer.clone(),
+			),
 			shutdown_signal,
 			closer,
 		}
@@ -342,11 +339,6 @@ where
 			*shutdown = true;
 		}
 
-		// Wait for cleanup thread if it exists
-		if let Some(thread) = self.cleanup_thread.take() {
-			let _ = thread.join();
-		}
-
 		self.closer.signal_and_wait();
 	}
 
@@ -491,11 +483,7 @@ mod tests {
 	#[test]
 	fn test_oracle_basic_creation() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Oracle should be created successfully
 		assert_eq!(oracle.version().unwrap(), 0);
@@ -504,11 +492,7 @@ mod tests {
 	#[test]
 	fn test_window_creation_and_indexing() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
@@ -548,11 +532,7 @@ mod tests {
 	#[test]
 	fn test_conflict_detection_between_transactions() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -594,11 +574,7 @@ mod tests {
 	#[test]
 	fn test_no_conflict_different_keys() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -632,11 +608,7 @@ mod tests {
 	#[test]
 	fn test_key_indexing_multiple_windows() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -682,11 +654,7 @@ mod tests {
 	#[test]
 	fn test_version_filtering_in_conflict_detection() {
 		let clock = MockVersionProvider::new(2);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -734,11 +702,7 @@ mod tests {
 	#[test]
 	fn test_range_operations_fallback() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 
@@ -774,11 +738,7 @@ mod tests {
 	#[test]
 	fn test_window_cleanup_mechanism() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Add many transactions to trigger cleanup
 		let mut keys = Vec::new();
@@ -826,11 +786,7 @@ mod tests {
 	#[test]
 	fn test_empty_conflict_manager() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Transaction with no conflicts (read-only)
 		let conflicts = ConflictManager::new(); // Empty conflict manager
@@ -857,11 +813,7 @@ mod tests {
 	#[test]
 	fn test_write_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -893,11 +845,7 @@ mod tests {
 	#[test]
 	fn test_read_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -929,11 +877,7 @@ mod tests {
 	#[test]
 	fn test_sequential_transactions_no_conflict() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -969,11 +913,7 @@ mod tests {
 	#[test]
 	fn test_comptokenize_multi_key_scenario() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key_a = create_test_key("key_a");
 		let key_b = create_test_key("key_b");

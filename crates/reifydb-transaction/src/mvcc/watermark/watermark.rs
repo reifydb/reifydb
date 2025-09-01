@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::{
-	borrow::Cow,
+	fmt::Debug,
 	ops::Deref,
 	sync::{
 		Arc, Mutex,
@@ -28,8 +28,6 @@ use crate::mvcc::watermark::Closer;
 pub struct WatermarkInner {
 	pub(crate) done_until: AtomicU64,
 	pub(crate) last_index: AtomicU64,
-	#[allow(dead_code)] // Used in debug messages
-	pub(crate) name: Cow<'static, str>,
 	pub(crate) tx: Sender<Mark>,
 	pub(crate) rx: Receiver<Mark>,
 	pub(crate) processor_thread: Mutex<Option<JoinHandle<()>>>,
@@ -49,10 +47,9 @@ pub(crate) struct Mark {
 ///  2. a positive number of times.
 pub struct WaterMark(Arc<WatermarkInner>);
 
-impl std::fmt::Debug for WaterMark {
+impl Debug for WaterMark {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("WaterMark")
-			.field("name", &self.name)
 			.field(
 				"done_until",
 				&self.done_until.load(Ordering::Relaxed),
@@ -75,22 +72,24 @@ impl Deref for WaterMark {
 
 impl WaterMark {
 	/// Create a new WaterMark with given name and closer.
-	pub fn new(name: Cow<'static, str>, closer: Closer) -> Self {
+	pub fn new(thread_name: String, closer: Closer) -> Self {
 		let (tx, rx) = bounded(super::WATERMARK_CHANNEL_SIZE);
 
 		let inner = Arc::new(WatermarkInner {
 			done_until: AtomicU64::new(0),
 			last_index: AtomicU64::new(0),
-			name,
 			tx,
 			rx,
 			processor_thread: Mutex::new(None),
 		});
 
 		let processing_inner = inner.clone();
-		let thread_handle = std::thread::spawn(move || {
-			processing_inner.process(closer);
-		});
+		let thread_handle = std::thread::Builder::new()
+			.name(thread_name)
+			.spawn(move || {
+				processing_inner.process(closer);
+			})
+			.expect("Failed to spawn watermark thread");
 
 		// Store the thread handle
 		*inner.processor_thread.lock().unwrap() = Some(thread_handle);
@@ -397,7 +396,6 @@ mod tests {
 
 		let watermark =
 			WaterMark::new("watermark".into(), closer.clone());
-		assert_eq!(watermark.name, "watermark");
 
 		f(&watermark);
 
