@@ -135,7 +135,10 @@ impl<'a> Parser<'a> {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::AstStatement(query_nodes))
+			Some(crate::ast::AstStatement {
+				nodes: query_nodes,
+				has_pipes: false,
+			})
 		} else {
 			None
 		};
@@ -191,7 +194,10 @@ impl<'a> Parser<'a> {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::AstStatement(query_nodes))
+			Some(crate::ast::AstStatement {
+				nodes: query_nodes,
+				has_pipes: false,
+			})
 		} else {
 			None
 		};

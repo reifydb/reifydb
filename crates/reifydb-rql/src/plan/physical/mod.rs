@@ -373,13 +373,15 @@ impl Compiler {
 					));
 				}
 
-				LogicalPlan::Chain(chain) => {
-					// Compile the chain of operations
+				LogicalPlan::Pipeline(pipeline) => {
+					// Compile the pipeline of operations
 					// This ensures they all share the same
 					// stack
-					let chain_result =
-						Self::compile(rx, chain.steps)?;
-					if let Some(result) = chain_result {
+					let pipeline_result = Self::compile(
+						rx,
+						pipeline.steps,
+					)?;
+					if let Some(result) = pipeline_result {
 						stack.push(result);
 					}
 				}

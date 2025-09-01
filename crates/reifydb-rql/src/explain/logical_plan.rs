@@ -571,13 +571,13 @@ fn render_logical_plan_inner(
 				output.push_str("\n");
 			}
 		}
-		LogicalPlan::Chain(chain) => {
+		LogicalPlan::Pipeline(pipeline) => {
 			output.push_str(&format!(
-				"{}{} Chain\n",
+				"{}{} Pipeline\n",
 				prefix, branch
 			));
-			for (i, step) in chain.steps.iter().enumerate() {
-				let last = i == chain.steps.len() - 1;
+			for (i, step) in pipeline.steps.iter().enumerate() {
+				let last = i == pipeline.steps.len() - 1;
 				render_logical_plan_inner(
 					step,
 					child_prefix.as_str(),

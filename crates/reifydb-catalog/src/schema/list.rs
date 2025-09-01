@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{QueryTransaction, SchemaDef};
+use reifydb_core::interface::{QueryTransaction, SchemaDef, SchemaId};
 
 use crate::{CatalogStore, transaction::CatalogTransaction};
 
@@ -12,6 +12,11 @@ impl CatalogStore {
 		let catalog = rx.catalog();
 		let version = CatalogTransaction::version(&*rx);
 		let mut result = Vec::new();
+
+		result.push(SchemaDef {
+			id: SchemaId(1),
+			name: "system".to_string(),
+		});
 
 		// Iterate through all schemas in the materialized catalog
 		for entry in catalog.schemas.iter() {

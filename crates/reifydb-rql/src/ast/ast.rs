@@ -8,19 +8,22 @@ use reifydb_core::{Fragment, IndexType, JoinType, SortDirection};
 use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstStatement<'a>(pub Vec<Ast<'a>>);
+pub struct AstStatement<'a> {
+	pub nodes: Vec<Ast<'a>>,
+	pub has_pipes: bool,
+}
 
 impl<'a> AstStatement<'a> {
 	pub fn first_unchecked(&self) -> &Ast<'a> {
-		self.0.first().unwrap()
+		self.nodes.first().unwrap()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
+		self.nodes.is_empty()
 	}
 
 	pub fn len(&self) -> usize {
-		self.0.len()
+		self.nodes.len()
 	}
 }
 
@@ -28,7 +31,7 @@ impl<'a> Index<usize> for AstStatement<'a> {
 	type Output = Ast<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		self.0.index(index)
+		self.nodes.index(index)
 	}
 }
 
@@ -37,7 +40,7 @@ impl<'a> IntoIterator for AstStatement<'a> {
 	type IntoIter = std::vec::IntoIter<Self::Item>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
+		self.nodes.into_iter()
 	}
 }
 

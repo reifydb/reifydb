@@ -1436,6 +1436,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_bytes",
+ "serde_json",
  "uuid",
 ]
 

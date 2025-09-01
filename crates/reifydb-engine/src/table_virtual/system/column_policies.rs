@@ -6,7 +6,7 @@ use std::{marker::PhantomData, sync::Arc};
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
-	interface::{ColumnPolicyKind, TableVirtualDef, Transaction},
+	interface::{TableVirtualDef, Transaction},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
 
@@ -60,11 +60,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnPolicies<T> {
 		for policy in policies {
 			policy_ids.push(policy.id.0);
 			column_ids.push(policy.column.0);
-			let (ty, val) = match policy.policy {
-				ColumnPolicyKind::Saturation(sat) => {
-					(0u8, sat as u8)
-				}
-			};
+			let (ty, val) = policy.policy.to_u8();
 			policy_types.push(ty);
 			policy_values.push(val);
 		}

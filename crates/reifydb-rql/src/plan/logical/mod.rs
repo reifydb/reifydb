@@ -40,7 +40,8 @@ impl Compiler {
 		}
 
 		let ast_len = ast.len();
-		let ast_vec = ast.0; // Extract the inner Vec
+		let has_pipes = ast.has_pipes;
+		let ast_vec = ast.nodes; // Extract the inner Vec
 
 		// Check if this is a pipeline ending with UPDATE or DELETE
 		let is_update_pipeline = ast_len > 1
@@ -105,7 +106,21 @@ impl Compiler {
 			unreachable!("Pipeline should have been handled above");
 		}
 
-		// Normal compilation (not a pipeline)
+		// Check if this is a piped query that should be wrapped in
+		// Pipeline
+		if has_pipes && ast_len > 1 {
+			// This uses pipe operators - create a Pipeline node
+			let mut pipeline_nodes = Vec::new();
+			for node in ast_vec {
+				pipeline_nodes
+					.push(Self::compile_single(node)?);
+			}
+			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
+				steps: pipeline_nodes,
+			})]);
+		}
+
+		// Normal compilation (not piped)
 		let mut result = Vec::with_capacity(ast_len);
 		for node in ast_vec {
 			result.push(Self::compile_single(node)?);
@@ -144,8 +159,8 @@ impl Compiler {
 			panic!("Empty pipeline");
 		}
 
-		// Return a Chain logical plan that contains all the steps
-		Ok(LogicalPlan::Chain(ChainedNode {
+		// Return a Pipeline logical plan that contains all the steps
+		Ok(LogicalPlan::Pipeline(PipelineNode {
 			steps: plans,
 		}))
 	}
@@ -180,12 +195,12 @@ pub enum LogicalPlan<'a> {
 	Extend(ExtendNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	SourceScan(SourceScanNode<'a>),
-	// Chain wrapper for chained operations
-	Chain(ChainedNode<'a>),
+	// Pipeline wrapper for piped operations
+	Pipeline(PipelineNode<'a>),
 }
 
 #[derive(Debug)]
-pub struct ChainedNode<'a> {
+pub struct PipelineNode<'a> {
 	pub steps: Vec<LogicalPlan<'a>>,
 }
 
