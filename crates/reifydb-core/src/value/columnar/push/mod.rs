@@ -123,3 +123,9 @@ impl Push<String> for ColumnData {
 		}
 	}
 }
+
+impl Push<&str> for ColumnData {
+	fn push(&mut self, value: &str) {
+		self.push(value.to_string());
+	}
+}

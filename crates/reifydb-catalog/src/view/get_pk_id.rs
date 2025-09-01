@@ -72,8 +72,7 @@ mod tests {
 
 		// Get column IDs for the view
 		let columns =
-			CatalogStore::list_table_columns(&mut txn, view.id)
-				.unwrap();
+			CatalogStore::list_columns(&mut txn, view.id).unwrap();
 
 		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(

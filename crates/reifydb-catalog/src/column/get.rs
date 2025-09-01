@@ -36,7 +36,7 @@ impl CatalogStore {
 		let auto_increment =
 			LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
 
-		let policies = Self::list_table_column_policies(rx, id)?;
+		let policies = Self::list_column_policies(rx, id)?;
 
 		Ok(ColumnDef {
 			id,

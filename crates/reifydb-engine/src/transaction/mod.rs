@@ -22,6 +22,7 @@ mod query;
 pub use cdc::{StandardCdcQueryTransaction, StandardCdcTransaction};
 pub use command::StandardCommandTransaction;
 pub use query::StandardQueryTransaction;
+use reifydb_catalog::{CatalogTransaction, MaterializedCatalog};
 
 #[derive(Clone)]
 pub struct EngineTransaction<V, U, C> {
@@ -79,8 +80,12 @@ impl<'a, T: Transaction> VersionedQueryTransaction
 {
 	fn version(&self) -> Version {
 		match self {
-			Self::Command(txn) => txn.version(),
-			Self::Query(txn) => txn.version(),
+			Self::Command(txn) => {
+				VersionedQueryTransaction::version(*txn)
+			}
+			Self::Query(txn) => {
+				VersionedQueryTransaction::version(*txn)
+			}
 		}
 	}
 
@@ -221,6 +226,26 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 			Self::Command(_) => panic!(
 				"Expected Query transaction but found Command transaction"
 			),
+		}
+	}
+}
+
+impl<'a, T: Transaction> CatalogTransaction for StandardTransaction<'a, T> {
+	fn catalog(&self) -> &MaterializedCatalog {
+		match self {
+			StandardTransaction::Command(txn) => txn.catalog(),
+			StandardTransaction::Query(txn) => txn.catalog(),
+		}
+	}
+
+	fn version(&self) -> Version {
+		match self {
+			StandardTransaction::Command(txn) => {
+				VersionedQueryTransaction::version(*txn)
+			}
+			StandardTransaction::Query(txn) => {
+				VersionedQueryTransaction::version(*txn)
+			}
 		}
 	}
 }

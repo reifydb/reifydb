@@ -36,8 +36,7 @@ impl CatalogStore {
 
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
-		let store_columns =
-			Self::list_table_columns(txn, to_create.store)?;
+		let store_columns = Self::list_columns(txn, to_create.store)?;
 		let store_column_ids: std::collections::HashSet<_> =
 			store_columns.iter().map(|c| c.id).collect();
 
@@ -205,8 +204,7 @@ mod tests {
 
 		// Get column IDs for the view
 		let columns =
-			CatalogStore::list_table_columns(&mut txn, view.id)
-				.unwrap();
+			CatalogStore::list_columns(&mut txn, view.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Create primary key on first column only

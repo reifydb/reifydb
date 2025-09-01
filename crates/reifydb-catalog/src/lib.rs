@@ -22,9 +22,9 @@ pub mod view;
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogQueryTransaction, CatalogQueryTransactionOperations,
-	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
-	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogQueryTransaction, CatalogSchemaCommandOperations,
+	CatalogSchemaQueryOperations, CatalogTableCommandOperations,
+	CatalogTableQueryOperations, CatalogTransaction,
 	CatalogViewCommandOperations, CatalogViewQueryOperations,
 	TransactionalChangesExt,
 };

@@ -5,9 +5,7 @@ use reifydb_core::interface::{
 	CommandTransaction, SchemaDef, TableDef, ViewDef,
 };
 
-use super::query::{
-	CatalogQueryTransaction, CatalogQueryTransactionOperations,
-};
+use super::query::{CatalogQueryTransaction, CatalogTransaction};
 use crate::{schema::SchemaToCreate, table::TableToCreate, view::ViewToCreate};
 
 // Schema command operations
@@ -59,7 +57,7 @@ pub trait CatalogCommandTransaction:
 // Context trait that provides access to catalog-specific state and tracking for
 // commands
 pub trait CatalogCommandTransactionOperations:
-	CommandTransaction + CatalogQueryTransactionOperations
+	CommandTransaction + CatalogTransaction
 {
 	// Schema tracking methods
 	fn track_schema_def_created(

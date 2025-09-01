@@ -325,11 +325,30 @@ impl Compiler {
 								view,
 							},
 						));
-					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
+					} else if schema.name == "system" {
+						let table = match scan.source.fragment() {
+							"sequences" => SystemCatalog::sequences(),
+							"schemas" => SystemCatalog::schemas(),
+							"tables" => SystemCatalog::tables(),
+							"views" => SystemCatalog::views(),
+							"columns" => SystemCatalog::columns(),
+							"primary_keys" => SystemCatalog::primary_keys(),
+							"primary_key_columns" => SystemCatalog::primary_key_columns(),
+							"column_policies" => SystemCatalog::column_policies(),
+							_ => {
+								return_error!(
+									table_not_found(
+										scan.source.clone(),
+										scan.schema.fragment(),
+										scan.source.fragment()
+									)
+								);
+							}
+						};
 						stack.push(PhysicalPlan::TableVirtualScan(
 							TableVirtualScanNode {
 								schema,
-								table: SystemCatalog::sequences(),
+								table,
 								pushdown_context: None, // TODO: Detect pushdown opportunities
 							},
 						));

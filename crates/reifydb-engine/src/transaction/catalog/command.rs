@@ -3,9 +3,8 @@
 
 use reifydb_catalog::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogQueryTransaction, CatalogQueryTransactionOperations,
-	CatalogSchemaQueryOperations, MaterializedCatalog,
-	TransactionalChangesExt,
+	CatalogQueryTransaction, CatalogSchemaQueryOperations,
+	CatalogTransaction, MaterializedCatalog, TransactionalChangesExt,
 };
 use reifydb_core::{
 	Version,
@@ -25,9 +24,7 @@ use reifydb_core::{
 
 use crate::StandardCommandTransaction;
 
-impl<T: Transaction> CatalogQueryTransactionOperations
-	for StandardCommandTransaction<T>
-{
+impl<T: Transaction> CatalogTransaction for StandardCommandTransaction<T> {
 	fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
 	}
