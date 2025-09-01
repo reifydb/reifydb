@@ -9,8 +9,7 @@
 //! Run with: `make hello-world` or `cargo run --bin hello-world`
 
 use reifydb::{
-	log_info, sync, Identity, MemoryDatabaseOptimistic, Params,
-	QuerySessionSync, Session, SessionSync,
+	embedded, log_info, Identity, MemoryDatabaseOptimistic, Params, Session,
 };
 use reifydb_examples::log_query;
 
@@ -24,7 +23,7 @@ fn main() {
 	// - Stores all data in memory (no persistence)
 	// - Uses optimistic concurrency control
 	// - Operates synchronously (blocking operations)
-	let mut db: DB = sync::memory_optimistic().build().unwrap();
+	let mut db: DB = embedded::memory_optimistic().build().unwrap();
 
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries

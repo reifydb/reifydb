@@ -15,10 +15,10 @@ pub mod subsystem;
 use std::time::Duration;
 
 pub use api::*;
-pub use builder::*;
-#[cfg(feature = "async")]
-pub use context::TokioRuntimeProvider;
-pub use context::{AsyncContext, RuntimeProvider, SystemContext, TokioContext};
+#[cfg(feature = "sub_server")]
+pub use builder::ServerBuilder;
+pub use builder::{DatabaseBuilder, EmbeddedBuilder, WithSubsystem};
+pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::{Database, DatabaseConfig};
 pub use event::{OnCreateContext, WithEventBus};
 pub use health::HealthMonitor;
@@ -38,8 +38,6 @@ pub use reifydb_core::{
 	log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_engine as engine;
-#[cfg(feature = "sub_ws")]
-pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
 pub use reifydb_storage::{
@@ -53,7 +51,7 @@ pub use reifydb_sub_flow as flow;
 #[cfg(feature = "sub_logging")]
 pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};
 #[cfg(feature = "sub_server")]
-pub use reifydb_sub_server as fix_me_server;
+pub use reifydb_sub_server as sub_server;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
 	mvcc::transaction::{
@@ -61,12 +59,7 @@ pub use reifydb_transaction::{
 	},
 	svl::SingleVersionLock,
 };
-pub use session::{
-	CommandSession, CommandSessionSync, QuerySession, QuerySessionSync,
-	Session, SessionSync,
-};
-#[cfg(feature = "async")]
-pub use session::{CommandSessionAsync, QuerySessionAsync, SessionAsync};
+pub use session::{CommandSession, QuerySession, Session};
 
 /// Default configuration values
 pub mod defaults {

@@ -3,7 +3,7 @@
 
 use std::{error::Error as StdError, fmt::Write, thread, time::Duration};
 
-use reifydb::{MemoryDatabaseOptimistic, SessionSync, sync};
+use reifydb::{MemoryDatabaseOptimistic, Session, embedded};
 use reifydb_core::interface::{
 	CdcCheckpoint, ConsumerId, Engine, Params, VersionedQueryTransaction,
 };
@@ -16,7 +16,7 @@ pub struct FlowTestRunner {
 
 impl FlowTestRunner {
 	pub fn new() -> Self {
-		let db = sync::memory_optimistic().build().unwrap();
+		let db = embedded::memory_optimistic().build().unwrap();
 		Self {
 			instance: db,
 		}

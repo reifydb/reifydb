@@ -11,13 +11,11 @@ use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::{ServerConfig, ServerSubsystemFactory};
-#[cfg(feature = "sub_ws")]
-use reifydb_sub_ws::{WsConfig, WsSubsystemFactory};
 
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
-#[cfg(any(feature = "sub_ws", feature = "sub_server"))]
+#[cfg(feature = "sub_server")]
 pub struct ServerBuilder<T: Transaction> {
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
@@ -29,7 +27,7 @@ pub struct ServerBuilder<T: Transaction> {
 	>,
 }
 
-#[cfg(any(feature = "sub_ws", feature = "sub_server"))]
+#[cfg(feature = "sub_server")]
 impl<T: Transaction> ServerBuilder<T> {
 	pub fn new(
 		versioned: T::Versioned,
@@ -62,15 +60,8 @@ impl<T: Transaction> ServerBuilder<T> {
 		self
 	}
 
-	#[cfg(feature = "sub_ws")]
-	pub fn with_ws(mut self, config: WsConfig) -> Self {
-		let factory = WsSubsystemFactory::new(config);
-		self.subsystem_factories.push(Box::new(factory));
-		self
-	}
-
 	#[cfg(feature = "sub_server")]
-	pub fn with_server(mut self, config: ServerConfig) -> Self {
+	pub fn with_config(mut self, config: ServerConfig) -> Self {
 		let factory = ServerSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
 		self
@@ -98,7 +89,7 @@ impl<T: Transaction> ServerBuilder<T> {
 	}
 }
 
-#[cfg(any(feature = "sub_ws", feature = "sub_server"))]
+#[cfg(feature = "sub_server")]
 impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self

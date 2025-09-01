@@ -8,11 +8,11 @@
 //!
 //! Run with: `make rql-arithmetic` or `cargo run --bin rql-arithmetic`
 
-use reifydb::{log_info, sync, Params, SessionSync};
+use reifydb::{embedded, log_info, Params, Session};
 use reifydb_examples::log_query;
 
 fn main() {
-	let mut db = sync::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic arithmetic operations

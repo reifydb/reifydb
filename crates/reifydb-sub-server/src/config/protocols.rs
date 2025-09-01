@@ -5,7 +5,6 @@
 pub struct ProtocolConfigs {
 	pub websocket: Option<WebSocketConfig>,
 	pub http: Option<HttpConfig>,
-	pub binary: Option<BinaryConfig>,
 }
 
 impl Default for ProtocolConfigs {
@@ -13,7 +12,6 @@ impl Default for ProtocolConfigs {
 		Self {
 			websocket: Some(WebSocketConfig::default()),
 			http: None,
-			binary: None,
 		}
 	}
 }
@@ -74,36 +72,6 @@ impl Default for HttpConfig {
 			keep_alive_timeout: 60,
 			enable_cors: true,
 			cors_origins: vec![], // Allow all origins by default
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct BinaryConfig {
-	/// Magic bytes for protocol identification
-	pub magic: [u8; 4],
-
-	/// Protocol version
-	pub version: u16,
-
-	/// Maximum message size for binary protocol
-	pub max_message_size: usize,
-
-	/// Enable compression
-	pub enable_compression: bool,
-
-	/// Compression level (if enabled)
-	pub compression_level: u8,
-}
-
-impl Default for BinaryConfig {
-	fn default() -> Self {
-		Self {
-			magic: [0x52, 0x44, 0x42, 0x01], // "RDB\x01"
-			version: 1,
-			max_message_size: 64 << 20, // 64MB
-			enable_compression: true,
-			compression_level: 6, // Balanced compression level
 		}
 	}
 }

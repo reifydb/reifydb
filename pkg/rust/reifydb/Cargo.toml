@@ -12,7 +12,6 @@ reifydb-catalog = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-network = { workspace = true, optional = true }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
@@ -20,19 +19,14 @@ reifydb-transaction = { workspace = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-logging = { workspace = true, optional = true }
 reifydb-sub-workerpool = { workspace = true, optional = true }
-reifydb-sub-ws = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
-
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
 
 [features]
 default = []
-async = ["dep:tokio"]
 
 # Subsystem features
 sub_flow = ["dep:reifydb-sub-flow"]
 sub_logging = ["dep:reifydb-sub-logging"]
-sub_server = ["async", "dep:reifydb-sub-server"]
+sub_server = ["dep:reifydb-sub-server"]
 sub_workerpool = ["dep:reifydb-sub-workerpool"]
-sub_ws = ["async", "dep:reifydb-sub-ws", "dep:reifydb-network"]
 

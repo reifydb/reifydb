@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
-	Database, SessionSync, SyncBuilder,
+	Database, EmbeddedBuilder, Session,
 	core::{
 		event::EventBus,
 		interface::{
@@ -13,7 +13,7 @@ use reifydb::{
 		},
 	},
 	engine::EngineTransaction,
-	memory, optimistic,
+	memory, serializable,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
@@ -36,7 +36,7 @@ where
 	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
 		let (versioned, unversioned, cdc, eventbus) = input;
 		Self {
-			instance: SyncBuilder::new(
+			instance: EmbeddedBuilder::new(
 				versioned,
 				unversioned,
 				cdc,
@@ -58,37 +58,37 @@ where
 		let mut output = String::new();
 		match command.name.as_str() {
 			"command" => {
-				let rql = command
+				let query = command
 					.args
 					.iter()
 					.map(|a| a.value.as_str())
 					.collect::<Vec<_>>()
 					.join(" ");
 
-				println!("command: {rql}");
+				println!("command: {query}");
 
-				for line in self.instance.command_as_root(
-					rql.as_str(),
+				for frame in self.instance.command_as_root(
+					query.as_str(),
 					Params::None,
 				)? {
-					writeln!(output, "{}", line)?;
+					writeln!(output, "{}", frame)?;
 				}
 			}
 			"query" => {
-				let rql = command
+				let query = command
 					.args
 					.iter()
 					.map(|a| a.value.as_str())
 					.collect::<Vec<_>>()
 					.join(" ");
 
-				println!("query: {rql}");
+				println!("query: {query}");
 
-				for line in self.instance.query_as_root(
-					rql.as_str(),
+				for frame in self.instance.query_as_root(
+					query.as_str(),
 					Params::None,
 				)? {
-					writeln!(output, "{}", line)?;
+					writeln!(output, "{}", frame)?;
 				}
 			}
 			name => {
@@ -111,9 +111,9 @@ where
 	}
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as embedded_sync => test_embedded_sync }
+test_each_path! { in "testsuite/limit/tests/scripts" as embedded_sync => test_embedded_sync }
 
 fn test_embedded_sync(path: &Path) {
-	testscript::run_path(&mut Runner::new(optimistic(memory())), path)
+	testscript::run_path(&mut Runner::new(serializable(memory())), path)
 		.expect("test failed")
 }

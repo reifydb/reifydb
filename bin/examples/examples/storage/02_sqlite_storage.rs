@@ -9,7 +9,7 @@
 
 use std::{fs, path::Path};
 
-use reifydb::{log_info, sync, Params, SessionSync, SqliteConfig};
+use reifydb::{embedded, log_info, Params, Session, SqliteConfig};
 use reifydb_examples::log_query;
 
 fn main() {
@@ -29,10 +29,11 @@ fn main() {
 	{
 		// Create database (will be saved to disk)
 		log_info!("Creating SQLite database...");
-		let mut db =
-			sync::sqlite_serializable(SqliteConfig::new(db_path))
-				.build()
-				.unwrap();
+		let mut db = embedded::sqlite_serializable(SqliteConfig::new(
+			db_path,
+		))
+		.build()
+		.unwrap();
 		db.start().unwrap();
 		log_info!("✓ Database created and started\n");
 
@@ -120,10 +121,11 @@ insert store.products"#,
 	{
 		// Open existing database
 		log_info!("Opening existing database at: {}", db_path);
-		let mut db =
-			sync::sqlite_serializable(SqliteConfig::new(db_path))
-				.build()
-				.unwrap();
+		let mut db = embedded::sqlite_serializable(SqliteConfig::new(
+			db_path,
+		))
+		.build()
+		.unwrap();
 		db.start().unwrap();
 		log_info!("✓ Database reopened successfully\n");
 

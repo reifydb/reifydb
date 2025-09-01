@@ -13,8 +13,6 @@ path = "src/lib.rs"
 [dependencies]
 reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_logging"] }
 
-tokio = { workspace = true }
-
 # Basic examples (no special features required)
 [[bin]]
 name = "basic-hello-world"

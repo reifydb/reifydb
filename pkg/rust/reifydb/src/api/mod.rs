@@ -20,12 +20,9 @@ use reifydb_transaction::{
 	svl::SingleVersionLock,
 };
 
-pub mod sync;
+pub mod embedded;
 
-#[cfg(feature = "async")]
-pub mod async_;
-
-#[cfg(feature = "sub_ws")]
+#[cfg(feature = "sub_server")]
 pub mod server;
 
 /// Convenience function to create in-memory storage

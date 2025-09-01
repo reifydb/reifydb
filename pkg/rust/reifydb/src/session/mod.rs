@@ -4,7 +4,7 @@
 //! Session management for ReifyDB
 //!
 //! Provides session-based access to the database engine with different
-//! execution modes (sync/async) and permission levels.
+//! permission levels.
 
 #[allow(dead_code)]
 mod command;
@@ -15,7 +15,7 @@ pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
-	interface::{Identity, Params, Transaction},
+	interface::{Engine as EngineInterface, Identity, Params, Transaction},
 };
 use reifydb_engine::StandardEngine;
 
@@ -29,16 +29,14 @@ pub trait Session<T: Transaction> {
 		&self,
 		session: impl IntoQuerySession<T>,
 	) -> crate::Result<QuerySession<T>>;
-}
 
-pub trait SessionSync<T: Transaction>: Session<T> {
 	fn command_as_root(
 		&self,
 		rql: &str,
 		params: impl Into<Params>,
 	) -> crate::Result<Vec<Frame>> {
 		let session = self.command_session(Identity::root())?;
-		CommandSessionSync::command(&session, rql, params)
+		session.command(rql, params)
 	}
 
 	fn query_as_root(
@@ -47,68 +45,35 @@ pub trait SessionSync<T: Transaction>: Session<T> {
 		params: impl Into<Params>,
 	) -> crate::Result<Vec<Frame>> {
 		let session = self.query_session(Identity::root())?;
-		QuerySessionSync::query(&session, rql, params)
+		session.query(rql, params)
 	}
 }
 
-pub trait CommandSessionSync<T: Transaction> {
-	fn command(
-		&self,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> crate::Result<Vec<Frame>>;
-}
-
-pub trait QuerySessionSync<T: Transaction> {
-	fn query(
-		&self,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> crate::Result<Vec<Frame>>;
-}
-
-#[cfg(feature = "async")]
-pub trait SessionAsync<T: Transaction>: Session<T> + Sync {
-	fn command_as_root(
-		&self,
-		rql: &str,
-		params: impl Into<Params> + Send,
-	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
-		async {
-			let session = self.command_session(Identity::root())?;
-			CommandSessionAsync::command(&session, rql, params)
-				.await
+impl<T: Transaction> CommandSession<T> {
+	pub(crate) fn new(
+		engine: StandardEngine<T>,
+		identity: Identity,
+	) -> Self {
+		Self {
+			engine,
+			identity,
 		}
 	}
 
-	fn query_as_root(
+	pub fn command(
 		&self,
 		rql: &str,
-		params: impl Into<Params> + Send,
-	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send {
-		async {
-			let session = self.query_session(Identity::root())?;
-			QuerySessionAsync::query(&session, rql, params).await
-		}
+		params: impl Into<Params>,
+	) -> crate::Result<Vec<Frame>> {
+		let rql = rql.to_string();
+		let params = params.into();
+		self.engine.command_as(&self.identity, &rql, params).map_err(
+			|mut err| {
+				err.with_statement(rql);
+				err
+			},
+		)
 	}
-}
-
-#[cfg(feature = "async")]
-pub trait CommandSessionAsync<T: Transaction> {
-	fn command(
-		&self,
-		rql: &str,
-		params: impl Into<Params> + Send,
-	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send;
-}
-
-#[cfg(feature = "async")]
-pub trait QuerySessionAsync<T: Transaction> {
-	fn query(
-		&self,
-		rql: &str,
-		params: impl Into<Params> + Send,
-	) -> impl Future<Output = crate::Result<Vec<Frame>>> + Send;
 }
 
 impl<T: Transaction> QuerySession<T> {
@@ -120,6 +85,21 @@ impl<T: Transaction> QuerySession<T> {
 			engine,
 			identity,
 		}
+	}
+
+	pub fn query(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> crate::Result<Vec<Frame>> {
+		let rql = rql.to_string();
+		let params = params.into();
+		self.engine.query_as(&self.identity, &rql, params).map_err(
+			|mut err| {
+				err.with_statement(rql);
+				err
+			},
+		)
 	}
 }
 

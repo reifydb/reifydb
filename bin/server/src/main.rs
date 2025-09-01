@@ -4,10 +4,9 @@
 use std::time::Duration;
 
 use reifydb::{
-	Database, FormatStyle, LoggingBuilder, MemoryOptimisticTransaction,
-	ServerBuilder, WithSubsystem,
-	core::interface::subsystem::logging::LogLevel,
-	fix_me_server::ServerConfig, memory, optimistic,
+	FormatStyle, LoggingBuilder, WithSubsystem,
+	core::interface::subsystem::logging::LogLevel, server,
+	sub_server::ServerConfig,
 };
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
@@ -24,23 +23,11 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 }
 
 fn main() {
-	let (storage, unversioned, cdc, hooks) = memory();
-	let (versioned, _, _, _) = optimistic((
-		storage.clone(),
-		unversioned.clone(),
-		cdc.clone(),
-		hooks.clone(),
-	));
-	let mut db: Database<MemoryOptimisticTransaction> = ServerBuilder::new(
-		versioned.clone(),
-		unversioned.clone(),
-		cdc.clone(),
-		hooks.clone(),
-	)
-	.with_server(ServerConfig::default())
-	.with_logging(logger_configuration)
-	.build()
-	.unwrap();
+	let mut db = server::memory_optimistic()
+		.with_config(ServerConfig::default())
+		.with_logging(logger_configuration)
+		.build()
+		.unwrap();
 
 	// Start the database
 	db.start().unwrap();

@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use reifydb::{sync, MemoryDatabaseOptimistic, Params, SessionSync};
+use reifydb::{embedded, MemoryDatabaseOptimistic, Params, Session};
 use reifydb_bench::queries;
 
 fn bench_simple_queries(c: &mut Criterion) {
@@ -52,7 +52,7 @@ criterion_group!(benches, bench_simple_queries);
 criterion_main!(benches);
 
 fn create_benchmark_db() -> MemoryDatabaseOptimistic {
-	let mut db = sync::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 	db
 }

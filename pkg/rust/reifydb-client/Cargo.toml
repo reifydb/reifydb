@@ -6,22 +6,28 @@ edition.workspace = true
 license = "MIT"
 repository.workspace = true
 
+[[example]]
+name = "session_example"
+path = "examples/session_example.rs"
+
 [features]
-default = ["reifydb-network/client"]
-websocket = ["reifydb-network/client", "reifydb-network/websocket"]
+default = []
 
 [dependencies]
 reifydb = { workspace = true }
-reifydb-network = { workspace = true, optional = true, features = ["websocket"] }
 
-#reifydb-reifydb-catalog = { workspace = true }
-#reifydb-reifydb-flow = { workspace = true }
-#reifydb-diagnostic = { workspace = true }
-#reifydb-reifydb-engine = { workspace = true }
-#reifydb-reifydb-storage = { workspace = true }
-#reifydb-reifydb-rql = { workspace = true }
-#reifydb-reifydb-transaction = { workspace = true }
+# Network and async dependencies (matching server)
+mio = { version = "1.0.4", features = ["net", "os-poll"] }
+slab = "0.4"
+socket2 = { version = "0.6", features = ["all"] }
 
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"], optional = true }
-tokio-stream = { workspace = true, optional = true }
+# WebSocket protocol support
+httparse = "1.8"
+sha1 = "0.10"
 
+# HTTP protocol support
+urlencoding = "2.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

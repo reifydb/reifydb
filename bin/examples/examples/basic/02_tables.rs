@@ -10,13 +10,13 @@
 
 use reifydb::{
 	core::{interface::Params, log_info},
-	sync, SessionSync,
+	embedded, Session,
 };
 use reifydb_examples::log_query;
 
 fn main() {
 	// Create and start an in-memory database with logging
-	let mut db = sync::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
 	// Create a schema to organize our tables

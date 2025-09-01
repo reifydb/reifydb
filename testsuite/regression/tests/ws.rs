@@ -6,22 +6,20 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, ServerBuilder,
 	core::{
-		Error as ReifyDBError,
 		event::EventBus,
 		interface::{
-			CdcTransaction, Params, UnversionedTransaction,
+			CdcTransaction, UnversionedTransaction,
 			VersionedTransaction,
 		},
 		retry,
 	},
 	engine::EngineTransaction,
-	memory,
-	network::ws::{client::WsClient, server::WsConfig},
-	optimistic,
+	memory, optimistic,
+	sub_server::ServerConfig,
 };
-use reifydb_testing::{network::busy_wait, testscript, testscript::Command};
+use reifydb_client::{BlockingSession, Client};
+use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
-use tokio::{runtime::Runtime, sync::oneshot};
 
 pub struct WsRunner<VT, UT, C>
 where
@@ -30,9 +28,8 @@ where
 	C: CdcTransaction,
 {
 	instance: Option<Database<EngineTransaction<VT, UT, C>>>,
-	client: Option<WsClient>,
-	runtime: Option<Runtime>,
-	shutdown: Option<oneshot::Sender<()>>,
+	client: Option<Client>,
+	session: Option<BlockingSession>,
 }
 
 impl<VT, UT, C> WsRunner<VT, UT, C>
@@ -49,17 +46,14 @@ where
 			cdc,
 			eventbus,
 		)
-		.with_ws(WsConfig {
-			socket: Some("[::1]:0".parse().unwrap()),
-		})
+		.with_config(ServerConfig::new())
 		.build()
 		.unwrap();
 
 		Self {
 			instance: Some(instance),
 			client: None,
-			runtime: None,
-			shutdown: None,
+			session: None,
 		}
 	}
 }
@@ -72,6 +66,10 @@ where
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
+
+		let session =
+			self.session.as_mut().ok_or("No session available")?;
+
 		match command.name.as_str() {
 			"command" => {
 				let rql = command
@@ -83,23 +81,17 @@ where
 
 				println!("command: {rql}");
 
-				let Some(runtime) = &self.runtime else {
-					panic!()
-				};
+				let result = session.command(&rql, None)?;
 
-				runtime.block_on(async {
-					for frame in self
-						.client
-						.as_ref()
-						.unwrap()
-						.command(&rql, Params::None)
-						.await?
-					{
-						writeln!(output, "{}", frame)
-							.unwrap();
+				for frame in result.frames {
+					for row in frame.rows {
+						writeln!(
+							output,
+							"  {:?}",
+							row.values
+						)?;
 					}
-					Ok::<(), reifydb::Error>(())
-				})?;
+				}
 			}
 
 			"query" => {
@@ -112,23 +104,22 @@ where
 
 				println!("query: {rql}");
 
-				let Some(runtime) = &self.runtime else {
-					panic!()
-				};
+				let result = session.query(&rql, None)?;
 
-				runtime.block_on(async {
-					for frame in self
-						.client
-						.as_ref()
-						.unwrap()
-						.query(&rql, Params::None)
-						.await?
-					{
-						writeln!(output, "{}", frame)
-							.unwrap();
+				for frame in result.frames {
+					writeln!(
+						output,
+						"Frame: {}",
+						frame.name
+					)?;
+					for row in frame.rows {
+						writeln!(
+							output,
+							"  {:?}",
+							row.values
+						)?;
 					}
-					Ok::<(), reifydb::Error>(())
-				})?;
+				}
 			}
 			name => {
 				return Err(format!("invalid command {name}")
@@ -140,45 +131,43 @@ where
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		let runtime = Runtime::new()?;
-		let (shutdown_tx, _) = oneshot::channel();
 		let server = self.instance.as_mut().unwrap();
 
 		server.start()?;
-		let socket_addr = busy_wait(|| server.ws_socket_addr());
-		self.client = Some(runtime.block_on(async {
-			let client = WsClient::connect(&format!(
-				"ws://[::1]:{}",
-				socket_addr.port()
-			))
-			.await?;
-			client.auth(Some("mysecrettoken".into()))
-				.await
-				.unwrap();
-			Ok::<WsClient, ReifyDBError>(client)
-		})?);
-		self.runtime = Some(runtime);
-		self.shutdown = Some(shutdown_tx);
+
+		// Use the default port from ServerConfig (8090)
+		// TODO: Once the server exposes port discovery, update this
+		let ws_port = 8090;
+
+		// Connect using the new blocking client
+		let client =
+			Client::connect(&format!("127.0.0.1:{}", ws_port))?;
+
+		// Create a blocking session with authentication token
+		let session = client
+			.blocking_session(Some("mysecrettoken".to_string()))?;
+
+		self.client = Some(client);
+		self.session = Some(session);
 
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+		// Drop the session first
+		if let Some(session) = self.session.take() {
+			drop(session);
+		}
+
+		// Close the client connection
+		if let Some(client) = self.client.take() {
+			let _ = client.close();
+		}
+
+		// Stop the server
 		if let Some(mut server) = self.instance.take() {
 			let _ = server.stop();
 			drop(server);
-		}
-
-		if let Some(client) = self.client.take() {
-			drop(client);
-		}
-
-		if let Some(shutdown) = self.shutdown.take() {
-			let _ = shutdown.send(());
-		}
-
-		if let Some(runtime) = self.runtime.take() {
-			drop(runtime);
 		}
 
 		Ok(())

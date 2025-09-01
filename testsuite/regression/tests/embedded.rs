@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
-	AsyncBuilder, Database, SessionAsync,
+	Database, EmbeddedBuilder, Session,
 	core::{
 		event::EventBus,
 		interface::{
@@ -17,7 +17,6 @@ use reifydb::{
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
-use tokio::runtime::Runtime;
 
 pub struct Runner<VT, UT, C>
 where
@@ -26,7 +25,6 @@ where
 	C: CdcTransaction,
 {
 	instance: Database<EngineTransaction<VT, UT, C>>,
-	runtime: Runtime,
 }
 
 impl<VT, UT, C> Runner<VT, UT, C>
@@ -38,7 +36,7 @@ where
 	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
 		let (versioned, unversioned, cdc, eventbus) = input;
 		Self {
-			instance: AsyncBuilder::new(
+			instance: EmbeddedBuilder::new(
 				versioned,
 				unversioned,
 				cdc,
@@ -46,7 +44,6 @@ where
 			)
 			.build()
 			.unwrap(),
-			runtime: Runtime::new().unwrap(),
 		}
 	}
 }
@@ -71,19 +68,15 @@ where
 				println!("command: {rql}");
 
 				let instance = &self.instance;
-				self.runtime.block_on(async {
-					for frame in instance
-						.command_as_root(
-							rql.as_str(),
-							Params::None,
-						)
-						.await?
-					{
-						writeln!(output, "{}", frame)
-							.unwrap();
-					}
-					Ok::<(), reifydb::Error>(())
-				})?;
+				for frame in instance
+					.command_as_root(
+						rql.as_str(),
+						Params::None,
+					)
+					.unwrap()
+				{
+					writeln!(output, "{}", frame).unwrap();
+				}
 			}
 			"query" => {
 				let rql = command
@@ -96,19 +89,15 @@ where
 				println!("query: {rql}");
 
 				let instance = &self.instance;
-				self.runtime.block_on(async {
-					for frame in instance
-						.query_as_root(
-							rql.as_str(),
-							Params::None,
-						)
-						.await?
-					{
-						writeln!(output, "{}", frame)
-							.unwrap();
-					}
-					Ok::<(), reifydb::Error>(())
-				})?;
+				for frame in instance
+					.query_as_root(
+						rql.as_str(),
+						Params::None,
+					)
+					.unwrap()
+				{
+					writeln!(output, "{}", frame).unwrap();
+				}
 			}
 			name => {
 				return Err(format!("invalid command {name}")
@@ -130,9 +119,9 @@ where
 	}
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as embedded_async => test_embedded_async }
+test_each_path! { in "testsuite/regression/tests/scripts" as embedded => test_embedded }
 
-fn test_embedded_async(path: &Path) {
+fn test_embedded(path: &Path) {
 	testscript::run_path(&mut Runner::new(optimistic(memory())), path)
 		.expect("test failed")
 }

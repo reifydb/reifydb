@@ -6,10 +6,10 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, SessionSync,
+	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, Session,
 	WithSubsystem,
 	core::interface::{Params, subsystem::logging::LogLevel::Info},
-	log_info, sync,
+	embedded, log_info,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -28,7 +28,7 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 }
 
 fn main() {
-	let mut db: DB = sync::memory_optimistic()
+	let mut db: DB = embedded::memory_optimistic()
 		.with_logging(logger_configuration)
 		.build()
 		.unwrap();

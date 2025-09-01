@@ -13,7 +13,7 @@ members = [
     "crates/reifydb-cdc",
     "crates/reifydb-core",
     "crates/reifydb-engine",
-    "crates/reifydb-network",
+    "crates/reifydb-hash",
     "crates/reifydb-rql",
     "crates/reifydb-sub-server",
     "crates/reifydb-storage",
@@ -22,12 +22,11 @@ members = [
     "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
-    "crates/reifydb-sub-ws",
     "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
-    "testsuite/regression", "crates/reifydb-hash",
+    "testsuite/regression",
 ]
 
 default-members = [
@@ -42,7 +41,7 @@ default-members = [
     "crates/reifydb-cdc",
     "crates/reifydb-core",
     "crates/reifydb-engine",
-    "crates/reifydb-network",
+    "crates/reifydb-hash",
     "crates/reifydb-rql",
     "crates/reifydb-sub-server",
     "crates/reifydb-storage",
@@ -51,7 +50,6 @@ default-members = [
     "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
-    "crates/reifydb-sub-ws",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
@@ -90,6 +88,7 @@ overflow-checks = true
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust/reifydb", version = "0.0.1" }
+reifydb-client = { path = "pkg/rust/reifydb-client", version = "0.0.1"}
 #internal
 reifydb-auth = { path = "crates/reifydb-auth", version = "0.0.1" }
 reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
@@ -98,7 +97,6 @@ reifydb-core = { path = "crates/reifydb-core", version = "0.0.1" }
 reifydb-engine = { path = "crates/reifydb-engine", version = "0.0.1" }
 reifydb-hash = { path = "crates/reifydb-hash", version = "0.0.1" }
 reifydb-sub-flow = { path = "crates/reifydb-sub-flow", version = "0.0.1" }
-reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
 reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
 reifydb-sub-server = { path = "crates/reifydb-sub-server", version = "0.0.1" }
 reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
@@ -107,15 +105,12 @@ reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
 #subsystems
 reifydb-sub-logging = { path = "crates/reifydb-sub-logging", version = "0.0.1" }
 reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.0.1" }
-reifydb-sub-ws = { path = "crates/reifydb-sub-ws", version = "0.0.1" }
 
 # util
 chrono = { version = "0.4.41", features = ["serde"] }
-futures-util = { version = "0.3.31" }
 once_cell = { version = "1.21.3" }
 regex = { version = "1.11.1" }
 uuid = { version = "1.16.0", features = ["v4", "v7", "serde"] }
-
 
 crossbeam-skiplist = { version = "0.1.3" }
 crossbeam-channel = { version = "0.5.15" }
@@ -126,16 +121,10 @@ rusqlite = { version = "0.36.0", features = ["bundled"] }
 r2d2 = { version = "0.8.10" }
 r2d2_sqlite = { version = "0.29.0" }
 
-
 # serde
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }
 serde_json = { version = "1.0.140" }
-
-tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread", "signal"] }
-tokio-stream = { version = "0.1.17" }
-tokio-tungstenite = { version = "0.27" }
-
 
 # lmbdb
 heed = { version = "0.22.0", features = ["preserve_order"] }
@@ -146,5 +135,5 @@ goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
 
 # benchmarking
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 

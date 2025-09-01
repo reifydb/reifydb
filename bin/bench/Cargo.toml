@@ -15,11 +15,7 @@ reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_server", "sub_logg
 reifydb-rql = { path = "../../crates/reifydb-rql" }
 reifydb-sub-server = { path = "../../crates/reifydb-sub-server" }
 
-tokio = { workspace = true, features = ["time"] }
-
 criterion = { workspace = true }
-tokio-tungstenite = "0.27"
-futures-util = "0.3"
 serde_json = { workspace = true}
 
 [[bench]]

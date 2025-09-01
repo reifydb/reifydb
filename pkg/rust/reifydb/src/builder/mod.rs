@@ -1,18 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#[cfg(feature = "async")]
-mod r#async;
 mod database;
-#[cfg(any(feature = "sub_ws", feature = "sub_server"))]
+mod embedded;
+#[cfg(feature = "sub_server")]
 mod server;
-mod sync;
 pub mod traits;
 
-#[cfg(feature = "async")]
-pub use r#async::AsyncBuilder;
 pub use database::DatabaseBuilder;
-#[cfg(any(feature = "sub_ws", feature = "sub_server"))]
+pub use embedded::EmbeddedBuilder;
+#[cfg(feature = "sub_server")]
 pub use server::ServerBuilder;
-pub use sync::SyncBuilder;
 pub use traits::WithSubsystem;

@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use base64::{Engine, prelude::BASE64_STANDARD};
+use reifydb_core::util::base64;
 use serde::{Deserialize, Serialize};
 use sha1::{Sha1, digest::Digest};
-
 // === HTTP -> WebSocket handshake helpers ===
 
 pub fn find_header_end(buf: &[u8]) -> Option<usize> {
@@ -41,7 +40,8 @@ pub fn build_ws_response(
 	let mut hasher = Sha1::new();
 	hasher.update(combined.as_bytes());
 	let hash = hasher.finalize();
-	let accept = BASE64_STANDARD.encode(&hash);
+
+	let accept = base64::Engine::STANDARD.encode(&hash);
 
 	// Build response
 	let response = format!(

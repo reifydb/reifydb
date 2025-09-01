@@ -13,8 +13,7 @@ use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
-#[cfg(feature = "async")]
-pub struct AsyncBuilder<T: Transaction> {
+pub struct EmbeddedBuilder<T: Transaction> {
 	versioned: T::Versioned,
 	unversioned: T::Unversioned,
 	cdc: T::Cdc,
@@ -25,8 +24,7 @@ pub struct AsyncBuilder<T: Transaction> {
 	>,
 }
 
-#[cfg(feature = "async")]
-impl<T: Transaction> AsyncBuilder<T> {
+impl<T: Transaction> EmbeddedBuilder<T> {
 	pub fn new(
 		versioned: T::Versioned,
 		unversioned: T::Unversioned,
@@ -80,8 +78,7 @@ impl<T: Transaction> AsyncBuilder<T> {
 	}
 }
 
-#[cfg(feature = "async")]
-impl<T: Transaction> WithSubsystem<T> for AsyncBuilder<T> {
+impl<T: Transaction> WithSubsystem<T> for EmbeddedBuilder<T> {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
 	where

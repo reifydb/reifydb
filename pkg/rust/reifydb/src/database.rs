@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#[cfg(feature = "sub_ws")]
-use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reifydb_core::{
@@ -15,11 +13,7 @@ use reifydb_core::{
 	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
-#[cfg(feature = "sub_ws")]
-use reifydb_sub_ws::WsSubsystem;
 
-#[cfg(feature = "async")]
-use crate::session::SessionAsync;
 use crate::{
 	boot::Bootloader,
 	defaults::{
@@ -29,7 +23,7 @@ use crate::{
 	health::{ComponentHealth, HealthMonitor},
 	session::{
 		CommandSession, IntoCommandSession, IntoQuerySession,
-		QuerySession, Session, SessionSync,
+		QuerySession, Session,
 	},
 	subsystem::Subsystems,
 };
@@ -93,11 +87,6 @@ impl<T: Transaction> Database<T> {
 	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
 	// Option<&FlowSubsystem<T, E>> { 	self.subsystem::<FlowSubsystem<T,
 	// E>>() }
-
-	#[cfg(feature = "sub_ws")]
-	pub fn subsystem_ws(&self) -> Option<&WsSubsystem<T>> {
-		self.subsystem::<WsSubsystem<T>>()
-	}
 }
 
 impl<T: Transaction> Database<T> {
@@ -264,14 +253,6 @@ impl<T: Transaction> Database<T> {
 		)
 	}
 
-	#[cfg(feature = "sub_ws")]
-	pub fn ws_socket_addr(&self) -> Option<SocketAddr> {
-		if let Some(subsystem) = self.subsystem_ws() {
-			return subsystem.socket_addr();
-		}
-		None
-	}
-
 	pub fn subsystem<S: 'static>(&self) -> Option<&S> {
 		self.subsystems.get::<S>()
 	}
@@ -308,23 +289,4 @@ where
 	) -> Result<QuerySession<EngineTransaction<VT, UT, C>>> {
 		session.into_query_session(self.engine.clone())
 	}
-}
-
-impl<VT, UT, C> SessionSync<EngineTransaction<VT, UT, C>>
-	for Database<EngineTransaction<VT, UT, C>>
-where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
-	C: CdcTransaction,
-{
-}
-
-#[cfg(feature = "async")]
-impl<VT, UT, C> SessionAsync<EngineTransaction<VT, UT, C>>
-	for Database<EngineTransaction<VT, UT, C>>
-where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
-	C: CdcTransaction,
-{
 }

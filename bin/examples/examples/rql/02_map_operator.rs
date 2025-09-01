@@ -8,12 +8,12 @@
 //!
 //! Run with: `make rql-map` or `cargo run --bin rql-map`
 
-use reifydb::{log_info, sync, Params, SessionSync};
+use reifydb::{embedded, log_info, Params, Session};
 use reifydb_examples::log_query;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = sync::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: MAP with constants
