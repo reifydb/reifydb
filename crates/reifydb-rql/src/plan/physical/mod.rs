@@ -18,12 +18,11 @@ use reifydb_core::{
 		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
-	result::error::diagnostic::catalog::{
-		schema_not_found, table_not_found,
-	},
-	return_error,
+    return_error,
 };
-
+use reifydb_type::::diagnostic::catalog::{
+    schema_not_found, table_not_found,
+};
 use crate::plan::{
 	logical::LogicalPlan,
 	physical::{

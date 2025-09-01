@@ -5,16 +5,15 @@ use std::fmt::{Debug, Display};
 
 use reifydb_core::{
 	OwnedFragment, Type,
-	interface::fragment::LazyFragment,
-	result::error::diagnostic::{boolean::invalid_number_boolean, cast},
-	return_error,
+    return_error,
 	value::{
 		IsNumber,
-		boolean::parse_bool,
-		container::{NumberContainer, StringContainer},
+        container::{NumberContainer, StringContainer},
 	},
 };
-
+use reifydb_type::::diagnostic::{boolean::invalid_number_boolean, cast};
+use reifydb_type::::LazyFragment;
+use reifydb_type::parse_bool;
 use crate::columnar::ColumnData;
 
 pub fn to_boolean<'a>(
@@ -163,7 +162,7 @@ fn from_utf8<'a>(
 	container: &StringContainer,
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
-	use reifydb_core::interface::fragment::BorrowedFragment;
+	use reifydb_type::::BorrowedFragment;
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {

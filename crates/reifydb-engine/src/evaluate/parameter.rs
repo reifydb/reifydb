@@ -1,8 +1,7 @@
 use reifydb_core::{
 	Value, error, interface::evaluate::expression::ParameterExpression,
-	result::error::diagnostic::engine,
 };
-
+use reifydb_type::::diagnostic::engine;
 use crate::{
 	columnar::{Column, ColumnData, Unqualified},
 	evaluate::{EvaluationContext, StandardEvaluator},

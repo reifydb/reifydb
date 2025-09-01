@@ -3,10 +3,9 @@
 
 use reifydb_core::{
 	JoinType,
-	result::error::diagnostic::ast::multiple_expressions_without_braces,
-	return_error,
+    return_error,
 };
-
+use reifydb_type::::diagnostic::ast::multiple_expressions_without_braces;
 use crate::ast::{
 	AstJoin,
 	parse::{Parser, Precedence},

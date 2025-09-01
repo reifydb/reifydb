@@ -7,9 +7,8 @@ use reifydb_core::{
 		Evaluator,
 		evaluate::expression::{CallExpression, Expression},
 	},
-	result::error::diagnostic::function,
 };
-
+use reifydb_type::::diagnostic::function;
 use crate::{
 	columnar::{Column, ColumnQualified, Columns},
 	evaluate::{EvaluationContext, StandardEvaluator},

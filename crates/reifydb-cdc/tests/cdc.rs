@@ -527,7 +527,7 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 				statement: None,
 				message: "Test failure".to_string(),
 				column: None,
-				fragment: reifydb_core::interface::fragment::OwnedFragment::None,
+				fragment: reifydb_type::::OwnedFragment::None,
 				label: None,
 				help: None,
 				notes: vec![],

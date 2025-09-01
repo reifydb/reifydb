@@ -6,9 +6,8 @@ use std::sync::Arc;
 use reifydb_core::{
 	ColumnDescriptor,
 	interface::{Transaction, evaluate::expression::Expression},
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
-
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},

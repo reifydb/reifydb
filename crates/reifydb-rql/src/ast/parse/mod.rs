@@ -32,8 +32,8 @@ mod update;
 
 use std::cmp::PartialOrd;
 
-use reifydb_core::{result::error::diagnostic::ast, return_error};
-
+use reifydb_core::{return_error};
+use reifydb_type::::diagnostic::ast;
 use crate::ast::{
 	Ast, AstInfix, AstStatement, InfixOperator,
 	tokenize::{
@@ -418,9 +418,9 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use diagnostic::ast;
-	use reifydb_core::{Error, err, result::error::diagnostic};
-
-	use crate::ast::{
+	use reifydb_core::{Error, err};
+    use reifydb_type::::diagnostic;
+    use crate::ast::{
 		parse::{Parser, Precedence, Precedence::Term},
 		tokenize::{
 			Literal::{False, Number, True},

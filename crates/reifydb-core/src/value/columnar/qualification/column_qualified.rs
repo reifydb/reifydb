@@ -1,7 +1,7 @@
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 use super::super::{Column, ColumnData, ColumnQualified};
 use crate::{
 	BitVec, Date, DateTime, Interval, RowNumber, Time, Uuid4, Uuid7,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 impl ColumnQualified {

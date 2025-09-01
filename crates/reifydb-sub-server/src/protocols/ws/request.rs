@@ -5,19 +5,18 @@ use std::{collections::HashMap, fmt, str::FromStr};
 
 use reifydb_core::{
 	Blob, OrderedF32, OrderedF64, RowNumber, Type, Value,
-	value::{
-		boolean::parse_bool,
-		number::{parse_float, parse_int, parse_uint},
-		temporal::{
-			parse_date, parse_datetime, parse_interval, parse_time,
-		},
-		uuid::{parse_uuid4, parse_uuid7},
-	},
+	value::{},
 };
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
 };
+use reifydb_type::{parse_uuid4, parse_uuid7};
+use reifydb_type::{
+	parse_date, parse_datetime, parse_interval, parse_time,
+};
+use reifydb_type::{parse_float, parse_int, parse_uint};
+use reifydb_type::parse_bool;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
@@ -90,7 +89,7 @@ fn parse_typed_value(
 
 	// Use the appropriate parse function based on type
 	// If parsing fails, return Value::Undefined
-	use reifydb_core::interface::fragment::BorrowedFragment;
+	use reifydb_type::::BorrowedFragment;
 	let fragment = BorrowedFragment::new_internal(str_val);
 
 	let parsed_value =

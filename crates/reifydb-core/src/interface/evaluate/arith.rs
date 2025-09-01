@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::error::diagnostic::number::number_out_of_range;
+use reifydb_type::{
+    Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder,
+    SafeSub,
+};
 use crate::{
 	Error, GetType, IntoFragment,
 	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
-	result::error::diagnostic::number::number_out_of_range,
 	return_error,
 	value::{
 		IsNumber,
-		number::{
-			Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder,
-			SafeSub,
-		},
-	},
+    },
 };
 
 impl EvaluationContext<'_> {

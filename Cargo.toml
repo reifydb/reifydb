@@ -19,6 +19,7 @@ members = [
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
+    "crates/reifydb-type",
     "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
@@ -47,6 +48,7 @@ default-members = [
     "crates/reifydb-storage",
     "crates/reifydb-testing",
     "crates/reifydb-transaction",
+    "crates/reifydb-type",
     "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
@@ -102,6 +104,7 @@ reifydb-sub-server = { path = "crates/reifydb-sub-server", version = "0.0.1" }
 reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
+reifydb-type = { path = "crates/reifydb-type", version = "0.0.1" }
 #subsystems
 reifydb-sub-logging = { path = "crates/reifydb-sub-logging", version = "0.0.1" }
 reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.0.1" }

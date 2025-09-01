@@ -7,12 +7,11 @@ use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor, IntoFragment, Type, Value,
 	interface::{ColumnPolicyKind, Params, Transaction},
-	result::error::diagnostic::catalog::table_not_found,
-	return_error,
+    return_error,
 	row::EncodedRowLayout,
 };
 use reifydb_rql::plan::physical::InsertPlan;
-
+use reifydb_type::::diagnostic::catalog::table_not_found;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	columnar::Columns,

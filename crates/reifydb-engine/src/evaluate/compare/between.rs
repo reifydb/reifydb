@@ -9,10 +9,9 @@ use reifydb_core::{
 			LessThanEqExpression,
 		},
 	},
-	result::error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types,
-	return_error,
+    return_error,
 };
-
+use reifydb_type::::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
 	evaluate::{EvaluationContext, StandardEvaluator},

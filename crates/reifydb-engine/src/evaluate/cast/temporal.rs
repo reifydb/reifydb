@@ -3,16 +3,15 @@
 
 use reifydb_core::{
 	Date, DateTime, Interval, Time, Type, error,
-	interface::fragment::{BorrowedFragment, LazyFragment, OwnedFragment},
-	result::error::diagnostic::cast,
-	value::{
+    value::{
 		container::StringContainer,
-		temporal::{
-			parse_date, parse_datetime, parse_interval, parse_time,
-		},
-	},
+    },
 };
-
+use reifydb_type::::{BorrowedFragment, LazyFragment, OwnedFragment};
+use reifydb_type::::diagnostic::cast;
+use reifydb_type::{
+    parse_date, parse_datetime, parse_interval, parse_time,
+};
 use crate::columnar::ColumnData;
 
 pub fn to_temporal<'a>(

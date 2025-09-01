@@ -6,15 +6,14 @@ use std::fmt::Debug;
 use reifydb_core::{
 	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::MulExpression},
-	result::error::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
 		IsNumber,
 		container::{UndefinedContainer, number::NumberContainer},
-		number::{Promote, SafeMul},
-	},
+    },
 };
-
+use reifydb_type::::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types;
+use reifydb_type::{Promote, SafeMul};
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},
 	evaluate::{EvaluationContext, StandardEvaluator},

@@ -4,8 +4,8 @@
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
-
-use crate::{BitVec, CowVec, value::identity::IdentityId};
+use reifydb_type::IdentityId;
+use crate::{BitVec, CowVec};
 
 /// Container for IdentityId values
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -5,9 +5,7 @@ use std::fmt::{Debug, Display};
 
 use reifydb_core::{
 	Error, Type, err,
-	interface::fragment::LazyFragment,
-	result::error::diagnostic::cast,
-	value::{
+    value::{
 		IsNumber, IsTemporal, IsUuid,
 		container::{
 			BlobContainer, BoolContainer, NumberContainer,
@@ -15,7 +13,8 @@ use reifydb_core::{
 		},
 	},
 };
-
+use reifydb_type::::diagnostic::cast;
+use reifydb_type::::LazyFragment;
 use crate::columnar::ColumnData;
 
 pub fn to_text<'a>(
@@ -158,7 +157,7 @@ mod tests {
 
 	#[test]
 	fn test_from_blob() {
-		use reifydb_core::interface::fragment::OwnedFragment;
+		use reifydb_type::::OwnedFragment;
 		let blobs = vec![
 			Blob::from_utf8(OwnedFragment::internal("Hello")),
 			Blob::from_utf8(OwnedFragment::internal("World")),

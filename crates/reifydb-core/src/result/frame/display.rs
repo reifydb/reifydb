@@ -2,11 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::fmt::{self, Display, Formatter};
-
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 use crate::{
 	result::frame::{Frame, FrameColumn},
 	util::unicode_width::UnicodeWidthStr,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 
 /// Calculate the display width of a string, handling newlines properly.
@@ -151,7 +150,8 @@ impl Display for Frame {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use reifydb_type::{Uuid4, Uuid7};
+    use super::*;
 	use crate::{
 		BitVec, Date, DateTime, FrameColumnData, Interval, RowNumber,
 		Time,
@@ -163,8 +163,7 @@ mod tests {
 				TemporalContainer, UndefinedContainer,
 				UuidContainer,
 			},
-			uuid::{Uuid4, Uuid7},
-		},
+        },
 	};
 
 	fn bool_column_with_bitvec(

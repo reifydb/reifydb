@@ -11,16 +11,16 @@ use reifydb_core::{
 	Type,
 	interface::{
 		evaluate::expression::ConstantExpression,
-		fragment::IntoFragment,
 	},
-	result::error::diagnostic::cast,
 	return_error,
 	value::{
-		boolean::parse_bool,
-		container::undefined::UndefinedContainer,
-		number::{parse_float, parse_int, parse_uint},
-	},
+        container::undefined::UndefinedContainer,
+    },
 };
+use reifydb_type::::diagnostic::cast;
+use reifydb_type::::IntoFragment;
+use reifydb_type::{parse_float, parse_int, parse_uint};
+use reifydb_type::parse_bool;
 use temporal::TemporalParser;
 use text::TextParser;
 

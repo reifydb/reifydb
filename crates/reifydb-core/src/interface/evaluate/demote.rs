@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::error::diagnostic::number::number_out_of_range;
+use reifydb_type::SafeDemote;
 use crate::{
 	GetType, error,
 	interface::{
 		ColumnSaturationPolicy, LazyFragment,
 		evaluate::EvaluationContext,
 	},
-	result::error::diagnostic::number::number_out_of_range,
-	value::number::SafeDemote,
 };
 
 pub trait Demote {
@@ -69,15 +69,15 @@ impl Demote for &EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
+    use reifydb_type::SafeDemote;
+    use crate::{
 		ColumnDescriptor, Fragment, GetType, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
 			evaluate::{Demote, EvaluationContext},
 		},
-		value::number::SafeDemote,
-	};
+    };
 
 	#[test]
 	fn test_demote_ok() {

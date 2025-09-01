@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_core::result::error::diagnostic::ast;
+use reifydb_type::::diagnostic::ast;
 
 use super::{
 	cursor::Cursor,

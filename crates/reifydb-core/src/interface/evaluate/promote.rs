@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::error::diagnostic::number::number_out_of_range;
+use reifydb_type::SafePromote;
 use crate::{
 	GetType, error,
 	interface::{
 		ColumnSaturationPolicy, LazyFragment,
 		evaluate::EvaluationContext,
 	},
-	result::error::diagnostic::number::number_out_of_range,
-	value::number::SafePromote,
 };
 
 pub trait Promote {
@@ -69,15 +69,15 @@ impl Promote for &EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
+    use reifydb_type::SafePromote;
+    use crate::{
 		ColumnDescriptor, Fragment, GetType, Type,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
 			evaluate::{EvaluationContext, Promote},
 		},
-		value::number::SafePromote,
-	};
+    };
 
 	#[test]
 	fn test_promote_ok() {

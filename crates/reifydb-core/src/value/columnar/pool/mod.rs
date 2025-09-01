@@ -27,6 +27,7 @@ pub use config::{
 };
 pub use guard::PooledGuard;
 pub use lazy::{ensure_thread_pools, get_or_init_pools, thread_pools_lazy};
+use reifydb_type::{Uuid4, Uuid7};
 pub use scoped::{
 	ScopedPools, with_default_pools, with_scoped_pools, with_test_pools,
 };
@@ -39,7 +40,6 @@ use crate::value::{
 		stats::PoolStats,
 	},
 	container::*,
-	uuid::{Uuid4, Uuid7},
 };
 
 #[derive(Clone)]

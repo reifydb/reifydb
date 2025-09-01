@@ -4,13 +4,12 @@
 use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
 use serde::{Deserialize, Serialize};
-
+use reifydb_type::{Uuid4, Uuid7};
 use crate::{
 	BitVec, CowVec, Value,
 	value::{
 		IsUuid,
-		uuid::{Uuid4, Uuid7},
-	},
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -241,11 +240,11 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use reifydb_type::{Uuid4, Uuid7};
+    use super::*;
 	use crate::{
 		BitVec,
-		value::uuid::{Uuid4, Uuid7},
-	};
+    };
 
 	#[test]
 	fn test_uuid4_container() {

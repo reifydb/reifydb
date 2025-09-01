@@ -6,17 +6,16 @@ use std::fmt::Debug;
 use reifydb_core::{
 	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::AddExpression},
-	result::error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
 		IsNumber,
 		container::{
 			NumberContainer, StringContainer, UndefinedContainer,
 		},
-		number::{Promote, SafeAdd},
-	},
+    },
 };
-
+use reifydb_type::::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
+use reifydb_type::{Promote, SafeAdd};
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},
 	evaluate::{EvaluationContext, StandardEvaluator},

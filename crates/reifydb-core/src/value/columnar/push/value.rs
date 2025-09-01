@@ -494,14 +494,13 @@ impl ColumnData {
 #[allow(clippy::approx_constant)]
 mod tests {
 	use uuid::Uuid;
-
-	use crate::{
+    use reifydb_type::{Uuid4, Uuid7};
+    use crate::{
 		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
 		RowNumber, Time, Value,
 		value::{
 			columnar::data::ColumnData,
-			uuid::{Uuid4, Uuid7},
-		},
+        },
 	};
 
 	#[test]

@@ -11,17 +11,16 @@ use reifydb_core::{
 		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 	},
-	result::error::diagnostic::{
-		catalog::{schema_not_found, table_not_found},
-		engine,
-	},
-	return_error,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
+    return_error,
 };
 use reifydb_rql::plan::{
 	logical::extract_table_from_plan, physical::DeletePlan,
 };
-
+use reifydb_type::::diagnostic::{
+    catalog::{schema_not_found, table_not_found},
+    engine,
+};
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	columnar::{ColumnData, Columns},

@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{SafeConvert, SafePromote};
 use crate::value::{
 	columnar::{data::ColumnData, push::Push},
-	number::{SafeConvert, SafePromote},
 };
 
 impl Push<u8> for ColumnData {

@@ -7,12 +7,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-chrono = { workspace = true }
+reifydb-type = { workspace = true}
+
 crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 once_cell = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-uuid = { workspace = true }
+
 

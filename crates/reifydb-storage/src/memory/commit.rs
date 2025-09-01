@@ -5,12 +5,11 @@ use reifydb_core::{
 	CowVec, Result, Version,
 	delta::Delta,
 	interface::{TransactionId, UnversionedCommit, VersionedCommit},
-	result::error::diagnostic::sequence,
-	return_error,
+    return_error,
 	row::EncodedRow,
 	util::now_millis,
 };
-
+use reifydb_type::::diagnostic::sequence;
 use crate::{
 	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
 	memory::{Memory, VersionedRow},

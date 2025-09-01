@@ -6,10 +6,9 @@ use reifydb_core::{
 		ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind,
 		CommandTransaction, EncodableKey,
 	},
-	result::error::diagnostic::catalog::table_column_policy_already_exists,
 	return_error,
 };
-
+use reifydb_type::::diagnostic::catalog::table_column_policy_already_exists;
 use crate::{
 	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
 	sequence::SystemSequence,

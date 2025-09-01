@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::result::error::diagnostic::ast;
+use reifydb_type::::diagnostic::ast;
 
 mod cursor;
 mod identifier;
@@ -14,7 +14,7 @@ mod separator;
 mod token;
 
 use cursor::Cursor;
-use reifydb_core::error::Error;
+use reifydb_type::::Error;
 use scanner::{
 	scan_identifier, scan_keyword, scan_literal, scan_operator,
 	scan_parameter, scan_separator,

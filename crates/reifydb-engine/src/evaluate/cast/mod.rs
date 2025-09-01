@@ -16,9 +16,8 @@ use reifydb_core::{
 		Evaluator, LazyFragment,
 		expression::{CastExpression, Expression},
 	},
-	result::error::diagnostic::cast,
 };
-
+use reifydb_type::::diagnostic::cast;
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
 	evaluate::{EvaluationContext, StandardEvaluator},

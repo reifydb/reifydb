@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{ops::Deref, sync::Arc};
-
+use reifydb_type::error::diagnostic::catalog;
 use crate::{
-	CowVec, SortDirection, Type, error::diagnostic::catalog,
-	index::EncodedIndexKey,
+	CowVec, SortDirection, Type,
+    index::EncodedIndexKey,
 };
 
 #[derive(Debug, Clone)]

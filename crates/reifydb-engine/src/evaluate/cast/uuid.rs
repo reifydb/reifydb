@@ -3,17 +3,16 @@
 
 use reifydb_core::{
 	Type, error,
-	interface::fragment::{BorrowedFragment, LazyFragment},
-	result::error::diagnostic::cast,
-	value::{
+    value::{
 		container::{StringContainer, UuidContainer},
-		uuid::{
-			Uuid4, Uuid7,
-			parse::{parse_uuid4, parse_uuid7},
-		},
-	},
+    },
 };
-
+use reifydb_type::::{BorrowedFragment, LazyFragment};
+use reifydb_type::::diagnostic::cast;
+use reifydb_type::{
+    Uuid4, Uuid7,
+    parse::{parse_uuid4, parse_uuid7},
+};
 use crate::columnar::ColumnData;
 
 pub fn to_uuid<'a>(

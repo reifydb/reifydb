@@ -156,7 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder_identity_id() {
-		use crate::value::identity::IdentityId;
+		use reifydb_type::IdentityId;
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();

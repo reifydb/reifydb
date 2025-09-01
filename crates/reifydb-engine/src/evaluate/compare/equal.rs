@@ -7,7 +7,6 @@ use Type::Bool;
 use reifydb_core::{
 	Fragment, Type,
 	interface::{Evaluator, evaluate::expression::EqExpression},
-	result::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	return_error, value,
 	value::{
 		IsNumber, IsTemporal,
@@ -15,11 +14,12 @@ use reifydb_core::{
 			BoolContainer, NumberContainer, StringContainer,
 			TemporalContainer,
 		},
-		number::Promote,
-		temporal,
-	},
+    },
 };
-use value::number;
+use reifydb_type::::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
+use reifydb_type::value::;
+use reifydb_type::Promote;
+use reifydb_type::value::;
 
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},

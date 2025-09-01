@@ -7,19 +7,18 @@ use reifydb_core::{
 	Fragment,
 	Type::Bool,
 	interface::{Evaluator, evaluate::expression::LessThanExpression},
-	result::error::diagnostic::operator::less_than_cannot_be_applied_to_incompatible_types,
-	return_error, value,
+    return_error, value,
 	value::{
 		IsNumber, IsTemporal,
 		container::{
 			number::NumberContainer, string::StringContainer,
 			temporal::TemporalContainer,
 		},
-		number::Promote,
-		temporal,
-	},
+    },
 };
-
+use reifydb_type::::diagnostic::operator::less_than_cannot_be_applied_to_incompatible_types;
+use reifydb_type::value::;
+use reifydb_type::Promote;
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified},
 	evaluate::{EvaluationContext, StandardEvaluator},

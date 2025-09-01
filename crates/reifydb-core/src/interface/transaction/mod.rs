@@ -15,11 +15,12 @@ use std::{
 
 pub use cdc::{CdcQueryTransaction, CdcTransaction};
 pub use change::*;
+use reifydb_type::Uuid7;
 pub use transaction::{CommandTransaction, QueryTransaction};
 pub use unversioned::*;
 pub use versioned::*;
 
-use crate::{return_internal_error, value::uuid::Uuid7};
+use crate::{return_internal_error};
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness

@@ -6,15 +6,14 @@ use std::fmt::Debug;
 use reifydb_core::{
 	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::DivExpression},
-	result::error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
 		IsNumber,
 		container::{UndefinedContainer, number::NumberContainer},
-		number::{Promote, SafeDiv},
-	},
+    },
 };
-
+use reifydb_type::::diagnostic::operator::div_cannot_be_applied_to_incompatible_types;
+use reifydb_type::{Promote, SafeDiv};
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},
 	evaluate::{EvaluationContext, StandardEvaluator},

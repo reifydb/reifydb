@@ -13,9 +13,8 @@ use reifydb_core::{
 		Transaction, VersionedQueryTransaction, ViewDef,
 	},
 	row::EncodedRowLayout,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
-
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 use crate::{
 	columnar::{
 		Column, ColumnData, Columns, SourceQualified,

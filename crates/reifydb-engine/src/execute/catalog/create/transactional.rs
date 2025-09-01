@@ -4,10 +4,10 @@
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
 use reifydb_core::{
 	Value, interface::Transaction,
-	result::error::diagnostic::catalog::view_already_exists, return_error,
+    return_error,
 };
 use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
-
+use reifydb_type::::diagnostic::catalog::view_already_exists;
 use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
 
 impl Executor {

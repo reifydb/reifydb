@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	Type, err,
-	error::diagnostic::cast,
-	interface::{LazyFragment, fragment::BorrowedFragment},
-	value::Blob,
+    Type, err,
+    interface::{LazyFragment},
+    value::Blob,
 };
-
+use reifydb_type::::BorrowedFragment;
+use reifydb_type::::diagnostic::cast;
 use crate::columnar::ColumnData;
 
 pub fn to_blob<'a>(

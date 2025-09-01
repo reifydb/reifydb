@@ -7,9 +7,8 @@ use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
 	interface::Transaction,
-	result::error::diagnostic::query,
 };
-
+use reifydb_type::::diagnostic::query;
 use crate::{
 	columnar::{Columns, layout::ColumnsLayout},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},

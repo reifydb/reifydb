@@ -3,14 +3,12 @@
 
 use reifydb_core::{
 	IntoFragment, Type,
-	result::error::diagnostic::{cast, number},
-	return_error,
-	value::{
-		boolean::parse_bool,
-		number::{parse_float, parse_int, parse_uint},
-	},
+    return_error,
+	value::{},
 };
-
+use reifydb_type::::diagnostic::{cast, number};
+use reifydb_type::{parse_float, parse_int, parse_uint};
+use reifydb_type::parse_bool;
 use crate::columnar::ColumnData;
 
 pub(crate) struct NumberParser;

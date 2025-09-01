@@ -3,11 +3,10 @@
 
 use reifydb_core::{
 	IntoFragment, Type,
-	result::error::diagnostic::cast,
-	return_error,
-	value::uuid::parse::{parse_uuid4, parse_uuid7},
+    return_error,
 };
-
+use reifydb_type::::diagnostic::cast;
+use reifydb_type::parse::{parse_uuid4, parse_uuid7};
 use crate::columnar::ColumnData;
 
 pub(crate) struct UuidParser;

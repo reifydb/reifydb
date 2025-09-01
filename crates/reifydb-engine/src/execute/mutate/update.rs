@@ -10,18 +10,17 @@ use reifydb_core::{
 		ColumnPolicyKind, EncodableKey, Params, RowKey, Transaction,
 		VersionedCommandTransaction,
 	},
-	result::error::diagnostic::{
-		catalog::{schema_not_found, table_not_found},
-		engine,
-	},
-	return_error,
+    return_error,
 	row::EncodedRowLayout,
-	value::row_number::ROW_NUMBER_COLUMN_NAME,
 };
 use reifydb_rql::plan::{
 	logical::extract_table_from_plan, physical::UpdatePlan,
 };
-
+use reifydb_type::::diagnostic::{
+    catalog::{schema_not_found, table_not_found},
+    engine,
+};
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	columnar::{ColumnData, Columns},

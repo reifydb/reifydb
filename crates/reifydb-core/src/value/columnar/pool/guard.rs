@@ -12,12 +12,11 @@ use std::{
 	ops::{Deref, DerefMut},
 	rc::{Rc, Weak},
 };
-
+use reifydb_type::{Uuid4, Uuid7};
 use super::{PoolAllocator, Pools, PoolsInner};
 use crate::value::{
 	Date, DateTime, Interval, Time,
 	container::*,
-	uuid::{Uuid4, Uuid7},
 };
 
 /// Trait for containers that can be released back to a pool

@@ -4,10 +4,9 @@
 use reifydb_core::{
 	Date, DateTime, Interval, RowNumber, Time, Value, error,
 	interface::evaluate::expression::ColumnExpression,
-	result::error::diagnostic::query::column_not_found,
-	value::{Blob, IdentityId, Uuid4, Uuid7},
+    value::{Blob, IdentityId, Uuid4, Uuid7},
 };
-
+use reifydb_type::::diagnostic::query::column_not_found;
 use crate::{
 	columnar::{Column, ColumnData},
 	evaluate::{EvaluationContext, StandardEvaluator},

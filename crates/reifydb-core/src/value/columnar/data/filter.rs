@@ -152,7 +152,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_identity_id() {
-		use crate::value::identity::IdentityId;
+		use reifydb_type::IdentityId;
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();

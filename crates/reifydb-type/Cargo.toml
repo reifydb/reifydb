@@ -1,0 +1,16 @@
+[package]
+name = "reifydb-type"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+
+[features]
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true}
+uuid = { workspace = true }
+
+[dev-dependencies]

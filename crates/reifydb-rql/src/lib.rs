@@ -4,10 +4,10 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::{
-	Result, Type, result::error::diagnostic::ast::unrecognized_type,
-	return_error,
+	Result, Type,
+    return_error,
 };
-
+use reifydb_type::::diagnostic::ast::unrecognized_type;
 use crate::ast::AstIdentifier;
 
 pub mod ast;

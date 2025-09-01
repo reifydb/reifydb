@@ -3,13 +3,12 @@
 
 use reifydb_core::{
 	IntoFragment, Type,
-	result::error::diagnostic::cast,
-	return_error,
-	value::{
-		boolean::parse_bool,
-		number::{parse_float, parse_int, parse_uint},
-	},
+    return_error,
+	value::{},
 };
+use reifydb_type::::diagnostic::cast;
+use reifydb_type::{parse_float, parse_int, parse_uint};
+use reifydb_type::parse_bool;
 use temporal::TemporalParser;
 
 use super::{temporal, uuid::UuidParser};

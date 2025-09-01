@@ -4,9 +4,8 @@
 use reifydb_core::{
 	err,
 	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
-	result::error::diagnostic::operator,
 };
-
+use reifydb_type::::diagnostic::operator;
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
 	evaluate::{EvaluationContext, StandardEvaluator, evaluate},

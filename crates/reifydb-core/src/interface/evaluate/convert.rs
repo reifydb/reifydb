@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::error::diagnostic::number::{
+	integer_precision_loss, number_out_of_range,
+};
+use reifydb_type::SafeConvert;
 use crate::{
 	GetType, IntoFragment, error,
 	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
-	result::error::diagnostic::number::{
-		integer_precision_loss, number_out_of_range,
-	},
-	value::number::SafeConvert,
 };
 
 pub trait Convert {

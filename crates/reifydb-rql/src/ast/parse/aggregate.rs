@@ -2,13 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	result::error::diagnostic::operation::{
-		aggregate_multiple_by_without_braces,
-		aggregate_multiple_map_without_braces,
-	},
-	return_error,
+    return_error,
 };
-
+use reifydb_type::::diagnostic::operation::{
+    aggregate_multiple_by_without_braces,
+    aggregate_multiple_map_without_braces,
+};
 use crate::ast::{
 	AstAggregate,
 	parse::{Parser, Precedence},

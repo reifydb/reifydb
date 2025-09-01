@@ -6,15 +6,14 @@ use std::fmt::Debug;
 use reifydb_core::{
 	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::RemExpression},
-	result::error::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types,
 	return_error,
 	value::{
 		IsNumber,
 		container::{NumberContainer, UndefinedContainer},
-		number::{Promote, SafeRemainder},
-	},
+    },
 };
-
+use reifydb_type::::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types;
+use reifydb_type::{Promote, SafeRemainder};
 use crate::{
 	columnar::{Column, ColumnData, ColumnQualified, push::Push},
 	evaluate::{EvaluationContext, StandardEvaluator},

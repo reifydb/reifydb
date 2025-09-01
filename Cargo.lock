@@ -1289,14 +1289,13 @@ dependencies = [
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [
- "chrono",
  "crossbeam-channel",
  "crossbeam-skiplist",
  "once_cell",
  "regex",
+ "reifydb-type",
  "serde",
  "serde_bytes",
- "uuid",
 ]
 
 [[package]]
@@ -1433,6 +1432,15 @@ dependencies = [
  "reifydb-storage",
  "reifydb-testing",
  "test_each_file",
+]
+
+[[package]]
+name = "reifydb-type"
+version = "0.0.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "uuid",
 ]
 
 [[package]]

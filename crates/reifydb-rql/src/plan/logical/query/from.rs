@@ -4,9 +4,8 @@
 use reifydb_core::{
 	Fragment, OwnedFragment, err,
 	interface::evaluate::expression::{AliasExpression, IdentExpression},
-	result::error::diagnostic::Diagnostic,
 };
-
+use reifydb_type::::diagnostic::Diagnostic;
 use crate::{
 	ast::{Ast, AstFrom},
 	expression::ExpressionCompiler,

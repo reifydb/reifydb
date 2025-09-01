@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{Uuid4, Uuid7};
 use crate::{
 	RowNumber, Type, Value,
 	row::{EncodedRow, EncodedRowLayout},
 	value::{
 		IdentityId, OrderedF32, OrderedF64,
-		uuid::{Uuid4, Uuid7},
-	},
+    },
 };
 
 impl EncodedRowLayout {
@@ -243,14 +243,14 @@ impl EncodedRowLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use crate::{
+    use reifydb_type::{Uuid4, Uuid7};
+    use crate::{
 		Type, Value,
 		row::EncodedRowLayout,
 		value::{
 			Blob, Date, DateTime, Interval, OrderedF32, OrderedF64,
 			Time,
-			uuid::{Uuid4, Uuid7},
-		},
+        },
 	};
 
 	#[test]
