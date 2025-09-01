@@ -4,7 +4,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{TableDef, TableId, ViewDef, ViewId},
+	interface::{
+		TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef,
+		ViewId,
+	},
 	return_internal_error,
 };
 
@@ -23,6 +26,7 @@ use crate::{
 pub enum StoreId {
 	Table(TableId),
 	View(ViewId),
+	TableVirtual(TableVirtualId),
 }
 
 impl std::fmt::Display for StoreId {
@@ -30,6 +34,7 @@ impl std::fmt::Display for StoreId {
 		match self {
 			StoreId::Table(id) => write!(f, "{}", id.0),
 			StoreId::View(id) => write!(f, "{}", id.0),
+			StoreId::TableVirtual(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -41,6 +46,10 @@ impl StoreId {
 
 	pub fn view(id: impl Into<ViewId>) -> Self {
 		Self::View(id.into())
+	}
+
+	pub fn table_virtual(id: impl Into<TableVirtualId>) -> Self {
+		Self::TableVirtual(id.into())
 	}
 }
 
@@ -56,11 +65,18 @@ impl From<ViewId> for StoreId {
 	}
 }
 
+impl From<TableVirtualId> for StoreId {
+	fn from(id: TableVirtualId) -> Self {
+		StoreId::TableVirtual(id)
+	}
+}
+
 impl PartialEq<u64> for StoreId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
 			StoreId::Table(id) => id.0.eq(other),
 			StoreId::View(id) => id.0.eq(other),
+			StoreId::TableVirtual(id) => id.0.eq(other),
 		}
 	}
 }
@@ -83,6 +99,15 @@ impl PartialEq<ViewId> for StoreId {
 	}
 }
 
+impl PartialEq<TableVirtualId> for StoreId {
+	fn eq(&self, other: &TableVirtualId) -> bool {
+		match self {
+			StoreId::TableVirtual(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
 impl From<StoreId> for u64 {
 	fn from(store: StoreId) -> u64 {
 		store.as_u64()
@@ -90,11 +115,13 @@ impl From<StoreId> for u64 {
 }
 
 impl StoreId {
-	/// Returns the raw u64 value regardless of whether it's a Table or View
+	/// Returns the raw u64 value regardless of whether it's a Table, View,
+	/// or TableVirtual
 	pub fn as_u64(&self) -> u64 {
 		match self {
 			StoreId::Table(id) => id.0,
 			StoreId::View(id) => id.0,
+			StoreId::TableVirtual(id) => id.0,
 		}
 	}
 
@@ -103,6 +130,9 @@ impl StoreId {
 		match self {
 			StoreId::Table(table) => StoreId::table(table.0 + 1),
 			StoreId::View(view) => StoreId::view(view.0 + 1),
+			StoreId::TableVirtual(table_virtual) => {
+				StoreId::table_virtual(table_virtual.0 + 1)
+			}
 		}
 	}
 
@@ -117,6 +147,11 @@ impl StoreId {
 			}
 			StoreId::View(view) => {
 				StoreId::view(view.0.wrapping_sub(1))
+			}
+			StoreId::TableVirtual(table_virtual) => {
+				StoreId::table_virtual(
+					table_virtual.0.wrapping_sub(1),
+				)
 			}
 		}
 	}
@@ -146,12 +181,26 @@ impl StoreId {
 			)
 		}
 	}
+
+	pub fn to_table_virtual_id(self) -> crate::Result<TableVirtualId> {
+		if let StoreId::TableVirtual(table_virtual) = self {
+			Ok(table_virtual)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected StoreId::TableVirtual but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-virtual-table store ID \
+				was used in a context that requires a virtual table ID.",
+				self
+			)
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StoreDef {
 	Table(TableDef),
 	View(ViewDef),
+	TableVirtual(TableVirtualDef),
 }
 
 impl StoreDef {
@@ -159,6 +208,9 @@ impl StoreDef {
 		match self {
 			StoreDef::Table(table) => table.id.into(),
 			StoreDef::View(view) => view.id.into(),
+			StoreDef::TableVirtual(table_virtual) => {
+				table_virtual.id.into()
+			}
 		}
 	}
 
@@ -166,6 +218,9 @@ impl StoreDef {
 		match self {
 			StoreDef::Table(table) => StoreId::Table(table.id),
 			StoreDef::View(view) => StoreId::View(view.id),
+			StoreDef::TableVirtual(table_virtual) => {
+				StoreId::TableVirtual(table_virtual.id)
+			}
 		}
 	}
 }

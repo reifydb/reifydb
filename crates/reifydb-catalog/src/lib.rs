@@ -15,6 +15,7 @@ pub mod sequence;
 pub mod store;
 pub mod system;
 pub mod table;
+pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
 pub mod view;

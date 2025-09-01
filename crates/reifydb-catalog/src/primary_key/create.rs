@@ -10,7 +10,7 @@ use reifydb_core::{
 		ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey,
 		StoreId,
 	},
-	return_error,
+	return_error, return_internal_error,
 };
 
 use crate::{
@@ -82,6 +82,12 @@ impl CatalogStore {
 			}
 			StoreId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
+			}
+			StoreId::TableVirtual(_) => {
+				// Virtual tables don't support primary keys
+				return_internal_error!(
+					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
+				);
 			}
 		}
 

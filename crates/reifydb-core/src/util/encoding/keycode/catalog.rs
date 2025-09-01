@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	interface::{StoreId, TableId, ViewId},
+	interface::{StoreId, TableId, TableVirtualId, ViewId},
 	return_internal_error,
 };
 
 /// Serialize a StoreId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
-/// View
+/// View, 0x03 for TableVirtual
 pub fn serialize_store_id(store: &StoreId) -> Vec<u8> {
 	let mut result = Vec::with_capacity(9);
 	match store {
@@ -20,13 +20,17 @@ pub fn serialize_store_id(store: &StoreId) -> Vec<u8> {
 			result.push(0x02);
 			result.extend(&super::serialize(id));
 		}
+		StoreId::TableVirtual(TableVirtualId(id)) => {
+			result.push(0x03);
+			result.extend(&super::serialize(id));
+		}
 	}
 	result
 }
 
 /// Deserialize a StoreId from database key bytes
 /// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
-/// View
+/// View, 0x03 for TableVirtual
 pub fn deserialize_store_id(bytes: &[u8]) -> crate::Result<StoreId> {
 	if bytes.len() != 9 {
 		return_internal_error!(
@@ -41,8 +45,9 @@ pub fn deserialize_store_id(bytes: &[u8]) -> crate::Result<StoreId> {
 	match type_byte {
 		0x01 => Ok(StoreId::Table(TableId(id))),
 		0x02 => Ok(StoreId::View(ViewId(id))),
+		0x03 => Ok(StoreId::TableVirtual(TableVirtualId(id))),
 		_ => return_internal_error!(
-			"Invalid StoreId type byte: 0x{:02x}. Expected 0x01 (Table) or 0x02 (View)",
+			"Invalid StoreId type byte: 0x{:02x}. Expected 0x01 (Table), 0x02 (View), or 0x03 (TableVirtual)",
 			type_byte
 		),
 	}
@@ -119,10 +124,36 @@ mod tests {
 			vbytes9 > vbytes10
 		);
 
-		// Check that view and table with same ID encode differently
-		println!("\nTable vs View:");
+		// Test with virtual tables
+		let virtual10 = StoreId::table_virtual(10);
+		let virtual9 = virtual10.prev();
+
+		let tvbytes10 = serialize_store_id(&virtual10);
+		let tvbytes9 = serialize_store_id(&virtual9);
+
+		println!("\nTableVirtual test:");
+		println!("table_virtual(10) = {:02x?}", tvbytes10);
+		println!("table_virtual(9) = {:02x?}", tvbytes9);
+		println!(
+			"In descending order, table_virtual(9) > table_virtual(10): {}",
+			vbytes9 > tvbytes10
+		);
+
+		// Check that view, table, and table_virtual with same ID encode
+		// differently
+		println!("\nTable vs View vs TableVirtual:");
 		println!("table(10) != view(10): {}", bytes10 != vbytes10);
-		println!("table type byte: 0x01, view type byte: 0x02");
+		println!(
+			"table(10) != table_virtual(10): {}",
+			bytes10 != tvbytes10
+		);
+		println!(
+			"view(10) != table_virtual(10): {}",
+			vbytes10 != tvbytes10
+		);
+		println!(
+			"table type byte: 0x01, view type byte: 0x02, table_virtual type byte: 0x03"
+		);
 
 		// Simulate what happens with row keys
 		let row_key_10_100 = vec![0xFE, 0xFC]; // version, kind
@@ -147,5 +178,39 @@ mod tests {
 		println!("  key1 < end(store9): {}", key1 < end_key);
 		println!("  key2 >= start(store10): {}", key2 >= bytes10);
 		println!("  key2 < end(store9): {}", key2 < end_key);
+	}
+
+	#[test]
+	fn test_table_virtual_serialization() {
+		use crate::interface::TableVirtualId;
+
+		// Test basic serialization/deserialization
+		let virtual_store = StoreId::table_virtual(42);
+		let bytes = serialize_store_id(&virtual_store);
+		let deserialized = deserialize_store_id(&bytes).unwrap();
+		assert_eq!(virtual_store, deserialized);
+
+		// Test that type byte is 0x03
+		assert_eq!(bytes[0], 0x03);
+
+		// Test with TableVirtualId directly
+		let virtual_id = TableVirtualId(123);
+		let store_from_id = StoreId::from(virtual_id);
+		let bytes_from_id = serialize_store_id(&store_from_id);
+		let deserialized_id =
+			deserialize_store_id(&bytes_from_id).unwrap();
+		assert_eq!(store_from_id, deserialized_id);
+
+		// Test ordering
+		let virtual1 = StoreId::table_virtual(1);
+		let virtual2 = StoreId::table_virtual(2);
+		let bytes1 = serialize_store_id(&virtual1);
+		let bytes2 = serialize_store_id(&virtual2);
+		// In descending order, larger values should have smaller byte
+		// representations
+		assert!(
+			bytes2 < bytes1,
+			"table_virtual(2) should be < table_virtual(1) in bytes"
+		);
 	}
 }

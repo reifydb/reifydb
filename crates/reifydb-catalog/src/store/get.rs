@@ -22,6 +22,7 @@ impl CatalogStore {
 			let store_type = match store_id {
 				StoreId::Table(_) => "Table",
 				StoreId::View(_) => "View",
+				StoreId::TableVirtual(_) => "TableVirtual",
 			};
 
 			Error(internal_error!(
