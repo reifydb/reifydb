@@ -1,12 +1,10 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-logical 'alter table test.users { create primary key {id, email, created_at} }'
+ast 'alter table test.users { create primary key {id, email, created_at} }'
 ---
-> └── AlterTable
->     ├── Schema: test
->     ├── Table: users
->     └──Operation: CREATE PRIMARY KEY
+> └── ALTER TABLE test.users @ line 1, column 1 — "alter"
+>     └──CREATE PRIMARY KEY
 >          ├──Column: id
 >          ├──Column: email
 >          └──Column: created_at

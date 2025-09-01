@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{Ast, AstFrom, AstJoin, parse::parse, tokenize::tokenize};
+use crate::ast::{
+	Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom,
+	AstJoin, parse::parse, tokenize::tokenize,
+};
 
 pub fn explain_ast(query: &str) -> crate::Result<String> {
 	let token = tokenize(query)?;
@@ -65,7 +68,7 @@ fn render_ast_tree_inner(
 		"├──"
 	};
 
-	// Special handling for Row to show field summary
+	// Special handling for Row and Alter to show more detail
 	let description = match &ast {
 		Ast::Inline(r) => {
 			let field_names: Vec<&str> = r
@@ -80,6 +83,35 @@ fn render_ast_tree_inner(
 				field_names.join(", ")
 			)
 		}
+		Ast::Alter(alter) => match alter {
+			AstAlter::Table(t) => {
+				format!(
+					"ALTER TABLE {}.{}",
+					t.schema.value(),
+					t.table.value()
+				)
+			}
+			AstAlter::View(v) => {
+				format!(
+					"ALTER VIEW {}.{}",
+					v.schema.value(),
+					v.view.value()
+				)
+			}
+			AstAlter::Sequence(s) => {
+				let schema_prefix = s
+					.schema
+					.as_ref()
+					.map(|sch| format!("{}.", sch.value()))
+					.unwrap_or_default();
+				format!(
+					"ALTER SEQUENCE {}{}.{}",
+					schema_prefix,
+					s.table.value(),
+					s.column.value()
+				)
+			}
+		},
 		_ => ty.to_string(),
 	};
 
@@ -215,6 +247,105 @@ fn render_ast_tree_inner(
 		Ast::Infix(i) => {
 			children.push(*i.left);
 			children.push(*i.right);
+		}
+		Ast::Alter(alter) => {
+			// Handle ALTER operations as child nodes
+			match alter {
+				AstAlter::Table(t) => {
+					for (i, op) in
+						t.operations.iter().enumerate()
+					{
+						let last = i == t
+							.operations
+							.len() - 1;
+						let op_branch = if last {
+							"└──"
+						} else {
+							"├──"
+						};
+
+						match op {
+							AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+								// Show the CREATE PRIMARY KEY operation
+								let pk_name = name.as_ref()
+									.map(|n| format!(" {}", n.value()))
+									.unwrap_or_default();
+								output.push_str(&format!(
+									"{}{}CREATE PRIMARY KEY{}\n",
+									child_prefix, op_branch, pk_name
+								));
+
+								// Show columns as children of the primary key
+								let pk_prefix = format!("{}{}    ", child_prefix, if last { " " } else { "│" });
+								for (j, col) in columns.iter().enumerate() {
+									let col_last = j == columns.len() - 1;
+									let col_branch = if col_last { "└──" } else { "├──" };
+									output.push_str(&format!(
+										"{}{}Column: {}\n",
+										pk_prefix, col_branch, col.column.value()
+									));
+								}
+							}
+							AstAlterTableOperation::DropPrimaryKey => {
+								output.push_str(&format!(
+									"{}{}DROP PRIMARY KEY\n",
+									child_prefix, op_branch
+								));
+							}
+						}
+					}
+				}
+				AstAlter::View(v) => {
+					for (i, op) in
+						v.operations.iter().enumerate()
+					{
+						let last = i == v
+							.operations
+							.len() - 1;
+						let op_branch = if last {
+							"└──"
+						} else {
+							"├──"
+						};
+
+						match op {
+							AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+								// Show the CREATE PRIMARY KEY operation
+								let pk_name = name.as_ref()
+									.map(|n| format!(" {}", n.value()))
+									.unwrap_or_default();
+								output.push_str(&format!(
+									"{}{}CREATE PRIMARY KEY{}\n",
+									child_prefix, op_branch, pk_name
+								));
+
+								// Show columns as children of the primary key
+								let pk_prefix = format!("{}{}    ", child_prefix, if last { " " } else { "│" });
+								for (j, col) in columns.iter().enumerate() {
+									let col_last = j == columns.len() - 1;
+									let col_branch = if col_last { "└──" } else { "├──" };
+									output.push_str(&format!(
+										"{}{}Column: {}\n",
+										pk_prefix, col_branch, col.column.value()
+									));
+								}
+							}
+							AstAlterViewOperation::DropPrimaryKey => {
+								output.push_str(&format!(
+									"{}{}DROP PRIMARY KEY\n",
+									child_prefix, op_branch
+								));
+							}
+						}
+					}
+				}
+				AstAlter::Sequence(_) => {
+					// Sequence alter doesn't have child
+					// operations
+				}
+			}
+			// Return early since we handled the children
+			return;
 		}
 		_ => {}
 	}

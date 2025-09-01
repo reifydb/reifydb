@@ -6,7 +6,7 @@ mod create;
 
 use std::sync::Arc;
 
-pub use alter::AlterTablePlan;
+pub use alter::{AlterTablePlan, AlterViewPlan};
 use reifydb_catalog::{
 	CatalogStore, system::SystemCatalog, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
@@ -26,10 +26,7 @@ use reifydb_core::{
 
 use crate::plan::{
 	logical::LogicalPlan,
-	physical::{
-		PhysicalPlan::{TableScan, ViewScan},
-		alter::AlterViewPlan,
-	},
+	physical::PhysicalPlan::{TableScan, ViewScan},
 };
 
 struct Compiler {}

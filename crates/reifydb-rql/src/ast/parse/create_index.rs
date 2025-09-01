@@ -7,9 +7,7 @@ use crate::ast::{
 	AstCreate, AstCreateIndex, AstIndexColumn,
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{
-			Asc, Desc, Filter, Index, Key, Map, On, Primary, Unique,
-		},
+		Keyword::{Asc, Desc, Filter, Index, Map, On, Unique},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
@@ -20,10 +18,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn peek_is_index_creation(&mut self) -> crate::Result<bool> {
 		Ok(matches!(
 			self.current()?.kind,
-			TokenKind::Keyword(Index)
-				| TokenKind::Keyword(Unique) | TokenKind::Keyword(
-				Primary
-			)
+			TokenKind::Keyword(Index) | TokenKind::Keyword(Unique)
 		))
 	}
 
@@ -75,11 +70,7 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_index_type(&mut self) -> crate::Result<IndexType> {
-		if self.consume_if(TokenKind::Keyword(Primary))?.is_some() {
-			self.consume_keyword(Key)?;
-			Ok(IndexType::Primary)
-		} else if self.consume_if(TokenKind::Keyword(Unique))?.is_some()
-		{
+		if self.consume_if(TokenKind::Keyword(Unique))?.is_some() {
 			self.consume_keyword(Index)?;
 			Ok(IndexType::Unique)
 		} else {
@@ -209,41 +200,6 @@ mod tests {
 				assert_eq!(table.value(), "users");
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.value(), "email");
-				assert_eq!(filters.len(), 0);
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_primary_key() {
-		let tokens = tokenize(
-			r#"create primary key pk_users on test.users {id}"#,
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Index(AstCreateIndex {
-				index_type,
-				name,
-				schema,
-				table,
-				columns,
-				filters,
-				..
-			}) => {
-				assert_eq!(*index_type, IndexType::Primary);
-				assert_eq!(name.value(), "pk_users");
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
-				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "id");
 				assert_eq!(filters.len(), 0);
 			}
 			_ => unreachable!(),

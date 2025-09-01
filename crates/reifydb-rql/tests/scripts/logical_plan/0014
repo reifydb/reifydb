@@ -1,37 +1,13 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Test logical plan for global aggregate without BY clause
-logical 'from users aggregate { count(id) }'
+logical 'create index idx_filtered on test.users {email} filter active == true filter age > 18'
 ---
-> └── TableScan default.users
-> └── Aggregate
->     ├── Map
->     │   └── count(Column(id))
->     └── By
-> 
-
-# Test logical plan for global aggregate with empty BY clause
-logical 'from users aggregate { total: count(id), sum: sum(amount) } by {}'
----
-> └── TableScan default.users
-> └── Aggregate
->     ├── Map
->     │   ├── count(Column(id)) as total
->     │   └── sum(Column(amount)) as sum
->     └── By
-> 
-
-# Test logical plan for multiple global aggregations
-logical 'from users aggregate { count(id), sum(amount), avg(price), min(age), max(age) } by {}'
----
-> └── TableScan default.users
-> └── Aggregate
->     ├── Map
->     │   ├── count(Column(id))
->     │   ├── sum(Column(amount))
->     │   ├── avg(Column(price))
->     │   ├── min(Column(age))
->     │   └── max(Column(age))
->     └── By
+> └── CreateIndex
+>     ├── Type: Index
+>     ├── Name: idx_filtered
+>     ├── Schema: test
+>     ├── Table: users
+>     ├── Columns: email
+>     ├── Filters: (Column(active) == Constant(true)), (Column(age) > Constant(18))
 > 

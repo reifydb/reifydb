@@ -400,10 +400,8 @@ impl Executor {
 			PhysicalPlan::AlterTable(plan) => {
 				self.alter_table(txn, plan)
 			}
-			PhysicalPlan::AlterView(_) => {
-				todo!(
-					"ALTER VIEW execution not yet implemented"
-				)
+			PhysicalPlan::AlterView(plan) => {
+				self.execute_alter_view(txn, plan)
 			}
 		}
 	}

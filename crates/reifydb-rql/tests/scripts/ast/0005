@@ -1,7 +1,9 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-ast 'create primary key pk_users on test.users {id}'
+ast 'alter table test.users { create primary key pk_users {id} }'
 ---
-> └── Create @ line 1, column 1 — "create"
+> └── ALTER TABLE test.users @ line 1, column 1 — "alter"
+>     └──CREATE PRIMARY KEY pk_users
+>          └──Column: id
 > 
