@@ -3,14 +3,10 @@
 
 use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
+use reifydb_type::{IsUuid, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
-use reifydb_type::{Uuid4, Uuid7};
-use crate::{
-	BitVec, CowVec, Value,
-	value::{
-		IsUuid,
-    },
-};
+
+use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UuidContainer<T>
@@ -240,11 +236,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use reifydb_type::{Uuid4, Uuid7};
-    use super::*;
-	use crate::{
-		BitVec,
-    };
+	use super::*;
+	use crate::BitVec;
 
 	#[test]
 	fn test_uuid4_container() {

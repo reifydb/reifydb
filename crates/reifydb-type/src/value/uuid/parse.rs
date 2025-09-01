@@ -1,12 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::uuid::{
-	invalid_uuid4_format, invalid_uuid7_format,
-};
-use crate::error::Error;
-use crate::{err, IntoFragment, Uuid4, Uuid7};
 use ::uuid::Uuid;
+
+use crate::{
+	IntoFragment, Uuid4, Uuid7, err,
+	error::{
+		Error,
+		diagnostic::uuid::{
+			invalid_uuid4_format, invalid_uuid7_format,
+		},
+	},
+};
 
 pub fn parse_uuid4<'a>(
 	fragment: impl IntoFragment<'a>,
@@ -38,11 +43,9 @@ pub fn parse_uuid7<'a>(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 
 	mod uuid4 {
-		use super::*;
-		use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uuid4};
 
 		#[test]
 		fn test_valid_uuid4() {
@@ -114,8 +117,7 @@ mod tests {
 	}
 
 	mod uuid7 {
-		use super::*;
-		use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uuid7};
 
 		#[test]
 		fn test_valid_uuid7() {

@@ -1,11 +1,13 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
 use reifydb_core::{
-	Value, error, interface::evaluate::expression::ParameterExpression,
+	interface::expression::ParameterExpression,
+	value::columnar::{Column, ColumnData, Unqualified},
 };
-use reifydb_type::::diagnostic::engine;
-use crate::{
-	columnar::{Column, ColumnData, Unqualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+use reifydb_type::{Value, diagnostic::engine, error};
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn parameter(
@@ -47,13 +49,13 @@ impl StandardEvaluator {
 				ColumnData::bool(vec![*b; ctx.row_count])
 			}
 			Value::Float4(f) => ColumnData::float4(vec![
-					f.value();
-					ctx.row_count
-				]),
+                f.value();
+                ctx.row_count
+            ]),
 			Value::Float8(f) => ColumnData::float8(vec![
-					f.value();
-					ctx.row_count
-				]),
+                f.value();
+                ctx.row_count
+            ]),
 			Value::Int1(i) => {
 				ColumnData::int1(vec![*i; ctx.row_count])
 			}
@@ -112,9 +114,9 @@ impl StandardEvaluator {
 				ColumnData::row_number(vec![*id; ctx.row_count])
 			}
 			Value::IdentityId(id) => ColumnData::identity_id(vec![
-					*id;
-					ctx.row_count
-				]),
+                *id;
+                ctx.row_count
+            ]),
 			Value::Undefined => {
 				ColumnData::undefined(ctx.row_count)
 			}

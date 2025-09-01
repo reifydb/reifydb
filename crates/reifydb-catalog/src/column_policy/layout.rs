@@ -3,7 +3,8 @@
 
 pub(crate) mod column_policy {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{Type, row::EncodedRowLayout};
+	use reifydb_core::row::EncodedRowLayout;
+	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const COLUMN: usize = 1;

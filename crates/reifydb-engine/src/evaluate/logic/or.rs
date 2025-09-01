@@ -3,16 +3,15 @@
 
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::OrExpression},
-    return_error,
+	return_error,
+	value::columnar::{Column, ColumnData, ColumnQualified},
 };
-use reifydb_type::::diagnostic::operator::{
-    or_can_not_applied_to_number, or_can_not_applied_to_temporal,
-    or_can_not_applied_to_text, or_can_not_applied_to_uuid,
+use reifydb_type::diagnostic::operator::{
+	or_can_not_applied_to_number, or_can_not_applied_to_temporal,
+	or_can_not_applied_to_text, or_can_not_applied_to_uuid,
 };
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn or(

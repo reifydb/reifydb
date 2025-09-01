@@ -61,7 +61,7 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				value: reifydb_core::Type::Uint8,
+				value: reifydb_type::Type::Uint8,
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

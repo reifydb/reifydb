@@ -266,8 +266,7 @@ pub fn generate<R: Runner>(
                 }
 
                 // Unexpected panic, throw it.
-                Err(panic) => std::panic::resume_unwind(panic),
-            });
+                Err(panic) => std::panic::resume_unwind(panic)});
 
 			// Make sure the command output has a trailing newline,
 			// unless empty.

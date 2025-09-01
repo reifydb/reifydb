@@ -8,12 +8,13 @@ mod query;
 
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	Fragment, IndexType, JoinType, SortDirection, SortKey,
+	IndexType, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
 		expression::{AliasExpression, Expression},
 	},
 };
+use reifydb_type::Fragment;
 
 use crate::{
 	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
@@ -72,8 +73,7 @@ impl Compiler {
 							return Ok(vec![LogicalPlan::Update(UpdateNode {
 								schema: update_ast.schema.map(|s| s.fragment()),
 								table: update_ast.table.map(|t| t.fragment()),
-								input,
-							})]);
+								input})]);
 						}
 						Ast::AstDelete(delete_ast) => {
 							// Build the pipeline as
@@ -90,8 +90,7 @@ impl Compiler {
 							return Ok(vec![LogicalPlan::Delete(DeleteNode {
 								schema: delete_ast.schema.map(|s| s.fragment()),
 								table: delete_ast.table.map(|t| t.fragment()),
-								input,
-							})]);
+								input})]);
 						}
 						_ => unreachable!(),
 					}

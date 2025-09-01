@@ -1,18 +1,12 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::{
-	Date, DateTime, Interval, Time, Type, error,
-    value::{
-		container::StringContainer,
-    },
-};
-use reifydb_type::::{BorrowedFragment, LazyFragment, OwnedFragment};
-use reifydb_type::::diagnostic::cast;
+use reifydb_core::value::{columnar::ColumnData, container::Utf8Container};
 use reifydb_type::{
-    parse_date, parse_datetime, parse_interval, parse_time,
+	BorrowedFragment, Date, DateTime, Interval, LazyFragment,
+	OwnedFragment, Time, Type, diagnostic::cast, error, parse_date,
+	parse_datetime, parse_interval, parse_time,
 };
-use crate::columnar::ColumnData;
 
 pub fn to_temporal<'a>(
 	data: &ColumnData,
@@ -27,7 +21,7 @@ pub fn to_temporal<'a>(
 			Type::Interval => to_interval(container, lazy_fragment),
 			_ => {
 				let source_type = data.get_type();
-				reifydb_core::err!(cast::unsupported_cast(
+				reifydb_type::err!(cast::unsupported_cast(
 					lazy_fragment.fragment(),
 					source_type,
 					target
@@ -36,7 +30,7 @@ pub fn to_temporal<'a>(
 		}
 	} else {
 		let source_type = data.get_type();
-		reifydb_core::err!(cast::unsupported_cast(
+		reifydb_type::err!(cast::unsupported_cast(
 			lazy_fragment.fragment(),
 			source_type,
 			target
@@ -48,7 +42,7 @@ macro_rules! impl_to_temporal {
     ($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
         #[inline]
         fn $fn_name<'a>(
-            container: &StringContainer,
+            container: &Utf8Container,
             lazy_fragment: impl LazyFragment<'a>,
         ) -> crate::Result<ColumnData> {
             let mut out = ColumnData::with_capacity($target_type, container.len());

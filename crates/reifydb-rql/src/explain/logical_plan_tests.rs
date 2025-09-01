@@ -4,8 +4,7 @@
 mod tests {
 	use crate::{
 		ast::parse_str, explain::logical_plan::explain_logical_plans,
-		plan::logical::compile_logical,
-	};
+		plan::logical::compile_logical};
 
 	// Helper function to compile and explain a query
 	fn compile_and_explain(query: &str) -> String {

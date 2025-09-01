@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::table::TableColumnToCreate;
-use reifydb_core::{Fragment, interface::ColumnPolicyKind};
+use reifydb_core::interface::ColumnPolicyKind;
+use reifydb_type::Fragment;
 
 use crate::{
 	ast::AstCreateTable,

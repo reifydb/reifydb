@@ -14,8 +14,7 @@ define_interceptor!(
     trait: SchemaDefPostCreateInterceptor,
     fields: {
 	txn: &'a mut T,
-	post: &'a SchemaDef,
-    }
+	post: &'a SchemaDef}
 );
 
 define_closure_interceptor!(
@@ -37,8 +36,7 @@ define_interceptor!(
     trait: SchemaDefPreUpdateInterceptor,
     fields: {
 	txn: &'a mut T,
-	pre: &'a SchemaDef,
-    }
+	pre: &'a SchemaDef}
 );
 
 define_closure_interceptor!(
@@ -61,8 +59,7 @@ define_interceptor!(
     fields: {
 	txn: &'a mut T,
 	pre: &'a SchemaDef,
-	post: &'a SchemaDef,
-    }
+	post: &'a SchemaDef}
 );
 
 define_closure_interceptor!(
@@ -84,8 +81,7 @@ define_interceptor!(
     trait: SchemaDefPreDeleteInterceptor,
     fields: {
 	txn: &'a mut T,
-	pre: &'a SchemaDef,
-    }
+	pre: &'a SchemaDef}
 );
 
 define_closure_interceptor!(

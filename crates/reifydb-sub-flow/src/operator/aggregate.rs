@@ -1,17 +1,20 @@
-use std::{collections::HashMap, ops::Bound};
+use std::{
+	collections::HashMap,
+	hash::{DefaultHasher, Hash, Hasher},
+	ops::Bound,
+};
 
-use reifydb_catalog::row::RowNumber;
 use reifydb_core::{
-	CowVec, Value,
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
 		StoreId, Transaction, ViewId, expression::Expression,
 	},
 	row::{EncodedKey, EncodedKeyRange, EncodedRow},
-	util::encoding::keycode,
+	util::{CowVec, encoding::keycode},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
+use reifydb_type::{OrderedF64, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -164,8 +167,7 @@ impl GroupState {
 							 val| {
 								match acc {
 							Some(a) => Some(add_values(&a, val)),
-							None => Some(val.clone()),
-						}
+							None => Some(val.clone())}
 							},
 						);
 
@@ -184,8 +186,7 @@ impl GroupState {
 						|acc: Option<Value>, val| {
 							match acc {
 							Some(a) => Some(min_value(&a, val)),
-							None => Some(val.clone()),
-						}
+							None => Some(val.clone())}
 						},
 					);
 
@@ -204,8 +205,7 @@ impl GroupState {
 						|acc: Option<Value>, val| {
 							match acc {
 							Some(a) => Some(max_value(&a, val)),
-							None => Some(val.clone()),
-						}
+							None => Some(val.clone())}
 						},
 					);
 
@@ -253,8 +253,7 @@ impl GroupState {
 							 val| {
 								match acc {
 							Some(a) => Some(add_values(&a, val)),
-							None => Some(val.clone()),
-						}
+							None => Some(val.clone())}
 							},
 						);
 
@@ -526,8 +525,7 @@ impl AggregateOperator {
 				} else {
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
                         name: "value".to_string(),
-                        data: ColumnData::undefined(1),
-                    }));
+                        data: ColumnData::undefined(1)}));
 				}
 
 				// Add group key column (age)
@@ -613,8 +611,6 @@ impl AggregateOperator {
 						// this aggregate group
 						let hash =
 							{
-								use std::collections::hash_map::DefaultHasher;
-                            use std::hash::{Hash, Hasher};
 								let mut hasher = DefaultHasher::new();
 								group_key.hash(&mut hasher);
 								hasher.finish()
@@ -889,7 +885,7 @@ fn extract_aggregate_columns(expressions: &[Expression]) -> Vec<String> {
 fn add_values(a: &Value, b: &Value) -> Value {
 	use std::convert::TryFrom;
 
-	use reifydb_core::OrderedF64;
+	use reifydb_type::OrderedF64;
 	match (a, b) {
 		(Value::Int8(x), Value::Int8(y)) => Value::Int8(x + y),
 		(Value::Int4(x), Value::Int4(y)) => Value::Int4(x + y),
@@ -904,9 +900,6 @@ fn add_values(a: &Value, b: &Value) -> Value {
 }
 
 fn subtract_values(a: &Value, b: &Value) -> Value {
-	use std::convert::TryFrom;
-
-	use reifydb_core::OrderedF64;
 	match (a, b) {
 		(Value::Int8(x), Value::Int8(y)) => Value::Int8(x - y),
 		(Value::Int4(x), Value::Int4(y)) => Value::Int4(x - y),

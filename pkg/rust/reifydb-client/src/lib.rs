@@ -13,7 +13,7 @@ use std::{
 // Re-export main client and session types
 pub use client::Client;
 // Re-export types from reifydb
-use reifydb::core::{Type, Value};
+use reifydb_type::{Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{
 	BlockingSession, CallbackSession, ChannelSession, Column,

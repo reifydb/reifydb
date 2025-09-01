@@ -2,8 +2,10 @@
 // This file is licensed under the MIT, see license.md file
 
 use super::{date::parse_date, time::parse_time};
-use crate::error::diagnostic::temporal;
-use crate::{return_error, DateTime, Error, IntoFragment};
+use crate::{
+	DateTime, Error, IntoFragment, error::diagnostic::temporal,
+	return_error,
+};
 
 pub fn parse_datetime<'a>(
 	fragment: impl IntoFragment<'a>,

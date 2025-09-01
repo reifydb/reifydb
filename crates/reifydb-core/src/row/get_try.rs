@@ -1,11 +1,8 @@
+use reifydb_type::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7};
+
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
-use crate::{
-	Date, DateTime, Interval, Time,
-	row::{EncodedRow, EncodedRowLayout},
-	value::{IdentityId, Uuid4, Uuid7},
-};
+use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
 	pub fn try_get_bool(
@@ -256,11 +253,11 @@ impl EncodedRowLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use crate::{
-		Date, DateTime, Interval, Time, Type,
-		row::EncodedRowLayout,
-		value::{IdentityId, Uuid4, Uuid7},
+	use reifydb_type::{
+		Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
 	};
+
+	use crate::row::EncodedRowLayout;
 
 	#[test]
 	fn test_try_get_bool() {

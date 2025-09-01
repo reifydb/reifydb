@@ -10,17 +10,15 @@ mod reorder;
 mod slice;
 mod take;
 
+use reifydb_type::{Date, DateTime, Interval, Time, Type, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	BitVec, Date, DateTime, Interval, Time, Type, Value,
-	value::{
-		Uuid4, Uuid7,
-		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowNumberContainer, StringContainer,
-			TemporalContainer, UndefinedContainer, UuidContainer,
-		},
+	BitVec,
+	value::container::{
+		BlobContainer, BoolContainer, IdentityIdContainer,
+		NumberContainer, RowNumberContainer, TemporalContainer,
+		UndefinedContainer, Utf8Container, UuidContainer,
 	},
 };
 
@@ -39,7 +37,7 @@ pub enum ColumnData {
 	Uint4(NumberContainer<u32>),
 	Uint8(NumberContainer<u64>),
 	Uint16(NumberContainer<u128>),
-	Utf8(StringContainer),
+	Utf8(Utf8Container),
 	Date(TemporalContainer<Date>),
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),

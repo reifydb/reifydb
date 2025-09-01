@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime as ChronoDateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+
 use crate::{Date, Time};
 
 /// A date and time value with nanosecond precision.

@@ -6,11 +6,12 @@ use reifydb_catalog::{
 	schema::SchemaToCreate,
 	table::{TableColumnToCreate, TableToCreate},
 };
-use reifydb_core::{Type, event::EventBus, interceptor::Interceptors};
+use reifydb_core::{event::EventBus, interceptor::Interceptors};
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
+use reifydb_type::Type;
 
 use crate::{
 	EngineTransaction, StandardCommandTransaction,

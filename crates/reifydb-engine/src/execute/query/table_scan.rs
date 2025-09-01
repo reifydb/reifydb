@@ -13,15 +13,14 @@ use reifydb_core::{
 		Transaction, VersionedQueryTransaction,
 	},
 	row::EncodedRowLayout,
-};
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
-use crate::{
-	columnar::{
+	value::columnar::{
 		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
-	execute::{Batch, ExecutionContext, QueryNode},
 };
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+
+use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub(crate) struct TableScanNode<T: Transaction> {
 	table: TableDef,

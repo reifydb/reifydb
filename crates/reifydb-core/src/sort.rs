@@ -6,9 +6,8 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use reifydb_type::OwnedFragment;
 use serde::{Deserialize, Serialize};
-
-use crate::OwnedFragment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SortDirection {

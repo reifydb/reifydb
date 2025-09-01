@@ -4,20 +4,19 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::MulExpression},
 	return_error,
 	value::{
-		IsNumber,
+		columnar::{Column, ColumnData, ColumnQualified, push::Push},
 		container::{UndefinedContainer, number::NumberContainer},
-    },
+	},
 };
-use reifydb_type::::diagnostic::operator::mul_cannot_be_applied_to_incompatible_types;
-use reifydb_type::{Promote, SafeMul};
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, push::Push},
-	evaluate::{EvaluationContext, StandardEvaluator},
+use reifydb_type::{
+	Fragment, GetType, IsNumber, Promote, SafeMul, Type,
+	diagnostic::operator::mul_cannot_be_applied_to_incompatible_types,
 };
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn mul(

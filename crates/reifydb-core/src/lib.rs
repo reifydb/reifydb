@@ -21,13 +21,4 @@ pub use interface::{ColumnDescriptor, TransactionId};
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
-pub use util::{ioc, retry, BitVec, CowVec, Either, WaitGroup};
-
-pub use reifydb_type::{
-	Blob, Date, DateTime, GetType, IdentityId, Interval, IntoValue,
-	OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7, Value,
-};
-pub use reifydb_type::{
-	BorrowedFragment, Fragment, IntoFragment, OwnedFragment,
-	StatementColumn, StatementLine,
-};
+pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};

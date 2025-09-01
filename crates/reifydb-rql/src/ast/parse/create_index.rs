@@ -140,9 +140,7 @@ impl<'a> Parser<'a> {
 mod tests {
 	use reifydb_core::{IndexType, SortDirection};
 
-	use crate::ast::{
-		AstCreate, AstCreateIndex, parse::Parser, tokenize::tokenize,
-	};
+	use crate::ast::{AstCreate, AstCreateIndex, parse::Parser, tokenize};
 
 	#[test]
 	fn test_create_index() {

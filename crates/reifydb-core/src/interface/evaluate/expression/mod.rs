@@ -8,9 +8,8 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use reifydb_type::{Fragment, OwnedFragment, Type};
 use serde::{Deserialize, Serialize};
-
-use crate::{Fragment, OwnedFragment, Type};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression<'a> {

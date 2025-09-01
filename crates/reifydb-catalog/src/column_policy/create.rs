@@ -2,13 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	diagnostic::catalog::table_column_policy_already_exists,
 	interface::{
 		ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind,
 		CommandTransaction, EncodableKey,
 	},
 	return_error,
 };
-use reifydb_type::::diagnostic::catalog::table_column_policy_already_exists;
+
 use crate::{
 	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
 	sequence::SystemSequence,
@@ -80,13 +81,11 @@ impl CatalogStore {
 mod tests {
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Error;
-	use reifydb_core::{
-		Type,
-		interface::{
-			ColumnPolicyKind, ColumnSaturationPolicy, TableId,
-		},
+	use reifydb_core::interface::{
+		ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::{
 		CatalogStore,

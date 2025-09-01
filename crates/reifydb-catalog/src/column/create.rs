@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedFragment, Type,
 	diagnostic::catalog::{
 		auto_increment_invalid_type, table_column_already_exists,
 	},
@@ -12,6 +11,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
+use reifydb_type::{OwnedFragment, Type};
 
 use crate::{
 	CatalogStore,
@@ -148,15 +148,12 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod test {
-	use reifydb_core::{
-		Type,
-		interface::{ColumnId, TableId},
-	};
+	use reifydb_core::interface::{ColumnId, ColumnIndex, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::{
-		CatalogStore,
-		column::{ColumnIndex, ColumnToCreate},
+		CatalogStore, column::ColumnToCreate,
 		test_utils::ensure_test_table,
 	};
 

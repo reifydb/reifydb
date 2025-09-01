@@ -39,8 +39,9 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{Type, interface::TableId};
+	use reifydb_core::interface::TableId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::{
 		CatalogStore,

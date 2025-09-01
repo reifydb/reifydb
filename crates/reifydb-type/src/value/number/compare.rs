@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::value::is::IsNumber;
-use crate::value::number::Promote;
+use crate::value::{is::IsNumber, number::Promote};
 
 #[inline]
 pub fn is_equal<L, R>(l: L, r: R) -> bool

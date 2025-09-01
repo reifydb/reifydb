@@ -4,22 +4,13 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, Type, error,
-    return_error,
-	value::{
-		IsNumber,
-		container::NumberContainer,
-    },
+	interface::{Convert, Demote, Promote},
+	value::{columnar::ColumnData, container::NumberContainer},
 };
-use reifydb_type::::diagnostic::cast;
-use reifydb_type::::LazyFragment;
 use reifydb_type::{
-    SafeConvert, SafeDemote, SafePromote, parse_float,
-    parse_int, parse_uint,
-};
-use crate::{
-	columnar::ColumnData,
-	evaluate::{Convert, Demote, Promote},
+	BorrowedFragment, GetType, IsNumber, LazyFragment, SafeConvert,
+	SafeDemote, SafePromote, Type, diagnostic::cast, error, parse_float,
+	parse_int, parse_uint, return_error,
 };
 
 pub fn to_number<'a>(
@@ -248,7 +239,6 @@ fn text_to_integer<'a>(
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
-					use reifydb_type::::BorrowedFragment;
 					let temp_fragment =
 						BorrowedFragment::new_internal(
 							val,
@@ -397,7 +387,6 @@ fn text_to_float<'a>(
 				let val = &container[idx];
 				// Create efficient borrowed fragment for
 				// parsing
-				use reifydb_type::::BorrowedFragment;
 				let temp_fragment =
 					BorrowedFragment::new_internal(val);
 
@@ -838,14 +827,14 @@ where
 mod tests {
 	mod promote {
 		use reifydb_core::{
-			BitVec, Fragment, GetType, Type,
-            value::{
-				container::NumberContainer,
-            },
+			BitVec, interface::Promote,
+			value::container::NumberContainer,
 		};
-        use reifydb_type::::LazyFragment;
-        use reifydb_type::SafePromote;
-        use crate::evaluate::{Promote, cast::number::promote_vec};
+		use reifydb_type::{
+			Fragment, GetType, LazyFragment, SafePromote, Type,
+		};
+
+		use crate::evaluate::cast::number::promote_vec;
 
 		#[test]
 		fn test_ok() {
@@ -968,14 +957,14 @@ mod tests {
 
 	mod demote {
 		use reifydb_core::{
-			BitVec, Fragment, GetType, Type,
-            value::{
-				container::NumberContainer,
-            },
+			BitVec, interface::Demote,
+			value::container::NumberContainer,
 		};
-        use reifydb_type::::LazyFragment;
-        use reifydb_type::SafeDemote;
-        use crate::evaluate::{Demote, cast::number::demote_vec};
+		use reifydb_type::{
+			Fragment, GetType, LazyFragment, SafeDemote, Type,
+		};
+
+		use crate::evaluate::cast::number::demote_vec;
 
 		#[test]
 		fn test_ok() {

@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Blob, CowVec, EncodedKey,
+	CowVec, EncodedKey,
 	interface::{CdcChange, TransactionId},
 	return_internal_error,
 	row::EncodedRow,
 };
+use reifydb_type::Blob;
 
 use super::{CdcTransaction, CdcTransactionChange, layout::*};
 

@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
 
 pub fn column_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
@@ -15,8 +14,7 @@ pub fn column_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
         help: Some("check for typos or ensure the column is defined in the input".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
@@ -33,6 +31,5 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 			"Each column name must be unique within the result frame".to_string(),
 			"Consider using MAP if you want to replace existing columns".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }

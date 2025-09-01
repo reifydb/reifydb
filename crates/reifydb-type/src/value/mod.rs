@@ -1,28 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use serde::{Deserialize, Serialize};
 use std::{
 	cmp::Ordering,
 	fmt::{Display, Formatter},
 };
 
-mod blob;
-mod boolean;
+use serde::{Deserialize, Serialize};
+
+pub mod blob;
+pub mod boolean;
 mod date;
 mod datetime;
 mod identity;
 mod interval;
 mod into;
-mod is;
-mod number;
+pub mod is;
+pub mod number;
 mod ordered_f32;
 mod ordered_f64;
-mod row_number;
-mod temporal;
+pub mod row_number;
+pub mod temporal;
 mod time;
 mod r#type;
-mod uuid;
+pub mod uuid;
 
 pub use blob::Blob;
 pub use date::Date;
@@ -32,9 +33,9 @@ pub use interval::Interval;
 pub use into::IntoValue;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
-pub use r#type::{GetType, Type};
 pub use row_number::RowNumber;
 pub use time::Time;
+pub use r#type::{GetType, Type};
 pub use uuid::{Uuid4, Uuid7};
 
 /// A RQL value, represented as a native Rust type.

@@ -95,8 +95,7 @@ where
 								value.version;
 							match value.row() {
                                 Some(value) => return Some((version, key, value).into()),
-                                None => continue,
-                            }
+                                None => continue}
 						}
 						// Keys are equal, so we prefer
 						// the pending item and skip the
@@ -128,8 +127,7 @@ where
 							// been yielded before.
 							if self.last_yielded_key.as_ref().is_none_or(|k| match k {
                                 Either::Left(k) => *k != committed.key(),
-                                Either::Right(item) => item.key() != committed.key(),
-                            }) {
+                                Either::Right(item) => item.key() != committed.key()}) {
                                 self.last_yielded_key = Some(Either::Right(committed.clone()));
                                 return Some(committed);
                             }
@@ -167,8 +165,7 @@ where
 						.is_none_or(|k| {
 							match k {
                         Either::Left(k) => *k != committed.key(),
-                        Either::Right(item) => item.key() != committed.key(),
-                    }
+                        Either::Right(item) => item.key() != committed.key()}
 						}) {
 						let committed = self
 							.next_committed

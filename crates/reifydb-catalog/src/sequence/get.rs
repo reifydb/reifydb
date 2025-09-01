@@ -4,8 +4,8 @@
 use reifydb_core::{
 	Error,
 	interface::{QueryTransaction, SequenceId},
-	internal_error,
 };
+use reifydb_type::internal_error;
 
 use crate::{CatalogStore, sequence::Sequence};
 

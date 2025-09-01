@@ -147,7 +147,7 @@ where
 mod tests {
 	use crate::value::{
 		columnar::pool::allocator::{PoolAllocator, StdPoolAllocator},
-		container::{BoolContainer, NumberContainer, StringContainer},
+		container::{BoolContainer, NumberContainer, Utf8Container},
 	};
 
 	#[test]
@@ -178,7 +178,7 @@ mod tests {
 
 	#[test]
 	fn test_allocate_string() {
-		let pools = StdPoolAllocator::<StringContainer>::new(4);
+		let pools = StdPoolAllocator::<Utf8Container>::new(4);
 
 		let container = pools.acquire(20);
 		assert!(container.capacity() >= 20);

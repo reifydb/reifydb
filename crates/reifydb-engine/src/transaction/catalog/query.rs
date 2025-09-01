@@ -55,7 +55,7 @@ impl<T: Transaction> CatalogSchemaQueryOperations
 	}
 
 	fn get_schema(&mut self, id: SchemaId) -> crate::Result<SchemaDef> {
-		use reifydb_core::{error, internal_error};
+		use reifydb_type::{error, internal_error};
 
 		self.find_schema(id)?
 			.ok_or_else(|| {

@@ -11,17 +11,17 @@ pub mod uuid;
 use std::ops::Deref;
 
 use reifydb_core::{
-	Type, err, error,
 	interface::{
 		Evaluator, LazyFragment,
 		expression::{CastExpression, Expression},
 	},
+	value::columnar::{
+		Column, ColumnData, ColumnQualified, SourceQualified,
+	},
 };
-use reifydb_type::::diagnostic::cast;
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+use reifydb_type::{Type, diagnostic::cast, err, error};
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn cast(
@@ -137,20 +137,22 @@ pub fn cast_column_data<'a>(
 
 #[cfg(test)]
 mod tests {
-	use ConstantExpression::Number;
-	use Expression::{Cast, Constant};
 	use reifydb_core::{
-		Fragment, Type,
-		interface::expression::{
-			CastExpression, ConstantExpression, Expression::Prefix,
-			PrefixExpression, PrefixOperator, TypeExpression,
+		interface::{
+			EvaluationContext,
+			expression::{
+				CastExpression, ConstantExpression,
+				ConstantExpression::Number,
+				Expression::{Cast, Constant, Prefix},
+				PrefixExpression, PrefixOperator,
+				TypeExpression,
+			},
 		},
+		value::columnar::ColumnData,
 	};
+	use reifydb_type::{Fragment, Type};
 
-	use crate::{
-		columnar::ColumnData,
-		evaluate::{EvaluationContext, Expression, evaluate},
-	};
+	use crate::evaluate::evaluate;
 
 	#[test]
 	fn test_cast_integer() {
@@ -179,17 +181,17 @@ mod tests {
 	fn test_cast_negative_integer() {
 		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
-			&mut ctx,
-            &Cast(CastExpression {
+        &mut ctx,
+        &Cast(CastExpression {
+            fragment: Fragment::owned_empty(),
+            expression: Box::new(Prefix(PrefixExpression {
+                operator: PrefixOperator::Minus(Fragment::owned_empty()),
+                expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("42") })),
                 fragment: Fragment::owned_empty(),
-                expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(Fragment::owned_empty()),
-                    expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("42") })),
-                    fragment: Fragment::owned_empty(),
-                })),
-                to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int4 },
-            }),
-        )
+            })),
+            to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int4 },
+        }),
+    )
         .unwrap();
 
 		assert_eq!(*result.data(), ColumnData::int4([-42]));
@@ -199,17 +201,17 @@ mod tests {
 	fn test_cast_negative_min() {
 		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
-			&mut ctx,
-            &Cast(CastExpression {
+        &mut ctx,
+        &Cast(CastExpression {
+            fragment: Fragment::owned_empty(),
+            expression: Box::new(Prefix(PrefixExpression {
+                operator: PrefixOperator::Minus(Fragment::owned_empty()),
+                expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("128") })),
                 fragment: Fragment::owned_empty(),
-                expression: Box::new(Prefix(PrefixExpression {
-                    operator: PrefixOperator::Minus(Fragment::owned_empty()),
-                    expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("128") })),
-                    fragment: Fragment::owned_empty(),
-                })),
-                to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int1 },
-            }),
-        )
+            })),
+            to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int1 },
+        }),
+    )
         .unwrap();
 
 		assert_eq!(*result.data(), ColumnData::int1([-128]));

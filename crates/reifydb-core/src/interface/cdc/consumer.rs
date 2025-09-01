@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	Result,
-	interface::{CdcEvent, CommandTransaction, Transaction},
-};
+use reifydb_type::Result;
+
+use crate::interface::{CdcEvent, CommandTransaction, Transaction};
 
 /// Trait for CDC event processing functions
 pub trait CdcConsume<T: Transaction>: Send + Sync + 'static {

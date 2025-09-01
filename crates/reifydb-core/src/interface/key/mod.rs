@@ -173,23 +173,22 @@ impl Key {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::RowNumber;
+
 	use super::{
 		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey, Key,
 		SchemaKey, SchemaTableKey, SystemSequenceKey, TableKey,
 	};
-	use crate::{
-		RowNumber,
-		interface::{
-			StoreId,
-			catalog::{
-				ColumnId, ColumnPolicyId, IndexId, SchemaId,
-				SequenceId, TableId,
-			},
-			key::{
-				index::IndexKey, row::RowKey,
-				row_sequence::RowSequenceKey,
-				transaction_version::TransactionVersionKey,
-			},
+	use crate::interface::{
+		StoreId,
+		catalog::{
+			ColumnId, ColumnPolicyId, IndexId, SchemaId,
+			SequenceId, TableId,
+		},
+		key::{
+			index::IndexKey, row::RowKey,
+			row_sequence::RowSequenceKey,
+			transaction_version::TransactionVersionKey,
 		},
 	};
 

@@ -19,9 +19,12 @@ pub use cdc::*;
 pub use engine::*;
 pub use evaluate::*;
 pub use execute::*;
-pub use reifydb_type::fragment::*;
 pub use key::*;
 pub use params::*;
+pub use reifydb_type::{
+	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
+	StatementColumn, StatementLine,
+};
 pub use storage::*;
 pub use transaction::*;
 

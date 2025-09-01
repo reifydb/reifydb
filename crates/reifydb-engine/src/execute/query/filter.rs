@@ -6,11 +6,11 @@ use std::sync::Arc;
 use reifydb_core::{
 	BitVec,
 	interface::{Transaction, evaluate::expression::Expression},
+	value::columnar::{ColumnData, layout::ColumnsLayout},
 };
 
 use crate::{
 	StandardTransaction,
-	columnar::{ColumnData, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };

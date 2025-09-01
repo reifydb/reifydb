@@ -1,15 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::error::diagnostic::number::number_out_of_range;
-use reifydb_type::SafeDemote;
-use crate::{
-	GetType, error,
-	interface::{
-		ColumnSaturationPolicy, LazyFragment,
-		evaluate::EvaluationContext,
-	},
+use reifydb_type::{
+	GetType, LazyFragment, SafeDemote,
+	diagnostic::number::number_out_of_range, error,
 };
+
+use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
 
 pub trait Demote {
 	fn demote<'a, From, To>(
@@ -50,10 +47,16 @@ impl Demote for &EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => from
 				.checked_demote()
 				.ok_or_else(|| {
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
 					return error!(number_out_of_range(
 						fragment.fragment(),
 						To::get_type(),
-						self.target_column.as_ref(),
+						descriptor.as_ref(),
 					));
 				})
 				.map(Some),
@@ -69,15 +72,16 @@ impl Demote for &EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_type::SafeDemote;
-    use crate::{
-		ColumnDescriptor, Fragment, GetType, Type,
+	use reifydb_type::{Fragment, GetType, SafeDemote, Type};
+
+	use crate::{
+		ColumnDescriptor,
 		interface::{
 			ColumnPolicyKind::Saturation,
 			ColumnSaturationPolicy::{Error, Undefined},
 			evaluate::{Demote, EvaluationContext},
 		},
-    };
+	};
 
 	#[test]
 	fn test_demote_ok() {

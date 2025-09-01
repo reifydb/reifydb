@@ -4,8 +4,8 @@
 use reifydb_core::{
 	Error,
 	interface::{QueryTransaction, StoreDef, StoreId},
-	internal_error,
 };
+use reifydb_type::internal_error;
 
 use crate::CatalogStore;
 
@@ -21,8 +21,7 @@ impl CatalogStore {
 		CatalogStore::find_store(rx, store_id)?.ok_or_else(|| {
 			let store_type = match store_id {
 				StoreId::Table(_) => "Table",
-				StoreId::View(_) => "View",
-			};
+				StoreId::View(_) => "View"};
 
 			Error(internal_error!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -35,11 +34,9 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		Type,
-		interface::{StoreDef, StoreId, TableId, ViewId},
-	};
+	use reifydb_core::interface::{StoreDef, StoreId, TableId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::{
 		CatalogStore,

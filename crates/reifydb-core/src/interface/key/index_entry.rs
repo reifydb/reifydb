@@ -233,8 +233,10 @@ impl IndexEntryKey {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::Type;
+
 	use super::*;
-	use crate::{SortDirection, Type, index::EncodedIndexLayout};
+	use crate::{SortDirection, index::EncodedIndexLayout};
 
 	#[test]
 	fn test_encode_decode() {

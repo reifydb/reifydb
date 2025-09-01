@@ -8,8 +8,8 @@ use crate::{
 	EncodedKey, EncodedKeyRange,
 	index::EncodedIndexKey,
 	interface::TableId,
-	util::{CowVec, encoding::keycode},
-};
+	util::{CowVec, encoding::keycode}};
+use reifydb_type::{Type, RowNumber};
 
 const VERSION: u8 = 1;
 
@@ -17,15 +17,13 @@ const VERSION: u8 = 1;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TablePrimaryKeyEntry {
 	pub table: TableId,
-	pub key: EncodedIndexKey,
-}
+	pub key: EncodedIndexKey}
 
 impl TablePrimaryKeyEntry {
 	pub fn new(table: TableId, key: EncodedIndexKey) -> Self {
 		Self {
 			table,
-			key,
-		}
+			key}
 	}
 }
 
@@ -74,8 +72,7 @@ impl EncodableKey for TablePrimaryKeyEntry {
 			));
 			Some(Self {
 				table,
-				key: index_key,
-			})
+				key: index_key})
 		} else {
 			None
 		}
@@ -85,8 +82,7 @@ impl EncodableKey for TablePrimaryKeyEntry {
 /// Range for scanning table primary key entries
 #[derive(Debug, Clone, PartialEq)]
 pub struct TablePrimaryKeyRange {
-	pub table: TableId,
-}
+	pub table: TableId}
 
 impl EncodableKeyRange for TablePrimaryKeyRange {
 	const KIND: KeyKind = KeyKind::TablePrimaryKey;
@@ -115,15 +111,13 @@ impl EncodableKeyRange for TablePrimaryKeyRange {
 			Bound::Included(key) | Bound::Excluded(key) => {
 				Self::decode_key(key)
 			}
-			Bound::Unbounded => None,
-		};
+			Bound::Unbounded => None};
 
 		let end_key = match &range.end {
 			Bound::Included(key) | Bound::Excluded(key) => {
 				Self::decode_key(key)
 			}
-			Bound::Unbounded => None,
-		};
+			Bound::Unbounded => None};
 
 		(start_key, end_key)
 	}
@@ -153,15 +147,14 @@ impl TablePrimaryKeyRange {
 		let table: TableId =
 			keycode::deserialize(&payload[..8]).ok()?;
 		Some(TablePrimaryKeyRange {
-			table,
-		})
+			table})
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{SortDirection, Type, index::EncodedIndexLayout};
+	use crate::{SortDirection, index::EncodedIndexLayout};
 
 	#[test]
 	fn test_encode_decode() {
@@ -178,8 +171,7 @@ mod tests {
 
 		let entry = TablePrimaryKeyEntry {
 			table: TableId(42),
-			key: index_key.clone(),
-		};
+			key: index_key.clone()};
 
 		let encoded = entry.encode();
 		let decoded = TablePrimaryKeyEntry::decode(&encoded).unwrap();
@@ -205,13 +197,11 @@ mod tests {
 		// Same table, different keys
 		let entry1 = TablePrimaryKeyEntry {
 			table: TableId(1),
-			key: key1,
-		};
+			key: key1};
 
 		let entry2 = TablePrimaryKeyEntry {
 			table: TableId(1),
-			key: key2,
-		};
+			key: key2};
 
 		let encoded1 = entry1.encode();
 		let encoded2 = entry2.encode();
@@ -223,8 +213,7 @@ mod tests {
 	#[test]
 	fn test_table_range() {
 		let range_key = TablePrimaryKeyRange {
-			table: TableId(10),
-		};
+			table: TableId(10)};
 
 		// Get the start and end keys
 		let start = range_key.start().unwrap();
@@ -242,8 +231,7 @@ mod tests {
 
 		let entry = TablePrimaryKeyEntry {
 			table: TableId(10),
-			key,
-		};
+			key};
 
 		let encoded = entry.encode();
 
@@ -260,8 +248,7 @@ mod tests {
 		// Entry with different table should not be in range
 		let entry2 = TablePrimaryKeyEntry {
 			table: TableId(11),
-			key: layout.allocate_key(),
-		};
+			key: layout.allocate_key()};
 
 		let encoded2 = entry2.encode();
 		assert!(encoded2.as_slice() < start.as_slice());
@@ -270,16 +257,14 @@ mod tests {
 	#[test]
 	fn test_range_decode() {
 		let range = TablePrimaryKeyRange {
-			table: TableId(42),
-		};
+			table: TableId(42)};
 
 		let start = range.start().unwrap();
 		let end = range.end().unwrap();
 
 		let encoded_range = EncodedKeyRange {
 			start: Bound::Included(start),
-			end: Bound::Excluded(end),
-		};
+			end: Bound::Excluded(end)};
 
 		let (decoded_start, decoded_end) =
 			TablePrimaryKeyRange::decode(&encoded_range);

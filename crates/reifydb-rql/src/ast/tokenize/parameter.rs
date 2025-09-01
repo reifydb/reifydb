@@ -35,8 +35,7 @@ pub fn scan_parameter<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 				if num > 0 {
 					return Some(Token {
                         kind: TokenKind::Parameter(ParameterKind::Positional(num)),
-                        fragment: cursor.make_fragment(start_pos, start_line, start_column),
-                    });
+                        fragment: cursor.make_fragment(start_pos, start_line, start_column)});
 				}
 			}
 			// $0 is invalid, restore state

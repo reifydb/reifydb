@@ -1,17 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{Date, DateTime, Interval, Time, Type, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
-use reifydb_type::{Uuid4, Uuid7};
-use crate::{
-	Date, DateTime, Interval, Time, Type, Value,
-	value::{
-		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowNumberContainer, StringContainer,
-			TemporalContainer, UndefinedContainer, UuidContainer,
-		},
-    },
+
+use crate::value::container::{
+	BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
+	RowNumberContainer, TemporalContainer, UndefinedContainer,
+	Utf8Container, UuidContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -29,7 +25,7 @@ pub enum FrameColumnData {
 	Uint4(NumberContainer<u32>),
 	Uint8(NumberContainer<u64>),
 	Uint16(NumberContainer<u128>),
-	Utf8(StringContainer),
+	Utf8(Utf8Container),
 	Date(TemporalContainer<Date>),
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),

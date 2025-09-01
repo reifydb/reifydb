@@ -8,8 +8,8 @@ use crate::{
 	EncodedKey, EncodedKeyRange,
 	index::EncodedIndexKey,
 	interface::ViewId,
-	util::{CowVec, encoding::keycode},
-};
+	util::{CowVec, encoding::keycode}};
+use reifydb_type::{Type, RowNumber};
 
 const VERSION: u8 = 1;
 
@@ -17,15 +17,13 @@ const VERSION: u8 = 1;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewPrimaryKeyEntry {
 	pub view: ViewId,
-	pub key: EncodedIndexKey,
-}
+	pub key: EncodedIndexKey}
 
 impl ViewPrimaryKeyEntry {
 	pub fn new(view: ViewId, key: EncodedIndexKey) -> Self {
 		Self {
 			view,
-			key,
-		}
+			key}
 	}
 }
 
@@ -73,8 +71,7 @@ impl EncodableKey for ViewPrimaryKeyEntry {
 			));
 			Some(Self {
 				view,
-				key: index_key,
-			})
+				key: index_key})
 		} else {
 			None
 		}
@@ -84,8 +81,7 @@ impl EncodableKey for ViewPrimaryKeyEntry {
 /// Range for scanning view primary key entries
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewPrimaryKeyRange {
-	pub view: ViewId,
-}
+	pub view: ViewId}
 
 impl EncodableKeyRange for ViewPrimaryKeyRange {
 	const KIND: KeyKind = KeyKind::ViewPrimaryKey;
@@ -114,15 +110,13 @@ impl EncodableKeyRange for ViewPrimaryKeyRange {
 			Bound::Included(key) | Bound::Excluded(key) => {
 				Self::decode_key(key)
 			}
-			Bound::Unbounded => None,
-		};
+			Bound::Unbounded => None};
 
 		let end_key = match &range.end {
 			Bound::Included(key) | Bound::Excluded(key) => {
 				Self::decode_key(key)
 			}
-			Bound::Unbounded => None,
-		};
+			Bound::Unbounded => None};
 
 		(start_key, end_key)
 	}
@@ -151,15 +145,14 @@ impl ViewPrimaryKeyRange {
 
 		let view: ViewId = keycode::deserialize(&payload[..8]).ok()?;
 		Some(ViewPrimaryKeyRange {
-			view,
-		})
+			view})
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{SortDirection, Type, index::EncodedIndexLayout};
+	use crate::{SortDirection, index::EncodedIndexLayout};
 
 	#[test]
 	fn test_encode_decode() {
@@ -176,8 +169,7 @@ mod tests {
 
 		let entry = ViewPrimaryKeyEntry {
 			view: ViewId(42),
-			key: index_key.clone(),
-		};
+			key: index_key.clone()};
 
 		let encoded = entry.encode();
 		let decoded = ViewPrimaryKeyEntry::decode(&encoded).unwrap();
@@ -203,13 +195,11 @@ mod tests {
 		// Same view, different keys
 		let entry1 = ViewPrimaryKeyEntry {
 			view: ViewId(1),
-			key: key1,
-		};
+			key: key1};
 
 		let entry2 = ViewPrimaryKeyEntry {
 			view: ViewId(1),
-			key: key2,
-		};
+			key: key2};
 
 		let encoded1 = entry1.encode();
 		let encoded2 = entry2.encode();
@@ -221,8 +211,7 @@ mod tests {
 	#[test]
 	fn test_view_range() {
 		let range_key = ViewPrimaryKeyRange {
-			view: ViewId(10),
-		};
+			view: ViewId(10)};
 
 		// Get the start and end keys
 		let start = range_key.start().unwrap();
@@ -240,8 +229,7 @@ mod tests {
 
 		let entry = ViewPrimaryKeyEntry {
 			view: ViewId(10),
-			key,
-		};
+			key};
 
 		let encoded = entry.encode();
 
@@ -252,8 +240,7 @@ mod tests {
 		// Entry with different view should not be in range
 		let entry2 = ViewPrimaryKeyEntry {
 			view: ViewId(11),
-			key: layout.allocate_key(),
-		};
+			key: layout.allocate_key()};
 
 		let encoded2 = entry2.encode();
 		assert!(encoded2.as_slice() < start.as_slice());
@@ -262,16 +249,14 @@ mod tests {
 	#[test]
 	fn test_range_decode() {
 		let range = ViewPrimaryKeyRange {
-			view: ViewId(42),
-		};
+			view: ViewId(42)};
 
 		let start = range.start().unwrap();
 		let end = range.end().unwrap();
 
 		let encoded_range = EncodedKeyRange {
 			start: Bound::Included(start),
-			end: Bound::Excluded(end),
-		};
+			end: Bound::Excluded(end)};
 
 		let (decoded_start, decoded_end) =
 			ViewPrimaryKeyRange::decode(&encoded_range);

@@ -3,7 +3,9 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use crate::{CowVec, Type, row::EncodedRow};
+use reifydb_type::Type;
+
+use crate::{CowVec, row::EncodedRow};
 
 #[derive(Debug, Clone)]
 pub struct EncodedRowLayout(Arc<EncodedRowLayoutInner>);
@@ -167,7 +169,9 @@ fn align_up(offset: usize, align: usize) -> usize {
 #[cfg(test)]
 mod tests {
 	mod new {
-		use crate::{Type, row::EncodedRowLayout};
+		use reifydb_type::Type;
+
+		use crate::row::EncodedRowLayout;
 
 		#[test]
 		fn test_single_field_bool() {
@@ -265,7 +269,9 @@ mod tests {
 	}
 
 	mod allocate_row {
-		use crate::{Type, row::EncodedRowLayout};
+		use reifydb_type::Type;
+
+		use crate::row::EncodedRowLayout;
 
 		#[test]
 		fn test_initial_state() {
@@ -312,7 +318,9 @@ mod tests {
 	}
 
 	mod all_defined {
-		use crate::{Type, row::EncodedRowLayout};
+		use reifydb_type::Type;
+
+		use crate::row::EncodedRowLayout;
 
 		#[test]
 		fn test_one_field_none_valid() {

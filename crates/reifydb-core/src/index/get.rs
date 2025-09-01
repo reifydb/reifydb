@@ -1,12 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{
+	Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
+};
 use uuid::Uuid;
 
 use crate::{
-	SortDirection, Type,
+	SortDirection,
 	index::{EncodedIndexKey, EncodedIndexLayout},
-	value::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 };
 
 impl EncodedIndexLayout {
@@ -557,9 +559,9 @@ impl EncodedIndexLayout {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		SortDirection, Type, index::EncodedIndexLayout, value::Date,
-	};
+	use reifydb_type::Type;
+
+	use crate::{SortDirection, index::EncodedIndexLayout};
 
 	mod bool {
 		use super::*;
@@ -602,7 +604,9 @@ mod tests {
 	}
 
 	mod i8 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -650,7 +654,9 @@ mod tests {
 	}
 
 	mod i32 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -698,7 +704,9 @@ mod tests {
 	}
 
 	mod i64 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -746,7 +754,9 @@ mod tests {
 	}
 
 	mod u8 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -794,7 +804,9 @@ mod tests {
 	}
 
 	mod u32 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -842,7 +854,9 @@ mod tests {
 	}
 
 	mod u64 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -890,7 +904,9 @@ mod tests {
 	}
 
 	mod f32 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -938,7 +954,9 @@ mod tests {
 	}
 
 	mod f64 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -986,7 +1004,9 @@ mod tests {
 	}
 
 	mod date {
-		use super::*;
+		use reifydb_type::{Date, Type};
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1042,7 +1062,9 @@ mod tests {
 	}
 
 	mod row_number {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1090,8 +1112,9 @@ mod tests {
 	}
 
 	mod identity_id {
-		use super::*;
-		use crate::value::IdentityId;
+		use reifydb_type::{IdentityId, Type};
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1166,7 +1189,9 @@ mod tests {
 	}
 
 	mod composite {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_mixed_directions() {

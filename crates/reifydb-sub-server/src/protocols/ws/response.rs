@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Type};
+use reifydb_type::{Type, diagnostic::Diagnostic};
 use serde::{Deserialize, Serialize};
-use reifydb_type::::diagnostic::Diagnostic;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {

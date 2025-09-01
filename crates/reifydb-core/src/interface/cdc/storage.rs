@@ -3,8 +3,10 @@
 
 use std::ops::Bound;
 
+use reifydb_type::Result;
+
 use super::CdcEvent;
-use crate::{Result, Version};
+use crate::Version;
 
 /// Combined trait for all CDC storage operations
 pub trait CdcStorage:

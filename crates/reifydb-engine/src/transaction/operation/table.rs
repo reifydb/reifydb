@@ -3,7 +3,6 @@
 
 use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
-	RowNumber,
 	event::catalog::TableInsertedEvent,
 	interface::{
 		EncodableKey, GetEncodedRowLayout, RowKey, TableDef,
@@ -12,6 +11,7 @@ use reifydb_core::{
 	},
 	row::{EncodedRow, Row},
 };
+use reifydb_type::RowNumber;
 
 use crate::StandardCommandTransaction;
 

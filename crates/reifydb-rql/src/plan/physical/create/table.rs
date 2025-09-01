@@ -5,8 +5,8 @@ use PhysicalPlan::CreateTable;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	diagnostic::catalog::schema_not_found, interface::QueryTransaction,
-	return_error,
 };
+use reifydb_type::return_error;
 
 use crate::plan::{
 	logical::CreateTableNode,

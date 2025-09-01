@@ -25,6 +25,10 @@ use reifydb_core::{
 		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
 		TableDef, Transaction,
 	},
+	value::columnar::{
+		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
+		layout::ColumnsLayout,
+	},
 };
 use reifydb_rql::{
 	ast,
@@ -34,10 +38,6 @@ use reifydb_rql::{
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction,
 	StandardTransaction,
-	columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
-	},
 	function::{Functions, math},
 };
 
@@ -475,13 +475,10 @@ impl Executor {
                             Some(source) => Column::SourceQualified(SourceQualified {
 								source: source,
                                 name: layout.name,
-                                data: ColumnData::undefined(0),
-                            }),
+                                data: ColumnData::undefined(0)}),
                             None => Column::ColumnQualified(ColumnQualified {
                                 name: layout.name,
-                                data: ColumnData::undefined(0),
-                            }),
-                        })
+                                data: ColumnData::undefined(0)})})
                         .collect();
 
 					Ok(Columns::new(columns))

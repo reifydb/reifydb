@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::{
-	Uuid4, Uuid7,
-	columnar::{data::ColumnData, push::Push},
-};
+use reifydb_type::{Uuid4, Uuid7};
+
+use crate::value::columnar::{data::ColumnData, push::Push};
 
 impl Push<Uuid4> for ColumnData {
 	fn push(&mut self, value: Uuid4) {

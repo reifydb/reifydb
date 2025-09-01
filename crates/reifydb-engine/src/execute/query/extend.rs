@@ -4,12 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	ColumnDescriptor,
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::{
+		ColumnDescriptor, Transaction, evaluate::expression::Expression,
+	},
+	value::columnar::{Columns, layout::ColumnsLayout},
 };
 
 use crate::{
-	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
 		Batch, ExecutionContext, ExecutionPlan, QueryNode,

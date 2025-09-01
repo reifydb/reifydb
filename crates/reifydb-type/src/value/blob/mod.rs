@@ -92,9 +92,7 @@ impl From<Blob> for Vec<u8> {
 
 impl Display for Blob {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		// Default display as hex with 0x prefix
-		// write!(f, "0x{}", reifydb_core::util::hex::encode(self.as_bytes()))
-		todo!()
+		write!(f, "0x{}", hex::encode(self.as_bytes()))
 	}
 }
 

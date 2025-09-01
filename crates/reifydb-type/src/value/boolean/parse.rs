@@ -1,11 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::boolean::{
-	empty_boolean_value, invalid_boolean_format, invalid_number_boolean,
+use crate::{
+	Error, err,
+	error::diagnostic::boolean::{
+		empty_boolean_value, invalid_boolean_format,
+		invalid_number_boolean,
+	},
+	fragment::IntoFragment,
+	return_error,
 };
-use crate::fragment::IntoFragment;
-use crate::{err, return_error, Error};
 
 pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
 	let fragment = fragment.into_fragment();

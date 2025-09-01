@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::SortDirection;
+
 use crate::ast::{
 	AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
 	AstAlterView, AstAlterViewOperation, AstIndexColumn,
@@ -158,9 +160,9 @@ impl<'a> Parser<'a> {
 					self.parse_primary_key_columns()?;
 
 				operations.push(AstAlterTableOperation::CreatePrimaryKey {
-					name,
-					columns,
-				});
+                    name,
+                    columns,
+                });
 			} else if self.current()?.is_keyword(Keyword::Drop) {
 				self.consume_keyword(Keyword::Drop)?;
 				self.consume_keyword(Keyword::Primary)?;
@@ -243,9 +245,9 @@ impl<'a> Parser<'a> {
 					self.parse_primary_key_columns()?;
 
 				operations.push(AstAlterViewOperation::CreatePrimaryKey {
-					name,
-					columns,
-				});
+                    name,
+                    columns,
+                });
 			} else if self.current()?.is_keyword(Keyword::Drop) {
 				self.consume_keyword(Keyword::Drop)?;
 				self.consume_keyword(Keyword::Primary)?;
@@ -311,18 +313,18 @@ impl<'a> Parser<'a> {
 
 				if self.current()?.is_keyword(Keyword::Asc) {
 					self.consume_keyword(Keyword::Asc)?;
-					reifydb_core::SortDirection::Asc
+					SortDirection::Asc
 				} else if self
 					.current()?
 					.is_keyword(Keyword::Desc)
 				{
 					self.consume_keyword(Keyword::Desc)?;
-					reifydb_core::SortDirection::Desc
+					SortDirection::Desc
 				} else {
-					reifydb_core::SortDirection::Asc
+					SortDirection::Asc
 				}
 			} else {
-				reifydb_core::SortDirection::Asc
+				SortDirection::Asc
 			};
 
 			columns.push(AstIndexColumn {

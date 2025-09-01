@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Fragment, JoinType, OwnedFragment};
+use reifydb_core::JoinType;
+use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
@@ -61,8 +62,7 @@ impl Compiler {
                     on: on
                         .into_iter()
                         .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?,
-                }))
+                        .collect::<crate::Result<Vec<_>>>()?}))
 			}
 			AstJoin::LeftJoin {
 				with,
@@ -108,8 +108,7 @@ impl Compiler {
                     on: on
                         .into_iter()
                         .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?,
-                }))
+                        .collect::<crate::Result<Vec<_>>>()?}))
 			}
 			AstJoin::NaturalJoin {
 				with,

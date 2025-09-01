@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Uuid4, Uuid7};
-use crate::{
-	RowNumber, Type, Value,
-	row::{EncodedRow, EncodedRowLayout},
-	value::{
-		IdentityId, OrderedF32, OrderedF64,
-    },
+use reifydb_type::{
+	IdentityId, OrderedF32, OrderedF64, RowNumber, Type, Uuid4, Uuid7,
+	Value,
 };
+
+use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
 	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
@@ -243,15 +241,12 @@ impl EncodedRowLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-    use reifydb_type::{Uuid4, Uuid7};
-    use crate::{
-		Type, Value,
-		row::EncodedRowLayout,
-		value::{
-			Blob, Date, DateTime, Interval, OrderedF32, OrderedF64,
-			Time,
-        },
+	use reifydb_type::{
+		Blob, Date, DateTime, Interval, OrderedF32, OrderedF64, Time,
+		Type, Uuid4, Uuid7, Value,
 	};
+
+	use crate::row::EncodedRowLayout;
 
 	#[test]
 	fn test_set_value_utf8_with_dynamic_content() {

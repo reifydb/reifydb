@@ -13,6 +13,7 @@ reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
 
 once_cell = { workspace = true }
 serde = { workspace = true }

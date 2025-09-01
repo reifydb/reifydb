@@ -12,12 +12,11 @@ use std::{
 	ops::{Deref, DerefMut},
 	rc::{Rc, Weak},
 };
-use reifydb_type::{Uuid4, Uuid7};
+
+use reifydb_type::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+
 use super::{PoolAllocator, Pools, PoolsInner};
-use crate::value::{
-	Date, DateTime, Interval, Time,
-	container::*,
-};
+use crate::value::container::*;
 
 /// Trait for containers that can be released back to a pool
 pub trait Releasable: Clone + Debug {
@@ -31,7 +30,7 @@ impl Releasable for BoolContainer {
 	}
 }
 
-impl Releasable for StringContainer {
+impl Releasable for Utf8Container {
 	fn release_to_pool(self, pools: &Pools) {
 		pools.string_pool().release(self);
 	}
@@ -221,7 +220,7 @@ impl PooledGuard<BoolContainer> {
 	}
 }
 
-impl PooledGuard<StringContainer> {
+impl PooledGuard<Utf8Container> {
 	/// Create a new pooled StringContainer with the specified capacity
 	pub fn new_string(pools: Pools, capacity: usize) -> Self {
 		let container = pools.string_pool().acquire(capacity);

@@ -14,8 +14,7 @@ define_interceptor!(
     trait: ViewDefPostCreateInterceptor,
     fields: {
 	txn: &'a mut T,
-	post: &'a ViewDef,
-    }
+	post: &'a ViewDef}
 );
 
 define_closure_interceptor!(
@@ -37,8 +36,7 @@ define_interceptor!(
     trait: ViewDefPreUpdateInterceptor,
     fields: {
 	txn: &'a mut T,
-	pre: &'a ViewDef,
-    }
+	pre: &'a ViewDef}
 );
 
 define_closure_interceptor!(
@@ -61,8 +59,7 @@ define_interceptor!(
     fields: {
 	txn: &'a mut T,
 	pre: &'a ViewDef,
-	post: &'a ViewDef,
-    }
+	post: &'a ViewDef}
 );
 
 define_closure_interceptor!(
@@ -84,8 +81,7 @@ define_interceptor!(
     trait: ViewDefPreDeleteInterceptor,
     fields: {
 	txn: &'a mut T,
-	pre: &'a ViewDef,
-    }
+	pre: &'a ViewDef}
 );
 
 define_closure_interceptor!(

@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 use reifydb_core::{
-	Type, Version,
+	Version,
 	interface::{
 		EncodableKey, TransactionVersionKey,
 		UnversionedCommandTransaction, UnversionedQueryTransaction,
@@ -15,6 +15,7 @@ use reifydb_core::{
 	},
 	row::EncodedRowLayout,
 };
+use reifydb_type::Type;
 
 const BLOCK_SIZE: u64 = 1024;
 

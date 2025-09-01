@@ -187,10 +187,8 @@ mod tests {
 	    u128 => u128
 	);
 
-	use super::SafeMul;
-
 	mod f32 {
-		use super::SafeMul;
+		use crate::SafeMul;
 
 		#[test]
 		fn checked_mul_happy() {
@@ -257,7 +255,7 @@ mod tests {
 	}
 
 	mod f64 {
-		use super::SafeMul;
+		use crate::SafeMul;
 
 		#[test]
 		fn checked_mul_happy() {

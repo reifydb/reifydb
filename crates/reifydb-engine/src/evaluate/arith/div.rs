@@ -4,20 +4,19 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::DivExpression},
 	return_error,
 	value::{
-		IsNumber,
+		columnar::{Column, ColumnData, ColumnQualified, push::Push},
 		container::{UndefinedContainer, number::NumberContainer},
-    },
+	},
 };
-use reifydb_type::::diagnostic::operator::div_cannot_be_applied_to_incompatible_types;
-use reifydb_type::{Promote, SafeDiv};
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, push::Push},
-	evaluate::{EvaluationContext, StandardEvaluator},
+use reifydb_type::{
+	Fragment, GetType, IsNumber, Promote, SafeDiv, Type,
+	diagnostic::operator::div_cannot_be_applied_to_incompatible_types,
 };
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn div(

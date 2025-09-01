@@ -3,9 +3,10 @@
 
 use std::ops::Deref;
 
+use reifydb_type::{Blob, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, Blob, CowVec, Value};
+use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BlobContainer {
@@ -205,7 +206,7 @@ impl Default for BlobContainer {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{BitVec, Blob};
+	use crate::BitVec;
 
 	#[test]
 	fn test_new() {

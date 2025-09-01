@@ -8,4 +8,4 @@ pub mod lmdb;
 pub mod memory;
 pub mod sqlite;
 
-pub use reifydb_core::Result;
+pub use reifydb_type::Result;

@@ -3,20 +3,15 @@
 
 use std::{collections::HashMap, fmt, str::FromStr};
 
-use reifydb_core::{
-	Blob, OrderedF32, OrderedF64, RowNumber, Type, Value,
-	value::{},
+use reifydb_type::{
+	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value,
+	parse_bool, parse_date, parse_datetime, parse_float, parse_int,
+	parse_interval, parse_time, parse_uint, parse_uuid4, parse_uuid7,
 };
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
 };
-use reifydb_type::{parse_uuid4, parse_uuid7};
-use reifydb_type::{
-	parse_date, parse_datetime, parse_interval, parse_time,
-};
-use reifydb_type::{parse_float, parse_int, parse_uint};
-use reifydb_type::parse_bool;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
@@ -89,7 +84,6 @@ fn parse_typed_value(
 
 	// Use the appropriate parse function based on type
 	// If parsing fails, return Value::Undefined
-	use reifydb_type::::BorrowedFragment;
 	let fragment = BorrowedFragment::new_internal(str_val);
 
 	let parsed_value =
@@ -161,7 +155,7 @@ fn parse_typed_value(
 				.unwrap_or(Value::Undefined),
 			Type::IdentityId => parse_uuid7(fragment.clone())
 				.map(|uuid7| {
-					Value::IdentityId(reifydb_core::value::IdentityId::from(uuid7))
+					Value::IdentityId(reifydb_type::value::IdentityId::from(uuid7))
 				})
 				.unwrap_or(Value::Undefined),
 			Type::Blob => Blob::from_hex(fragment.clone())

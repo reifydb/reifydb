@@ -1237,13 +1237,14 @@ dependencies = [
  "reifydb-sub-server",
  "reifydb-sub-workerpool",
  "reifydb-transaction",
+ "reifydb-type",
 ]
 
 [[package]]
 name = "reifydb-auth"
 version = "0.0.1"
 dependencies = [
- "reifydb-core",
+ "reifydb-type",
 ]
 
 [[package]]
@@ -1256,6 +1257,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-storage",
  "reifydb-transaction",
+ "reifydb-type",
  "serde",
 ]
 
@@ -1268,6 +1270,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-storage",
  "reifydb-transaction",
+ "reifydb-type",
 ]
 
 [[package]]
@@ -1277,6 +1280,7 @@ dependencies = [
  "httparse",
  "mio",
  "reifydb",
+ "reifydb-type",
  "serde",
  "serde_json",
  "sha1",
@@ -1289,6 +1293,7 @@ dependencies = [
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [
+ "chrono",
  "crossbeam-channel",
  "crossbeam-skiplist",
  "once_cell",
@@ -1296,6 +1301,7 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "uuid",
 ]
 
 [[package]]
@@ -1310,6 +1316,7 @@ dependencies = [
  "reifydb-storage",
  "reifydb-testing",
  "reifydb-transaction",
+ "reifydb-type",
  "serde",
  "serde_json",
 ]
@@ -1340,6 +1347,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-testing",
+ "reifydb-type",
  "test_each_file",
 ]
 
@@ -1353,6 +1361,7 @@ dependencies = [
  "r2d2_sqlite",
  "reifydb-core",
  "reifydb-testing",
+ "reifydb-type",
  "rusqlite",
  "test_each_file",
 ]
@@ -1368,6 +1377,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-hash",
  "reifydb-testing",
+ "reifydb-type",
  "serde",
  "serde_json",
  "test_each_file",
@@ -1382,6 +1392,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-testing",
+ "reifydb-type",
 ]
 
 [[package]]
@@ -1395,6 +1406,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-testing",
+ "reifydb-type",
  "serde",
  "serde_json",
  "sha1",
@@ -1409,6 +1421,7 @@ version = "0.0.1"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-type",
 ]
 
 [[package]]
@@ -1418,6 +1431,7 @@ dependencies = [
  "goldenfile",
  "regex",
  "reifydb-core",
+ "reifydb-type",
  "test_each_file",
  "uuid",
 ]
@@ -1431,6 +1445,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-storage",
  "reifydb-testing",
+ "reifydb-type",
  "test_each_file",
 ]
 

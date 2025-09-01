@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{value::Blob};
-use reifydb_type::::OwnedFragment;
-use crate::{
-	columnar::ColumnData,
-	function::{ScalarFunction, ScalarFunctionContext},
-};
+use reifydb_core::value::columnar::ColumnData;
+use reifydb_type::{OwnedFragment, value::Blob};
+
+use crate::function::{ScalarFunction, ScalarFunctionContext};
 
 pub struct BlobHex;
 
@@ -57,13 +55,13 @@ impl ScalarFunction for BlobHex {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::container::StringContainer;
+	use reifydb_core::value::{
+		columnar::{Column, ColumnQualified, Columns},
+		container::Utf8Container,
+	};
 
 	use super::*;
-	use crate::{
-		columnar::{Column, ColumnQualified, Columns},
-		function::ScalarFunctionContext,
-	};
+	use crate::function::ScalarFunctionContext;
 
 	#[test]
 	fn test_blob_hex_valid_input() {
@@ -73,7 +71,7 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -104,7 +102,7 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -135,7 +133,7 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -166,7 +164,7 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -201,7 +199,7 @@ mod tests {
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -241,7 +239,7 @@ mod tests {
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -277,7 +275,7 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),
@@ -305,7 +303,7 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(StringContainer::new(
+			data: ColumnData::Utf8(Utf8Container::new(
 				hex_data,
 				bitvec.into(),
 			)),

@@ -10,9 +10,10 @@ mod promote;
 pub use convert::Convert;
 pub use demote::Demote;
 pub use promote::Promote;
+use reifydb_type::Type;
 
 use crate::{
-	ColumnDescriptor, Type,
+	ColumnDescriptor,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		DEFAULT_COLUMN_SATURATION_POLICY, Params,

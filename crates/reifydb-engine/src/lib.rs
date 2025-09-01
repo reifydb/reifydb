@@ -3,8 +3,6 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use columnar::{GroupByView, GroupKey};
-pub use reifydb_core::value::columnar;
 mod engine;
 mod evaluate;
 pub mod execute;
@@ -17,7 +15,7 @@ pub mod transaction;
 
 pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;
-pub use reifydb_core::Result;
+pub use reifydb_type::Result;
 pub use transaction::{
 	EngineTransaction, StandardCdcQueryTransaction, StandardCdcTransaction,
 	StandardCommandTransaction, StandardQueryTransaction,

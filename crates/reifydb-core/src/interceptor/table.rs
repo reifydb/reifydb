@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 
+use reifydb_type::RowNumber;
+
 use crate::{
-	RowNumber, define_api_function, define_closure_interceptor,
-	define_interceptor, impl_register_interceptor, interface::TableDef,
-	row::EncodedRow,
+	define_api_function, define_closure_interceptor, define_interceptor,
+	impl_register_interceptor, interface::TableDef, row::EncodedRow,
 };
 
 // PRE INSERT
@@ -13,8 +14,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut T,
 		table: &'a TableDef,
-		row: &'a EncodedRow,
-	}
+		row: &'a EncodedRow}
 );
 
 define_closure_interceptor!(
@@ -38,8 +38,7 @@ define_interceptor!(
 		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
-		row: &'a EncodedRow,
-	}
+		row: &'a EncodedRow}
 );
 
 define_closure_interceptor!(
@@ -63,8 +62,7 @@ define_interceptor!(
 		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
-		row: &'a EncodedRow,
-	}
+		row: &'a EncodedRow}
 );
 
 define_closure_interceptor!(
@@ -89,8 +87,7 @@ define_interceptor!(
 		table: &'a TableDef,
 		id: RowNumber,
 		row: &'a EncodedRow,
-		old_row: &'a EncodedRow,
-	}
+		old_row: &'a EncodedRow}
 );
 
 define_closure_interceptor!(
@@ -113,8 +110,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut T,
 		table: &'a TableDef,
-		id: RowNumber,
-	}
+		id: RowNumber}
 );
 
 define_closure_interceptor!(
@@ -138,8 +134,7 @@ define_interceptor!(
 		txn: &'a mut T,
 		table: &'a TableDef,
 		id: RowNumber,
-		deleted_row: &'a EncodedRow,
-	}
+		deleted_row: &'a EncodedRow}
 );
 
 define_closure_interceptor!(

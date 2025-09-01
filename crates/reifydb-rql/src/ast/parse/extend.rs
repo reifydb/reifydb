@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-    return_error,
+use reifydb_type::{
+	diagnostic::operation::extend_multiple_expressions_without_braces,
+	return_error,
 };
-use reifydb_type::::diagnostic::operation::extend_multiple_expressions_without_braces;
+
 use crate::ast::{AstExtend, parse::Parser, tokenize::Keyword};
 
 impl<'a> Parser<'a> {

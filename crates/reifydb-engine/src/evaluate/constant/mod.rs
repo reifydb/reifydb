@@ -8,26 +8,21 @@ mod uuid;
 
 use number::NumberParser;
 use reifydb_core::{
-	Type,
-	interface::{
-		evaluate::expression::ConstantExpression,
-	},
+	interface::evaluate::expression::ConstantExpression,
 	return_error,
 	value::{
-        container::undefined::UndefinedContainer,
-    },
+		columnar::{Column, ColumnData, ColumnQualified},
+		container::undefined::UndefinedContainer,
+	},
 };
-use reifydb_type::::diagnostic::cast;
-use reifydb_type::::IntoFragment;
-use reifydb_type::{parse_float, parse_int, parse_uint};
-use reifydb_type::parse_bool;
+use reifydb_type::{
+	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float,
+	parse_int, parse_uint,
+};
 use temporal::TemporalParser;
 use text::TextParser;
 
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn constant(

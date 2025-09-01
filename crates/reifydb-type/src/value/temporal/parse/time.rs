@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::temporal;
-use crate::{return_error, Error, IntoFragment, Time};
+use crate::{
+	Error, IntoFragment, Time, error::diagnostic::temporal, return_error,
+};
 
 pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]

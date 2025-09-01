@@ -3,14 +3,18 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::{JoinType, Value, interface::Transaction};
-
-use crate::{
-	StandardTransaction,
-	columnar::{
+use reifydb_core::{
+	JoinType,
+	interface::Transaction,
+	value::columnar::{
 		Column, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
+};
+use reifydb_type::Value;
+
+use crate::{
+	StandardTransaction,
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 

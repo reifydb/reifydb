@@ -6,9 +6,9 @@ license = "AGPL-3"
 authors = ["Dominique Chuo <dominique@reifydb.com>"]
 
 [dependencies]
-
-reifydb-core = { path = "../reifydb-core" }
-reifydb-engine = { path = "../reifydb-engine" }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-type = { workspace = true }
 
 # Network and async dependencies
 mio = { version = "1.0.4", features = ["net", "os-poll"] }

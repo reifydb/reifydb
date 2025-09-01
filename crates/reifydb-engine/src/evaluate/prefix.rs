@@ -4,12 +4,16 @@
 use reifydb_core::{
 	err,
 	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
+	value::columnar::{
+		Column, ColumnData, ColumnQualified, SourceQualified,
+	},
 };
-use reifydb_type::::diagnostic::operator;
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
-	evaluate::{EvaluationContext, StandardEvaluator, evaluate},
+use reifydb_type::{
+	diagnostic,
+	diagnostic::{engine::frame_error, operator},
 };
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator, evaluate};
 
 impl StandardEvaluator {
 	pub(crate) fn prefix(
@@ -20,7 +24,6 @@ impl StandardEvaluator {
 		let column = evaluate(ctx, &prefix.expression)?;
 
 		match column.data() {
-            // EngineColumnData::Bool(_, _) => Err("Cannot apply prefix operator to bool".into()),
             ColumnData::Bool(container) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     let mut result = Vec::with_capacity(container.data().len());
@@ -35,18 +38,14 @@ impl StandardEvaluator {
                         Some(table) => Column::SourceQualified(SourceQualified {
                             source: table.to_string(),
                             name: column.name().to_string(),
-                            data: ColumnData::bool_with_bitvec(result, container.bitvec()),
-                        }),
+                            data: ColumnData::bool_with_bitvec(result, container.bitvec())}),
                         None => Column::ColumnQualified(ColumnQualified {
                             name: column.name().to_string(),
-                            data: ColumnData::bool_with_bitvec(result, container.bitvec()),
-                        }),
-                    })
+                            data: ColumnData::bool_with_bitvec(result, container.bitvec())})})
                 }
-                _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
+                _ => err!(diagnostic::engine::frame_error(
                     "Cannot apply arithmetic prefix operator to bool".to_string()
-                )),
-            },
+                ))},
 
             ColumnData::Float4(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
@@ -69,13 +68,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::float4_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::float4_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::float4_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::float4_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Float8(container) => {
@@ -99,13 +95,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::float8_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::float8_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::float8_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::float8_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Int1(container) => {
@@ -129,13 +122,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Int2(container) => {
@@ -159,13 +149,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Int4(container) => {
@@ -189,13 +176,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Int8(container) => {
@@ -219,13 +203,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Int16(container) => {
@@ -249,23 +230,19 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Utf8(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_text(prefix.full_fragment_owned()))
                 }
-                _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
+                _ => err!(frame_error(
                     "Cannot apply arithmetic prefix operator to text".to_string()
-                )),
-            },
+                ))},
 
             ColumnData::Uint1(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
@@ -283,13 +260,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int1_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Uint2(container) => {
@@ -308,13 +282,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int2_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Uint4(container) => {
@@ -333,13 +304,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int4_with_bitvec(result, container.bitvec())})})
             }
 
             ColumnData::Uint8(container) => {
@@ -358,13 +326,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int8_with_bitvec(result, container.bitvec())})})
             }
             ColumnData::Uint16(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
@@ -382,13 +347,10 @@ impl StandardEvaluator {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-                    }),
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-                    }),
-                })
+                        data: ColumnData::int16_with_bitvec(result, container.bitvec())})})
             }
             // EngineColumnData::Undefined(_) => {
             //     Err("Cannot apply prefix operator to undefined data".into())
@@ -401,60 +363,50 @@ impl StandardEvaluator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::DateTime(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::Time(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::Interval(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::RowNumber(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::IdentityId(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::Uuid4(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::Uuid7(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
-                _ => unimplemented!(),
-            },
+                _ => unimplemented!()},
             ColumnData::Blob(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(reifydb_core::error::diagnostic::engine::frame_error(
+                    err!(frame_error(
                         "Cannot apply NOT operator to BLOB".to_string()
                     ))
                 }
-                _ => err!(reifydb_core::error::diagnostic::engine::frame_error(
+                _ => err!(frame_error(
                     "Cannot apply arithmetic prefix operator to BLOB".to_string()
-                )),
-            },
-        }
+                ))}}
 	}
 }

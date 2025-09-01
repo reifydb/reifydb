@@ -12,17 +12,17 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	Fragment, JoinType, SortKey,
+	JoinType, SortKey,
+	diagnostic::catalog::{schema_not_found, table_not_found},
 	interface::{
 		QueryTransaction, SchemaDef, TableDef, TableVirtualDef,
 		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 	},
-    return_error,
+	return_error,
 };
-use reifydb_type::::diagnostic::catalog::{
-    schema_not_found, table_not_found,
-};
+use reifydb_type::Fragment;
+
 use crate::plan::{
 	logical::LogicalPlan,
 	physical::{
@@ -310,8 +310,7 @@ impl Compiler {
 						stack.push(TableScan(
 							TableScanNode {
 								schema,
-								table,
-							},
+								table},
 						));
 					} else if let Some(view) = CatalogStore::find_view_by_name(
 						rx,
@@ -321,8 +320,7 @@ impl Compiler {
 						stack.push(ViewScan(
 							ViewScanNode {
 								schema,
-								view,
-							},
+								view},
 						));
 					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
 						stack.push(PhysicalPlan::TableVirtualScan(

@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::fmt::{self, Display, Formatter};
+
 use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+
 use crate::{
 	result::frame::{Frame, FrameColumn},
 	util::unicode_width::UnicodeWidthStr,
@@ -150,20 +152,18 @@ impl Display for Frame {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_type::{Uuid4, Uuid7};
-    use super::*;
+	use reifydb_type::{
+		Blob, Date, DateTime, Interval, RowNumber, Time, Uuid4, Uuid7,
+	};
+
+	use super::*;
 	use crate::{
-		BitVec, Date, DateTime, FrameColumnData, Interval, RowNumber,
-		Time,
-		value::{
-			Blob,
-			container::{
-				BlobContainer, BoolContainer, NumberContainer,
-				RowNumberContainer, StringContainer,
-				TemporalContainer, UndefinedContainer,
-				UuidContainer,
-			},
-        },
+		BitVec, FrameColumnData,
+		value::container::{
+			BlobContainer, BoolContainer, NumberContainer,
+			RowNumberContainer, TemporalContainer,
+			UndefinedContainer, Utf8Container, UuidContainer,
+		},
 	};
 
 	fn bool_column_with_bitvec(
@@ -409,7 +409,7 @@ mod tests {
 			schema: None,
 			table: None,
 			name: name.to_string(),
-			data: FrameColumnData::Utf8(StringContainer::new(
+			data: FrameColumnData::Utf8(Utf8Container::new(
 				data,
 				BitVec::from_slice(
 					&bitvec.into_iter().collect::<Vec<_>>(),

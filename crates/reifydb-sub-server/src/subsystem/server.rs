@@ -33,7 +33,7 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 		"server"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_type::Result<()> {
 		if self.server.is_some() {
 			return Ok(());
 		}
@@ -49,16 +49,21 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 		server.with_websocket().with_http();
 
 		server.start().map_err(|e| {
-            reifydb_core::error!(reifydb_core::result::error::diagnostic::internal::internal(
-                format!("Failed to start server: {:?}", e)
-            ))
-        })?;
+			reifydb_type::error!(
+				reifydb_type::diagnostic::internal::internal(
+					format!(
+						"Failed to start server: {:?}",
+						e
+					)
+				)
+			)
+		})?;
 
 		self.server = Some(server);
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	fn shutdown(&mut self) -> reifydb_type::Result<()> {
 		if let Some(mut server) = self.server.take() {
 			// Stopping server
 			server.stop();

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::util::base64;
+use reifydb_type::util::base64;
 use serde::{Deserialize, Serialize};
 use sha1::{Sha1, digest::Digest};
 // === HTTP -> WebSocket handshake helpers ===

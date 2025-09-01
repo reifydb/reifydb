@@ -19,8 +19,7 @@ impl Compiler {
 						.map(|direction| {
 							match direction.value().to_lowercase().as_str() {
                             "asc" => SortDirection::Asc,
-                            _ => SortDirection::Desc,
-                        }
+                            _ => SortDirection::Desc}
 						})
 						.unwrap_or(SortDirection::Desc);
 

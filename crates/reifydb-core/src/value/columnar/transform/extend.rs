@@ -1,10 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{
+	Blob, Date, DateTime, Interval, Time, Type, Uuid4, Uuid7,
+	diagnostic::engine, return_error,
+};
+
 use crate::{
-	BitVec, Blob, Date, DateTime, Interval, Time, Type, Uuid4, Uuid7,
-	result::error::diagnostic::engine,
-	return_error,
+	BitVec,
 	row::{EncodedRow, EncodedRowLayout},
 	value::columnar::{ColumnData, Columns},
 };
@@ -153,8 +156,7 @@ impl Columns {
                     Type::Blob => ColumnData::blob_with_bitvec(
                         vec![Blob::new(vec![]); size],
                         BitVec::repeat(size, false),
-                    ),
-                };
+                    )};
 
 				*column = column.with_new_data(new_data);
 			}
@@ -489,12 +491,10 @@ impl Columns {
 #[cfg(test)]
 mod tests {
 	mod columns {
-		use uuid::Timestamp;
+		use reifydb_type::{RowNumber, Uuid4, Uuid7};
+		use uuid::{Timestamp, Uuid};
 
-		use crate::{
-			RowNumber, Uuid4, Uuid7,
-			value::columnar::{ColumnQualified, Columns},
-		};
+		use crate::value::columnar::{ColumnQualified, Columns};
 
 		#[test]
 		fn test_boolean() {
@@ -929,8 +929,6 @@ mod tests {
 
 		#[test]
 		fn test_uuid7() {
-			use uuid::Uuid;
-
 			let uuid1 = Uuid7::from(Uuid::new_v7(
 				Timestamp::from_gregorian(1, 1),
 			));
@@ -1114,8 +1112,10 @@ mod tests {
 	}
 
 	mod row {
+		use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
+
 		use crate::{
-			BitVec, OrderedF32, OrderedF64, Type, Value,
+			BitVec,
 			row::EncodedRowLayout,
 			value::columnar::{
 				Column, ColumnData, ColumnQualified, Columns,

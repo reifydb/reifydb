@@ -1,15 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub(crate) use reifydb_core::interface::{
-	Convert, Demote, EvaluationContext, Promote,
+pub(crate) use reifydb_core::interface::EvaluationContext;
+use reifydb_core::{
+	interface::{Evaluator, evaluate::expression::Expression},
+	value::columnar::{Column, ColumnQualified, SourceQualified},
 };
-use reifydb_core::interface::{Evaluator, evaluate::expression::Expression};
 
-use crate::{
-	columnar::{Column, ColumnQualified, SourceQualified},
-	function::{Functions, blob, math},
-};
+use crate::function::{Functions, blob, math};
 
 mod access;
 mod alias;

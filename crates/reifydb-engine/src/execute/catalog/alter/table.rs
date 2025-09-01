@@ -3,19 +3,22 @@
 
 use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
 use reifydb_core::{
+	interface::{StoreId, Transaction},
+	value::columnar::Columns,
+};
+use reifydb_rql::{
+	ast::AstAlterTableOperation, plan::physical::AlterTablePlan,
+};
+use reifydb_type::{
 	Value,
 	diagnostic::{
 		catalog::{schema_not_found, table_not_found},
 		query::column_not_found,
 	},
-	interface::{StoreId, Transaction},
 	return_error,
 };
-use reifydb_rql::{
-	ast::AstAlterTableOperation, plan::physical::AlterTablePlan,
-};
 
-use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) fn alter_table<T: Transaction>(

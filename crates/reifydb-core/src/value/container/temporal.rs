@@ -3,12 +3,10 @@
 
 use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
+use reifydb_type::{Date, DateTime, Interval, IsTemporal, Time, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	BitVec, CowVec, Value,
-	value::{Date, DateTime, Interval, IsTemporal, Time},
-};
+use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TemporalContainer<T>

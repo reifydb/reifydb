@@ -75,8 +75,7 @@ pub fn value_range<'a>(value: Type) -> &'a str {
 mod tests {
 
 	mod value_max {
-		use crate::error::diagnostic::util::value_max;
-		use crate::Type;
+		use crate::{Type, error::diagnostic::util::value_max};
 
 		#[test]
 		fn test_signed_ints() {
@@ -116,8 +115,7 @@ mod tests {
 	}
 
 	mod value_range {
-		use crate::error::diagnostic::util::value_range;
-		use crate::Type;
+		use crate::{Type, error::diagnostic::util::value_range};
 
 		#[test]
 		fn test_signed_ints() {

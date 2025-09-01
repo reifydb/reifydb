@@ -3,7 +3,8 @@
 
 use std::ops::{Deref, Index};
 
-use reifydb_core::{Fragment, IndexType, JoinType, SortDirection};
+use reifydb_core::{IndexType, JoinType, SortDirection};
+use reifydb_type::Fragment;
 
 use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
 

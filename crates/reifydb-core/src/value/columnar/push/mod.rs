@@ -3,9 +3,9 @@
 
 use std::fmt::Debug;
 
-use crate::{
-	Blob, Date, DateTime, Interval, Time, value::columnar::ColumnData,
-};
+use reifydb_type::{Blob, Date, DateTime, Interval, Time};
+
+use crate::value::columnar::ColumnData;
 
 mod i128;
 mod i16;
@@ -55,8 +55,7 @@ macro_rules! impl_push {
                         "called `push::<{}>()` on EngineColumnData::{:?}",
                         stringify!($t),
                         other.get_type()
-                    ),
-                }
+                    )}
             }
         }
     };

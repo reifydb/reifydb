@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::temporal;
-use crate::{return_error, Date, Error, IntoFragment};
+use crate::{
+	Date, Error, IntoFragment, error::diagnostic::temporal, return_error,
+};
 
 pub fn parse_date<'a>(fragment: impl IntoFragment<'a>) -> Result<Date, Error> {
 	let fragment = fragment.into_fragment();

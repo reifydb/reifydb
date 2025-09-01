@@ -3,11 +3,9 @@
 
 use std::collections::HashMap;
 
-use crate::{
-	Value, error,
-	result::error::diagnostic::engine,
-	value::columnar::{ColumnData, Columns},
-};
+use reifydb_type::{Value, diagnostic::engine, error};
+
+use crate::value::columnar::{ColumnData, Columns};
 
 pub type GroupKey = Vec<Value>;
 pub type GroupByView = HashMap<GroupKey, Vec<usize>>;

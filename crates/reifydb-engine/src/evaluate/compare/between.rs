@@ -9,13 +9,12 @@ use reifydb_core::{
 			LessThanEqExpression,
 		},
 	},
-    return_error,
+	return_error,
+	value::columnar::{Column, ColumnData, ColumnQualified},
 };
-use reifydb_type::::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+use reifydb_type::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn between(

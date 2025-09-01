@@ -4,19 +4,22 @@
 use catalog::schema_not_found;
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
-	ColumnDescriptor, Value,
+	ColumnDescriptor,
+	interface::{EvaluationContext, Params, Transaction},
+	value::columnar::Columns,
+};
+use reifydb_rql::plan::physical::AlterSequencePlan;
+use reifydb_type::{
+	Value,
 	diagnostic::{
 		catalog, catalog::table_not_found, query::column_not_found,
 		sequence::can_not_alter_not_auto_increment,
 	},
-	interface::{EvaluationContext, Params, Transaction},
 	return_error,
 };
-use reifydb_rql::plan::physical::AlterSequencePlan;
 
 use crate::{
-	StandardCommandTransaction, columnar::Columns, evaluate::evaluate,
-	execute::Executor,
+	StandardCommandTransaction, evaluate::evaluate, execute::Executor,
 };
 
 impl Executor {
@@ -117,17 +120,14 @@ mod tests {
 		table::{TableColumnToCreate, TableToCreate},
 		test_utils::ensure_test_schema,
 	};
-	use reifydb_core::{
-		Fragment, Type, Value,
-		interface::{
-			Params,
-			expression::{
-				ConstantExpression::Number,
-				Expression::Constant,
-			},
+	use reifydb_core::interface::{
+		Params,
+		expression::{
+			ConstantExpression::Number, Expression::Constant,
 		},
 	};
 	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
+	use reifydb_type::{Fragment, Type, Value};
 
 	use crate::{
 		execute::Executor, test_utils::create_test_command_transaction,

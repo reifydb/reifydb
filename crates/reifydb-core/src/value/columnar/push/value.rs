@@ -1,7 +1,8 @@
+use reifydb_type::Value;
+
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
-use crate::{Value, value::columnar::data::ColumnData};
+use crate::value::columnar::data::ColumnData;
 
 impl ColumnData {
 	pub fn push_value(&mut self, value: Value) {
@@ -493,15 +494,13 @@ impl ColumnData {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use uuid::Uuid;
-    use reifydb_type::{Uuid4, Uuid7};
-    use crate::{
+	use reifydb_type::{
 		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
-		RowNumber, Time, Value,
-		value::{
-			columnar::data::ColumnData,
-        },
+		RowNumber, Time, Uuid4, Uuid7, Value,
 	};
+	use uuid::Uuid;
+
+	use crate::value::columnar::ColumnData;
 
 	#[test]
 	fn test_bool() {
@@ -1070,7 +1069,6 @@ mod tests {
 
 	#[test]
 	fn test_push_value_to_undefined_datetime() {
-		use DateTime;
 		let dt = DateTime::from_timestamp(1672531200).unwrap();
 		let mut col = ColumnData::undefined(1);
 		col.push_value(Value::DateTime(dt));

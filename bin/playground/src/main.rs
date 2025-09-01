@@ -6,9 +6,8 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, Session,
-	WithSubsystem,
-	core::interface::{Params, subsystem::logging::LogLevel::Info},
+	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, Params, Session,
+	WithSubsystem, core::interface::subsystem::logging::LogLevel::Info,
 	embedded, log_info,
 };
 

@@ -12,8 +12,12 @@
 use std::ops::RangeBounds;
 
 use reifydb_core::{
-	CowVec, event::transaction::PostCommitEvent, row::EncodedRow,
+	CowVec, EncodedKey, EncodedKeyRange, Version,
+	event::transaction::PostCommitEvent,
+	interface::{UnversionedTransaction, VersionedStorage},
+	row::EncodedRow,
 };
+use reifydb_type::Error;
 
 use super::*;
 use crate::mvcc::{
@@ -46,9 +50,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	CommandTransaction<VS, UT>
 {
-	pub fn commit(
-		&mut self,
-	) -> Result<reifydb_core::Version, reifydb_core::Error> {
+	pub fn commit(&mut self) -> Result<Version, Error> {
 		let mut version: Option<Version> = None;
 		let mut deltas = CowVec::with_capacity(8);
 		let transaction_id = self.tm.id();
@@ -95,14 +97,14 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		self.tm.as_of_version(version);
 	}
 
-	pub fn rollback(&mut self) -> Result<(), reifydb_core::Error> {
+	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {
 		self.tm.rollback()
 	}
 
 	pub fn contains_key(
 		&mut self,
 		key: &EncodedKey,
-	) -> Result<bool, reifydb_core::Error> {
+	) -> Result<bool, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
@@ -114,7 +116,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	pub fn get(
 		&mut self,
 		key: &EncodedKey,
-	) -> Result<Option<TransactionValue>, reifydb_core::Error> {
+	) -> Result<Option<TransactionValue>, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
 			Some(v) => {
@@ -136,20 +138,20 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		&mut self,
 		key: &EncodedKey,
 		row: EncodedRow,
-	) -> Result<(), reifydb_core::Error> {
+	) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, row)
 	}
 
 	pub fn remove(
 		&mut self,
 		key: &EncodedKey,
-	) -> Result<(), reifydb_core::Error> {
+	) -> Result<(), reifydb_type::Error> {
 		self.tm.remove(key)
 	}
 
 	pub fn scan(
 		&mut self,
-	) -> Result<TransactionIter<'_, VS>, reifydb_core::Error> {
+	) -> Result<TransactionIter<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter();
@@ -160,7 +162,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 
 	pub fn scan_rev(
 		&mut self,
-	) -> Result<TransactionIterRev<'_, VS>, reifydb_core::Error> {
+	) -> Result<TransactionIterRev<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter().rev();
@@ -172,7 +174,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> Result<TransactionRange<'_, VS>, reifydb_core::Error> {
+	) -> Result<TransactionRange<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -186,7 +188,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> Result<TransactionRangeRev<'_, VS>, reifydb_core::Error> {
+	) -> Result<TransactionRangeRev<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -205,14 +207,14 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	pub fn prefix<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRange<'a, VS>, reifydb_core::Error> {
+	) -> Result<TransactionRange<'a, VS>, reifydb_type::Error> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
 	pub fn prefix_rev<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRangeRev<'a, VS>, reifydb_core::Error> {
+	) -> Result<TransactionRangeRev<'a, VS>, reifydb_type::Error> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

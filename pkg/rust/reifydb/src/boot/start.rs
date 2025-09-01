@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Type,
 	event::{
 		EventListener,
 		lifecycle::{OnCreateEvent, OnStartEvent},
@@ -12,8 +11,10 @@ use reifydb_core::{
 		UnversionedCommandTransaction, UnversionedQueryTransaction,
 		UnversionedTransaction,
 	},
+	log_error,
 	row::EncodedRowLayout,
 };
+use reifydb_type::Type;
 
 pub(crate) struct StartEventListener<UT>
 where
@@ -83,10 +84,7 @@ where
 				Ok(())
 			}
 		})() {
-			reifydb_core::log_error!(
-				"Failed to handle OnStart event: {}",
-				e
-			);
+			log_error!("Failed to handle OnStart event: {}", e);
 		}
 	}
 }

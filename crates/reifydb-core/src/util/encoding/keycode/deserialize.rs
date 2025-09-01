@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::diagnostic::serialization;
 use serde::de::{
 	DeserializeSeed, EnumAccess, IntoDeserializer, SeqAccess,
 	VariantAccess, Visitor,
@@ -22,11 +23,13 @@ impl<'de> Deserializer<'de> {
 	fn take_bytes(&mut self, len: usize) -> crate::Result<&[u8]> {
 		if self.input.len() < len {
 			return Err(crate::error!(
-                crate::error::diagnostic::serialization::keycode_serialization_error(format!(
-                    "insufficient bytes, expected {len} bytes for {:x?}",
-                    self.input
-                ))
-            ));
+				serialization::keycode_serialization_error(
+					format!(
+						"insufficient bytes, expected {len} bytes for {:x?}",
+						self.input
+					)
+				)
+			));
 		}
 		let bytes = &self.input[..len];
 		self.input = &self.input[len..];
@@ -38,24 +41,26 @@ impl<'de> Deserializer<'de> {
 		let mut iter = self.input.iter().enumerate();
 		let taken = loop {
 			match iter.next() {
-                    Some((_, 0xff)) => match iter.next() {
-                        Some((i, 0xff)) => break i + 1,        // terminator
-                        Some((_, 0x00)) => decoded.push(0xff), // escaped 0xff
-                        _ => return Err(crate::error!(
-                            crate::error::diagnostic::serialization::keycode_serialization_error(
+				Some((_, 0xff)) => match iter.next() {
+					Some((i, 0xff)) => break i + 1, /* terminator */
+					Some((_, 0x00)) => decoded.push(0xff), /* escaped 0xff */
+					_ => {
+						return Err(crate::error!(
+                            serialization::keycode_serialization_error(
                                 "invalid escape sequence".to_string()
                             )
-                        )),
-                    },
-                    Some((_, b)) => decoded.push(*b),
-                    None => {
-                        return Err(crate::error!(
-                            crate::error::diagnostic::serialization::keycode_serialization_error(
+                        ));
+					}
+				},
+				Some((_, b)) => decoded.push(*b),
+				None => {
+					return Err(crate::error!(
+                            serialization::keycode_serialization_error(
                                 "unexpected end of input".to_string()
                             )
                         ));
-                    }
-                }
+				}
+			}
 		};
 		self.input = &self.input[taken..];
 		Ok(decoded)
@@ -77,16 +82,16 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 		visitor: V,
 	) -> crate::Result<V::Value> {
 		visitor.visit_bool(match self.take_bytes(1)?[0] {
-            0x01 => false,
-            0x00 => true,
-            b => {
-                return Err(crate::error!(
-                    crate::error::diagnostic::serialization::keycode_serialization_error(format!(
+			0x01 => false,
+			0x00 => true,
+			b => {
+				return Err(crate::error!(
+                    serialization::keycode_serialization_error(format!(
                         "invalid boolean value {b}"
                     ))
                 ));
-            }
-        })
+			}
+		})
 	}
 
 	fn deserialize_i8<V: Visitor<'de>>(

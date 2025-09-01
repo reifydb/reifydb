@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	Value,
 	flow::{
 		Flow, FlowChange, FlowDiff, FlowNode, FlowNodeType,
 		FlowNodeType::{SourceInlineData, SourceTable},
@@ -14,7 +13,9 @@ use reifydb_core::{
 		CommandTransaction, EncodableKey, Evaluator,
 		GetEncodedRowLayout, RowKey, StoreId, ViewId,
 	},
+	log_debug,
 };
+use reifydb_type::Value;
 
 use crate::{engine::FlowEngine, operator::OperatorContext};
 
@@ -88,7 +89,6 @@ impl<E: Evaluator> FlowEngine<E> {
 					}
 				}
 			} else {
-				use reifydb_core::log_debug;
 				log_debug!(
 					"FlowEngine: No flows registered for source {:?}",
 					source
@@ -136,7 +136,6 @@ impl<E: Evaluator> FlowEngine<E> {
 				view,
 				..
 			} => {
-				use reifydb_core::log_debug;
 				log_debug!(
 					"FlowEngine: Applying {} diffs to view {:?}",
 					change.diffs.len(),
@@ -250,8 +249,7 @@ impl<E: Evaluator> FlowEngine<E> {
                                 Value::Uuid4(v) => layout.set_uuid4(&mut row, view_idx, v),
                                 Value::Uuid7(v) => layout.set_uuid7(&mut row, view_idx, v),
                                 Value::Blob(v) => layout.set_blob(&mut row, view_idx, &v),
-                                Value::Undefined => layout.set_undefined(&mut row, view_idx),
-                            }
+                                Value::Undefined => layout.set_undefined(&mut row, view_idx)}
 						}
 
 						// Use the row_id from the diff
@@ -267,7 +265,6 @@ impl<E: Evaluator> FlowEngine<E> {
 						}
 						.encode();
 
-						use reifydb_core::log_debug;
 						log_debug!(
 							"Writing row to view {:?} with row_id {:?}, key: {:?}",
 							view_id,
@@ -342,8 +339,7 @@ impl<E: Evaluator> FlowEngine<E> {
 								Value::Uuid4(v) => layout.set_uuid4(&mut new_row, view_idx, v),
 								Value::Uuid7(v) => layout.set_uuid7(&mut new_row, view_idx, v),
 								Value::Blob(v) => layout.set_blob(&mut new_row, view_idx, &v),
-								Value::Undefined => layout.set_undefined(&mut new_row, view_idx),
-							}
+								Value::Undefined => layout.set_undefined(&mut new_row, view_idx)}
 						}
 
 						// Directly update the row using

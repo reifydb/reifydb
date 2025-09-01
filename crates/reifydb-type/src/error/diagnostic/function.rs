@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::OwnedFragment;
-use crate::Type;
+use crate::{Type, error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {

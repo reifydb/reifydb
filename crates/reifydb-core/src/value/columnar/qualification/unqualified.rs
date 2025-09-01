@@ -1,8 +1,10 @@
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
-use super::super::{Column, ColumnData, Unqualified};
-use crate::{
-	BitVec, Date, DateTime, Interval, RowNumber, Time, Uuid4, Uuid7,
+use reifydb_type::{
+	Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time,
+	Uuid4, Uuid7,
 };
+
+use super::super::{Column, ColumnData, Unqualified};
+use crate::BitVec;
 
 impl Unqualified {
 	pub fn bool(

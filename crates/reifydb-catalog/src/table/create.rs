@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	OwnedFragment, Type,
 	diagnostic::catalog::table_already_exists,
 	interface::{
 		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
@@ -10,6 +9,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
+use reifydb_type::{OwnedFragment, Type};
 
 use crate::{
 	CatalogStore,

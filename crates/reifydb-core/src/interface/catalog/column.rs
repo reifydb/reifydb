@@ -3,16 +3,14 @@
 
 use std::ops::Deref;
 
+use reifydb_type::{Type, diagnostic::number::NumberOfRangeColumnDescriptor};
 use serde::{Deserialize, Serialize};
 
 use super::policy::{
 	ColumnPolicyKind, ColumnSaturationPolicy,
 	DEFAULT_COLUMN_SATURATION_POLICY,
 };
-use crate::{
-	Type,
-	interface::{ColumnId, ColumnPolicy},
-};
+use crate::interface::{ColumnId, ColumnPolicy};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnDef {
@@ -101,6 +99,26 @@ impl<'a> ColumnDescriptor<'a> {
 				}
 			})
 			.unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
+	}
+
+	// Convert to NumberOfRangeColumnDescriptor for error reporting
+	pub fn to_number_range_descriptor(
+		&self,
+	) -> NumberOfRangeColumnDescriptor<'a> {
+		let mut descriptor = NumberOfRangeColumnDescriptor::new();
+		if let Some(schema) = self.schema {
+			descriptor = descriptor.with_schema(schema);
+		}
+		if let Some(table) = self.table {
+			descriptor = descriptor.with_table(table);
+		}
+		if let Some(column) = self.column {
+			descriptor = descriptor.with_column(column);
+		}
+		if let Some(column_type) = self.column_type {
+			descriptor = descriptor.with_column_type(column_type);
+		}
+		descriptor
 	}
 }
 

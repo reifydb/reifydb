@@ -16,8 +16,7 @@ use reifydb_core::interface::subsystem::logging::Record;
 pub struct TestLoggerHandle {
     sender: Sender<Record>,
     #[allow(dead_code)]
-    guard: reifydb_core::interface::subsystem::logging::mock::MockLoggerGuard,
-}
+    guard: reifydb_core::interface::subsystem::logging::mock::MockLoggerGuard}
 
 #[cfg(debug_assertions)]
 impl TestLoggerHandle {

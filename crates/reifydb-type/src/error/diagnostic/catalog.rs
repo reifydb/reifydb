@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
-use crate::OwnedFragment;
+use crate::{
+	OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment,
+};
 
 pub fn schema_already_exists<'a>(
 	fragment: impl IntoFragment<'a>,
@@ -19,8 +19,7 @@ pub fn schema_already_exists<'a>(
         help: Some("choose a different name or drop the existing schema first".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn schema_not_found<'a>(
@@ -37,8 +36,7 @@ pub fn schema_not_found<'a>(
         help: Some("make sure the schema exists before using it or create it first".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn table_already_exists<'a>(
@@ -56,8 +54,7 @@ pub fn table_already_exists<'a>(
         help: Some("choose a different name, drop the existing table or create table in a different schema".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn view_already_exists<'a>(
@@ -75,8 +72,7 @@ pub fn view_already_exists<'a>(
         help: Some("choose a different name, drop the existing view or create view in a different schema".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn table_not_found<'a>(
@@ -94,8 +90,7 @@ pub fn table_not_found<'a>(
         help: Some("ensure the table exists or create it first using `CREATE TABLE`".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn table_column_already_exists<'a>(
@@ -114,8 +109,7 @@ pub fn table_column_already_exists<'a>(
         help: Some("choose a different column name or drop the existing one first".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn view_not_found<'a>(
@@ -133,8 +127,7 @@ pub fn view_not_found<'a>(
         help: Some("ensure the view exists or create it first using `CREATE VIEW`".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn view_column_already_exists<'a>(
@@ -153,8 +146,7 @@ pub fn view_column_already_exists<'a>(
         help: Some("choose a different column name or drop the existing one first".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn auto_increment_invalid_type<'a>(
@@ -212,8 +204,7 @@ pub fn index_variable_length_not_supported() -> Diagnostic {
         help: Some("only fixed-size types can be indexed currently".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn index_types_directions_mismatch(
@@ -232,8 +223,7 @@ pub fn index_types_directions_mismatch(
         help: Some("each indexed field must have a corresponding sort direction".to_string()),
         column: None,
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn schema_already_pending_in_transaction<'a>(
@@ -253,8 +243,7 @@ pub fn schema_already_pending_in_transaction<'a>(
             "This usually indicates a programming error in transaction management".to_string(),
             "Consider reviewing the transaction logic for duplicate operations".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn table_already_pending_in_transaction<'a>(
@@ -277,8 +266,7 @@ pub fn table_already_pending_in_transaction<'a>(
             "This usually indicates a programming error in transaction management".to_string(),
             "Consider reviewing the transaction logic for duplicate operations".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn view_already_pending_in_transaction<'a>(
@@ -301,8 +289,7 @@ pub fn view_already_pending_in_transaction<'a>(
             "This usually indicates a programming error in transaction management".to_string(),
             "Consider reviewing the transaction logic for duplicate operations".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn cannot_update_deleted_schema<'a>(
@@ -321,8 +308,7 @@ pub fn cannot_update_deleted_schema<'a>(
         notes: vec![
             "A schema marked for deletion cannot be updated in the same transaction".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn cannot_update_deleted_table<'a>(
@@ -344,8 +330,7 @@ pub fn cannot_update_deleted_table<'a>(
         notes: vec![
             "A table marked for deletion cannot be updated in the same transaction".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn cannot_update_deleted_view<'a>(
@@ -367,8 +352,7 @@ pub fn cannot_update_deleted_view<'a>(
         notes: vec![
             "A view marked for deletion cannot be updated in the same transaction".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn cannot_delete_already_deleted_schema<'a>(
@@ -476,6 +460,5 @@ pub fn primary_key_column_not_found<'a>(
 		help: Some("ensure all columns referenced in the primary key exist in the table or view".to_string()),
 		column: None,
 		notes: vec![],
-		cause: None,
-	}
+		cause: None}
 }

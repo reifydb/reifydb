@@ -1,14 +1,8 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::{
-    Type, err,
-    interface::{LazyFragment},
-    value::Blob,
-};
-use reifydb_type::::BorrowedFragment;
-use reifydb_type::::diagnostic::cast;
-use crate::columnar::ColumnData;
+use reifydb_core::{interface::LazyFragment, value::columnar::ColumnData};
+use reifydb_type::{Blob, BorrowedFragment, Type, diagnostic::cast, err};
 
 pub fn to_blob<'a>(
 	data: &ColumnData,
@@ -48,7 +42,8 @@ pub fn to_blob<'a>(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{BitVec, Fragment};
+	use reifydb_core::BitVec;
+	use reifydb_type::Fragment;
 
 	use super::*;
 

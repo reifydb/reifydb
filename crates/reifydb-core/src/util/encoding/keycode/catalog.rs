@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	interface::{StoreId, TableId, ViewId},
-	return_internal_error,
-};
+use reifydb_type::return_internal_error;
+
+use crate::interface::{StoreId, TableId, ViewId};
 
 /// Serialize a StoreId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for

@@ -1,5 +1,4 @@
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Array conversion error
 pub fn array_conversion_error(

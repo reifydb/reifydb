@@ -3,10 +3,10 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::{
-	Type,
-	interface::{ColumnDef, ColumnIndex, SchemaId, TableVirtualDef},
+use reifydb_core::interface::{
+	ColumnDef, ColumnIndex, SchemaId, TableVirtualDef,
 };
+use reifydb_type::Type;
 
 use super::ids::{columns::sequences::*, table_virtual::SEQUENCES};
 

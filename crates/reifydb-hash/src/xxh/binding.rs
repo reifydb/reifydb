@@ -8,8 +8,7 @@
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Hash128 {
     pub low: u64,
-    pub high: u64,
-}
+    pub high: u64}
 
 
 unsafe extern "C" {

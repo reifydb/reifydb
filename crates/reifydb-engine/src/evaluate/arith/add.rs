@@ -4,22 +4,21 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	Fragment, GetType, Type,
 	interface::{Evaluator, evaluate::expression::AddExpression},
 	return_error,
 	value::{
-		IsNumber,
+		columnar::{Column, ColumnData, ColumnQualified, push::Push},
 		container::{
-			NumberContainer, StringContainer, UndefinedContainer,
+			NumberContainer, UndefinedContainer, Utf8Container,
 		},
-    },
+	},
 };
-use reifydb_type::::diagnostic::operator::add_cannot_be_applied_to_incompatible_types;
-use reifydb_type::{Promote, SafeAdd};
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified, push::Push},
-	evaluate::{EvaluationContext, StandardEvaluator},
+use reifydb_type::{
+	Fragment, GetType, IsNumber, Promote, SafeAdd, Type,
+	diagnostic::operator::add_cannot_be_applied_to_incompatible_types,
 };
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn add(
@@ -1501,8 +1500,8 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 
 fn concat_strings(
 	ctx: &EvaluationContext,
-	l: &StringContainer,
-	r: &StringContainer,
+	l: &Utf8Container,
+	r: &Utf8Container,
 	target: Type,
 	fragment: Fragment<'_>,
 ) -> crate::Result<Column> {
@@ -1527,7 +1526,7 @@ fn concat_strings(
 
 fn concat_string_with_other(
 	ctx: &EvaluationContext,
-	string_data: &StringContainer,
+	string_data: &Utf8Container,
 	other_data: &ColumnData,
 	string_is_left: bool,
 	target: Type,

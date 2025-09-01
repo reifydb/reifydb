@@ -3,28 +3,24 @@
 
 use std::fmt::Debug;
 
-use Type::Bool;
 use reifydb_core::{
-	Fragment, Type,
 	interface::{Evaluator, evaluate::expression::EqExpression},
-	return_error, value,
+	return_error,
 	value::{
-		IsNumber, IsTemporal,
+		columnar::{Column, ColumnData, ColumnQualified},
 		container::{
-			BoolContainer, NumberContainer, StringContainer,
-			TemporalContainer,
+			BoolContainer, NumberContainer, TemporalContainer,
+			Utf8Container,
 		},
-    },
+	},
 };
-use reifydb_type::::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
-use reifydb_type::value::;
-use reifydb_type::Promote;
-use reifydb_type::value::;
+use reifydb_type::{
+	Fragment, IsNumber, IsTemporal, Promote, Type::Bool,
+	diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
+	temporal, value::number,
+};
 
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn equal(
@@ -1349,8 +1345,8 @@ where
 }
 
 fn compare_utf8(
-	l: &StringContainer,
-	r: &StringContainer,
+	l: &Utf8Container,
+	r: &Utf8Container,
 	fragment: Fragment<'_>,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());

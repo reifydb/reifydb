@@ -2,16 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, Value,
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
 		expression::Expression,
 	},
-	row::EncodedKey,
+	row::{EncodedKey, EncodedRow},
+	util::CowVec,
 	value::columnar::Columns,
 };
 use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_type::{Error, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -185,15 +186,14 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 							let entry = DistinctEntry {
                                 count: 1,
                                 first_row_id: row_id.0,
-                                row_data: Self::extract_row_values(ctx, &self.expressions, after, idx)?,
-                            };
+                                row_data: Self::extract_row_values(ctx, &self.expressions, after, idx)?};
 
 							let serialized = serde_json::to_vec(&entry)
-                                .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
+                                .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-							ctx.txn.set(&key.encode(), reifydb_core::row::EncodedRow(
-                                reifydb_core::util::CowVec::new(serialized)
+							ctx.txn.set(&key.encode(), EncodedRow(
+                                CowVec::new(serialized)
                             ))?;
 
 							// Emit this row as new
@@ -217,16 +217,16 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 								.row
 								.as_ref();
 							let mut entry: DistinctEntry = serde_json::from_slice(bytes)
-                                .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
+                                .map_err(|e| Error(internal_error!(
                                     "Failed to deserialize: {}", e
                                 )))?;
 							entry.count += 1;
 							let serialized = serde_json::to_vec(&entry)
-                                .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
+                                .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-							ctx.txn.set(&key.encode(), reifydb_core::row::EncodedRow(
-                                reifydb_core::util::CowVec::new(serialized)
+							ctx.txn.set(&key.encode(), EncodedRow(
+                                CowVec::new(serialized)
                             ))?;
 							// Don't emit since it's
 							// not distinct
@@ -241,8 +241,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						output_diffs.push(FlowDiff::Insert {
                             store: *store,
                             row_ids: new_distinct_rows,
-                            after: after.clone(),
-                        });
+                            after: after.clone()});
 					}
 				}
 
@@ -274,7 +273,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 								.row
 								.as_ref();
 							let mut entry: DistinctEntry = serde_json::from_slice(bytes)
-                                .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
+                                .map_err(|e| Error(internal_error!(
                                     "Failed to deserialize: {}", e
                                 )))?;
 
@@ -284,11 +283,11 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 								entry.count -=
 									1;
 								let serialized = serde_json::to_vec(&entry)
-                                .map_err(|e| reifydb_core::Error(reifydb_core::internal_error!(
+                                .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-								ctx.txn.set(&key.encode(), reifydb_core::row::EncodedRow(
-                                    reifydb_core::util::CowVec::new(serialized)
+								ctx.txn.set(&key.encode(), EncodedRow(
+                                    CowVec::new(serialized)
                                 ))?;
 							} else {
 								// Last instance
@@ -300,7 +299,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 									.encode(
 									))?;
 
-								removed_distinct_rows.push(reifydb_core::RowNumber(entry.first_row_id));
+								removed_distinct_rows.push(reifydb_type::RowNumber(entry.first_row_id));
 							}
 						}
 					}
@@ -309,8 +308,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						output_diffs.push(FlowDiff::Remove {
                             store: *store,
                             row_ids: removed_distinct_rows,
-                            before: before.clone(),
-                        });
+                            before: before.clone()});
 					}
 				}
 

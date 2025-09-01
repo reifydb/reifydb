@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::util::value_range;
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
-use crate::{OwnedFragment, Type};
+use crate::{
+	OwnedFragment, Type,
+	error::diagnostic::{Diagnostic, util::value_range},
+	fragment::IntoFragment,
+};
 
 pub fn invalid_number_format<'a>(
 	fragment: impl IntoFragment<'a>,
@@ -46,8 +47,7 @@ pub fn invalid_number_format<'a>(
         _ => (
             "ensure the value is a valid number".to_string(),
             vec!["use a proper number format".to_string()],
-        ),
-    };
+        )};
 
 	Diagnostic {
 		code: "NUMBER_001".to_string(),
@@ -98,7 +98,6 @@ impl<'a> NumberOfRangeColumnDescriptor<'a> {
 		self.column_type = Some(column_type);
 		self
 	}
-
 
 	// Location formatting
 	pub fn location_string(&self) -> String {
@@ -247,6 +246,5 @@ pub fn integer_precision_loss<'a>(
             "consider using a different numeric type if exact precision is required".to_string(),
         ],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }

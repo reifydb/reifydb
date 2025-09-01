@@ -3,10 +3,10 @@
 
 use column::LAYOUT;
 use reifydb_core::{
-	Error, Type,
+	Error,
 	interface::{ColumnsKey, EncodableKey, QueryTransaction},
-	internal_error,
 };
+use reifydb_type::{Type, internal_error};
 
 use crate::{
 	CatalogStore,
@@ -51,8 +51,8 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::Type;
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::{
 		CatalogStore, column::ColumnId, test_utils::create_test_column,

@@ -7,17 +7,18 @@ use std::{
 };
 
 use reifydb_core::{
-	ColumnDescriptor, Fragment, Type, Value,
+	ColumnDescriptor,
 	interface::{
 		TableDef, Transaction, evaluate::expression::AliasExpression,
 	},
-};
-
-use crate::{
-	columnar::{
+	value::columnar::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
+};
+use reifydb_type::{Fragment, Type, Value};
+
+use crate::{
 	evaluate::{EvaluationContext, cast::cast_column_data, evaluate},
 	execute::{Batch, ExecutionContext, QueryNode},
 };
@@ -297,8 +298,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 							columns: Columns::empty(),
 							row_count: 1,
 							take: None,
-							params: &ctx.params,
-						};
+							params: &ctx.params};
 
 							match cast_column_data(
 							&ctx,

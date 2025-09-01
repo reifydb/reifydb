@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::Transaction;
-
-use crate::{
-	columnar::layout::ColumnsLayout,
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
+use reifydb_core::{
+	interface::Transaction, value::columnar::layout::ColumnsLayout,
 };
+
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
 pub(crate) struct TakeNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,

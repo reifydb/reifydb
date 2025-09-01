@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
-use crate::Type;
+use crate::{Type, error::diagnostic::Diagnostic, fragment::IntoFragment};
 
 pub fn not_can_not_applied_to_number<'a>(
 	fragment: impl IntoFragment<'a>,
@@ -22,8 +20,7 @@ pub fn not_can_not_applied_to_number<'a>(
             "For numeric negation, use the minus (-) operator instead".to_string(),
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn not_can_not_applied_to_text<'a>(
@@ -43,8 +40,7 @@ pub fn not_can_not_applied_to_text<'a>(
             "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
             "For string operations, use appropriate string functions instead".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn not_can_not_applied_to_temporal<'a>(
@@ -64,8 +60,7 @@ pub fn not_can_not_applied_to_temporal<'a>(
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn not_can_not_applied_to_uuid<'a>(
@@ -85,8 +80,7 @@ pub fn not_can_not_applied_to_uuid<'a>(
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn and_can_not_applied_to_number<'a>(
@@ -106,8 +100,7 @@ pub fn and_can_not_applied_to_number<'a>(
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise AND (&) operator instead".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn and_can_not_applied_to_text<'a>(
@@ -127,8 +120,7 @@ pub fn and_can_not_applied_to_text<'a>(
             "To convert text to boolean, use comparison operators like: text != ''".to_string(),
             "For text concatenation, use the string concatenation operator (||) instead".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn and_can_not_applied_to_temporal<'a>(
@@ -148,8 +140,7 @@ pub fn and_can_not_applied_to_temporal<'a>(
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn and_can_not_applied_to_uuid<'a>(
@@ -169,8 +160,7 @@ pub fn and_can_not_applied_to_uuid<'a>(
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn or_can_not_applied_to_number<'a>(
@@ -190,8 +180,7 @@ pub fn or_can_not_applied_to_number<'a>(
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise OR (|) operator instead".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn or_can_not_applied_to_text<'a>(
@@ -211,8 +200,7 @@ pub fn or_can_not_applied_to_text<'a>(
             "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
             "For text concatenation, use the string concatenation operator (+) instead".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn or_can_not_applied_to_temporal<'a>(
@@ -232,8 +220,7 @@ pub fn or_can_not_applied_to_temporal<'a>(
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn or_can_not_applied_to_uuid<'a>(
@@ -253,8 +240,7 @@ pub fn or_can_not_applied_to_uuid<'a>(
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn xor_can_not_applied_to_number<'a>(
@@ -274,8 +260,7 @@ pub fn xor_can_not_applied_to_number<'a>(
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise XOR (^) operator instead".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn xor_can_not_applied_to_text<'a>(
@@ -295,8 +280,7 @@ pub fn xor_can_not_applied_to_text<'a>(
             "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
             "XOR returns true when exactly one operand is true".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn xor_can_not_applied_to_temporal<'a>(
@@ -316,8 +300,7 @@ pub fn xor_can_not_applied_to_temporal<'a>(
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Interval".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn xor_can_not_applied_to_uuid<'a>(
@@ -337,8 +320,7 @@ pub fn xor_can_not_applied_to_uuid<'a>(
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...' ".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn add_cannot_be_applied_to_incompatible_types<'a>(
@@ -360,8 +342,7 @@ pub fn add_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Consider converting operands to compatible numeric types first".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn sub_cannot_be_applied_to_incompatible_types<'a>(
@@ -383,8 +364,7 @@ pub fn sub_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Consider converting operands to compatible numeric types first".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn mul_cannot_be_applied_to_incompatible_types<'a>(
@@ -406,8 +386,7 @@ pub fn mul_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Consider converting operands to compatible numeric types first".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn div_cannot_be_applied_to_incompatible_types<'a>(
@@ -429,8 +408,7 @@ pub fn div_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Consider converting operands to compatible numeric types first".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn rem_cannot_be_applied_to_incompatible_types<'a>(
@@ -452,8 +430,7 @@ pub fn rem_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Consider converting operands to compatible numeric types first".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -475,8 +452,7 @@ pub fn equal_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Equality comparison is only supported between compatible types".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn not_equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -498,8 +474,7 @@ pub fn not_equal_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Inequality comparison is only supported between compatible types".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn less_than_cannot_be_applied_to_incompatible_types<'a>(
@@ -521,8 +496,7 @@ pub fn less_than_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Less than comparison is only supported between compatible types".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn less_than_equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -544,8 +518,7 @@ pub fn less_than_equal_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Less than or equal comparison is only supported between compatible types".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn greater_than_cannot_be_applied_to_incompatible_types<'a>(
@@ -567,8 +540,7 @@ pub fn greater_than_cannot_be_applied_to_incompatible_types<'a>(
             format!("Right operand is of type: {}", right),
             "Greater than comparison is only supported between compatible types".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn greater_than_equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -591,8 +563,7 @@ pub fn greater_than_equal_cannot_be_applied_to_incompatible_types<'a>(
             "Greater than or equal comparison is only supported between compatible types"
                 .to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn between_cannot_be_applied_to_incompatible_types<'a>(
@@ -617,6 +588,5 @@ pub fn between_cannot_be_applied_to_incompatible_types<'a>(
             format!("Range bounds are of type: {}", range_type),
             "BETWEEN comparison is only supported between compatible types".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }

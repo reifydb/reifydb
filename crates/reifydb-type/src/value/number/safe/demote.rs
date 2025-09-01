@@ -118,7 +118,7 @@ mod tests {
 	}
 
 	mod i32_to_i16 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -157,7 +157,7 @@ mod tests {
 	}
 
 	mod i32_to_i8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -196,7 +196,7 @@ mod tests {
 	}
 
 	mod i64_to_i32 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -235,7 +235,7 @@ mod tests {
 	}
 
 	mod i64_to_i16 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -274,7 +274,7 @@ mod tests {
 	}
 
 	mod i64_to_i8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -313,7 +313,7 @@ mod tests {
 	}
 
 	mod i128_to_i64 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -352,7 +352,7 @@ mod tests {
 	}
 
 	mod i128_to_i32 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -391,7 +391,7 @@ mod tests {
 	}
 
 	mod i128_to_i16 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -430,7 +430,7 @@ mod tests {
 	}
 
 	mod i128_to_i8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -469,7 +469,7 @@ mod tests {
 	}
 
 	mod u16_to_u8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -508,7 +508,7 @@ mod tests {
 	}
 
 	mod u32_to_u16 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -547,7 +547,7 @@ mod tests {
 	}
 
 	mod u32_to_u8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -586,7 +586,7 @@ mod tests {
 	}
 
 	mod u64_to_u32 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -625,7 +625,7 @@ mod tests {
 	}
 
 	mod u64_to_u16 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -664,7 +664,7 @@ mod tests {
 	}
 
 	mod u64_to_u8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -703,7 +703,7 @@ mod tests {
 	}
 
 	mod u128_to_u64 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -742,7 +742,7 @@ mod tests {
 	}
 
 	mod u128_to_u32 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -781,7 +781,7 @@ mod tests {
 	}
 
 	mod u128_to_u16 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -820,7 +820,7 @@ mod tests {
 	}
 
 	mod u128_to_u8 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {
@@ -859,7 +859,7 @@ mod tests {
 	}
 
 	mod f64_to_f32 {
-		use crate::value::number::SafeDemote;
+		use crate::SafeDemote;
 
 		#[test]
 		fn test_checked_demote_happy() {

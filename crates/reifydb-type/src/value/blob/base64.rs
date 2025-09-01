@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Error, IntoFragment};
-use crate::error::diagnostic::blob;
-use crate::util::engine::general_purpose;
 use super::Blob;
+use crate::{
+	Error, IntoFragment, error::diagnostic::blob,
+	util::base64::engine::general_purpose,
+};
 
 impl Blob {
 	pub fn from_b64<'a>(
@@ -55,8 +56,8 @@ impl Blob {
 
 #[cfg(test)]
 mod tests {
-	use crate::OwnedFragment;
 	use super::*;
+	use crate::OwnedFragment;
 
 	#[test]
 	fn test_from_b64() {

@@ -15,6 +15,7 @@ default = []
 
 [dependencies]
 reifydb = { workspace = true }
+reifydb-type = { workspace = true }
 
 # Network and async dependencies (matching server)
 mio = { version = "1.0.4", features = ["net", "os-poll"] }

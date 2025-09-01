@@ -7,9 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb-core = { workspace = true }
+reifydb-core = { workspace = true}
 reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
 
 crossbeam-skiplist = {workspace = true}
 once_cell = {workspace = true}

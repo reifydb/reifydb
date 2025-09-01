@@ -7,8 +7,9 @@ use std::{
 	rc::Rc,
 };
 
+use reifydb_type::{Result, diagnostic::internal, error};
+
 use super::IocContainer;
-use crate::{Result, diagnostic::internal, error};
 
 /// Single-threaded lazy resolution wrapper using OnceCell
 /// Can be cheaply cloned as it uses Rc internally

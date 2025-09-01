@@ -4,13 +4,13 @@
 //! Compilation of inline data operations
 
 use reifydb_core::{
-	Fragment,
 	flow::FlowNodeType,
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::{AliasExpression, IdentExpression},
 	},
 };
+use reifydb_type::Fragment;
 
 use super::super::{
 	CompileOperator, FlowCompiler, conversion::to_owned_expression,
@@ -34,8 +34,7 @@ impl<'a> From<InlineDataNode<'a>> for InlineDataCompiler {
 							AliasExpression {
 					alias: IdentExpression(Fragment::Owned(alias_expr.alias.0.into_owned())),
 					expression: Box::new(to_owned_expression(*alias_expr.expression)),
-					fragment: Fragment::Owned(alias_expr.fragment.into_owned()),
-				}
+					fragment: Fragment::Owned(alias_expr.fragment.into_owned())}
 						})
 						.collect()
 				})

@@ -4,8 +4,7 @@
 pub use encoded::{EncodedRow, EncodedRowIter, EncodedRowIterator};
 pub use key::{EncodedKey, EncodedKeyRange};
 pub use layout::{EncodedRowLayout, Field};
-
-use crate::RowNumber;
+use reifydb_type::RowNumber;
 
 mod encoded;
 mod get;

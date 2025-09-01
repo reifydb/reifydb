@@ -14,7 +14,7 @@ use Key::Row;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_cdc::{PollConsumer, PollConsumerConfig};
 use reifydb_core::{
-	EncodedKey, Result, RowNumber,
+	EncodedKey, Result,
 	diagnostic::Diagnostic,
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
@@ -35,6 +35,7 @@ use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
+use reifydb_type::{OwnedFragment, RowNumber};
 
 #[test]
 fn test_consumer_lifecycle() {
@@ -522,12 +523,12 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {
-			return Err(reifydb_core::Error(Diagnostic {
+			return Err(reifydb_type::Error(Diagnostic {
 				code: "TEST_ERROR".to_string(),
 				statement: None,
 				message: "Test failure".to_string(),
 				column: None,
-				fragment: reifydb_type::::OwnedFragment::None,
+				fragment: OwnedFragment::None,
 				label: None,
 				help: None,
 				notes: vec![],

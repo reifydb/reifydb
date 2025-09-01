@@ -16,6 +16,7 @@ use reifydb_catalog::sequence::flow::{
 	next_flow_edge_id, next_flow_id, next_flow_node_id,
 };
 use reifydb_core::{
+	flow,
 	flow::{Flow, FlowEdge, FlowNode, FlowNodeType},
 	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
 };
@@ -216,13 +217,10 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		// Create a MapTerminal operator with the view ID - convert
 		// expressions to static
 		let mut builder = self.build_node(FlowNodeType::Operator {
-			operator:
-				reifydb_core::flow::OperatorType::MapTerminal {
-					expressions: to_owned_expressions(
-						map_node.map,
-					),
-					view_id: sink.id,
-				},
+			operator: flow::OperatorType::MapTerminal {
+				expressions: to_owned_expressions(map_node.map),
+				view_id: sink.id,
+			},
 		});
 
 		if let Some(input) = input_node {

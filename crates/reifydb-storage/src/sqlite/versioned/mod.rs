@@ -215,8 +215,7 @@ pub(crate) fn execute_batched_range_query(
 						Ok(Versioned {
                         key: EncodedKey(CowVec::new(row.get(0)?)),
                         row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?,
-                    })
+                        version: row.get(2)?})
 					},
 				)
 				.unwrap();
@@ -250,8 +249,7 @@ pub(crate) fn execute_batched_range_query(
 						Ok(Versioned {
                         key: EncodedKey(CowVec::new(row.get(0)?)),
                         row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?,
-                    })
+                        version: row.get(2)?})
 					},
 				)
 				.unwrap();
@@ -295,8 +293,7 @@ pub(crate) fn execute_batched_range_query(
 						Ok(Versioned {
                         key: EncodedKey(CowVec::new(row.get(0)?)),
                         row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?,
-                    })
+                        version: row.get(2)?})
 					},
 				)
 				.unwrap();

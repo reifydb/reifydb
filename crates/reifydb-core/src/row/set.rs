@@ -3,15 +3,12 @@
 
 use std::ptr;
 
+use reifydb_type::{
+	Blob, Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
+};
 use uuid::Uuid;
 
-use crate::{
-	Type,
-	row::{EncodedRow, EncodedRowLayout},
-	value::{
-		Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7,
-	},
-};
+use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
 	pub fn set_bool(
@@ -512,14 +509,12 @@ impl EncodedRowLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use crate::{
-		Type,
-		row::EncodedRowLayout,
-		value::{
-			Blob, Date, DateTime, IdentityId, Interval, Time,
-			Uuid4, Uuid7,
-		},
+	use reifydb_type::{
+		Blob, Date, DateTime, IdentityId, Interval, Time, Type, Uuid4,
+		Uuid7,
 	};
+
+	use crate::row::EncodedRowLayout;
 
 	#[test]
 	fn test_bool_and_clone_on_write() {

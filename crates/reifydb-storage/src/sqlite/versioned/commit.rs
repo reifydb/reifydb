@@ -10,10 +10,10 @@ use reifydb_core::{
 	CowVec, Result, Version,
 	delta::Delta,
 	interface::{TransactionId, VersionedCommit},
-	result::error::diagnostic::sequence,
 	return_error,
 	row::EncodedRow,
 };
+use reifydb_type::diagnostic::sequence;
 use rusqlite::params;
 
 use super::{ensure_table_exists, table_name};
@@ -46,8 +46,7 @@ impl VersionedCommit for Sqlite {
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
                 Ok(seq) => seq,
-                Err(_) => return_error!(sequence::transaction_sequence_exhausted()),
-            };
+                Err(_) => return_error!(sequence::transaction_sequence_exhausted())};
 
 			let table = table_name(delta.key())?;
 			let before_value =
