@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
-use crate::Type;
+use crate::{Type, error::diagnostic::Diagnostic, fragment::IntoFragment};
 
 pub fn unsupported_cast<'a>(
 	fragment: impl IntoFragment<'a>,
@@ -29,8 +27,7 @@ pub fn unsupported_cast<'a>(
                 .to_string(),
         ],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_number<'a>(
@@ -127,6 +124,5 @@ pub fn invalid_blob_to_utf8<'a>(
         help: Some("BLOB contains invalid UTF-8 bytes. Consider using to_utf8_lossy() function instead".to_string()),
         notes: vec![],
         column: None,
-        cause: Some(Box::from(cause)),
-    }
+        cause: Some(Box::from(cause))}
 }

@@ -9,6 +9,7 @@ use reifydb_core::{
 	},
 	log_warn, return_error,
 };
+use reifydb_type::internal_error;
 
 use crate::{
 	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
@@ -92,7 +93,7 @@ where
 	}
 
 	fn get_schema(&mut self, id: SchemaId) -> crate::Result<SchemaDef> {
-		use reifydb_core::{error, internal_error};
+		use reifydb_core::error;
 
 		self.find_schema(id)?
 			.ok_or_else(|| {

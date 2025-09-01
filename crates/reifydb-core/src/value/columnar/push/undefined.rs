@@ -84,7 +84,7 @@ impl ColumnData {
 
 #[cfg(test)]
 mod tests {
-	use crate::value::columnar::data::ColumnData;
+	use crate::value::columnar::ColumnData;
 
 	#[test]
 	fn test_bool() {

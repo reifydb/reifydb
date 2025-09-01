@@ -4,21 +4,17 @@
 //! Conversion utilities for transforming borrowed data to owned data at the
 //! flow compilation boundary
 
-use reifydb_core::{
-	Fragment,
-	interface::evaluate::expression::{
-		AccessSourceExpression, AddExpression, AliasExpression,
-		AndExpression, BetweenExpression, CallExpression,
-		CastExpression, ColumnExpression, ConstantExpression,
-		DivExpression, EqExpression, Expression,
-		GreaterThanEqExpression, GreaterThanExpression,
-		IdentExpression, LessThanEqExpression, LessThanExpression,
-		MulExpression, NotEqExpression, OrExpression,
-		ParameterExpression, PrefixExpression, PrefixOperator,
-		RemExpression, SubExpression, TupleExpression, TypeExpression,
-		XorExpression,
-	},
+use reifydb_core::interface::evaluate::expression::{
+	AccessSourceExpression, AddExpression, AliasExpression, AndExpression,
+	BetweenExpression, CallExpression, CastExpression, ColumnExpression,
+	ConstantExpression, DivExpression, EqExpression, Expression,
+	GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
+	LessThanEqExpression, LessThanExpression, MulExpression,
+	NotEqExpression, OrExpression, ParameterExpression, PrefixExpression,
+	PrefixOperator, RemExpression, SubExpression, TupleExpression,
+	TypeExpression, XorExpression,
 };
+use reifydb_type::Fragment;
 
 use crate::plan::physical::PhysicalPlan;
 
@@ -311,42 +307,34 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
         PhysicalPlan::Aggregate(node) => PhysicalPlan::Aggregate(crate::plan::physical::AggregateNode {
             input: Box::new(to_owned_physical_plan(*node.input)),
             by: to_owned_expressions(node.by),
-            map: to_owned_expressions(node.map),
-        }),
+            map: to_owned_expressions(node.map)}),
         PhysicalPlan::Map(node) => PhysicalPlan::Map(crate::plan::physical::MapNode {
             input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
-            map: to_owned_expressions(node.map),
-        }),
+            map: to_owned_expressions(node.map)}),
         PhysicalPlan::Filter(node) => PhysicalPlan::Filter(crate::plan::physical::FilterNode {
             input: Box::new(to_owned_physical_plan(*node.input)),
-            conditions: to_owned_expressions(node.conditions),
-        }),
+            conditions: to_owned_expressions(node.conditions)}),
         PhysicalPlan::Sort(node) => PhysicalPlan::Sort(crate::plan::physical::SortNode {
             input: Box::new(to_owned_physical_plan(*node.input)),
             by: node.by, // SortKey doesn't contain fragments
         }),
         PhysicalPlan::Take(node) => PhysicalPlan::Take(crate::plan::physical::TakeNode {
             input: Box::new(to_owned_physical_plan(*node.input)),
-            take: node.take,
-        }),
+            take: node.take}),
         PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::plan::physical::DistinctNode {
             input: Box::new(to_owned_physical_plan(*node.input)),
-            columns: node.columns.into_iter().map(|f| Fragment::Owned(f.into_owned())).collect(),
-        }),
+            columns: node.columns.into_iter().map(|f| Fragment::Owned(f.into_owned())).collect()}),
         PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::plan::physical::JoinInnerNode {
             left: Box::new(to_owned_physical_plan(*node.left)),
             right: Box::new(to_owned_physical_plan(*node.right)),
-            on: to_owned_expressions(node.on),
-        }),
+            on: to_owned_expressions(node.on)}),
         PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::plan::physical::JoinLeftNode {
             left: Box::new(to_owned_physical_plan(*node.left)),
             right: Box::new(to_owned_physical_plan(*node.right)),
-            on: to_owned_expressions(node.on),
-        }),
+            on: to_owned_expressions(node.on)}),
         PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
             input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
-            extend: to_owned_expressions(node.extend),
-        }),
+            extend: to_owned_expressions(node.extend)}),
         PhysicalPlan::TableScan(node) => PhysicalPlan::TableScan(node), // TableScanNode doesn't contain fragments
         PhysicalPlan::InlineData(node) => PhysicalPlan::InlineData(crate::plan::physical::InlineDataNode {
             rows: node.rows.into_iter().map(|row| {
@@ -356,11 +344,8 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
                             Fragment::Owned(alias_expr.alias.0.into_owned())
                         ),
                         expression: Box::new(to_owned_expression(*alias_expr.expression)),
-                        fragment: Fragment::Owned(alias_expr.fragment.into_owned()),
-                    }
+                        fragment: Fragment::Owned(alias_expr.fragment.into_owned())}
                 }).collect()
-            }).collect(),
-        }),
-        _ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
-    }
+            }).collect()}),
+        _ => unimplemented!("Implement conversion for remaining PhysicalPlan variants")}
 }

@@ -307,7 +307,7 @@ mod tests {
 		}
 	}
 	mod i8_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -338,7 +338,7 @@ mod tests {
 		}
 	}
 	mod i8_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -369,7 +369,7 @@ mod tests {
 		}
 	}
 	mod i8_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -400,7 +400,7 @@ mod tests {
 		}
 	}
 	mod i8_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -434,7 +434,7 @@ mod tests {
 		}
 	}
 	mod i8_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -458,7 +458,7 @@ mod tests {
 		}
 	}
 	mod i8_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -483,7 +483,7 @@ mod tests {
 	}
 
 	mod i16_to_u8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -514,7 +514,7 @@ mod tests {
 		}
 	}
 	mod i16_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -545,7 +545,7 @@ mod tests {
 		}
 	}
 	mod i16_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -576,7 +576,7 @@ mod tests {
 		}
 	}
 	mod i16_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -607,7 +607,7 @@ mod tests {
 		}
 	}
 	mod i16_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -641,7 +641,7 @@ mod tests {
 		}
 	}
 	mod i16_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -665,7 +665,7 @@ mod tests {
 		}
 	}
 	mod i16_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -690,7 +690,7 @@ mod tests {
 	}
 
 	mod i32_to_u8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -721,7 +721,7 @@ mod tests {
 		}
 	}
 	mod i32_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -752,7 +752,7 @@ mod tests {
 		}
 	}
 	mod i32_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -783,7 +783,7 @@ mod tests {
 		}
 	}
 	mod i32_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -814,7 +814,7 @@ mod tests {
 		}
 	}
 	mod i32_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -848,7 +848,7 @@ mod tests {
 		}
 	}
 	mod i32_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -872,7 +872,7 @@ mod tests {
 		}
 	}
 	mod i32_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -897,7 +897,7 @@ mod tests {
 	}
 
 	mod i64_to_u8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -928,7 +928,7 @@ mod tests {
 		}
 	}
 	mod i64_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -959,7 +959,7 @@ mod tests {
 		}
 	}
 	mod i64_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -990,7 +990,7 @@ mod tests {
 		}
 	}
 	mod i64_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1021,7 +1021,7 @@ mod tests {
 		}
 	}
 	mod i64_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1055,7 +1055,7 @@ mod tests {
 		}
 	}
 	mod i64_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1114,7 +1114,7 @@ mod tests {
 		}
 	}
 	mod i64_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1174,7 +1174,7 @@ mod tests {
 	}
 
 	mod i128_to_u8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1205,7 +1205,7 @@ mod tests {
 		}
 	}
 	mod i128_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1236,7 +1236,7 @@ mod tests {
 		}
 	}
 	mod i128_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1267,7 +1267,7 @@ mod tests {
 		}
 	}
 	mod i128_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1298,7 +1298,7 @@ mod tests {
 		}
 	}
 	mod i128_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1332,7 +1332,7 @@ mod tests {
 		}
 	}
 	mod i128_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1391,7 +1391,7 @@ mod tests {
 		}
 	}
 	mod i128_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1451,7 +1451,7 @@ mod tests {
 	}
 
 	mod u8_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1482,7 +1482,7 @@ mod tests {
 		}
 	}
 	mod u8_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1506,7 +1506,7 @@ mod tests {
 		}
 	}
 	mod u8_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1530,7 +1530,7 @@ mod tests {
 		}
 	}
 	mod u8_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1554,7 +1554,7 @@ mod tests {
 		}
 	}
 	mod u8_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1578,7 +1578,7 @@ mod tests {
 		}
 	}
 	mod u8_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1602,7 +1602,7 @@ mod tests {
 		}
 	}
 	mod u8_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1627,7 +1627,7 @@ mod tests {
 	}
 
 	mod u16_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1658,7 +1658,7 @@ mod tests {
 		}
 	}
 	mod u16_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1689,7 +1689,7 @@ mod tests {
 		}
 	}
 	mod u16_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1713,7 +1713,7 @@ mod tests {
 		}
 	}
 	mod u16_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1737,7 +1737,7 @@ mod tests {
 		}
 	}
 	mod u16_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1761,7 +1761,7 @@ mod tests {
 		}
 	}
 	mod u16_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1785,7 +1785,7 @@ mod tests {
 		}
 	}
 	mod u16_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1810,7 +1810,7 @@ mod tests {
 	}
 
 	mod u32_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1841,7 +1841,7 @@ mod tests {
 		}
 	}
 	mod u32_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1872,7 +1872,7 @@ mod tests {
 		}
 	}
 	mod u32_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1903,7 +1903,7 @@ mod tests {
 		}
 	}
 	mod u32_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1927,7 +1927,7 @@ mod tests {
 		}
 	}
 	mod u32_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -1951,7 +1951,7 @@ mod tests {
 		}
 	}
 	mod u32_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -1975,7 +1975,7 @@ mod tests {
 		}
 	}
 	mod u32_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -2000,7 +2000,7 @@ mod tests {
 	}
 
 	mod u64_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2031,7 +2031,7 @@ mod tests {
 		}
 	}
 	mod u64_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2062,7 +2062,7 @@ mod tests {
 		}
 	}
 	mod u64_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2093,7 +2093,7 @@ mod tests {
 		}
 	}
 	mod u64_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2124,7 +2124,7 @@ mod tests {
 		}
 	}
 	mod u64_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2148,7 +2148,7 @@ mod tests {
 		}
 	}
 	mod u64_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -2207,7 +2207,7 @@ mod tests {
 		}
 	}
 	mod u64_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -2267,7 +2267,7 @@ mod tests {
 	}
 
 	mod u128_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2298,7 +2298,7 @@ mod tests {
 		}
 	}
 	mod u128_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2329,7 +2329,7 @@ mod tests {
 		}
 	}
 	mod u128_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2360,7 +2360,7 @@ mod tests {
 		}
 	}
 	mod u128_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2391,7 +2391,7 @@ mod tests {
 		}
 	}
 	mod u128_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2422,7 +2422,7 @@ mod tests {
 		}
 	}
 	mod u128_to_f32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -2481,7 +2481,7 @@ mod tests {
 		}
 	}
 	mod u128_to_f64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -2541,7 +2541,7 @@ mod tests {
 	}
 
 	mod f32_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2629,7 +2629,7 @@ mod tests {
 	}
 
 	mod f32_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2682,7 +2682,7 @@ mod tests {
 	}
 
 	mod f32_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2728,7 +2728,7 @@ mod tests {
 	}
 
 	mod f32_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2774,7 +2774,7 @@ mod tests {
 	}
 
 	mod f32_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2820,7 +2820,7 @@ mod tests {
 	}
 
 	mod f32_to_u8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2901,7 +2901,7 @@ mod tests {
 	}
 
 	mod f32_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2947,7 +2947,7 @@ mod tests {
 	}
 
 	mod f32_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -2993,7 +2993,7 @@ mod tests {
 	}
 
 	mod f32_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3039,7 +3039,7 @@ mod tests {
 	}
 
 	mod f32_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3071,7 +3071,7 @@ mod tests {
 	}
 
 	mod f64_to_i8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3159,7 +3159,7 @@ mod tests {
 	}
 
 	mod f64_to_i16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3212,7 +3212,7 @@ mod tests {
 	}
 
 	mod f64_to_i32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3258,7 +3258,7 @@ mod tests {
 	}
 
 	mod f64_to_i64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3304,7 +3304,7 @@ mod tests {
 	}
 
 	mod f64_to_i128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3350,7 +3350,7 @@ mod tests {
 	}
 
 	mod f64_to_u8 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3431,7 +3431,7 @@ mod tests {
 	}
 
 	mod f64_to_u16 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3477,7 +3477,7 @@ mod tests {
 	}
 
 	mod f64_to_u32 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3523,7 +3523,7 @@ mod tests {
 	}
 
 	mod f64_to_u64 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -3569,7 +3569,7 @@ mod tests {
 	}
 
 	mod f64_to_u128 {
-		use crate::value::number::SafeConvert;
+		use crate::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {

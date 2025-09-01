@@ -361,8 +361,6 @@ mod tests {
 		atomic::{AtomicU64, Ordering},
 	};
 
-	use reifydb_core::{EncodedKey, Version};
-
 	use super::*;
 	use crate::mvcc::transaction::version::VersionProvider;
 

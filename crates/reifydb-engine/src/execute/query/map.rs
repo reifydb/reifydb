@@ -6,10 +6,11 @@ use std::sync::Arc;
 use reifydb_core::{
 	ColumnDescriptor,
 	interface::{Transaction, evaluate::expression::Expression},
+	value::columnar::{Columns, layout::ColumnsLayout},
 };
 use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+
 use crate::{
-	columnar::{Columns, layout::ColumnsLayout},
 	evaluate::{EvaluationContext, evaluate},
 	execute::{
 		Batch, ExecutionContext, ExecutionPlan, QueryNode,

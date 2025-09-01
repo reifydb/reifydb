@@ -62,7 +62,7 @@ where
 {
 	pub fn write(
 		&self,
-	) -> Result<TransactionManagerCommand<L>, reifydb_core::Error> {
+	) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
 			oracle: self.inner.clone(),

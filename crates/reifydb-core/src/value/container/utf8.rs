@@ -3,17 +3,18 @@
 
 use std::ops::Deref;
 
+use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, Value};
+use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct StringContainer {
+pub struct Utf8Container {
 	data: CowVec<String>,
 	bitvec: BitVec,
 }
 
-impl StringContainer {
+impl Utf8Container {
 	pub fn new(data: Vec<String>, bitvec: BitVec) -> Self {
 		debug_assert_eq!(data.len(), bitvec.len());
 		Self {
@@ -187,7 +188,7 @@ impl StringContainer {
 	}
 }
 
-impl Deref for StringContainer {
+impl Deref for Utf8Container {
 	type Target = [String];
 
 	fn deref(&self) -> &Self::Target {
@@ -195,7 +196,7 @@ impl Deref for StringContainer {
 	}
 }
 
-impl Default for StringContainer {
+impl Default for Utf8Container {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}
@@ -214,7 +215,7 @@ mod tests {
 			"test".to_string(),
 		];
 		let bitvec = BitVec::from_slice(&[true, true, true]);
-		let container = StringContainer::new(data.clone(), bitvec);
+		let container = Utf8Container::new(data.clone(), bitvec);
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&"hello".to_string()));
@@ -229,7 +230,7 @@ mod tests {
 			"bar".to_string(),
 			"baz".to_string(),
 		];
-		let container = StringContainer::from_vec(data);
+		let container = Utf8Container::from_vec(data);
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&"foo".to_string()));
@@ -244,7 +245,7 @@ mod tests {
 
 	#[test]
 	fn test_with_capacity() {
-		let container = StringContainer::with_capacity(10);
+		let container = Utf8Container::with_capacity(10);
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 		assert!(container.capacity() >= 10);
@@ -252,7 +253,7 @@ mod tests {
 
 	#[test]
 	fn test_push() {
-		let mut container = StringContainer::with_capacity(3);
+		let mut container = Utf8Container::with_capacity(3);
 
 		container.push("first".to_string());
 		container.push("second".to_string());
@@ -270,11 +271,11 @@ mod tests {
 
 	#[test]
 	fn test_extend() {
-		let mut container1 = StringContainer::from_vec(vec![
+		let mut container1 = Utf8Container::from_vec(vec![
 			"a".to_string(),
 			"b".to_string(),
 		]);
-		let container2 = StringContainer::from_vec(vec![
+		let container2 = Utf8Container::from_vec(vec![
 			"c".to_string(),
 			"d".to_string(),
 		]);
@@ -291,7 +292,7 @@ mod tests {
 	#[test]
 	fn test_extend_from_undefined() {
 		let mut container =
-			StringContainer::from_vec(vec!["test".to_string()]);
+			Utf8Container::from_vec(vec!["test".to_string()]);
 		container.extend_from_undefined(2);
 
 		assert_eq!(container.len(), 3);
@@ -305,7 +306,7 @@ mod tests {
 		let data =
 			vec!["x".to_string(), "y".to_string(), "z".to_string()];
 		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-		let container = StringContainer::new(data, bitvec);
+		let container = Utf8Container::new(data, bitvec);
 
 		let collected: Vec<Option<&String>> =
 			container.iter().collect();
@@ -321,7 +322,7 @@ mod tests {
 
 	#[test]
 	fn test_slice() {
-		let container = StringContainer::from_vec(vec![
+		let container = Utf8Container::from_vec(vec![
 			"one".to_string(),
 			"two".to_string(),
 			"three".to_string(),
@@ -336,7 +337,7 @@ mod tests {
 
 	#[test]
 	fn test_filter() {
-		let mut container = StringContainer::from_vec(vec![
+		let mut container = Utf8Container::from_vec(vec![
 			"keep".to_string(),
 			"drop".to_string(),
 			"keep".to_string(),
@@ -353,7 +354,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let mut container = StringContainer::from_vec(vec![
+		let mut container = Utf8Container::from_vec(vec![
 			"first".to_string(),
 			"second".to_string(),
 			"third".to_string(),
@@ -370,7 +371,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder_with_out_of_bounds() {
-		let mut container = StringContainer::from_vec(vec![
+		let mut container = Utf8Container::from_vec(vec![
 			"a".to_string(),
 			"b".to_string(),
 		]);
@@ -386,7 +387,7 @@ mod tests {
 
 	#[test]
 	fn test_empty_strings() {
-		let mut container = StringContainer::with_capacity(2);
+		let mut container = Utf8Container::with_capacity(2);
 		container.push("".to_string()); // empty string
 		container.push_undefined();
 
@@ -400,7 +401,7 @@ mod tests {
 
 	#[test]
 	fn test_default() {
-		let container = StringContainer::default();
+		let container = Utf8Container::default();
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 	}

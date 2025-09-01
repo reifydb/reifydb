@@ -21,7 +21,7 @@ pub use backend::{ConsoleBuilder, FormatStyle};
 pub use builder::LoggingBuilder;
 pub use factory::LoggingSubsystemFactory;
 pub use metrics::LoggingMetrics;
-pub use reifydb_core::Result;
+pub use reifydb_type::Result;
 pub use subsystem::LoggingSubsystem;
 #[cfg(debug_assertions)]
 pub use test_utils::{LoggingBuilderTestExt, TestLoggerHandle};

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::Error;
 use serde::{Deserialize, Serialize};
 
 #[repr(u8)]
@@ -33,9 +34,9 @@ impl From<KeyKind> for u8 {
 	}
 }
 impl TryFrom<u8> for KeyKind {
-	type Error = crate::Error;
+	type Error = Error;
 
-	fn try_from(value: u8) -> Result<Self, Self::Error> {
+	fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
 		match value {
 			0x01 => Ok(Self::Schema),
 			0x02 => Ok(Self::Table),

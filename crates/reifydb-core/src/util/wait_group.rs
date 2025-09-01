@@ -108,6 +108,7 @@ mod tests {
 			Arc,
 			atomic::{AtomicUsize, Ordering},
 		},
+		thread::{sleep, spawn},
 		time::Duration,
 	};
 
@@ -120,8 +121,8 @@ mod tests {
 		for _ in 0..6 {
 			let wg = wg.add(1);
 			let ctrx = ctr.clone();
-			std::thread::spawn(move || {
-				std::thread::sleep(Duration::from_millis(5));
+			spawn(move || {
+				sleep(Duration::from_millis(5));
 				ctrx.fetch_add(1, Ordering::Relaxed);
 				wg.done();
 			});
@@ -132,8 +133,8 @@ mod tests {
 
 		let worker = wg.add(1);
 		let ctrx = ctr.clone();
-		std::thread::spawn(move || {
-			std::thread::sleep(Duration::from_millis(5));
+		spawn(move || {
+			sleep(Duration::from_millis(5));
 			ctrx.fetch_add(1, Ordering::Relaxed);
 			worker.done();
 		});
@@ -148,10 +149,10 @@ mod tests {
 		for _ in 0..5 {
 			let worker = wg.add(1);
 			let ctrx = ctr.clone();
-			std::thread::spawn(move || {
+			spawn(move || {
 				let nested_worker = worker.add(1);
 				let ctrxx = ctrx.clone();
-				std::thread::spawn(move || {
+				spawn(move || {
 					ctrxx.fetch_add(1, Ordering::Relaxed);
 					nested_worker.done();
 				});

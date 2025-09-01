@@ -222,7 +222,7 @@ mod tests {
 	);
 
 	mod signed_overflow {
-		use super::super::SafeRemainder;
+		use crate::SafeRemainder;
 
 		#[test]
 		fn checked_rem_min_negative_one() {
@@ -295,7 +295,7 @@ mod tests {
 	}
 
 	mod f32 {
-		use super::super::SafeRemainder;
+		use crate::SafeRemainder;
 
 		#[test]
 		fn checked_rem_happy() {
@@ -367,7 +367,7 @@ mod tests {
 	}
 
 	mod f64 {
-		use super::super::SafeRemainder;
+		use crate::SafeRemainder;
 
 		#[test]
 		fn checked_rem_happy() {

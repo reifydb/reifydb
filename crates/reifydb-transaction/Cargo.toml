@@ -13,6 +13,7 @@ worker_pool = []
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-storage = { workspace = true }
+reifydb-type = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 

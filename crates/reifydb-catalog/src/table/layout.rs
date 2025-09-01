@@ -3,7 +3,8 @@
 
 pub(crate) mod table {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{Type, row::EncodedRowLayout};
+	use reifydb_core::row::EncodedRowLayout;
+	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const SCHEMA: usize = 1;
@@ -15,15 +16,15 @@ pub(crate) mod table {
 			Type::Uint8, // id
 			Type::Uint8, // schema id
 			Type::Utf8,  // name
-			Type::Uint8, /* primary_key - Primary key ID (0 if
-			              * none) */
+			Type::Uint8, // primary_key
 		])
 	});
 }
 
 pub(crate) mod table_schema {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{Type, row::EncodedRowLayout};
+	use reifydb_core::row::EncodedRowLayout;
+	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;

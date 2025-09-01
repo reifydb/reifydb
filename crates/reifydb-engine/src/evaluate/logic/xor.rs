@@ -3,16 +3,15 @@
 
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::XorExpression},
-    return_error,
+	return_error,
+	value::columnar::{Column, ColumnData, ColumnQualified},
 };
-use reifydb_type::::diagnostic::operator::{
-    xor_can_not_applied_to_number, xor_can_not_applied_to_temporal,
-    xor_can_not_applied_to_text, xor_can_not_applied_to_uuid,
+use reifydb_type::diagnostic::operator::{
+	xor_can_not_applied_to_number, xor_can_not_applied_to_temporal,
+	xor_can_not_applied_to_text, xor_can_not_applied_to_uuid,
 };
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
-};
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn xor(

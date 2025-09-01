@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Network connection error occurred
 pub fn connection_error(message: String) -> Diagnostic {

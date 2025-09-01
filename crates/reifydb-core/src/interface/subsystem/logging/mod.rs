@@ -11,12 +11,10 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use crossbeam_channel::{SendError, Sender};
+use reifydb_type::{IntoValue, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	util,
-	value::{IntoValue, Value},
-};
+use crate::util;
 
 mod macros;
 pub mod mock;

@@ -3,9 +3,10 @@
 
 use std::ops::Deref;
 
+use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, RowNumber, Value};
+use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RowNumberContainer {

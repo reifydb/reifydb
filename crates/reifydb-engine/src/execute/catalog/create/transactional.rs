@@ -3,12 +3,12 @@
 
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
 use reifydb_core::{
-	Value, interface::Transaction,
-    return_error,
+	interface::Transaction, return_error, value::columnar::Columns,
 };
 use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
-use reifydb_type::::diagnostic::catalog::view_already_exists;
-use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
+use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
+
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) fn create_transactional_view<T: Transaction>(

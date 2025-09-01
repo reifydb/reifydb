@@ -3,14 +3,16 @@
 
 use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
-use Value::{Int1, Int2, Int4, Int8, Int16, Uint4, Uint8, Undefined};
+use reifydb_type::{
+	IsNumber, OrderedF32, OrderedF64, Value,
+	Value::{
+		Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8,
+		Uint16, Undefined,
+	},
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	BitVec, CowVec, OrderedF32, OrderedF64, Value,
-	Value::{Uint1, Uint2, Uint16},
-	value::IsNumber,
-};
+use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NumberContainer<T>

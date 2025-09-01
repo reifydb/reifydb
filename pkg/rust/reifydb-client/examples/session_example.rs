@@ -3,8 +3,8 @@
 
 use std::{thread, time::Duration};
 
-use reifydb::core::Value;
 use reifydb_client::{Client, Params};
+use reifydb_type::Value;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("=== ReifyDB Session-Based Client Example ===\n");

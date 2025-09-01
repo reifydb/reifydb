@@ -38,10 +38,10 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		Type,
-		interface::{ColumnDef, ColumnId, ColumnIndex, PrimaryKeyId},
+	use reifydb_core::interface::{
+		ColumnDef, ColumnId, ColumnIndex, PrimaryKeyId,
 	};
+	use reifydb_type::Type;
 
 	use super::*;
 	use crate::MaterializedCatalog;

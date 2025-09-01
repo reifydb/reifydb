@@ -291,7 +291,7 @@ mod tests {
 	use crate::ast::{
 		AstCreate, AstCreateDeferredView, AstCreateSchema,
 		AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
-		AstPolicyKind, parse::Parser, tokenize::tokenize,
+		AstPolicyKind, parse::Parser, tokenize,
 	};
 
 	#[test]

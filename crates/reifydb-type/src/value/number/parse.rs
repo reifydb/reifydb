@@ -1,10 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range};
-use crate::value::is::{IsFloat, IsInt, IsUint};
-use crate::{err, return_error, Error, IntoFragment, Type};
 use std::{any::TypeId, borrow::Cow, num::IntErrorKind, str::FromStr};
+
+use crate::{
+	Error, IntoFragment, Type, err,
+	error::diagnostic::number::{
+		invalid_number_format, nan_not_allowed, number_out_of_range,
+	},
+	return_error,
+	value::is::{IsFloat, IsInt, IsUint},
+};
 
 pub fn parse_int<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
@@ -215,8 +221,7 @@ where
                         Type::Int16 => {
                             truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64
                         }
-                        _ => false,
-                    };
+                        _ => false};
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
@@ -318,8 +323,7 @@ where
                             Type::Uint4 => truncated >= 0.0 && truncated <= u32::MAX as f64,
                             Type::Uint8 => truncated >= 0.0 && truncated <= u64::MAX as f64,
                             Type::Uint16 => truncated >= 0.0 && truncated <= u128::MAX as f64,
-                            _ => false,
-                        };
+                            _ => false};
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
@@ -491,13 +495,11 @@ fn parse_u128<'a>(fragment: impl IntoFragment<'a>) -> Result<u128, Error> {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-    use super::*;
 
-    mod i8 {
-        use super::*;
-        use crate::OwnedFragment;
+	mod i8 {
+		use crate::{OwnedFragment, parse_int};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_int::<i8>(OwnedFragment::testing("0")),
@@ -723,10 +725,9 @@ mod tests {
 	}
 
 	mod i16 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_int};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_int::<i16>(OwnedFragment::testing("0")),
@@ -940,10 +941,9 @@ mod tests {
 	}
 
 	mod i32 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_int};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_int::<i32>(OwnedFragment::testing("0")),
@@ -1213,10 +1213,9 @@ mod tests {
 	}
 
 	mod i64 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_int};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_int::<i64>(OwnedFragment::testing("0")),
@@ -1412,10 +1411,9 @@ mod tests {
 	}
 
 	mod i128 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_int};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_int::<i128>(OwnedFragment::testing("0")),
@@ -1601,10 +1599,9 @@ mod tests {
 	}
 
 	mod u8 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uint};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_uint::<u8>(OwnedFragment::testing("0")),
@@ -1774,10 +1771,9 @@ mod tests {
 	}
 
 	mod u16 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uint};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_uint::<u16>(OwnedFragment::testing("0")),
@@ -1921,10 +1917,9 @@ mod tests {
 	}
 
 	mod u32 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uint};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_uint::<u32>(OwnedFragment::testing("0")),
@@ -2122,10 +2117,9 @@ mod tests {
 	}
 
 	mod u64 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uint};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_uint::<u64>(OwnedFragment::testing("0")),
@@ -2259,10 +2253,9 @@ mod tests {
 	}
 
 	mod u128 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_uint};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_uint::<u128>(OwnedFragment::testing("0")),
@@ -2396,10 +2389,9 @@ mod tests {
 	}
 
 	mod f32 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_float};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_float::<f32>(OwnedFragment::testing(
@@ -2583,10 +2575,9 @@ mod tests {
 	}
 
 	mod f64 {
-        use super::*;
-        use crate::OwnedFragment;
+		use crate::{OwnedFragment, parse_float};
 
-        #[test]
+		#[test]
 		fn test_valid_zero() {
 			assert_eq!(
 				parse_float::<f64>(OwnedFragment::testing(

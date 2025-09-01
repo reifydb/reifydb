@@ -13,8 +13,7 @@ define_interceptor!(
 	context: PreCommitContext<T>,
 	trait: PreCommitInterceptor,
 	fields: {
-		txn: &'a mut T,
-	}
+		txn: &'a mut T}
 );
 
 define_closure_interceptor!(
@@ -37,8 +36,7 @@ define_interceptor!(
 	fields: {
 		id: TransactionId,
 		version: Version,
-		changes: TransactionalChanges,
-	}
+		changes: TransactionalChanges}
 );
 
 define_closure_interceptor!(

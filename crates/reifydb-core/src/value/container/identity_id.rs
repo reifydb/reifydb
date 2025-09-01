@@ -3,8 +3,9 @@
 
 use std::ops::Deref;
 
+use reifydb_type::{IdentityId, Value};
 use serde::{Deserialize, Serialize};
-use reifydb_type::IdentityId;
+
 use crate::{BitVec, CowVec};
 
 /// Container for IdentityId values
@@ -119,10 +120,10 @@ impl IdentityIdContainer {
 		}
 	}
 
-	pub fn get_value(&self, index: usize) -> crate::Value {
+	pub fn get_value(&self, index: usize) -> Value {
 		self.get(index)
-			.map(crate::Value::IdentityId)
-			.unwrap_or(crate::Value::Undefined)
+			.map(Value::IdentityId)
+			.unwrap_or(Value::Undefined)
 	}
 
 	pub fn filter(&mut self, mask: &BitVec) {

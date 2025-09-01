@@ -6,10 +6,10 @@ use std::{
 	ops::{Deref, DerefMut, Index, IndexMut},
 };
 
+use reifydb_type::{Type, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Type, Value,
 	interface::{TableDef, ViewDef},
 	value::{
 		columnar::{
@@ -161,8 +161,7 @@ impl Columns {
 				.map(|name| {
 					Column::ColumnQualified(ColumnQualified {
                     name: name.to_string(),
-                    data: ColumnData::Undefined(UndefinedContainer::new(0)),
-                })
+                    data: ColumnData::Undefined(UndefinedContainer::new(0))})
 				})
 				.collect();
 
@@ -341,8 +340,9 @@ impl Columns {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::{Date, DateTime, Interval, Time};
+
 	use super::*;
-	use crate::{Date, DateTime, Interval, Time};
 
 	#[test]
 	fn test_single_row_temporal_types() {

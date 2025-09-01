@@ -139,7 +139,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
 		&self,
 		key: &EncodedKey,
 		version: Version,
-	) -> Result<Option<Committed>, reifydb_core::Error> {
+	) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.versioned.get(key, version)?.map(|sv| sv.into()))
 	}
 
@@ -147,21 +147,21 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
 		&self,
 		key: &EncodedKey,
 		version: Version,
-	) -> Result<bool, reifydb_core::Error> {
+	) -> Result<bool, reifydb_type::Error> {
 		self.versioned.contains(key, version)
 	}
 
 	pub fn scan(
 		&self,
 		version: Version,
-	) -> Result<VS::ScanIter<'_>, reifydb_core::Error> {
+	) -> Result<VS::ScanIter<'_>, reifydb_type::Error> {
 		self.versioned.scan(version)
 	}
 
 	pub fn scan_rev(
 		&self,
 		version: Version,
-	) -> Result<VS::ScanIterRev<'_>, reifydb_core::Error> {
+	) -> Result<VS::ScanIterRev<'_>, reifydb_type::Error> {
 		self.versioned.scan_rev(version)
 	}
 
@@ -169,7 +169,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
 		&self,
 		range: EncodedKeyRange,
 		version: Version,
-	) -> Result<VS::RangeIter<'_>, reifydb_core::Error> {
+	) -> Result<VS::RangeIter<'_>, reifydb_type::Error> {
 		self.versioned.range(range, version)
 	}
 
@@ -177,7 +177,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
 		&self,
 		range: EncodedKeyRange,
 		version: Version,
-	) -> Result<VS::RangeIterRev<'_>, reifydb_core::Error> {
+	) -> Result<VS::RangeIterRev<'_>, reifydb_type::Error> {
 		self.versioned.range_rev(range, version)
 	}
 }

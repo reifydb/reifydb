@@ -197,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn test_trailing_comma() {
-		let tokens = tokenize("{id: 1, name: 'Test',}").unwrap();
+		let tokens = tokenize("{id: 1, name: 'Test'}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

@@ -1,5 +1,4 @@
 use reifydb_core::{
-	Fragment, Type,
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
@@ -8,6 +7,7 @@ use reifydb_core::{
 	},
 	value::columnar::{Column, ColumnQualified, Columns},
 };
+use reifydb_type::{Fragment, Type};
 
 use crate::operator::{Operator, OperatorContext};
 
@@ -137,9 +137,7 @@ impl MapTerminalOperator {
 						expression: Box::new(expr.clone()),
 						to: TypeExpression {
 							fragment: Fragment::owned_internal(target_type.to_string()),
-							ty: target_type,
-						},
-					});
+							ty: target_type}});
 
 						// Evaluate the cast expression
 						let casted = ctx.evaluate(
@@ -150,16 +148,14 @@ impl MapTerminalOperator {
 						// column
 						Column::ColumnQualified(ColumnQualified {
 						name: view_column.name.clone(),
-						data: casted.data().clone(),
-					})
+						data: casted.data().clone()})
 					} else {
 						// Types match or it's
 						// undefined, just rename if
 						// needed
 						Column::ColumnQualified(ColumnQualified {
 						name: view_column.name.clone(),
-						data: result.data().clone(),
-					})
+						data: result.data().clone()})
 					}
 				} else {
 					// No schema info for this column

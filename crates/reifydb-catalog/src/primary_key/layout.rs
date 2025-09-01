@@ -3,9 +3,8 @@
 
 pub(crate) mod primary_key {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{
-		Blob, Type, interface::ColumnId, row::EncodedRowLayout,
-	};
+	use reifydb_core::{interface::ColumnId, row::EncodedRowLayout};
+	use reifydb_type::{Blob, Type};
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const STORE: usize = 1;
@@ -14,10 +13,8 @@ pub(crate) mod primary_key {
 	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id - Primary key ID
-			Type::Uint8, /* store - Table/View ID this key
-			              * belongs to */
-			Type::Blob, /* column_ids - Serialized list of
-			             * column IDs */
+			Type::Uint8, // store
+			Type::Blob,  // column_ids
 		])
 	});
 

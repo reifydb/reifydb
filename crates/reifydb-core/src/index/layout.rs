@@ -2,11 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{ops::Deref, sync::Arc};
-use reifydb_type::error::diagnostic::catalog;
-use crate::{
-	CowVec, SortDirection, Type,
-    index::EncodedIndexKey,
-};
+
+use reifydb_type::{Type, diagnostic::catalog};
+
+use crate::{CowVec, SortDirection, index::EncodedIndexKey};
 
 #[derive(Debug, Clone)]
 pub struct EncodedIndexLayout(Arc<EncodedIndexLayoutInner>);
@@ -169,7 +168,7 @@ fn align_up(offset: usize, align: usize) -> usize {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{SortDirection, Type};
+	use crate::SortDirection;
 
 	#[test]
 	fn test_single_field_int() {

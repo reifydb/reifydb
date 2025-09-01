@@ -14,8 +14,7 @@ define_interceptor!(
     trait: TableDefPostCreateInterceptor,
     fields: {
 	txn: &'a mut T,
-	post: &'a TableDef,
-    }
+	post: &'a TableDef}
 );
 
 define_closure_interceptor!(
@@ -37,8 +36,7 @@ define_interceptor!(
     trait: TableDefPreUpdateInterceptor,
     fields: {
 	txn: &'a mut T,
-	pre: &'a TableDef,
-    }
+	pre: &'a TableDef}
 );
 
 define_closure_interceptor!(
@@ -61,8 +59,7 @@ define_interceptor!(
     fields: {
 	txn: &'a mut T,
 	pre: &'a TableDef,
-	post: &'a TableDef,
-    }
+	post: &'a TableDef}
 );
 
 define_closure_interceptor!(
@@ -84,8 +81,7 @@ define_interceptor!(
     trait: TableDefPreDeleteInterceptor,
     fields: {
 	txn: &'a mut T,
-	pre: &'a TableDef,
-    }
+	pre: &'a TableDef}
 );
 
 define_closure_interceptor!(

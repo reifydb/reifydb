@@ -1,19 +1,14 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::{
-	Type, error,
-    value::{
-		container::{StringContainer, UuidContainer},
-    },
+use reifydb_core::value::{
+	columnar::ColumnData,
+	container::{Utf8Container, UuidContainer},
 };
-use reifydb_type::::{BorrowedFragment, LazyFragment};
-use reifydb_type::::diagnostic::cast;
 use reifydb_type::{
-    Uuid4, Uuid7,
-    parse::{parse_uuid4, parse_uuid7},
+	BorrowedFragment, LazyFragment, Type, Uuid4, Uuid7, diagnostic::cast,
+	err, error, parse_uuid4, parse_uuid7,
 };
-use crate::columnar::ColumnData;
 
 pub fn to_uuid<'a>(
 	data: &ColumnData,
@@ -32,7 +27,7 @@ pub fn to_uuid<'a>(
 		}
 		_ => {
 			let source_type = data.get_type();
-			reifydb_core::err!(cast::unsupported_cast(
+			err!(cast::unsupported_cast(
 				lazy_fragment.fragment(),
 				source_type,
 				target
@@ -43,7 +38,7 @@ pub fn to_uuid<'a>(
 
 #[inline]
 fn from_text<'a>(
-	container: &StringContainer,
+	container: &Utf8Container,
 	target: Type,
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
@@ -52,7 +47,7 @@ fn from_text<'a>(
 		Type::Uuid7 => to_uuid7(container, lazy_fragment),
 		_ => {
 			let source_type = Type::Utf8;
-			reifydb_core::err!(cast::unsupported_cast(
+			err!(cast::unsupported_cast(
 				lazy_fragment.fragment(),
 				source_type,
 				target
@@ -65,7 +60,7 @@ macro_rules! impl_to_uuid {
     ($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
         #[inline]
         fn $fn_name<'a>(
-            container: &StringContainer,
+            container: &Utf8Container,
             lazy_fragment: impl LazyFragment<'a>,
         ) -> crate::Result<ColumnData> {
             let mut out = ColumnData::with_capacity($target_type, container.len());
@@ -112,7 +107,7 @@ fn from_uuid4<'a>(
 		))),
 		_ => {
 			let source_type = Type::Uuid4;
-			reifydb_core::err!(cast::unsupported_cast(
+			err!(cast::unsupported_cast(
 				lazy_fragment.fragment(),
 				source_type,
 				target
@@ -134,7 +129,7 @@ fn from_uuid7<'a>(
 		))),
 		_ => {
 			let source_type = Type::Uuid7;
-			reifydb_core::err!(cast::unsupported_cast(
+			err!(cast::unsupported_cast(
 				lazy_fragment.fragment(),
 				source_type,
 				target

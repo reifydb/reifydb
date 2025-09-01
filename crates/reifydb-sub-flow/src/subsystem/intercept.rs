@@ -4,7 +4,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use reifydb_core::{
-	Result, RowNumber,
+	Result,
 	interceptor::{
 		Interceptors, PreCommitContext, PreCommitInterceptor,
 		RegisterInterceptor, TablePostDeleteContext,
@@ -16,6 +16,7 @@ use reifydb_core::{
 	ioc::{IocContainer, LazyResolveRc},
 };
 use reifydb_engine::StandardEngine;
+use reifydb_type::RowNumber;
 
 /// Event type for flow processing
 #[derive(Debug, Clone)]

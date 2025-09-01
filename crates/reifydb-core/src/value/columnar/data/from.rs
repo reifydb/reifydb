@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{Value, value::columnar::ColumnData};
+use reifydb_type::Value;
+
+use crate::value::columnar::ColumnData;
 
 impl ColumnData {
 	pub fn from_many(value: Value, row_count: usize) -> Self {

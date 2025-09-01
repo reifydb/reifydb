@@ -16,9 +16,9 @@ pub mod engine;
 pub mod flow;
 pub mod function;
 pub mod internal;
-use crate::fragment::IntoFragment;
-use crate::{OwnedFragment, Type};
 pub use internal::{internal, internal_with_context};
+
+use crate::{OwnedFragment, Type, fragment::IntoFragment};
 
 pub mod network;
 pub mod number;

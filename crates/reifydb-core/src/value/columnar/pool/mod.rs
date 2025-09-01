@@ -27,14 +27,13 @@ pub use config::{
 };
 pub use guard::PooledGuard;
 pub use lazy::{ensure_thread_pools, get_or_init_pools, thread_pools_lazy};
-use reifydb_type::{Uuid4, Uuid7};
+use reifydb_type::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
 pub use scoped::{
 	ScopedPools, with_default_pools, with_scoped_pools, with_test_pools,
 };
 pub use thread_local::{get_thread_pools, has_thread_pools, thread_pools};
 
 use crate::value::{
-	Date, DateTime, Interval, Time,
 	columnar::pool::{
 		allocator::{PoolAllocator, StdPoolAllocator},
 		stats::PoolStats,
@@ -55,7 +54,7 @@ impl Deref for Pools {
 
 pub struct PoolsInner {
 	bool_pool: StdPoolAllocator<BoolContainer>,
-	string_pool: StdPoolAllocator<StringContainer>,
+	string_pool: StdPoolAllocator<Utf8Container>,
 	blob_pool: StdPoolAllocator<BlobContainer>,
 	row_number_pool: StdPoolAllocator<RowNumberContainer>,
 	undefined_pool: StdPoolAllocator<UndefinedContainer>,
@@ -127,7 +126,7 @@ impl Pools {
 	pub fn bool_pool(&self) -> &StdPoolAllocator<BoolContainer> {
 		&self.bool_pool
 	}
-	pub fn string_pool(&self) -> &StdPoolAllocator<StringContainer> {
+	pub fn string_pool(&self) -> &StdPoolAllocator<Utf8Container> {
 		&self.string_pool
 	}
 	pub fn blob_pool(&self) -> &StdPoolAllocator<BlobContainer> {

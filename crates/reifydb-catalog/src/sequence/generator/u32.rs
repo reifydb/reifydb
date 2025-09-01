@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::{
-	EncodedKey, Type,
+	EncodedKey,
 	diagnostic::sequence::sequence_exhausted,
 	interface::{
 		CommandTransaction, UnversionedCommandTransaction,
@@ -12,6 +12,7 @@ use reifydb_core::{
 	return_error,
 	row::EncodedRowLayout,
 };
+use reifydb_type::Type;
 
 static LAYOUT: Lazy<EncodedRowLayout> =
 	Lazy::new(|| EncodedRowLayout::new(&[Type::Uint4]));
@@ -71,14 +72,15 @@ impl GeneratorU32 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		EncodedKey, Type,
+		EncodedKey,
+		diagnostic::sequence::sequence_exhausted,
 		interface::{
 			Unversioned, UnversionedCommandTransaction,
 			UnversionedQueryTransaction,
 		},
-		result::error::diagnostic::sequence::sequence_exhausted,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::sequence::generator::u32::{GeneratorU32, LAYOUT};
 

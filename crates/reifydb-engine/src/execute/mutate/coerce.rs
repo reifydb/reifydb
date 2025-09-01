@@ -1,7 +1,10 @@
-use reifydb_core::{ColumnDescriptor, Fragment, Type, Value};
+use reifydb_core::{
+	ColumnDescriptor,
+	value::columnar::{ColumnData, Columns},
+};
+use reifydb_type::{Fragment, Type, Value};
 
 use crate::{
-	columnar::{ColumnData, Columns},
 	evaluate::{EvaluationContext, cast::cast_column_data},
 	execute::ExecutionContext,
 };

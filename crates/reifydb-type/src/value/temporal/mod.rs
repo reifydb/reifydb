@@ -2,7 +2,7 @@
 // This file is licensed under the MIT, see license.md file
 
 mod compare;
-mod parse;
+pub(crate) mod parse;
 
 pub use compare::*;
 pub use parse::*;

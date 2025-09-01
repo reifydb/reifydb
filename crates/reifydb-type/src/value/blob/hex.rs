@@ -2,9 +2,8 @@
 // This file is licensed under the MIT, see license.md file
 
 use super::Blob;
-use crate::error::diagnostic::blob;
-use crate::util::{decode, encode};
-use crate::{Error, IntoFragment};
+pub(crate) use crate::util::hex::{decode, encode};
+use crate::{Error, IntoFragment, error::diagnostic::blob};
 
 impl Blob {
 	pub fn from_hex<'a>(

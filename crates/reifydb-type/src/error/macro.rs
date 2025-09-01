@@ -17,7 +17,7 @@
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {
-		$crate::error::Error($diagnostic)
+		$crate::Error($diagnostic)
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
@@ -25,7 +25,7 @@ macro_rules! error {
 			$crate::IntoFragment::into_fragment($fragment)
 				.into_owned(),
 		);
-		$crate::error::Error(diag)
+		$crate::Error(diag)
 	}};
 }
 
@@ -46,7 +46,7 @@ macro_rules! error {
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
-		return Err($crate::error::Error($diagnostic))
+		return Err($crate::Error($diagnostic))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
@@ -54,7 +54,7 @@ macro_rules! return_error {
 			$crate::IntoFragment::into_fragment($fragment)
 				.into_owned(),
 		);
-		return Err($crate::error::Error(diag));
+		return Err($crate::Error(diag));
 	}};
 }
 
@@ -73,7 +73,7 @@ macro_rules! return_error {
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
-		Err($crate::error::Error($diagnostic))
+		Err($crate::Error($diagnostic))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
@@ -81,14 +81,16 @@ macro_rules! err {
 			$crate::IntoFragment::into_fragment($fragment)
 				.into_owned(),
 		);
-		Err($crate::error::Error(diag))
+		Err($crate::Error(diag))
 	}};
 }
 
 #[cfg(test)]
 mod tests {
-	use crate::error::diagnostic::sequence::sequence_exhausted;
-	use crate::{OwnedFragment, StatementColumn, StatementLine, Type};
+	use crate::{
+		OwnedFragment, StatementColumn, StatementLine, Type,
+		error::diagnostic::sequence::sequence_exhausted,
+	};
 
 	#[test]
 	fn test_error_macro() {

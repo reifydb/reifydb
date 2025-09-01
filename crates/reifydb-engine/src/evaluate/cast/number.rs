@@ -4,22 +4,13 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	GetType, Type, error,
-    return_error,
-	value::{
-		IsNumber,
-		container::NumberContainer,
-    },
+	interface::{Convert, Demote, Promote},
+	value::{columnar::ColumnData, container::NumberContainer},
 };
-use reifydb_type::::diagnostic::cast;
-use reifydb_type::::LazyFragment;
 use reifydb_type::{
-    SafeConvert, SafeDemote, SafePromote, parse_float,
-    parse_int, parse_uint,
-};
-use crate::{
-	columnar::ColumnData,
-	evaluate::{Convert, Demote, Promote},
+	BorrowedFragment, GetType, IsNumber, LazyFragment, SafeConvert,
+	SafeDemote, SafePromote, Type, diagnostic::cast, error, parse_float,
+	parse_int, parse_uint, return_error,
 };
 
 pub fn to_number<'a>(
@@ -248,7 +239,6 @@ fn text_to_integer<'a>(
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
-					use reifydb_type::::BorrowedFragment;
 					let temp_fragment =
 						BorrowedFragment::new_internal(
 							val,
@@ -397,7 +387,6 @@ fn text_to_float<'a>(
 				let val = &container[idx];
 				// Create efficient borrowed fragment for
 				// parsing
-				use reifydb_type::::BorrowedFragment;
 				let temp_fragment =
 					BorrowedFragment::new_internal(val);
 
@@ -836,264 +825,245 @@ where
 
 #[cfg(test)]
 mod tests {
-	mod promote {
-		use reifydb_core::{
-			BitVec, Fragment, GetType, Type,
-            value::{
-				container::NumberContainer,
-            },
-		};
-        use reifydb_type::::LazyFragment;
-        use reifydb_type::SafePromote;
-        use crate::evaluate::{Promote, cast::number::promote_vec};
+	use reifydb_core::{
+		BitVec, interface::Promote, value::container::NumberContainer,
+	};
+	use reifydb_type::{
+		Fragment, GetType, LazyFragment, SafePromote, Type,
+	};
 
-		#[test]
-		fn test_ok() {
-			let data = [1i8, 2i8];
-			let bitvec = BitVec::from_slice(&[true, true]);
-			let ctx = TestCtx::new();
+	use crate::evaluate::cast::number::promote_vec;
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
-			)
-			.unwrap();
+	#[test]
+	fn test_ok() {
+		let data = [1i8, 2i8];
+		let bitvec = BitVec::from_slice(&[true, true]);
+		let ctx = TestCtx::new();
 
-			let slice: &[i16] = result.as_slice();
-			assert_eq!(slice, &[1i16, 2i16]);
-		}
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = promote_vec::<i8, i16>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int2,
+			|col, v| col.push::<i16>(v),
+		)
+		.unwrap();
 
-		#[test]
-		fn test_none_maps_to_undefined() {
-			// 42 mapped to None
-			let data = [42i8];
-			let bitvec = BitVec::from_slice(&[true]);
-			let ctx = TestCtx::new();
+		let slice: &[i16] = result.as_slice();
+		assert_eq!(slice, &[1i16, 2i16]);
+	}
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
-			)
-			.unwrap();
+	#[test]
+	fn test_none_maps_to_undefined() {
+		// 42 mapped to None
+		let data = [42i8];
+		let bitvec = BitVec::from_slice(&[true]);
+		let ctx = TestCtx::new();
 
-			assert!(!result.is_defined(0));
-		}
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = promote_vec::<i8, i16>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int2,
+			|col, v| col.push::<i16>(v),
+		)
+		.unwrap();
 
-		#[test]
-		fn test_invalid_bitmaps_are_undefined() {
-			let data = [1i8];
-			let bitvec = BitVec::from_slice(&[false]);
-			let ctx = TestCtx::new();
+		assert!(!result.is_defined(0));
+	}
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
-			)
-			.unwrap();
+	#[test]
+	fn test_invalid_bitmaps_are_undefined() {
+		let data = [1i8];
+		let bitvec = BitVec::from_slice(&[false]);
+		let ctx = TestCtx::new();
 
-			assert!(!result.is_defined(0));
-		}
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = promote_vec::<i8, i16>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int2,
+			|col, v| col.push::<i16>(v),
+		)
+		.unwrap();
 
-		#[test]
-		fn test_mixed_bitvec_and_promote_failure() {
-			let data = [1i8, 42i8, 3i8, 4i8];
-			let bitvec =
-				BitVec::from_slice(&[true, true, false, true]);
-			let ctx = TestCtx::new();
+		assert!(!result.is_defined(0));
+	}
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int2,
-				|col, v| col.push::<i16>(v),
-			)
-			.unwrap();
+	#[test]
+	fn test_mixed_bitvec_and_promote_failure() {
+		let data = [1i8, 42i8, 3i8, 4i8];
+		let bitvec = BitVec::from_slice(&[true, true, false, true]);
+		let ctx = TestCtx::new();
 
-			let slice = result.as_slice::<i16>();
-			assert_eq!(slice, &[1i16, 0, 0, 4i16]);
-			assert!(result.is_defined(0));
-			assert!(!result.is_defined(1));
-			assert!(!result.is_defined(2));
-			assert!(result.is_defined(3));
-		}
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = promote_vec::<i8, i16>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int2,
+			|col, v| col.push::<i16>(v),
+		)
+		.unwrap();
 
-		struct TestCtx;
+		let slice = result.as_slice::<i16>();
+		assert_eq!(slice, &[1i16, 0, 0, 4i16]);
+		assert!(result.is_defined(0));
+		assert!(!result.is_defined(1));
+		assert!(!result.is_defined(2));
+		assert!(result.is_defined(3));
+	}
 
-		impl TestCtx {
-			fn new() -> Self {
-				Self
-			}
-		}
+	struct TestCtx;
 
-		impl Promote for &TestCtx {
-			/// Can only used with i8
-			fn promote<'a, From, To>(
-				&self,
-				val: From,
-				_fragment: impl LazyFragment<'a>,
-			) -> crate::Result<Option<To>>
-			where
-				From: SafePromote<To>,
-				To: GetType,
-			{
-				// Only simulate promotion failure for i8 == 42
-				let raw: i8 = unsafe {
-					std::mem::transmute_copy(&val)
-				};
-				if raw == 42 {
-					return Ok(None);
-				}
-				Ok(Some(val.checked_promote().unwrap()))
-			}
+	impl TestCtx {
+		fn new() -> Self {
+			Self
 		}
 	}
 
-	mod demote {
-		use reifydb_core::{
-			BitVec, Fragment, GetType, Type,
-            value::{
-				container::NumberContainer,
-            },
-		};
-        use reifydb_type::::LazyFragment;
-        use reifydb_type::SafeDemote;
-        use crate::evaluate::{Demote, cast::number::demote_vec};
-
-		#[test]
-		fn test_ok() {
-			let data = [1i16, 2i16];
-			let bitvec = BitVec::from_slice(&[true, true]);
-			let ctx = TestCtx::new();
-
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
-			)
-			.unwrap();
-
-			let slice: &[i8] = result.as_slice();
-			assert_eq!(slice, &[1i8, 2i8]);
-			assert!(result.is_defined(0));
-			assert!(result.is_defined(1));
-		}
-
-		#[test]
-		fn test_none_maps_to_undefined() {
-			let data = [42i16];
-			let bitvec = BitVec::from_slice(&[true]);
-			let ctx = TestCtx::new();
-
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
-			)
-			.unwrap();
-
-			assert!(!result.is_defined(0));
-		}
-
-		#[test]
-		fn test_invalid_bitmaps_are_undefined() {
-			let data = [1i16];
-			let bitvec = BitVec::repeat(1, false);
-			let ctx = TestCtx::new();
-
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
-			)
-			.unwrap();
-
-			assert!(!result.is_defined(0));
-		}
-
-		#[test]
-		fn test_mixed_bitvec_and_demote_failure() {
-			let data = [1i16, 42i16, 3i16, 4i16];
-			let bitvec =
-				BitVec::from_slice(&[true, true, false, true]);
-			let ctx = TestCtx::new();
-
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
-				&container,
-				&ctx,
-				|| Fragment::testing_empty(),
-				Type::Int1,
-				|col, v| col.push::<i8>(v),
-			)
-			.unwrap();
-
-			let slice: &[i8] = result.as_slice();
-			assert_eq!(slice, &[1i8, 0, 0, 4i8]);
-			assert!(result.is_defined(0));
-			assert!(!result.is_defined(1));
-			assert!(!result.is_defined(2));
-			assert!(result.is_defined(3));
-		}
-
-		struct TestCtx;
-
-		impl TestCtx {
-			fn new() -> Self {
-				Self
+	impl Promote for &TestCtx {
+		/// Can only used with i8
+		fn promote<'a, From, To>(
+			&self,
+			val: From,
+			_fragment: impl LazyFragment<'a>,
+		) -> crate::Result<Option<To>>
+		where
+			From: SafePromote<To>,
+			To: GetType,
+		{
+			// Only simulate promotion failure for i8 == 42
+			let raw: i8 = unsafe { std::mem::transmute_copy(&val) };
+			if raw == 42 {
+				return Ok(None);
 			}
+			Ok(Some(val.checked_promote().unwrap()))
 		}
+	}
+}
 
-		impl Demote for &TestCtx {
-			/// Can only be used with i16 → i8
-			fn demote<'a, From, To>(
-				&self,
-				val: From,
-				_fragment: impl LazyFragment<'a>,
-			) -> crate::Result<Option<To>>
-			where
-				From: SafeDemote<To>,
-				To: GetType,
-			{
-				// Only simulate promotion failure for i16 == 42
-				let raw: i16 = unsafe {
-					std::mem::transmute_copy(&val)
-				};
-				if raw == 42 {
-					return Ok(None);
-				}
-				Ok(Some(val.checked_demote().unwrap()))
+mod demote {
+	use reifydb_core::{
+		BitVec, interface::Demote, value::container::NumberContainer,
+	};
+	use reifydb_type::{Fragment, GetType, LazyFragment, SafeDemote, Type};
+
+	use crate::evaluate::cast::number::demote_vec;
+
+	#[test]
+	fn test_ok() {
+		let data = [1i16, 2i16];
+		let bitvec = BitVec::from_slice(&[true, true]);
+		let ctx = TestCtx::new();
+
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = demote_vec::<i16, i8>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int1,
+			|col, v| col.push::<i8>(v),
+		)
+		.unwrap();
+
+		let slice: &[i8] = result.as_slice();
+		assert_eq!(slice, &[1i8, 2i8]);
+		assert!(result.is_defined(0));
+		assert!(result.is_defined(1));
+	}
+
+	#[test]
+	fn test_none_maps_to_undefined() {
+		let data = [42i16];
+		let bitvec = BitVec::from_slice(&[true]);
+		let ctx = TestCtx::new();
+
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = demote_vec::<i16, i8>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int1,
+			|col, v| col.push::<i8>(v),
+		)
+		.unwrap();
+
+		assert!(!result.is_defined(0));
+	}
+
+	#[test]
+	fn test_invalid_bitmaps_are_undefined() {
+		let data = [1i16];
+		let bitvec = BitVec::repeat(1, false);
+		let ctx = TestCtx::new();
+
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = demote_vec::<i16, i8>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int1,
+			|col, v| col.push::<i8>(v),
+		)
+		.unwrap();
+
+		assert!(!result.is_defined(0));
+	}
+
+	#[test]
+	fn test_mixed_bitvec_and_demote_failure() {
+		let data = [1i16, 42i16, 3i16, 4i16];
+		let bitvec = BitVec::from_slice(&[true, true, false, true]);
+		let ctx = TestCtx::new();
+
+		let container = NumberContainer::new(data.to_vec(), bitvec);
+		let result = demote_vec::<i16, i8>(
+			&container,
+			&ctx,
+			|| Fragment::testing_empty(),
+			Type::Int1,
+			|col, v| col.push::<i8>(v),
+		)
+		.unwrap();
+
+		let slice: &[i8] = result.as_slice();
+		assert_eq!(slice, &[1i8, 0, 0, 4i8]);
+		assert!(result.is_defined(0));
+		assert!(!result.is_defined(1));
+		assert!(!result.is_defined(2));
+		assert!(result.is_defined(3));
+	}
+
+	struct TestCtx;
+
+	impl TestCtx {
+		fn new() -> Self {
+			Self
+		}
+	}
+
+	impl Demote for &TestCtx {
+		/// Can only be used with i16 → i8
+		fn demote<'a, From, To>(
+			&self,
+			val: From,
+			_fragment: impl LazyFragment<'a>,
+		) -> crate::Result<Option<To>>
+		where
+			From: SafeDemote<To>,
+			To: GetType,
+		{
+			// Only simulate promotion failure for i16 == 42
+			let raw: i16 =
+				unsafe { std::mem::transmute_copy(&val) };
+			if raw == 42 {
+				return Ok(None);
 			}
+			Ok(Some(val.checked_demote().unwrap()))
 		}
 	}
 }

@@ -1,15 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	IntoFragment, Type,
-    return_error,
-};
-use reifydb_type::::diagnostic::temporal;
+use reifydb_core::value::columnar::ColumnData;
 use reifydb_type::{
-    parse_date, parse_datetime, parse_interval, parse_time,
+	IntoFragment, Type, diagnostic::temporal, parse_date, parse_datetime,
+	parse_interval, parse_time, return_error,
 };
-use crate::columnar::ColumnData;
 
 pub struct TemporalParser;
 
@@ -76,7 +72,7 @@ impl TemporalParser {
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		use reifydb_type::::diagnostic::cast;
+		use reifydb_type::diagnostic::cast;
 
 		let fragment = fragment.into_fragment();
 		match target {

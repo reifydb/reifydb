@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
+	event::EventBus,
 	interface::{
 		Unversioned, UnversionedStorage, UnversionedTransaction,
 		WithEventBus,
@@ -21,7 +22,6 @@ pub(crate) mod scan_rev;
 mod write;
 
 pub use read::SvlReadTransaction;
-use reifydb_core::event::EventBus;
 pub use write::SvlWriteTransaction;
 
 #[derive(Clone)]

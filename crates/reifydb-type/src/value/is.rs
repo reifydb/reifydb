@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
 use std::fmt::{Debug, Display};
-use crate::value::r#type::GetType;
+
+use crate::{
+	Date, DateTime, Interval, Time, Uuid4, Uuid7, value::r#type::GetType,
+};
 
 pub trait IsNumber:
 	Display + Copy + Debug + PartialEq + PartialOrd + GetType

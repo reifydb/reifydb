@@ -4,25 +4,23 @@
 use std::fmt::Debug;
 
 use reifydb_core::{
-	Fragment,
-	Type::Bool,
 	interface::{Evaluator, evaluate::expression::GreaterThanExpression},
-    return_error, value,
+	return_error,
 	value::{
-		IsNumber, IsTemporal,
+		columnar::{Column, ColumnData, ColumnQualified},
 		container::{
-			number::NumberContainer, string::StringContainer,
+			Utf8Container, number::NumberContainer,
 			temporal::TemporalContainer,
 		},
-    },
+	},
 };
-use reifydb_type::::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
-use reifydb_type::value::;
-use reifydb_type::Promote;
-use crate::{
-	columnar::{Column, ColumnData, ColumnQualified},
-	evaluate::{EvaluationContext, StandardEvaluator},
+use reifydb_type::{
+	Fragment, IsNumber, IsTemporal, Promote, Type::Bool,
+	diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types,
+	temporal, value::number,
 };
+
+use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
 	pub(crate) fn greater_than(
@@ -498,7 +496,7 @@ impl StandardEvaluator {
                 gt.full_fragment_owned(),
                 left.get_type(),
                 right.get_type(),
-            )),
+            ))
         }
 	}
 }
@@ -520,9 +518,7 @@ where
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
-				data.push(value::number::is_greater_than(
-					*l, *r,
-				));
+				data.push(number::is_greater_than(*l, *r));
 			}
 			_ => data.push_undefined(),
 		}
@@ -567,8 +563,8 @@ where
 }
 
 fn compare_utf8(
-	l: &StringContainer,
-	r: &StringContainer,
+	l: &Utf8Container,
+	r: &Utf8Container,
 	fragment: Fragment<'_>,
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());

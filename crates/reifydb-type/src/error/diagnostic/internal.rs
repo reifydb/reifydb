@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::OwnedFragment;
+use crate::{OwnedFragment, error::diagnostic::Diagnostic};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context
@@ -67,8 +66,7 @@ pub fn internal_with_context(
             "Consider creating a backup before continuing operations.".to_string(),
             format!("Error tracking ID: {}", error_id),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 /// Simplified internal error without detailed context
@@ -80,7 +78,7 @@ pub fn internal(reason: impl Into<String>) -> Diagnostic {
 #[macro_export]
 macro_rules! internal_error {
     ($reason:expr) => {
-        $crate::error::diagnostic::internal_with_context(
+        $crate::diagnostic::internal_with_context(
             $reason,
             file!(),
             line!(),
@@ -97,7 +95,7 @@ macro_rules! internal_error {
         )
     };
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::diagnostic::internal_with_context(
+        $crate::diagnostic::internal_with_context(
             format!($fmt, $($arg)*),
             file!(),
             line!(),
@@ -132,10 +130,10 @@ macro_rules! internal_err {
 #[macro_export]
 macro_rules! return_internal_error {
     ($reason:expr) => {
-        return Err($crate::error::Error($crate::internal_error!($reason)))
+        return Err($crate::Error($crate::internal_error!($reason)))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return Err($crate::error::Error($crate::internal_error!($fmt, $($arg)*)))
+        return Err($crate::Error($crate::internal_error!($fmt, $($arg)*)))
     };
 }
 

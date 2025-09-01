@@ -3,9 +3,11 @@
 
 use std::collections::Bound;
 
+use reifydb_type::RowNumber;
+
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, RowNumber,
+	EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, catalog::StoreId},
 	util::encoding::keycode,
 };
@@ -169,8 +171,10 @@ impl RowKey {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::RowNumber;
+
 	use super::{EncodableKey, RowKey};
-	use crate::{RowNumber, interface::catalog::StoreId};
+	use crate::interface::catalog::StoreId;
 
 	#[test]
 	fn test_encode_decode() {

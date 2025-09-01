@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Fragment, OwnedFragment};
+use reifydb_type::{Fragment, OwnedFragment};
 
 pub use super::{
 	keyword::Keyword, operator::Operator, parameter::ParameterKind,

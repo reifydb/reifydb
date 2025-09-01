@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::::diagnostic::ast;
+use reifydb_type::diagnostic::ast;
 
 mod cursor;
 mod identifier;
@@ -14,7 +14,7 @@ mod separator;
 mod token;
 
 use cursor::Cursor;
-use reifydb_type::::Error;
+use reifydb_type::Error;
 use scanner::{
 	scan_identifier, scan_keyword, scan_literal, scan_operator,
 	scan_parameter, scan_separator,
@@ -23,7 +23,7 @@ pub use token::{
 	Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind,
 };
 
-/// Tokenize the input string into a vector of tokens  
+/// Tokenize the input string into a vector of tokens
 pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 	let mut cursor = Cursor::new(input);
 	// Estimate token count: rough heuristic of 1 token per 6 characters

@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Fragment,
 	flow::{FlowNodeType::Operator, OperatorType::Distinct},
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::{ColumnExpression, Expression},
 	},
 };
+use reifydb_type::Fragment;
 
 use super::super::{
 	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,

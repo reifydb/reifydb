@@ -1,13 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::{
-	IsNumber, IsTemporal, IsUuid,
-	container::{
-		BlobContainer, BoolContainer, NumberContainer,
-		RowNumberContainer, StringContainer, TemporalContainer,
-		UndefinedContainer, UuidContainer,
-	},
+use reifydb_type::{IsNumber, IsTemporal, IsUuid};
+
+use crate::value::container::{
+	BlobContainer, BoolContainer, NumberContainer, RowNumberContainer,
+	TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
 };
 
 /// Trait for containers that can be created with a specific capacity
@@ -53,7 +51,7 @@ where
 	}
 }
 
-impl ContainerCapacity for StringContainer {
+impl ContainerCapacity for Utf8Container {
 	fn with_capacity(capacity: usize) -> Self {
 		Self::with_capacity(capacity)
 	}

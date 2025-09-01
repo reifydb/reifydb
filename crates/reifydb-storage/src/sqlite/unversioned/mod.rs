@@ -146,8 +146,7 @@ pub(crate) fn execute_range_query(
 					|row| {
 						Ok(Unversioned {
                         key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                    })
+                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?))})
 					},
 				)
 				.unwrap();
@@ -176,8 +175,7 @@ pub(crate) fn execute_range_query(
 					|row| {
 						Ok(Unversioned {
                         key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                    })
+                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?))})
 					},
 				)
 				.unwrap();
@@ -215,8 +213,7 @@ pub(crate) fn execute_range_query(
 					|row| {
 						Ok(Unversioned {
                         key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
-                    })
+                        row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?))})
 					},
 				)
 				.unwrap();
@@ -262,8 +259,7 @@ pub(crate) fn execute_scan_query(
                 .to_string(),
             vec![Box::new(key.to_vec()), Box::new(batch_size)],
         ),
-        _ => unreachable!(),
-    };
+        _ => unreachable!()};
 
 	let mut stmt = conn.prepare(&query).unwrap();
 

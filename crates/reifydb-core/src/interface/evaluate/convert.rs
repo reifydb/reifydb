@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::error::diagnostic::number::{
-	integer_precision_loss, number_out_of_range,
+use reifydb_type::{
+	GetType, IntoFragment, SafeConvert,
+	diagnostic::number::{integer_precision_loss, number_out_of_range},
+	error,
 };
-use reifydb_type::SafeConvert;
-use crate::{
-	GetType, IntoFragment, error,
-	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
-};
+
+use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
 
 pub trait Convert {
 	fn convert<From, To>(
@@ -46,28 +45,36 @@ impl Convert for &EvaluationContext<'_> {
 		To: GetType,
 	{
 		match self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				from.checked_convert()
-					.ok_or_else(|| {
-						if From::get_type().is_integer()
-							&& To::get_type()
-								.is_floating_point(
-								) {
-							return error!(integer_precision_loss(
-                            fragment,
-                            From::get_type(),
-                            To::get_type(),
-                        ));
-						};
+			ColumnSaturationPolicy::Error => from
+				.checked_convert()
+				.ok_or_else(|| {
+					if From::get_type().is_integer()
+						&& To::get_type()
+							.is_floating_point()
+					{
+						return error!(
+							integer_precision_loss(
+								fragment,
+								From::get_type(
+								),
+								To::get_type(),
+							)
+						);
+					};
 
-						return error!(number_out_of_range(
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
+					return error!(number_out_of_range(
 						fragment,
 						To::get_type(),
-						self.target_column.as_ref(),
+						descriptor.as_ref(),
 					));
-					})
-					.map(Some)
-			}
+				})
+				.map(Some),
 			ColumnSaturationPolicy::Undefined => {
 				match from.checked_convert() {
 					None => Ok(None),

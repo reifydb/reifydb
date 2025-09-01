@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Fragment, OwnedFragment, err,
-	interface::evaluate::expression::{AliasExpression, IdentExpression},
+use reifydb_core::interface::evaluate::expression::{
+	AliasExpression, IdentExpression,
 };
-use reifydb_type::::diagnostic::Diagnostic;
+use reifydb_type::{Fragment, OwnedFragment, diagnostic::Diagnostic, err};
+
 use crate::{
 	ast::{Ast, AstFrom},
 	expression::ExpressionCompiler,
@@ -55,8 +55,7 @@ impl Compiler {
 								let alias_expr = AliasExpression {
                                     alias,
                                     expression: Box::new(expr),
-                                    fragment: key_fragment,
-                                };
+                                    fragment: key_fragment};
 								alias_fields.push(alias_expr);
 							}
 							rows.push(alias_fields);
@@ -71,8 +70,7 @@ impl Compiler {
                                 label: None,
                                 help: None,
                                 notes: vec![],
-                                cause: None,
-                            });
+                                cause: None});
 						}
 					}
 				}

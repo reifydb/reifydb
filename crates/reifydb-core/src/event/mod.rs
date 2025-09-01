@@ -155,7 +155,10 @@ macro_rules! impl_event {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Mutex};
+	use std::{
+		sync::{Arc, Mutex},
+		thread,
+	};
 
 	use crate::event::{Event, EventBus, EventListener};
 
@@ -254,8 +257,6 @@ mod tests {
 
 	#[test]
 	fn test_concurrent_registration() {
-		use std::thread;
-
 		let event_bus = Arc::new(EventBus::new());
 		let handles: Vec<_> = (0..10)
 			.map(|_| {
@@ -280,8 +281,6 @@ mod tests {
 
 	#[test]
 	fn test_concurrent_emitting() {
-		use std::thread;
-
 		let event_bus = Arc::new(EventBus::new());
 		let listener = TestEventListener::default();
 		event_bus.register::<TestEvent, TestEventListener>(

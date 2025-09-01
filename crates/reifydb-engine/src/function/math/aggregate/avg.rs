@@ -3,12 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::Value;
+use reifydb_core::value::columnar::ColumnData;
+use reifydb_type::Value;
 
-use crate::{
-	columnar::ColumnData,
-	function::{AggregateFunction, AggregateFunctionContext},
-};
+use crate::function::{AggregateFunction, AggregateFunctionContext};
 
 pub struct Avg {
 	pub sums: HashMap<Vec<Value>, f64>,

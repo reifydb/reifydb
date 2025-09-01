@@ -1,21 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Fragment, OwnedFragment,
-	interface::evaluate::expression::{
-		AccessSourceExpression, AddExpression, AliasExpression,
-		AndExpression, BetweenExpression, CallExpression,
-		CastExpression, ColumnExpression, ConstantExpression,
-		DivExpression, EqExpression, Expression,
-		GreaterThanEqExpression, GreaterThanExpression,
-		IdentExpression, LessThanEqExpression, LessThanExpression,
-		MulExpression, NotEqExpression, OrExpression,
-		ParameterExpression, PrefixExpression, PrefixOperator,
-		RemExpression, SubExpression, TupleExpression, TypeExpression,
-		XorExpression,
-	},
+use reifydb_core::interface::evaluate::expression::{
+	AccessSourceExpression, AddExpression, AliasExpression, AndExpression,
+	BetweenExpression, CallExpression, CastExpression, ColumnExpression,
+	ConstantExpression, DivExpression, EqExpression, Expression,
+	GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
+	LessThanEqExpression, LessThanExpression, MulExpression,
+	NotEqExpression, OrExpression, ParameterExpression, PrefixExpression,
+	PrefixOperator, RemExpression, SubExpression, TupleExpression,
+	TypeExpression, XorExpression,
 };
+use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast,
@@ -86,8 +82,7 @@ impl ExpressionCompiler {
                 Ok(Expression::Call(CallExpression {
                     func: IdentExpression(Fragment::Owned(OwnedFragment::testing(&full_name))),
                     args: arg_expressions,
-                    fragment: call.token.fragment,
-                }))
+                    fragment: call.token.fragment}))
             }
             Ast::Infix(ast) => Self::infix(ast),
             Ast::Between(between) => {
@@ -99,8 +94,7 @@ impl ExpressionCompiler {
                     value: Box::new(value),
                     lower: Box::new(lower),
                     upper: Box::new(upper),
-                    fragment: between.token.fragment,
-                }))
+                    fragment: between.token.fragment}))
             }
             Ast::Tuple(tuple) => {
                 let mut expressions = Vec::with_capacity(tuple.len());
@@ -127,8 +121,7 @@ impl ExpressionCompiler {
                 Ok(Expression::Prefix(PrefixExpression {
                     operator,
                     expression: Box::new(Self::compile(*prefix.node)?),
-                    fragment,
-                }))
+                    fragment}))
             }
             Ast::Cast(node) => {
                 let mut tuple = node.tuple;
@@ -142,25 +135,21 @@ impl ExpressionCompiler {
                 Ok(Expression::Cast(CastExpression {
                     fragment: tuple.token.fragment,
                     expression: Box::new(Self::compile(expr)?),
-                    to: TypeExpression { fragment, ty },
-                }))
+                    to: TypeExpression { fragment, ty }}))
             }
             Ast::ParameterRef(param) => {
                 match param.kind {
                     ParameterKind::Positional(_) => {
                         Ok(Expression::Parameter(ParameterExpression::Positional {
-                            fragment: param.token.fragment,
-                        }))
+                            fragment: param.token.fragment}))
                     }
                     ParameterKind::Named => {
                         Ok(Expression::Parameter(ParameterExpression::Named {
-                            fragment: param.token.fragment,
-                        }))
+                            fragment: param.token.fragment}))
                     }
                 }
             }
-            ast => unimplemented!("{:?}", ast),
-        }
+            ast => unimplemented!("{:?}", ast)}
 	}
 
 	fn infix<'a>(ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {

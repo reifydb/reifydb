@@ -3,7 +3,8 @@
 
 pub(crate) mod column {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{Type, row::EncodedRowLayout};
+	use reifydb_core::row::EncodedRowLayout;
+	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const TABLE: usize = 1;
@@ -26,7 +27,8 @@ pub(crate) mod column {
 
 pub(crate) mod table_column {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{Type, row::EncodedRowLayout};
+	use reifydb_core::row::EncodedRowLayout;
+	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;

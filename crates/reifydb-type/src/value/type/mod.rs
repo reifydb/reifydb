@@ -2,8 +2,8 @@
 // This file is licensed under the MIT, see license.md file
 
 use std::{
-    fmt::{Display, Formatter},
-    str::FromStr,
+	fmt::{Display, Formatter},
+	str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -11,8 +11,9 @@ use serde::{Deserialize, Serialize};
 mod get;
 mod promote;
 
-use crate::Value;
 pub use get::GetType;
+
+use crate::Value;
 
 /// All possible RQL data types
 #[derive(

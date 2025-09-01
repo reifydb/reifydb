@@ -2,15 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Date, DateTime, Interval, RowNumber, Time, Value, error,
-	interface::evaluate::expression::ColumnExpression,
-    value::{Blob, IdentityId, Uuid4, Uuid7},
+	interface::{EvaluationContext, expression::ColumnExpression},
+	value::columnar::{Column, ColumnData},
 };
-use reifydb_type::::diagnostic::query::column_not_found;
-use crate::{
-	columnar::{Column, ColumnData},
-	evaluate::{EvaluationContext, StandardEvaluator},
+use reifydb_type::{
+	Date, DateTime, Interval, RowNumber, Time, Value,
+	diagnostic::query::column_not_found,
+	error,
+	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
+
+use crate::StandardEvaluator;
 
 impl StandardEvaluator {
 	pub(crate) fn column(

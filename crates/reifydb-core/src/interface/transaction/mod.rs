@@ -15,12 +15,10 @@ use std::{
 
 pub use cdc::{CdcQueryTransaction, CdcTransaction};
 pub use change::*;
-use reifydb_type::Uuid7;
+use reifydb_type::{Error, Uuid7, return_internal_error};
 pub use transaction::{CommandTransaction, QueryTransaction};
 pub use unversioned::*;
 pub use versioned::*;
-
-use crate::{return_internal_error};
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness
@@ -49,9 +47,9 @@ impl TransactionId {
 }
 
 impl TryFrom<&[u8]> for TransactionId {
-	type Error = crate::Error;
+	type Error = Error;
 
-	fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+	fn try_from(bytes: &[u8]) -> std::result::Result<Self, Self::Error> {
 		if bytes.len() != 16 {
 			return_internal_error!(
 				"Invalid transaction ID length: expected 16 bytes, got {}",

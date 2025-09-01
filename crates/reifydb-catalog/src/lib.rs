@@ -9,7 +9,6 @@ pub mod column;
 pub mod column_policy;
 mod materialized;
 pub mod primary_key;
-pub mod row;
 pub mod schema;
 pub mod sequence;
 pub mod store;

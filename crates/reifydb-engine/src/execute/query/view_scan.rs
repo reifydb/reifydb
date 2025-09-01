@@ -12,16 +12,16 @@ use reifydb_core::{
 		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange,
 		Transaction, VersionedQueryTransaction, ViewDef,
 	},
+	log_debug,
 	row::EncodedRowLayout,
-};
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
-use crate::{
-	columnar::{
+	value::columnar::{
 		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
-	execute::{Batch, ExecutionContext, QueryNode},
 };
+use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+
+use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub(crate) struct ViewScanNode<T: Transaction> {
 	view: ViewDef,
@@ -107,7 +107,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<T> {
 			)
 		};
 
-		use reifydb_core::log_debug;
 		log_debug!(
 			"ViewScan: Scanning view {:?} with range {:?} to {:?}",
 			self.view.id,

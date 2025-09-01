@@ -1,18 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	IntoFragment, Type,
-    return_error,
-	value::{},
+use reifydb_core::value::columnar::ColumnData;
+use reifydb_type::{
+	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float,
+	parse_int, parse_uint, return_error,
 };
-use reifydb_type::::diagnostic::cast;
-use reifydb_type::{parse_float, parse_int, parse_uint};
-use reifydb_type::parse_bool;
 use temporal::TemporalParser;
 
 use super::{temporal, uuid::UuidParser};
-use crate::columnar::ColumnData;
 
 pub(crate) struct TextParser;
 

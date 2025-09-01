@@ -5,10 +5,11 @@ use reifydb_catalog::{
 	CatalogViewCommandOperations, CatalogViewQueryOperations,
 	view::ViewToCreate,
 };
-use reifydb_core::{Value, interface::Transaction};
+use reifydb_core::{interface::Transaction, value::columnar::Columns};
 use reifydb_rql::plan::physical::CreateDeferredViewPlan;
+use reifydb_type::Value;
 
-use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) fn create_deferred_view<T: Transaction>(
@@ -63,13 +64,11 @@ impl Executor {
 mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-	use reifydb_core::{
-		Fragment, Value,
-		interface::{Params, SchemaDef, SchemaId},
-	};
+	use reifydb_core::interface::{Params, SchemaDef, SchemaId};
 	use reifydb_rql::plan::physical::{
 		CreateDeferredViewPlan, InlineDataNode, PhysicalPlan,
 	};
+	use reifydb_type::{Fragment, Value};
 
 	use crate::{
 		execute::Executor,

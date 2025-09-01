@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Fragment, OwnedFragment, diagnostic::ast, return_error};
+use reifydb_type::{Fragment, OwnedFragment, diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token,
@@ -44,9 +44,7 @@ impl<'a> Parser<'a> {
 								literal.0
 									.fragment
 									.text()
-							),
-						}),
-					}),
+							)})}),
 				)));
 			}
 		}

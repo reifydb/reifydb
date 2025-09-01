@@ -36,7 +36,7 @@ impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
 	fn create(
 		self: Box<Self>,
 		ioc: &IocContainer,
-	) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	) -> reifydb_type::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 		let subsystem = ServerSubsystem::new(self.config, engine);
 		Ok(Box::new(subsystem))

@@ -4,8 +4,9 @@
 use reifydb_core::interface::{
 	CommandTransaction, EncodableKey, RowSequenceKey, StoreId, TableId,
 };
+use reifydb_type::RowNumber;
 
-use crate::{row::RowNumber, sequence::generator::u64::GeneratorU64};
+use crate::sequence::generator::u64::GeneratorU64;
 
 pub struct RowSequence {}
 

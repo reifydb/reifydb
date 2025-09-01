@@ -3,4 +3,4 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use reifydb_core::Result;
+pub use reifydb_type::Result;

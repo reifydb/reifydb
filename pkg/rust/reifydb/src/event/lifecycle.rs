@@ -7,6 +7,7 @@ use reifydb_core::{
 	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as _, Identity, Params, Transaction},
+	log_error,
 };
 use reifydb_engine::StandardEngine;
 
@@ -28,7 +29,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_core::Error> {
+	) -> Result<Vec<Frame>, reifydb_type::Error> {
 		self.engine.command_as(identity, rql, params.into())
 	}
 
@@ -37,7 +38,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		&self,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_core::Error> {
+	) -> Result<Vec<Frame>, reifydb_type::Error> {
 		let identity = Identity::System {
 			id: 0,
 			name: "root".to_string(),
@@ -51,7 +52,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_core::Error> {
+	) -> Result<Vec<Frame>, reifydb_type::Error> {
 		self.engine.query_as(identity, rql, params.into())
 	}
 
@@ -60,7 +61,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 		&self,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_core::Error> {
+	) -> Result<Vec<Frame>, reifydb_type::Error> {
 		let identity = Identity::root();
 		self.engine.query_as(&identity, rql, params.into())
 	}
@@ -83,10 +84,7 @@ where
 	fn on(&self, _hook: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());
 		if let Err(e) = (self.callback)(&context) {
-			reifydb_core::log_error!(
-				"Failed to handle OnCreate event: {}",
-				e
-			);
+			log_error!("Failed to handle OnCreate event: {}", e);
 		}
 	}
 }

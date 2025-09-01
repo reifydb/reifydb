@@ -6,8 +6,9 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
+use reifydb_type::{Result, diagnostic::internal, error};
+
 use super::IocContainer;
-use crate::{Result, diagnostic::internal, error};
 
 /// Thread-safe lazy resolution wrapper using OnceLock
 /// Can be cheaply cloned as it uses Arc internally

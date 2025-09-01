@@ -25,6 +25,7 @@ pub use health::HealthMonitor;
 pub use presets::*;
 pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;
+// subsystems
 pub use reifydb_core as core;
 pub use reifydb_core::{
 	Error, Result,
@@ -47,7 +48,6 @@ pub use reifydb_storage::{
 };
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as flow;
-// subsystems
 #[cfg(feature = "sub_logging")]
 pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};
 #[cfg(feature = "sub_server")]
@@ -59,6 +59,7 @@ pub use reifydb_transaction::{
 	},
 	svl::SingleVersionLock,
 };
+pub use reifydb_type as r#type;
 pub use session::{CommandSession, QuerySession, Session};
 
 /// Default configuration values

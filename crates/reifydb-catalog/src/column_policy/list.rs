@@ -56,13 +56,11 @@ impl CatalogStore {
 mod tests {
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Undefined;
-	use reifydb_core::{
-		Type,
-		interface::{
-			ColumnPolicyKind, ColumnSaturationPolicy, TableId,
-		},
+	use reifydb_core::interface::{
+		ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Type;
 
 	use crate::{
 		CatalogStore,

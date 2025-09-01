@@ -78,8 +78,7 @@ fn char_width(ch: char) -> usize {
         // Some specific double-width symbols
         '\u{2600}'..='\u{27BF}' => 2, // Miscellaneous Symbols, Dingbats
         // Default: single width
-        _ => 1,
-    }
+        _ => 1}
 }
 
 #[cfg(test)]

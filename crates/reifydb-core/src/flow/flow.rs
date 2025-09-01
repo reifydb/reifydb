@@ -1,13 +1,11 @@
+use reifydb_type::Result;
 use serde::{Deserialize, Serialize};
 
 use super::{
 	graph::DirectedGraph,
 	node::{FlowEdge, FlowNode},
 };
-use crate::{
-	Result,
-	interface::{FlowId, FlowNodeId},
-};
+use crate::interface::{FlowId, FlowNodeId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow<'a> {

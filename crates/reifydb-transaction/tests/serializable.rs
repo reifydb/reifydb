@@ -30,22 +30,22 @@
 //
 // test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc =>
 // test_serializable } test_each_path! { in
-// "crates/transaction/tests/scripts/all" as all => test_serializable }
+// "crates/transaction/tests/scripts/all" as all => test_serializable };
 //
 // fn test_serializable(path: &Path) {
 //     testscript::run_path(&mut
 // MvccRunner::new(Serializable::new(Memory::new())), path)         .expect("
-// test failed") }
+// test failed") };
 //
 // pub struct MvccRunner {
 //     engine: Serializable<Memory>,
 //     transactions: HashMap<String, Transaction<Memory>>,
-// }
+// };
 //
 // impl MvccRunner {
 //     fn new(serializable: Serializable<Memory>) -> Self {
-//         Self { engine: serializable, transactions: HashMap::new() }
-//     }
+//         Self { engine: serializable, transactions: HashMap::new() };
+//     };
 //
 //     /// Fetches the named transaction from a command prefix.
 //     fn get_transaction(
@@ -54,21 +54,21 @@
 //     ) -> Result<&'_ mut Transaction<Memory>, Box<dyn StdError>> {
 //         let name = Self::tx_name(prefix)?;
 //         self.transactions.get_mut(name).ok_or(format!("unknown transaction
-// {name}").into())     }
+// {name}").into())     };
 //
 //     /// Fetches the tx name from a command prefix, or errors.
 //     fn tx_name(prefix: &Option<String>) -> Result<&str, Box<dyn StdError>> {
 //         prefix.as_deref().ok_or("no tx name".into())
-//     }
+//     };
 //
 //     /// Errors if a tx prefix is given.
 //     fn no_tx(command: &testscript::Command) -> Result<(), Box<dyn StdError>>
 // {         if let Some(name) = &command.prefix {
 //             return Err(format!("can't run {} with tx {name}",
-// command.name).into());         }
+// command.name).into());         };
 //         Ok(())
-//     }
-// }
+//     };
+// };
 //
 // impl<'a> testscript::Runner for MvccRunner {
 //     fn run(&mut self, command: &testscript::Command) -> Result<String,
@@ -81,13 +81,13 @@
 //                 let name = Self::tx_name(&command.prefix)?;
 //                 if self.transactions.contains_key(name) {
 //                     return Err(format!("tx {name} already exists").into());
-//                 }
+//                 };
 //                 let mut args = command.consume_args();
 //                 let readonly = match args.next_pos().map(|a|
 // a.value.as_str()) {                     Some("readonly") => true,
 //                     None => false,
 //                     Some(v) => return Err(format!("invalid argument
-// {v}").into()),                 };
+// {v}").into())};
 //                 let version = args.lookup_parse("version")?;
 //                 args.reject_rest()?;
 //
@@ -95,9 +95,9 @@
 //                     true =>
 // Transaction::Rx(TransactionRx::new(self.engine.clone(), version)),
 //                     false =>
-// Transaction::Tx(TransactionTx::new(self.engine.clone())),                 };
+// Transaction::Tx(TransactionTx::new(self.engine.clone()))};
 //                 self.transactions.insert(name.to_string(), tx);
-//             }
+//             };
 //
 //             // tx: commit
 //             "commit" => {
@@ -108,12 +108,12 @@
 //                 match t {
 //                     Transaction::Rx(_) => {
 //                         unreachable!("can not call commit on rx")
-//                     }
+//                     };
 //                     Transaction::Tx(tx) => {
 //                         tx.commit()?;
-//                     }
-//                 }
-//             }
+//                     };
+//                 };
+//             };
 //
 //             // tx: remove KEY...
 //             "remove" => {
@@ -125,14 +125,14 @@
 //                     match t {
 //                         Transaction::Rx(_) => {
 //                             unreachable!("can not call remove on rx")
-//                         }
+//                         };
 //                         Transaction::Tx(tx) => {
 //                             tx.remove(key).unwrap();
-//                         }
-//                     }
-//                 }
+//                         };
+//                     };
+//                 };
 //                 args.reject_rest()?;
-//             }
+//             };
 //
 //             "version" => {
 //                 command.consume_args().reject_rest()?;
@@ -142,7 +142,7 @@
 //                     Transaction::Tx(tx) => tx.version(),
 //                 };
 //                 writeln!(output, "{}", version)?;
-//             }
+//             };
 //
 //             // tx: get KEY...
 //             "get" => {
@@ -154,12 +154,12 @@
 //                     let value = match t {
 //                         Transaction::Rx(rx) => rx.get(&key).map(|r|
 // r.row().to_vec()),                         Transaction::Tx(tx) =>
-// tx.get(&key).unwrap().map(|r| r.row().to_vec()),                     };
+// tx.get(&key).unwrap().map(|r| r.row().to_vec())};
 //                     let fmtkv = format::Raw::key_maybe_row(&key, value);
 //                     writeln!(output, "{fmtkv}")?;
-//                 }
+//                 };
 //                 args.reject_rest()?;
-//             }
+//             };
 //
 //             // import [VERSION] KEY=VALUE...
 //             "import" => {
@@ -175,11 +175,11 @@
 // row.is_empty() {                         tx.remove(key).unwrap();
 //                     } else {
 //                         tx.set(key, row).unwrap();
-//                     }
-//                 }
+//                     };
+//                 };
 //                 args.reject_rest()?;
 //                 tx.commit()?;
-//             }
+//             };
 //
 //             // tx: rollback
 //             "rollback" => {
@@ -190,12 +190,12 @@
 //                 match t {
 //                     Transaction::Rx(_) => {
 //                         unreachable!("can not call rollback on rx")
-//                     }
+//                     };
 //                     Transaction::Tx(tx) => {
 //                         tx.rollback()?;
-//                     }
-//                 }
-//             }
+//                     };
+//                 };
+//             };
 //
 //             // tx: scan
 //             "scan" => {
@@ -209,19 +209,19 @@
 //                     Transaction::Rx(rx) => {
 //                         for sv in rx.scan().into_iter() {
 //                             kvs.push((sv.key.clone(), sv.row.to_vec()));
-//                         }
-//                     }
+//                         };
+//                     };
 //                     Transaction::Tx(tx) => {
 //                         for item in tx.scan().unwrap().into_iter() {
 //                             kvs.push((item.key().clone(),
-// item.row().to_vec()));                         }
-//                     }
+// item.row().to_vec()));                         };
+//                     };
 //                 };
 //
 //                 for (key, value) in kvs {
 //                     writeln!(output, "{}", format::Raw::key_row(&key,
-// &value))?;                 }
-//             }
+// &value))?;                 };
+//             };
 //             // range RANGE [reverse=BOOL]
 //             "range" => {
 //                 let t = self.get_transaction(&command.prefix)?;
@@ -239,17 +239,17 @@
 //                             print_rx(&mut output,
 // rx.range(range).into_iter())                         } else {
 //                             print_rx(&mut output,
-// rx.range_rev(range).into_iter())                         }
-//                     }
+// rx.range_rev(range).into_iter())                         };
+//                     };
 //                     Transaction::Tx(tx) => {
 //                         if !reverse {
 //                             print_tx(&mut output,
 // tx.range(range).unwrap().into_iter())                         } else {
 //                             print_tx(&mut output,
-// tx.range_rev(range).unwrap().into_iter())                         }
-//                     }
+// tx.range_rev(range).unwrap().into_iter())                         };
+//                     };
 //                 };
-//             }
+//             };
 //             // prefix PREFIX [reverse=BOOL] [version=VERSION]
 //             "prefix" => {
 //                 let t = self.get_transaction(&command.prefix)?;
@@ -266,17 +266,17 @@
 //                             print_rx(&mut output,
 // rx.prefix(&prefix).into_iter())                         } else {
 //                             print_rx(&mut output,
-// rx.prefix_rev(&prefix).into_iter())                         }
-//                     }
+// rx.prefix_rev(&prefix).into_iter())                         };
+//                     };
 //                     Transaction::Tx(tx) => {
 //                         if !reverse {
 //                             print_tx(&mut output,
 // tx.prefix(&prefix).unwrap().into_iter())                         } else {
 //                             print_tx(&mut output,
-// tx.prefix_rev(&prefix).unwrap().into_iter())                         }
-//                     }
+// tx.prefix_rev(&prefix).unwrap().into_iter())                         };
+//                     };
 //                 };
-//             }
+//             };
 //
 //             // tx: set KEY=VALUE...
 //             "set" => {
@@ -288,36 +288,36 @@
 // row = EncodedRow(decode_binary(&kv.value));                     match t {
 //                         Transaction::Rx(_) => {
 //                             unreachable!("can not call set on rx")
-//                         }
+//                         };
 //                         Transaction::Tx(tx) => {
 //                             tx.set(key, row).unwrap();
-//                         }
-//                     }
-//                 }
+//                         };
+//                     };
+//                 };
 //                 args.reject_rest()?;
-//             }
+//             };
 //
 //             name => return Err(format!("invalid command {name}").into()),
-//         }
+//         };
 //
 //         if let Some(tag) = tags.iter().next() {
 //             return Err(format!("unknown tag {tag}").into());
-//         }
+//         };
 //
 //         Ok(output)
-//     }
-// }
+//     };
+// };
 //
 // fn print_rx<I: Iterator<Item = Stored>>(output: &mut String, mut iter: I) {
 //     while let Some(sv) = iter.next() {
 //         let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
 //         writeln!(output, "{fmtkv}").unwrap();
-//     }
-// }
+//     };
+// };
 //
 // fn print_tx<I: Iterator<Item = TransactionValue>>(output: &mut String, mut
 // iter: I) {     while let Some(tv) = iter.next() {
 //         let fmtkv = format::Raw::key_row(tv.key(), tv.row().as_slice());
 //         writeln!(output, "{fmtkv}").unwrap();
-//     }
-// }
+//     };
+// };

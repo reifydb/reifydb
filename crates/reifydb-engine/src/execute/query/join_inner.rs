@@ -4,16 +4,16 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	Value,
 	interface::{Transaction, evaluate::expression::Expression},
-};
-
-use crate::{
-	StandardTransaction,
-	columnar::{
+	value::columnar::{
 		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
 		layout::ColumnsLayout,
 	},
+};
+use reifydb_type::Value;
+
+use crate::{
+	StandardTransaction,
 	evaluate::{EvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
@@ -130,19 +130,15 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
                                 Some(source) => Column::SourceQualified(SourceQualified {
                                     source: source.to_string(),
                                     name: col.name().to_string(),
-                                    data: ColumnData::from(v),
-                                }),
+                                    data: ColumnData::from(v)}),
                                 None => Column::ColumnQualified(ColumnQualified {
                                     name: col.name().to_string(),
-                                    data: ColumnData::from(v),
-                                }),
-                            })
+                                    data: ColumnData::from(v)})})
                             .collect(),
                     ),
                     row_count: 1,
                     take: Some(1),
-                    params: &ctx.params,
-                };
+                    params: &ctx.params};
 
 				let all_true = self.on.iter().fold(
 					true,

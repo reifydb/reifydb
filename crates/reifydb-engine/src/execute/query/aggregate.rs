@@ -7,15 +7,15 @@ use std::{
 };
 
 use reifydb_core::{
-	OwnedFragment, Value,
 	interface::{Transaction, evaluate::expression::Expression},
-};
-
-use crate::{
-	columnar::{
+	value::columnar::{
 		Column, ColumnData, ColumnQualified, Columns,
 		layout::ColumnsLayout,
 	},
+};
+use reifydb_type::{OwnedFragment, Value, diagnostic};
+
+use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 	function::{AggregateFunction, AggregateFunctionContext, Functions},
 };
@@ -139,8 +139,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
                         name: alias.fragment().to_string(),
-                        data: ColumnData::undefined(0),
-                    });
+                        data: ColumnData::undefined(0)});
 					for key in &group_key_order {
 						c.data_mut().push_value(
 							key[col_idx].clone(),
@@ -220,7 +219,7 @@ fn parse_keys_and_aggregates<'a>(
 				})
 			}
 			// _ => return
-			// Err(reifydb_core::Error::Unsupported("Non-column
+			// Err(reifydb_type::Error::Unsupported("Non-column
 			// group by not supported".into())),
 			expr => panic!(
 				"Non-column group by not supported: {expr:#?}"
@@ -294,7 +293,7 @@ fn parse_keys_and_aggregates<'a>(
 						);
 					}
 					// _ => return
-					// Err(reifydb_core::Error::Unsupported("
+					// Err(reifydb_type::Error::Unsupported("
 					// Aggregate args must be
 					// columns".into())),
 					_ => panic!(
@@ -303,7 +302,7 @@ fn parse_keys_and_aggregates<'a>(
 				}
 			}
 			// _ => return
-			// Err(reifydb_core::Error::Unsupported("Expected
+			// Err(reifydb_type::Error::Unsupported("Expected
 			// aggregate call expression".into())),
 			_ => panic!(
 				"Expected aggregate call expression, got: {actual_expr:#?}"
@@ -324,16 +323,20 @@ fn align_column_data(
 	}
 
 	let reorder_indices: Vec<usize> = group_key_order
-        .iter()
-        .map(|k| {
-            key_to_index.get(k).copied().ok_or_else(|| {
-                reifydb_core::error!(reifydb_core::error::diagnostic::engine::frame_error(format!(
-                    "Group key {:?} missing in aggregate output",
-                    k
-                )))
-            })
-        })
-        .collect::<crate::Result<Vec<_>>>()?;
+		.iter()
+		.map(|k| {
+			key_to_index.get(k).copied().ok_or_else(|| {
+				reifydb_type::error!(
+					diagnostic::engine::frame_error(
+						format!(
+							"Group key {:?} missing in aggregate output",
+							k
+						)
+					)
+				)
+			})
+		})
+		.collect::<crate::Result<Vec<_>>>()?;
 
 	data.reorder(&reorder_indices);
 	Ok(())

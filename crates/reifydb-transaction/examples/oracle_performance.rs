@@ -151,7 +151,7 @@ pub fn conflict_detection_benchmark() {
 				conflicts += 1;
 			}
 			Err(e) => panic!("Unexpected error: {:?}", e),
-		}
+		};
 	}
 
 	let duration = start.elapsed();

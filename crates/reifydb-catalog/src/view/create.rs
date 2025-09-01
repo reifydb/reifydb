@@ -3,7 +3,6 @@
 
 use ViewKind::{Deferred, Transactional};
 use reifydb_core::{
-	OwnedFragment, Type,
 	diagnostic::catalog::view_already_exists,
 	interface::{
 		ColumnIndex, CommandTransaction, EncodableKey, Key, SchemaId,
@@ -11,6 +10,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
+use reifydb_type::{OwnedFragment, Type};
 
 use crate::{
 	CatalogStore,

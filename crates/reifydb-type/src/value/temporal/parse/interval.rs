@@ -1,8 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::temporal;
-use crate::{return_error, Error, Interval, IntoFragment};
+use crate::{
+	Error, Interval, IntoFragment, error::diagnostic::temporal,
+	return_error,
+};
 
 pub fn parse_interval<'a>(
 	fragment: impl IntoFragment<'a>,

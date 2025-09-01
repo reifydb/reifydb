@@ -56,7 +56,9 @@ impl ColumnData {
 
 #[cfg(test)]
 mod tests {
-	use crate::{BitVec, Value, value::columnar::ColumnData};
+	use reifydb_type::Value;
+
+	use crate::{BitVec, value::columnar::ColumnData};
 
 	#[test]
 	fn test_filter_bool() {

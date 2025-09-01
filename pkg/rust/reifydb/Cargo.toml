@@ -15,6 +15,7 @@ reifydb-engine = { workspace = true }
 reifydb-storage = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
 
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-logging = { workspace = true, optional = true }

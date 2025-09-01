@@ -1,15 +1,11 @@
+use reifydb_type::{
+	Blob, Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
+};
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
 use uuid::Uuid;
 
-use crate::{
-	Type,
-	row::{EncodedRow, EncodedRowLayout},
-	value::{
-		Blob, Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7,
-	},
-};
+use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
 	pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
@@ -314,14 +310,11 @@ impl EncodedRowLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use crate::{
-		Type,
-		row::EncodedRowLayout,
-		value::{
-			Date, DateTime, IdentityId, Interval, Time, Uuid4,
-			Uuid7,
-		},
+	use reifydb_type::{
+		Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
 	};
+
+	use crate::row::EncodedRowLayout;
 
 	#[test]
 	fn test_get_bool() {

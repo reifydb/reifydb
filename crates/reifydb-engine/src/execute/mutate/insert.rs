@@ -5,16 +5,19 @@ use std::sync::Arc;
 
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
-	ColumnDescriptor, IntoFragment, Type, Value,
+	ColumnDescriptor,
 	interface::{ColumnPolicyKind, Params, Transaction},
-    return_error,
+	return_error,
 	row::EncodedRowLayout,
+	value::columnar::Columns,
 };
 use reifydb_rql::plan::physical::InsertPlan;
-use reifydb_type::::diagnostic::catalog::table_not_found;
+use reifydb_type::{
+	IntoFragment, Type, Value, diagnostic::catalog::table_not_found,
+};
+
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	columnar::Columns,
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode,
 		mutate::coerce::coerce_value_to_column_type,

@@ -158,31 +158,30 @@ impl WatermarkInner {
 		let receiver = closer.listen();
 		loop {
 			select! {
-			  recv(receiver) -> _ => { closer.done(); return },
-			  recv(self.rx) -> mark => match mark {
-			    Ok(mark) => {
-			      if let Some(wait_tx) = mark.waiter {
-				  let done_until = self.done_until.load(Ordering::SeqCst);
-				  if done_until >= mark.version {
-				    let _ = wait_tx; // Close channel.
-				  } else if mark.version < done_until.saturating_sub(OLD_VERSION_THRESHOLD) {
-				     // Version is so old we know it's irrelevant; skip waiter registration
-				     let _ = wait_tx;
-				  } else {
-				    waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
-				  }
-			      } else {
-				  process_one(mark.version, mark.done)
-			      }
-			    },
-			    Err(_) => {
-			      // Channel closed.
-			      println!("watermark has been dropped.");
-			      closer.done();
-			      return;
+			recv(receiver) -> _ => { closer.done(); return },
+			recv(self.rx) -> mark => match mark {
+			  Ok(mark) => {
+			    if let Some(wait_tx) = mark.waiter {
+				let done_until = self.done_until.load(Ordering::SeqCst);
+				if done_until >= mark.version {
+				  let _ = wait_tx; // Close channel.
+				} else if mark.version < done_until.saturating_sub(OLD_VERSION_THRESHOLD) {
+				   // Version is so old we know it's irrelevant; skip waiter registration
+				   let _ = wait_tx;
+				} else {
+				  waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
+				}
+			    } else {
+				process_one(mark.version, mark.done)
 			    }
 			  },
-			}
+			  Err(_) => {
+			    // Channel closed.
+			    println!("watermark has been dropped.");
+			    closer.done();
+			    return;
+			  }
+			}}
 		}
 	}
 }

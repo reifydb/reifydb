@@ -45,9 +45,8 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		Ast, InfixOperator, TokenKind,
-		parse::Parser,
-		tokenize::{Keyword, tokenize},
+		Ast, InfixOperator, TokenKind, parse::Parser, tokenize,
+		tokenize::Keyword,
 	};
 
 	#[test]

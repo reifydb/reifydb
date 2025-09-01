@@ -169,12 +169,10 @@ macro_rules! impl_promote_signed_signed {
             fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
                 let l = match <$common>::try_from(self) {
                     Ok(v) => v,
-                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX },
-                };
+                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX }};
                 let r = match <$common>::try_from(r) {
                     Ok(v) => v,
-                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX },
-                };
+                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX }};
                 (l, r)
             }
 
@@ -221,12 +219,10 @@ macro_rules! impl_promote_unsigned_unsigned {
             fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
                 let l = match <$common>::try_from(self) {
                     Ok(v) => v,
-                    Err(_) =>  <$common>::MAX,
-                };
+                    Err(_) =>  <$common>::MAX};
                 let r = match <$common>::try_from(r) {
                     Ok(v) => v,
-                    Err(_) => <$common>::MAX,
-                };
+                    Err(_) => <$common>::MAX};
                 (l, r)
             }
 
@@ -275,12 +271,10 @@ macro_rules! impl_promote_signed_unsigned {
             fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
                 let l = match <$common>::try_from(self) {
                     Ok(v) => v,
-                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX },
-                };
+                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX }};
                 let r = match <$common>::try_from(r) {
                     Ok(v) => v,
-                    Err(_) => <$common>::MAX,
-                };
+                    Err(_) => <$common>::MAX};
                 (l, r)
             }
 
@@ -308,12 +302,10 @@ macro_rules! impl_promote_unsigned_signed {
             fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
                 let l = match <$common>::try_from(self) {
                     Ok(v) => v,
-                    Err(_) => <$common>::MAX,
-                };
+                    Err(_) => <$common>::MAX};
                 let r = match <$common>::try_from(r) {
                     Ok(v) => v,
-                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX },
-                };
+                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX }};
                 (l, r)
             }
 

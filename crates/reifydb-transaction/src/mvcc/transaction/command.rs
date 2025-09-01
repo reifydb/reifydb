@@ -120,7 +120,7 @@ where
 		&mut self,
 		key: &EncodedKey,
 		row: EncodedRow,
-	) -> Result<(), reifydb_core::Error> {
+	) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -136,7 +136,7 @@ where
 	pub fn remove(
 		&mut self,
 		key: &EncodedKey,
-	) -> Result<(), reifydb_core::Error> {
+	) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -149,7 +149,7 @@ where
 	}
 
 	/// Rolls back the transaction.
-	pub fn rollback(&mut self) -> Result<(), reifydb_core::Error> {
+	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -163,7 +163,7 @@ where
 	pub fn contains_key(
 		&mut self,
 		key: &EncodedKey,
-	) -> Result<Option<bool>, reifydb_core::Error> {
+	) -> Result<Option<bool>, reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -190,7 +190,7 @@ where
 	pub fn get<'a, 'b: 'a>(
 		&'a mut self,
 		key: &'b EncodedKey,
-	) -> Result<Option<Pending>, reifydb_core::Error> {
+	) -> Result<Option<Pending>, reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -223,7 +223,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_core::Error>
+	pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_type::Error>
 	where
 		F: FnOnce(
 			Vec<Pending>,
@@ -274,7 +274,7 @@ where
 		&mut self,
 		key: &EncodedKey,
 		row: EncodedRow,
-	) -> Result<(), reifydb_core::Error> {
+	) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -291,7 +291,7 @@ where
 	fn modify(
 		&mut self,
 		pending: Pending,
-	) -> Result<(), reifydb_core::Error> {
+	) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -351,7 +351,7 @@ where
 {
 	fn commit_pending(
 		&mut self,
-	) -> Result<(Version, Vec<Pending>), reifydb_core::Error> {
+	) -> Result<(Version, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -403,10 +403,8 @@ where
                         Pending {
                             delta: match v.row() {
                                 Some(row) => Delta::Set { key: k, row: row.clone() },
-                                None => Delta::Remove { key: k },
-                            },
-                            version: v.version,
-                        },
+                                None => Delta::Remove { key: k }},
+                            version: v.version},
                     )
                 });
 

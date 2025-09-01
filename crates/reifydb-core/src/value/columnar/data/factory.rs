@@ -1,16 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::IdentityId;
+use reifydb_type::{
+	Blob, Date, DateTime, IdentityId, Interval, RowNumber, Time, Uuid4,
+	Uuid7,
+};
+
 use crate::{
-	BitVec, Date, DateTime, Interval, RowNumber, Time,
+	BitVec,
 	value::{
-		Blob, Uuid4, Uuid7,
 		columnar::ColumnData,
 		container::{
 			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowNumberContainer, StringContainer,
-			TemporalContainer, UndefinedContainer, UuidContainer,
+			NumberContainer, RowNumberContainer, TemporalContainer,
+			UndefinedContainer, Utf8Container, UuidContainer,
 		},
 	},
 };
@@ -171,11 +174,11 @@ impl ColumnData {
 	pub fn utf8(data: impl IntoIterator<Item = impl Into<String>>) -> Self {
 		let data =
 			data.into_iter().map(|c| c.into()).collect::<Vec<_>>();
-		ColumnData::Utf8(StringContainer::from_vec(data))
+		ColumnData::Utf8(Utf8Container::from_vec(data))
 	}
 
 	pub fn utf8_with_capacity(capacity: usize) -> Self {
-		ColumnData::Utf8(StringContainer::with_capacity(capacity))
+		ColumnData::Utf8(Utf8Container::with_capacity(capacity))
 	}
 
 	pub fn utf8_with_bitvec<'a>(
@@ -185,7 +188,7 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Utf8(StringContainer::new(data, bitvec))
+		ColumnData::Utf8(Utf8Container::new(data, bitvec))
 	}
 
 	pub fn uint1(data: impl IntoIterator<Item = u8>) -> Self {

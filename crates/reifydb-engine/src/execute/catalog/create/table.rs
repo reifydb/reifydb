@@ -5,10 +5,11 @@ use reifydb_catalog::{
 	CatalogTableCommandOperations, CatalogTableQueryOperations,
 	table::TableToCreate,
 };
-use reifydb_core::{Value, interface::Transaction};
+use reifydb_core::{interface::Transaction, value::columnar::Columns};
 use reifydb_rql::plan::physical::CreateTablePlan;
+use reifydb_type::Value;
 
-use crate::{StandardCommandTransaction, columnar::Columns, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) fn create_table<T: Transaction>(
@@ -64,11 +65,9 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-	use reifydb_core::{
-		Fragment, Value,
-		interface::{Params, SchemaDef, SchemaId},
-	};
+	use reifydb_core::interface::{Params, SchemaDef, SchemaId};
 	use reifydb_rql::plan::physical::PhysicalPlan;
+	use reifydb_type::{Fragment, Value};
 
 	use crate::{
 		execute::{Executor, catalog::create::table::CreateTablePlan},

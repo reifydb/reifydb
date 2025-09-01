@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Error, IntoFragment};
-use crate::error::diagnostic::blob;
 use super::Blob;
+use crate::{Error, IntoFragment, error::diagnostic::blob};
 
 impl Blob {
 	pub fn from_utf8<'a>(fragment: impl IntoFragment<'a>) -> Self {
@@ -30,8 +29,8 @@ impl Blob {
 
 #[cfg(test)]
 mod tests {
-	use crate::OwnedFragment;
 	use super::*;
+	use crate::OwnedFragment;
 
 	#[test]
 	fn test_from_utf8() {

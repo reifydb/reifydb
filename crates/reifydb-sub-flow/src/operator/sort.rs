@@ -2,12 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, SortKey, Value,
+	SortKey,
 	flow::FlowChange,
 	interface::{CommandTransaction, Evaluator},
 	row::EncodedKey,
+	util::CowVec,
 	value::columnar::Columns,
 };
+use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::{

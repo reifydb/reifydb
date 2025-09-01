@@ -1,19 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::error::diagnostic::number::number_out_of_range;
 use reifydb_type::{
-    Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder,
-    SafeSub,
+	Error, GetType, IntoFragment, IsNumber, Promote, SafeAdd, SafeDiv,
+	SafeMul, SafeRemainder, SafeSub,
+	diagnostic::number::number_out_of_range, return_error,
 };
-use crate::{
-	Error, GetType, IntoFragment,
-	interface::{ColumnSaturationPolicy, evaluate::EvaluationContext},
-	return_error,
-	value::{
-		IsNumber,
-    },
-};
+
+use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
 
 impl EvaluationContext<'_> {
 	pub fn add<L, R>(
@@ -32,19 +26,31 @@ impl EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
 					return_error!(number_out_of_range(
                         fragment,
                         <L as Promote<R>>::Output::get_type(),
-                        self.target_column.as_ref(),
+                        descriptor.as_ref(),
                     ));
 				};
 
 				lp.checked_add(rp)
 					.ok_or_else(|| {
+						let descriptor = self
+							.target_column
+							.as_ref()
+							.map(|c| {
+								c.to_number_range_descriptor()
+							});
 						Error(number_out_of_range(
                             fragment,
                             <L as Promote<R>>::Output::get_type(),
-                            self.target_column.as_ref(),
+                            descriptor.as_ref(),
                         ))
 					})
 					.map(Some)
@@ -81,19 +87,31 @@ impl EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
 					return_error!(number_out_of_range(
                         fragment,
                         <L as Promote<R>>::Output::get_type(),
-                        self.target_column.as_ref(),
+                        descriptor.as_ref(),
                     ));
 				};
 
 				lp.checked_sub(rp)
 					.ok_or_else(|| {
+						let descriptor = self
+							.target_column
+							.as_ref()
+							.map(|c| {
+								c.to_number_range_descriptor()
+							});
 						Error(number_out_of_range(
                             fragment,
                             <L as Promote<R>>::Output::get_type(),
-                            self.target_column.as_ref(),
+                            descriptor.as_ref(),
                         ))
 					})
 					.map(Some)
@@ -130,19 +148,31 @@ impl EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
 					return_error!(number_out_of_range(
                         fragment,
                         <L as Promote<R>>::Output::get_type(),
-                        self.target_column.as_ref(),
+                        descriptor.as_ref(),
                     ));
 				};
 
 				lp.checked_mul(rp)
 					.ok_or_else(|| {
+						let descriptor = self
+							.target_column
+							.as_ref()
+							.map(|c| {
+								c.to_number_range_descriptor()
+							});
 						Error(number_out_of_range(
                             fragment,
                             <L as Promote<R>>::Output::get_type(),
-                            self.target_column.as_ref(),
+                            descriptor.as_ref(),
                         ))
 					})
 					.map(Some)
@@ -179,19 +209,31 @@ impl EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
 					return_error!(number_out_of_range(
                         fragment,
                         <L as Promote<R>>::Output::get_type(),
-                        self.target_column.as_ref(),
+                        descriptor.as_ref(),
                     ));
 				};
 
 				lp.checked_div(rp)
 					.ok_or_else(|| {
+						let descriptor = self
+							.target_column
+							.as_ref()
+							.map(|c| {
+								c.to_number_range_descriptor()
+							});
 						Error(number_out_of_range(
                             fragment,
                             <L as Promote<R>>::Output::get_type(),
-                            self.target_column.as_ref(),
+                            descriptor.as_ref(),
                         ))
 					})
 					.map(Some)
@@ -228,19 +270,31 @@ impl EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r)
 				else {
+					let descriptor = self
+						.target_column
+						.as_ref()
+						.map(|c| {
+							c.to_number_range_descriptor()
+						});
 					return_error!(number_out_of_range(
                         fragment,
                         <L as Promote<R>>::Output::get_type(),
-                        self.target_column.as_ref(),
+                        descriptor.as_ref(),
                     ));
 				};
 
 				lp.checked_rem(rp)
 					.ok_or_else(|| {
+						let descriptor = self
+							.target_column
+							.as_ref()
+							.map(|c| {
+								c.to_number_range_descriptor()
+							});
 						Error(number_out_of_range(
                             fragment,
                             <L as Promote<R>>::Output::get_type(),
-                            self.target_column.as_ref(),
+                            descriptor.as_ref(),
                         ))
 					})
 					.map(Some)
@@ -262,7 +316,9 @@ impl EvaluationContext<'_> {
 
 #[cfg(test)]
 mod tests {
-	use crate::{Fragment, interface::evaluate::EvaluationContext};
+	use reifydb_type::Fragment;
+
+	use crate::interface::evaluate::EvaluationContext;
 
 	#[test]
 	fn test_add() {

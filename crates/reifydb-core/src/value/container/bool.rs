@@ -3,9 +3,10 @@
 
 use std::ops::Deref;
 
+use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, Value};
+use crate::BitVec;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BoolContainer {

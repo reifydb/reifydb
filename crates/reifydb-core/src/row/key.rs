@@ -254,8 +254,8 @@ mod tests {
 	mod start_end {
 		use std::ops::Bound;
 
-		use super::EncodedKey;
 		use crate::{
+			EncodedKey,
 			row::key::{EncodedKeyRange, tests::included},
 			util::encoding::keycode,
 		};

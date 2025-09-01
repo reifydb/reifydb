@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// General deserialization error
 pub fn deserialization_error(msg: String) -> Diagnostic {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::value::Value;
+use reifydb_type::Value;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Params {
@@ -71,7 +71,7 @@ macro_rules! params {
         {
             let mut map = ::std::collections::HashMap::new();
             $(
-                map.insert($crate::params_key!($key), $crate::value::IntoValue::into_value($value));
+                map.insert($crate::params_key!($key), reifydb_type::value::IntoValue::into_value($value));
             )*
             $crate::interface::Params::Named(map)
         }
@@ -86,7 +86,7 @@ macro_rules! params {
     [ $($value:expr),+ $(,)? ] => {
         {
             let values = vec![
-                $($crate::value::IntoValue::into_value($value)),*
+                $(reifydb_type::value::IntoValue::into_value($value)),*
             ];
             $crate::interface::Params::Positional(values)
         }
@@ -106,8 +106,9 @@ macro_rules! params_key {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::IntoValue;
+
 	use super::*;
-	use crate::value::IntoValue;
 
 	#[test]
 	fn test_params_macro_positional() {
@@ -212,7 +213,7 @@ mod tests {
 	#[test]
 	fn test_params_macro_trailing_comma() {
 		let params1 = params![1, 2, 3,];
-		let params2 = params! { a: 1, b: 2, };
+		let params2 = params! { a: 1, b: 2};
 
 		match params1 {
 			Params::Positional(values) => {

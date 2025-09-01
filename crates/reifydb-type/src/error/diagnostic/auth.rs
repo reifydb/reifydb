@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Authentication failed due to invalid credentials or other reasons
 pub fn authentication_failed(reason: String) -> Diagnostic {

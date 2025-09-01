@@ -5,25 +5,28 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	ColumnDescriptor, Type, Value,
+	ColumnDescriptor,
 	interface::{
 		ColumnPolicyKind, EncodableKey, Params, RowKey, Transaction,
 		VersionedCommandTransaction,
 	},
-    return_error,
 	row::EncodedRowLayout,
+	value::columnar::{ColumnData, Columns},
 };
 use reifydb_rql::plan::{
 	logical::extract_table_from_plan, physical::UpdatePlan,
 };
-use reifydb_type::::diagnostic::{
-    catalog::{schema_not_found, table_not_found},
-    engine,
+use reifydb_type::{
+	ROW_NUMBER_COLUMN_NAME, Type, Value,
+	diagnostic::{
+		catalog::{schema_not_found, table_not_found},
+		engine,
+	},
+	return_error,
 };
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	columnar::{ColumnData, Columns},
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode,
 		mutate::coerce::coerce_value_to_column_type,
@@ -335,8 +338,7 @@ impl Executor {
 							.set_undefined(
 								&mut row,
 								table_idx,
-							),
-					}
+							)}
 					}
 
 					// Update the row using the existing

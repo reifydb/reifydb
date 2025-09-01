@@ -5,25 +5,28 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	EncodedKeyRange, Value,
+	EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, Params, RowKey, RowKeyRange,
 		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 	},
-    return_error,
+	value::columnar::{ColumnData, Columns},
 };
 use reifydb_rql::plan::{
 	logical::extract_table_from_plan, physical::DeletePlan,
 };
-use reifydb_type::::diagnostic::{
-    catalog::{schema_not_found, table_not_found},
-    engine,
+use reifydb_type::{
+	ROW_NUMBER_COLUMN_NAME, Value,
+	diagnostic::{
+		catalog::{schema_not_found, table_not_found},
+		engine,
+	},
+	return_error,
 };
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	columnar::{ColumnData, Columns},
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode,
 		query::compile::compile,

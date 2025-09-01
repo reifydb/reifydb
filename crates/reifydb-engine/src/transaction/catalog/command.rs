@@ -288,10 +288,8 @@ impl<T: Transaction> TransactionalChangesExt for StandardCommandTransaction<T> {
 mod tests {
 	use reifydb_catalog::CatalogCommandTransactionOperations;
 	use reifydb_core::interface::{
-		Operation,
-		OperationType::{Create, Delete, Update},
-		SchemaDef, SchemaId, TableDef, TableId, ViewDef, ViewId,
-		ViewKind,
+		Operation, OperationType::Create, SchemaDef, SchemaId,
+		TableDef, TableId, ViewDef, ViewId, ViewKind,
 	};
 
 	use crate::test_utils::create_test_command_transaction;
@@ -377,7 +375,17 @@ mod tests {
 	}
 
 	mod track_schema_def_updated {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::{
+			Operation,
+			OperationType::{Create, Update},
+			SchemaId,
+		};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::test_schema_def,
+		};
 
 		#[test]
 		fn test_multiple_updates_no_coalescing() {
@@ -560,7 +568,16 @@ mod tests {
 	}
 
 	mod track_schema_def_deleted {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::{
+			Operation,
+			OperationType::{Create, Delete, Update},
+		};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::test_schema_def,
+		};
 
 		#[test]
 		fn test_delete_after_create_no_coalescing() {
@@ -664,7 +681,17 @@ mod tests {
 	}
 
 	mod track_table_def_created {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::{
+			Operation, OperationType::Create,
+		};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::{
+				test_schema_def, test_table_def,
+			},
+		};
 
 		#[test]
 		fn test_successful_creation() {
@@ -719,7 +746,15 @@ mod tests {
 	}
 
 	mod track_table_def_updated {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::OperationType::{Create, Update};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::{
+				test_schema_def, test_table_def,
+			},
+		};
 
 		#[test]
 		fn test_multiple_updates_no_coalescing() {
@@ -856,7 +891,17 @@ mod tests {
 	}
 
 	mod track_table_def_deleted {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::OperationType::{
+			Create, Delete, Update,
+		};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::{
+				test_schema_def, test_table_def,
+			},
+		};
 
 		#[test]
 		fn test_delete_after_create_no_coalescing() {
@@ -922,7 +967,17 @@ mod tests {
 	}
 
 	mod track_view_def_created {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::{
+			Operation, OperationType::Create,
+		};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::{
+				test_schema_def, test_view_def,
+			},
+		};
 
 		#[test]
 		fn test_successful_creation() {
@@ -977,7 +1032,15 @@ mod tests {
 	}
 
 	mod track_view_def_updated {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::OperationType::{Create, Update};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::{
+				test_schema_def, test_view_def,
+			},
+		};
 
 		#[test]
 		fn test_multiple_updates_no_coalescing() {
@@ -1111,7 +1174,17 @@ mod tests {
 	}
 
 	mod track_view_def_deleted {
-		use super::*;
+		use reifydb_catalog::CatalogCommandTransactionOperations;
+		use reifydb_core::interface::OperationType::{
+			Create, Delete, Update,
+		};
+
+		use crate::{
+			test_utils::create_test_command_transaction,
+			transaction::catalog::command::tests::{
+				test_schema_def, test_view_def,
+			},
+		};
 
 		#[test]
 		fn test_delete_after_create_no_coalescing() {

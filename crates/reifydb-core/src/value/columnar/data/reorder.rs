@@ -84,7 +84,9 @@ impl ColumnData {
 
 #[cfg(test)]
 mod tests {
-	use crate::{Value, value::columnar::ColumnData};
+	use reifydb_type::Value;
+
+	use crate::value::columnar::ColumnData;
 
 	#[test]
 	fn test_reorder_bool() {

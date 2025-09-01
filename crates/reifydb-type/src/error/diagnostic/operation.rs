@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
 
 pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
@@ -20,8 +19,7 @@ pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 			"Negative values are not meaningful in this context".to_string(),
 			"Valid examples: TAKE 10, TAKE 0, TAKE 100".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Missing aggregate map block error
@@ -42,8 +40,7 @@ pub fn missing_aggregate_map_block<'a>(
 			"Use curly braces for multiple aggregations: AGGREGATE { expr1, expr2 } BY ...".to_string(),
 			"For global aggregations without grouping, use: AGGREGATE count(*) BY {}".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Multiple aggregate map expressions without braces error
@@ -64,8 +61,7 @@ pub fn aggregate_multiple_map_without_braces<'a>(
 			"Single aggregation expressions can be written without braces: AGGREGATE count(id) BY category".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Multiple aggregate by expressions without braces error
@@ -86,8 +82,7 @@ pub fn aggregate_multiple_by_without_braces<'a>(
 			"Single grouping columns can be written without braces: AGGREGATE ... BY category".to_string(),
 			"For global aggregations without grouping, use empty braces: AGGREGATE ... BY {}".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Multiple SELECT expressions without braces error
@@ -108,8 +103,7 @@ pub fn select_multiple_expressions_without_braces<'a>(
 			"Single expressions can be written without braces: SELECT name FROM users".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Multiple DISTINCT columns without braces error
@@ -131,8 +125,7 @@ pub fn distinct_multiple_columns_without_braces<'a>(
 			"No arguments means distinct on all columns: DISTINCT FROM events".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Multiple MAP expressions without braces error
@@ -153,8 +146,7 @@ pub fn map_multiple_expressions_without_braces<'a>(
 			"Single expressions can be written without braces: MAP name FROM users".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }
 
 /// Multiple EXTEND expressions without braces error
@@ -175,6 +167,5 @@ pub fn extend_multiple_expressions_without_braces<'a>(
 			"Single expressions can be written without braces: EXTEND total: price * quantity".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None,
-	}
+		cause: None}
 }

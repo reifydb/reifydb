@@ -161,8 +161,10 @@ impl From<EncodedIndexKeyRange> for EncodedKeyRange {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::Type;
+
 	use super::*;
-	use crate::{SortDirection, Type, index::EncodedIndexLayout};
+	use crate::{SortDirection, index::EncodedIndexLayout};
 
 	#[test]
 	fn test_start_end() {

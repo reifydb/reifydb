@@ -212,9 +212,9 @@ impl<const N: usize> IntoValue for &[u8; N] {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use crate::value::into::IntoValue;
-	use crate::{Blob, OrderedF32, OrderedF64, Value};
 	use std::f64::consts::PI;
+
+	use crate::{Blob, IntoValue, OrderedF32, OrderedF64, Value};
 
 	#[test]
 	fn test_into_value_primitives() {

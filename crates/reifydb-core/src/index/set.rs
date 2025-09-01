@@ -3,12 +3,14 @@
 
 use std::ptr;
 
+use reifydb_type::{
+	Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
+};
 use uuid::Uuid;
 
 use crate::{
-	SortDirection, Type,
+	SortDirection,
 	index::{EncodedIndexKey, EncodedIndexLayout},
-	value::{Date, DateTime, IdentityId, Interval, Time, Uuid4, Uuid7},
 };
 
 impl EncodedIndexLayout {
@@ -697,9 +699,11 @@ impl EncodedIndexLayout {
 
 #[cfg(test)]
 mod tests {
-	use crate::{SortDirection, Type, index::EncodedIndexLayout};
+	use crate::{SortDirection, index::EncodedIndexLayout};
 
 	mod bool {
+		use reifydb_type::Type;
+
 		use super::*;
 
 		#[test]
@@ -752,7 +756,9 @@ mod tests {
 	}
 
 	mod i8 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -812,7 +818,9 @@ mod tests {
 	}
 
 	mod i32 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -890,7 +898,9 @@ mod tests {
 	}
 
 	mod i64 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -939,7 +949,9 @@ mod tests {
 	}
 
 	mod u8 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -994,7 +1006,9 @@ mod tests {
 	}
 
 	mod u32 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1036,7 +1050,9 @@ mod tests {
 	}
 
 	mod u64 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1070,7 +1086,9 @@ mod tests {
 	}
 
 	mod f32 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1142,7 +1160,9 @@ mod tests {
 	}
 
 	mod f64 {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1190,7 +1210,9 @@ mod tests {
 	}
 
 	mod row_number {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1245,8 +1267,9 @@ mod tests {
 	}
 
 	mod date {
-		use super::*;
-		use crate::value::Date;
+		use reifydb_type::{Date, Type};
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1299,7 +1322,9 @@ mod tests {
 	}
 
 	mod composite {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_mixed_directions() {
@@ -1330,8 +1355,9 @@ mod tests {
 	}
 
 	mod uuid4 {
-		use super::*;
-		use crate::value::Uuid4;
+		use reifydb_type::{Type, Uuid4};
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1395,8 +1421,9 @@ mod tests {
 	}
 
 	mod uuid7 {
-		use super::*;
-		use crate::value::Uuid7;
+		use reifydb_type::{Type, Uuid7};
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1487,8 +1514,9 @@ mod tests {
 	}
 
 	mod identity_id {
-		use super::*;
-		use crate::value::IdentityId;
+		use reifydb_type::{IdentityId, Type, Uuid7};
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_asc() {
@@ -1517,8 +1545,8 @@ mod tests {
 
 			// Check values are stored correctly (16 bytes)
 			let offset = layout.fields[0].offset;
-			let uuid7_1: crate::value::Uuid7 = id1.into();
-			let uuid7_2: crate::value::Uuid7 = id2.into();
+			let uuid7_1: Uuid7 = id1.into();
+			let uuid7_2: Uuid7 = id2.into();
 			let id1_bytes: Vec<u8> = uuid7_1.as_bytes().to_vec();
 			let id2_bytes: Vec<u8> = uuid7_2.as_bytes().to_vec();
 
@@ -1552,8 +1580,8 @@ mod tests {
 
 			// Check values are inverted for DESC
 			let offset = layout.fields[0].offset;
-			let uuid7_1: crate::value::Uuid7 = id1.into();
-			let uuid7_2: crate::value::Uuid7 = id2.into();
+			let uuid7_1: Uuid7 = id1.into();
+			let uuid7_2: Uuid7 = id2.into();
 			let mut expected_bytes1 = uuid7_1.as_bytes().to_vec();
 			let mut expected_bytes2 = uuid7_2.as_bytes().to_vec();
 			for b in expected_bytes1.iter_mut() {
@@ -1578,7 +1606,9 @@ mod tests {
 	}
 
 	mod undefined {
-		use super::*;
+		use reifydb_type::Type;
+
+		use crate::{SortDirection, index::EncodedIndexLayout};
 
 		#[test]
 		fn test_undefined() {

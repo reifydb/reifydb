@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-testing = { workspace = true }
+reifydb-type = { workspace = true }
 
 crossbeam-skiplist = { workspace = true }
 

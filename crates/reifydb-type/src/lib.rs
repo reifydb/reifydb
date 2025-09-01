@@ -6,16 +6,55 @@
 mod error;
 mod fragment;
 mod frame;
-mod util;
-mod value;
+pub mod util;
+pub mod value;
 
-pub use error::diagnostic;
-pub use error::Error;
+pub use error::{Error, diagnostic};
+
+pub type Result<T> = std::result::Result<T, Error>;
 pub use fragment::{
-	BorrowedFragment, Fragment, IntoFragment, OwnedFragment,
+	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
 	StatementColumn, StatementLine,
 };
 pub use value::{
-	Blob, Date, DateTime, GetType, IdentityId, Interval, IntoValue,
-	OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7, Value,
+	Blob,
+	Date,
+	DateTime,
+
+	// Parse functions
+	GetType,
+	// Traits
+	IdentityId,
+
+	// Number traits and operations
+	Interval,
+
+	// Constants
+	IntoValue,
+	OrderedF32,
+	OrderedF64,
+	// Core types
+	RowNumber,
+	Time,
+	Type,
+	Uuid4,
+	Uuid7,
+	Value,
+	boolean::parse_bool,
+	is::{
+		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
+		IsUuid,
+	},
+	number::{
+		Promote, SafeAdd, SafeConvert, SafeDemote, SafeDiv, SafeMul,
+		SafePromote, SafeRemainder, SafeSub, parse_float, parse_int,
+		parse_uint,
+	},
+	row_number::ROW_NUMBER_COLUMN_NAME,
+	temporal::parse::{
+		parse_date, parse_datetime, parse_interval, parse_time,
+	},
+	uuid::{parse_uuid4, parse_uuid7},
 };
+// Re-export blob, boolean, temporal, and uuid modules for utility access
+pub use value::{blob, boolean, temporal, uuid};

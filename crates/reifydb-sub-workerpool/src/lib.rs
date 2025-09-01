@@ -9,7 +9,7 @@ mod task;
 mod worker;
 
 pub use factory::WorkerPoolSubsystemFactory;
-pub use reifydb_core::Result;
+pub use reifydb_type::Result;
 pub use scheduler::TaskScheduler;
 pub use task::{ClosureTask, PoolTask, PrioritizedTask, TaskContext};
 pub use worker::Worker;

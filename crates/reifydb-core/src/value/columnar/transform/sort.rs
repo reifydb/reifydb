@@ -32,8 +32,7 @@ impl Columns {
                 let ord = va.partial_cmp(&vb).unwrap_or(std::cmp::Ordering::Equal);
                 let ord = match dir {
                     SortDirection::Asc => ord,
-                    SortDirection::Desc => ord.reverse(),
-                };
+                    SortDirection::Desc => ord.reverse()};
                 if ord != std::cmp::Ordering::Equal {
                     return ord;
                 }

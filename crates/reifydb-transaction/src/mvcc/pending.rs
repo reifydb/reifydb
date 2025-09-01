@@ -201,19 +201,16 @@ impl PendingWrites {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{EncodedKey, Version, row::EncodedRow};
+	use reifydb_core::{CowVec, EncodedKey, Version, row::EncodedRow};
 
 	use super::*;
-	use crate::mvcc::types::Pending;
 
 	fn create_test_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
 	}
 
 	fn create_test_row(s: &str) -> EncodedRow {
-		EncodedRow(reifydb_core::util::CowVec::new(
-			s.as_bytes().to_vec(),
-		))
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	fn create_test_pending(

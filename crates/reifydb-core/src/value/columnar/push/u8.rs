@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{SafeConvert, SafePromote};
-use crate::value::{
-	columnar::{data::ColumnData, push::Push},
-};
+
+use crate::value::columnar::{data::ColumnData, push::Push};
 
 impl Push<u8> for ColumnData {
 	fn push(&mut self, value: u8) {

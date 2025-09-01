@@ -3,7 +3,9 @@
 
 use std::ops::Bound;
 
-use crate::{Result, Version, interface::CdcEvent};
+use reifydb_type::Result;
+
+use crate::{Version, interface::CdcEvent};
 
 pub trait CdcTransaction: Send + Sync + Clone + 'static {
 	type Query<'a>: CdcQueryTransaction;

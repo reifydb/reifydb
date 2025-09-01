@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{RowNumber, Value, interface::StoreId, value::columnar::Columns};
+use crate::{interface::StoreId, value::columnar::Columns};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowDiff {

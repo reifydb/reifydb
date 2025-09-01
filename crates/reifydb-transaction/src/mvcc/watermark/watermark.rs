@@ -177,7 +177,9 @@ impl WaterMark {
 
 #[cfg(test)]
 mod tests {
-	use std::time::Instant;
+	use std::{sync::atomic::AtomicUsize, thread, time::Instant};
+
+	use thread::spawn;
 
 	use super::*;
 
@@ -244,7 +246,7 @@ mod tests {
 		// Spawn threads that perform concurrent begin/done operations
 		for thread_id in 0..NUM_THREADS {
 			let wm = watermark.clone();
-			let handle = thread::spawn(move || {
+			let handle = spawn(move || {
 				for i in 0..OPS_PER_THREAD {
 					let version = (thread_id
 						* OPS_PER_THREAD + i)
@@ -271,11 +273,6 @@ mod tests {
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		use std::{
-			sync::{Arc, atomic::AtomicUsize},
-			thread,
-		};
-
 		let closer = Closer::new(1);
 		let watermark = Arc::new(WaterMark::new(
 			"wait_concurrent".into(),
@@ -294,7 +291,7 @@ mod tests {
 		for version in 1..=10 {
 			let wm = watermark.clone();
 			let counter = success_count.clone();
-			let handle = thread::spawn(move || {
+			let handle = spawn(move || {
 				// Use timeout to avoid hanging if something
 				// goes wrong
 				if wm.wait_for_mark_timeout(

@@ -3,11 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::Transaction;
+use reifydb_core::{
+	interface::Transaction, value::columnar::layout::ColumnsLayout,
+};
 
 use crate::{
 	StandardTransaction,
-	columnar::layout::ColumnsLayout,
 	execute::{Batch, ExecutionContext, QueryNode},
 	table_virtual::{TableVirtual, TableVirtualContext},
 };
@@ -32,11 +33,10 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 				.columns
 				.iter()
 				.map(|col| {
-					crate::columnar::layout::ColumnLayout {
+					reifydb_core::value::columnar::layout::ColumnLayout {
 						schema: None,
 						source: None,
-						name: col.name.clone(),
-					}
+						name: col.name.clone()}
 				})
 				.collect(),
 		};

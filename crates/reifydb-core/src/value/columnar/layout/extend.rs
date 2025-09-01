@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{diagnostic::query, err};
+
 use super::ColumnsLayout;
-use crate::result::error::diagnostic::query;
 
 impl ColumnsLayout {
 	pub fn extend(&self, other: &ColumnsLayout) -> crate::Result<Self> {
@@ -24,11 +25,9 @@ impl ColumnsLayout {
 				});
 
 			if column_exists {
-				return crate::err!(
-					query::extend_duplicate_column(
-						&column.name
-					)
-				);
+				return err!(query::extend_duplicate_column(
+					&column.name
+				));
 			}
 
 			columns.push(column.clone());

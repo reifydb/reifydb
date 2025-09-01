@@ -3,10 +3,8 @@
 
 use PhysicalPlan::CreateTransactionalView;
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{
-	diagnostic::catalog::schema_not_found, interface::QueryTransaction,
-	return_error,
-};
+use reifydb_core::interface::QueryTransaction;
+use reifydb_type::{diagnostic::catalog::schema_not_found, return_error};
 
 use crate::plan::{
 	logical::CreateTransactionalViewNode,
@@ -36,7 +34,7 @@ impl Compiler {
 			columns: create.columns,
 			with: Self::compile(rx, create.with)?
 				.map(Box::new)
-				.unwrap(), // FIXME,
+				.unwrap(), // FIXME
 		}))
 	}
 }

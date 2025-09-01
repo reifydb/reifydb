@@ -1,15 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{
-	result::error::diagnostic::engine,
-	return_error,
-	value::{
-		columnar::ColumnData,
-		container::{
-			BlobContainer, BoolContainer, NumberContainer,
-			StringContainer, TemporalContainer, UuidContainer,
-		},
+use reifydb_type::{diagnostic::engine, return_error};
+
+use crate::value::{
+	columnar::ColumnData,
+	container::{
+		BlobContainer, BoolContainer, NumberContainer,
+		TemporalContainer, Utf8Container, UuidContainer,
 	},
 };
 
@@ -242,7 +240,7 @@ impl ColumnData {
 						);
 					}
 					ColumnData::Utf8(r) => {
-						let mut new_container = StringContainer::with_capacity(l_len + r.len());
+						let mut new_container = Utf8Container::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,

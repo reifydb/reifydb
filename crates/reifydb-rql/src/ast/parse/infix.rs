@@ -114,12 +114,7 @@ mod tests {
 
 	use crate::ast::{
 		Ast::{Infix, Literal},
-		AstLiteral,
-		parse::{
-			infix::{AstInfix, InfixOperator},
-			parse,
-		},
-		tokenize::tokenize,
+		AstInfix, AstLiteral, InfixOperator, parse, tokenize,
 	};
 
 	#[test]

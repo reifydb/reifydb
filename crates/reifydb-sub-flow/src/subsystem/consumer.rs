@@ -3,7 +3,7 @@
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	Result, Value,
+	Result,
 	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
 		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
@@ -16,6 +16,7 @@ use reifydb_core::{
 	value::columnar::Columns,
 };
 use reifydb_engine::{StandardEngine, StandardEvaluator};
+use reifydb_type::Value;
 
 use super::intercept::Change;
 use crate::engine::FlowEngine;

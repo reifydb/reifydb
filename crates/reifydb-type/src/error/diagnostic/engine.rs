@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
-use crate::OwnedFragment;
+use crate::{
+	OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment,
+};
 
 /// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {
@@ -55,8 +55,7 @@ pub fn missing_row_number_column() -> Diagnostic {
         notes: vec![
             "UPDATE operations require row identifiers to locate existing rows".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 /// Invalid or undefined RowNumber values error
@@ -72,8 +71,7 @@ pub fn invalid_row_number_values() -> Diagnostic {
         notes: vec![
             "RowNumber column must contain valid identifiers, not undefined values".to_string(),
         ],
-        cause: None,
-    }
+        cause: None}
 }
 
 /// Invalid parameter reference error
@@ -91,8 +89,7 @@ pub fn invalid_parameter_reference<'a>(
         label: Some("invalid parameter syntax".to_string()),
         help: Some("Use $1, $2 for positional parameters or $name for named parameters".to_string()),
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 /// Parameter not found error
@@ -108,6 +105,5 @@ pub fn parameter_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
         label: Some("parameter not provided".to_string()),
         help: Some("Ensure all referenced parameters are provided in the query call".to_string()),
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }

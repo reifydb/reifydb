@@ -500,3 +500,7 @@
 // 	websocket_concurrent_query_benchmark
 // );
 // criterion_main!(websocket_benches);
+
+fn main() {
+	// Benchmark code is currently disabled
+}

@@ -75,11 +75,16 @@ impl Type {
 
 #[cfg(test)]
 mod tests {
-	use crate::Type;
+	use crate::{
+		Type,
+		Type::{
+			Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
+			Uint1, Uint2, Uint4, Uint8, Uint16, Undefined, Utf8,
+		},
+	};
 
 	#[test]
 	fn test_promote_bool() {
-		use Type::*;
 		let cases = [
 			(Bool, Bool, Bool),
 			(Bool, Float4, Bool),
@@ -104,7 +109,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_float4() {
-		use Type::*;
 		let cases = [
 			(Float4, Bool, Bool),
 			(Float4, Float4, Float8),
@@ -129,7 +133,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_float8() {
-		use Type::*;
 		let cases = [
 			(Float8, Bool, Bool),
 			(Float8, Float4, Float8),
@@ -154,7 +157,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_int1() {
-		use Type::*;
 		let cases = [
 			(Int1, Bool, Bool),
 			(Int1, Float4, Float8),
@@ -179,7 +181,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_int2() {
-		use Type::*;
 		let cases = [
 			(Int2, Bool, Bool),
 			(Int2, Float4, Float8),
@@ -204,7 +205,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_int4() {
-		use Type::*;
 		let cases = [
 			(Int4, Bool, Bool),
 			(Int4, Float4, Float8),
@@ -229,7 +229,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_int8() {
-		use Type::*;
 		let cases = [
 			(Int8, Bool, Bool),
 			(Int8, Float4, Float8),
@@ -254,7 +253,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_int16() {
-		use Type::*;
 		let cases = [
 			(Int16, Bool, Bool),
 			(Int16, Float4, Float8),
@@ -279,7 +277,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_string() {
-		use Type::*;
 		let kinds = [
 			Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
 			Utf8, Uint1, Uint2, Uint4, Uint8, Uint16,
@@ -293,7 +290,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_uint1() {
-		use Type::*;
 		let cases = [
 			(Uint1, Bool, Bool),
 			(Uint1, Float4, Float8),
@@ -318,7 +314,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_uint2() {
-		use Type::*;
 		let cases = [
 			(Uint2, Bool, Bool),
 			(Uint2, Float4, Float8),
@@ -343,7 +338,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_uint4() {
-		use Type::*;
 		let cases = [
 			(Uint4, Bool, Bool),
 			(Uint4, Float4, Float8),
@@ -368,7 +362,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_uint8() {
-		use Type::*;
 		let cases = [
 			(Uint8, Bool, Bool),
 			(Uint8, Float4, Float8),
@@ -393,7 +386,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_uint16() {
-		use Type::*;
 		let cases = [
 			(Uint16, Bool, Bool),
 			(Uint16, Float4, Float8),
@@ -418,7 +410,6 @@ mod tests {
 
 	#[test]
 	fn test_promote_undefined() {
-		use Type::*;
 		let kinds = [
 			Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
 			Utf8, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined,

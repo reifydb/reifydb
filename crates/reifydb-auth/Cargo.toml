@@ -7,6 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }
 
 [dev-dependencies]

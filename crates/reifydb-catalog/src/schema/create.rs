@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	OwnedFragment,
-	interface::{CommandTransaction, EncodableKey, SchemaDef, SchemaKey},
-	result::error::diagnostic::catalog::schema_already_exists,
-	return_error,
+use reifydb_core::interface::{
+	CommandTransaction, EncodableKey, SchemaDef, SchemaKey,
+};
+use reifydb_type::{
+	OwnedFragment, diagnostic::catalog::schema_already_exists, return_error,
 };
 
 use crate::{CatalogStore, schema::layout::schema, sequence::SystemSequence};

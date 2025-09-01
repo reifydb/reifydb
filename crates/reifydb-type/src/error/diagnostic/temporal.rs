@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
 
 pub fn invalid_date_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
@@ -47,8 +46,7 @@ pub fn invalid_datetime_format<'a>(
         ),
         notes: vec!["datetime must contain 'T' separator between date and time parts".to_string()],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_time_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
@@ -66,8 +64,7 @@ pub fn invalid_time_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
         help: Some("use the format HH:MM:SS[.fff][Z|±HH:MM] (e.g., 14:30:45)".to_string()),
         notes: vec!["time must have exactly 3 parts separated by colons".to_string()],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_interval_format<'a>(
@@ -94,8 +91,7 @@ pub fn invalid_interval_format<'a>(
             "time part: T[n]H[n]M[n]S (hours, minutes, seconds)".to_string(),
         ],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_year<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
@@ -181,8 +177,7 @@ pub fn invalid_hour<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
             "hours must be in 24-hour format (00-23)".to_string(),
         ],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_minute<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
@@ -272,8 +267,7 @@ pub fn invalid_date_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
             "consider leap years for February 29".to_string(),
         ],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_time_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
@@ -318,8 +312,7 @@ pub fn invalid_interval_character<'a>(
             "time part units: H (hours), m (minutes), S (seconds)".to_string(),
         ],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn incomplete_interval_specification<'a>(
@@ -339,8 +332,7 @@ pub fn incomplete_interval_specification<'a>(
         help: Some("add a unit letter after the number (Y, M, W, D, H, M, or S)".to_string()),
         notes: vec!["example: P1D (not P1), PT2H (not PT2)".to_string()],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 pub fn invalid_unit_in_context<'a>(
@@ -431,8 +423,7 @@ pub fn unrecognized_temporal_pattern<'a>(
 			"interval: P1Y2M3DT4H5M6S".to_string(),
 		],
 		column: None,
-        cause: None,
-	}
+        cause: None}
 }
 
 pub fn empty_date_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
@@ -469,8 +460,7 @@ pub fn empty_time_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
         help: Some("ensure all time parts (hour, minute, second) are provided".to_string()),
         notes: vec!["time format: HH:MM:SS (e.g., 14:30:45)".to_string()],
         column: None,
-        cause: None,
-    }
+        cause: None}
 }
 
 fn unit_name(unit: char) -> &'static str {

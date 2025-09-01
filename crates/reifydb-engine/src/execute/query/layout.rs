@@ -1,8 +1,8 @@
 use reifydb_core::{
 	interface::evaluate::expression::{ConstantExpression, Expression},
+	value::columnar::layout::{ColumnLayout, ColumnsLayout},
 };
 use reifydb_type::ROW_NUMBER_COLUMN_NAME;
-use crate::columnar::layout::{ColumnLayout, ColumnsLayout};
 
 pub fn derive_columns_column_layout(
 	expressions: &[Expression],

@@ -4,12 +4,13 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{
-	CowVec, Value,
 	flow::{FlowChange, FlowDiff},
 	interface::{CommandTransaction, Evaluator, expression::Expression},
 	row::EncodedKey,
+	util::CowVec,
 	value::columnar::Columns,
 };
+use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::{

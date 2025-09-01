@@ -3,19 +3,17 @@
 
 use std::fmt::{Debug, Display};
 
-use reifydb_core::{
-	Error, Type, err,
-    value::{
-		IsNumber, IsTemporal, IsUuid,
-		container::{
-			BlobContainer, BoolContainer, NumberContainer,
-			TemporalContainer, UuidContainer,
-		},
+use reifydb_core::value::{
+	columnar::ColumnData,
+	container::{
+		BlobContainer, BoolContainer, NumberContainer,
+		TemporalContainer, UuidContainer,
 	},
 };
-use reifydb_type::::diagnostic::cast;
-use reifydb_type::::LazyFragment;
-use crate::columnar::ColumnData;
+use reifydb_type::{
+	Error, IsNumber, IsTemporal, IsUuid, LazyFragment, Type,
+	diagnostic::cast, err,
+};
 
 pub fn to_text<'a>(
 	data: &ColumnData,
@@ -150,14 +148,15 @@ where
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		BitVec, Blob, Fragment, value::container::BlobContainer,
+		BitVec,
+		value::{columnar::ColumnData, container::BlobContainer},
 	};
+	use reifydb_type::{Blob, Fragment, OwnedFragment};
 
-	use crate::{columnar::ColumnData, evaluate::cast::text::from_blob};
+	use crate::evaluate::cast::text::from_blob;
 
 	#[test]
 	fn test_from_blob() {
-		use reifydb_type::::OwnedFragment;
 		let blobs = vec![
 			Blob::from_utf8(OwnedFragment::internal("Hello")),
 			Blob::from_utf8(OwnedFragment::internal("World")),

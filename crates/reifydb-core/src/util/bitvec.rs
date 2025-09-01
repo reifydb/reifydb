@@ -483,7 +483,7 @@ mod tests {
 	}
 
 	mod get_and_set {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -515,7 +515,7 @@ mod tests {
 	}
 
 	mod from_fn {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -532,7 +532,7 @@ mod tests {
 	}
 
 	mod iter {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -550,7 +550,7 @@ mod tests {
 	}
 
 	mod and {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -573,7 +573,7 @@ mod tests {
 	}
 
 	mod from_slice {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_empty_slice() {
@@ -641,7 +641,7 @@ mod tests {
 	}
 
 	mod from_array {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_from_array_1() {
@@ -700,7 +700,7 @@ mod tests {
 	}
 
 	mod from_vec {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_from_vec_empty() {
@@ -735,7 +735,7 @@ mod tests {
 	}
 
 	mod empty {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_empty() {
@@ -766,7 +766,7 @@ mod tests {
 	}
 
 	mod take {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_take_empty() {
@@ -831,7 +831,7 @@ mod tests {
 	}
 
 	mod extend {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_extend_empty_to_empty() {
@@ -923,7 +923,7 @@ mod tests {
 	}
 
 	mod push {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_push_to_empty() {
@@ -986,7 +986,7 @@ mod tests {
 	}
 
 	mod reorder {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_reorder_identity() {
@@ -1053,7 +1053,7 @@ mod tests {
 	}
 
 	mod count_ones {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_count_ones_empty() {
@@ -1094,7 +1094,7 @@ mod tests {
 	}
 
 	mod any_none {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_any_none_empty() {
@@ -1140,7 +1140,7 @@ mod tests {
 	}
 
 	mod to_vec {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_to_vec_empty() {
@@ -1174,7 +1174,7 @@ mod tests {
 	}
 
 	mod display {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_display_empty() {
@@ -1211,7 +1211,7 @@ mod tests {
 	}
 
 	mod and_operation {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_and_empty() {
@@ -1290,7 +1290,7 @@ mod tests {
 	}
 
 	mod edge_cases {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_single_bit_operations() {
@@ -1376,7 +1376,7 @@ mod tests {
 	}
 
 	mod cow_behavior {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_is_owned() {
@@ -1489,7 +1489,7 @@ mod tests {
 	}
 
 	mod stress_tests {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_large_bitvec_operations() {
@@ -1629,7 +1629,7 @@ mod tests {
 	}
 
 	mod property_based_tests {
-		use crate::util::BitVec;
+		use crate::BitVec;
 
 		#[test]
 		fn test_roundtrip_conversions() {

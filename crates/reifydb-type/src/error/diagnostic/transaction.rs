@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Transaction conflict occurred due to concurrent modifications
 pub fn transaction_conflict() -> Diagnostic {
@@ -16,8 +15,7 @@ pub fn transaction_conflict() -> Diagnostic {
         label: None,
         help: Some("Retry the transaction".to_string()),
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 /// Transaction was discarded due to rollback or abort
@@ -47,8 +45,7 @@ pub fn transaction_too_large() -> Diagnostic {
         label: None,
         help: Some("Split the transaction into smaller batches".to_string()),
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }
 
 /// Transaction commit failed for a specific reason
@@ -96,6 +93,5 @@ pub fn transaction_already_rolled_back() -> Diagnostic {
         label: None,
         help: Some("Cannot use a transaction after it has been rolled back".to_string()),
         notes: vec![],
-        cause: None,
-    }
+        cause: None}
 }

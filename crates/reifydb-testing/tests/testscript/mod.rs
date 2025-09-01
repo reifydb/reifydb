@@ -146,8 +146,7 @@ impl testscript::Runner for DebugRunner {
                         Some("start_command") => self.start_command = arg.value.clone(),
                         Some("end_command") => self.end_command = arg.value.clone(),
                         Some(key) => return Err(format!("unknown argument key {key}").into()),
-                        None => return Err("argument must have a key".into()),
-                    }
+                        None => return Err("argument must have a key".into())}
 				}
 				return Ok(String::new());
 			}

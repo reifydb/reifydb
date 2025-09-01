@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, RowNumber,
+	CowVec,
 	flow::{FlowChange, FlowDiff},
 	interface::{CommandTransaction, Evaluator},
-	row::EncodedKey,
+	row::{EncodedKey, EncodedRow},
 };
+use reifydb_type::RowNumber;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -71,8 +72,8 @@ impl TakeOperator {
 			Some(versioned) => {
 				let bytes = versioned.row.as_ref();
 				serde_json::from_slice(bytes).map_err(|e| {
-					reifydb_core::Error(
-						reifydb_core::internal_error!(
+					reifydb_type::Error(
+						reifydb_type::internal_error!(
 							"Failed to deserialize TakeState: {}",
 							e
 						),
@@ -93,18 +94,13 @@ impl TakeOperator {
 	) -> Result<()> {
 		let key = FlowTakeStateKey::new(self.flow_id, self.node_id);
 		let serialized = serde_json::to_vec(state).map_err(|e| {
-			reifydb_core::Error(reifydb_core::internal_error!(
+			reifydb_type::Error(reifydb_type::internal_error!(
 				"Failed to serialize TakeState: {}",
 				e
 			))
 		})?;
 
-		txn.set(
-			&key.encode(),
-			reifydb_core::row::EncodedRow(
-				reifydb_core::util::CowVec::new(serialized),
-			),
-		)?;
+		txn.set(&key.encode(), EncodedRow(CowVec::new(serialized)))?;
 		Ok(())
 	}
 }

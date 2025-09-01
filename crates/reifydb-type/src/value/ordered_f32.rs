@@ -9,11 +9,11 @@ use std::{
 	ops::Deref,
 };
 
-use crate::error::diagnostic::number::nan_not_allowed;
-use crate::{err, Error};
 use serde::{
-	de, de::Visitor, Deserialize, Deserializer, Serialize, Serializer,
+	Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor,
 };
+
+use crate::{Error, err, error::diagnostic::number::nan_not_allowed};
 
 /// A wrapper around f32 that provides total ordering by rejecting NaN values.
 /// This type is sortable and can be used in collections that require Ord,

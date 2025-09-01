@@ -31,28 +31,21 @@ impl Columns {
                         schema: schema.clone(),
                         source: source.clone(),
                         name: column_layout.name.clone(),
-                        data,
-                    }),
+                        data}),
                     (None, Some(source)) => Column::SourceQualified(SourceQualified {
                         source: source.clone(),
                         name: column_layout.name.clone(),
-                        data,
-                    }),
+                        data}),
                     (None, None) => match column {
                         Column::Unqualified(_) => Column::Unqualified(Unqualified {
                             name: column_layout.name.clone(),
-                            data,
-                        }),
+                            data}),
                         _ => Column::ColumnQualified(ColumnQualified {
                             name: column_layout.name.clone(),
-                            data,
-                        }),
-                    },
+                            data})},
                     (Some(_), None) => Column::ColumnQualified(ColumnQualified {
                         name: column_layout.name.clone(),
-                        data,
-                    }),
-                };
+                        data})};
 			}
 		}
 	}
@@ -102,13 +95,11 @@ impl Columns {
                         (Some(schema), Some(source)) => ColumnLayout {
                             schema: Some(schema.clone()),
                             source: Some(source.clone()),
-                            name: column_layout.name.clone(),
-                        },
+                            name: column_layout.name.clone()},
                         (None, Some(source)) => ColumnLayout {
                             schema: None,
                             source: Some(source.clone()),
-                            name: column_layout.name.clone(),
-                        },
+                            name: column_layout.name.clone()},
                         _ => {
                             // No source info in layout, try to get it from existing columns
                             if let Some(existing_column) =
@@ -118,20 +109,17 @@ impl Columns {
                                     (Some(schema), Some(source)) => ColumnLayout {
                                         schema: Some(schema.to_string()),
                                         source: Some(source.to_string()),
-                                        name: column_layout.name.clone(),
-                                    },
+                                        name: column_layout.name.clone()},
                                     (None, Some(source)) => ColumnLayout {
                                         schema: None,
                                         source: Some(source.to_string()),
-                                        name: column_layout.name.clone(),
-                                    },
+                                        name: column_layout.name.clone()},
                                     _ => {
                                         // Use columns name as fallback source qualification
                                         ColumnLayout {
                                             schema: None,
                                             source: None,
-                                            name: column_layout.name.clone(),
-                                        }
+                                            name: column_layout.name.clone()}
                                     }
                                 }
                             } else {
@@ -139,8 +127,7 @@ impl Columns {
                                 ColumnLayout {
                                     schema: None,
                                     source: None,
-                                    name: column_layout.name.clone(),
-                                }
+                                    name: column_layout.name.clone()}
                             }
                         }
                     }

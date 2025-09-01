@@ -3,7 +3,10 @@
 
 use std::io::{Read, Write};
 
-use reifydb_core::interface::{Engine, Identity, Params, Transaction};
+use reifydb_core::{
+	Frame,
+	interface::{Engine, Identity, Params, Transaction},
+};
 
 use super::{
 	CommandResponse, QueryResponse, Request, Response, ResponsePayload,
@@ -171,8 +174,7 @@ impl WebSocketHandler {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e)),
-            }
+                Err(e) => return Err(ProtocolError::Io(e))}
 		}
 		Ok(())
 	}
@@ -223,8 +225,7 @@ impl WebSocketHandler {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e)),
-            }
+                Err(e) => return Err(ProtocolError::Io(e))}
 		}
 		Ok(())
 	}
@@ -250,8 +251,7 @@ impl WebSocketHandler {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e)),
-            }
+                Err(e) => return Err(ProtocolError::Io(e))}
 		}
 		Ok(())
 	}
@@ -293,8 +293,7 @@ impl WebSocketHandler {
                         }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                    Err(e) => return Err(ProtocolError::Io(e)),
-                }
+                    Err(e) => return Err(ProtocolError::Io(e))}
 			} else {
 				break;
 			}
@@ -696,7 +695,7 @@ impl WebSocketHandler {
 
 	fn convert_result_to_frames(
 		&self,
-		result: Vec<reifydb_core::Frame>,
+		result: Vec<Frame>,
 	) -> ProtocolResult<Vec<WebsocketFrame>> {
 		let mut ws_frames = Vec::new();
 
@@ -709,10 +708,9 @@ impl WebSocketHandler {
 					.iter()
 					.map(|value| {
 						match value {
-						reifydb_core::Value::Undefined => String::new(),
-						reifydb_core::Value::Blob(b) => reifydb_core::util::hex::encode(&b),
-						_ => value.to_string(),
-					}
+						reifydb_type::Value::Undefined => String::new(),
+						reifydb_type::Value::Blob(b) => reifydb_type::util::hex::encode(&b),
+						_ => value.to_string()}
 					})
 					.collect();
 

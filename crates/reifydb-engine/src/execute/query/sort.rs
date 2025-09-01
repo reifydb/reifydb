@@ -7,12 +7,11 @@ use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
 	interface::Transaction,
+	value::columnar::{Columns, layout::ColumnsLayout},
 };
-use reifydb_type::::diagnostic::query;
-use crate::{
-	columnar::{Columns, layout::ColumnsLayout},
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
-};
+use reifydb_type::diagnostic::query;
+
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
 pub(crate) struct SortNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
@@ -91,7 +90,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 							.ok_or_else(|| {
 								error!(query::column_not_found(key.column.clone()))
 							})?;
-					Ok::<_, reifydb_core::Error>((
+					Ok::<_, reifydb_type::Error>((
 						col.data().clone(),
 						key.direction.clone(),
 					))

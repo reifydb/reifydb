@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::error::diagnostic::Diagnostic;
-use crate::fragment::IntoFragment;
-use crate::OwnedFragment;
+use crate::{
+	OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment,
+};
 
 /// Generic tokenizeer error with custom message
 pub fn tokenize_error(message: String) -> Diagnostic {
