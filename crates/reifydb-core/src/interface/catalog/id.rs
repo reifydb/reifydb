@@ -493,18 +493,18 @@ impl<'de> Deserialize<'de> for PrimaryKeyId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct SequenceId(pub u32);
+pub struct SequenceId(pub u64);
 
 impl Deref for SequenceId {
-	type Target = u32;
+	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl PartialEq<u32> for SequenceId {
-	fn eq(&self, other: &u32) -> bool {
+impl PartialEq<u64> for SequenceId {
+	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
@@ -514,7 +514,7 @@ impl Serialize for SequenceId {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_u32(self.0)
+		serializer.serialize_u64(self.0)
 	}
 }
 
@@ -523,26 +523,26 @@ impl<'de> Deserialize<'de> for SequenceId {
 	where
 		D: Deserializer<'de>,
 	{
-		struct U32Visitor;
+		struct U64Visitor;
 
-		impl Visitor<'_> for U32Visitor {
+		impl Visitor<'_> for U64Visitor {
 			type Value = SequenceId;
 
 			fn expecting(
 				&self,
 				formatter: &mut fmt::Formatter,
 			) -> fmt::Result {
-				formatter.write_str("an unsigned 32-bit number")
+				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u32<E>(
+			fn visit_u64<E>(
 				self,
-				value: u32,
+				value: u64,
 			) -> Result<Self::Value, E> {
 				Ok(SequenceId(value))
 			}
 		}
 
-		deserializer.deserialize_u32(U32Visitor)
+		deserializer.deserialize_u64(U64Visitor)
 	}
 }
