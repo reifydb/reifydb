@@ -6,14 +6,14 @@
 t1: begin readonly
 t1: version
 ---
-t1: 0
+t1: 1
 
 t2: begin readonly
 t2: version
 ---
-t2: 0
+t2: 1
 
 t3: begin readonly
 t3: version
 ---
-t3: 0
+t3: 1

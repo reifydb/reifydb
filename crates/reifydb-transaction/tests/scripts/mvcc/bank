@@ -69,7 +69,12 @@ ok
 # MVCC caught the conflict
 bob: !commit
 ---
-bob: transaction error: transaction conflict, please try again
+bob: Error TXN_001
+bob:   Transaction conflict detected - another transaction modified the same data
+bob: 
+bob: HELP
+bob:   Retry the transaction
+bob: 
 
 # He then finds there's no money left in B anymore, and can't make the transfer.
 bob: begin

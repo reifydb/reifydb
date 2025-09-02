@@ -450,30 +450,60 @@ impl<'a> Parser<'a> {
 			if self.peek_char() == Some('=') {
 				self.advance();
 				// Allow empty value after =
-				self.skip_whitespace();
-				let value = match self.parse_string() {
-					Ok(v) => v,
-					Err(_) => {
-						// Check if next char is
-						// whitespace or end - means
-						// empty value
-						match self.peek_char() {
-							Some(ch) if ch
-								.is_whitespace(
-								) =>
+				// First check if we have an empty value (next
+				// is whitespace or another key)
+				let value = if matches!(self.peek_char(), Some(ch) if ch.is_whitespace())
+					|| matches!(
+						self.peek_char(),
+						Some('[' | ')' | '#')
+					) || self.peek_char().is_none()
+					|| self.peek_str(2) == "//"
+				{
+					// Empty value case
+					String::new()
+				} else {
+					// Try to parse a value
+					match self.parse_string() {
+						Ok(v) => v,
+						Err(_) => {
+							// Check if this looks
+							// like another
+							// key=value pair
+							// by looking for a
+							// string followed by =
+							let check_pos =
+								self.pos;
+							let check_line =
+								self.line;
+							let check_column =
+								self.column;
+							let check_line_start = self.line_start_pos;
+
+							// Try to parse what
+							// comes next as a
+							// potential key
+							if let Ok(_) = self
+								.parse_string()
 							{
-								String::new()
-							}
-							Some('[')
-							| Some(')')
-							| Some('#') | None => String::new(),
-							_ if self.peek_str(
-								2,
-							) == "//" =>
-							{
-								String::new()
-							}
-							_ => {
+								if self.peek_char() == Some('=') {
+									// This looks like another key=value, so current value is empty
+									self.pos = check_pos;
+									self.line = check_line;
+									self.column = check_column;
+									self.line_start_pos = check_line_start;
+									String::new()
+								} else {
+									// Not a key=value, this is an error
+									self.pos = saved_pos;
+									self.line = saved_line;
+									self.column = saved_column;
+									self.line_start_pos = saved_line_start;
+									return Err(self.error("Expected argument value after ="));
+								}
+							} else {
+								// Can't parse
+								// anything, this
+								// is an error
 								self.pos = saved_pos;
 								self.line = saved_line;
 								self.column = saved_column;

@@ -36,7 +36,12 @@ ok
 t1: commit
 t2: !commit
 ---
-t2: transaction error: transaction conflict, please try again
+t2: Error TXN_001
+t2:   Transaction conflict detected - another transaction modified the same data
+t2: 
+t2: HELP
+t2:   Retry the transaction
+t2: 
 
 t3: begin readonly
 t3: scan

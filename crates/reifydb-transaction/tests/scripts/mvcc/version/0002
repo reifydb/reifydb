@@ -7,17 +7,17 @@ t1: begin
 t1: version
 t1: commit
 ---
-t1: 0
+t1: 1
 
 t2: begin
 t2: version
 ---
-t2: 0
+t2: 1
 
 t3: begin
 t3: version
 ---
-t3: 0
+t3: 1
 
 t2: commit
 t3: commit
@@ -25,4 +25,4 @@ t3: commit
 t4: begin
 t4: version
 ---
-t4: 0
+t4: 1

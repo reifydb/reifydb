@@ -118,8 +118,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 }
 
 pub enum Transaction<VS: VersionedStorage, UT: UnversionedTransaction> {
-	Rx(QueryTransaction<VS, UT>),
-	Tx(CommandTransaction<VS, UT>),
+	Query(QueryTransaction<VS, UT>),
+	Command(CommandTransaction<VS, UT>),
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {

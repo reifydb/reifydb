@@ -25,8 +25,7 @@ import b= ba=ba4
 ---
 ok
 
-# Various bounded scans around ba-bc at version 2.
-t3: begin readonly version=2
+t3: begin readonly version=3
 t3: range "ba..bc"
 ---
 t3: "ba" => "ba2"
