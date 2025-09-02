@@ -11,8 +11,8 @@ pub use blocking::BlockingSession;
 pub use callback::CallbackSession;
 pub use channel::ChannelSession;
 use reifydb_type::{
-	Blob, Date, DateTime, Error, IdentityId, RowNumber, Time, Uuid4, Uuid7,
-	err,
+	Blob, Date, DateTime, Error, IdentityId, RowNumber, Time, Uuid7, err,
+	parse_uuid4, parse_uuid7, util::hex,
 };
 
 use crate::{
@@ -271,23 +271,23 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 		}
 		Type::Uuid4 => {
 			// Try to parse UUID
-			if let Ok(uuid) = uuid::Uuid::parse_str(s) {
-				Value::Uuid4(Uuid4::from(uuid))
+			if let Ok(uuid) = parse_uuid4(s) {
+				Value::Uuid4(uuid)
 			} else {
 				Value::Undefined
 			}
 		}
 		Type::Uuid7 => {
 			// Try to parse UUID
-			if let Ok(uuid) = uuid::Uuid::parse_str(s) {
-				Value::Uuid7(Uuid7::from(uuid))
+			if let Ok(uuid) = parse_uuid7(s) {
+				Value::Uuid7(uuid)
 			} else {
 				Value::Undefined
 			}
 		}
 		Type::IdentityId => {
 			// Try to parse UUID for IdentityId
-			if let Ok(uuid) = uuid::Uuid::parse_str(s) {
+			if let Ok(uuid) = parse_uuid7(s) {
 				Value::IdentityId(IdentityId::from(
 					Uuid7::from(uuid),
 				))

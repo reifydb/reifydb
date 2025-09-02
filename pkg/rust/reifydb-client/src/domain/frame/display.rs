@@ -160,7 +160,8 @@ mod tests {
 	use bitvec::vec::BitVec;
 	use reifydb_type::{
 		Blob, Date, DateTime, Interval, OrderedF32, OrderedF64,
-		RowNumber, Time, Type, Uuid4, Uuid7, Value,
+		RowNumber, Time, Type, Uuid4, Uuid7, Value, parse_uuid4,
+		parse_uuid7,
 	};
 
 	use super::*;
@@ -1262,13 +1263,13 @@ mod tests {
 	fn test_uuid4() {
 		let uuids = vec![
 			Uuid4::from(
-				::uuid::Uuid::parse_str(
+				parse_uuid4(
 					"550e8400-e29b-41d4-a716-446655440000",
 				)
 				.unwrap(),
 			),
 			Uuid4::from(
-				::uuid::Uuid::parse_str(
+				parse_uuid4(
 					"550e8400-e29b-41d4-a716-446655440001",
 				)
 				.unwrap(),
@@ -1295,13 +1296,13 @@ mod tests {
 	fn test_uuid7() {
 		let uuids = vec![
 			Uuid7::from(
-				::uuid::Uuid::parse_str(
+				parse_uuid7(
 					"01890a5d-ac96-774b-b9aa-789c0686aaa4",
 				)
 				.unwrap(),
 			),
 			Uuid7::from(
-				::uuid::Uuid::parse_str(
+				parse_uuid7(
 					"01890a5d-ac96-774b-b9aa-789c0686aaa5",
 				)
 				.unwrap(),
