@@ -13,6 +13,7 @@ use reifydb_core::{
 	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
+use reifydb_sub_server::ServerSubsystem;
 
 use crate::{
 	boot::Bootloader,
@@ -87,6 +88,11 @@ impl<T: Transaction> Database<T> {
 	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
 	// Option<&FlowSubsystem<T, E>> { 	self.subsystem::<FlowSubsystem<T,
 	// E>>() }
+
+	#[cfg(feature = "sub_server")]
+	pub fn sub_server(&self) -> Option<&ServerSubsystem<T>> {
+		self.subsystems.get::<ServerSubsystem<T>>()
+	}
 }
 
 impl<T: Transaction> Database<T> {

@@ -148,4 +148,9 @@ impl<T: Transaction> ProtocolServer<T> {
 
 		protocols
 	}
+
+	/// Get the actual bound port of the server
+	pub fn port(&self) -> Option<u16> {
+		self.worker_pool.as_ref().map(|pool| pool.port())
+	}
 }

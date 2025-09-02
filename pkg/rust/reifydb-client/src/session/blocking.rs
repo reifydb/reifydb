@@ -2,10 +2,11 @@
 // This file is licensed under the MIT
 
 use std::{
-	error::Error,
 	sync::{Arc, mpsc},
 	time::Duration,
 };
+
+use reifydb_type::Error;
 
 use super::{
 	CommandResult, QueryResult, parse_command_response,
@@ -33,7 +34,7 @@ impl BlockingSession {
 	pub(crate) fn new(
 		client: Arc<ClientInner>,
 		token: Option<String>,
-	) -> Result<Self, Box<dyn Error>> {
+	) -> Result<Self, Error> {
 		let mut session = Self {
 			client,
 			token: token.clone(),
@@ -50,7 +51,7 @@ impl BlockingSession {
 	}
 
 	/// Authenticate the session
-	fn authenticate(&mut self) -> Result<(), Box<dyn Error>> {
+	fn authenticate(&mut self) -> Result<(), Error> {
 		if self.token.is_none() {
 			return Ok(());
 		}
@@ -65,27 +66,33 @@ impl BlockingSession {
 			}),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Blocking(tx),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Blocking(tx),
+			}) {
+			panic!("Failed to send auth request: {}", e);
+		}
 
-		let response = rx
-			.recv_timeout(self.timeout)
-			.map_err(|_| "Authentication timeout")?
-			.map_err(|e| format!("Authentication failed: {}", e))?;
+		let response = match rx.recv_timeout(self.timeout) {
+			Ok(Ok(resp)) => resp,
+			Ok(Err(e)) => return Err(e),
+			Err(_) => panic!("Authentication timeout"),
+		};
 
 		match response.payload {
-            crate::ResponsePayload::Auth(_) => {
-                self.authenticated = true;
-                Ok(())
-            }
-            crate::ResponsePayload::Err(e) => {
-                Err(format!("Authentication failed: {:?}", e).into())
-            }
-            _ => Err("Unexpected response type during authentication".into()),
-        }
+			crate::ResponsePayload::Auth(_) => {
+				self.authenticated = true;
+				Ok(())
+			}
+			crate::ResponsePayload::Err(e) => {
+				panic!("Authentication failed: {:?}", e)
+			}
+			_ => panic!(
+				"Unexpected response type during authentication"
+			),
+		}
 	}
 
 	/// Send a command and wait for response
@@ -93,7 +100,7 @@ impl BlockingSession {
 		&mut self,
 		rql: &str,
 		params: Option<Params>,
-	) -> Result<CommandResult, Box<dyn Error>> {
+	) -> Result<CommandResult, Error> {
 		let id = generate_request_id();
 		let (tx, rx) = mpsc::channel();
 
@@ -105,18 +112,22 @@ impl BlockingSession {
 			}),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Blocking(tx),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Blocking(tx),
+			}) {
+			panic!("Failed to send command request: {}", e);
+		}
 
-		let response = rx
-			.recv_timeout(self.timeout)
-			.map_err(|_| "Command timeout")?
-			.map_err(|e| format!("Command failed: {}", e))?;
+		let response = match rx.recv_timeout(self.timeout) {
+			Ok(Ok(resp)) => resp,
+			Ok(Err(e)) => return Err(e),
+			Err(_) => panic!("Command timeout"),
+		};
 
-		parse_command_response(response).map_err(|e| e.into())
+		parse_command_response(response)
 	}
 
 	/// Send a query and wait for response
@@ -124,7 +135,7 @@ impl BlockingSession {
 		&mut self,
 		rql: &str,
 		params: Option<Params>,
-	) -> Result<QueryResult, Box<dyn Error>> {
+	) -> Result<QueryResult, Error> {
 		let id = generate_request_id();
 		let (tx, rx) = mpsc::channel();
 
@@ -136,94 +147,22 @@ impl BlockingSession {
 			}),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Blocking(tx),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Blocking(tx),
+			}) {
+			panic!("Failed to send query request: {}", e);
+		}
 
-		let response = rx
-			.recv_timeout(self.timeout)
-			.map_err(|_| "Query timeout")?
-			.map_err(|e| format!("Query failed: {}", e))?;
-
-		parse_query_response(response).map_err(|e| e.into())
-	}
-
-	/// Send multiple commands in a batch
-	pub fn command_batch(
-		&mut self,
-		statements: Vec<&str>,
-	) -> Result<CommandResult, Box<dyn Error>> {
-		let id = generate_request_id();
-		let (tx, rx) = mpsc::channel();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Command(CommandRequest {
-				statements: statements
-					.iter()
-					.map(|s| s.to_string())
-					.collect(),
-				params: None,
-			}),
+		let response = match rx.recv_timeout(self.timeout) {
+			Ok(Ok(resp)) => resp,
+			Ok(Err(e)) => return Err(e),
+			Err(_) => panic!("Query timeout"),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Blocking(tx),
-		})?;
-
-		let response = rx
-			.recv_timeout(self.timeout)
-			.map_err(|_| "Command batch timeout")?
-			.map_err(|e| format!("Command batch failed: {}", e))?;
-
-		parse_command_response(response).map_err(|e| e.into())
-	}
-
-	/// Send multiple queries in a batch
-	pub fn query_batch(
-		&mut self,
-		statements: Vec<&str>,
-	) -> Result<QueryResult, Box<dyn Error>> {
-		let id = generate_request_id();
-		let (tx, rx) = mpsc::channel();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Query(QueryRequest {
-				statements: statements
-					.iter()
-					.map(|s| s.to_string())
-					.collect(),
-				params: None,
-			}),
-		};
-
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Blocking(tx),
-		})?;
-
-		let response = rx
-			.recv_timeout(self.timeout)
-			.map_err(|_| "Query batch timeout")?
-			.map_err(|e| format!("Query batch failed: {}", e))?;
-
-		parse_query_response(response).map_err(|e| e.into())
-	}
-
-	/// Set timeout for blocking operations
-	pub fn set_timeout(&mut self, timeout: Duration) {
-		self.timeout = timeout;
-	}
-
-	/// Get the current timeout setting
-	pub fn timeout(&self) -> Duration {
-		self.timeout
+		parse_query_response(response)
 	}
 
 	/// Check if the session is authenticated

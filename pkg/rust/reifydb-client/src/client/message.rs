@@ -17,7 +17,12 @@ pub(crate) enum InternalMessage {
 
 /// Routes responses to the appropriate session
 pub(crate) enum ResponseRoute {
-	Blocking(mpsc::Sender<Result<Response, String>>),
-	Callback(Box<dyn FnOnce(Result<Response, String>) + Send>),
+	Blocking(mpsc::Sender<Result<Response, reifydb_type::Error>>),
+	Callback(
+		Box<
+			dyn FnOnce(Result<Response, reifydb_type::Error>)
+				+ Send,
+		>,
+	),
 	Channel(mpsc::Sender<ResponseMessage>),
 }

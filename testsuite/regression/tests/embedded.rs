@@ -68,13 +68,10 @@ where
 				println!("command: {rql}");
 
 				let instance = &self.instance;
-				for frame in instance
-					.command_as_root(
-						rql.as_str(),
-						Params::None,
-					)
-					.unwrap()
-				{
+				for frame in instance.command_as_root(
+					rql.as_str(),
+					Params::None,
+				)? {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -89,13 +86,10 @@ where
 				println!("query: {rql}");
 
 				let instance = &self.instance;
-				for frame in instance
-					.query_as_root(
-						rql.as_str(),
-						Params::None,
-					)
-					.unwrap()
-				{
+				for frame in instance.query_as_root(
+					rql.as_str(),
+					Params::None,
+				)? {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}

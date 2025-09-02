@@ -45,8 +45,7 @@ impl ServerConfig {
 		mut self,
 		config: Option<super::WebSocketConfig>,
 	) -> Self {
-		self.protocols.websocket =
-			config.or_else(|| Some(Default::default()));
+		self.protocols.ws = config.or_else(|| Some(Default::default()));
 		self
 	}
 

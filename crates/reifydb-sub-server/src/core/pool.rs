@@ -24,6 +24,7 @@ use crate::{
 pub struct WorkerPool<T: Transaction> {
 	workers: Vec<JoinHandle<()>>,
 	shutdown: Arc<AtomicBool>,
+	bound_port: u16,
 	_phantom: PhantomData<T>,
 }
 
@@ -51,13 +52,29 @@ impl<T: Transaction> WorkerPool<T> {
 			&http_handler,
 		);
 
+		// Store the actual bound port from the first listener
+		let mut bound_port = addr.port();
+		let mut actual_addr = addr;
+
 		// Create worker threads using the existing mio-based Worker
 		for worker_id in 0..worker_count {
 			let listener = Self::create_listener(
-				addr,
+				actual_addr,
 				config.network.reuse_port,
 			)
 			.expect("failed to create listener");
+
+			// Get the actual bound port from the first listener
+			// (important for port 0) and update the address for
+			// subsequent workers
+			if worker_id == 0 {
+				if let Ok(local_addr) = listener.local_addr() {
+					bound_port = local_addr.port();
+					// Update the address with the actual
+					// port for subsequent workers
+					actual_addr.set_port(bound_port);
+				}
+			}
 
 			let config_clone = config.clone();
 			let engine_clone = engine.clone();
@@ -95,6 +112,7 @@ impl<T: Transaction> WorkerPool<T> {
 		Self {
 			workers,
 			shutdown,
+			bound_port,
 			_phantom: PhantomData,
 		}
 	}
@@ -154,5 +172,10 @@ impl<T: Transaction> WorkerPool<T> {
 		for handle in self.workers {
 			let _ = handle.join();
 		}
+	}
+
+	/// Get the actual bound port of the server
+	pub fn port(&self) -> u16 {
+		self.bound_port
 	}
 }

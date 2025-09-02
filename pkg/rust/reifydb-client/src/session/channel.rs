@@ -28,10 +28,8 @@ impl ChannelSession {
 	pub(crate) fn new(
 		client: Arc<ClientInner>,
 		token: Option<String>,
-	) -> Result<
-		(Self, mpsc::Receiver<ResponseMessage>),
-		Box<dyn std::error::Error>,
-	> {
+	) -> Result<(Self, mpsc::Receiver<ResponseMessage>), reifydb_type::Error>
+	{
 		let (tx, rx) = mpsc::channel();
 
 		let session = Self {
@@ -42,14 +40,14 @@ impl ChannelSession {
 
 		// Authenticate if token provided
 		if token.is_some() {
-			session.authenticate()?;
+			let _ = session.authenticate();
 		}
 
 		Ok((session, rx))
 	}
 
 	/// Authenticate (response arrives on channel)
-	fn authenticate(&self) -> Result<String, Box<dyn std::error::Error>> {
+	fn authenticate(&self) -> Result<String, reifydb_type::Error> {
 		if self.token.is_none() {
 			return Ok(String::new());
 		}
@@ -63,11 +61,16 @@ impl ChannelSession {
 			}),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Channel(self.response_tx.clone()),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Channel(
+					self.response_tx.clone(),
+				),
+			}) {
+			panic!("Failed to send request: {}", e);
+		}
 
 		Ok(id)
 	}
@@ -88,11 +91,16 @@ impl ChannelSession {
 			}),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Channel(self.response_tx.clone()),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Channel(
+					self.response_tx.clone(),
+				),
+			}) {
+			panic!("Failed to send request: {}", e);
+		}
 
 		Ok(id)
 	}
@@ -113,103 +121,18 @@ impl ChannelSession {
 			}),
 		};
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Channel(self.response_tx.clone()),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Channel(
+					self.response_tx.clone(),
+				),
+			}) {
+			panic!("Failed to send request: {}", e);
+		}
 
 		Ok(id)
-	}
-
-	/// Send multiple commands (response arrives on channel)
-	pub fn command_batch(
-		&self,
-		statements: Vec<&str>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = generate_request_id();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Command(CommandRequest {
-				statements: statements
-					.iter()
-					.map(|s| s.to_string())
-					.collect(),
-				params: None,
-			}),
-		};
-
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Channel(self.response_tx.clone()),
-		})?;
-
-		Ok(id)
-	}
-
-	/// Send multiple queries (response arrives on channel)
-	pub fn query_batch(
-		&self,
-		statements: Vec<&str>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = generate_request_id();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Query(QueryRequest {
-				statements: statements
-					.iter()
-					.map(|s| s.to_string())
-					.collect(),
-				params: None,
-			}),
-		};
-
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Channel(self.response_tx.clone()),
-		})?;
-
-		Ok(id)
-	}
-
-	/// Send a command with positional parameters
-	pub fn command_with_params(
-		&self,
-		rql: &str,
-		params: Vec<crate::Value>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		self.command(rql, Some(Params::Positional(params)))
-	}
-
-	/// Send a query with positional parameters
-	pub fn query_with_params(
-		&self,
-		rql: &str,
-		params: Vec<crate::Value>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		self.query(rql, Some(Params::Positional(params)))
-	}
-
-	/// Send a command with named parameters
-	pub fn command_with_named_params(
-		&self,
-		rql: &str,
-		params: std::collections::HashMap<String, crate::Value>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		self.command(rql, Some(Params::Named(params)))
-	}
-
-	/// Send a query with named parameters
-	pub fn query_with_named_params(
-		&self,
-		rql: &str,
-		params: std::collections::HashMap<String, crate::Value>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		self.query(rql, Some(Params::Named(params)))
 	}
 }
 

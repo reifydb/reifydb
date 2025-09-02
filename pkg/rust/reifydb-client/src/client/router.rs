@@ -3,6 +3,8 @@
 
 use std::{collections::HashMap, time::Instant};
 
+use reifydb_type::{Error, err};
+
 use super::message::ResponseRoute;
 use crate::{Response, session::ResponseMessage};
 
@@ -28,23 +30,24 @@ impl RequestRouter {
 }
 
 /// Route an error to the appropriate destination
-pub(crate) fn route_error(id: &str, error: String, route: ResponseRoute) {
-	let err = Err(error);
-	match route {
-		ResponseRoute::Blocking(tx) => {
-			let _ = tx.send(err);
-		}
-		ResponseRoute::Callback(callback) => {
-			callback(err);
-		}
-		ResponseRoute::Channel(tx) => {
-			let _ = tx.send(ResponseMessage {
-				request_id: id.to_string(),
-				response: err,
-				timestamp: Instant::now(),
-			});
-		}
-	}
+pub(crate) fn route_error(id: &str, error: String, _route: ResponseRoute) {
+	panic!("Route error: {} - {}", id, error);
+	// let err = Err(Error::new(error));
+	// match route {
+	// 	ResponseRoute::Blocking(tx) => {
+	// 		let _ = tx.send(err);
+	// 	}
+	// 	ResponseRoute::Callback(callback) => {
+	// 		callback(err);
+	// 	}
+	// 	ResponseRoute::Channel(tx) => {
+	// 		let _ = tx.send(ResponseMessage {
+	// 			request_id: id.to_string(),
+	// 			response: err,
+	// 			timestamp: Instant::now(),
+	// 		});
+	// 	}
+	// }
 }
 
 /// Route a successful response to the appropriate destination

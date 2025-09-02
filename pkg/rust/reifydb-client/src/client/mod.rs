@@ -38,6 +38,8 @@ pub(crate) struct ClientInner {
 
 impl Client {
 	/// Connect to the ReifyDB server
+	/// Supports both plain addresses (e.g., "127.0.0.1:8080") and WebSocket
+	/// URLs (e.g., "ws://127.0.0.1:8080")
 	pub fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
 		let (command_tx, command_rx) = mpsc::channel();
 		let router = Arc::new(Mutex::new(RequestRouter::new()));
@@ -73,7 +75,7 @@ impl Client {
 	pub fn blocking_session(
 		&self,
 		token: Option<String>,
-	) -> Result<BlockingSession, Box<dyn std::error::Error>> {
+	) -> Result<BlockingSession, reifydb_type::Error> {
 		BlockingSession::new(self.inner.clone(), token)
 	}
 
@@ -81,7 +83,7 @@ impl Client {
 	pub fn callback_session(
 		&self,
 		token: Option<String>,
-	) -> Result<CallbackSession, Box<dyn std::error::Error>> {
+	) -> Result<CallbackSession, reifydb_type::Error> {
 		CallbackSession::new(self.inner.clone(), token)
 	}
 
@@ -91,7 +93,7 @@ impl Client {
 		token: Option<String>,
 	) -> Result<
 		(ChannelSession, mpsc::Receiver<ResponseMessage>),
-		Box<dyn std::error::Error>,
+		reifydb_type::Error,
 	> {
 		ChannelSession::new(self.inner.clone(), token)
 	}

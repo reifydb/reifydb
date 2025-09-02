@@ -25,17 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				println!("   Query successful!");
 				println!("   Frames: {}", result.frames.len());
 				for frame in &result.frames {
-					println!(
-						"   - Frame '{}' with {} rows",
-						frame.name,
-						frame.rows.len()
-					);
-					for row in &frame.rows {
-						println!(
-							"     Row: {:?}",
-							row.values
-						);
-					}
+					println!("{}", frame);
 				}
 			}
 			Err(e) => println!("   Query failed: {}", e),
@@ -44,12 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		// Execute with parameters
 		let params = Params::Positional(vec![Value::Int4(42)]);
 		match blocking.query("MAP { $1 }", Some(params)) {
-			Ok(result) => {
-				println!(
-					"   Parameterized query returned {} rows",
-					result.rows_returned
-				);
-			}
+			Ok(result) => {}
 			Err(e) => {
 				println!("   Parameterized query failed: {}", e)
 			}

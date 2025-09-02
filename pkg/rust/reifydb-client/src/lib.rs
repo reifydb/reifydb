@@ -13,12 +13,14 @@ use std::{
 
 // Re-export main client and session types
 pub use client::Client;
+pub use domain::{Frame, FrameColumn};
+use reifydb_type::diagnostic::Diagnostic;
 // Re-export types from reifydb
-use reifydb_type::{Type, Value};
+pub use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{
-	BlockingSession, CallbackSession, ChannelSession, Column,
-	CommandResult, DataFrame, QueryResult, ResponseMessage, Row,
+	BlockingSession, CallbackSession, ChannelSession, CommandResult,
+	QueryResult, ResponseMessage,
 };
 use sha1::{Digest, Sha1};
 
@@ -90,8 +92,7 @@ pub struct AuthResponse {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrResponse {
-	pub diagnostic: serde_json::Value, /* Using Value since we don't
-	                                    * have Diagnostic type */
+	pub diagnostic: Diagnostic,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -115,7 +116,6 @@ pub struct WebsocketColumn {
 	pub name: String,
 	pub r#type: Type,
 	pub data: Vec<String>,
-	pub frame: Option<String>,
 }
 
 // ============================================================================
@@ -131,9 +131,21 @@ pub(crate) struct WebSocketClient {
 
 impl WebSocketClient {
 	/// Create a new WebSocket client and connect to the specified address
+	/// Supports both plain addresses (e.g., "127.0.0.1:8080") and WebSocket
+	/// URLs (e.g., "ws://127.0.0.1:8080")
 	pub fn connect(addr: &str) -> Result<Self, Box<dyn std::error::Error>> {
+		// Parse the address, removing ws:// or wss:// prefix if present
+		let socket_addr =
+			if addr.starts_with("ws://") {
+				&addr[5..] // Remove "ws://"
+			} else if addr.starts_with("wss://") {
+				return Err("WSS (secure WebSocket) is not yet supported".into());
+			} else {
+				addr
+			};
+
 		// Parse address and connect
-		let stream = TcpStream::connect(addr)?;
+		let stream = TcpStream::connect(socket_addr)?;
 		stream.set_nonblocking(true)?;
 
 		let mut client = WebSocketClient {

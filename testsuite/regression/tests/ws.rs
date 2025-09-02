@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{error::Error, fmt::Write, path::Path};
+use std::{
+	error::Error, fmt::Write, path::Path, thread::sleep, time::Duration,
+};
 
 use reifydb::{
 	Database, ServerBuilder,
@@ -46,7 +48,7 @@ where
 			cdc,
 			eventbus,
 		)
-		.with_config(ServerConfig::new())
+		.with_config(ServerConfig::new().bind_addr("[::1]:0"))
 		.build()
 		.unwrap();
 
@@ -82,15 +84,8 @@ where
 				println!("command: {rql}");
 
 				let result = session.command(&rql, None)?;
-
 				for frame in result.frames {
-					for row in frame.rows {
-						writeln!(
-							output,
-							"  {:?}",
-							row.values
-						)?;
-					}
+					writeln!(output, "{}", frame).unwrap();
 				}
 			}
 
@@ -105,20 +100,8 @@ where
 				println!("query: {rql}");
 
 				let result = session.query(&rql, None)?;
-
 				for frame in result.frames {
-					writeln!(
-						output,
-						"Frame: {}",
-						frame.name
-					)?;
-					for row in frame.rows {
-						writeln!(
-							output,
-							"  {:?}",
-							row.values
-						)?;
-					}
+					writeln!(output, "{}", frame).unwrap();
 				}
 			}
 			name => {
@@ -132,18 +115,13 @@ where
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-
 		server.start()?;
 
-		// Use the default port from ServerConfig (8090)
-		// TODO: Once the server exposes port discovery, update this
-		let ws_port = 8090;
+		let ws_port = server.sub_server().unwrap().port().unwrap();
 
-		// Connect using the new blocking client
 		let client =
-			Client::connect(&format!("127.0.0.1:{}", ws_port))?;
+			Client::connect(&format!("ws://[::1]:{}", ws_port))?;
 
-		// Create a blocking session with authentication token
 		let session = client
 			.blocking_session(Some("mysecrettoken".to_string()))?;
 

@@ -28,7 +28,7 @@ impl CallbackSession {
 	pub(crate) fn new(
 		client: Arc<ClientInner>,
 		token: Option<String>,
-	) -> Result<Self, Box<dyn std::error::Error>> {
+	) -> Result<Self, reifydb_type::Error> {
 		let session = Self {
 			client: client.clone(),
 			token: token.clone(),
@@ -38,18 +38,23 @@ impl CallbackSession {
 		// Authenticate if token provided
 		if let Some(_token) = &token {
 			let auth_flag = session.authenticated.clone();
-			session.authenticate(move |result| match result {
-				Ok(_) => {
-					*auth_flag.lock().unwrap() = true;
-					println!("Authentication successful");
-				}
-				Err(e) => {
-					eprintln!(
-						"Authentication failed: {}",
-						e
-					);
-				}
-			})?;
+			let _ = session.authenticate(
+				move |result| match result {
+					Ok(_) => {
+						*auth_flag.lock().unwrap() =
+							true;
+						println!(
+							"Authentication successful"
+						);
+					}
+					Err(e) => {
+						eprintln!(
+							"Authentication failed: {}",
+							e
+						);
+					}
+				},
+			);
 		}
 
 		Ok(session)
@@ -59,7 +64,7 @@ impl CallbackSession {
 	fn authenticate<F>(
 		&self,
 		callback: F,
-	) -> Result<String, Box<dyn std::error::Error>>
+	) -> Result<String, reifydb_type::Error>
 	where
 		F: FnOnce(Result<(), String>) + Send + 'static,
 	{
@@ -72,8 +77,8 @@ impl CallbackSession {
 			}),
 		};
 
-		let callback =
-			Box::new(move |result: Result<Response, String>| {
+		let callback = Box::new(
+			move |result: Result<Response, reifydb_type::Error>| {
 				match result {
 				Ok(response) => match response.payload {
 					crate::ResponsePayload::Auth(_) => {
@@ -90,15 +95,19 @@ impl CallbackSession {
 							.to_string(),
 					)),
 				},
-				Err(e) => callback(Err(e)),
+				Err(e) => callback(Err(e.to_string())),
 			}
-			});
+			},
+		);
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Callback(callback),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Callback(callback),
+			}) {
+			panic!("Failed to send request: {}", e);
+		}
 
 		Ok(id)
 	}
@@ -109,9 +118,11 @@ impl CallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		callback: F,
-	) -> Result<String, Box<dyn std::error::Error>>
+	) -> Result<String, reifydb_type::Error>
 	where
-		F: FnOnce(Result<CommandResult, String>) + Send + 'static,
+		F: FnOnce(Result<CommandResult, reifydb_type::Error>)
+			+ Send
+			+ 'static,
 	{
 		let id = generate_request_id();
 
@@ -123,18 +134,22 @@ impl CallbackSession {
 			}),
 		};
 
-		let callback =
-			Box::new(move |result: Result<Response, String>| {
+		let callback = Box::new(
+			move |result: Result<Response, reifydb_type::Error>| {
 				callback(
 					result.and_then(parse_command_response),
 				)
-			});
+			},
+		);
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Callback(callback),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Callback(callback),
+			}) {
+			panic!("Failed to send request: {}", e);
+		}
 
 		Ok(id)
 	}
@@ -145,9 +160,11 @@ impl CallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		callback: F,
-	) -> Result<String, Box<dyn std::error::Error>>
+	) -> Result<String, reifydb_type::Error>
 	where
-		F: FnOnce(Result<QueryResult, String>) + Send + 'static,
+		F: FnOnce(Result<QueryResult, reifydb_type::Error>)
+			+ Send
+			+ 'static,
 	{
 		let id = generate_request_id();
 
@@ -159,90 +176,20 @@ impl CallbackSession {
 			}),
 		};
 
-		let callback =
-			Box::new(move |result: Result<Response, String>| {
+		let callback = Box::new(
+			move |result: Result<Response, reifydb_type::Error>| {
 				callback(result.and_then(parse_query_response))
-			});
+			},
+		);
 
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Callback(callback),
-		})?;
-
-		Ok(id)
-	}
-
-	/// Send multiple commands with callback
-	pub fn command_batch<F>(
-		&self,
-		statements: Vec<&str>,
-		callback: F,
-	) -> Result<String, Box<dyn std::error::Error>>
-	where
-		F: FnOnce(Result<CommandResult, String>) + Send + 'static,
-	{
-		let id = generate_request_id();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Command(CommandRequest {
-				statements: statements
-					.iter()
-					.map(|s| s.to_string())
-					.collect(),
-				params: None,
-			}),
-		};
-
-		let callback =
-			Box::new(move |result: Result<Response, String>| {
-				callback(
-					result.and_then(parse_command_response),
-				)
-			});
-
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Callback(callback),
-		})?;
-
-		Ok(id)
-	}
-
-	/// Send multiple queries with callback
-	pub fn query_batch<F>(
-		&self,
-		statements: Vec<&str>,
-		callback: F,
-	) -> Result<String, Box<dyn std::error::Error>>
-	where
-		F: FnOnce(Result<QueryResult, String>) + Send + 'static,
-	{
-		let id = generate_request_id();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Query(QueryRequest {
-				statements: statements
-					.iter()
-					.map(|s| s.to_string())
-					.collect(),
-				params: None,
-			}),
-		};
-
-		let callback =
-			Box::new(move |result: Result<Response, String>| {
-				callback(result.and_then(parse_query_response))
-			});
-
-		self.client.command_tx.send(InternalMessage::Request {
-			id: id.clone(),
-			request,
-			route: ResponseRoute::Callback(callback),
-		})?;
+		if let Err(e) =
+			self.client.command_tx.send(InternalMessage::Request {
+				id: id.clone(),
+				request,
+				route: ResponseRoute::Callback(callback),
+			}) {
+			panic!("Failed to send request: {}", e);
+		}
 
 		Ok(id)
 	}
@@ -274,10 +221,10 @@ impl CallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		mut handler: impl ResponseHandler + 'static,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	) -> Result<String, reifydb_type::Error> {
 		self.command(rql, params, move |result| match result {
 			Ok(data) => handler.on_success(data),
-			Err(e) => handler.on_error(e),
+			Err(e) => handler.on_error(e.to_string()),
 		})
 	}
 
@@ -287,10 +234,10 @@ impl CallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		mut handler: impl QueryHandler + 'static,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	) -> Result<String, reifydb_type::Error> {
 		self.query(rql, params, move |result| match result {
 			Ok(data) => handler.on_success(data),
-			Err(e) => handler.on_error(e),
+			Err(e) => handler.on_error(e.to_string()),
 		})
 	}
 }

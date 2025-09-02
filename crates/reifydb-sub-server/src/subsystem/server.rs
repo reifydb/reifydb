@@ -26,6 +26,11 @@ impl<T: Transaction> ServerSubsystem<T> {
 			engine,
 		}
 	}
+
+	/// Get the actual bound port of the server
+	pub fn port(&self) -> Option<u16> {
+		self.server.as_ref().and_then(|s| s.port())
+	}
 }
 
 impl<T: Transaction> Subsystem for ServerSubsystem<T> {

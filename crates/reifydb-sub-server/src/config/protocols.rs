@@ -3,14 +3,14 @@
 
 #[derive(Debug, Clone)]
 pub struct ProtocolConfigs {
-	pub websocket: Option<WebSocketConfig>,
+	pub ws: Option<WebSocketConfig>,
 	pub http: Option<HttpConfig>,
 }
 
 impl Default for ProtocolConfigs {
 	fn default() -> Self {
 		Self {
-			websocket: Some(WebSocketConfig::default()),
+			ws: Some(WebSocketConfig::default()),
 			http: None,
 		}
 	}
@@ -55,12 +55,6 @@ pub struct HttpConfig {
 
 	/// Keep-alive timeout in seconds
 	pub keep_alive_timeout: u64,
-
-	/// Enable CORS support
-	pub enable_cors: bool,
-
-	/// CORS allowed origins (empty = allow all)
-	pub cors_origins: Vec<String>,
 }
 
 impl Default for HttpConfig {
@@ -70,8 +64,6 @@ impl Default for HttpConfig {
 			request_timeout: 30,
 			keep_alive: true,
 			keep_alive_timeout: 60,
-			enable_cors: true,
-			cors_origins: vec![], // Allow all origins by default
 		}
 	}
 }
