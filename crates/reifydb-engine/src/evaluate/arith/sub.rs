@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	Fragment, GetType, IsNumber, LazyFragment, Promote, SafeSub, Type,
+	GetType, IsNumber, LazyFragment, Promote, SafeSub, Type,
 	diagnostic::operator::sub_cannot_be_applied_to_incompatible_types,
 	return_error,
 };

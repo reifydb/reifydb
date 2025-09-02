@@ -13,6 +13,7 @@ use reifydb_core::{
 	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
+#[cfg(feature = "sub_server")]
 use reifydb_sub_server::ServerSubsystem;
 
 use crate::{

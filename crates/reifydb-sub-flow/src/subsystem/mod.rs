@@ -39,7 +39,7 @@ impl<T: Transaction> FlowSubsystem<T> {
 	pub fn new(
 		cfg: FlowSubsystemConfig,
 		ioc: &IocContainer,
-	) -> crate::Result<Self> {
+	) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
 		let consumer = FlowConsumer::new(engine.clone());

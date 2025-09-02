@@ -59,6 +59,22 @@ impl SqliteConfig {
 		}
 	}
 
+	/// Create a test configuration optimized for testing
+	/// - WAL journal mode for concurrent test execution
+	/// - Normal synchronous mode for reliability
+	/// - MEMORY temp store for fastest temp operations
+	/// - Small pool size to minimize locking issues
+	pub fn test<P: AsRef<Path>>(path: P) -> Self {
+		Self {
+			path: path.as_ref().to_path_buf(),
+			flags: OpenFlags::default(),
+			journal_mode: JournalMode::Wal,
+			synchronous_mode: SynchronousMode::Normal,
+			temp_store: TempStore::Memory,
+			max_pool_size: 2,
+		}
+	}
+
 	/// Set the database file path
 	pub fn path<P: AsRef<Path>>(mut self, path: P) -> Self {
 		self.path = path.as_ref().to_path_buf();

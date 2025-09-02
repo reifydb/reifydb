@@ -31,9 +31,8 @@ pub struct Client {
 
 pub(crate) struct ClientInner {
 	pub(crate) command_tx: mpsc::Sender<InternalMessage>,
-	pub(crate) router: Arc<Mutex<RequestRouter>>,
 	worker_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
-	pub(crate) url: String,
+	// pub(crate) url: String,
 }
 
 impl Client {
@@ -62,11 +61,10 @@ impl Client {
 		Ok(Self {
 			inner: Arc::new(ClientInner {
 				command_tx,
-				router,
 				worker_handle: Arc::new(Mutex::new(Some(
 					worker_handle,
 				))),
-				url: url.to_string(),
+				// url: url.to_string(),
 			}),
 		})
 	}

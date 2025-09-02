@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		// Execute with parameters
 		let params = Params::Positional(vec![Value::Int4(42)]);
 		match blocking.query("MAP { $1 }", Some(params)) {
-			Ok(result) => {}
+			Ok(_result) => {}
 			Err(e) => {
 				println!("   Parameterized query failed: {}", e)
 			}

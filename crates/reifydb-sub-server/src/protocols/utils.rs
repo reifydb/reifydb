@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::util::base64;
-use serde::{Deserialize, Serialize};
 use sha1::{Sha1, digest::Digest};
 // === HTTP -> WebSocket handshake helpers ===
 
@@ -161,17 +160,4 @@ pub fn build_ws_frame(opcode: u8, payload: &[u8]) -> Vec<u8> {
 	frame.extend_from_slice(payload);
 
 	frame
-}
-
-// === Message types for query handling ===
-
-#[derive(Debug, Deserialize)]
-pub struct RequestMsg {
-	pub q: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ResponseMsg {
-	pub ok: bool,
-	pub result: String,
 }

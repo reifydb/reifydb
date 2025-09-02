@@ -7,6 +7,7 @@ use reifydb_core::{
 	Frame,
 	interface::{Engine, Identity, Params, Transaction},
 };
+use reifydb_type::Value;
 
 use super::{
 	CommandResponse, QueryResponse, Request, Response, ResponsePayload,
@@ -708,8 +709,8 @@ impl WebSocketHandler {
 					.iter()
 					.map(|value| {
 						match value {
-						reifydb_type::Value::Undefined => String::new(),
-						reifydb_type::Value::Blob(b) => reifydb_type::util::hex::encode(&b),
+						Value::Undefined => "⟪undefined⟫".to_string(),
+						Value::Blob(b) => reifydb_type::util::hex::encode(&b),
 						_ => value.to_string()}
 					})
 					.collect();

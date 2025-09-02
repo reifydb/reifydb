@@ -176,7 +176,7 @@ impl<T: Transaction> Worker<T> {
 		loop {
 			match self.listener.accept() {
 				Ok((stream, peer)) => {
-					if let Err(e) = self.on_accept(
+					if let Err(_e) = self.on_accept(
 						connections,
 						poll,
 						stream,
@@ -594,10 +594,10 @@ impl<T: Transaction> Worker<T> {
 		connections: &mut Slab<Connection<T>>,
 	) {
 		let mut to_close = Vec::new();
-		let mut state_closed = 0;
-		let mut eof_connections = 0;
-		let mut error_connections = 0;
-		let mut active_connections = 0;
+		let mut _state_closed = 0;
+		let mut _eof_connections = 0;
+		let mut _error_connections = 0;
+		let mut _active_connections = 0;
 
 		// Collect keys to check for abandoned connections
 		let keys_to_check: Vec<usize> =
@@ -608,11 +608,11 @@ impl<T: Transaction> Worker<T> {
 				match conn.state() {
 					ConnectionState::WebSocket(crate::protocols::ws::WsState::Closed) => {
 						to_close.push(key);
-						state_closed += 1;
+						_state_closed += 1;
 					}
 					ConnectionState::Closed => {
 						to_close.push(key);
-						state_closed += 1;
+						_state_closed += 1;
 					}
 					_ => {
 						// For active connections, try to detect abandoned ones
@@ -622,21 +622,21 @@ impl<T: Transaction> Worker<T> {
 							Ok(0) => {
 								// EOF - connection is closed on the other end
 								to_close.push(key);
-								eof_connections += 1;
+								_eof_connections += 1;
 							}
 							Ok(_n) => {
 								// Got data - put it back in buffer for proper processing
 								conn.buffer_mut().extend_from_slice(&buf[..1]);
-								active_connections += 1;
+								_active_connections += 1;
 							}
 							Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
 								// Connection is alive but no data available - this is fine
-								active_connections += 1;
+								_active_connections += 1;
 							}
 							Err(_) => {
 								// Connection error - mark for closure
 								to_close.push(key);
-								error_connections += 1;
+								_error_connections += 1;
 							}
 						}
 					}

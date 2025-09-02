@@ -132,7 +132,7 @@ fn convert_column_values(target: Type, data: Vec<String>) -> Vec<Value> {
 }
 
 fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
-	if s == "⟪undefined⟫" || s == "NULL" || s == "Undefined" {
+	if s == "⟪undefined⟫" {
 		return Value::Undefined;
 	}
 

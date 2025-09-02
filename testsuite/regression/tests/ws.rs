@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	error::Error, fmt::Write, path::Path, thread::sleep, time::Duration,
-};
+use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
 	Database, ServerBuilder,

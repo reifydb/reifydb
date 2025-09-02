@@ -3,8 +3,6 @@
 
 use std::{collections::HashMap, time::Instant};
 
-use reifydb_type::{Error, err};
-
 use super::message::ResponseRoute;
 use crate::{Response, session::ResponseMessage};
 

@@ -11,8 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	Fragment, GetType, IsNumber, LazyFragment, Promote, SafeRemainder,
-	Type,
+	GetType, IsNumber, LazyFragment, Promote, SafeRemainder, Type,
 	diagnostic::operator::rem_cannot_be_applied_to_incompatible_types,
 	return_error,
 };

@@ -105,12 +105,12 @@ pub struct QueryResponse {
 	pub frames: Vec<WebsocketFrame>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketFrame {
 	pub columns: Vec<WebsocketColumn>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketColumn {
 	pub schema: Option<String>,
 	pub store: Option<String>,
@@ -127,7 +127,6 @@ pub(crate) struct WebSocketClient {
 	pub(crate) stream: TcpStream,
 	read_buffer: Vec<u8>,
 	pub(crate) is_connected: bool,
-	next_request_id: u64,
 }
 
 impl WebSocketClient {
@@ -153,7 +152,6 @@ impl WebSocketClient {
 			stream,
 			read_buffer: Vec::with_capacity(4096),
 			is_connected: false,
-			next_request_id: 1,
 		};
 
 		// Perform WebSocket handshake
@@ -247,68 +245,6 @@ impl WebSocketClient {
 
 		self.is_connected = true;
 		Ok(())
-	}
-
-	/// Generate a unique request ID
-	fn next_id(&mut self) -> String {
-		let id = self.next_request_id;
-		self.next_request_id += 1;
-		id.to_string()
-	}
-
-	/// Send an authentication request
-	pub fn send_auth(
-		&mut self,
-		token: Option<String>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = self.next_id();
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Auth(AuthRequest {
-				token,
-			}),
-		};
-
-		self.send_request(&request)?;
-		Ok(id)
-	}
-
-	/// Send a command request
-	pub fn send_command(
-		&mut self,
-		statements: Vec<String>,
-		params: Option<Params>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = self.next_id();
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Command(CommandRequest {
-				statements,
-				params,
-			}),
-		};
-
-		self.send_request(&request)?;
-		Ok(id)
-	}
-
-	/// Send a query request
-	pub fn send_query(
-		&mut self,
-		statements: Vec<String>,
-		params: Option<Params>,
-	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = self.next_id();
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Query(QueryRequest {
-				statements,
-				params,
-			}),
-		};
-
-		self.send_request(&request)?;
-		Ok(id)
 	}
 
 	/// Send a request over the WebSocket connection
