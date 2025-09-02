@@ -3,7 +3,6 @@ resolver = "2"
 
 members = [
     #    "bin/cli",
-    "bin/bench",
     "bin/examples",
     "bin/playground",
     "bin/server",
@@ -32,7 +31,6 @@ members = [
 
 default-members = [
     #    "bin/cli",
-    "bin/bench",
     "bin/examples",
     "bin/playground",
     "bin/server",
@@ -105,6 +103,7 @@ reifydb-storage = { path = "crates/reifydb-storage", version = "0.0.1" }
 reifydb-testing = { path = "crates/reifydb-testing", version = "0.0.1" }
 reifydb-transaction = { path = "crates/reifydb-transaction", version = "0.0.1" }
 reifydb-type = { path = "crates/reifydb-type", version = "0.0.1" }
+
 #subsystems
 reifydb-sub-logging = { path = "crates/reifydb-sub-logging", version = "0.0.1" }
 reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.0.1" }
@@ -134,6 +133,4 @@ serde_json = { version = "1.0.140" }
 goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
 
-# benchmarking
-criterion = { version = "0.7", features = ["html_reports"] }
 
