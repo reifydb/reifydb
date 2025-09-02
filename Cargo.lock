@@ -1279,7 +1279,6 @@ version = "0.0.1"
 dependencies = [
  "httparse",
  "mio",
- "reifydb",
  "reifydb-type",
  "serde",
  "serde_json",

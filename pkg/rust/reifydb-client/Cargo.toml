@@ -14,7 +14,6 @@ path = "examples/session_example.rs"
 default = []
 
 [dependencies]
-reifydb = { workspace = true }
 reifydb-type = { workspace = true }
 
 # Network and async dependencies (matching server)

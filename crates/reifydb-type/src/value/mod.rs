@@ -8,6 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+mod as_string;
 pub mod blob;
 pub mod boolean;
 mod date;

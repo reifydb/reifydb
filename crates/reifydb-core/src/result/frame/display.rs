@@ -3,12 +3,9 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+use reifydb_type::{ROW_NUMBER_COLUMN_NAME, util::unicode::UnicodeWidthStr};
 
-use crate::{
-	result::frame::{Frame, FrameColumn},
-	util::unicode_width::UnicodeWidthStr,
-};
+use crate::result::frame::{Frame, FrameColumn};
 
 /// Calculate the display width of a string, handling newlines properly.
 /// For strings with newlines, returns the width of the longest line.

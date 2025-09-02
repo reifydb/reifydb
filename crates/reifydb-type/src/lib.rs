@@ -5,7 +5,6 @@
 
 mod error;
 mod fragment;
-mod frame;
 pub mod util;
 pub mod value;
 
@@ -17,23 +16,17 @@ pub use fragment::{
 	StatementColumn, StatementLine,
 };
 pub use value::{
+	// Constants
 	Blob,
 	Date,
 	DateTime,
-
-	// Parse functions
+	// Core types
 	GetType,
-	// Traits
 	IdentityId,
-
-	// Number traits and operations
 	Interval,
-
-	// Constants
 	IntoValue,
 	OrderedF32,
 	OrderedF64,
-	// Core types
 	RowNumber,
 	Time,
 	Type,
@@ -50,11 +43,15 @@ pub use value::{
 		SafePromote, SafeRemainder, SafeSub, parse_float, parse_int,
 		parse_uint,
 	},
+
+	// Parse functions
 	row_number::ROW_NUMBER_COLUMN_NAME,
+	// Traits
 	temporal::parse::{
 		parse_date, parse_datetime, parse_interval, parse_time,
 	},
+
+	// Number traits and operations
 	uuid::{parse_uuid4, parse_uuid7},
 };
-// Re-export blob, boolean, temporal, and uuid modules for utility access
 pub use value::{blob, boolean, temporal, uuid};

@@ -2,6 +2,7 @@
 // This file is licensed under the MIT
 
 mod client;
+mod domain;
 pub mod session;
 
 use std::{

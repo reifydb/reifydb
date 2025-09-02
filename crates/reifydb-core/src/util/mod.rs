@@ -9,7 +9,6 @@ pub mod either;
 pub mod encoding;
 pub mod ioc;
 pub mod retry;
-pub mod unicode_width;
 mod versioned;
 pub mod wait_group;
 
