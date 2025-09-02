@@ -1,15 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::path::Path;
-
 use reifydb_core::{
 	event::EventBus,
 	interface::{CdcTransaction, UnversionedTransaction, VersionedStorage},
 };
 use reifydb_engine::StandardCdcTransaction;
 use reifydb_storage::{
-	lmdb::Lmdb,
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
@@ -35,20 +32,6 @@ pub fn memory()
 		memory.clone(),
 		SingleVersionLock::new(Memory::new(), eventbus.clone()),
 		StandardCdcTransaction::new(memory),
-		eventbus,
-	)
-}
-
-/// Convenience function to create LMDB storage
-pub fn lmdb(
-	path: &Path,
-) -> (Lmdb, SingleVersionLock<Lmdb>, StandardCdcTransaction<Lmdb>, EventBus) {
-	let eventbus = EventBus::new();
-	let result = Lmdb::new(path);
-	(
-		result.clone(),
-		SingleVersionLock::new(result.clone(), eventbus.clone()),
-		StandardCdcTransaction::new(result),
 		eventbus,
 	)
 }

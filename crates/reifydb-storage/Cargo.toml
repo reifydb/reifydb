@@ -12,8 +12,6 @@ reifydb-type = { workspace = true }
 
 crossbeam-skiplist = { workspace = true }
 
-heed = { workspace = true }
-
 rusqlite = { workspace = true, features = ["bundled"] }
 r2d2 = { workspace = true }
 r2d2_sqlite = { workspace = true }

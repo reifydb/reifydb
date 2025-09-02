@@ -42,7 +42,6 @@ pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;
 pub use reifydb_storage as storage;
 pub use reifydb_storage::{
-	lmdb::Lmdb,
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
