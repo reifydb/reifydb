@@ -53,6 +53,7 @@ help:
 	@echo "  make push-testcontainer    Push test container to registry"
 	@echo ""
 	@echo "📊 Other:"
+	@echo "  make deps          Show dependency trees for all crates"
 	@echo "  make coverage      Generate test coverage report"
 	@echo "  make check         Check for uncommitted changes"
 	@echo "  make push          Push changes to git (after check)"
@@ -139,6 +140,14 @@ format:
 coverage:
 	@echo "📊 Generating test coverage report..."
 	cargo tarpaulin -o html --all --output-dir target/coverage
+
+# =============================================================================
+# Analysis Targets
+# =============================================================================
+
+.PHONY: deps
+deps:
+	@$(MAKE) -f mk/dependencies.mk deps
 
 # =============================================================================
 # Docker Targets
