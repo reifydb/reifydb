@@ -17,7 +17,8 @@ impl VersionedGet for Sqlite {
 		key: &EncodedKey,
 		version: Version,
 	) -> Result<Option<Versioned>> {
-		let conn = self.get_conn();
+		let conn = self.get_reader();
+		let conn_guard = conn.lock().unwrap();
 
 		let table = table_name(key)?;
 		let query = format!(
@@ -25,17 +26,21 @@ impl VersionedGet for Sqlite {
 			table
 		);
 
-		Ok(conn.query_row(
-			&query,
-			params![key.to_vec(), version],
-			|row| {
-				let encoded_row: EncodedRow = EncodedRow(
-					CowVec::new(row.get::<_, Vec<u8>>(1)?),
-				);
-				if encoded_row.is_deleted() {
-					Ok(None)
-				} else {
-					Ok(Some(Versioned {
+		Ok(conn_guard
+			.query_row(
+				&query,
+				params![key.to_vec(), version],
+				|row| {
+					let encoded_row: EncodedRow =
+						EncodedRow(CowVec::new(
+							row.get::<_, Vec<u8>>(
+								1,
+							)?,
+						));
+					if encoded_row.is_deleted() {
+						Ok(None)
+					} else {
+						Ok(Some(Versioned {
 						key: EncodedKey::new(
 							row.get::<_, Vec<u8>>(
 								0,
@@ -44,11 +49,11 @@ impl VersionedGet for Sqlite {
 						row: encoded_row,
 						version: row.get(2)?,
 					}))
-				}
-			},
-		)
-		.optional()
-		.unwrap()
-		.flatten())
+					}
+				},
+			)
+			.optional()
+			.unwrap()
+			.flatten())
 	}
 }

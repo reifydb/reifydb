@@ -9,7 +9,8 @@ use crate::sqlite::Sqlite;
 
 impl VersionedContains for Sqlite {
 	fn contains(&self, key: &EncodedKey, version: Version) -> Result<bool> {
-		let conn = self.get_conn();
+		let conn = self.get_reader();
+		let conn_guard = conn.lock().unwrap();
 
 		let table = table_name(key)?;
 		let query = format!(
@@ -17,11 +18,12 @@ impl VersionedContains for Sqlite {
 			table
 		);
 
-		Ok(conn.query_row(
-			&query,
-			params![key.to_vec(), version],
-			|row| row.get(0),
-		)
-		.unwrap())
+		Ok(conn_guard
+			.query_row(
+				&query,
+				params![key.to_vec(), version],
+				|row| row.get(0),
+			)
+			.unwrap())
 	}
 }

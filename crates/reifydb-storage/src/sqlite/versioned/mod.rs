@@ -12,11 +12,9 @@ mod scan_rev;
 use std::{
 	collections::{HashMap, VecDeque},
 	ops::Bound,
-	sync::{Mutex, OnceLock},
+	sync::{Arc, Mutex, OnceLock},
 };
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Version,
 	interface::{
@@ -318,10 +316,9 @@ pub(crate) fn execute_batched_range_query(
 }
 
 /// Helper function to get all table names for iteration
-pub(crate) fn get_table_names(
-	conn: &PooledConnection<SqliteConnectionManager>,
-) -> Vec<String> {
-	let mut stmt = conn
+pub(crate) fn get_table_names(conn: &Arc<Mutex<Connection>>) -> Vec<String> {
+	let conn_guard = conn.lock().unwrap();
+	let mut stmt = conn_guard
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')")
         .unwrap();
 
@@ -333,7 +330,7 @@ pub(crate) fn get_table_names(
 
 /// Helper function to execute batched iteration queries across multiple tables
 pub(crate) fn execute_scan_query(
-	conn: &PooledConnection<SqliteConnectionManager>,
+	conn: &Arc<Mutex<Connection>>,
 	table_names: &[String],
 	version: Version,
 	batch_size: usize,
@@ -392,7 +389,8 @@ pub(crate) fn execute_scan_query(
 				_ => unreachable!(),
 			};
 
-		let mut stmt = conn.prepare(&query).unwrap();
+		let conn_guard = conn.lock().unwrap();
+		let mut stmt = conn_guard.prepare(&query).unwrap();
 
 		let rows = stmt
 			.query_map(

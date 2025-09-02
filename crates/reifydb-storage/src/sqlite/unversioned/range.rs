@@ -1,14 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::VecDeque, ops::Bound};
+use std::{
+	collections::VecDeque,
+	ops::Bound,
+	sync::{Arc, Mutex},
+};
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Result,
 	interface::{Unversioned, UnversionedRange},
 };
+use rusqlite::Connection;
 
 use super::{build_unversioned_query, execute_range_query};
 use crate::sqlite::Sqlite;
@@ -20,12 +23,12 @@ impl UnversionedRange for Sqlite {
 		Self: 'a;
 
 	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
-		Ok(Range::new(self.get_conn(), range, 1024))
+		Ok(Range::new(self.get_reader(), range, 1024))
 	}
 }
 
 pub struct Range {
-	conn: PooledConnection<SqliteConnectionManager>,
+	conn: Arc<Mutex<Connection>>,
 	range: EncodedKeyRange,
 	buffer: VecDeque<Unversioned>,
 	last_key: Option<EncodedKey>,
@@ -35,7 +38,7 @@ pub struct Range {
 
 impl Range {
 	pub fn new(
-		conn: PooledConnection<SqliteConnectionManager>,
+		conn: Arc<Mutex<Connection>>,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Self {
@@ -69,7 +72,8 @@ impl Range {
 		let (query_template, param_count) =
 			build_unversioned_query(start_bound, end_bound, "ASC");
 
-		let mut stmt = self.conn.prepare(query_template).unwrap();
+		let conn_guard = self.conn.lock().unwrap();
+		let mut stmt = conn_guard.prepare(query_template).unwrap();
 
 		let count = execute_range_query(
 			&mut stmt,
