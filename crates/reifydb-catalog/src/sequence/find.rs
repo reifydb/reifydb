@@ -44,6 +44,9 @@ impl CatalogStore {
 			crate::system::ids::sequences::FLOW_EDGE => {
 				(SchemaId(1), "flow_edge")
 			}
+			crate::system::ids::sequences::PRIMARY_KEY => {
+				(SchemaId(1), "primary_key")
+			}
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id

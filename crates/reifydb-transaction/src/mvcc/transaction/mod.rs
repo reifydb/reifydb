@@ -82,17 +82,11 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	pub fn new(name: &str, clock: L) -> crate::Result<Self> {
+	pub fn new(clock: L) -> crate::Result<Self> {
 		let version = clock.next()?;
 		Ok(Self {
 			inner: Arc::new({
-				let oracle = Oracle::new(
-					format!("{}.pending_reads", name)
-						.into(),
-					format!("{}.txn_timestamps", name)
-						.into(),
-					clock,
-				);
+				let oracle = Oracle::new(clock);
 				oracle.query.done(version);
 				oracle.command.done(version);
 				oracle

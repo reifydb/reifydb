@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Error, GetType, IntoFragment, IsNumber, Promote, SafeAdd, SafeDiv,
+	Error, GetType, IsNumber, LazyFragment, Promote, SafeAdd, SafeDiv,
 	SafeMul, SafeRemainder, SafeSub,
 	diagnostic::number::number_out_of_range, return_error,
 };
@@ -10,11 +10,11 @@ use reifydb_type::{
 use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
 
 impl EvaluationContext<'_> {
-	pub fn add<L, R>(
+	pub fn add<'a, L, R>(
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoFragment<'static>,
+		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -33,7 +33,7 @@ impl EvaluationContext<'_> {
 							c.to_number_range_descriptor()
 						});
 					return_error!(number_out_of_range(
-                        fragment,
+                        fragment.fragment(),
                         <L as Promote<R>>::Output::get_type(),
                         descriptor.as_ref(),
                     ));
@@ -48,7 +48,7 @@ impl EvaluationContext<'_> {
 								c.to_number_range_descriptor()
 							});
 						Error(number_out_of_range(
-                            fragment,
+                            fragment.fragment(),
                             <L as Promote<R>>::Output::get_type(),
                             descriptor.as_ref(),
                         ))
@@ -71,11 +71,11 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub fn sub<L, R>(
+	pub fn sub<'a, L, R>(
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoFragment<'static>,
+		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -94,7 +94,7 @@ impl EvaluationContext<'_> {
 							c.to_number_range_descriptor()
 						});
 					return_error!(number_out_of_range(
-                        fragment,
+                        fragment.fragment(),
                         <L as Promote<R>>::Output::get_type(),
                         descriptor.as_ref(),
                     ));
@@ -109,7 +109,7 @@ impl EvaluationContext<'_> {
 								c.to_number_range_descriptor()
 							});
 						Error(number_out_of_range(
-                            fragment,
+                            fragment.fragment(),
                             <L as Promote<R>>::Output::get_type(),
                             descriptor.as_ref(),
                         ))
@@ -132,11 +132,11 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub fn mul<L, R>(
+	pub fn mul<'a, L, R>(
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoFragment<'static>,
+		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -155,7 +155,7 @@ impl EvaluationContext<'_> {
 							c.to_number_range_descriptor()
 						});
 					return_error!(number_out_of_range(
-                        fragment,
+                        fragment.fragment(),
                         <L as Promote<R>>::Output::get_type(),
                         descriptor.as_ref(),
                     ));
@@ -170,7 +170,7 @@ impl EvaluationContext<'_> {
 								c.to_number_range_descriptor()
 							});
 						Error(number_out_of_range(
-                            fragment,
+                            fragment.fragment(),
                             <L as Promote<R>>::Output::get_type(),
                             descriptor.as_ref(),
                         ))
@@ -193,11 +193,11 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub fn div<L, R>(
+	pub fn div<'a, L, R>(
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoFragment<'static>,
+		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -216,7 +216,7 @@ impl EvaluationContext<'_> {
 							c.to_number_range_descriptor()
 						});
 					return_error!(number_out_of_range(
-                        fragment,
+                        fragment.fragment(),
                         <L as Promote<R>>::Output::get_type(),
                         descriptor.as_ref(),
                     ));
@@ -231,7 +231,7 @@ impl EvaluationContext<'_> {
 								c.to_number_range_descriptor()
 							});
 						Error(number_out_of_range(
-                            fragment,
+                            fragment.fragment(),
                             <L as Promote<R>>::Output::get_type(),
                             descriptor.as_ref(),
                         ))
@@ -254,11 +254,11 @@ impl EvaluationContext<'_> {
 }
 
 impl EvaluationContext<'_> {
-	pub fn remainder<L, R>(
+	pub fn remainder<'a, L, R>(
 		&self,
 		l: L,
 		r: R,
-		fragment: impl IntoFragment<'static>,
+		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
@@ -277,7 +277,7 @@ impl EvaluationContext<'_> {
 							c.to_number_range_descriptor()
 						});
 					return_error!(number_out_of_range(
-                        fragment,
+                        fragment.fragment(),
                         <L as Promote<R>>::Output::get_type(),
                         descriptor.as_ref(),
                     ));
@@ -292,7 +292,7 @@ impl EvaluationContext<'_> {
 								c.to_number_range_descriptor()
 							});
 						Error(number_out_of_range(
-                            fragment,
+                            fragment.fragment(),
                             <L as Promote<R>>::Output::get_type(),
                             descriptor.as_ref(),
                         ))
@@ -323,55 +323,40 @@ mod tests {
 	#[test]
 	fn test_add() {
 		let test_instance = EvaluationContext::testing();
-		let result = test_instance.add(
-			1i8,
-			255i16,
-			Fragment::testing_empty(),
-		);
+		let result = test_instance
+			.add(1i8, 255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(256i128)));
 	}
 
 	#[test]
 	fn test_sub() {
 		let test_instance = EvaluationContext::testing();
-		let result = test_instance.sub(
-			1i8,
-			255i16,
-			Fragment::testing_empty(),
-		);
+		let result = test_instance
+			.sub(1i8, 255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(-254i128)));
 	}
 
 	#[test]
 	fn test_mul() {
 		let test_instance = EvaluationContext::testing();
-		let result = test_instance.mul(
-			23i8,
-			255i16,
-			Fragment::testing_empty(),
-		);
+		let result = test_instance
+			.mul(23i8, 255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(5865i128)));
 	}
 
 	#[test]
 	fn test_div() {
 		let test_instance = EvaluationContext::testing();
-		let result = test_instance.div(
-			120i8,
-			20i16,
-			Fragment::testing_empty(),
-		);
+		let result = test_instance
+			.div(120i8, 20i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(6i128)));
 	}
 
 	#[test]
 	fn test_remainder() {
 		let test_instance = EvaluationContext::testing();
-		let result = test_instance.remainder(
-			120i8,
-			21i16,
-			Fragment::testing_empty(),
-		);
+		let result = test_instance
+			.remainder(120i8, 21i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(15i128)));
 	}
 }

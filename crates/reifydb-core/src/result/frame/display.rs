@@ -170,7 +170,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Bool(BoolContainer::new(
 				data.into_iter().collect(),
@@ -188,7 +188,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Float4(NumberContainer::new(
 				data.into_iter().collect(),
@@ -206,7 +206,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Float8(NumberContainer::new(
 				data.into_iter().collect(),
@@ -224,7 +224,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Int1(NumberContainer::new(
 				data.into_iter().collect(),
@@ -242,7 +242,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Int2(NumberContainer::new(
 				data.into_iter().collect(),
@@ -260,7 +260,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(
 				data.into_iter().collect(),
@@ -278,7 +278,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Int8(NumberContainer::new(
 				data.into_iter().collect(),
@@ -296,7 +296,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Int16(NumberContainer::new(
 				data.into_iter().collect(),
@@ -314,7 +314,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uint1(NumberContainer::new(
 				data.into_iter().collect(),
@@ -332,7 +332,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uint2(NumberContainer::new(
 				data.into_iter().collect(),
@@ -350,7 +350,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uint4(NumberContainer::new(
 				data.into_iter().collect(),
@@ -368,7 +368,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uint8(NumberContainer::new(
 				data.into_iter().collect(),
@@ -386,7 +386,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uint16(NumberContainer::new(
 				data.into_iter().collect(),
@@ -404,7 +404,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Utf8(Utf8Container::new(
 				data,
@@ -418,7 +418,7 @@ mod tests {
 	fn undefined_column(name: &str, len: usize) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Undefined(
 				UndefinedContainer::new(len),
@@ -433,7 +433,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Date(TemporalContainer::new(
 				data.into_iter().collect(),
@@ -449,7 +449,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::DateTime(
 				TemporalContainer::new(
@@ -467,7 +467,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Time(TemporalContainer::new(
 				data.into_iter().collect(),
@@ -483,7 +483,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Interval(
 				TemporalContainer::new(
@@ -500,7 +500,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: "__ROW__ID__".to_string(),
 			data: FrameColumnData::RowNumber(
 				RowNumberContainer::new(
@@ -518,7 +518,7 @@ mod tests {
 		let bitvec = BitVec::repeat(data_vec.len(), true);
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: "__ROW__ID__".to_string(),
 			data: FrameColumnData::RowNumber(
 				RowNumberContainer::new(data_vec, bitvec),
@@ -533,7 +533,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Blob(BlobContainer::new(
 				data.into_iter().collect(),
@@ -551,7 +551,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uuid4(UuidContainer::new(
 				data.into_iter().collect(),
@@ -569,7 +569,7 @@ mod tests {
 	) -> FrameColumn {
 		FrameColumn {
 			schema: None,
-			table: None,
+			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Uuid7(UuidContainer::new(
 				data.into_iter().collect(),

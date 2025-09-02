@@ -25,7 +25,13 @@ use crate::{
 			view_scan::ViewScanNode,
 		},
 	},
-	table_virtual::{TableVirtual, TableVirtualContext, system::Sequences},
+	table_virtual::{
+		TableVirtual, TableVirtualContext,
+		system::{
+			ColumnPolicies, ColumnsTable, PrimaryKeyColumns,
+			PrimaryKeys, Schemas, Sequences, Tables, Views,
+		},
+	},
 };
 
 pub(crate) fn compile<'a, T: Transaction>(
@@ -177,10 +183,18 @@ pub(crate) fn compile<'a, T: Transaction>(
 		) => {
 			// Create the appropriate virtual table implementation
 			let virtual_table_impl: Box<dyn TableVirtual<T>> =
-				if schema.id == SchemaId(1)
-					&& table.name == "sequences"
-				{
-					Box::new(Sequences::new())
+				if schema.id == SchemaId(1) {
+					match table.name.as_str() {
+						"sequences" => Box::new(Sequences::new()),
+						"schemas" => Box::new(Schemas::new()),
+						"tables" => Box::new(Tables::new()),
+						"views" => Box::new(Views::new()),
+						"columns" => Box::new(ColumnsTable::new()),
+						"primary_keys" => Box::new(PrimaryKeys::new()),
+						"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
+						"column_policies" => Box::new(ColumnPolicies::new()),
+						_ => panic!("Unknown virtual table type: {}", table.name)
+					}
 				} else {
 					panic!(
 						"Unknown virtual table type: {}",

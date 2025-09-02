@@ -11,10 +11,10 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
-	CatalogSchemaQueryOperations, CatalogStore,
-	CatalogViewCommandOperations, CatalogViewQueryOperations,
-	TransactionalChangesExt, view::ViewToCreate,
+	CatalogCommandTransactionOperations, CatalogSchemaQueryOperations,
+	CatalogStore, CatalogTransaction, CatalogViewCommandOperations,
+	CatalogViewQueryOperations, TransactionalChangesExt,
+	view::ViewToCreate,
 };
 
 impl<T> CatalogViewCommandOperations for T
@@ -80,7 +80,7 @@ where
 		if let Some(view) = self.catalog().find_view_by_name(
 			schema,
 			name,
-			<T as CatalogQueryTransactionOperations>::version(self),
+			<T as CatalogTransaction>::version(self),
 		) {
 			return Ok(Some(view));
 		}
@@ -107,10 +107,10 @@ where
 		}
 
 		// 2. Check MaterializedCatalog
-		if let Some(view) = self.catalog().find_view(
-			id,
-			<T as CatalogQueryTransactionOperations>::version(self),
-		) {
+		if let Some(view) = self
+			.catalog()
+			.find_view(id, <T as CatalogTransaction>::version(self))
+		{
 			return Ok(Some(view));
 		}
 

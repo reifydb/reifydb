@@ -6,10 +6,18 @@ use reifydb_core::interface::{ColumnKey, QueryTransaction, StoreId};
 use crate::{
 	CatalogStore,
 	column::{ColumnDef, ColumnId, layout::table_column},
+	transaction::CatalogTransaction,
 };
 
+/// Extended column information for system catalogs
+pub struct ColumnInfo {
+	pub column: ColumnDef,
+	pub store_id: StoreId,
+	pub is_view: bool,
+}
+
 impl CatalogStore {
-	pub fn list_table_columns(
+	pub fn list_columns(
 		rx: &mut impl QueryTransaction,
 		store: impl Into<StoreId>,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -32,6 +40,40 @@ impl CatalogStore {
 		}
 
 		result.sort_by_key(|c| c.index);
+
+		Ok(result)
+	}
+
+	pub fn list_columns_all(
+		rx: &mut (impl QueryTransaction + CatalogTransaction),
+	) -> crate::Result<Vec<ColumnInfo>> {
+		let mut result = Vec::new();
+
+		// Get all tables
+		let tables = CatalogStore::list_tables_all(rx)?;
+		for table in tables {
+			let columns = CatalogStore::list_columns(rx, table.id)?;
+			for column in columns {
+				result.push(ColumnInfo {
+					column,
+					store_id: table.id.into(),
+					is_view: false,
+				});
+			}
+		}
+
+		// Get all views
+		let views = CatalogStore::list_views_all(rx)?;
+		for view in views {
+			let columns = CatalogStore::list_columns(rx, view.id)?;
+			for column in columns {
+				result.push(ColumnInfo {
+					column,
+					store_id: view.id.into(),
+					is_view: true,
+				});
+			}
+		}
 
 		Ok(result)
 	}
@@ -92,9 +134,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns =
-			CatalogStore::list_table_columns(&mut txn, TableId(1))
-				.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1))
+			.unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -112,9 +153,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		let columns =
-			CatalogStore::list_table_columns(&mut txn, TableId(1))
-				.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1))
+			.unwrap();
 		assert!(columns.is_empty());
 	}
 
@@ -122,9 +162,8 @@ mod tests {
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
 
-		let columns =
-			CatalogStore::list_table_columns(&mut txn, TableId(1))
-				.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1))
+			.unwrap();
 		assert!(columns.is_empty());
 	}
 }

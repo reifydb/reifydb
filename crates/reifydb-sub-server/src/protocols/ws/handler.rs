@@ -715,17 +715,15 @@ impl WebSocketHandler {
 					.collect();
 
 				ws_columns.push(WebsocketColumn {
+					schema: column.schema.clone(),
+					store: column.store.clone(),
 					name: column.name.clone(),
 					r#type: column.data.get_type(),
 					data: column_data,
-					frame: None, /* Frame doesn't have a
-					              * name method */
 				});
 			}
 
 			ws_frames.push(WebsocketFrame {
-				name: "result".to_string(), /* Default frame
-				                             * name */
 				columns: ws_columns,
 			});
 		}

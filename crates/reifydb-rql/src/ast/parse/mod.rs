@@ -105,6 +105,7 @@ impl<'a> Parser<'a> {
 			}
 
 			let mut nodes = Vec::with_capacity(8);
+			let mut has_pipes = false;
 			loop {
 				if self.is_eof()
 					|| self.consume_if(
@@ -118,13 +119,27 @@ impl<'a> Parser<'a> {
 				}
 				nodes.push(self.parse_node(Precedence::None)?);
 				if !self.is_eof() {
-					self.consume_if(TokenKind::Separator(
-						NewLine,
-					))?;
+					// Check for pipe operator or newline as
+					// separator
+					if self.current()?
+						.is_operator(Operator::Pipe)
+					{
+						self.advance()?; // consume the pipe
+						has_pipes = true;
+					} else {
+						self.consume_if(
+							TokenKind::Separator(
+								NewLine,
+							),
+						)?;
+					}
 				}
 			}
 
-			result.push(AstStatement(nodes));
+			result.push(AstStatement {
+				nodes,
+				has_pipes,
+			});
 		}
 		Ok(result)
 	}
@@ -609,5 +624,92 @@ mod tests {
 		assert_eq!(between.value.as_identifier().name(), "x");
 		assert_eq!(between.lower.as_literal_number().value(), "1");
 		assert_eq!(between.upper.as_literal_number().value(), "10");
+	}
+
+	#[test]
+	fn test_pipe_operator_simple() {
+		use crate::ast::Ast;
+		let tokens = tokenize("from users | sort name").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let statement = &result[0];
+		assert_eq!(statement.len(), 2);
+
+		// First operation should be From
+		assert!(matches!(statement[0], Ast::From(_)));
+		// Second operation should be Sort
+		assert!(matches!(statement[1], Ast::Sort(_)));
+	}
+
+	#[test]
+	fn test_pipe_operator_multiple() {
+		use crate::ast::Ast;
+		let tokens = tokenize(
+			"from users | filter age > 18 | sort name | take 10",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let statement = &result[0];
+		assert_eq!(statement.len(), 4);
+
+		assert!(matches!(statement[0], Ast::From(_)));
+		assert!(matches!(statement[1], Ast::Filter(_)));
+		assert!(matches!(statement[2], Ast::Sort(_)));
+		assert!(matches!(statement[3], Ast::Take(_)));
+	}
+
+	#[test]
+	fn test_pipe_with_system_tables() {
+		use crate::ast::Ast;
+		let tokens = tokenize("from system.tables | sort id").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let statement = &result[0];
+		assert_eq!(statement.len(), 2);
+
+		assert!(matches!(statement[0], Ast::From(_)));
+		assert!(matches!(statement[1], Ast::Sort(_)));
+	}
+
+	#[test]
+	fn test_newline_still_works() {
+		use crate::ast::Ast;
+		let tokens = tokenize("from users\nsort name").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let statement = &result[0];
+		assert_eq!(statement.len(), 2);
+
+		assert!(matches!(statement[0], Ast::From(_)));
+		assert!(matches!(statement[1], Ast::Sort(_)));
+	}
+
+	#[test]
+	fn test_mixed_pipe_and_newline() {
+		use crate::ast::Ast;
+		let tokens = tokenize(
+			"from users | filter age > 18\nsort name | take 10",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let statement = &result[0];
+		assert_eq!(statement.len(), 4);
+
+		assert!(matches!(statement[0], Ast::From(_)));
+		assert!(matches!(statement[1], Ast::Filter(_)));
+		assert!(matches!(statement[2], Ast::Sort(_)));
+		assert!(matches!(statement[3], Ast::Take(_)));
 	}
 }

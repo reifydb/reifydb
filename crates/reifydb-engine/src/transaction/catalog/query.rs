@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{
-	CatalogQueryTransaction, CatalogQueryTransactionOperations,
-	CatalogSchemaQueryOperations, CatalogTableQueryOperations,
+	CatalogQueryTransaction, CatalogSchemaQueryOperations,
+	CatalogTableQueryOperations, CatalogTransaction,
 	CatalogViewQueryOperations, MaterializedCatalog,
 };
 use reifydb_core::{
@@ -17,9 +17,7 @@ use reifydb_core::{
 use crate::StandardQueryTransaction;
 
 // Implement CatalogQueryTransactionOperations for StandardQueryTransaction
-impl<T: Transaction> CatalogQueryTransactionOperations
-	for StandardQueryTransaction<T>
-{
+impl<T: Transaction> CatalogTransaction for StandardQueryTransaction<T> {
 	fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
 	}

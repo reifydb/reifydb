@@ -6,7 +6,7 @@ mod create;
 
 use std::sync::Arc;
 
-pub use alter::AlterTablePlan;
+pub use alter::{AlterTablePlan, AlterViewPlan};
 use reifydb_catalog::{
 	CatalogStore, system::SystemCatalog, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
@@ -25,10 +25,7 @@ use reifydb_type::Fragment;
 
 use crate::plan::{
 	logical::LogicalPlan,
-	physical::{
-		PhysicalPlan::{TableScan, ViewScan},
-		alter::AlterViewPlan,
-	},
+	physical::PhysicalPlan::{TableScan, ViewScan},
 };
 
 struct Compiler {}
@@ -322,11 +319,30 @@ impl Compiler {
 								schema,
 								view},
 						));
-					} else if schema.name == "system" && scan.source.fragment() == "sequences" {
+					} else if schema.name == "system" {
+						let table = match scan.source.fragment() {
+							"sequences" => SystemCatalog::sequences(),
+							"schemas" => SystemCatalog::schemas(),
+							"tables" => SystemCatalog::tables(),
+							"views" => SystemCatalog::views(),
+							"columns" => SystemCatalog::columns(),
+							"primary_keys" => SystemCatalog::primary_keys(),
+							"primary_key_columns" => SystemCatalog::primary_key_columns(),
+							"column_policies" => SystemCatalog::column_policies(),
+							_ => {
+								return_error!(
+									table_not_found(
+										scan.source.clone(),
+										scan.schema.fragment(),
+										scan.source.fragment()
+									)
+								);
+							}
+						};
 						stack.push(PhysicalPlan::TableVirtualScan(
 							TableVirtualScanNode {
 								schema,
-								table: SystemCatalog::sequences(),
+								table,
 								pushdown_context: None, // TODO: Detect pushdown opportunities
 							},
 						));
@@ -351,13 +367,15 @@ impl Compiler {
 					));
 				}
 
-				LogicalPlan::Chain(chain) => {
-					// Compile the chain of operations
+				LogicalPlan::Pipeline(pipeline) => {
+					// Compile the pipeline of operations
 					// This ensures they all share the same
 					// stack
-					let chain_result =
-						Self::compile(rx, chain.steps)?;
-					if let Some(result) = chain_result {
+					let pipeline_result = Self::compile(
+						rx,
+						pipeline.steps,
+					)?;
+					if let Some(result) = pipeline_result {
 						stack.push(result);
 					}
 				}

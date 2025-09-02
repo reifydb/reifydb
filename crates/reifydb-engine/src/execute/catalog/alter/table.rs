@@ -69,7 +69,10 @@ impl Executor {
 				} => {
 					// Get all columns for the table to
 					// validate and resolve column IDs
-					let table_columns = CatalogStore::list_table_columns(txn, table.id)?;
+					let table_columns =
+						CatalogStore::list_columns(
+							txn, table.id,
+						)?;
 
 					let mut column_ids = Vec::new();
 					for ast_column in columns {

@@ -10,6 +10,7 @@ mod create;
 mod find;
 mod get;
 mod layout;
+mod list;
 
 pub(crate) fn convert_schema(versioned: Versioned) -> SchemaDef {
 	let row = versioned.row;

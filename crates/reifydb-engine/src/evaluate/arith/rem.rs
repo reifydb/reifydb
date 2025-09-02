@@ -5,15 +5,16 @@ use std::fmt::Debug;
 
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::RemExpression},
-	return_error,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, push::Push},
 		container::{NumberContainer, UndefinedContainer},
 	},
 };
 use reifydb_type::{
-	Fragment, GetType, IsNumber, Promote, SafeRemainder, Type,
+	Fragment, GetType, IsNumber, LazyFragment, Promote, SafeRemainder,
+	Type,
 	diagnostic::operator::rem_cannot_be_applied_to_incompatible_types,
+	return_error,
 };
 
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
@@ -31,1330 +32,754 @@ impl StandardEvaluator {
 		match (&left.data(), &right.data()) {
 			// Float4
 			(ColumnData::Float4(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float4(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int1(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint1(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			// Float8
 			(ColumnData::Float8(l), ColumnData::Float4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Float8(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int1(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint1(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Float8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			// Signed × Signed
 			(ColumnData::Int1(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int2(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int4(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int8(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int16(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			// Signed × Unsigned
 			(ColumnData::Int1(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int1(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int2(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int2(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int4(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int4(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int8(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int8(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Int16(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Int16(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			// Unsigned × Signed
 			(ColumnData::Uint1(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint2(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint4(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint8(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint16(l), ColumnData::Int1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Int2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Int4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Int8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Int16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			// Unsigned × Unsigned
 			(ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			(ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
-				rem_numeric(
-					ctx,
-					l,
-					r,
-					target,
-					rem.full_fragment_owned(),
-				)
+				rem_numeric(ctx, l, r, target, || {
+					rem.full_fragment_owned()
+				})
 			}
 
 			// Handle undefined values - any operation with
@@ -1397,12 +822,12 @@ impl StandardEvaluator {
 	}
 }
 
-fn rem_numeric<L, R>(
+fn rem_numeric<'a, L, R>(
 	ctx: &EvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: Fragment<'_>,
+	fragment: impl LazyFragment<'a> + Copy,
 ) -> crate::Result<Column>
 where
 	L: GetType + Promote<R> + Copy + IsNumber + Clone + Debug + Default,
@@ -1413,13 +838,12 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let owned_fragment = fragment.into_owned();
 	let mut data = ctx.pooled(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
 				if let Some(value) =
-					ctx.remainder(*l, *r, &owned_fragment)?
+					ctx.remainder(*l, *r, fragment)?
 				{
 					data.push(value);
 				} else {
@@ -1429,8 +853,10 @@ where
 			_ => data.push_undefined(),
 		}
 	}
+	let binding = fragment.fragment();
+	let fragment_text = binding.text();
 	Ok(Column::ColumnQualified(ColumnQualified {
-		name: owned_fragment.text().into(),
+		name: fragment_text.into(),
 		data,
 	}))
 }

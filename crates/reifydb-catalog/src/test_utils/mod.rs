@@ -83,8 +83,7 @@ pub fn create_test_column(
 ) {
 	ensure_test_table(txn);
 
-	let columns =
-		CatalogStore::list_table_columns(txn, TableId(1)).unwrap();
+	let columns = CatalogStore::list_columns(txn, TableId(1)).unwrap();
 
 	CatalogStore::create_column(
 		txn,

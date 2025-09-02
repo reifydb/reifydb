@@ -10,7 +10,7 @@ use reifydb_core::{
 		ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey,
 		StoreId,
 	},
-	return_error,
+	return_error, return_internal_error,
 };
 
 use crate::{
@@ -36,8 +36,7 @@ impl CatalogStore {
 
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
-		let store_columns =
-			Self::list_table_columns(txn, to_create.store)?;
+		let store_columns = Self::list_columns(txn, to_create.store)?;
 		let store_column_ids: std::collections::HashSet<_> =
 			store_columns.iter().map(|c| c.id).collect();
 
@@ -83,6 +82,12 @@ impl CatalogStore {
 			}
 			StoreId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
+			}
+			StoreId::TableVirtual(_) => {
+				// Virtual tables don't support primary keys
+				return_internal_error!(
+					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
+				);
 			}
 		}
 
@@ -205,8 +210,7 @@ mod tests {
 
 		// Get column IDs for the view
 		let columns =
-			CatalogStore::list_table_columns(&mut txn, view.id)
-				.unwrap();
+			CatalogStore::list_columns(&mut txn, view.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Create primary key on first column only

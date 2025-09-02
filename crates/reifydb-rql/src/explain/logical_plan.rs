@@ -4,12 +4,14 @@
 use reifydb_core::JoinType;
 
 use crate::{
-	ast::parse_str,
+	ast::{AstAlterTableOperation, AstAlterViewOperation, parse_str},
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode,
 		DistinctNode, ExtendNode, FilterNode, InlineDataNode,
 		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
-		MapNode, OrderNode, SourceScanNode, TakeNode, compile_logical,
+		MapNode, OrderNode, SourceScanNode, TakeNode,
+		alter::{AlterTableNode, AlterViewNode},
+		compile_logical,
 	},
 };
 
@@ -571,13 +573,13 @@ fn render_logical_plan_inner(
 				output.push_str("\n");
 			}
 		}
-		LogicalPlan::Chain(chain) => {
+		LogicalPlan::Pipeline(pipeline) => {
 			output.push_str(&format!(
-				"{}{} Chain\n",
+				"{}{} Pipeline\n",
 				prefix, branch
 			));
-			for (i, step) in chain.steps.iter().enumerate() {
-				let last = i == chain.steps.len() - 1;
+			for (i, step) in pipeline.steps.iter().enumerate() {
+				let last = i == pipeline.steps.len() - 1;
 				render_logical_plan_inner(
 					step,
 					child_prefix.as_str(),
@@ -586,17 +588,131 @@ fn render_logical_plan_inner(
 				);
 			}
 		}
-		LogicalPlan::AlterTable(_) => {
+		LogicalPlan::AlterTable(AlterTableNode {
+			table,
+		}) => {
 			output.push_str(&format!(
 				"{}{} AlterTable\n",
 				prefix, branch
 			));
+
+			// Show schema and table
+			output.push_str(&format!(
+				"{}├── Schema: {}\n",
+				child_prefix,
+				table.schema.value()
+			));
+			output.push_str(&format!(
+				"{}├── Table: {}\n",
+				child_prefix,
+				table.table.value()
+			));
+
+			// Show operations
+			let ops_count = table.operations.len();
+			for (i, op) in table.operations.iter().enumerate() {
+				let is_last_op = i == ops_count - 1;
+				let op_branch = if is_last_op {
+					"└──"
+				} else {
+					"├──"
+				};
+
+				match op {
+					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+						let pk_name = name.as_ref()
+							.map(|n| format!(" {}", n.value()))
+							.unwrap_or_default();
+						output.push_str(&format!(
+							"{}{}Operation: CREATE PRIMARY KEY{}\n",
+							child_prefix, op_branch, pk_name
+						));
+
+						// Show columns
+						let cols_prefix = format!("{}{}    ",
+							child_prefix,
+							if is_last_op { " " } else { "│" }
+						);
+						for (j, col) in columns.iter().enumerate() {
+							let col_last = j == columns.len() - 1;
+							let col_branch = if col_last { "└──" } else { "├──" };
+							output.push_str(&format!(
+								"{}{}Column: {}\n",
+								cols_prefix, col_branch, col.column.value()
+							));
+						}
+					}
+					AstAlterTableOperation::DropPrimaryKey => {
+						output.push_str(&format!(
+							"{}{}Operation: DROP PRIMARY KEY\n",
+							child_prefix, op_branch
+						));
+					}
+				}
+			}
 		}
-		LogicalPlan::AlterView(_) => {
+		LogicalPlan::AlterView(AlterViewNode {
+			view,
+		}) => {
 			output.push_str(&format!(
 				"{}{} AlterView\n",
 				prefix, branch
 			));
+
+			// Show schema and view
+			output.push_str(&format!(
+				"{}├── Schema: {}\n",
+				child_prefix,
+				view.schema.value()
+			));
+			output.push_str(&format!(
+				"{}├── View: {}\n",
+				child_prefix,
+				view.view.value()
+			));
+
+			// Show operations
+			let ops_count = view.operations.len();
+			for (i, op) in view.operations.iter().enumerate() {
+				let is_last_op = i == ops_count - 1;
+				let op_branch = if is_last_op {
+					"└──"
+				} else {
+					"├──"
+				};
+
+				match op {
+					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+						let pk_name = name.as_ref()
+							.map(|n| format!(" {}", n.value()))
+							.unwrap_or_default();
+						output.push_str(&format!(
+							"{}{}Operation: CREATE PRIMARY KEY{}\n",
+							child_prefix, op_branch, pk_name
+						));
+
+						// Show columns
+						let cols_prefix = format!("{}{}    ",
+							child_prefix,
+							if is_last_op { " " } else { "│" }
+						);
+						for (j, col) in columns.iter().enumerate() {
+							let col_last = j == columns.len() - 1;
+							let col_branch = if col_last { "└──" } else { "├──" };
+							output.push_str(&format!(
+								"{}{}Column: {}\n",
+								cols_prefix, col_branch, col.column.value()
+							));
+						}
+					}
+					AstAlterViewOperation::DropPrimaryKey => {
+						output.push_str(&format!(
+							"{}{}Operation: DROP PRIMARY KEY\n",
+							child_prefix, op_branch
+						));
+					}
+				}
+			}
 		}
 	}
 }

@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub use create::ColumnToCreate;
+pub use list::ColumnInfo;
 pub use reifydb_core::interface::{ColumnDef, ColumnId, ColumnIndex};
 
 mod create;

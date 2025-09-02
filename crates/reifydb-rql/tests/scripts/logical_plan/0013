@@ -1,13 +1,13 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-logical 'create index idx_filtered on test.users {email} filter active == true filter age > 18'
+logical 'alter table test.users { create primary key {id, email, created_at} }'
 ---
-> └── CreateIndex
->     ├── Type: Index
->     ├── Name: idx_filtered
+> └── AlterTable
 >     ├── Schema: test
 >     ├── Table: users
->     ├── Columns: email
->     ├── Filters: (Column(active) == Constant(true)), (Column(age) > Constant(18))
+>     └──Operation: CREATE PRIMARY KEY
+>          ├──Column: id
+>          ├──Column: email
+>          └──Column: created_at
 > 

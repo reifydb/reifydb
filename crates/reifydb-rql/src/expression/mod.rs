@@ -30,7 +30,7 @@ pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
 
 	let mut result = Vec::new();
 	for statement in statements {
-		for ast in statement.0 {
+		for ast in statement.nodes {
 			result.push(ExpressionCompiler::compile(ast)?);
 		}
 	}

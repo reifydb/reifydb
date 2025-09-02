@@ -90,25 +90,25 @@ impl From<Column> for FrameColumn {
 		match value {
 			Column::FullyQualified(col) => FrameColumn {
 				schema: Some(col.schema),
-				table: Some(col.source),
+				store: Some(col.source),
 				name: col.name,
 				data: col.data.into(),
 			},
 			Column::SourceQualified(col) => FrameColumn {
 				schema: None,
-				table: Some(col.source),
+				store: Some(col.source),
 				name: col.name,
 				data: col.data.into(),
 			},
 			Column::ColumnQualified(col) => FrameColumn {
 				schema: None,
-				table: None,
+				store: None,
 				name: col.name,
 				data: col.data.into(),
 			},
 			Column::Unqualified(col) => FrameColumn {
 				schema: None,
-				table: None,
+				store: None,
 				name: col.name,
 				data: col.data.into(),
 			},

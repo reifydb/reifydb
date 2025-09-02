@@ -11,9 +11,9 @@ use reifydb_core::{
 };
 
 use crate::{
-	CatalogCommandTransactionOperations, CatalogQueryTransactionOperations,
-	CatalogSchemaQueryOperations, CatalogStore,
-	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogCommandTransactionOperations, CatalogSchemaQueryOperations,
+	CatalogStore, CatalogTableCommandOperations,
+	CatalogTableQueryOperations, CatalogTransaction,
 	TransactionalChangesExt, table::TableToCreate,
 };
 
@@ -81,7 +81,7 @@ where
 		if let Some(table) = self.catalog().find_table_by_name(
 			schema,
 			name,
-			<T as CatalogQueryTransactionOperations>::version(self),
+			<T as CatalogTransaction>::version(self),
 		) {
 			return Ok(Some(table));
 		}
@@ -113,7 +113,7 @@ where
 		// 2. Check MaterializedCatalog
 		if let Some(table) = self.catalog().find_table(
 			id,
-			<T as CatalogQueryTransactionOperations>::version(self),
+			<T as CatalogTransaction>::version(self),
 		) {
 			return Ok(Some(table));
 		}

@@ -107,12 +107,13 @@ pub struct QueryResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebsocketFrame {
-	pub name: String,
 	pub columns: Vec<WebsocketColumn>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebsocketColumn {
+	pub schema: Option<String>,
+	pub store: Option<String>,
 	pub name: String,
 	pub r#type: Type,
 	pub data: Vec<String>,

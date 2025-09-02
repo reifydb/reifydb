@@ -87,8 +87,8 @@ fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
 			.columns
 			.into_iter()
 			.map(|col| FrameColumn {
-				schema: None,
-				store: None,
+				schema: col.schema,
+				store: col.store,
 				name: col.name,
 				r#type: col.r#type,
 				data: convert_column_values(
@@ -111,8 +111,8 @@ fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
 			.columns
 			.into_iter()
 			.map(|col| FrameColumn {
-				schema: None,
-				store: None,
+				schema: col.schema,
+				store: col.store,
 				name: col.name,
 				r#type: col.r#type,
 				data: convert_column_values(

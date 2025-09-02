@@ -24,7 +24,7 @@ pub fn sequences() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: ID,
 					name: "id".to_string(),
-					ty: Type::Uint4,
+					ty: Type::Uint8,
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -35,14 +35,6 @@ pub fn sequences() -> Arc<TableVirtualDef> {
 					ty: Type::Uint8,
 					policies: vec![],
 					index: ColumnIndex(1),
-					auto_increment: false,
-				},
-				ColumnDef {
-					id: SCHEMA_NAME,
-					name: "schema_name".to_string(),
-					ty: Type::Utf8,
-					policies: vec![],
-					index: ColumnIndex(2),
 					auto_increment: false,
 				},
 				ColumnDef {

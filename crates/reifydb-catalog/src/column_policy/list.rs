@@ -8,10 +8,11 @@ use reifydb_core::interface::{
 
 use crate::{
 	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
+	transaction::CatalogTransaction,
 };
 
 impl CatalogStore {
-	pub fn list_table_column_policies(
+	pub fn list_column_policies(
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
@@ -49,6 +50,26 @@ impl CatalogStore {
 				}
 			})
 			.collect::<Vec<_>>())
+	}
+
+	pub fn list_column_policies_all(
+		rx: &mut (impl QueryTransaction + CatalogTransaction),
+	) -> crate::Result<Vec<ColumnPolicy>> {
+		let mut result = Vec::new();
+
+		// Get all columns from tables and views
+		let columns = CatalogStore::list_columns_all(rx)?;
+
+		// For each column, get its policies
+		for info in columns {
+			let policies = CatalogStore::list_column_policies(
+				rx,
+				info.column.id,
+			)?;
+			result.extend(policies);
+		}
+
+		Ok(result)
 	}
 }
 
@@ -94,10 +115,10 @@ mod tests {
 		let column = CatalogStore::get_column(&mut txn, ColumnId(8193))
 			.unwrap();
 
-		let policies = CatalogStore::list_table_column_policies(
-			&mut txn, column.id,
-		)
-		.unwrap();
+		let policies =
+			CatalogStore::list_column_policies(&mut txn, column.id)
+				.unwrap();
+
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);
 		assert!(matches!(policies[0].policy, Saturation(Undefined)));

@@ -24,6 +24,7 @@ impl CatalogStore {
 		let store_id = store.into();
 
 		// Get the primary key ID for the table or view
+		// Virtual tables don't have primary keys
 		let primary_key_id = match store_id {
 			StoreId::Table(table_id) => {
 				match Self::get_table_pk_id(rx, table_id)? {
@@ -36,6 +37,10 @@ impl CatalogStore {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
+			}
+			StoreId::TableVirtual(_) => {
+				// Virtual tables don't have primary keys
+				return Ok(None);
 			}
 		};
 

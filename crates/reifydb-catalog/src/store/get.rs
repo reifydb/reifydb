@@ -21,7 +21,9 @@ impl CatalogStore {
 		CatalogStore::find_store(rx, store_id)?.ok_or_else(|| {
 			let store_type = match store_id {
 				StoreId::Table(_) => "Table",
-				StoreId::View(_) => "View"};
+				StoreId::View(_) => "View",
+				StoreId::TableVirtual(_) => "TableVirtual",
+			};
 
 			Error(internal_error!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

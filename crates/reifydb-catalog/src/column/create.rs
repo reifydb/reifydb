@@ -140,7 +140,7 @@ impl CatalogStore {
 			name: column_to_create.column,
 			ty: column_to_create.value,
 			index: column_to_create.index,
-			policies: Self::list_table_column_policies(txn, id)?,
+			policies: Self::list_column_policies(txn, id)?,
 			auto_increment: column_to_create.auto_increment,
 		})
 	}

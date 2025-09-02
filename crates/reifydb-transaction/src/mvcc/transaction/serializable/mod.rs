@@ -60,14 +60,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
-	fn new(
-		name: &str,
-		versioned: VS,
-		unversioned: UT,
-		event_bus: EventBus,
-	) -> Self {
+	fn new(versioned: VS, unversioned: UT, event_bus: EventBus) -> Self {
 		let tm = TransactionManager::new(
-			name,
 			StdVersionProvider::new(unversioned).unwrap(),
 		)
 		.unwrap();
@@ -102,12 +96,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 		unversioned: UT,
 		event_bus: EventBus,
 	) -> Self {
-		Self(Arc::new(Inner::new(
-			core::any::type_name::<Self>(),
-			versioned,
-			unversioned,
-			event_bus,
-		)))
+		Self(Arc::new(Inner::new(versioned, unversioned, event_bus)))
 	}
 }
 

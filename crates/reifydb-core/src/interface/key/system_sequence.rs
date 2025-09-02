@@ -18,7 +18,7 @@ impl EncodableKey for SystemSequenceKey {
 	const KIND: KeyKind = KeyKind::SystemSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(6);
+		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
 		out.extend(&keycode::serialize(&self.sequence));
@@ -41,7 +41,7 @@ impl EncodableKey for SystemSequenceKey {
 		}
 
 		let payload = &key[2..];
-		if payload.len() != 4 {
+		if payload.len() != 8 {
 			return None;
 		}
 
@@ -88,11 +88,11 @@ mod tests {
 		let expected = vec![
 			0xFE, // version
 			0xFA, // kind
-			0xFF, 0xFF, 0x54, 0x32,
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = SystemSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.sequence, 0xABCD);
+		assert_eq!(key.sequence.0, 0xABCD);
 	}
 }

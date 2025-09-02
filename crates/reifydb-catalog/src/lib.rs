@@ -14,6 +14,7 @@ pub mod sequence;
 pub mod store;
 pub mod system;
 pub mod table;
+pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
 pub mod view;
@@ -21,9 +22,9 @@ pub mod view;
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogQueryTransaction, CatalogQueryTransactionOperations,
-	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
-	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogQueryTransaction, CatalogSchemaCommandOperations,
+	CatalogSchemaQueryOperations, CatalogTableCommandOperations,
+	CatalogTableQueryOperations, CatalogTransaction,
 	CatalogViewCommandOperations, CatalogViewQueryOperations,
 	TransactionalChangesExt,
 };

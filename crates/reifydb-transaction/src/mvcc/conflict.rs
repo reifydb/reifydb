@@ -120,6 +120,11 @@ impl ConflictManager {
 		self.conflict_keys.iter().cloned().collect()
 	}
 
+	/// Check if this transaction has any range reads or full scans
+	pub fn has_range_operations(&self) -> bool {
+		!self.read_ranges.is_empty() || self.read_all
+	}
+
 	/// Optimized range conflict detection
 	#[inline]
 	fn has_range_conflict(

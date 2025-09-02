@@ -72,7 +72,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 		let columns = vec![
 			Column::ColumnQualified(ColumnQualified {
 				name: "id".to_string(),
-				data: ColumnData::uint4(sequence_ids),
+				data: ColumnData::uint8(sequence_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "schema_id".to_string(),

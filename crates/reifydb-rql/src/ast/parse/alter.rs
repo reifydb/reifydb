@@ -362,7 +362,9 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstAlter, AstAlterSequence, parse::Parser, tokenize::tokenize,
+		AstAlter, AstAlterSequence, AstAlterTable,
+		AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
+		parse::Parser, tokenize::tokenize,
 	};
 
 	#[test]
@@ -433,6 +435,158 @@ mod tests {
 				}
 			}
 			_ => panic!("Expected AstAlter::Sequence"),
+		}
+	}
+
+	#[test]
+	fn test_alter_table_create_primary_key() {
+		let tokens = tokenize(
+			"ALTER TABLE test.users { create primary key pk_users {id} }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Table(AstAlterTable {
+				schema,
+				table,
+				operations,
+				..
+			}) => {
+				assert_eq!(schema.value(), "test");
+				assert_eq!(table.value(), "users");
+				assert_eq!(operations.len(), 1);
+
+				match &operations[0] {
+					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+						assert!(name.is_some());
+						assert_eq!(name.as_ref().unwrap().value(), "pk_users");
+						assert_eq!(columns.len(), 1);
+						assert_eq!(columns[0].column.value(), "id");
+					}
+					_ => panic!("Expected CreatePrimaryKey operation"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Table"),
+		}
+	}
+
+	#[test]
+	fn test_alter_table_create_primary_key_no_name() {
+		let tokens = tokenize(
+			"ALTER TABLE test.users { create primary key {id, email} }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Table(AstAlterTable {
+				schema,
+				table,
+				operations,
+				..
+			}) => {
+				assert_eq!(schema.value(), "test");
+				assert_eq!(table.value(), "users");
+				assert_eq!(operations.len(), 1);
+
+				match &operations[0] {
+					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+						assert!(name.is_none());
+						assert_eq!(columns.len(), 2);
+						assert_eq!(columns[0].column.value(), "id");
+						assert_eq!(columns[1].column.value(), "email");
+					}
+					_ => panic!("Expected CreatePrimaryKey operation"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Table"),
+		}
+	}
+
+	#[test]
+	fn test_alter_view_create_primary_key() {
+		let tokens = tokenize(
+			"ALTER VIEW test.user_view { create primary key pk_view {user_id} }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::View(AstAlterView {
+				schema,
+				view,
+				operations,
+				..
+			}) => {
+				assert_eq!(schema.value(), "test");
+				assert_eq!(view.value(), "user_view");
+				assert_eq!(operations.len(), 1);
+
+				match &operations[0] {
+					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+						assert!(name.is_some());
+						assert_eq!(name.as_ref().unwrap().value(), "pk_view");
+						assert_eq!(columns.len(), 1);
+						assert_eq!(columns[0].column.value(), "user_id");
+					}
+					_ => panic!("Expected CreatePrimaryKey operation"),
+				}
+			}
+			_ => panic!("Expected AstAlter::View"),
+		}
+	}
+
+	#[test]
+	fn test_alter_view_create_primary_key_no_name() {
+		let tokens = tokenize(
+			"ALTER VIEW test.user_view { create primary key {user_id, created_at} }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::View(AstAlterView {
+				schema,
+				view,
+				operations,
+				..
+			}) => {
+				assert_eq!(schema.value(), "test");
+				assert_eq!(view.value(), "user_view");
+				assert_eq!(operations.len(), 1);
+
+				match &operations[0] {
+					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+						assert!(name.is_none());
+						assert_eq!(columns.len(), 2);
+						assert_eq!(columns[0].column.value(), "user_id");
+						assert_eq!(columns[1].column.value(), "created_at");
+					}
+					_ => panic!("Expected CreatePrimaryKey operation"),
+				}
+			}
+			_ => panic!("Expected AstAlter::View"),
 		}
 	}
 }

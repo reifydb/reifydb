@@ -59,8 +59,7 @@ pub trait CatalogQueryTransaction:
 {
 }
 
-// Context trait that provides access to catalog-specific state for queries
-pub trait CatalogQueryTransactionOperations {
+pub trait CatalogTransaction {
 	fn catalog(&self) -> &MaterializedCatalog;
 	fn version(&self) -> Version;
 }

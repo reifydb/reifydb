@@ -22,7 +22,7 @@ impl CatalogStore {
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {
 		let (policy_kind, _value_kind) = policy.to_u8();
-		for existing in Self::list_table_column_policies(txn, column)? {
+		for existing in Self::list_column_policies(txn, column)? {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
 				let column = Self::get_column(txn, column)?;

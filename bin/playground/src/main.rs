@@ -36,9 +36,8 @@ fn main() {
 
 	// Test system.sequences virtual table query
 	log_info!("=== Testing system.sequences virtual table ===");
-	for frame in db
-		.query_as_root("from system.sequences sort value", Params::None)
-		.unwrap()
+	for frame in
+		db.query_as_root("from system.tables", Params::None).unwrap()
 	{
 		log_info!("Basic query\n{}", frame);
 	}

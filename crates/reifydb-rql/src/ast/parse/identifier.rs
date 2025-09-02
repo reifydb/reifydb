@@ -37,7 +37,7 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let Identifier(AstIdentifier(token)) =
-			result.pop().unwrap().0.pop().unwrap()
+			result.pop().unwrap().nodes.pop().unwrap()
 		else {
 			panic!()
 		};
@@ -51,7 +51,7 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let Identifier(AstIdentifier(token)) =
-			result.pop().unwrap().0.pop().unwrap()
+			result.pop().unwrap().nodes.pop().unwrap()
 		else {
 			panic!()
 		};

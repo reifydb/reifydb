@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	borrow::Cow,
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-	sync::Mutex,
+	sync::Arc,
 };
 
-use reifydb_core::{EncodedKey, Version};
+use parking_lot::{Mutex, RwLock};
+use reifydb_core::{EncodedKey, Version, util::bloom::BloomFilter};
 
 use crate::mvcc::{
 	conflict::ConflictManager,
@@ -19,45 +19,60 @@ use crate::mvcc::{
 const DEFAULT_WINDOW_SIZE: Version = 1000;
 const MAX_WINDOWS: usize = 50;
 const CLEANUP_THRESHOLD: usize = 40;
-
 pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
 
 /// Time window containing committed transactions
-#[derive(Debug)]
 pub(super) struct CommittedWindow {
 	/// All transactions committed in this window
 	transactions: Vec<CommittedTxn>,
 	/// Set of all keys modified in this window for quick filtering
 	modified_keys: HashSet<EncodedKey>,
+	/// Bloom filter for fast negative checks
+	bloom: BloomFilter,
 	/// Maximum version in this window  
 	max_version: Version,
+	/// Per-window lock for fine-grained synchronization (parking_lot is
+	/// more efficient)
+	lock: RwLock<()>,
 }
 
 impl CommittedWindow {
 	fn new(min_version: Version) -> Self {
 		Self {
-			transactions: Vec::new(),
-			modified_keys: HashSet::new(),
+			transactions: Vec::with_capacity(200),
+			modified_keys: HashSet::with_capacity(500),
+			bloom: BloomFilter::new(500),
 			max_version: min_version,
+			lock: RwLock::new(()),
 		}
 	}
 
 	fn add_transaction(&mut self, txn: CommittedTxn) {
 		self.max_version = self.max_version.max(txn.version);
 
-		// Add all conflict keys to our modified keys set
+		// Add all conflict keys to our modified keys set and bloom
+		// filter
 		if let Some(ref conflicts) = txn.conflict_manager {
 			for key in conflicts.get_conflict_keys() {
-				self.modified_keys.insert(key);
+				self.modified_keys.insert(key.clone());
+				self.bloom.add(&key);
 			}
 		}
 
 		self.transactions.push(txn);
 	}
+
+	fn might_have_key(&self, key: &EncodedKey) -> bool {
+		// Quick check with bloom filter first
+		if !self.bloom.might_contain(key) {
+			return false;
+		}
+		// If bloom says maybe, check the actual set
+		self.modified_keys.contains(key)
+	}
 }
 
 /// Oracle implementation with time-window based conflict detection
-#[derive(Debug)]
 pub(super) struct OracleInner<L>
 where
 	L: VersionProvider,
@@ -88,29 +103,25 @@ pub(super) enum CreateCommitResult {
 }
 
 /// Oracle with time-window based conflict detection
-#[derive(Debug)]
 pub(super) struct Oracle<L>
 where
 	L: VersionProvider,
 {
-	// LOCK ORDERING: To prevent deadlocks, always acquire locks in this
-	// order:
-	// 1. command_serialize_lock (if needed)
-	// 2. inner
-	// Never acquire inner first if command_serialize_lock will also be
-	// needed.
+	// Using RwLock for inner allows multiple concurrent readers during
+	// conflict detection
+	pub(super) inner: RwLock<OracleInner<L>>,
 
-	// command_serialize_lock is for ensuring that transactions go to the
-	// command channel in the same order as their commit timestamps.
-	pub(super) command_serialize_lock: Mutex<()>,
-
-	pub(super) inner: Mutex<OracleInner<L>>,
+	/// Version provider lock for serializing version generation only
+	pub(super) version_lock: Mutex<()>,
 
 	/// Used by DB
 	pub(super) query: WaterMark,
 	/// Used to block new transaction, so all previous commits are visible
 	/// to a new query.
 	pub(super) command: WaterMark,
+
+	/// Shutdown signal for cleanup thread
+	shutdown_signal: Arc<RwLock<bool>>,
 
 	/// closer is used to stop watermarks.
 	closer: Closer,
@@ -121,23 +132,28 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub fn new(
-		query_name: Cow<'static, str>,
-		command_name: Cow<'static, str>,
-		clock: L,
-	) -> Self {
+	pub fn new(clock: L) -> Self {
 		let closer = Closer::new(2);
+		let shutdown_signal = Arc::new(RwLock::new(false));
+
 		Self {
-			command_serialize_lock: Mutex::new(()),
-			inner: Mutex::new(OracleInner {
+			inner: RwLock::new(OracleInner {
 				clock,
 				last_cleanup: 0,
 				time_windows: BTreeMap::new(),
-				key_to_windows: HashMap::new(),
+				key_to_windows: HashMap::with_capacity(10000),
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
-			query: WaterMark::new(query_name, closer.clone()),
-			command: WaterMark::new(command_name, closer.clone()),
+			version_lock: Mutex::new(()),
+			query: WaterMark::new(
+				"txn-mark-query".into(),
+				closer.clone(),
+			),
+			command: WaterMark::new(
+				"txn-mark-cmd".into(),
+				closer.clone(),
+			),
+			shutdown_signal,
 			closer,
 		}
 	}
@@ -149,19 +165,19 @@ where
 		version: Version,
 		conflicts: ConflictManager,
 	) -> crate::Result<CreateCommitResult> {
-		let mut inner = self.inner.lock().unwrap();
+		// First, perform conflict detection with read lock for better
+		// concurrency
+		let inner = self.inner.read();
 
 		// Get keys involved in this transaction for efficient filtering
+		// Avoid cloning by using references
 		let read_keys = conflicts.get_read_keys();
 		let conflict_keys = conflicts.get_conflict_keys();
-		let all_keys: Vec<_> = read_keys
-			.iter()
-			.chain(conflict_keys.iter())
-			.cloned()
-			.collect();
+		let has_keys =
+			!read_keys.is_empty() || !conflict_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
-		let relevant_windows: Vec<Version> = if all_keys.is_empty() {
+		let relevant_windows: Vec<Version> = if !has_keys {
 			// If no specific keys, we need to check recent windows
 			// for range/all operations
 			inner.time_windows
@@ -172,12 +188,12 @@ where
 		} else {
 			// Find windows that might contain conflicting keys
 			let mut windows = BTreeSet::new();
-			for key in &all_keys {
+
+			// Check read keys
+			for key in &read_keys {
 				if let Some(window_versions) =
 					inner.key_to_windows.get(key)
 				{
-					// Check all windows that have this key
-					// - version filtering happens later
 					for &window_version in
 						window_versions.iter()
 					{
@@ -185,6 +201,20 @@ where
 					}
 				}
 			}
+
+			// Check conflict keys
+			for key in &conflict_keys {
+				if let Some(window_versions) =
+					inner.key_to_windows.get(key)
+				{
+					for &window_version in
+						window_versions.iter()
+					{
+						windows.insert(window_version);
+					}
+				}
+			}
+
 			// If no windows found via key index, check all windows
 			// as fallback This handles range queries and other
 			// operations that can't be indexed by specific keys
@@ -200,6 +230,38 @@ where
 			if let Some(window) =
 				inner.time_windows.get(&window_version)
 			{
+				// Quick bloom filter check first to potentially
+				// skip this window But only if we don't
+				// have range operations (which can't be bloom
+				// filtered)
+				if !conflicts.has_range_operations() {
+					// We need to check both:
+					// 1. If any of our writes conflict with
+					//    window's writes (write-write
+					//    conflict)
+					// 2. If any of our reads overlap with
+					//    window's writes (read-write
+					//    conflict)
+					let needs_detailed_check =
+						conflict_keys.iter().any(
+							|key| {
+								window.might_have_key(key)
+							},
+						) || read_keys.iter().any(
+							|key| {
+								window.might_have_key(key)
+							},
+						);
+
+					if !needs_detailed_check {
+						continue;
+					}
+				}
+
+				// Acquire read lock on the window for conflict
+				// checking
+				let _window_lock = window.lock.read();
+
 				// Check conflicts with transactions in this
 				// window
 				for committed_txn in &window.transactions {
@@ -222,21 +284,39 @@ where
 			}
 		}
 
+		// Release read lock and acquire write lock for commit
+		drop(inner);
+
 		// No conflicts found, proceed with commit
+		if !*done_read {
+			self.query.done(version);
+			*done_read = true;
+		}
+
+		// Get commit version with minimal locking
 		let commit_version = {
-			if !*done_read {
-				self.query.done(version);
-				*done_read = true;
-			}
+			let _version_guard = self.version_lock.lock();
+			let inner = self.inner.read();
 			inner.clock.next()?
 		};
 
-		// Add this transaction to the appropriate window
-		inner.add_committed_transaction(commit_version, conflicts);
+		// Add this transaction to the appropriate window with write
+		// lock
+		{
+			let mut inner = self.inner.write();
+			inner.add_committed_transaction(
+				commit_version,
+				conflicts,
+			);
 
-		// Trigger cleanup if needed
-		if inner.time_windows.len() > CLEANUP_THRESHOLD {
-			inner.cleanup_old_windows();
+			// Check if cleanup is needed (but don't do it in
+			// critical path)
+			if inner.time_windows.len() > CLEANUP_THRESHOLD {
+				// Signal background thread or schedule cleanup
+				// For now, we'll do inline but can move to
+				// background later
+				inner.cleanup_old_windows();
+			}
 		}
 
 		self.command.done(commit_version);
@@ -245,14 +325,20 @@ where
 	}
 
 	pub(super) fn version(&self) -> crate::Result<Version> {
-		self.inner.lock().unwrap().clock.current()
+		self.inner.read().clock.current()
 	}
 
 	pub(super) fn discard_at_or_below(&self) -> Version {
 		self.command.done_until()
 	}
 
-	pub fn stop(&self) {
+	pub fn stop(&mut self) {
+		// Signal shutdown to cleanup thread
+		{
+			let mut shutdown = self.shutdown_signal.write();
+			*shutdown = true;
+		}
+
 		self.closer.signal_and_wait();
 	}
 
@@ -395,11 +481,7 @@ mod tests {
 	#[test]
 	fn test_oracle_basic_creation() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Oracle should be created successfully
 		assert_eq!(oracle.version().unwrap(), 0);
@@ -408,11 +490,7 @@ mod tests {
 	#[test]
 	fn test_window_creation_and_indexing() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
@@ -432,7 +510,7 @@ mod tests {
 				assert!(version >= 1); // Should get a new version
 
 				// Check that keys were indexed
-				let inner = oracle.inner.lock().unwrap();
+				let inner = oracle.inner.read();
 				assert!(inner
 					.key_to_windows
 					.contains_key(&key1));
@@ -452,11 +530,7 @@ mod tests {
 	#[test]
 	fn test_conflict_detection_between_transactions() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -498,11 +572,7 @@ mod tests {
 	#[test]
 	fn test_no_conflict_different_keys() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -536,11 +606,7 @@ mod tests {
 	#[test]
 	fn test_key_indexing_multiple_windows() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -572,7 +638,7 @@ mod tests {
 		}
 
 		// Check key indexing across multiple windows
-		let inner = oracle.inner.lock().unwrap();
+		let inner = oracle.inner.read();
 
 		// key1 should be in windows 0 and 2000 (i=0,2)
 		let key1_windows = inner.key_to_windows.get(&key1).unwrap();
@@ -586,11 +652,7 @@ mod tests {
 	#[test]
 	fn test_version_filtering_in_conflict_detection() {
 		let clock = MockVersionProvider::new(2);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -638,11 +700,7 @@ mod tests {
 	#[test]
 	fn test_range_operations_fallback() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 
@@ -678,11 +736,7 @@ mod tests {
 	#[test]
 	fn test_window_cleanup_mechanism() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Add many transactions to trigger cleanup
 		let mut keys = Vec::new();
@@ -710,7 +764,7 @@ mod tests {
 		}
 
 		// Check that cleanup occurred
-		let inner = oracle.inner.lock().unwrap();
+		let inner = oracle.inner.read();
 		assert!(inner.time_windows.len() <= MAX_WINDOWS);
 
 		// Verify that key index was also cleaned up
@@ -730,11 +784,7 @@ mod tests {
 	#[test]
 	fn test_empty_conflict_manager() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		// Transaction with no conflicts (read-only)
 		let conflicts = ConflictManager::new(); // Empty conflict manager
@@ -747,7 +797,7 @@ mod tests {
 		// Should succeed but not create any key index entries
 		match result {
 			CreateCommitResult::Success(_) => {
-				let inner = oracle.inner.lock().unwrap();
+				let inner = oracle.inner.read();
 				assert!(inner.key_to_windows.is_empty());
 			}
 			CreateCommitResult::Conflict(_) => {
@@ -761,11 +811,7 @@ mod tests {
 	#[test]
 	fn test_write_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -797,11 +843,7 @@ mod tests {
 	#[test]
 	fn test_read_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -833,11 +875,7 @@ mod tests {
 	#[test]
 	fn test_sequential_transactions_no_conflict() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -873,11 +911,7 @@ mod tests {
 	#[test]
 	fn test_comptokenize_multi_key_scenario() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(
-			"test_query".into(),
-			"test_command".into(),
-			clock,
-		);
+		let oracle = Oracle::<_>::new(clock);
 
 		let key_a = create_test_key("key_a");
 		let key_b = create_test_key("key_b");
