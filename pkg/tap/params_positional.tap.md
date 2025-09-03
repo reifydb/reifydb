@@ -2,6 +2,8 @@
 
 ## AI Instructions
 
+**CRITICAL: NEVER SKIP ANY TEST CASES** - You MUST generate tests for EVERY SINGLE test case in this specification. Each test represents essential behavior that must be verified. Skipping tests breaks cross-language compatibility verification.
+
 When implementing tests from this specification:
 1. Parse the YAML sections to extract test metadata and expected outputs
 2. Use the parameter values exactly as specified, mapping types according to the language

@@ -1,0 +1,11 @@
+# Generated from: params_positional.tap.md#int8_param
+# Test: Positional parameter with INT8 type
+
+command_positional 'MAP $1 as result' '9223372036854775807'
+---
+> +-----------------------+
+> |        result         |
+> +-----------------------+
+> |  9223372036854775807  |
+> +-----------------------+
+> 

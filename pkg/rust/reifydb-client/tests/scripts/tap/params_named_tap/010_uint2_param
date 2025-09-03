@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#uint2_param
+# Test: Named parameter with UINT2 type
+
+command_named 'MAP $uint2_val as result' 'uint2_val=65535'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |  65535   |
+> +----------+
+> 

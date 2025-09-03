@@ -1,0 +1,11 @@
+# Generated from: params_positional.tap.md#int2_param
+# Test: Positional parameter with INT2 type
+
+command_positional 'MAP $1 as result' '1234'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   1234   |
+> +----------+
+> 

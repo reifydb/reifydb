@@ -2,6 +2,8 @@
 
 ## AI Instructions
 
+**CRITICAL: NEVER SKIP ANY TEST CASES** - You MUST generate tests for EVERY SINGLE test case in this specification. Each test represents essential behavior that must be verified. Skipping tests breaks cross-language compatibility verification.
+
 This specification tests error handling across ReifyDB client implementations. Tests verify that clients properly handle and report casting errors that result in out-of-range values.
 
 When generating tests from this specification:

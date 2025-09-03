@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#int1_param
+# Test: Query with named INT1 parameter
+
+query_named 'MAP $int1_val as result' 'int1_val=42'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |    42    |
+> +----------+
+> 

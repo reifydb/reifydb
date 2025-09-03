@@ -2,6 +2,8 @@
 
 ## AI Instructions
 
+**CRITICAL: NEVER SKIP ANY TEST CASES** - You MUST generate tests for EVERY SINGLE test case in this specification. Each test represents essential behavior that must be verified. Skipping tests breaks cross-language compatibility verification.
+
 When implementing tests from this specification:
 1. These tests verify how the client handles multiple statements, empty statements, and statement separators
 2. Test both `command` and `query` operations as they should behave identically for statement parsing

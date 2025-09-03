@@ -28,6 +28,16 @@ When working with TAP test specifications:
    - Preserve test IDs for traceability
    - **IMPORTANT**: Follow the Language-Specific Test Generation section for each language's conventions
 
+### CRITICAL: Complete Test Generation Requirement
+
+**NEVER SKIP ANY TEST CASES**: When generating tests from TAP specifications, you MUST generate tests for EVERY SINGLE test case defined in the specification. This is non-negotiable. Each test case represents a critical behavior that must be verified across all client implementations. Skipping tests creates gaps in compatibility verification and can lead to undetected bugs.
+
+- Generate ALL test cases from the TAP specification
+- If a test seems redundant, generate it anyway - it's there for a reason
+- For TypeScript: Generate tests for BOTH command and query operations
+- For Rust: Generate separate files for EACH test case
+- Count the test cases in the spec and verify you've generated the same number
+
 ### AI Generation Instructions by Language
 
 #### When asked to generate TypeScript tests from TAP specs:

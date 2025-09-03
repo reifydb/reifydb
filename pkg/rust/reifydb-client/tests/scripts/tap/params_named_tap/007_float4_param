@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#float4_param  
+# Test: Named parameter with FLOAT4 type
+
+command_named 'MAP $float4_val as result' 'float4_val=3.14'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   3.14   |
+> +----------+
+> 

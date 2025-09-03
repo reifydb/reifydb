@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#int2_param
+# Test: Query with named INT2 parameter
+
+query_named 'MAP $int2_val as result' 'int2_val=1234'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   1234   |
+> +----------+
+> 
