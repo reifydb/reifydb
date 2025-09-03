@@ -130,7 +130,6 @@ serde_bytes = { version = "0.11.17" }
 serde_json = { version = "1.0.140" }
 
 # reifydb-testing
-goldenfile = { version = "1.8.0" }
 test_each_file = { version = "0.3.4" }
 
 

@@ -107,7 +107,7 @@ pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(
 	let input = std::fs::read_to_string(dir.join(filename))?;
 	let output = generate(runner, &input)?;
 
-	goldenfile::Mint::new(dir)
+	crate::goldenfile::Mint::new(dir)
 		.new_goldenfile(filename)?
 		.write_all(output.as_bytes())
 }
@@ -123,14 +123,21 @@ pub fn try_run<R: Runner, S: Into<String>>(
 	let input = test.into();
 
 	let dir = temp_dir();
-	let file_name = format!("{}.txt", uuid::Uuid::new_v4());
+	let file_name = format!(
+		"test-{}-{}.txt",
+		std::process::id(),
+		std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_nanos()
+	);
 	let file_path = dir.join(&file_name);
 
 	let mut file = std::fs::File::create(&file_path)?;
 	file.write_all(input.as_bytes())?;
 
 	let output = generate(&mut runner, &input)?;
-	goldenfile::Mint::new(dir)
+	crate::goldenfile::Mint::new(dir)
 		.new_goldenfile(&file_name)?
 		.write_all(output.as_bytes())
 }
