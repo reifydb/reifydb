@@ -14,7 +14,8 @@ pub fn test_testscript(path: &std::path::Path) {
 }
 
 // Run testscripts in tests/generate with output in a separate file. This is
-// particularly useful for parser tests where output hasn't yet been generated.
+// particularly useful for parser tests where output hasn't yet been
+// keep-generated.
 pub fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 	let input =
 		std::fs::read_to_string(in_path).expect("failed to read file");

@@ -179,7 +179,7 @@ describe('IdentityIdValue', () => {
                 expect(identityId.isNil()).toBe(true);
             });
 
-            it('should return false for generated UUID', () => {
+            it('should return false for keep-generated UUID', () => {
                 const identityId = IdentityIdValue.generate();
                 expect(identityId.isNil()).toBe(false);
             });

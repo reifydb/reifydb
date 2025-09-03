@@ -8,4 +8,5 @@
 **/node_modules/
 .claude/
 **/generated/
-generated_test.rs
+**/generated_test.rs
+**/generated_tests.rs
