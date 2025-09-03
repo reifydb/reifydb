@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	sync::atomic::{AtomicBool, Ordering},
-	time::Duration,
-};
+use std::time::Duration;
 
 use reifydb::{
 	FormatStyle, LoggingBuilder, WithSubsystem,
@@ -26,56 +23,17 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 }
 
 fn main() {
-	// Set up signal handling
-	static RUNNING: AtomicBool = AtomicBool::new(true);
-
-	extern "C" fn handle_signal(sig: libc::c_int) {
-		let signal_name = match sig {
-			libc::SIGINT => "SIGINT (Ctrl+C)",
-			libc::SIGTERM => "SIGTERM",
-			libc::SIGQUIT => "SIGQUIT",
-			libc::SIGHUP => "SIGHUP",
-			_ => "Unknown signal",
-		};
-		println!(
-			"\nReceived {}, shutting down gracefully...",
-			signal_name
-		);
-		RUNNING.store(false, Ordering::SeqCst);
-	}
-
-	unsafe {
-		// Handle common termination signals
-		libc::signal(libc::SIGINT, handle_signal as libc::sighandler_t); // Ctrl+C
-		libc::signal(
-			libc::SIGTERM,
-			handle_signal as libc::sighandler_t,
-		); // Termination request
-		libc::signal(
-			libc::SIGQUIT,
-			handle_signal as libc::sighandler_t,
-		); // Quit signal
-		libc::signal(libc::SIGHUP, handle_signal as libc::sighandler_t); // Hangup signal
-	}
-
 	let mut db = server::memory_optimistic()
 		.with_config(ServerConfig::default())
 		.with_logging(logger_configuration)
 		.build()
 		.unwrap();
 
-	// Start the database
-	db.start().unwrap();
-	println!("Database started successfully!");
+	// Start the database and wait for signal
+	println!("Starting database...");
 	println!("Press Ctrl+C to stop...");
 
-	// Run until interrupted
-	while RUNNING.load(Ordering::SeqCst) {
-		std::thread::sleep(Duration::from_millis(100));
-	}
+	db.start_and_await_signal().unwrap();
 
-	// Stop the database
-	println!("Shutting down database...");
-	db.stop().unwrap();
 	println!("Database stopped successfully!");
 }

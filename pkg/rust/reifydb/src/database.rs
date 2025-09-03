@@ -1,7 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+	collections::HashMap,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
 
 use reifydb_core::{
 	Result,
@@ -262,6 +269,65 @@ impl<T: Transaction> Database<T> {
 
 	pub fn subsystem<S: 'static>(&self) -> Option<&S> {
 		self.subsystems.get::<S>()
+	}
+
+	pub fn await_signal(&self) -> Result<()> {
+		static RUNNING: AtomicBool = AtomicBool::new(true);
+
+		extern "C" fn handle_signal(sig: libc::c_int) {
+			let signal_name = match sig {
+				libc::SIGINT => "SIGINT (Ctrl+C)",
+				libc::SIGTERM => "SIGTERM",
+				libc::SIGQUIT => "SIGQUIT",
+				libc::SIGHUP => "SIGHUP",
+				_ => "Unknown signal",
+			};
+			log_debug!(
+				"Received {}, signaling shutdown...",
+				signal_name
+			);
+			RUNNING.store(false, Ordering::SeqCst);
+		}
+
+		unsafe {
+			libc::signal(
+				libc::SIGINT,
+				handle_signal as libc::sighandler_t,
+			);
+			libc::signal(
+				libc::SIGTERM,
+				handle_signal as libc::sighandler_t,
+			);
+			libc::signal(
+				libc::SIGQUIT,
+				handle_signal as libc::sighandler_t,
+			);
+			libc::signal(
+				libc::SIGHUP,
+				handle_signal as libc::sighandler_t,
+			);
+		}
+
+		log_debug!("Waiting for termination signal...");
+		while RUNNING.load(Ordering::SeqCst) {
+			std::thread::sleep(Duration::from_millis(100));
+		}
+
+		Ok(())
+	}
+
+	pub fn start_and_await_signal(&mut self) -> Result<()> {
+		self.start()?;
+		log_debug!(
+			"Database started, waiting for termination signal..."
+		);
+
+		self.await_signal()?;
+
+		log_debug!("Signal received, shutting down database...");
+		self.stop()?;
+
+		Ok(())
 	}
 }
 
