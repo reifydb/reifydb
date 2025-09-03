@@ -1,0 +1,13 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test command with positional parameters in SELECT query
+# First test with a simple select using positional parameters
+query_positional 'SELECT { val1: $1, val2: $2 }' 123 456
+---
+> +--------+--------+
+> |  val1  |  val2  |
+> +--------+--------+
+> |  123   |  456   |
+> +--------+--------+
+> 

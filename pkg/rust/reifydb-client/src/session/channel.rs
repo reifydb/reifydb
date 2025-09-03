@@ -1,15 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::{
-	sync::{Arc, mpsc},
-	time::Instant,
-};
+use std::sync::{Arc, mpsc};
 
 use super::ResponseMessage;
 use crate::{
 	AuthRequest, CommandRequest, Params, QueryRequest, Request,
-	RequestPayload, Response,
+	RequestPayload,
 	client::{
 		ClientInner, InternalMessage, ResponseRoute,
 		generate_request_id,
@@ -133,67 +130,5 @@ impl ChannelSession {
 		}
 
 		Ok(id)
-	}
-}
-
-/// Helper methods for working with channel responses
-impl ChannelSession {
-	/// Helper to receive with timeout
-	pub fn recv_timeout(
-		rx: &mpsc::Receiver<ResponseMessage>,
-		timeout: std::time::Duration,
-	) -> Result<ResponseMessage, Box<dyn std::error::Error>> {
-		rx.recv_timeout(timeout).map_err(|e| {
-			format!("Channel receive error: {}", e).into()
-		})
-	}
-
-	/// Helper to try receive without blocking
-	pub fn try_recv(
-		rx: &mpsc::Receiver<ResponseMessage>,
-	) -> Option<ResponseMessage> {
-		rx.try_recv().ok()
-	}
-
-	/// Helper to wait for a specific response by ID
-	pub fn wait_for_response(
-		rx: &mpsc::Receiver<ResponseMessage>,
-		expected_id: &str,
-		timeout: std::time::Duration,
-	) -> Result<Response, Box<dyn std::error::Error>> {
-		let deadline = Instant::now() + timeout;
-
-		loop {
-			let remaining = deadline
-				.saturating_duration_since(Instant::now());
-			if remaining.is_zero() {
-				return Err(
-					"Timeout waiting for response".into()
-				);
-			}
-
-			match rx.recv_timeout(remaining) {
-				Ok(msg) if msg.request_id == expected_id => {
-					return msg
-						.response
-						.map_err(|e| e.into());
-				}
-				Ok(_) => continue, // Not our response, keep
-				// waiting
-				Err(mpsc::RecvTimeoutError::Timeout) => {
-					return Err(
-						"Timeout waiting for response"
-							.into(),
-					);
-				}
-				Err(e) => {
-					return Err(format!(
-						"Channel error: {}",
-						e
-					)
-					.into());
-				}
-			}
-		}
 	}
 }

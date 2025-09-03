@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test math operations
+query 'MAP { 10 + 5, 20 - 10, 3 * 4 }'
+---
+> +--------+---------+-------+
+> |  10+5  |  20-10  |  3*4  |
+> +--------+---------+-------+
+> |   15   |   10    |  12   |
+> +--------+---------+-------+
+> 

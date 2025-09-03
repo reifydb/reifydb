@@ -19,8 +19,8 @@ use reifydb_type::diagnostic::Diagnostic;
 pub use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{
-	BlockingSession, CallbackSession, ChannelSession, CommandResult,
-	QueryResult, ResponseMessage,
+	BlockingSession, CallbackSession, ChannelResponse, ChannelSession,
+	CommandResult, QueryResult, ResponseMessage,
 };
 use sha1::{Digest, Sha1};
 

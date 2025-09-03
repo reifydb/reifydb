@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test query with named parameters
+query_named 'MAP { x: $x, y: $y }' 'x=100' 'y=world'
+---
+> +-------+---------+
+> |   x   |    y    |
+> +-------+---------+
+> |  100  |  world  |
+> +-------+---------+
+> 

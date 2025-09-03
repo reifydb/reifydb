@@ -662,10 +662,13 @@ name = "reifydb-client"
 version = "0.0.1"
 dependencies = [
  "bitvec",
+ "reifydb",
+ "reifydb-testing",
  "reifydb-type",
  "serde",
  "serde_json",
  "sha1",
+ "test_each_file",
 ]
 
 [[package]]

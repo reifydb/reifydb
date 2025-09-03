@@ -7,8 +7,16 @@ license = "MIT"
 repository.workspace = true
 
 [[example]]
-name = "session_example"
-path = "examples/session_example.rs"
+name = "blocking_session"
+path = "examples/blocking.rs"
+
+[[example]]
+name = "callback_session"
+path = "examples/callback.rs"
+
+[[example]]
+name = "channel_session"
+path = "examples/channel.rs"
 
 [features]
 default = []
@@ -24,3 +32,6 @@ serde_json = "1.0"
 
 [dev-dependencies]
 bitvec = "1.0"
+reifydb = { workspace = true, features = ["sub_server"] }
+reifydb-testing = { workspace = true }
+test_each_file = { workspace = true }

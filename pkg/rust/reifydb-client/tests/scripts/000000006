@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test query with positional parameters
+query_positional 'MAP { x: $1, y: $2 }' 42 'hello'
+---
+> +------+---------+
+> |  x   |    y    |
+> +------+---------+
+> |  42  |  hello  |
+> +------+---------+
+> 
