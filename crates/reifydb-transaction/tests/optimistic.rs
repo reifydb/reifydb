@@ -34,7 +34,6 @@ use reifydb_transaction::{
 	svl::SingleVersionLock,
 };
 
-
 pub fn test_optimistic(path: &Path) {
 	let bus = EventBus::default();
 

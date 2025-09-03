@@ -12,6 +12,19 @@ fn generate_tests() -> Result<(), Box<dyn std::error::Error>> {
 
 	let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
 
+	// Check if generated files exist and force rebuild if missing
+	let generated_tests_path = std::path::Path::new(&manifest_dir)
+		.join("tests")
+		.join("generated_tests.rs");
+	let generated_dir = std::path::Path::new(&manifest_dir)
+		.join("tests")
+		.join("generated");
+
+	if !generated_tests_path.exists() || !generated_dir.exists() {
+		// Force rebuild by touching build.rs
+		println!("cargo:rerun-if-changed=build.rs");
+	}
+
 	// Add rerun directives
 	add_rerun_if_changed("tests/scripts");
 	add_rerun_if_changed("build.rs");

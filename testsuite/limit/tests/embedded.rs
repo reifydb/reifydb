@@ -109,7 +109,6 @@ where
 	}
 }
 
-
 pub fn test_embedded_sync(path: &Path) {
 	testscript::run_path(&mut Runner::new(serializable(memory())), path)
 		.expect("test failed")

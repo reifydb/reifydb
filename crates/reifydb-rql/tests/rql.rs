@@ -13,7 +13,7 @@ use reifydb_rql::explain::{
 };
 use reifydb_testing::{testscript, testscript::Command};
 
-pub fn test_run(path: &Path) {
+pub fn test_rql(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")
 }
 

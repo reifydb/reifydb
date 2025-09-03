@@ -7,10 +7,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn generate_tests() -> Result<(), Box<dyn std::error::Error>> {
 	use reifydb_testing::test_generator::{
-        add_rerun_if_changed, generate_combined_test_file, TestConfig, TestGenerator,
-    };
+		TestConfig, TestGenerator, add_rerun_if_changed,
+		generate_combined_test_file,
+	};
 
 	let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
+
+	// Check if generated files exist and force rebuild if missing
+	let generated_tests_path = std::path::Path::new(&manifest_dir)
+		.join("tests")
+		.join("generated_tests.rs");
+	let generated_optimistic_dir = std::path::Path::new(&manifest_dir)
+		.join("tests")
+		.join("generated_optimistic");
+	let generated_serializable_dir = std::path::Path::new(&manifest_dir)
+		.join("tests")
+		.join("generated_serializable");
+
+	if !generated_tests_path.exists()
+		|| !generated_optimistic_dir.exists()
+		|| !generated_serializable_dir.exists()
+	{
+		// Force rebuild by touching build.rs
+		println!("cargo:rerun-if-changed=build.rs");
+	}
 
 	// Add rerun directives
 	add_rerun_if_changed("tests/scripts");
@@ -63,7 +83,8 @@ fn generate_tests() -> Result<(), Box<dyn std::error::Error>> {
 	generator.generate()?;
 	generators.push(generator);
 
-	// Generate the main generated_tests.rs file automatically from all generators
+	// Generate the main generated_tests.rs file automatically from all
+	// generators
 	generate_combined_test_file(&generators, "generated_tests")?;
 
 	Ok(())

@@ -111,7 +111,6 @@ where
 	}
 }
 
-
 pub fn test_embedded(path: &Path) {
 	testscript::run_path(&mut Runner::new(optimistic(memory())), path)
 		.expect("test failed")
