@@ -13,7 +13,6 @@ use reifydb::{
 		},
 		retry,
 	},
-	engine::EngineTransaction,
 	memory, optimistic,
 	sub_server::ServerConfig,
 };
@@ -27,7 +26,7 @@ where
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	instance: Option<Database<EngineTransaction<VT, UT, C>>>,
+	instance: Option<Database<VT, UT, C>>,
 	client: Option<Client>,
 	session: Option<BlockingSession>,
 }
