@@ -1,16 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_storage::sqlite::SqliteConfig;
-
-use crate::{
-	EmbeddedBuilder, MemoryOptimisticTransaction,
-	MemorySerializableTransaction, SqliteOptimisticTransaction,
-	SqliteSerializableTransaction, memory, optimistic, serializable,
-	sqlite,
+use reifydb_storage::{
+	memory::Memory,
+	sqlite::{Sqlite, SqliteConfig},
+};
+use reifydb_transaction::mvcc::transaction::{
+	optimistic::Optimistic, serializable::Serializable,
 };
 
-pub fn memory_optimistic() -> EmbeddedBuilder<MemoryOptimisticTransaction> {
+use crate::{
+	EmbeddedBuilder, MemoryCdc, SqliteCdc, UnversionedMemory,
+	UnversionedSqlite, memory, optimistic, serializable, sqlite,
+};
+
+pub fn memory_optimistic() -> EmbeddedBuilder<
+	Optimistic<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = memory();
 	let (versioned, _, _, _) = optimistic((
 		storage.clone(),
@@ -21,7 +29,11 @@ pub fn memory_optimistic() -> EmbeddedBuilder<MemoryOptimisticTransaction> {
 	EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
-pub fn memory_serializable() -> EmbeddedBuilder<MemorySerializableTransaction> {
+pub fn memory_serializable() -> EmbeddedBuilder<
+	Serializable<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = memory();
 	let (versioned, _, _, _) = serializable((
 		storage.clone(),
@@ -34,7 +46,11 @@ pub fn memory_serializable() -> EmbeddedBuilder<MemorySerializableTransaction> {
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<SqliteOptimisticTransaction> {
+) -> EmbeddedBuilder<
+	Optimistic<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = sqlite(config);
 	let (versioned, _, _, _) = optimistic((
 		storage.clone(),
@@ -47,7 +63,11 @@ pub fn sqlite_optimistic(
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<SqliteSerializableTransaction> {
+) -> EmbeddedBuilder<
+	Serializable<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = sqlite(config);
 	let (versioned, _, _, _) = serializable((
 		storage.clone(),

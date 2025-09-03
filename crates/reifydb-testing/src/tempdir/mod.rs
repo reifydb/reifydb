@@ -8,7 +8,14 @@ where
 	F: FnOnce(&Path) -> std::io::Result<()>,
 {
 	let mut path = env::temp_dir();
-	path.push(format!("reifydb-{}", uuid::Uuid::new_v4()));
+	path.push(format!(
+		"reifydb-{}-{}",
+		std::process::id(),
+		std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_nanos()
+	));
 
 	fs::create_dir(&path)?;
 	let result = f(&path);

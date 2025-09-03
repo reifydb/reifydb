@@ -22,6 +22,8 @@ reifydb-sub-logging = { workspace = true, optional = true }
 reifydb-sub-workerpool = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
 
+libc = { workspace = true }
+
 [features]
 default = []
 

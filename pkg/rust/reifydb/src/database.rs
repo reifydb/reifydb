@@ -1,14 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+	collections::HashMap,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
 
 use reifydb_core::{
 	Result,
 	event::lifecycle::OnStartEvent,
 	interface::{
-		CdcTransaction, Transaction, UnversionedTransaction,
-		VersionedTransaction, WithEventBus, subsystem::HealthStatus,
+		CdcTransaction, UnversionedTransaction, VersionedTransaction,
+		WithEventBus, subsystem::HealthStatus,
 	},
 	log_debug, log_error, log_timed_trace, log_warn,
 };
@@ -74,16 +81,22 @@ impl Default for DatabaseConfig {
 	}
 }
 
-pub struct Database<T: Transaction> {
+pub struct Database<
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
+> {
 	config: DatabaseConfig,
-	engine: StandardEngine<T>,
-	bootloader: Bootloader<T>,
+	engine: StandardEngine<EngineTransaction<VT, UT, C>>,
+	bootloader: Bootloader<EngineTransaction<VT, UT, C>>,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
 }
 
-impl<T: Transaction> Database<T> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
+	Database<VT, UT, C>
+{
 	// Note: FlowSubsystem is now generic over the engine type
 	// #[cfg(feature = "sub_flow")]
 	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
@@ -91,14 +104,19 @@ impl<T: Transaction> Database<T> {
 	// E>>() }
 
 	#[cfg(feature = "sub_server")]
-	pub fn sub_server(&self) -> Option<&ServerSubsystem<T>> {
-		self.subsystems.get::<ServerSubsystem<T>>()
+	pub fn sub_server(
+		&self,
+	) -> Option<&ServerSubsystem<EngineTransaction<VT, UT, C>>> {
+		self.subsystems
+			.get::<ServerSubsystem<EngineTransaction<VT, UT, C>>>()
 	}
 }
 
-impl<T: Transaction> Database<T> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
+	Database<VT, UT, C>
+{
 	pub(crate) fn new(
-		engine: StandardEngine<T>,
+		engine: StandardEngine<EngineTransaction<VT, UT, C>>,
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
@@ -113,7 +131,7 @@ impl<T: Transaction> Database<T> {
 		}
 	}
 
-	pub fn engine(&self) -> &StandardEngine<T> {
+	pub fn engine(&self) -> &StandardEngine<EngineTransaction<VT, UT, C>> {
 		&self.engine
 	}
 
@@ -263,9 +281,70 @@ impl<T: Transaction> Database<T> {
 	pub fn subsystem<S: 'static>(&self) -> Option<&S> {
 		self.subsystems.get::<S>()
 	}
+
+	pub fn await_signal(&self) -> Result<()> {
+		static RUNNING: AtomicBool = AtomicBool::new(true);
+
+		extern "C" fn handle_signal(sig: libc::c_int) {
+			let signal_name = match sig {
+				libc::SIGINT => "SIGINT (Ctrl+C)",
+				libc::SIGTERM => "SIGTERM",
+				libc::SIGQUIT => "SIGQUIT",
+				libc::SIGHUP => "SIGHUP",
+				_ => "Unknown signal",
+			};
+			log_debug!(
+				"Received {}, signaling shutdown...",
+				signal_name
+			);
+			RUNNING.store(false, Ordering::SeqCst);
+		}
+
+		unsafe {
+			libc::signal(
+				libc::SIGINT,
+				handle_signal as libc::sighandler_t,
+			);
+			libc::signal(
+				libc::SIGTERM,
+				handle_signal as libc::sighandler_t,
+			);
+			libc::signal(
+				libc::SIGQUIT,
+				handle_signal as libc::sighandler_t,
+			);
+			libc::signal(
+				libc::SIGHUP,
+				handle_signal as libc::sighandler_t,
+			);
+		}
+
+		log_debug!("Waiting for termination signal...");
+		while RUNNING.load(Ordering::SeqCst) {
+			std::thread::sleep(Duration::from_millis(100));
+		}
+
+		Ok(())
+	}
+
+	pub fn start_and_await_signal(&mut self) -> Result<()> {
+		self.start()?;
+		log_debug!(
+			"Database started, waiting for termination signal..."
+		);
+
+		self.await_signal()?;
+
+		log_debug!("Signal received, shutting down database...");
+		self.stop()?;
+
+		Ok(())
+	}
 }
 
-impl<T: Transaction> Drop for Database<T> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
+	Drop for Database<VT, UT, C>
+{
 	fn drop(&mut self) {
 		if self.running {
 			log_warn!(
@@ -276,8 +355,7 @@ impl<T: Transaction> Drop for Database<T> {
 	}
 }
 
-impl<VT, UT, C> Session<EngineTransaction<VT, UT, C>>
-	for Database<EngineTransaction<VT, UT, C>>
+impl<VT, UT, C> Session<EngineTransaction<VT, UT, C>> for Database<VT, UT, C>
 where
 	VT: VersionedTransaction,
 	UT: UnversionedTransaction,
