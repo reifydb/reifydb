@@ -1,0 +1,17 @@
+# Generated from: statement_handling.tap.md#statement_with_whitespace
+# Test: Statement with whitespace
+
+command '  MAP 1 as result  ;  MAP 2 as result  '
+---
+> +----------+
+> |  result  |
+> +----------+
+> |    1     |
+> +----------+
+> 
+> +----------+
+> |  result  |
+> +----------+
+> |    2     |
+> +----------+
+> 

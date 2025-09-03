@@ -1,0 +1,6 @@
+# Generated from: statement_handling.tap.md#no_statements
+# Test: No statements - empty input
+
+command ''
+---
+> 

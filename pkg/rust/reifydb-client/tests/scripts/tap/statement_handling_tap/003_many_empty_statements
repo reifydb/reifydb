@@ -1,0 +1,6 @@
+# Generated from: statement_handling.tap.md#many_empty_statements
+# Test: Many empty statements
+
+command ';;;;;'
+---
+> 

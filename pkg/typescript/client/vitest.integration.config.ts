@@ -9,7 +9,7 @@ export default defineConfig({
         testTimeout: 15000,
 
         include: [
-            'tests/integration/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+            'tests/integration/**/*.{test,spec,tap}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
         ],
         exclude: [
             'node_modules/**',

@@ -1,0 +1,6 @@
+# Generated from: statement_handling.tap.md#query_no_statements
+# Test: Query with no statements
+
+query ''
+---
+> 

@@ -1,0 +1,6 @@
+# Generated from: statement_handling.tap.md#query_single_empty_statement
+# Test: Query with single empty statement
+
+query ';'
+---
+> 

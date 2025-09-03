@@ -1,0 +1,11 @@
+# Generated from: statement_handling.tap.md#statement_without_trailing_semicolon
+# Test: Statement without trailing semicolon
+
+command 'MAP 1 as x'
+---
+> +------+
+> |  x   |
+> +------+
+> |  1   |
+> +------+
+> 
