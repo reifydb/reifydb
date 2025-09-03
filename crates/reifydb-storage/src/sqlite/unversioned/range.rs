@@ -1,20 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	collections::VecDeque,
-	ops::Bound,
-	sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Result,
 	interface::{Unversioned, UnversionedRange},
 };
-use rusqlite::Connection;
 
 use super::{build_unversioned_query, execute_range_query};
-use crate::sqlite::Sqlite;
+use crate::sqlite::{Sqlite, read::Reader};
 
 impl UnversionedRange for Sqlite {
 	type Range<'a>
@@ -28,7 +23,7 @@ impl UnversionedRange for Sqlite {
 }
 
 pub struct Range {
-	conn: Arc<Mutex<Connection>>,
+	conn: Reader,
 	range: EncodedKeyRange,
 	buffer: VecDeque<Unversioned>,
 	last_key: Option<EncodedKey>,
@@ -38,7 +33,7 @@ pub struct Range {
 
 impl Range {
 	pub fn new(
-		conn: Arc<Mutex<Connection>>,
+		conn: Reader,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Self {

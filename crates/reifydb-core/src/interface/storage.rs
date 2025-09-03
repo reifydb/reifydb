@@ -37,7 +37,7 @@ pub trait VersionedStorage:
 pub trait VersionedCommit {
 	fn commit(
 		&self,
-		delta: CowVec<Delta>,
+		deltas: CowVec<Delta>,
 		version: Version,
 		transaction: TransactionId,
 	) -> crate::Result<()>;
@@ -139,7 +139,7 @@ pub trait UnversionedStorage:
 }
 
 pub trait UnversionedCommit {
-	fn commit(&mut self, delta: CowVec<Delta>) -> crate::Result<()>;
+	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()>;
 }
 
 pub trait UnversionedGet {

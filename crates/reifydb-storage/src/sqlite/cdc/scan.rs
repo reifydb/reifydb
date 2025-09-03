@@ -1,19 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	collections::VecDeque,
-	sync::{Arc, Mutex},
-};
+use std::collections::VecDeque;
 
 use reifydb_core::{
 	CowVec, Result, Version,
 	interface::{CdcEvent, CdcScan},
 	row::EncodedRow,
 };
-use rusqlite::Connection;
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
+use crate::{
+	cdc::codec::decode_cdc_transaction,
+	sqlite::{Sqlite, read::Reader},
+};
 
 impl CdcScan for Sqlite {
 	type ScanIter<'a> = Scan;
@@ -24,7 +23,7 @@ impl CdcScan for Sqlite {
 }
 
 pub struct Scan {
-	conn: Arc<Mutex<Connection>>,
+	conn: Reader,
 	buffer: VecDeque<CdcEvent>,
 	last_version: Option<Version>,
 	batch_size: usize,
@@ -32,7 +31,7 @@ pub struct Scan {
 }
 
 impl Scan {
-	pub fn new(conn: Arc<Mutex<Connection>>, batch_size: usize) -> Self {
+	pub fn new(conn: Reader, batch_size: usize) -> Self {
 		Self {
 			conn,
 			buffer: VecDeque::new(),

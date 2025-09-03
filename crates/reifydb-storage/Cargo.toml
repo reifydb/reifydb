@@ -17,3 +17,4 @@ rusqlite = { workspace = true, features = ["bundled"] }
 
 [dev-dependencies]
 test_each_file = { workspace = true }
+reifydb-testing = { workspace = true}

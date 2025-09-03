@@ -1,22 +1,17 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::{
-	collections::VecDeque,
-	ops::Bound,
-	sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Result, Version,
 	interface::{Versioned, VersionedRangeRev},
 };
-use rusqlite::Connection;
 
 use super::{
 	build_range_query, execute_batched_range_query, table_name_for_range,
 };
-use crate::sqlite::Sqlite;
+use crate::sqlite::{Sqlite, read::Reader};
 
 impl VersionedRangeRev for Sqlite {
 	type RangeIterRev<'a> = RangeRev;
@@ -31,7 +26,7 @@ impl VersionedRangeRev for Sqlite {
 }
 
 pub struct RangeRev {
-	conn: Arc<Mutex<Connection>>,
+	conn: Reader,
 	range: EncodedKeyRange,
 	version: Version,
 	table: String,
@@ -43,7 +38,7 @@ pub struct RangeRev {
 
 impl RangeRev {
 	pub fn new(
-		conn: Arc<Mutex<Connection>>,
+		conn: Reader,
 		range: EncodedKeyRange,
 		version: Version,
 		batch_size: usize,

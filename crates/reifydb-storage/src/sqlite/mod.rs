@@ -3,55 +3,44 @@
 
 mod cdc;
 mod config;
+mod diagnostic;
+mod read;
 mod unversioned;
 mod versioned;
+mod write;
 
 use std::{
-	collections::HashSet,
 	ops::Deref,
 	path::{Path, PathBuf},
-	sync::{Arc, Mutex, mpsc},
-	thread,
+	sync::{Arc, mpsc},
 };
 
 pub use config::*;
+use read::Readers;
 use reifydb_core::{
-	CowVec, Version,
+	CowVec,
 	delta::Delta,
 	interface::{
-		CdcStorage, TransactionId, UnversionedInsert,
-		UnversionedRemove, UnversionedStorage, VersionedStorage,
+		CdcStorage, UnversionedInsert, UnversionedRemove,
+		UnversionedStorage, VersionedStorage,
 	},
 };
+use reifydb_type::Error;
 use rusqlite::Connection;
+use write::{WriteCommand, Writer};
+
+use crate::diagnostic::connection_failed;
 
 #[derive(Clone)]
 pub struct Sqlite(Arc<SqliteInner>);
 
 pub struct SqliteInner {
-	// Multiple reader connections (one per thread accessing it)
-	readers: Arc<Mutex<Vec<Arc<Mutex<Connection>>>>>,
-	// Channel to send write commands to the writer actor
+	readers: Readers,
 	writer: mpsc::Sender<WriteCommand>,
-	// Store the path for creating new reader connections
-	db_path: PathBuf,
-
+	#[allow(dead_code)]
 	flags: rusqlite::OpenFlags,
-}
-
-enum WriteCommand {
-	Transaction {
-		deltas: CowVec<Delta>,
-		response: mpsc::Sender<rusqlite::Result<()>>,
-	},
-	VersionedCommit {
-		deltas: CowVec<Delta>,
-		version: Version,
-		transaction: TransactionId,
-		timestamp: u64,
-		response: mpsc::Sender<rusqlite::Result<()>>,
-	},
-	Shutdown,
+	#[allow(dead_code)]
+	config: SqliteConfig,
 }
 
 impl Deref for Sqlite {
@@ -78,7 +67,14 @@ impl Sqlite {
 		// connection
 		{
 			let conn = Connection::open_with_flags(&db_path, flags)
+				.map_err(|e| {
+					Error(connection_failed(
+						db_path.display().to_string(),
+						e.to_string(),
+					))
+				})
 				.unwrap();
+
 			conn.pragma_update(
 				None,
 				"journal_mode",
@@ -124,35 +120,11 @@ impl Sqlite {
 			.unwrap();
 		}
 
-		// Create writer actor channel
-		let (writer_tx, writer_rx) = mpsc::channel();
-
-		// Spawn writer actor thread
-		let writer_path = db_path.clone();
-		let writer_flags = flags;
-		let writer_config = config.clone();
-		thread::spawn(move || {
-			Self::writer_actor(
-				writer_path,
-				writer_flags,
-				writer_config,
-				writer_rx,
-			);
-		});
-
-		// Create initial reader pool
-		let mut readers = Vec::new();
-		for _ in 0..4 {
-			let conn = Connection::open_with_flags(&db_path, flags)
-				.unwrap();
-			readers.push(Arc::new(Mutex::new(conn)));
-		}
-
 		Self(Arc::new(SqliteInner {
-			readers: Arc::new(Mutex::new(readers)),
-			writer: writer_tx,
-			db_path,
+			readers: Readers::new(&db_path, flags, 4).unwrap(),
+			writer: Writer::spawn(&db_path, flags).unwrap(),
 			flags,
+			config,
 		}))
 	}
 
@@ -196,328 +168,41 @@ impl Sqlite {
 	}
 
 	/// Get a reader connection for read operations
-	pub(crate) fn get_reader(&self) -> Arc<Mutex<Connection>> {
-		let mut pool = self.readers.lock().unwrap();
-
-		// Simple round-robin: take first, use it, put it back at end
-		if let Some(conn) = pool.pop() {
-			let conn_clone = conn.clone();
-			pool.insert(0, conn);
-			conn_clone
-		} else {
-			// Create a new reader if pool is empty
-			let conn = Connection::open_with_flags(
-				&self.db_path,
-				self.flags,
-			)
-			.unwrap();
-			let arc_conn = Arc::new(Mutex::new(conn));
-			pool.push(arc_conn.clone());
-			arc_conn
-		}
+	pub(crate) fn get_reader(&self) -> read::Reader {
+		self.readers.get_reader()
 	}
 
-	/// Execute a transaction through the writer actor
-	pub(crate) fn execute_transaction(
+	/// Convert deltas to SQL operations for unversioned storage
+	fn convert_deltas_to_operations(
 		&self,
 		deltas: CowVec<Delta>,
-	) -> rusqlite::Result<()> {
-		let (tx, rx) = mpsc::channel();
-		self.writer
-			.send(WriteCommand::Transaction {
-				deltas,
-				response: tx,
-			})
-			.map_err(|_| {
-				rusqlite::Error::SqliteFailure(
-					rusqlite::ffi::Error::new(
-						rusqlite::ffi::SQLITE_MISUSE,
-					),
-					Some("Writer actor disconnected"
-						.to_string()),
-				)
-			})?;
-		rx.recv().map_err(|_| {
-			rusqlite::Error::SqliteFailure(
-				rusqlite::ffi::Error::new(
-					rusqlite::ffi::SQLITE_MISUSE,
-				),
-				Some("Writer actor response failed"
-					.to_string()),
-			)
-		})?
-	}
-
-	/// Execute a versioned commit through the writer actor
-	pub(crate) fn execute_versioned_commit(
-		&self,
-		deltas: CowVec<Delta>,
-		version: Version,
-		transaction: TransactionId,
-	) -> rusqlite::Result<()> {
-		// Calculate timestamp in client thread where mock time is set
-		let timestamp = reifydb_core::util::now_millis();
-		let (tx, rx) = mpsc::channel();
-		self.writer
-			.send(WriteCommand::VersionedCommit {
-				deltas,
-				version,
-				transaction,
-				timestamp,
-				response: tx,
-			})
-			.map_err(|_| {
-				rusqlite::Error::SqliteFailure(
-					rusqlite::ffi::Error::new(
-						rusqlite::ffi::SQLITE_MISUSE,
-					),
-					Some("Writer actor disconnected"
-						.to_string()),
-				)
-			})?;
-		rx.recv().map_err(|_| {
-			rusqlite::Error::SqliteFailure(
-				rusqlite::ffi::Error::new(
-					rusqlite::ffi::SQLITE_MISUSE,
-				),
-				Some("Writer actor response failed"
-					.to_string()),
-			)
-		})?
-	}
-
-	/// Writer actor that handles all write operations
-	fn writer_actor(
-		db_path: PathBuf,
-		flags: rusqlite::OpenFlags,
-		config: SqliteConfig,
-		rx: mpsc::Receiver<WriteCommand>,
-	) {
-		let mut conn =
-			Connection::open_with_flags(&db_path, flags).unwrap();
-
-		// Set pragmas for writer connection
-		conn.pragma_update(
-			None,
-			"journal_mode",
-			config.journal_mode.as_str(),
-		)
-		.unwrap();
-		conn.pragma_update(
-			None,
-			"synchronous",
-			config.synchronous_mode.as_str(),
-		)
-		.unwrap();
-		conn.pragma_update(
-			None,
-			"temp_store",
-			config.temp_store.as_str(),
-		)
-		.unwrap();
-
-		// Track ensured tables for versioned commits
-		let mut ensured_tables: HashSet<String> = HashSet::new();
-
-		while let Ok(cmd) = rx.recv() {
-			match cmd {
-				WriteCommand::Transaction {
-					deltas,
-					response,
-				} => {
-					let result = (|| {
-						let tx = conn.transaction()?;
-						for delta in deltas {
-							match delta {
-								Delta::Set { key, row: bytes } => {
-									tx.execute(
-										"INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)",
-										rusqlite::params![key.to_vec(), bytes.to_vec()],
-									)?;
-								}
-								Delta::Remove { key } => {
-									tx.execute(
-										"DELETE FROM unversioned WHERE key = ?1",
-										rusqlite::params![key.to_vec()],
-									)?;
-								}
-							}
-						}
-						tx.commit()?;
-						Ok(())
-					})();
-					let _ = response.send(result);
-				}
-				WriteCommand::VersionedCommit {
-					deltas,
-					version,
-					transaction,
-					timestamp,
-					response,
-				} => {
-					let result =
-						Self::handle_versioned_commit(
-							&mut conn,
-							&mut ensured_tables,
-							deltas,
-							version,
-							transaction,
-							timestamp,
-						);
-					let _ = response.send(result);
-				}
-				WriteCommand::Shutdown => break,
-			}
-		}
-	}
-
-	/// Handle versioned commit in the writer actor
-	fn handle_versioned_commit(
-		conn: &mut Connection,
-		ensured_tables: &mut HashSet<String>,
-		deltas: CowVec<Delta>,
-		version: Version,
-		transaction: TransactionId,
-		timestamp: u64,
-	) -> rusqlite::Result<()> {
-		use reifydb_core::row::EncodedRow;
-
-		use crate::{
-			cdc::{
-				CdcTransaction, CdcTransactionChange,
-				generate_cdc_change,
-			},
-			sqlite::{
-				cdc::{
-					fetch_before_value,
-					store_cdc_transaction,
-				},
-				versioned::{ensure_table_exists, table_name},
-			},
-		};
-
-		let tx = conn.transaction()?;
-		let mut cdc_changes = Vec::new();
-
-		for (idx, delta) in deltas.iter().enumerate() {
-			let sequence = match u16::try_from(idx + 1) {
-				Ok(seq) => seq,
-				Err(_) => return Err(rusqlite::Error::SqliteFailure(
-					rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
-					Some("Transaction sequence exhausted".to_string()),
-				)),
-			};
-
-			let table =
-				table_name(delta.key()).map_err(|e| {
-					rusqlite::Error::SqliteFailure(
-					rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
-					Some(e.to_string()),
-				)
-				})?;
-
-			let before_value =
-				fetch_before_value(&tx, delta.key(), table)
-					.ok()
-					.flatten();
-
-			// Apply the data change
-			match &delta {
+	) -> Vec<(String, Vec<rusqlite::types::Value>)> {
+		let mut operations = Vec::new();
+		for delta in deltas.as_ref() {
+			match delta {
 				Delta::Set {
 					key,
-					row,
+					row: bytes,
 				} => {
-					let table = table_name(&key).map_err(
-						|e| {
-							rusqlite::Error::SqliteFailure(
-							rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
-							Some(e.to_string()),
-						)
-						},
-					)?;
-
-					if table != "versioned"
-						&& !ensured_tables
-							.contains(table)
-					{
-						ensure_table_exists(
-							&tx, &table,
-						);
-						ensured_tables
-							.insert(table
-								.to_string());
-					}
-
-					let query = format!(
-						"INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
-						table
-					);
-					tx.execute(
-						&query,
-						rusqlite::params![
-							key.to_vec(),
-							version,
-							row.to_vec()
+					operations.push((
+						"INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)".to_string(),
+						vec![
+							rusqlite::types::Value::Blob(key.to_vec()),
+							rusqlite::types::Value::Blob(bytes.to_vec()),
 						],
-					)?;
+					));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					let table = table_name(&key).map_err(
-						|e| {
-							rusqlite::Error::SqliteFailure(
-							rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
-							Some(e.to_string()),
-						)
-						},
-					)?;
-
-					let query = format!(
-						"INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
-						table
-					);
-					tx.execute(
-						&query,
-						rusqlite::params![
-							key.to_vec(),
-							version,
-							EncodedRow::deleted()
-								.to_vec()
-						],
-					)?;
+					operations.push((
+						"DELETE FROM unversioned WHERE key = ?1".to_string(),
+						vec![rusqlite::types::Value::Blob(key.to_vec())],
+					));
 				}
 			}
-
-			cdc_changes.push(CdcTransactionChange {
-				sequence,
-				change: generate_cdc_change(
-					delta.clone(),
-					before_value,
-				),
-			});
 		}
-
-		// Store CDC transaction using optimized format
-		if !cdc_changes.is_empty() {
-			let cdc_transaction = CdcTransaction::new(
-				version,
-				timestamp,
-				transaction,
-				cdc_changes,
-			);
-			store_cdc_transaction(&tx, cdc_transaction).map_err(
-				|e| {
-					rusqlite::Error::SqliteFailure(
-					rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
-					Some(e.to_string()),
-				)
-				},
-			)?;
-		}
-
-		tx.commit()?;
-		Ok(())
+		operations
 	}
 
 	fn resolve_db_path(config_path: &Path) -> PathBuf {
@@ -760,6 +445,7 @@ mod tests {
 				.uri(true));
 
 			let storage = Sqlite::new(config);
+
 			let conn = storage.get_reader();
 			let _guard = conn.lock().unwrap();
 			Ok(())

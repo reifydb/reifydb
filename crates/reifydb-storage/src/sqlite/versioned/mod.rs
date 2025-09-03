@@ -12,7 +12,7 @@ mod scan_rev;
 use std::{
 	collections::{HashMap, VecDeque},
 	ops::Bound,
-	sync::{Arc, Mutex, OnceLock},
+	sync::{Mutex, OnceLock},
 };
 
 use reifydb_core::{
@@ -23,6 +23,8 @@ use reifydb_core::{
 	row::EncodedRow,
 };
 use rusqlite::{Connection, Statement, params};
+
+use crate::sqlite::read::ReadConnection;
 
 /// Cache for table names to avoid repeated string allocations
 static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> =
@@ -316,7 +318,7 @@ pub(crate) fn execute_batched_range_query(
 }
 
 /// Helper function to get all table names for iteration
-pub(crate) fn get_table_names(conn: &Arc<Mutex<Connection>>) -> Vec<String> {
+pub(crate) fn get_table_names(conn: &ReadConnection) -> Vec<String> {
 	let conn_guard = conn.lock().unwrap();
 	let mut stmt = conn_guard
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')")
@@ -330,7 +332,7 @@ pub(crate) fn get_table_names(conn: &Arc<Mutex<Connection>>) -> Vec<String> {
 
 /// Helper function to execute batched iteration queries across multiple tables
 pub(crate) fn execute_scan_query(
-	conn: &Arc<Mutex<Connection>>,
+	conn: &ReadConnection,
 	table_names: &[String],
 	version: Version,
 	batch_size: usize,

@@ -1,20 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	collections::VecDeque,
-	ops::Bound,
-	sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	CowVec, Result, Version,
 	interface::{CdcEvent, CdcRange},
 	row::EncodedRow,
 };
-use rusqlite::Connection;
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
+use crate::{
+	cdc::codec::decode_cdc_transaction,
+	sqlite::{Sqlite, read::Reader},
+};
 
 impl CdcRange for Sqlite {
 	type RangeIter<'a> = Range;
@@ -29,7 +27,7 @@ impl CdcRange for Sqlite {
 }
 
 pub struct Range {
-	conn: Arc<Mutex<Connection>>,
+	conn: Reader,
 	start: Bound<Version>,
 	end: Bound<Version>,
 	buffer: VecDeque<CdcEvent>,
@@ -40,7 +38,7 @@ pub struct Range {
 
 impl Range {
 	pub fn new(
-		conn: Arc<Mutex<Connection>>,
+		conn: Reader,
 		start: Bound<Version>,
 		end: Bound<Version>,
 		batch_size: usize,

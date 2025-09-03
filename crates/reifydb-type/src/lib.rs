@@ -11,16 +11,15 @@ pub mod value;
 pub use error::{Error, diagnostic};
 
 pub type Result<T> = std::result::Result<T, Error>;
+
 pub use fragment::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
 	StatementColumn, StatementLine,
 };
 pub use value::{
-	// Constants
 	Blob,
 	Date,
 	DateTime,
-	// Core types
 	GetType,
 	IdentityId,
 	Interval,
@@ -30,9 +29,15 @@ pub use value::{
 	RowNumber,
 	Time,
 	Type,
+
+	// Parse functions
 	Uuid4,
+	// Traits
 	Uuid7,
+
+	// Number traits and operations
 	Value,
+	// Constants
 	boolean::parse_bool,
 	is::{
 		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
@@ -43,15 +48,11 @@ pub use value::{
 		SafePromote, SafeRemainder, SafeSub, parse_float, parse_int,
 		parse_uint,
 	},
-
-	// Parse functions
+	// Core types
 	row_number::ROW_NUMBER_COLUMN_NAME,
-	// Traits
 	temporal::parse::{
 		parse_date, parse_datetime, parse_interval, parse_time,
 	},
-
-	// Number traits and operations
 	uuid::{parse_uuid4, parse_uuid7},
 };
 pub use value::{blob, boolean, temporal, uuid};

@@ -1,19 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	collections::VecDeque,
-	sync::{Arc, Mutex},
-};
+use std::collections::VecDeque;
 
 use reifydb_core::{
 	EncodedKey, Result,
 	interface::{Unversioned, UnversionedScanRev},
 };
-use rusqlite::Connection;
 
 use super::execute_scan_query;
-use crate::sqlite::Sqlite;
+use crate::sqlite::{Sqlite, read::Reader};
 
 impl UnversionedScanRev for Sqlite {
 	type ScanIterRev<'a> = IterRev;
@@ -24,7 +20,7 @@ impl UnversionedScanRev for Sqlite {
 }
 
 pub struct IterRev {
-	conn: Arc<Mutex<Connection>>,
+	conn: Reader,
 	buffer: VecDeque<Unversioned>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
@@ -32,7 +28,7 @@ pub struct IterRev {
 }
 
 impl IterRev {
-	pub fn new(conn: Arc<Mutex<Connection>>, batch_size: usize) -> Self {
+	pub fn new(conn: Reader, batch_size: usize) -> Self {
 		Self {
 			conn,
 			buffer: VecDeque::new(),

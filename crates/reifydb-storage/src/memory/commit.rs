@@ -9,10 +9,10 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::now_millis,
 };
-use reifydb_type::diagnostic::sequence;
 
 use crate::{
 	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
+	diagnostic::sequence_exhausted,
 	memory::{Memory, VersionedRow},
 };
 
@@ -29,8 +29,9 @@ impl VersionedCommit for Memory {
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
-                Ok(seq) => seq,
-                Err(_) => return_error!(sequence::transaction_sequence_exhausted())};
+				Ok(seq) => seq,
+				Err(_) => return_error!(sequence_exhausted()),
+			};
 
 			let before_value = self
 				.versioned

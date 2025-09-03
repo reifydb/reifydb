@@ -1,19 +1,15 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::{
-	collections::VecDeque,
-	sync::{Arc, Mutex},
-};
+use std::collections::VecDeque;
 
 use reifydb_core::{
 	EncodedKey, Result, Version,
 	interface::{Versioned, VersionedScan},
 };
-use rusqlite::Connection;
 
 use super::{execute_scan_query, get_table_names};
-use crate::sqlite::Sqlite;
+use crate::sqlite::{Sqlite, read::Reader};
 
 impl VersionedScan for Sqlite {
 	type ScanIter<'a> = Iter;
@@ -24,7 +20,7 @@ impl VersionedScan for Sqlite {
 }
 
 pub struct Iter {
-	conn: Arc<Mutex<Connection>>,
+	conn: Reader,
 	version: Version,
 	table_names: Vec<String>,
 	buffer: VecDeque<Versioned>,
@@ -34,11 +30,7 @@ pub struct Iter {
 }
 
 impl Iter {
-	pub fn new(
-		conn: Arc<Mutex<Connection>>,
-		version: Version,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, version: Version, batch_size: usize) -> Self {
 		let table_names = get_table_names(&conn);
 
 		Self {

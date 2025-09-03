@@ -33,12 +33,16 @@ CdcEvent { version: 1000, seq: 65535, ts: 1000, change: Insert { key: "bulk_6553
 # This should return an error since we've exhausted the sequence space
 !bulk_insert 2000 65536
 ---
-> Error SEQUENCE_003
->   transaction sequence number exhausted
+> Error STORAGE_004
+>   Transaction sequence number exhausted (exceeds u16 maximum)
 > 
 > HELP
->   transaction has reached the maximum of 65535 CDC events (sequences 1-65535)
+>   This transaction contains more than 65,535 operations.
+> Consider splitting the transaction into smaller batches.
 > 
+> NOTES
+>   • Maximum operations per transaction: 65,535
+>   • Large transactions can impact performance
 
 # Verify the original sequence 0 is still intact (not overwritten)
 cdc_get 1000 1
