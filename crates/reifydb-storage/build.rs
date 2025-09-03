@@ -1,72 +1,117 @@
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    generate_tests()?;
-    Ok(())
+	generate_tests()?;
+	Ok(())
 }
 
 fn generate_tests() -> Result<(), Box<dyn std::error::Error>> {
-    use reifydb_testing::test_generator::{TestGenerator, TestConfig, add_rerun_if_changed};
-    
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
-    
-    // Add rerun directives
-    add_rerun_if_changed("tests/scripts");
-    add_rerun_if_changed("build.rs");
-    
-    // Create test generator
-    let mut generator = TestGenerator::new(&manifest_dir, "generated")?;
-    
-    // Clean old generated files
-    generator.clean()?;
-    
-    // Generate tests for unversioned storage - memory and sqlite
-    generator.add(TestConfig {
-        manifest_dir: manifest_dir.clone(),
-        test_dir: "tests/scripts/unversioned".to_string(),
-        module_name: "unversioned_memory".to_string(),
-        test_fn: "test_memory".to_string(),
-    })?;
-    
-    generator.add(TestConfig {
-        manifest_dir: manifest_dir.clone(),
-        test_dir: "tests/scripts/unversioned".to_string(),
-        module_name: "unversioned_sqlite".to_string(),
-        test_fn: "test_sqlite".to_string(),
-    })?;
-    
-    // Generate tests for versioned storage - memory and sqlite
-    generator.add(TestConfig {
-        manifest_dir: manifest_dir.clone(),
-        test_dir: "tests/scripts/versioned".to_string(),
-        module_name: "versioned_memory".to_string(),
-        test_fn: "test_memory".to_string(),
-    })?;
-    
-    generator.add(TestConfig {
-        manifest_dir: manifest_dir.clone(),
-        test_dir: "tests/scripts/versioned".to_string(),
-        module_name: "versioned_sqlite".to_string(),
-        test_fn: "test_sqlite".to_string(),
-    })?;
-    
-    // Generate tests for CDC - memory and sqlite
-    generator.add(TestConfig {
-        manifest_dir: manifest_dir.clone(),
-        test_dir: "tests/scripts/cdc".to_string(),
-        module_name: "cdc_memory".to_string(),
-        test_fn: "test_memory".to_string(),
-    })?;
-    
-    generator.add(TestConfig {
-        manifest_dir: manifest_dir.clone(),
-        test_dir: "tests/scripts/cdc".to_string(),
-        module_name: "cdc_sqlite".to_string(),
-        test_fn: "test_sqlite".to_string(),
-    })?;
-    
-    // Generate main module file
-    generator.generate()?;
-    
-    Ok(())
+	use reifydb_testing::test_generator::{
+		TestConfig, TestGenerator, add_rerun_if_changed,
+	};
+
+	let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
+
+	// Add rerun directives
+	add_rerun_if_changed("tests/scripts");
+	add_rerun_if_changed("build.rs");
+
+	let mut generators = Vec::new();
+
+	// Create test generator
+	let mut generator = TestGenerator::new(&manifest_dir, "generated")?;
+
+	// Clean old generated files
+	generator.clean()?;
+
+	// Generate tests for unversioned storage - memory and sqlite
+	generator.add(TestConfig {
+		manifest_dir: manifest_dir.clone(),
+		test_dir: "tests/scripts/unversioned".to_string(),
+		module_name: "unversioned_memory".to_string(),
+		test_fn: "test_unversioned_memory".to_string(),
+	})?;
+
+	generator.add(TestConfig {
+		manifest_dir: manifest_dir.clone(),
+		test_dir: "tests/scripts/unversioned".to_string(),
+		module_name: "unversioned_sqlite".to_string(),
+		test_fn: "test_unversioned_sqlite".to_string(),
+	})?;
+
+	// Generate tests for versioned storage - memory and sqlite
+	generator.add(TestConfig {
+		manifest_dir: manifest_dir.clone(),
+		test_dir: "tests/scripts/versioned".to_string(),
+		module_name: "versioned_memory".to_string(),
+		test_fn: "test_versioned_memory".to_string(),
+	})?;
+
+	generator.add(TestConfig {
+		manifest_dir: manifest_dir.clone(),
+		test_dir: "tests/scripts/versioned".to_string(),
+		module_name: "versioned_sqlite".to_string(),
+		test_fn: "test_versioned_sqlite".to_string(),
+	})?;
+
+	// Generate tests for CDC - memory and sqlite
+	generator.add(TestConfig {
+		manifest_dir: manifest_dir.clone(),
+		test_dir: "tests/scripts/cdc".to_string(),
+		module_name: "cdc_memory".to_string(),
+		test_fn: "test_cdc_memory".to_string(),
+	})?;
+
+	generator.add(TestConfig {
+		manifest_dir: manifest_dir.clone(),
+		test_dir: "tests/scripts/cdc".to_string(),
+		module_name: "cdc_sqlite".to_string(),
+		test_fn: "test_cdc_sqlite".to_string(),
+	})?;
+
+	// Generate main module file
+	generator.generate()?;
+
+	generators.push(generator);
+
+	// Generate custom stub file for reifydb-storage
+	// This crate has a special structure where multiple test functions
+	// are defined in the same module files (cdc.rs, unversioned.rs,
+	// versioned.rs)
+	let stub_path = std::path::Path::new(&manifest_dir)
+		.join("tests")
+		.join("generated_tests.rs");
+
+	std::fs::write(
+		stub_path,
+		r#"// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+//! Auto-generated test modules
+//! 
+//! This file is generated by build.rs - DO NOT EDIT
+//! 
+//! This file includes the auto-generated test modules created by the build script.
+//! The tests are generated from the scripts in tests/scripts/ directory.
+
+// Import the test functions from the other test files
+// These are used by the generated tests
+pub use cdc::test_cdc_memory;
+pub use cdc::test_cdc_sqlite;
+pub use unversioned::test_unversioned_memory;
+pub use unversioned::test_unversioned_sqlite;
+pub use versioned::test_versioned_memory;
+pub use versioned::test_versioned_sqlite;
+
+// Import the other test modules to access their public functions
+mod cdc;
+mod unversioned;
+mod versioned;
+
+// Include the generated test modules
+pub mod generated;
+"#,
+	)?;
+
+	Ok(())
 }

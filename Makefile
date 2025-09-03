@@ -33,6 +33,7 @@ help:
 	@echo "  make test          Full test suite (local + all test-suites + test clients)"
 	@echo "  make test-full     Same as 'make test'"
 	@echo "  make test-local    Run only local reifydb crate tests"
+	@echo "  make test-local-clean Clean generated tests then run local tests"
 	@echo ""
 	@echo "🔧 Test Components:"
 	@echo "  make testsuite     Run all test suites (smoke, compatibility, diagnostic, functional, stress)"
@@ -45,7 +46,8 @@ help:
 	@echo ""
 	@echo "🏗️  Building:"
 	@echo "  make build         Build release version"
-	@echo "  make clean         Clean all reifydb packages"
+	@echo "  make clean         Clean all reifydb packages and generated test files"
+	@echo "  make clean-local   Clean only generated test files"
 	@echo "  make format        Format all code with rustfmt (nightly)"
 	@echo ""
 	@echo "🐳 Docker:"
@@ -77,7 +79,7 @@ check:
 	fi
 
 .PHONY: clean
-clean:
+clean: clean-local
 	@echo "🧹 Cleaning all reifydb packages..."
 	@for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb-'); do \
 		echo "  Cleaning $$pkg"; \

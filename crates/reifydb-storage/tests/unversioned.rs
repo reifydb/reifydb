@@ -24,12 +24,12 @@ use reifydb_storage::{
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 
-pub fn test_memory(path: &Path) {
+pub fn test_unversioned_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(Memory::default()), path)
 		.expect("test failed")
 }
 
-pub fn test_sqlite(path: &Path) {
+pub fn test_unversioned_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		testscript::run_path(
 			&mut Runner::new(Sqlite::new(SqliteConfig::fast(

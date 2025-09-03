@@ -76,6 +76,7 @@ pub fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 /// If a command is expected to fail via !, the parsed command string is
 /// returned as an error.
 #[derive(Default)]
+#[allow(dead_code)]
 struct DebugRunner {
 	prefix: String,
 	suffix: String,
@@ -86,6 +87,7 @@ struct DebugRunner {
 }
 
 impl DebugRunner {
+	#[allow(dead_code)]
 	fn new() -> Self {
 		Self::default()
 	}

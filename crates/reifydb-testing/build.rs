@@ -1,214 +1,255 @@
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+	env, fs,
+	path::{Path, PathBuf},
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    generate_tests()?;
-    Ok(())
+	generate_tests()?;
+	Ok(())
 }
 
 fn generate_tests() -> Result<(), Box<dyn std::error::Error>> {
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
-    let output_dir = Path::new(&manifest_dir).join("tests").join("generated");
-    
-    // Create output directory
-    fs::create_dir_all(&output_dir)?;
-    
-    // Create .gitignore
-    let gitignore = output_dir.join(".gitignore");
-    if !gitignore.exists() {
-        fs::write(&gitignore, "# Auto-generated test files\n*.rs\n**/\n")?;
-    }
-    
-    // Add rerun directives
-    println!("cargo:rerun-if-changed=tests/testscript");
-    println!("cargo:rerun-if-changed=build.rs");
-    
-    // Clean old generated files
-    clean_generated_dir(&output_dir)?;
-    
-    // Generate tests for different patterns
-    generate_single_path_tests(&manifest_dir, &output_dir, 
-        "tests/testscript/scripts", "scripts", "test_testscript")?;
-    
-    generate_multi_path_tests(&manifest_dir, &output_dir,
-        "tests/testscript/generate", "generate", "test_generate", &["in", "out"])?;
-        
-    generate_multi_path_tests(&manifest_dir, &output_dir,
-        "tests/testscript/errors", "errors", "test_error", &["in", "error"])?;
-    
-    // Generate main mod.rs
-    generate_main_module(&output_dir)?;
-    
-    Ok(())
+	let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
+	let output_dir =
+		Path::new(&manifest_dir).join("tests").join("generated");
+
+	// Create output directory
+	fs::create_dir_all(&output_dir)?;
+
+	// Create .gitignore
+	let gitignore = output_dir.join(".gitignore");
+	if !gitignore.exists() {
+		fs::write(
+			&gitignore,
+			"# Auto-generated test files\n*.rs\n**/\n",
+		)?;
+	}
+
+	// Add rerun directives
+	println!("cargo:rerun-if-changed=tests/testscript");
+	println!("cargo:rerun-if-changed=build.rs");
+
+	// Clean old generated files
+	clean_generated_dir(&output_dir)?;
+
+	// Generate tests for different patterns
+	generate_single_path_tests(
+		&manifest_dir,
+		&output_dir,
+		"tests/testscript/scripts",
+		"scripts",
+		"test_testscript",
+	)?;
+
+	generate_multi_path_tests(
+		&manifest_dir,
+		&output_dir,
+		"tests/testscript/generate",
+		"generate",
+		"test_generate",
+		&["in", "out"],
+	)?;
+
+	generate_multi_path_tests(
+		&manifest_dir,
+		&output_dir,
+		"tests/testscript/errors",
+		"errors",
+		"test_error",
+		&["in", "error"],
+	)?;
+
+	// Generate main mod.rs
+	generate_main_module(&output_dir)?;
+
+	Ok(())
 }
 
 fn clean_generated_dir(dir: &Path) -> std::io::Result<()> {
-    if dir.exists() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            
-            if path.file_name() == Some(std::ffi::OsStr::new(".gitignore")) {
-                continue;
-            }
-            
-            if path.is_dir() {
-                fs::remove_dir_all(path)?;
-            } else if path.extension().map_or(false, |ext| ext == "rs") {
-                fs::remove_file(path)?;
-            }
-        }
-    }
-    Ok(())
+	if dir.exists() {
+		for entry in fs::read_dir(dir)? {
+			let entry = entry?;
+			let path = entry.path();
+
+			if path.file_name()
+				== Some(std::ffi::OsStr::new(".gitignore"))
+			{
+				continue;
+			}
+
+			if path.is_dir() {
+				fs::remove_dir_all(path)?;
+			} else if path
+				.extension()
+				.map_or(false, |ext| ext == "rs")
+			{
+				fs::remove_file(path)?;
+			}
+		}
+	}
+	Ok(())
 }
 
 fn generate_single_path_tests(
-    manifest_dir: &str,
-    output_dir: &Path,
-    test_dir: &str,
-    module_name: &str,
-    test_fn: &str
+	manifest_dir: &str,
+	output_dir: &Path,
+	test_dir: &str,
+	module_name: &str,
+	test_fn: &str,
 ) -> std::io::Result<()> {
-    let full_path = Path::new(manifest_dir).join(test_dir);
-    
-    if !full_path.exists() {
-        return Ok(());
-    }
-    
-    let mut test_files = Vec::new();
-    collect_test_files(&full_path, &mut test_files)?;
-    test_files.sort();
-    
-    if test_files.is_empty() {
-        return Ok(());
-    }
-    
-    // Create module directory
-    let module_dir = output_dir.join(module_name);
-    fs::create_dir_all(&module_dir)?;
-    
-    // Generate individual test files
-    let mut test_names = Vec::new();
-    for (index, file_path) in test_files.iter().enumerate() {
-        let test_name = generate_test_name(file_path, index);
-        test_names.push(test_name.clone());
-        
-        let relative_path = file_path
-            .strip_prefix(manifest_dir)
-            .unwrap_or(file_path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        
-        let content = format!(
-r#"//! Auto-generated test for: {relative_path}
+	let full_path = Path::new(manifest_dir).join(test_dir);
+
+	if !full_path.exists() {
+		return Ok(());
+	}
+
+	let mut test_files = Vec::new();
+	collect_test_files(&full_path, &mut test_files)?;
+	test_files.sort();
+
+	if test_files.is_empty() {
+		return Ok(());
+	}
+
+	// Create module directory
+	let module_dir = output_dir.join(module_name);
+	fs::create_dir_all(&module_dir)?;
+
+	// Generate individual test files
+	let mut test_names = Vec::new();
+	for (index, file_path) in test_files.iter().enumerate() {
+		let test_name = generate_test_name(file_path, index);
+		test_names.push(test_name.clone());
+
+		let relative_path = file_path
+			.strip_prefix(manifest_dir)
+			.unwrap_or(file_path)
+			.to_string_lossy()
+			.replace('\\', "/");
+
+		let content = format!(
+			r#"//! Auto-generated test for: {relative_path}
 //! 
 //! This file is auto-generated by build.rs - DO NOT EDIT
 //! 
 //! To run this specific test:
-//!   cargo test generated::{module_name}::{test_name}
+//!   cargo test generated::{module_name}::test_{test_name}
 
 #[test]
-fn {test_name}() {{
-    use super::super::super::{test_fn};
+fn test_{test_name}() {{
+    use super::super::super::testscript::{test_fn};
     
     let path = ::std::path::Path::new("{relative_path}");
     {test_fn}(path);
 }}
-"#);
-        
-        let test_file = module_dir.join(format!("{}.rs", test_name));
-        fs::write(test_file, content)?;
-    }
-    
-    // Generate mod.rs for this module
-    generate_module_file(&module_dir, &test_names)?;
-    
-    println!("Generated {} tests in module '{}'", test_names.len(), module_name);
-    
-    Ok(())
+"#
+		);
+
+		let test_file = module_dir.join(format!("{}.rs", test_name));
+		fs::write(test_file, content)?;
+	}
+
+	// Generate mod.rs for this module
+	generate_module_file(&module_dir, &test_names)?;
+
+	println!(
+		"Generated {} tests in module '{}'",
+		test_names.len(),
+		module_name
+	);
+
+	Ok(())
 }
 
 fn generate_multi_path_tests(
-    manifest_dir: &str,
-    output_dir: &Path,
-    test_dir: &str,
-    module_name: &str,
-    test_fn: &str,
-    extensions: &[&str]
+	manifest_dir: &str,
+	output_dir: &Path,
+	test_dir: &str,
+	module_name: &str,
+	test_fn: &str,
+	extensions: &[&str],
 ) -> std::io::Result<()> {
-    let full_path = Path::new(manifest_dir).join(test_dir);
-    
-    if !full_path.exists() {
-        return Ok(());
-    }
-    
-    // Find file groups
-    let mut test_groups = Vec::new();
-    let first_ext = extensions[0];
-    let mut base_files = Vec::new();
-    collect_files_with_extension(&full_path, first_ext, &mut base_files)?;
-    
-    for base_file in base_files {
-        let stem = base_file.with_extension("");
-        let mut group = vec![base_file.clone()];
-        let mut all_exist = true;
-        
-        for ext in &extensions[1..] {
-            let other_file = stem.with_extension(ext);
-            if other_file.exists() {
-                group.push(other_file);
-            } else {
-                all_exist = false;
-                break;
-            }
-        }
-        
-        if all_exist && group.len() == extensions.len() {
-            test_groups.push(group);
-        }
-    }
-    
-    test_groups.sort();
-    
-    if test_groups.is_empty() {
-        return Ok(());
-    }
-    
-    // Create module directory
-    let module_dir = output_dir.join(module_name);
-    fs::create_dir_all(&module_dir)?;
-    
-    // Generate test files
-    let mut test_names = Vec::new();
-    for (index, group) in test_groups.iter().enumerate() {
-        let test_name = generate_test_name(&group[0], index);
-        test_names.push(test_name.clone());
-        
-        let relative_paths: Vec<String> = group.iter()
-            .map(|p| p.strip_prefix(manifest_dir)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .replace('\\', "/"))
-            .collect();
-        
-        let paths_array = relative_paths.iter()
-            .map(|p| format!("        ::std::path::Path::new(\"{}\"),", p))
-            .collect::<Vec<_>>()
-            .join("\n");
-        
-        let content = format!(
-r#"//! Auto-generated test for file group
+	let full_path = Path::new(manifest_dir).join(test_dir);
+
+	if !full_path.exists() {
+		return Ok(());
+	}
+
+	// Find file groups
+	let mut test_groups = Vec::new();
+	let first_ext = extensions[0];
+	let mut base_files = Vec::new();
+	collect_files_with_extension(&full_path, first_ext, &mut base_files)?;
+
+	for base_file in base_files {
+		let stem = base_file.with_extension("");
+		let mut group = vec![base_file.clone()];
+		let mut all_exist = true;
+
+		for ext in &extensions[1..] {
+			let other_file = stem.with_extension(ext);
+			if other_file.exists() {
+				group.push(other_file);
+			} else {
+				all_exist = false;
+				break;
+			}
+		}
+
+		if all_exist && group.len() == extensions.len() {
+			test_groups.push(group);
+		}
+	}
+
+	test_groups.sort();
+
+	if test_groups.is_empty() {
+		return Ok(());
+	}
+
+	// Create module directory
+	let module_dir = output_dir.join(module_name);
+	fs::create_dir_all(&module_dir)?;
+
+	// Generate test files
+	let mut test_names = Vec::new();
+	for (index, group) in test_groups.iter().enumerate() {
+		let test_name = generate_test_name(&group[0], index);
+		test_names.push(test_name.clone());
+
+		let relative_paths: Vec<String> = group
+			.iter()
+			.map(|p| {
+				p.strip_prefix(manifest_dir)
+					.unwrap_or(p)
+					.to_string_lossy()
+					.replace('\\', "/")
+			})
+			.collect();
+
+		let paths_array = relative_paths
+			.iter()
+			.map(|p| {
+				format!(
+					"        ::std::path::Path::new(\"{}\"),",
+					p
+				)
+			})
+			.collect::<Vec<_>>()
+			.join("\n");
+
+		let content = format!(
+			r#"//! Auto-generated test for file group
 //! Files: {}
 //! 
 //! This file is auto-generated by build.rs - DO NOT EDIT
 //! 
 //! To run this specific test:
-//!   cargo test generated::{module_name}::{test_name}
+//!   cargo test generated::{module_name}::test_{test_name}
 
 #[test]
-fn {test_name}() {{
-    use super::super::super::{test_fn};
+fn test_{test_name}() {{
+    use super::super::super::testscript::{test_fn};
     
     let paths: [&::std::path::Path; {}] = [
 {}
@@ -217,133 +258,150 @@ fn {test_name}() {{
     {test_fn}(paths);
 }}
 "#,
-            relative_paths.join(", "),
-            extensions.len(),
-            paths_array);
-        
-        let test_file = module_dir.join(format!("{}.rs", test_name));
-        fs::write(test_file, content)?;
-    }
-    
-    // Generate mod.rs for this module
-    generate_module_file(&module_dir, &test_names)?;
-    
-    println!("Generated {} tests in module '{}'", test_names.len(), module_name);
-    
-    Ok(())
+			relative_paths.join(", "),
+			extensions.len(),
+			paths_array
+		);
+
+		let test_file = module_dir.join(format!("{}.rs", test_name));
+		fs::write(test_file, content)?;
+	}
+
+	// Generate mod.rs for this module
+	generate_module_file(&module_dir, &test_names)?;
+
+	println!(
+		"Generated {} tests in module '{}'",
+		test_names.len(),
+		module_name
+	);
+
+	Ok(())
 }
 
-fn generate_module_file(module_dir: &Path, test_names: &[String]) -> std::io::Result<()> {
-    let mut content = String::new();
-    content.push_str(&format!(
-r#"//! Auto-generated test module
+fn generate_module_file(
+	module_dir: &Path,
+	test_names: &[String],
+) -> std::io::Result<()> {
+	let mut content = String::new();
+	content.push_str(&format!(
+		r#"//! Auto-generated test module
 //! 
 //! This module contains {} generated tests
 
 "#,
-        test_names.len()
-    ));
-    
-    for name in test_names {
-        content.push_str(&format!("mod {};\n", name));
-    }
-    
-    let mod_file = module_dir.join("mod.rs");
-    fs::write(mod_file, content)?;
-    
-    Ok(())
+		test_names.len()
+	));
+
+	for name in test_names {
+		content.push_str(&format!("mod {};\n", name));
+	}
+
+	let mod_file = module_dir.join("mod.rs");
+	fs::write(mod_file, content)?;
+
+	Ok(())
 }
 
 fn generate_main_module(output_dir: &Path) -> std::io::Result<()> {
-    let mut modules = Vec::new();
-    
-    for entry in fs::read_dir(output_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(name) = path.file_name() {
-                modules.push(name.to_string_lossy().to_string());
-            }
-        }
-    }
-    
-    modules.sort();
-    
-    let mut content = String::new();
-    content.push_str(
-r#"//! Auto-generated test modules
+	let mut modules = Vec::new();
+
+	for entry in fs::read_dir(output_dir)? {
+		let entry = entry?;
+		let path = entry.path();
+		if path.is_dir() {
+			if let Some(name) = path.file_name() {
+				modules.push(name
+					.to_string_lossy()
+					.to_string());
+			}
+		}
+	}
+
+	modules.sort();
+
+	let mut content = String::new();
+	content.push_str(
+		r#"//! Auto-generated test modules
 //! 
 //! This file is generated by build.rs - DO NOT EDIT
 
-"#);
-    
-    for module in modules {
-        content.push_str(&format!("pub mod {};\n", module));
-    }
-    
-    let mod_file = output_dir.join("mod.rs");
-    fs::write(mod_file, content)?;
-    
-    Ok(())
+"#,
+	);
+
+	for module in modules {
+		content.push_str(&format!("pub mod {};\n", module));
+	}
+
+	let mod_file = output_dir.join("mod.rs");
+	fs::write(mod_file, content)?;
+
+	Ok(())
 }
 
-fn collect_test_files(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        
-        if path.is_dir() {
-            collect_test_files(&path, files)?;
-        } else if path.is_file() {
-            // Only include files WITHOUT extensions (test files don't have extensions)
-            if path.extension().is_none() {
-                files.push(path);
-            }
-        }
-    }
-    Ok(())
+fn collect_test_files(
+	dir: &Path,
+	files: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
+	for entry in fs::read_dir(dir)? {
+		let entry = entry?;
+		let path = entry.path();
+
+		if path.is_dir() {
+			collect_test_files(&path, files)?;
+		} else if path.is_file() {
+			// Only include files WITHOUT extensions (test files
+			// don't have extensions)
+			if path.extension().is_none() {
+				files.push(path);
+			}
+		}
+	}
+	Ok(())
 }
 
-fn collect_files_with_extension(dir: &Path, extension: &str, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        
-        if path.is_dir() {
-            collect_files_with_extension(&path, extension, files)?;
-        } else if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext == extension {
-                    files.push(path);
-                }
-            }
-        }
-    }
-    Ok(())
+fn collect_files_with_extension(
+	dir: &Path,
+	extension: &str,
+	files: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
+	for entry in fs::read_dir(dir)? {
+		let entry = entry?;
+		let path = entry.path();
+
+		if path.is_dir() {
+			collect_files_with_extension(&path, extension, files)?;
+		} else if path.is_file() {
+			if let Some(ext) = path.extension() {
+				if ext == extension {
+					files.push(path);
+				}
+			}
+		}
+	}
+	Ok(())
 }
 
 fn generate_test_name(path: &Path, index: usize) -> String {
-    let stem = path.file_stem()
-        .unwrap_or_default()
-        .to_string_lossy();
-    
-    let mut name = String::new();
-    for c in stem.chars().take(30) {
-        if c.is_alphanumeric() {
-            name.push(c.to_ascii_lowercase());
-        } else {
-            name.push('_');
-        }
-    }
-    
-    while name.contains("__") {
-        name = name.replace("__", "_");
-    }
-    
-    name = name.trim_matches('_').to_string();
-    if name.is_empty() || name.chars().next().unwrap().is_numeric() {
-        name = format!("test_{}", name);
-    }
-    
-    format!("{}_{:03}", name, index)
+	let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+
+	let mut name = String::new();
+	for c in stem.chars().take(30) {
+		if c.is_alphanumeric() {
+			name.push(c.to_ascii_lowercase());
+		} else {
+			name.push('_');
+		}
+	}
+
+	while name.contains("__") {
+		name = name.replace("__", "_");
+	}
+
+	name = name.trim_matches('_').to_string();
+	if name.is_empty() || name.chars().next().unwrap().is_numeric() {
+		name = format!("test_{}", name);
+	}
+
+	format!("{}_{:03}", name, index)
 }

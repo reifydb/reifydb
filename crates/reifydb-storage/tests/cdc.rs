@@ -6,22 +6,22 @@ use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path};
 #[cfg(debug_assertions)]
 use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
-    async_cow_vec, delta::Delta, interface::{
-        CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
-        TransactionId, VersionedCommit, VersionedGet, VersionedStorage,
-    }, row::EncodedRow,
-    util::encoding::{binary::decode_binary, format, format::Formatter},
-    CowVec,
-    EncodedKey,
-    Version,
+	CowVec, EncodedKey, Version, async_cow_vec,
+	delta::Delta,
+	interface::{
+		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
+		TransactionId, VersionedCommit, VersionedGet, VersionedStorage,
+	},
+	row::EncodedRow,
+	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
 use reifydb_storage::{
-    memory::Memory,
-    sqlite::{Sqlite, SqliteConfig},
+	memory::Memory,
+	sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 
-pub fn test_memory(path: &Path) {
+pub fn test_cdc_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 	let storage = Memory::new();
@@ -29,7 +29,7 @@ pub fn test_memory(path: &Path) {
 		.expect("test failed")
 }
 
-pub fn test_sqlite(path: &Path) {
+pub fn test_cdc_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);

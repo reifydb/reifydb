@@ -4,16 +4,16 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::{
-    schema::SchemaToCreate, table::TableToCreate, CatalogStore,
+	CatalogStore, schema::SchemaToCreate, table::TableToCreate,
 };
 use reifydb_engine::test_utils::create_test_command_transaction;
 use reifydb_rql::explain::{
-    explain_ast, explain_logical_plan, explain_physical_plan,
-    explain_tokenize,
+	explain_ast, explain_logical_plan, explain_physical_plan,
+	explain_tokenize,
 };
 use reifydb_testing::{testscript, testscript::Command};
 
-pub fn run_test(path: &Path) {
+pub fn test_run(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")
 }
 
