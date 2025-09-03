@@ -16,6 +16,7 @@ rusqlite = { workspace = true, features = ["bundled"] }
 r2d2 = { workspace = true }
 r2d2_sqlite = { workspace = true }
 
+[build-dependencies]
+reifydb-testing = { workspace = true }
 
 [dev-dependencies]
-test_each_file = { workspace = true }

@@ -6,21 +6,16 @@
 use std::{error::Error, io::Write as _};
 
 use reifydb_testing::testscript;
-use test_each_file::test_each_path;
 
 // Run testscripts in tests/scripts that debug-print the commands.
-test_each_path! { in "crates/reifydb-testing/tests/testscript/scripts" as scripts => test_testscript }
-
-fn test_testscript(path: &std::path::Path) {
+pub fn test_testscript(path: &std::path::Path) {
 	testscript::run_path(&mut DebugRunner::new(), path)
 		.expect("runner failed")
 }
 
 // Run testscripts in tests/generate with output in a separate file. This is
 // particularly useful for parser tests where output hasn't yet been generated.
-test_each_path! { for ["in", "out"] in "crates/reifydb-testing/tests/testscript/generate" as generate => test_generate }
-
-fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
+pub fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 	let input =
 		std::fs::read_to_string(in_path).expect("failed to read file");
 	let output = testscript::generate(&mut DebugRunner::new(), &input)
@@ -38,9 +33,7 @@ fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 // Generate error tests for each pair of *.in and *.error files in
 // tests/errors/. The input scripts are expected to error or panic with the
 // stored output.
-test_each_path! { for ["in", "error"] in "crates/reifydb-testing/tests/testscript/errors" as errors => test_error }
-
-fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
+pub fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 	let input =
 		std::fs::read_to_string(in_path).expect("failed to read file");
 	let run = std::panic::AssertUnwindSafe(|| {

@@ -15,7 +15,6 @@ use reifydb::{
 	memory, serializable,
 };
 use reifydb_testing::{testscript, testscript::Command};
-use test_each_file::test_each_path;
 
 pub struct Runner<VT, UT, C>
 where
@@ -110,9 +109,8 @@ where
 	}
 }
 
-test_each_path! { in "testsuite/limit/tests/scripts" as embedded_sync => test_embedded_sync }
 
-fn test_embedded_sync(path: &Path) {
+pub fn test_embedded_sync(path: &Path) {
 	testscript::run_path(&mut Runner::new(serializable(memory())), path)
 		.expect("test failed")
 }

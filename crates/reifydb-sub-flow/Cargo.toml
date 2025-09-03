@@ -17,7 +17,9 @@ reifydb-type = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+[build-dependencies]
+reifydb-testing = { workspace = true }
+
 [dev-dependencies]
 reifydb-testing = { workspace = true }
 reifydb = { workspace = true, features = ["sub_flow"] }
-test_each_file = { workspace = true }

@@ -23,17 +23,13 @@ use reifydb_storage::{
 	sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
-use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-storage/tests/scripts/unversioned" as unversioned_memory => test_memory }
-test_each_path! { in "crates/reifydb-storage/tests/scripts/unversioned" as unversioned_sqlite => test_sqlite }
-
-fn test_memory(path: &Path) {
+pub fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(Memory::default()), path)
 		.expect("test failed")
 }
 
-fn test_sqlite(path: &Path) {
+pub fn test_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		testscript::run_path(
 			&mut Runner::new(Sqlite::new(SqliteConfig::fast(

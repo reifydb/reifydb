@@ -11,8 +11,10 @@ reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }
 reifydb-type = { workspace = true }
 
+[build-dependencies]
+reifydb-testing = { workspace = true }
+
 [dev-dependencies]
 reifydb-testing = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
-test_each_file = { workspace = true }

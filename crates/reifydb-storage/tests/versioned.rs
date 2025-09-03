@@ -12,28 +12,24 @@
 use std::{error::Error as StdError, fmt::Write, path::Path};
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, async_cow_vec,
-	delta::Delta,
-	interface::{TransactionId, Versioned, VersionedStorage},
+	async_cow_vec, delta::Delta, interface::{TransactionId, Versioned, VersionedStorage},
 	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
+	EncodedKey,
+	EncodedKeyRange,
 };
 use reifydb_storage::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
-use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-storage/tests/scripts/versioned" as versioned_memory => test_memory }
-test_each_path! { in "crates/reifydb-storage/tests/scripts/versioned" as versioned_sqlite => test_sqlite }
-
-fn test_memory(path: &Path) {
+pub fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(Memory::default()), path)
 		.expect("test failed")
 }
 
-fn test_sqlite(path: &Path) {
+pub fn test_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		testscript::run_path(
 			&mut Runner::new(Sqlite::new(SqliteConfig::fast(

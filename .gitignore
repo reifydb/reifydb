@@ -7,3 +7,5 @@
 **/dist/
 **/node_modules/
 .claude/
+**/generated/
+generated_test.rs

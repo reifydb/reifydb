@@ -15,7 +15,6 @@ use reifydb::{
 	memory, optimistic,
 };
 use reifydb_testing::{testscript, testscript::Command};
-use test_each_file::test_each_path;
 
 pub struct Runner<VT, UT, C>
 where
@@ -112,9 +111,8 @@ where
 	}
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as embedded => test_embedded }
 
-fn test_embedded(path: &Path) {
+pub fn test_embedded(path: &Path) {
 	testscript::run_path(&mut Runner::new(optimistic(memory())), path)
 		.expect("test failed")
 }

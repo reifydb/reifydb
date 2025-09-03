@@ -18,7 +18,6 @@ use reifydb::{
 };
 use reifydb_client::{BlockingSession, Client};
 use reifydb_testing::{testscript, testscript::Command};
-use test_each_file::test_each_path;
 
 pub struct WsRunner<VT, UT, C>
 where
@@ -149,9 +148,7 @@ where
 	}
 }
 
-test_each_path! { in "testsuite/regression/tests/scripts" as ws => test_ws }
-
-fn test_ws(path: &Path) {
+pub fn test_ws(path: &Path) {
 	retry(3, || {
 		testscript::run_path(
 			&mut WsRunner::new(optimistic(memory())),

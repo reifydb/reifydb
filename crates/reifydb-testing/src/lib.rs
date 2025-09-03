@@ -6,5 +6,6 @@
 pub mod goldenfile;
 pub mod network;
 pub mod tempdir;
+pub mod test_generator;
 pub mod testscript;
 pub mod util;

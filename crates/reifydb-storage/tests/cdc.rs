@@ -6,26 +6,22 @@ use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path};
 #[cfg(debug_assertions)]
 use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
-	CowVec, EncodedKey, Version, async_cow_vec,
-	delta::Delta,
-	interface::{
-		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
-		TransactionId, VersionedCommit, VersionedGet, VersionedStorage,
-	},
-	row::EncodedRow,
-	util::encoding::{binary::decode_binary, format, format::Formatter},
+    async_cow_vec, delta::Delta, interface::{
+        CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
+        TransactionId, VersionedCommit, VersionedGet, VersionedStorage,
+    }, row::EncodedRow,
+    util::encoding::{binary::decode_binary, format, format::Formatter},
+    CowVec,
+    EncodedKey,
+    Version,
 };
 use reifydb_storage::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+    memory::Memory,
+    sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
-use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-storage/tests/scripts/cdc" as cdc_memory => test_memory }
-test_each_path! { in "crates/reifydb-storage/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
-
-fn test_memory(path: &Path) {
+pub fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 	let storage = Memory::new();
@@ -33,7 +29,7 @@ fn test_memory(path: &Path) {
 		.expect("test failed")
 }
 
-fn test_sqlite(path: &Path) {
+pub fn test_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);

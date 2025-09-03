@@ -11,5 +11,7 @@ reifydb-type = { workspace = true }
 
 regex = { workspace = true, features = [] }
 
+[build-dependencies]
+# Can't use self as build dependency, need to duplicate code
+
 [dev-dependencies]
-test_each_file = { workspace = true }

@@ -333,7 +333,6 @@ version = "0.0.1"
 dependencies = [
  "reifydb",
  "reifydb-testing",
- "test_each_file",
 ]
 
 [[package]]
@@ -654,7 +653,6 @@ dependencies = [
  "reifydb",
  "reifydb-client",
  "reifydb-testing",
- "test_each_file",
 ]
 
 [[package]]
@@ -781,7 +779,6 @@ dependencies = [
  "reifydb-engine",
  "reifydb-testing",
  "reifydb-type",
- "test_each_file",
 ]
 
 [[package]]
@@ -795,7 +792,6 @@ dependencies = [
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",
- "test_each_file",
 ]
 
 [[package]]
@@ -812,7 +808,6 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_json",
- "test_each_file",
 ]
 
 [[package]]
@@ -863,7 +858,6 @@ dependencies = [
  "regex",
  "reifydb-core",
  "reifydb-type",
- "test_each_file",
 ]
 
 [[package]]
@@ -877,7 +871,6 @@ dependencies = [
  "reifydb-storage",
  "reifydb-testing",
  "reifydb-type",
- "test_each_file",
 ]
 
 [[package]]
@@ -1039,18 +1032,6 @@ name = "target-lexicon"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
-
-[[package]]
-name = "test_each_file"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5b980155ee175f5b054bafd14e434b89c151ffae1a8bd9d607425a7a6911e2b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "unicode-ident",
-]
 
 [[package]]
 name = "testcontainer"

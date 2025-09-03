@@ -4,22 +4,16 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::{
-	CatalogStore, schema::SchemaToCreate, table::TableToCreate,
+    schema::SchemaToCreate, table::TableToCreate, CatalogStore,
 };
 use reifydb_engine::test_utils::create_test_command_transaction;
 use reifydb_rql::explain::{
-	explain_ast, explain_logical_plan, explain_physical_plan,
-	explain_tokenize,
+    explain_ast, explain_logical_plan, explain_physical_plan,
+    explain_tokenize,
 };
 use reifydb_testing::{testscript, testscript::Command};
-use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-rql/tests/scripts/tokenize" as tokenize => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/ast" as ast => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/logical_plan" as logical_plan => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/physical_plan" as physical_plan => run_test }
-
-fn run_test(path: &Path) {
+pub fn run_test(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")
 }
 

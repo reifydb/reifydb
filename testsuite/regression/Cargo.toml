@@ -6,8 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[build-dependencies]
+reifydb-testing = { workspace = true }
+
 [dev-dependencies]
 reifydb = { workspace = true , features = ["sub_server"] }
 reifydb-client = { workspace = true }
 reifydb-testing = { workspace = true }
-test_each_file = { workspace = true }
