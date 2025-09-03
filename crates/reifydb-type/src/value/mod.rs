@@ -9,6 +9,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 mod as_string;
+pub mod bigdecimal;
+pub mod bigint;
 pub mod blob;
 pub mod boolean;
 mod date;
@@ -26,6 +28,8 @@ mod time;
 mod r#type;
 pub mod uuid;
 
+pub use bigdecimal::BigDecimal;
+pub use bigint::BigInt;
 pub use blob::Blob;
 pub use date::Date;
 pub use datetime::DateTime;

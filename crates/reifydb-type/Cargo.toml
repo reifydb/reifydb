@@ -12,5 +12,7 @@ repository.workspace = true
 chrono = { workspace = true }
 serde = { workspace = true}
 uuid = { workspace = true }
+num-bigint = { workspace = true }
+bigdecimal = { workspace = true }
 
 [dev-dependencies]
