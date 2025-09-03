@@ -165,17 +165,26 @@ impl<T: Transaction> WorkerPool<T> {
 	}
 
 	pub fn stop(self) {
-		// Signal all workers to stop
-		self.shutdown.store(true, Ordering::Relaxed);
-
-		// Wait for all workers to complete
-		for handle in self.workers {
-			let _ = handle.join();
-		}
+		// The Drop implementation will handle cleanup
+		drop(self);
 	}
 
 	/// Get the actual bound port of the server
 	pub fn port(&self) -> u16 {
 		self.bound_port
+	}
+}
+
+impl<T: Transaction> Drop for WorkerPool<T> {
+	fn drop(&mut self) {
+		// Signal all workers to stop
+		self.shutdown.store(true, Ordering::Relaxed);
+
+		// Wait for all workers to complete
+		// Using drain to take ownership of the handles
+		for handle in self.workers.drain(..) {
+			// Best effort join - ignore errors during drop
+			let _ = handle.join();
+		}
 	}
 }

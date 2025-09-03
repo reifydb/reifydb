@@ -12,7 +12,7 @@ use reifydb::{
 			VersionedTransaction,
 		},
 	},
-	sub_server::ServerConfig,
+	sub_server::{NetworkConfig, ServerConfig},
 };
 use reifydb_client::{Client, Frame, Params, Value};
 use reifydb_testing::testscript::Command;
@@ -26,8 +26,17 @@ where
 	C: CdcTransaction,
 {
 	let (versioned, unversioned, cdc, eventbus) = input;
+	// Use only 1 worker for tests to avoid file descriptor exhaustion
+	let network_config = NetworkConfig {
+		workers: Some(1), // Limit to 1 worker for tests
+		..Default::default()
+	};
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
-		.with_config(ServerConfig::new().bind_addr("[::1]:0"))
+		.with_config(
+			ServerConfig::new()
+				.bind_addr("[::1]:0")
+				.network(network_config),
+		)
 		.build()
 		.unwrap()
 }
