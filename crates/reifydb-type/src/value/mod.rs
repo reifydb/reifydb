@@ -94,6 +94,10 @@ pub enum Value {
 	Uuid7(Uuid7),
 	/// A binary large object (BLOB)
 	Blob(Blob),
+	/// An arbitrary-precision integer
+	BigInt(BigInt),
+	/// An arbitrary-precision decimal
+	BigDecimal(BigDecimal),
 }
 
 impl Value {
@@ -149,6 +153,12 @@ impl PartialOrd for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
+			(Value::BigInt(l), Value::BigInt(r)) => {
+				l.partial_cmp(r)
+			}
+			(Value::BigDecimal(l), Value::BigDecimal(r)) => {
+				l.partial_cmp(r)
+			}
 			(Value::Undefined, Value::Undefined) => None,
 			(left, right) => {
 				unimplemented!("partial cmp {left:?} {right:?}")
@@ -185,6 +195,10 @@ impl Ord for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
+			(Value::BigInt(l), Value::BigInt(r)) => l.cmp(r),
+			(Value::BigDecimal(l), Value::BigDecimal(r)) => {
+				l.cmp(r)
+			}
 			_ => unimplemented!(),
 		}
 	}
@@ -217,6 +231,8 @@ impl Display for Value {
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
 			Value::Blob(value) => Display::fmt(value, f),
+			Value::BigInt(value) => Display::fmt(value, f),
+			Value::BigDecimal(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
 	}
@@ -249,6 +265,8 @@ impl Value {
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,
+			Value::BigInt(_) => Type::BigInt,
+			Value::BigDecimal(_) => Type::BigDecimal,
 		}
 	}
 }
