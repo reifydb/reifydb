@@ -93,7 +93,7 @@ where
 								Err("Unexpected response type for command".into())
 							}
 							Err(e) => {
-								Ok(format!("Error: {}\n", e))
+								Err(e.to_string().into())
 							}
 						}
 					}
@@ -128,7 +128,7 @@ where
 								Err("Unexpected response type for command".into())
 							}
 							Err(e) => {
-								Ok(format!("Error: {}\n", e))
+								Err(e.to_string().into())
 							}
 						}
 					}
@@ -162,7 +162,7 @@ where
 								Err("Unexpected response type for command".into())
 							}
 							Err(e) => {
-								Ok(format!("Error: {}\n", e))
+								Err(e.to_string().into())
 							}
 						}
 					}
@@ -195,7 +195,7 @@ where
 								Err("Unexpected response type for query".into())
 							}
 							Err(e) => {
-								Ok(format!("Error: {}\n", e))
+								Err(e.to_string().into())
 							}
 						}
 					}
@@ -230,7 +230,7 @@ where
 								Err("Unexpected response type for query".into())
 							}
 							Err(e) => {
-								Ok(format!("Error: {}\n", e))
+								Err(e.to_string().into())
 							}
 						}
 					}
@@ -264,7 +264,7 @@ where
 								Err("Unexpected response type for query".into())
 							}
 							Err(e) => {
-								Ok(format!("Error: {}\n", e))
+								Err(e.to_string().into())
 							}
 						}
 					}

@@ -132,7 +132,7 @@ where
 					Ok(command_result) => write_frames(
 						command_result.frames,
 					),
-					Err(e) => Ok(format!("Error: {}\n", e)),
+					Err(e) => Err(e.into()),
 				}
 			}
 
@@ -189,7 +189,7 @@ where
 					Ok(query_result) => write_frames(
 						query_result.frames,
 					),
-					Err(e) => Ok(format!("Error: {}\n", e)),
+					Err(e) => Err(e.into()),
 				}
 			}
 
@@ -243,7 +243,7 @@ where
 					Ok(command_result) => write_frames(
 						command_result.frames,
 					),
-					Err(e) => Ok(format!("Error: {}\n", e)),
+					Err(e) => Err(e.into()),
 				}
 			}
 
@@ -296,7 +296,7 @@ where
 					Ok(command_result) => write_frames(
 						command_result.frames,
 					),
-					Err(e) => Ok(format!("Error: {}\n", e)),
+					Err(e) => Err(e.into()),
 				}
 			}
 
@@ -350,7 +350,7 @@ where
 					Ok(query_result) => write_frames(
 						query_result.frames,
 					),
-					Err(e) => Ok(format!("Error: {}\n", e)),
+					Err(e) => Err(e.into()),
 				}
 			}
 
@@ -403,7 +403,7 @@ where
 					Ok(query_result) => write_frames(
 						query_result.frames,
 					),
-					Err(e) => Ok(format!("Error: {}\n", e)),
+					Err(e) => Err(e.into()),
 				}
 			}
 
