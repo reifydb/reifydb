@@ -26,12 +26,10 @@ reifydb-type = { workspace = true }
 
 sha1 = "0.10"
 
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-bitvec = "1.0"
 reifydb = { workspace = true, features = ["sub_server"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

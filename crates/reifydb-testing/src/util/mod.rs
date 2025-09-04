@@ -13,7 +13,6 @@ pub mod wait;
 
 use std::{error::Error, ops::Bound};
 
-use regex::Regex;
 use reifydb_core::{CowVec, util::encoding::binary::decode_binary};
 
 /// Parses an binary key range, using Rust range syntax.
@@ -24,19 +23,28 @@ pub fn parse_key_range(
 		Bound::<CowVec<u8>>::Unbounded,
 		Bound::<CowVec<u8>>::Unbounded,
 	);
-	let re = Regex::new(r"^(\S+)?\.\.(=)?(\S+)?").expect("invalid regex");
-	let groups =
-		re.captures(s).ok_or_else(|| format!("invalid range {s}"))?;
-	if let Some(start) = groups.get(1) {
-		bound.0 = Bound::Included(decode_binary(start.as_str()));
-	}
-	if let Some(end) = groups.get(3) {
-		let end = decode_binary(end.as_str());
-		if groups.get(2).is_some() {
-			bound.1 = Bound::Included(end)
-		} else {
-			bound.1 = Bound::Excluded(end)
+
+	if let Some(dot_pos) = s.find("..") {
+		let start_part = &s[..dot_pos];
+		let end_part = &s[dot_pos + 2..];
+
+		// Parse start bound
+		if !start_part.is_empty() {
+			bound.0 = Bound::Included(decode_binary(start_part));
 		}
+
+		// Parse end bound - check for inclusive marker "="
+		if let Some(end_str) = end_part.strip_prefix('=') {
+			if !end_str.is_empty() {
+				bound.1 =
+					Bound::Included(decode_binary(end_str));
+			}
+		} else if !end_part.is_empty() {
+			bound.1 = Bound::Excluded(decode_binary(end_part));
+		}
+
+		Ok(bound)
+	} else {
+		Err(format!("invalid range {s}").into())
 	}
-	Ok(bound)
 }
