@@ -20,7 +20,7 @@ pub(crate) trait TableOperations {
 		&mut self,
 		table: TableDef,
 		row: EncodedRow,
-	) -> crate::Result<()>;
+	) -> crate::Result<RowNumber>;
 
 	fn update_table(
 		&mut self,
@@ -41,7 +41,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		&mut self,
 		table: TableDef,
 		row: EncodedRow,
-	) -> crate::Result<()> {
+	) -> crate::Result<RowNumber> {
 		let row_number = RowSequence::next_row_number(self, table.id)?;
 
 		TableInterceptor::pre_insert(self, &table, &row)?;
@@ -68,7 +68,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 			},
 		});
 
-		Ok(())
+		Ok(row_number)
 	}
 
 	fn update_table(

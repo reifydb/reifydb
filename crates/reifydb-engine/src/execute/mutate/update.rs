@@ -7,8 +7,9 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	ColumnDescriptor,
 	interface::{
-		ColumnPolicyKind, EncodableKey, Params, RowKey, Transaction,
-		VersionedCommandTransaction,
+		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params,
+		RowKey, Transaction, VersionedCommandTransaction,
+		VersionedQueryTransaction,
 	},
 	row::EncodedRowLayout,
 	value::columnar::{ColumnData, Columns},
@@ -25,6 +26,7 @@ use reifydb_type::{
 	return_error,
 };
 
+use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{
@@ -345,14 +347,87 @@ impl Executor {
 					// RowNumber from the columns
 					let row_number =
 						row_numbers[row_numberx];
-					wrapped_txn.command_mut().set(
-						&RowKey {
-							source: table.id.into(),
-							row: row_number,
+
+					let row_key = RowKey {
+						source: table.id.into(),
+						row: row_number,
+					}
+					.encode();
+
+					// Handle primary key index if table has
+					// one
+					if let Some(pk_def) =
+						primary_key::get_primary_key(
+							wrapped_txn
+								.command_mut(),
+							&table,
+						)? {
+						// Get old row to extract old PK
+						// values
+						if let Some(old_row_data) =
+							wrapped_txn
+								.command_mut()
+								.get(&row_key)?
+						{
+							let old_row =
+								old_row_data
+									.row;
+							let old_key = primary_key::encode_primary_key(
+								&pk_def,
+								&old_row,
+								&table,
+								&layout,
+							)?;
+
+							// Remove old index
+							// entry
+							wrapped_txn.command_mut().remove(
+								&IndexEntryKey::new(
+									table.id,
+									IndexId::primary(pk_def.id),
+									old_key,
+								)
+								.encode()
+							)?;
 						}
-						.encode(),
-						row,
-					)?;
+
+						// Add new index entry
+						let new_key = primary_key::encode_primary_key(
+							&pk_def,
+							&row,
+							&table,
+							&layout,
+						)?;
+
+						// Store the row number as value
+						let row_number_layout =
+							EncodedRowLayout::new(
+								&[Type::Uint8],
+							);
+						let mut row_number_encoded =
+							row_number_layout
+								.allocate_row();
+						row_number_layout.set_u64(
+							&mut row_number_encoded,
+							0,
+							u64::from(row_number),
+						);
+
+						wrapped_txn.command_mut().set(
+							&IndexEntryKey::new(
+								table.id,
+								IndexId::primary(pk_def.id),
+								new_key,
+							)
+							.encode(),
+							row_number_encoded,
+						)?;
+					}
+
+					// Now update the row
+					wrapped_txn
+						.command_mut()
+						.set(&row_key, row)?;
 
 					updated_count += 1;
 				}

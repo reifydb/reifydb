@@ -179,7 +179,7 @@ mod tests {
 	fn test_encode_decode() {
 		let key = IndexKey {
 			source: SourceId::table(0xABCD),
-			index: IndexId(0x123456789ABCDEF0),
+			index: IndexId::primary(0x123456789ABCDEF0u64),
 		};
 		let encoded = key.encode();
 
@@ -204,15 +204,15 @@ mod tests {
 	fn test_order_preserving() {
 		let key1 = IndexKey {
 			source: SourceId::table(1),
-			index: IndexId(100),
+			index: IndexId::primary(100),
 		};
 		let key2 = IndexKey {
 			source: SourceId::table(1),
-			index: IndexId(200),
+			index: IndexId::primary(200),
 		};
 		let key3 = IndexKey {
 			source: SourceId::table(2),
-			index: IndexId(0),
+			index: IndexId::primary(50),
 		};
 
 		let encoded1 = key1.encode();

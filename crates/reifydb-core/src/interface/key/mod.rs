@@ -331,7 +331,7 @@ mod tests {
 	fn test_index() {
 		let key = Key::Index(IndexKey {
 			source: SourceId::table(42),
-			index: IndexId(999_999),
+			index: IndexId::primary(999_999),
 		});
 
 		let encoded = key.encode();

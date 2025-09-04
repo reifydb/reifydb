@@ -6,7 +6,10 @@ use std::sync::Arc;
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{ColumnPolicyKind, Params, Transaction},
+	interface::{
+		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params,
+		Transaction, VersionedCommandTransaction,
+	},
 	return_error,
 	row::EncodedRowLayout,
 	value::columnar::Columns,
@@ -16,6 +19,7 @@ use reifydb_type::{
 	IntoFragment, Type, Value, diagnostic::catalog::table_not_found,
 };
 
+use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{
@@ -293,10 +297,56 @@ impl Executor {
 				//
 				// txn.insert_into_table(table, key, row)
 
-				std_txn.command_mut().insert_into_table(
-					table.clone(),
-					row,
-				)?;
+				let row_number = std_txn
+					.command_mut()
+					.insert_into_table(
+						table.clone(),
+						row.clone(),
+					)?;
+
+				// Store primary key index entry if table has
+				// one
+				if let Some(pk_def) =
+					primary_key::get_primary_key(
+						std_txn.command_mut(),
+						&table,
+					)? {
+					let index_key = primary_key::encode_primary_key(
+						&pk_def,
+						&row,
+						&table,
+						&layout,
+					)?;
+
+					// Store the index entry with the row
+					// number as value For now, we
+					// encode the row number as a simple
+					// EncodedRow with u64
+					let row_number_layout =
+						EncodedRowLayout::new(&[
+							Type::Uint8,
+						]);
+					let mut row_number_encoded =
+						row_number_layout
+							.allocate_row();
+					row_number_layout.set_u64(
+						&mut row_number_encoded,
+						0,
+						u64::from(row_number),
+					);
+
+					std_txn.command_mut().set(
+						&IndexEntryKey::new(
+							table.id,
+							IndexId::primary(
+								pk_def.id,
+							),
+							index_key,
+						)
+						.encode(),
+						row_number_encoded,
+					)?;
+				}
 
 				// /////
 				//

@@ -4,4 +4,5 @@
 mod coerce;
 mod delete;
 mod insert;
+mod primary_key;
 mod update;
