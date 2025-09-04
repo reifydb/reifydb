@@ -1,7 +1,7 @@
 // Test to demonstrate colored diff output and ensure goldenfile behavior
 use std::{fs, io::Write};
 
-use reifydb_testing::goldenfile;
+use reifydb_testing::goldenfile::{self, Mode};
 
 #[test]
 #[should_panic(expected = "Golden file test failed")]
@@ -12,10 +12,10 @@ fn test_colored_diff_output() {
 
 	// First, create a golden file
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("test.txt").unwrap();
 		writeln!(file, "Line 1: This is the original content").unwrap();
 		writeln!(file, "Line 2: Everything is fine").unwrap();
@@ -26,10 +26,10 @@ fn test_colored_diff_output() {
 
 	// Now test with different content to trigger the diff
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("test.txt").unwrap();
 		writeln!(file, "Line 1: This is MODIFIED content").unwrap();
 		writeln!(file, "Line 2: Everything is fine").unwrap();
@@ -51,19 +51,19 @@ fn test_goldenfile_success() {
 
 	// Create and verify identical content
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("success.txt").unwrap();
 		writeln!(file, "Matching content").unwrap();
 	}
 
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("success.txt").unwrap();
 		writeln!(file, "Matching content").unwrap();
 	}
@@ -78,12 +78,12 @@ fn test_update_testfiles_env_var() {
 		.join(format!("goldenfile_env_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Test UPDATE_TESTFILES environment variable
+	// Test explicit update mode
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("env_test.txt").unwrap();
 		writeln!(file, "Initial content").unwrap();
 	}
@@ -93,10 +93,10 @@ fn test_update_testfiles_env_var() {
 
 	// Now update with different content
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("env_test.txt").unwrap();
 		writeln!(file, "Updated content").unwrap();
 	}
@@ -105,11 +105,6 @@ fn test_update_testfiles_env_var() {
 	let content =
 		fs::read_to_string(test_dir.join("env_test.txt")).unwrap();
 	assert_eq!(content, "Updated content\n");
-
-	// Clean up
-	unsafe {
-		std::env::remove_var("UPDATE_TESTFILES");
-	}
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -119,26 +114,21 @@ fn test_update_goldenfiles_env_var() {
 		.join(format!("goldenfile_env2_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Test UPDATE_GOLDENFILES environment variable (alternative name)
+	// Test explicit update mode (alternative test)
 	{
-		unsafe {
-			std::env::set_var("UPDATE_GOLDENFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("env_test2.txt").unwrap();
-		writeln!(file, "Content via UPDATE_GOLDENFILES").unwrap();
+		writeln!(file, "Content via explicit mode").unwrap();
 	}
 
 	// Verify the file was created
 	assert!(test_dir.join("env_test2.txt").exists());
 	let content =
 		fs::read_to_string(test_dir.join("env_test2.txt")).unwrap();
-	assert_eq!(content, "Content via UPDATE_GOLDENFILES\n");
-
-	// Clean up
-	unsafe {
-		std::env::remove_var("UPDATE_GOLDENFILES");
-	}
+	assert_eq!(content, "Content via explicit mode\n");
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -151,10 +141,10 @@ fn test_missing_golden_file() {
 
 	// Try to verify against a non-existent golden file
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("missing.txt").unwrap();
 		writeln!(file, "This will fail").unwrap();
 	}
@@ -171,10 +161,10 @@ fn test_new_goldenfile_alias() {
 
 	// Test that new_golden_file is an alias for new_goldenfile
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 
 		// Use the alias method
 		let mut file = mint.new_golden_file("alias_test.txt").unwrap();
@@ -183,11 +173,6 @@ fn test_new_goldenfile_alias() {
 
 	// Verify the file was created
 	assert!(test_dir.join("alias_test.txt").exists());
-
-	// Clean up
-	unsafe {
-		std::env::remove_var("UPDATE_TESTFILES");
-	}
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -198,10 +183,10 @@ fn test_nested_directories() {
 
 	// Test creating golden files in nested directories
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint
 			.new_goldenfile("deeply/nested/dir/file.txt")
 			.unwrap();
@@ -210,11 +195,6 @@ fn test_nested_directories() {
 
 	// Verify the nested file was created
 	assert!(test_dir.join("deeply/nested/dir/file.txt").exists());
-
-	// Clean up
-	unsafe {
-		std::env::remove_var("UPDATE_TESTFILES");
-	}
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -227,10 +207,10 @@ fn test_diff_shows_line_numbers() {
 
 	// Create a file with many lines
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("lines.txt").unwrap();
 		for i in 1..=40 {
 			writeln!(file, "Line {}", i).unwrap();
@@ -239,10 +219,10 @@ fn test_diff_shows_line_numbers() {
 
 	// Change line 35
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("lines.txt").unwrap();
 		for i in 1..=40 {
 			if i == 35 {
@@ -265,20 +245,20 @@ fn test_empty_files() {
 
 	// Create an empty golden file
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let _file = mint.new_goldenfile("empty.txt").unwrap();
 		// Don't write anything
 	}
 
 	// Verify against empty content
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let _file = mint.new_goldenfile("empty.txt").unwrap();
 		// Don't write anything - should pass
 	}
@@ -298,20 +278,20 @@ fn test_empty_vs_content() {
 
 	// Create an empty golden file
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let _file = mint.new_goldenfile("empty2.txt").unwrap();
 		// Don't write anything
 	}
 
 	// Try to verify with content - should fail
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("empty2.txt").unwrap();
 		writeln!(file, "Some content").unwrap();
 	}
@@ -328,10 +308,10 @@ fn test_multiple_files_same_mint() {
 
 	// Create multiple files with the same Mint instance
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 
 		let mut file1 = mint.new_goldenfile("file1.txt").unwrap();
 		writeln!(file1, "File 1 content").unwrap();
@@ -348,11 +328,6 @@ fn test_multiple_files_same_mint() {
 	assert!(test_dir.join("file1.txt").exists());
 	assert!(test_dir.join("file2.txt").exists());
 	assert!(test_dir.join("subdir/file3.txt").exists());
-
-	// Clean up
-	unsafe {
-		std::env::remove_var("UPDATE_TESTFILES");
-	}
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -366,20 +341,20 @@ fn test_long_lines_truncation() {
 
 	// Create golden file with long line
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("long.txt").unwrap();
 		writeln!(file, "{}", long_line).unwrap();
 	}
 
 	// Verify with same content - should pass
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("long.txt").unwrap();
 		writeln!(file, "{}", long_line).unwrap();
 	}
@@ -396,10 +371,10 @@ fn test_binary_safety() {
 
 	// Test with non-UTF8 sequences (but valid as bytes)
 	{
-		unsafe {
-			std::env::set_var("UPDATE_TESTFILES", "1");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Update,
+		);
 		let mut file = mint.new_goldenfile("binary.txt").unwrap();
 		// Write some bytes that form valid UTF-8
 		file.write_all(b"Hello\nWorld\n").unwrap();
@@ -409,10 +384,10 @@ fn test_binary_safety() {
 
 	// Verify with same content
 	{
-		unsafe {
-			std::env::remove_var("UPDATE_TESTFILES");
-		}
-		let mint = goldenfile::Mint::new(&test_dir);
+		let mint = goldenfile::Mint::new_with_mode(
+			&test_dir,
+			Mode::Compare,
+		);
 		let mut file = mint.new_goldenfile("binary.txt").unwrap();
 		file.write_all(b"Hello\nWorld\n").unwrap();
 		file.write_all(&[0xE2, 0x98, 0x83]).unwrap(); // ☃ (snowman)

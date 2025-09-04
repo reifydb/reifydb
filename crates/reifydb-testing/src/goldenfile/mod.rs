@@ -7,11 +7,21 @@ use std::{
 	io::{self, Write},
 	path::{Path, PathBuf},
 	process::id,
+	thread,
 	time::SystemTime,
 };
 
 use fs::read;
 use reifydb_core::util::colored::Colorize;
+
+/// Test mode for goldenfile operation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+	/// Update mode: write directly to golden files
+	Update,
+	/// Compare mode: write to temp files and compare with golden files
+	Compare,
+}
 
 /// Manages goldenfile creation and comparison for testing
 pub struct Mint {
@@ -20,7 +30,44 @@ pub struct Mint {
 }
 
 impl Mint {
+	/// Creates a new Mint instance for the given directory with explicit
+	/// mode
+	pub fn new_with_mode<P: AsRef<Path>>(dir: P, mode: Mode) -> Self {
+		let dir = dir.as_ref().to_path_buf();
+
+		match mode {
+			Mode::Update => Self {
+				dir,
+				tempdir: None,
+			},
+			Mode::Compare => {
+				// In test mode, write to a temp directory first
+				// Use a more unique temp directory name to
+				// avoid conflicts Include thread ID for
+				// better uniqueness in concurrent scenarios
+				let tempdir =
+					env::temp_dir().join(format!(
+					"goldenfiles-{}-{}-{:?}",
+					id(),
+					SystemTime::now()
+						.duration_since(std::time::UNIX_EPOCH)
+						.unwrap()
+						.as_nanos(),
+					thread::current().id()
+				));
+				fs::create_dir_all(&tempdir).ok();
+
+				Self {
+					dir,
+					tempdir: Some(tempdir),
+				}
+			}
+		}
+	}
+
 	/// Creates a new Mint instance for the given directory
+	/// This method preserves backward compatibility by checking environment
+	/// variables
 	pub fn new<P: AsRef<Path>>(dir: P) -> Self {
 		let dir = dir.as_ref().to_path_buf();
 
@@ -30,30 +77,13 @@ impl Mint {
 			|| env::var("UPDATE_GOLDENFILE").is_ok()
 			|| env::var("UPDATE_GOLDENFILES").is_ok();
 
-		if should_update {
-			Self {
-				dir,
-				tempdir: None,
-			}
+		let mode = if should_update {
+			Mode::Update
 		} else {
-			// In test mode, write to a temp directory first
-			// Use a more unique temp directory name to avoid
-			// conflicts
-			let tempdir = env::temp_dir().join(format!(
-				"goldenfiles-{}-{}",
-				id(),
-				SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.unwrap()
-					.as_nanos()
-			));
-			fs::create_dir_all(&tempdir).ok();
+			Mode::Compare
+		};
 
-			Self {
-				dir,
-				tempdir: Some(tempdir),
-			}
-		}
+		Self::new_with_mode(dir, mode)
 	}
 
 	/// Creates a new golden file with the given name
