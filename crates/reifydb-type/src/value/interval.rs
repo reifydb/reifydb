@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Interval {
 	months: i32, // Store years*12 + months
-	days: i32,   /* Separate days (don't normalize to months due to
-	              * variable month length) */
-	nanos: i64, // All time components as nanoseconds
+	days: i32,   // Separate days
+	nanos: i64,  // All time components as nanoseconds
 }
 
 impl Default for Interval {

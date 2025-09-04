@@ -156,13 +156,15 @@ impl ConsoleBackend {
 		let timestamp_ms = timestamp.timestamp_millis();
 
 		// Format the timestamp string
-		let millis = timestamp.timestamp_subsec_millis();
+		let millis = (timestamp_ms % 1000) as u32;
 		let time_str = if let Some(last_ms) = *last_timestamp_ms {
 			// Only show timestamp if it has changed
 			if timestamp_ms != last_ms {
 				format!(
-					"{}.{:03} ├─",
-					timestamp.format("%H:%M:%S"),
+					"{:02}:{:02}:{:02}.{:03} ├─",
+					timestamp.hour(),
+					timestamp.minute(),
+					timestamp.second(),
 					millis
 				)
 			} else {
@@ -174,8 +176,10 @@ impl ConsoleBackend {
 			// First timestamp - show full timestamp with
 			// milliseconds
 			format!(
-				"{}.{:03} ├─",
-				timestamp.format("%H:%M:%S"),
+				"{:02}:{:02}:{:02}.{:03} ├─",
+				timestamp.hour(),
+				timestamp.minute(),
+				timestamp.second(),
 				millis
 			)
 		};
@@ -347,8 +351,16 @@ impl ConsoleBackend {
 		let mut output = String::new();
 
 		// Create the header content
-		let timestamp =
-			record.timestamp.format("%Y-%m-%d %H:%M:%S%.3f");
+		let timestamp = format!(
+			"{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
+			record.timestamp.year(),
+			record.timestamp.month(),
+			record.timestamp.day(),
+			record.timestamp.hour(),
+			record.timestamp.minute(),
+			record.timestamp.second(),
+			record.timestamp.timestamp_millis() % 1000
+		);
 		let module = self.format_module(&record.module);
 
 		// Build the header text

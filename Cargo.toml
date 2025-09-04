@@ -89,6 +89,7 @@ overflow-checks = true
 [workspace.dependencies]
 reifydb = { path = "pkg/rust/reifydb", version = "0.0.1" }
 reifydb-client = { path = "pkg/rust/reifydb-client", version = "0.0.1" }
+
 #internal
 reifydb-auth = { path = "crates/reifydb-auth", version = "0.0.1" }
 reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
@@ -110,7 +111,6 @@ reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.
 
 libc = { version = "0.2.175" }
 
-chrono = { version = "0.4.41", features = ["serde"] }
 once_cell = { version = "1.21.3" }
 uuid = { version = "1.18.1", features = ["v4", "v7", "serde"] }
 

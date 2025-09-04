@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{OwnedFragment, error::diagnostic::Diagnostic};
+use crate::{OwnedFragment, error::diagnostic::Diagnostic, value::DateTime};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context
@@ -18,7 +18,7 @@ pub fn internal_with_context(
 	// Generate a unique error ID based on timestamp and location
 	let error_id = format!(
 		"ERR-{}-{}:{}",
-		chrono::Utc::now().timestamp_millis(),
+		DateTime::now().timestamp_millis(),
 		file.split('/').last().unwrap_or(file).replace(".rs", ""),
 		line
 	);

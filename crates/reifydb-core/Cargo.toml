@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 reifydb-type = { workspace = true}
-chrono = { workspace = true}
 crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 once_cell = { workspace = true }
