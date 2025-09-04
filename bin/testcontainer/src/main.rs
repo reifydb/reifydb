@@ -4,8 +4,10 @@
 use std::time::Duration;
 
 use reifydb::{
-	FormatStyle, LoggingBuilder, WithSubsystem,
-	core::interface::subsystem::logging::LogLevel, server,
+	WithSubsystem,
+	core::interface::subsystem::logging::LogLevel,
+	server,
+	sub_logging::{FormatStyle, LoggingBuilder},
 	sub_server::ServerConfig,
 };
 

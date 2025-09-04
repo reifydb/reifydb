@@ -6,9 +6,10 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	FormatStyle, LoggingBuilder, MemoryDatabaseOptimistic, Params, Session,
-	WithSubsystem, core::interface::subsystem::logging::LogLevel::Info,
+	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
+	core::interface::subsystem::logging::LogLevel::Info,
 	embedded, log_info,
+	sub_logging::{FormatStyle, LoggingBuilder},
 };
 
 pub type DB = MemoryDatabaseOptimistic;
