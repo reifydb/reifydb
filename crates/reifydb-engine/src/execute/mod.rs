@@ -8,6 +8,7 @@ use query::{
 	compile::compile,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
+	index_scan::IndexScanNode,
 	inline::InlineDataNode,
 	join_inner::InnerJoinNode,
 	join_left::LeftJoinNode,
@@ -84,6 +85,7 @@ pub struct Batch {
 pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 	Aggregate(AggregateNode<'a, T>),
 	Filter(FilterNode<'a, T>),
+	IndexScan(IndexScanNode<T>),
 	InlineData(InlineDataNode<'a, T>),
 	InnerJoin(InnerJoinNode<'a, T>),
 	LeftJoin(LeftJoinNode<'a, T>),
@@ -132,6 +134,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 				node.initialize(rx, ctx)
 			}
 			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
+			ExecutionPlan::IndexScan(node) => {
+				node.initialize(rx, ctx)
+			}
 			ExecutionPlan::InlineData(node) => {
 				node.initialize(rx, ctx)
 			}
@@ -173,6 +178,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx),
 			ExecutionPlan::Filter(node) => node.next(rx),
+			ExecutionPlan::IndexScan(node) => node.next(rx),
 			ExecutionPlan::InlineData(node) => node.next(rx),
 			ExecutionPlan::InnerJoin(node) => node.next(rx),
 			ExecutionPlan::LeftJoin(node) => node.next(rx),
@@ -195,6 +201,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.layout(),
 			ExecutionPlan::Filter(node) => node.layout(),
+			ExecutionPlan::IndexScan(node) => node.layout(),
 			ExecutionPlan::InlineData(node) => node.layout(),
 			ExecutionPlan::InnerJoin(node) => node.layout(),
 			ExecutionPlan::LeftJoin(node) => node.layout(),
@@ -317,6 +324,7 @@ impl Executor {
 			// Query
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::Filter(_)
+			| PhysicalPlan::IndexScan(_)
 			| PhysicalPlan::JoinInner(_)
 			| PhysicalPlan::JoinLeft(_)
 			| PhysicalPlan::JoinNatural(_)
@@ -380,6 +388,7 @@ impl Executor {
 
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::Filter(_)
+			| PhysicalPlan::IndexScan(_)
 			| PhysicalPlan::JoinInner(_)
 			| PhysicalPlan::JoinLeft(_)
 			| PhysicalPlan::JoinNatural(_)

@@ -93,8 +93,7 @@ impl IndexId {
 		match self {
 			IndexId::Primary(primary) => {
 				IndexId::Primary(PrimaryKeyId(primary.0 + 1))
-			}
-			// Future: handle other index types
+			} // Future: handle other index types
 		}
 	}
 

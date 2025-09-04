@@ -54,6 +54,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for PrimaryKeys<T> {
 		let mut pk_ids = Vec::new();
 		let mut source_ids = Vec::new();
 
+		// Read primary keys from storage instead of in-memory catalog
 		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);

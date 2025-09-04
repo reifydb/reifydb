@@ -25,7 +25,7 @@ use reifydb_type::Fragment;
 
 use crate::plan::{
 	logical::LogicalPlan,
-	physical::PhysicalPlan::{TableScan, ViewScan},
+	physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
 };
 
 struct Compiler {}
@@ -304,22 +304,41 @@ impl Compiler {
 							schema.id,
 							scan.source.fragment(),
 						)? {
-						stack.push(TableScan(
-							TableScanNode {
-								schema,
-								table},
-						));
+						// Check if an index was specified
+						if let Some(index_name) = scan.index_name {
+							stack.push(IndexScan(
+								IndexScanNode {
+									schema,
+									table,
+									index_name: index_name.fragment().to_string(),
+								},
+							));
+						} else {
+							stack.push(TableScan(
+								TableScanNode {
+									schema,
+									table},
+							));
+						}
 					} else if let Some(view) = CatalogStore::find_view_by_name(
 						rx,
 							schema.id,
 							scan.source.fragment(),
 						)? {
+						// Views cannot use index directives
+						if scan.index_name.is_some() {
+							unimplemented!("views do not support indexes yet");
+						}
 						stack.push(ViewScan(
 							ViewScanNode {
 								schema,
 								view},
 						));
 					} else if schema.name == "system" {
+						// System tables cannot use index directives
+						if scan.index_name.is_some() {
+							unimplemented!("system tables do not support indexes yet");
+						}
 						let table = match scan.source.fragment() {
 							"sequences" => SystemCatalog::sequences(),
 							"schemas" => SystemCatalog::schemas(),
@@ -416,6 +435,7 @@ pub enum PhysicalPlan<'a> {
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
 	Filter(FilterNode<'a>),
+	IndexScan(IndexScanNode),
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
@@ -551,6 +571,13 @@ pub struct ExtendNode<'a> {
 #[derive(Debug, Clone)]
 pub struct InlineDataNode<'a> {
 	pub rows: Vec<Vec<AliasExpression<'a>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexScanNode {
+	pub schema: SchemaDef,
+	pub table: TableDef,
+	pub index_name: String,
 }
 
 #[derive(Debug, Clone)]

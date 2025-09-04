@@ -25,7 +25,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -52,6 +52,8 @@ impl Compiler {
 								source: table
 									.fragment(
 									),
+								index_name:
+									None,
 							},
 						)]
 					}
@@ -71,7 +73,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -98,6 +100,8 @@ impl Compiler {
 								source: table
 									.fragment(
 									),
+								index_name:
+									None,
 							},
 						)]
 					}
@@ -117,7 +121,7 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment() })]
+						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -144,6 +148,8 @@ impl Compiler {
 								source: table
 									.fragment(
 									),
+								index_name:
+									None,
 							},
 						)]
 					}
