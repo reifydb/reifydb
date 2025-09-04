@@ -36,7 +36,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{StoreId, ViewId};
+	use reifydb_core::interface::{SourceId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
 
@@ -76,7 +76,7 @@ mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::View(view.id),
+				source: SourceId::View(view.id),
 				column_ids: vec![columns[0].id],
 			},
 		)

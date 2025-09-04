@@ -3,43 +3,43 @@ use std::collections::HashMap;
 use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{interface::StoreId, value::columnar::Columns};
+use crate::{interface::SourceId, value::columnar::Columns};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowDiff {
 	Insert {
-		store: StoreId,
+		source: SourceId,
 		row_ids: Vec<RowNumber>,
 		after: Columns,
 	},
 	Update {
-		store: StoreId,
+		source: SourceId,
 		row_ids: Vec<RowNumber>,
 		before: Columns,
 		after: Columns,
 	},
 	Remove {
-		store: StoreId,
+		source: SourceId,
 		row_ids: Vec<RowNumber>,
 		before: Columns,
 	},
 }
 
 impl FlowDiff {
-	pub fn store(&self) -> StoreId {
+	pub fn source(&self) -> SourceId {
 		match self {
 			FlowDiff::Insert {
-				store,
+				source,
 				..
-			} => *store,
+			} => *source,
 			FlowDiff::Update {
-				store,
+				source,
 				..
-			} => *store,
+			} => *source,
 			FlowDiff::Remove {
-				store,
+				source,
 				..
-			} => *store,
+			} => *source,
 		}
 	}
 

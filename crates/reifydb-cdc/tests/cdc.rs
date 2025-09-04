@@ -21,7 +21,7 @@ use reifydb_core::{
 	interface::{
 		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
 		CommandTransaction, ConsumerId, EncodableKey,
-		Engine as EngineInterface, Key, StoreId, TableId,
+		Engine as EngineInterface, Key, SourceId, TableId,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		key::RowKey,
 	},
@@ -90,7 +90,7 @@ fn test_event_processing() {
 
 	for (i, event) in events.iter().enumerate() {
 		if let Some(Row(table_row)) = Key::decode(event.key()) {
-			assert_eq!(table_row.store, TableId(1));
+			assert_eq!(table_row.source, TableId(1));
 			assert_eq!(table_row.row, RowNumber(i as u64));
 		} else {
 			panic!("Expected Row key");
@@ -384,7 +384,7 @@ fn test_non_table_events_filtered() {
 		engine.begin_command().expect("Failed to begin transaction");
 
 	let table_key = RowKey {
-		store: StoreId::table(1),
+		source: SourceId::table(1),
 		row: RowNumber(1),
 	};
 	txn.set(
@@ -414,7 +414,7 @@ fn test_non_table_events_filtered() {
 	assert_eq!(events.len(), 1, "Should have processed only 1 table event");
 
 	if let Some(Row(table_row)) = Key::decode(events[0].key()) {
-		assert_eq!(table_row.store, TableId(1));
+		assert_eq!(table_row.source, TableId(1));
 		assert_eq!(table_row.row, RowNumber(1));
 	} else {
 		panic!("Expected Row key");
@@ -550,7 +550,7 @@ fn insert_test_events(
 	for i in 0..count {
 		let mut txn = engine.begin_command()?;
 		let key = RowKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			row: RowNumber(i as u64),
 		};
 		let value = format!("value_{}", i);

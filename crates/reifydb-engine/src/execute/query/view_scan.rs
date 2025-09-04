@@ -92,7 +92,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<T> {
 
 		let batch_size = ctx.batch_size;
 		let range = RowKeyRange {
-			store: self.view.id.into(),
+			source: self.view.id.into(),
 		};
 
 		let range = if let Some(_) = &self.last_key {

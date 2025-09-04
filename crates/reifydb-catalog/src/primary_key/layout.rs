@@ -7,13 +7,13 @@ pub(crate) mod primary_key {
 	use reifydb_type::{Blob, Type};
 
 	pub(crate) const ID: usize = 0;
-	pub(crate) const STORE: usize = 1;
+	pub(crate) const SOURCE: usize = 1;
 	pub(crate) const COLUMN_IDS: usize = 2;
 
 	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id - Primary key ID
-			Type::Uint8, // store
+			Type::Uint8, // source
 			Type::Blob,  // column_ids
 		])
 	});

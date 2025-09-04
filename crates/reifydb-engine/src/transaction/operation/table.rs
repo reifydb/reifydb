@@ -48,7 +48,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 
 		self.set(
 			&RowKey {
-				store: table.id.into(),
+				source: table.id.into(),
 				row: row_number,
 			}
 			.encode(),
@@ -78,7 +78,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		row: EncodedRow,
 	) -> crate::Result<()> {
 		let key = RowKey {
-			store: table.id.into(),
+			source: table.id.into(),
 			row: id,
 		}
 		.encode();
@@ -111,7 +111,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		id: RowNumber,
 	) -> crate::Result<()> {
 		let key = RowKey {
-			store: table.id.into(),
+			source: table.id.into(),
 			row: id,
 		}
 		.encode();

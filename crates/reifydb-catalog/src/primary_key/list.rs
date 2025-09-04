@@ -7,7 +7,7 @@ use crate::{CatalogStore, transaction::CatalogTransaction};
 
 pub struct PrimaryKeyInfo {
 	pub def: PrimaryKeyDef,
-	pub store_id: u64,
+	pub source_id: u64,
 }
 
 impl CatalogStore {
@@ -25,7 +25,7 @@ impl CatalogStore {
 				if let Some(pk_def) = def.primary_key {
 					result.push(PrimaryKeyInfo {
 						def: pk_def,
-						store_id: def.id.0,
+						source_id: def.id.0,
 					});
 				}
 			}
@@ -38,7 +38,7 @@ impl CatalogStore {
 				if let Some(pk_def) = def.primary_key {
 					result.push(PrimaryKeyInfo {
 						def: pk_def,
-						store_id: def.id.0,
+						source_id: def.id.0,
 					});
 				}
 			}

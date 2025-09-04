@@ -75,8 +75,8 @@ pub mod ids {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const STORE_ID: ColumnId = ColumnId(2);
-			pub const STORE_TYPE: ColumnId = ColumnId(3);
+			pub const SOURCE_ID: ColumnId = ColumnId(2);
+			pub const SOURCE_TYPE: ColumnId = ColumnId(3);
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
@@ -84,8 +84,8 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 7] = [
 				ID,
-				STORE_ID,
-				STORE_TYPE,
+				SOURCE_ID,
+				SOURCE_TYPE,
 				NAME,
 				TYPE,
 				POSITION,
@@ -97,9 +97,9 @@ pub mod ids {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const STORE_ID: ColumnId = ColumnId(2);
+			pub const SOURCE_ID: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [ID, STORE_ID];
+			pub const ALL: [ColumnId; 2] = [ID, SOURCE_ID];
 		}
 
 		pub mod primary_key_columns {
@@ -130,7 +130,7 @@ pub mod ids {
 		use reifydb_core::interface::SequenceId;
 
 		pub const SCHEMA: SequenceId = SequenceId(1);
-		pub const STORE: SequenceId = SequenceId(2);
+		pub const SOURCE: SequenceId = SequenceId(2);
 		pub const COLUMN: SequenceId = SequenceId(3);
 		pub const COLUMN_POLICY: SequenceId = SequenceId(4);
 		pub const FLOW: SequenceId = SequenceId(5);
@@ -140,7 +140,7 @@ pub mod ids {
 
 		pub const ALL: [SequenceId; 8] = [
 			SCHEMA,
-			STORE,
+			SOURCE,
 			COLUMN,
 			COLUMN_POLICY,
 			FLOW,

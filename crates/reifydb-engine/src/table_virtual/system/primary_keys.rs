@@ -52,12 +52,12 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for PrimaryKeys<T> {
 		}
 
 		let mut pk_ids = Vec::new();
-		let mut store_ids = Vec::new();
+		let mut source_ids = Vec::new();
 
 		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);
-			store_ids.push(pk_info.store_id);
+			source_ids.push(pk_info.source_id);
 		}
 
 		let columns = vec![
@@ -66,8 +66,8 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for PrimaryKeys<T> {
 				data: ColumnData::uint8(pk_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "store_id".to_string(),
-				data: ColumnData::uint8(store_ids),
+				name: "source_id".to_string(),
+				data: ColumnData::uint8(source_ids),
 			}),
 		];
 

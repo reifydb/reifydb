@@ -4,7 +4,7 @@
 use crate::{
 	EncodedKey,
 	interface::{
-		ColumnId, StoreId,
+		ColumnId, SourceId,
 		key::{EncodableKey, KeyKind},
 	},
 	util::encoding::keycode,
@@ -12,7 +12,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColumnSequenceKey {
-	pub store: StoreId,
+	pub source: SourceId,
 	pub column: ColumnId,
 }
 
@@ -25,7 +25,7 @@ impl EncodableKey for ColumnSequenceKey {
 		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&self.store));
+		out.extend(&keycode::serialize_source_id(&self.source));
 		out.extend(&keycode::serialize(&self.column));
 		EncodedKey::new(out)
 	}
@@ -47,15 +47,15 @@ impl EncodableKey for ColumnSequenceKey {
 
 		let payload = &key[2..];
 		if payload.len() != 17 {
-			// 9 bytes for store + 8 bytes for column
+			// 9 bytes for source + 8 bytes for column
 			return None;
 		}
 
-		let store =
-			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let source =
+			keycode::deserialize_source_id(&payload[..9]).ok()?;
 		let column = keycode::deserialize(&payload[9..17]).ok()?;
 		Some(Self {
-			store,
+			source,
 			column,
 		})
 	}
@@ -66,13 +66,13 @@ mod tests {
 	use super::{ColumnSequenceKey, EncodableKey};
 	use crate::{
 		EncodedKey,
-		interface::{ColumnId, StoreId},
+		interface::{ColumnId, SourceId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ColumnSequenceKey {
-			store: StoreId::table(0x1234),
+			source: SourceId::table(0x1234),
 			column: ColumnId(0x5678),
 		};
 		let encoded = key.encode();
@@ -82,7 +82,7 @@ mod tests {
 
 		// Test decode
 		let decoded = ColumnSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.store, StoreId::table(0x1234));
+		assert_eq!(decoded.source, SourceId::table(0x1234));
 		assert_eq!(decoded.column, ColumnId(0x5678));
 	}
 

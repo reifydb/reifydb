@@ -33,7 +33,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					store,
+					source,
 					row_ids,
 					after,
 				} => {
@@ -52,7 +52,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 									[*idx]);
 						}
 						output.push(FlowDiff::Insert {
-							store: *store,
+							source: *source,
 							row_ids:
 								filtered_row_ids,
 							after: filtered_columns,
@@ -60,7 +60,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 					}
 				}
 				FlowDiff::Update {
-					store,
+					source,
 					row_ids,
 					before,
 					after,
@@ -80,7 +80,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 									[*idx]);
 						}
 						output.push(FlowDiff::Update {
-							store: *store,
+							source: *source,
 							row_ids:
 								filtered_row_ids,
 							before: before.clone(),
@@ -90,7 +90,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 						// If new doesn't pass filter,
 						// emit remove of old
 						output.push(FlowDiff::Remove {
-							store: *store,
+							source: *source,
 							row_ids: row_ids
 								.clone(),
 							before: before.clone(),
@@ -98,13 +98,13 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 					}
 				}
 				FlowDiff::Remove {
-					store,
+					source,
 					row_ids,
 					before,
 				} => {
 					// Always pass through removes
 					output.push(FlowDiff::Remove {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						before: before.clone(),
 					});

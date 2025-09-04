@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{
 		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
 		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
-		StoreId, TableId, Transaction,
+		SourceId, TableId, Transaction,
 	},
 	log_debug,
 	row::EncodedRow,
@@ -132,7 +132,9 @@ impl<T: Transaction> FlowConsumer<T> {
 					)?;
 
 					let diff = FlowDiff::Insert {
-						store: StoreId::from(table_id),
+						source: SourceId::from(
+							table_id,
+						),
 						row_ids: vec![row_number],
 						after: columns,
 					};
@@ -158,7 +160,9 @@ impl<T: Transaction> FlowConsumer<T> {
 					)?;
 
 					let diff = FlowDiff::Update {
-						store: StoreId::from(table_id),
+						source: SourceId::from(
+							table_id,
+						),
 						row_ids: vec![row_number],
 						before: before_columns,
 						after: after_columns,
@@ -181,7 +185,9 @@ impl<T: Transaction> FlowConsumer<T> {
 					)?;
 
 					let diff = FlowDiff::Remove {
-						store: StoreId::from(table_id),
+						source: SourceId::from(
+							table_id,
+						),
 						row_ids: vec![row_number],
 						before: columns,
 					};
@@ -221,19 +227,19 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 				if matches!(
 					&event.change,
 					CdcChange::Insert { .. }
-				) && table_row.store.as_u64()
+				) && table_row.source.as_u64()
 					== FLOWS_TABLE_ID
 				{
 					log_debug!(
 						"FlowConsumer: Detected flow table insert (table={:?})",
-						table_row.store
+						table_row.source
 					);
 				}
 
 				// Only process events for tables, not views
 				// Views are managed by the flow system itself
 				if let Ok(table_id) =
-					table_row.store.to_table_id()
+					table_row.source.to_table_id()
 				{
 					// Convert CDC events to FlowChange
 					// events

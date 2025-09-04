@@ -7,7 +7,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	index::{EncodedIndexKey, EncodedIndexKeyRange},
-	interface::catalog::{IndexId, StoreId},
+	interface::catalog::{IndexId, SourceId},
 	util::{CowVec, encoding::keycode},
 };
 
@@ -16,20 +16,20 @@ const VERSION: u8 = 1;
 /// Key for storing actual index entries with the encoded index key data
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKey {
-	pub store: StoreId,
+	pub source: SourceId,
 	pub index: IndexId,
 	pub key: EncodedIndexKey,
 }
 
 impl IndexEntryKey {
 	pub fn new(
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		index: IndexId,
 		key: EncodedIndexKey,
 	) -> Self {
-		let store = store.into();
+		let source = source.into();
 		Self {
-			store,
+			source,
 			index,
 			key,
 		}
@@ -43,7 +43,7 @@ impl EncodableKey for IndexEntryKey {
 		let mut out = Vec::with_capacity(19 + self.key.len());
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&self.store));
+		out.extend(&keycode::serialize_source_id(&self.source));
 		out.extend(&keycode::serialize(&self.index));
 		// Append the raw index key bytes
 		out.extend_from_slice(self.key.as_slice());
@@ -68,12 +68,12 @@ impl EncodableKey for IndexEntryKey {
 
 		let payload = &key[2..];
 		if payload.len() < 17 {
-			// 9 bytes for store + 8 bytes for index
+			// 9 bytes for source + 8 bytes for index
 			return None;
 		}
 
-		let store =
-			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let source =
+			keycode::deserialize_source_id(&payload[..9]).ok()?;
 		let index: IndexId =
 			keycode::deserialize(&payload[9..17]).ok()?;
 
@@ -84,7 +84,7 @@ impl EncodableKey for IndexEntryKey {
 				index_key_bytes.to_vec(),
 			));
 			Some(Self {
-				store,
+				source,
 				index,
 				key: index_key,
 			})
@@ -97,14 +97,14 @@ impl EncodableKey for IndexEntryKey {
 impl IndexEntryKey {
 	/// Create a range for scanning all entries of a specific index
 	pub fn index_range(
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		index: IndexId,
 	) -> EncodedKeyRange {
-		let store = store.into();
+		let source = source.into();
 		let mut start = Vec::with_capacity(19);
 		start.extend(&keycode::serialize(&VERSION));
 		start.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		start.extend(&keycode::serialize_store_id(&store));
+		start.extend(&keycode::serialize_source_id(&source));
 		start.extend(&keycode::serialize(&index));
 
 		// For the end key, we append 0xFF to ensure we get all keys for
@@ -119,18 +119,18 @@ impl IndexEntryKey {
 		}
 	}
 
-	/// Create a range for scanning all entries of a store (all indexes)
-	pub fn store_range(store: impl Into<StoreId>) -> EncodedKeyRange {
-		let store = store.into();
+	/// Create a range for scanning all entries of a source (all indexes)
+	pub fn source_range(source: impl Into<SourceId>) -> EncodedKeyRange {
+		let source = source.into();
 		let mut start = Vec::with_capacity(11);
 		start.extend(&keycode::serialize(&VERSION));
 		start.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		start.extend(&keycode::serialize_store_id(&store));
+		start.extend(&keycode::serialize_source_id(&source));
 
 		let mut end = Vec::with_capacity(11);
 		end.extend(&keycode::serialize(&VERSION));
 		end.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		end.extend(&keycode::serialize_store_id(&store.prev()));
+		end.extend(&keycode::serialize_source_id(&source.prev()));
 
 		EncodedKeyRange {
 			start: Bound::Included(EncodedKey::new(start)),
@@ -141,15 +141,15 @@ impl IndexEntryKey {
 	/// Create a range for scanning entries within an index with a specific
 	/// key prefix
 	pub fn key_prefix_range(
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		index: IndexId,
 		key_prefix: &[u8],
 	) -> EncodedKeyRange {
-		let store = store.into();
+		let source = source.into();
 		let mut start = Vec::with_capacity(19 + key_prefix.len());
 		start.extend(&keycode::serialize(&VERSION));
 		start.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		start.extend(&keycode::serialize_store_id(&store));
+		start.extend(&keycode::serialize_source_id(&source));
 		start.extend(&keycode::serialize(&index));
 		start.extend_from_slice(key_prefix);
 
@@ -167,16 +167,16 @@ impl IndexEntryKey {
 	/// This method leverages the EncodedIndexKeyRange type for cleaner
 	/// range handling.
 	pub fn key_range(
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		index: IndexId,
 		index_range: EncodedIndexKeyRange,
 	) -> EncodedKeyRange {
-		let store = store.into();
-		// Build the prefix for this store and index
+		let source = source.into();
+		// Build the prefix for this source and index
 		let mut prefix = Vec::with_capacity(19);
 		prefix.extend(&keycode::serialize(&VERSION));
 		prefix.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		prefix.extend(&keycode::serialize_store_id(&store));
+		prefix.extend(&keycode::serialize_source_id(&source));
 		prefix.extend(&keycode::serialize(&index));
 
 		// Convert bounds to include the prefix
@@ -215,8 +215,8 @@ impl IndexEntryKey {
 				bytes.extend(&keycode::serialize(
 					&KeyKind::IndexEntry,
 				));
-				bytes.extend(&keycode::serialize_store_id(
-					&store,
+				bytes.extend(&keycode::serialize_source_id(
+					&source,
 				));
 				let next_index = IndexId(*index + 1);
 				bytes.extend(&keycode::serialize(&next_index));
@@ -252,7 +252,7 @@ mod tests {
 		layout.set_row_number(&mut index_key, 1, 1u64);
 
 		let entry = IndexEntryKey {
-			store: StoreId::table(42),
+			source: SourceId::table(42),
 			index: IndexId(7),
 			key: index_key.clone(),
 		};
@@ -260,7 +260,7 @@ mod tests {
 		let encoded = entry.encode();
 		let decoded = IndexEntryKey::decode(&encoded).unwrap();
 
-		assert_eq!(decoded.store, StoreId::table(42));
+		assert_eq!(decoded.source, SourceId::table(42));
 		assert_eq!(decoded.index, IndexId(7));
 		assert_eq!(decoded.key.as_slice(), index_key.as_slice());
 	}
@@ -279,15 +279,15 @@ mod tests {
 		let mut key2 = layout.allocate_key();
 		layout.set_u64(&mut key2, 0, 200u64);
 
-		// Same store and index, different keys
+		// Same source and index, different keys
 		let entry1 = IndexEntryKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			index: IndexId(1),
 			key: key1,
 		};
 
 		let entry2 = IndexEntryKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			index: IndexId(1),
 			key: key2,
 		};
@@ -302,7 +302,7 @@ mod tests {
 	#[test]
 	fn test_index_range() {
 		let range = IndexEntryKey::index_range(
-			StoreId::table(10),
+			SourceId::table(10),
 			IndexId(5),
 		);
 
@@ -317,7 +317,7 @@ mod tests {
 		layout.set_u64(&mut key, 0, 50u64);
 
 		let entry = IndexEntryKey {
-			store: StoreId::table(10),
+			source: SourceId::table(10),
 			index: IndexId(5),
 			key,
 		};
@@ -339,7 +339,7 @@ mod tests {
 		// encoded value than IndexId(5) since keycode inverts bits
 		// (larger numbers become smaller byte sequences)
 		let entry2 = IndexEntryKey {
-			store: StoreId::table(10),
+			source: SourceId::table(10),
 			index: IndexId(6),
 			key: layout.allocate_key(),
 		};
@@ -371,7 +371,7 @@ mod tests {
 		// Use the full encoded key up to the first field as the prefix
 		let prefix = &key.as_slice()[..layout.fields[1].offset]; // Include bitvec and first field
 		let range = IndexEntryKey::key_prefix_range(
-			StoreId::table(1),
+			SourceId::table(1),
 			IndexId(1),
 			prefix,
 		);
@@ -379,7 +379,7 @@ mod tests {
 		// Now create a full key with the same prefix
 		layout.set_row_number(&mut key, 1, 999u64);
 		let entry = IndexEntryKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			index: IndexId(1),
 			key: key.clone(),
 		};
@@ -400,7 +400,7 @@ mod tests {
 		layout.set_row_number(&mut key2, 1, 1u64);
 
 		let entry2 = IndexEntryKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			index: IndexId(1),
 			key: key2,
 		};

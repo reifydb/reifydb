@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnKey, QueryTransaction, StoreId};
+use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
 
 use crate::{
 	CatalogStore,
@@ -12,20 +12,20 @@ use crate::{
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
 	pub column: ColumnDef,
-	pub store_id: StoreId,
+	pub source_id: SourceId,
 	pub is_view: bool,
 }
 
 impl CatalogStore {
 	pub fn list_columns(
 		rx: &mut impl QueryTransaction,
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 	) -> crate::Result<Vec<ColumnDef>> {
-		let store = store.into();
+		let source = source.into();
 		let mut result = vec![];
 
 		let ids =
-			rx.range(ColumnKey::full_scan(store))?
+			rx.range(ColumnKey::full_scan(source))?
 				.map(|versioned| {
 					let row = versioned.row;
 					ColumnId(table_column::LAYOUT.get_u64(
@@ -56,7 +56,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					store_id: table.id.into(),
+					source_id: table.id.into(),
 					is_view: false,
 				});
 			}
@@ -69,7 +69,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					store_id: view.id.into(),
+					source_id: view.id.into(),
 					is_view: true,
 				});
 			}

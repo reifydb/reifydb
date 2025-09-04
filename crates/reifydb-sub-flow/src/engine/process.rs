@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		CommandTransaction, EncodableKey, Evaluator,
-		GetEncodedRowLayout, RowKey, StoreId, ViewId,
+		GetEncodedRowLayout, RowKey, SourceId, ViewId,
 	},
 	log_debug,
 };
@@ -29,7 +29,7 @@ impl<E: Evaluator> FlowEngine<E> {
 
 		for diff in change.diffs {
 			diffs_by_source
-				.entry(diff.store())
+				.entry(diff.source())
 				.or_insert_with(Vec::new)
 				.push(diff);
 		}
@@ -258,7 +258,7 @@ impl<E: Evaluator> FlowEngine<E> {
 						// exists (for idempotent
 						// updates)
 						let key = RowKey {
-							store: StoreId::view(
+							source: SourceId::view(
 								view_id,
 							),
 							row: row_id,
@@ -345,7 +345,7 @@ impl<E: Evaluator> FlowEngine<E> {
 						// Directly update the row using
 						// its row_id
 						let key = RowKey {
-							store: StoreId::view(
+							source: SourceId::view(
 								view_id,
 							),
 							row: row_id,
@@ -376,7 +376,7 @@ impl<E: Evaluator> FlowEngine<E> {
 					// Remove each row by its row_id
 					for &row_id in row_ids {
 						let key = RowKey {
-							store: StoreId::view(
+							source: SourceId::view(
 								view_id,
 							),
 							row: row_id,
@@ -396,7 +396,7 @@ impl<E: Evaluator> FlowEngine<E> {
 /// Find the source node in a flow that corresponds to the given source
 fn find_source_node<'a>(
 	flow: &'a Flow<'static>,
-	source: &StoreId,
+	source: &SourceId,
 ) -> Option<&'a FlowNode<'static>> {
 	for node_id in flow.get_node_ids() {
 		if let Some(node) = flow.get_node(&node_id) {
@@ -405,7 +405,7 @@ fn find_source_node<'a>(
 				..
 			} = &node.ty
 			{
-				if *source == StoreId::table(*table) {
+				if *source == SourceId::table(*table) {
 					return Some(node);
 				}
 			}

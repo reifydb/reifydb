@@ -8,7 +8,7 @@ use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKeyRange,
-		catalog::{IndexId, StoreId},
+		catalog::{IndexId, SourceId},
 	},
 	util::encoding::keycode,
 };
@@ -17,7 +17,7 @@ const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexKey {
-	pub store: StoreId,
+	pub source: SourceId,
 	pub index: IndexId,
 }
 
@@ -28,7 +28,7 @@ impl EncodableKey for IndexKey {
 		let mut out = Vec::with_capacity(19);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(keycode::serialize_store_id(&self.store));
+		out.extend(keycode::serialize_source_id(&self.source));
 		out.extend(&keycode::serialize(&self.index));
 
 		EncodedKey::new(out)
@@ -51,28 +51,28 @@ impl EncodableKey for IndexKey {
 
 		let payload = &key[2..];
 		if payload.len() != 17 {
-			// 9 bytes for store + 8 bytes for index
+			// 9 bytes for source + 8 bytes for index
 			return None;
 		}
 
-		let store =
-			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let source =
+			keycode::deserialize_source_id(&payload[..9]).ok()?;
 		let index: IndexId =
 			keycode::deserialize(&payload[9..]).ok()?;
 
 		Some(Self {
-			store,
+			source,
 			index,
 		})
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StoreIndexKeyRange {
-	pub store: StoreId,
+pub struct SourceIndexKeyRange {
+	pub source: SourceId,
 }
 
-impl StoreIndexKeyRange {
+impl SourceIndexKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		if key.len() < 2 {
 			return None;
@@ -93,22 +93,22 @@ impl StoreIndexKeyRange {
 			return None;
 		}
 
-		let store =
-			keycode::deserialize_store_id(&payload[..9]).ok()?;
-		Some(StoreIndexKeyRange {
-			store,
+		let source =
+			keycode::deserialize_source_id(&payload[..9]).ok()?;
+		Some(SourceIndexKeyRange {
+			source,
 		})
 	}
 }
 
-impl EncodableKeyRange for StoreIndexKeyRange {
+impl EncodableKeyRange for SourceIndexKeyRange {
 	const KIND: KeyKind = KeyKind::Index;
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&self.store));
+		out.extend(&keycode::serialize_source_id(&self.source));
 		Some(EncodedKey::new(out))
 	}
 
@@ -116,7 +116,7 @@ impl EncodableKeyRange for StoreIndexKeyRange {
 		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&self.store.prev()));
+		out.extend(&keycode::serialize_source_id(&self.source.prev()));
 		Some(EncodedKey::new(out))
 	}
 
@@ -143,29 +143,29 @@ impl EncodableKeyRange for StoreIndexKeyRange {
 }
 
 impl IndexKey {
-	pub fn full_scan(store: impl Into<StoreId>) -> EncodedKeyRange {
-		let store = store.into();
+	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
+		let source = source.into();
 		EncodedKeyRange::start_end(
-			Some(Self::store_start(store)),
-			Some(Self::store_end(store)),
+			Some(Self::source_start(source)),
+			Some(Self::source_end(source)),
 		)
 	}
 
-	pub fn store_start(store: impl Into<StoreId>) -> EncodedKey {
-		let store = store.into();
+	pub fn source_start(source: impl Into<SourceId>) -> EncodedKey {
+		let source = source.into();
 		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&store));
+		out.extend(&keycode::serialize_source_id(&source));
 		EncodedKey::new(out)
 	}
 
-	pub fn store_end(store: impl Into<StoreId>) -> EncodedKey {
-		let store = store.into();
+	pub fn source_end(source: impl Into<SourceId>) -> EncodedKey {
+		let source = source.into();
 		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&store.prev()));
+		out.extend(&keycode::serialize_source_id(&source.prev()));
 		EncodedKey::new(out)
 	}
 }
@@ -173,12 +173,12 @@ impl IndexKey {
 #[cfg(test)]
 mod tests {
 	use super::{EncodableKey, IndexKey};
-	use crate::interface::catalog::{IndexId, StoreId};
+	use crate::interface::catalog::{IndexId, SourceId};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = IndexKey {
-			store: StoreId::table(0xABCD),
+			source: SourceId::table(0xABCD),
 			index: IndexId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
@@ -186,9 +186,9 @@ mod tests {
 		let expected: Vec<u8> = vec![
 			0xFE, // version
 			0xF3, // kind
-			0x01, // StoreId type discriminator (Table)
+			0x01, // SourceId type discriminator (Table)
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32, // store id bytes
+			0x32, // source id bytes
 			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
 			0x0F, // index id bytes
 		];
@@ -196,22 +196,22 @@ mod tests {
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = IndexKey::decode(&encoded).unwrap();
-		assert_eq!(key.store, 0xABCD);
+		assert_eq!(key.source, 0xABCD);
 		assert_eq!(key.index, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
 		let key1 = IndexKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			index: IndexId(100),
 		};
 		let key2 = IndexKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			index: IndexId(200),
 		};
 		let key3 = IndexKey {
-			store: StoreId::table(2),
+			source: SourceId::table(2),
 			index: IndexId(0),
 		};
 

@@ -347,7 +347,7 @@ impl Executor {
 						row_numbers[row_numberx];
 					wrapped_txn.command_mut().set(
 						&RowKey {
-							store: table.id.into(),
+							source: table.id.into(),
 							row: row_number,
 						}
 						.encode(),

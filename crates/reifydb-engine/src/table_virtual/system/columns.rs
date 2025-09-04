@@ -52,7 +52,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 		}
 
 		let mut column_ids = Vec::new();
-		let mut store_ids = Vec::new();
+		let mut source_ids = Vec::new();
 		let mut store_types = Vec::new();
 		let mut column_names = Vec::new();
 		let mut column_types = Vec::new();
@@ -62,7 +62,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 		let columns_list = CatalogStore::list_columns_all(txn)?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
-			store_ids.push(info.store_id.as_u64());
+			source_ids.push(info.source_id.as_u64());
 			store_types.push(if info.is_view {
 				1u8
 			} else {
@@ -80,11 +80,11 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 				data: ColumnData::uint8(column_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "store_id".to_string(),
-				data: ColumnData::uint8(store_ids),
+				name: "source_id".to_string(),
+				data: ColumnData::uint8(source_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "store_type".to_string(),
+				name: "source_type".to_string(),
 				data: ColumnData::uint1(store_types),
 			}),
 			Column::ColumnQualified(ColumnQualified {

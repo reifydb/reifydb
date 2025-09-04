@@ -15,7 +15,7 @@ mod catalog;
 mod deserialize;
 mod serialize;
 
-pub use catalog::{deserialize_store_id, serialize_store_id};
+pub use catalog::{deserialize_source_id, serialize_source_id};
 use reifydb_type::diagnostic::serialization;
 
 use crate::util::encoding::keycode::{

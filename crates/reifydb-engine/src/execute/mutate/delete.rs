@@ -182,7 +182,7 @@ impl Executor {
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
 				cmd.remove(&RowKey {
-					store: table.id.into(),
+					source: table.id.into(),
 					row: row_number,
 				}
 				.encode())?;
@@ -191,7 +191,7 @@ impl Executor {
 		} else {
 			// Delete entire table - scan all rows and delete them
 			let range = RowKeyRange {
-				store: table.id.into(),
+				source: table.id.into(),
 			};
 
 			let keys = txn

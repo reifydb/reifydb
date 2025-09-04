@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnId, ColumnSequenceKey, CommandTransaction, EncodableKey, StoreId,
+	ColumnId, ColumnSequenceKey, CommandTransaction, EncodableKey, SourceId,
 };
 use reifydb_type::{Type, Value};
 
@@ -21,12 +21,12 @@ pub struct ColumnSequence {}
 impl ColumnSequence {
 	pub fn next_value(
 		txn: &mut impl CommandTransaction,
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		column: ColumnId,
 	) -> crate::Result<Value> {
 		let column = CatalogStore::get_column(txn, column)?;
 		let key = ColumnSequenceKey {
-			store: store.into(),
+			source: source.into(),
 			column: column.id,
 		}
 		.encode();
@@ -68,7 +68,7 @@ impl ColumnSequence {
 
 	pub fn set_value(
 		txn: &mut impl CommandTransaction,
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		column: ColumnId,
 		value: Value,
 	) -> crate::Result<()> {
@@ -84,7 +84,7 @@ impl ColumnSequence {
 		debug_assert!(value.get_type() == column.ty);
 
 		let key = ColumnSequenceKey {
-			store: store.into(),
+			source: source.into(),
 			column: column.id,
 		}
 		.encode();

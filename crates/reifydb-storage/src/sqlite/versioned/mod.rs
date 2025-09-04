@@ -48,7 +48,7 @@ pub(crate) fn table_name(key: &EncodedKey) -> crate::Result<&'static str> {
 			.get_or_init(|| Mutex::new(HashMap::new()));
 		let mut cache_guard = cache.lock().unwrap();
 
-		let table_id = key.store.to_table_id()?;
+		let table_id = key.source.to_table_id()?;
 
 		let table_name = cache_guard
 			.entry(table_id)
@@ -81,7 +81,7 @@ pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
 /// bounds
 pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> String {
 	if let (Some(start), _) = RowKeyRange::decode(range) {
-		return format!("table_{}", start.store);
+		return format!("table_{}", start.source);
 	}
 	"versioned".to_string()
 }

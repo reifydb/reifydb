@@ -3,32 +3,32 @@
 
 use reifydb_core::{
 	Error,
-	interface::{QueryTransaction, StoreDef, StoreId},
+	interface::{QueryTransaction, SourceDef, SourceId},
 };
 use reifydb_type::internal_error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	/// Get a store (table or view) by its StoreId
-	/// Returns an error if the store doesn't exist
-	pub fn get_store(
+	/// Get a source (table or view) by its SourceId
+	/// Returns an error if the source doesn't exist
+	pub fn get_source(
 		rx: &mut impl QueryTransaction,
-		store: impl Into<StoreId>,
-	) -> crate::Result<StoreDef> {
-		let store_id = store.into();
+		source: impl Into<SourceId>,
+	) -> crate::Result<SourceDef> {
+		let source_id = source.into();
 
-		CatalogStore::find_store(rx, store_id)?.ok_or_else(|| {
-			let store_type = match store_id {
-				StoreId::Table(_) => "Table",
-				StoreId::View(_) => "View",
-				StoreId::TableVirtual(_) => "TableVirtual",
+		CatalogStore::find_source(rx, source_id)?.ok_or_else(|| {
+			let source_type = match source_id {
+				SourceId::Table(_) => "Table",
+				SourceId::View(_) => "View",
+				SourceId::TableVirtual(_) => "TableVirtual",
 			};
 
 			Error(internal_error!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-				store_type,
-				store_id
+				source_type,
+				source_id
 			))
 		})
 	}
@@ -36,7 +36,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{StoreDef, StoreId, TableId, ViewId};
+	use reifydb_core::interface::{SourceDef, SourceId, TableId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
 
@@ -47,31 +47,31 @@ mod tests {
 	};
 
 	#[test]
-	fn test_get_store_table() {
+	fn test_get_source_table() {
 		let mut txn = create_test_command_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Get store by TableId
-		let store =
-			CatalogStore::get_store(&mut txn, table.id).unwrap();
+		let source =
+			CatalogStore::get_source(&mut txn, table.id).unwrap();
 
-		match store {
-			StoreDef::Table(t) => {
+		match source {
+			SourceDef::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
 			}
 			_ => panic!("Expected table"),
 		}
 
-		// Get store by StoreId::Table
-		let store = CatalogStore::get_store(
+		// Get store by SourceId::Table
+		let source = CatalogStore::get_source(
 			&mut txn,
-			StoreId::Table(table.id),
+			SourceId::Table(table.id),
 		)
 		.unwrap();
 
-		match store {
-			StoreDef::Table(t) => {
+		match source {
+			SourceDef::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
 			_ => panic!("Expected table"),
@@ -79,7 +79,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_store_view() {
+	fn test_get_source_view() {
 		let mut txn = create_test_command_transaction();
 		let schema = ensure_test_schema(&mut txn);
 
@@ -99,25 +99,26 @@ mod tests {
 		.unwrap();
 
 		// Get store by ViewId
-		let store = CatalogStore::get_store(&mut txn, view.id).unwrap();
+		let source =
+			CatalogStore::get_source(&mut txn, view.id).unwrap();
 
-		match store {
-			StoreDef::View(v) => {
+		match source {
+			SourceDef::View(v) => {
 				assert_eq!(v.id, view.id);
 				assert_eq!(v.name, view.name);
 			}
 			_ => panic!("Expected view"),
 		}
 
-		// Get store by StoreId::View
-		let store = CatalogStore::get_store(
+		// Get store by SourceId::View
+		let source = CatalogStore::get_source(
 			&mut txn,
-			StoreId::View(view.id),
+			SourceId::View(view.id),
 		)
 		.unwrap();
 
-		match store {
-			StoreDef::View(v) => {
+		match source {
+			SourceDef::View(v) => {
 				assert_eq!(v.id, view.id);
 			}
 			_ => panic!("Expected view"),
@@ -125,11 +126,11 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_store_not_found_table() {
+	fn test_get_source_not_found_table() {
 		let mut txn = create_test_command_transaction();
 
 		// Non-existent table should error
-		let result = CatalogStore::get_store(&mut txn, TableId(999));
+		let result = CatalogStore::get_source(&mut txn, TableId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -140,11 +141,11 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_store_not_found_view() {
+	fn test_get_source_not_found_view() {
 		let mut txn = create_test_command_transaction();
 
 		// Non-existent view should error
-		let result = CatalogStore::get_store(&mut txn, ViewId(999));
+		let result = CatalogStore::get_source(&mut txn, ViewId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

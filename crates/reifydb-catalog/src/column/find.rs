@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnKey, QueryTransaction, StoreId};
+use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
 
 use crate::{
 	CatalogStore,
@@ -11,11 +11,12 @@ use crate::{
 impl CatalogStore {
 	pub fn find_column_by_name(
 		rx: &mut impl QueryTransaction,
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx.range(ColumnKey::full_scan(store))?.find_map(
-			|versioned| {
+		let maybe_id = rx
+			.range(ColumnKey::full_scan(source))?
+			.find_map(|versioned| {
 				let row = versioned.row;
 				let column =
 					ColumnId(table_column::LAYOUT.get_u64(
@@ -30,8 +31,7 @@ impl CatalogStore {
 				} else {
 					None
 				}
-			},
-		);
+			});
 
 		if let Some(id) = maybe_id {
 			Ok(Some(Self::get_column(rx, id)?))
