@@ -7,7 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, Params, RowKey, RowKeyRange,
+		EncodableKey, EncodableKeyRange, GetEncodedRowLayout,
+		IndexEntryKey, IndexId, Params, RowKey, RowKeyRange,
 		Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction,
 	},
@@ -25,6 +26,7 @@ use reifydb_type::{
 	return_error,
 };
 
+use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{
@@ -179,30 +181,89 @@ impl Executor {
 				}
 			}
 
+			// Get primary key info if table has one
+			let pk_def = primary_key::get_primary_key(
+				std_txn.command_mut(),
+				&table,
+			)?;
+
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
-				cmd.remove(&RowKey {
-					store: table.id.into(),
+				let row_key = RowKey {
+					source: table.id.into(),
 					row: row_number,
 				}
-				.encode())?;
+				.encode();
+
+				// Remove primary key index entry if table has
+				// one
+				if let Some(ref pk_def) = pk_def {
+					if let Some(row_data) =
+						cmd.get(&row_key)?
+					{
+						let row = row_data.row;
+						let layout = table.get_layout();
+						let index_key = primary_key::encode_primary_key(
+							pk_def,
+							&row,
+							&table,
+							&layout,
+						)?;
+
+						cmd
+							.remove(&IndexEntryKey::new(
+							table.id,
+							IndexId::primary(
+								pk_def.id,
+							),
+							index_key,
+						)
+						.encode())?;
+					}
+				}
+
+				// Now remove the row
+				cmd.remove(&row_key)?;
 				deleted_count += 1;
 			}
 		} else {
 			// Delete entire table - scan all rows and delete them
 			let range = RowKeyRange {
-				store: table.id.into(),
+				source: table.id.into(),
 			};
 
-			let keys = txn
+			// Get primary key info if table has one
+			let pk_def = primary_key::get_primary_key(txn, &table)?;
+
+			let rows = txn
 				.range(EncodedKeyRange::new(
 					Included(range.start().unwrap()),
 					Included(range.end().unwrap()),
 				))?
-				.map(|versioned| versioned.key)
 				.collect::<Vec<_>>();
-			for key in keys {
-				txn.remove(&key)?;
+
+			for versioned in rows {
+				// Remove primary key index entry if table has
+				// one
+				if let Some(ref pk_def) = pk_def {
+					let layout = table.get_layout();
+					let index_key = super::primary_key::encode_primary_key(
+						pk_def,
+						&versioned.row,
+						&table,
+						&layout,
+					)?;
+
+					txn.remove(&IndexEntryKey::new(
+						table.id,
+						IndexId::primary(pk_def.id),
+						index_key,
+					)
+					.encode())?;
+				}
+
+				// Remove the row
+				txn.remove(&versioned.key)?;
 				deleted_count += 1;
 			}
 		}

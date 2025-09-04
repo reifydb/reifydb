@@ -46,11 +46,13 @@ pub use reifydb_storage::{
 	sqlite::{Sqlite, SqliteConfig},
 };
 #[cfg(feature = "sub_flow")]
-pub use reifydb_sub_flow as flow;
+pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_logging")]
-pub use reifydb_sub_logging::{FormatStyle, LoggingBuilder};
+pub use reifydb_sub_logging as sub_logging;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
+#[cfg(feature = "sub_workerpool")]
+pub use reifydb_sub_workerpool as sub_workerpool;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
 	mvcc::transaction::{

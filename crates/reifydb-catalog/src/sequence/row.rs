@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	CommandTransaction, EncodableKey, RowSequenceKey, StoreId, TableId,
+	CommandTransaction, EncodableKey, RowSequenceKey, SourceId, TableId,
 };
 use reifydb_type::RowNumber;
 
@@ -18,7 +18,7 @@ impl RowSequence {
 		GeneratorU64::next(
 			txn,
 			&RowSequenceKey {
-				store: StoreId::from(table),
+				source: SourceId::from(table),
 			}
 			.encode(),
 			None,

@@ -7,7 +7,7 @@ use reifydb_core::{
 	},
 	interface::{
 		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction,
-		EncodableKey, Key, StoreId, TableId,
+		EncodableKey, Key, SourceId, TableId,
 	},
 	return_error,
 };
@@ -38,15 +38,15 @@ pub struct ColumnToCreate<'a> {
 impl CatalogStore {
 	pub(crate) fn create_column(
 		txn: &mut impl CommandTransaction,
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 		column_to_create: ColumnToCreate,
 	) -> crate::Result<ColumnDef> {
-		let store = store.into();
+		let source = source.into();
 
 		// FIXME policies
 		if let Some(column) = Self::find_column_by_name(
 			txn,
-			store,
+			source,
 			&column_to_create.column,
 		)? {
 			return_error!(table_column_already_exists(
@@ -80,7 +80,7 @@ impl CatalogStore {
 
 		let mut row = column::LAYOUT.allocate_row();
 		column::LAYOUT.set_u64(&mut row, column::ID, id);
-		column::LAYOUT.set_u64(&mut row, column::TABLE, store);
+		column::LAYOUT.set_u64(&mut row, column::TABLE, source);
 		column::LAYOUT.set_utf8(
 			&mut row,
 			column::NAME,
@@ -124,7 +124,7 @@ impl CatalogStore {
 		);
 		txn.set(
 			&ColumnKey {
-				store,
+				source,
 				column: id,
 			}
 			.encode(),

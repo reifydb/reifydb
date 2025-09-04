@@ -6,7 +6,7 @@ pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
-pub use index::{IndexKey, StoreIndexKeyRange};
+pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
 pub use primary_key::PrimaryKeyKey;
@@ -180,7 +180,7 @@ mod tests {
 		SchemaKey, SchemaTableKey, SystemSequenceKey, TableKey,
 	};
 	use crate::interface::{
-		StoreId,
+		SourceId,
 		catalog::{
 			ColumnId, ColumnPolicyId, IndexId, SchemaId,
 			SequenceId, TableId,
@@ -213,7 +213,7 @@ mod tests {
 	#[test]
 	fn test_column() {
 		let key = Key::Column(ColumnKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			column: ColumnId(42),
 		});
 
@@ -224,8 +224,8 @@ mod tests {
 		match decoded {
 			Key::Column(decoded_inner) => {
 				assert_eq!(
-					decoded_inner.store,
-					StoreId::table(1)
+					decoded_inner.source,
+					SourceId::table(1)
 				);
 				assert_eq!(decoded_inner.column, 42);
 			}
@@ -330,8 +330,8 @@ mod tests {
 	#[test]
 	fn test_index() {
 		let key = Key::Index(IndexKey {
-			store: StoreId::table(42),
-			index: IndexId(999_999),
+			source: SourceId::table(42),
+			index: IndexId::primary(999_999),
 		});
 
 		let encoded = key.encode();
@@ -341,8 +341,8 @@ mod tests {
 		match decoded {
 			Key::Index(decoded_inner) => {
 				assert_eq!(
-					decoded_inner.store,
-					StoreId::table(42)
+					decoded_inner.source,
+					SourceId::table(42)
 				);
 				assert_eq!(decoded_inner.index, 999_999);
 			}
@@ -353,7 +353,7 @@ mod tests {
 	#[test]
 	fn test_row() {
 		let key = Key::Row(RowKey {
-			store: StoreId::table(42),
+			source: SourceId::table(42),
 			row: RowNumber(999_999),
 		});
 
@@ -364,8 +364,8 @@ mod tests {
 		match decoded {
 			Key::Row(decoded_inner) => {
 				assert_eq!(
-					decoded_inner.store,
-					StoreId::table(42)
+					decoded_inner.source,
+					SourceId::table(42)
 				);
 				assert_eq!(decoded_inner.row, 999_999);
 			}
@@ -376,7 +376,7 @@ mod tests {
 	#[test]
 	fn test_row_sequence() {
 		let key = Key::RowSequence(RowSequenceKey {
-			store: StoreId::table(42),
+			source: SourceId::table(42),
 		});
 
 		let encoded = key.encode();
@@ -386,8 +386,8 @@ mod tests {
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
 				assert_eq!(
-					decoded_inner.store,
-					StoreId::table(42)
+					decoded_inner.source,
+					SourceId::table(42)
 				);
 			}
 			_ => unreachable!(),
@@ -397,7 +397,7 @@ mod tests {
 	#[test]
 	fn test_column_sequence() {
 		let key = Key::TableColumnSequence(ColumnSequenceKey {
-			store: StoreId::table(42),
+			source: SourceId::table(42),
 			column: ColumnId(123),
 		});
 
@@ -408,8 +408,8 @@ mod tests {
 		match decoded {
 			Key::TableColumnSequence(decoded_inner) => {
 				assert_eq!(
-					decoded_inner.store,
-					StoreId::table(42)
+					decoded_inner.source,
+					SourceId::table(42)
 				);
 				assert_eq!(decoded_inner.column, 123);
 			}

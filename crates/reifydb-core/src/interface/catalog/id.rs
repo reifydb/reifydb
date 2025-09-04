@@ -71,27 +71,66 @@ impl<'de> Deserialize<'de> for ColumnId {
 	}
 }
 
-#[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct IndexId(pub u64);
+pub enum IndexId {
+	Primary(PrimaryKeyId),
+	// Future: Secondary, Unique, etc.
+}
+
+impl IndexId {
+	pub fn as_u64(&self) -> u64 {
+		match self {
+			IndexId::Primary(id) => id.0,
+		}
+	}
+
+	pub fn primary(id: impl Into<PrimaryKeyId>) -> Self {
+		IndexId::Primary(id.into())
+	}
+
+	/// Creates a next index id for range operations (numerically next)
+	pub fn next(&self) -> IndexId {
+		match self {
+			IndexId::Primary(primary) => {
+				IndexId::Primary(PrimaryKeyId(primary.0 + 1))
+			}
+			// Future: handle other index types
+		}
+	}
+
+	/// Creates a previous index id for range operations (numerically
+	/// previous) In descending order encoding, this gives us the next
+	/// value in sort order Uses wrapping_sub to handle ID 0 correctly
+	/// (wraps to u64::MAX)
+	pub fn prev(&self) -> IndexId {
+		match self {
+			IndexId::Primary(primary) => IndexId::Primary(
+				PrimaryKeyId(primary.0.wrapping_sub(1)),
+			),
+			// Future: handle other index types
+		}
+	}
+}
 
 impl Deref for IndexId {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
-		&self.0
+		match self {
+			IndexId::Primary(id) => &id.0,
+		}
 	}
 }
 
 impl PartialEq<u64> for IndexId {
 	fn eq(&self, other: &u64) -> bool {
-		self.0.eq(other)
+		self.as_u64().eq(other)
 	}
 }
 
 impl From<IndexId> for u64 {
 	fn from(value: IndexId) -> Self {
-		value.0
+		value.as_u64()
 	}
 }
 
@@ -100,7 +139,7 @@ impl Serialize for IndexId {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_u64(self.0)
+		serializer.serialize_u64(self.as_u64())
 	}
 }
 
@@ -125,7 +164,8 @@ impl<'de> Deserialize<'de> for IndexId {
 				self,
 				value: u64,
 			) -> Result<Self::Value, E> {
-				Ok(IndexId(value))
+				// Deserialize as primary key ID for now
+				Ok(IndexId::Primary(PrimaryKeyId(value)))
 			}
 		}
 
@@ -450,6 +490,18 @@ impl PartialEq<u64> for PrimaryKeyId {
 impl From<PrimaryKeyId> for u64 {
 	fn from(value: PrimaryKeyId) -> Self {
 		value.0
+	}
+}
+
+impl From<i32> for PrimaryKeyId {
+	fn from(value: i32) -> Self {
+		Self(value as u64)
+	}
+}
+
+impl From<u64> for PrimaryKeyId {
+	fn from(value: u64) -> Self {
+		Self(value)
 	}
 }
 

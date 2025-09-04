@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	flow::Flow,
-	interface::{Evaluator, FlowId, FlowNodeId, StoreId},
+	interface::{Evaluator, FlowId, FlowNodeId, SourceId},
 };
 
 use crate::operator::OperatorEnum;
@@ -17,8 +17,8 @@ pub struct FlowEngine<E: Evaluator> {
 	evaluator: E,
 	operators: HashMap<FlowNodeId, OperatorEnum<E>>,
 	flows: HashMap<FlowId, Flow<'static>>,
-	sources: HashMap<StoreId, Vec<FlowId>>,
-	sinks: HashMap<StoreId, Vec<FlowId>>,
+	sources: HashMap<SourceId, Vec<FlowId>>,
+	sinks: HashMap<SourceId, Vec<FlowId>>,
 }
 
 impl<E: Evaluator> FlowEngine<E> {

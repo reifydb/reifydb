@@ -155,7 +155,7 @@ impl<E: Evaluator> Operator<E> for WindowOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					store,
+					source,
 					row_ids,
 					after,
 				} => {
@@ -189,7 +189,7 @@ impl<E: Evaluator> Operator<E> for WindowOperator {
 
 						output_diffs
 							.push(FlowDiff::Insert {
-							store: *store,
+							source: *source,
 							row_ids: vec![row_id],
 							after: window_columns,
 						});
@@ -197,7 +197,7 @@ impl<E: Evaluator> Operator<E> for WindowOperator {
 				}
 
 				FlowDiff::Remove {
-					store,
+					source,
 					row_ids,
 					before,
 				} => {
@@ -208,7 +208,7 @@ impl<E: Evaluator> Operator<E> for WindowOperator {
 
 					// Simplified pass-through
 					output_diffs.push(FlowDiff::Remove {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						before: before.clone(),
 					});

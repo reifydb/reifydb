@@ -14,7 +14,7 @@ use crate::{
 	sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
 		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, PRIMARY_KEY,
-		SCHEMA, STORE,
+		SCHEMA, SOURCE,
 	},
 };
 
@@ -25,9 +25,9 @@ static SCHEMA_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	.encode()
 });
 
-static STORE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
+static SOURCE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
 	SystemSequenceKey {
-		sequence: STORE,
+		sequence: SOURCE,
 	}
 	.encode()
 });
@@ -86,7 +86,7 @@ impl SystemSequence {
 	pub(crate) fn next_table_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<TableId> {
-		GeneratorU64::next(txn, &STORE_KEY, Some(1025)).map(TableId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(TableId)
 	}
 
 	pub(crate) fn next_column_id(
@@ -105,7 +105,7 @@ impl SystemSequence {
 	pub(crate) fn next_view_id(
 		txn: &mut impl CommandTransaction,
 	) -> crate::Result<ViewId> {
-		GeneratorU64::next(txn, &STORE_KEY, Some(1025)).map(ViewId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(ViewId)
 	}
 
 	pub(crate) fn next_primary_key_id(

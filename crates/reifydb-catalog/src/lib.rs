@@ -11,7 +11,7 @@ mod materialized;
 pub mod primary_key;
 pub mod schema;
 pub mod sequence;
-pub mod store;
+pub mod source;
 pub mod system;
 pub mod table;
 pub mod table_virtual;

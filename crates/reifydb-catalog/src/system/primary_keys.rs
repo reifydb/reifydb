@@ -30,8 +30,8 @@ pub fn primary_keys() -> Arc<TableVirtualDef> {
 					auto_increment: false,
 				},
 				ColumnDef {
-					id: STORE_ID,
-					name: "store_id".to_string(),
+					id: SOURCE_ID,
+					name: "source_id".to_string(),
 					ty: Type::Uint8,
 					policies: vec![],
 					index: ColumnIndex(1),

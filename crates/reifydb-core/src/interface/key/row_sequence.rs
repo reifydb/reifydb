@@ -3,13 +3,13 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::catalog::StoreId,
+	EncodedKey, EncodedKeyRange, interface::catalog::SourceId,
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowSequenceKey {
-	pub store: StoreId,
+	pub source: SourceId,
 }
 
 const VERSION: u8 = 1;
@@ -21,7 +21,7 @@ impl EncodableKey for RowSequenceKey {
 		let mut out = Vec::with_capacity(11); // 1 + 1 + 9
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&self.store));
+		out.extend(&keycode::serialize_source_id(&self.source));
 		EncodedKey::new(out)
 	}
 
@@ -42,15 +42,15 @@ impl EncodableKey for RowSequenceKey {
 
 		let payload = &key[2..];
 		if payload.len() != 9 {
-			// 9 bytes for store
+			// 9 bytes for source
 			return None;
 		}
 
-		keycode::deserialize_store_id(&payload[..9]).ok().map(|store| {
-			Self {
-				store,
-			}
-		})
+		keycode::deserialize_source_id(&payload[..9]).ok().map(
+			|source| Self {
+				source,
+			},
+		)
 	}
 }
 
@@ -80,24 +80,24 @@ impl RowSequenceKey {
 #[cfg(test)]
 mod tests {
 	use super::{EncodableKey, RowSequenceKey};
-	use crate::interface::catalog::StoreId;
+	use crate::interface::catalog::SourceId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = RowSequenceKey {
-			store: StoreId::table(0xABCD),
+			source: SourceId::table(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
 			0xFE, // version
 			0xF7, // kind
-			0x01, // StoreId type discriminator (Table)
+			0x01, // SourceId type discriminator (Table)
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32, // store id bytes
+			0x32, // source id bytes
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.store, 0xABCD);
+		assert_eq!(key.source, 0xABCD);
 	}
 }

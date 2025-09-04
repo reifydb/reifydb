@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{
 		ColumnDef, Key, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction,
-		StoreId, TableId, ViewId,
+		SourceId, TableId, ViewId,
 	},
 	return_internal_error,
 };
@@ -19,26 +19,26 @@ use crate::{
 impl CatalogStore {
 	pub fn find_primary_key(
 		rx: &mut impl QueryTransaction,
-		store: impl Into<StoreId>,
+		source: impl Into<SourceId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
-		let store_id = store.into();
+		let source_id = source.into();
 
 		// Get the primary key ID for the table or view
 		// Virtual tables don't have primary keys
-		let primary_key_id = match store_id {
-			StoreId::Table(table_id) => {
+		let primary_key_id = match source_id {
+			SourceId::Table(table_id) => {
 				match Self::get_table_pk_id(rx, table_id)? {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
 			}
-			StoreId::View(view_id) => {
+			SourceId::View(view_id) => {
 				match Self::get_view_pk_id(rx, view_id)? {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
 			}
-			StoreId::TableVirtual(_) => {
+			SourceId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}

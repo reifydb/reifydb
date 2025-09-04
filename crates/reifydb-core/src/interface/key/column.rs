@@ -3,13 +3,13 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{ColumnId, EncodableKey, KeyKind, StoreId},
+	interface::{ColumnId, EncodableKey, KeyKind, SourceId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnKey {
-	pub store: StoreId,
+	pub source: SourceId,
 	pub column: ColumnId,
 }
 
@@ -22,7 +22,7 @@ impl EncodableKey for ColumnKey {
 		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&self.store));
+		out.extend(&keycode::serialize_source_id(&self.source));
 		out.extend(&keycode::serialize(&self.column));
 		EncodedKey::new(out)
 	}
@@ -44,44 +44,44 @@ impl EncodableKey for ColumnKey {
 
 		let payload = &key[2..];
 		if payload.len() != 17 {
-			// 9 bytes for store + 8 bytes for column
+			// 9 bytes for source + 8 bytes for column
 			return None;
 		}
 
-		let store =
-			keycode::deserialize_store_id(&payload[..9]).ok()?;
+		let source =
+			keycode::deserialize_source_id(&payload[..9]).ok()?;
 		let column: ColumnId =
 			keycode::deserialize(&payload[9..]).ok()?;
 
 		Some(Self {
-			store,
+			source,
 			column,
 		})
 	}
 }
 
 impl ColumnKey {
-	pub fn full_scan(store: impl Into<StoreId>) -> EncodedKeyRange {
-		let store = store.into();
+	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
+		let source = source.into();
 		EncodedKeyRange::start_end(
-			Some(Self::start(store)),
-			Some(Self::end(store)),
+			Some(Self::start(source)),
+			Some(Self::end(source)),
 		)
 	}
 
-	fn start(store: StoreId) -> EncodedKey {
+	fn start(source: SourceId) -> EncodedKey {
 		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&store));
+		out.extend(&keycode::serialize_source_id(&source));
 		EncodedKey::new(out)
 	}
 
-	fn end(store: StoreId) -> EncodedKey {
+	fn end(source: SourceId) -> EncodedKey {
 		let mut out = Vec::with_capacity(11);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_store_id(&store.prev()));
+		out.extend(&keycode::serialize_source_id(&source.prev()));
 		EncodedKey::new(out)
 	}
 }
@@ -91,13 +91,13 @@ mod tests {
 	use super::EncodableKey;
 	use crate::interface::{
 		ColumnKey,
-		catalog::{ColumnId, StoreId},
+		catalog::{ColumnId, SourceId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ColumnKey {
-			store: StoreId::table(0xABCD),
+			source: SourceId::table(0xABCD),
 			column: ColumnId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
@@ -105,9 +105,9 @@ mod tests {
 		let expected: Vec<u8> = vec![
 			0xFE, // version
 			0xF8, // kind
-			0x01, // StoreId type discriminator (Table)
+			0x01, // SourceId type discriminator (Table)
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32, // store id bytes
+			0x32, // source id bytes
 			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
 			0x0F, // column id bytes
 		];
@@ -115,22 +115,22 @@ mod tests {
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = ColumnKey::decode(&encoded).unwrap();
-		assert_eq!(key.store, 0xABCD);
+		assert_eq!(key.source, 0xABCD);
 		assert_eq!(key.column, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
 		let key1 = ColumnKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			column: ColumnId(100),
 		};
 		let key2 = ColumnKey {
-			store: StoreId::table(1),
+			source: SourceId::table(1),
 			column: ColumnId(200),
 		};
 		let key3 = ColumnKey {
-			store: StoreId::table(2),
+			source: SourceId::table(2),
 			column: ColumnId(0),
 		};
 

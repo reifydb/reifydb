@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
 use reifydb_core::{
-	interface::{StoreId, Transaction},
+	interface::{SourceId, Transaction},
 	return_error,
 	value::columnar::Columns,
 };
@@ -91,7 +91,7 @@ impl Executor {
 					CatalogStore::create_primary_key(
 						txn,
 						PrimaryKeyToCreate {
-							store: StoreId::View(
+							source: SourceId::View(
 								view.id,
 							),
 							column_ids,

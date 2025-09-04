@@ -26,8 +26,8 @@ impl CatalogStore {
 			crate::system::ids::sequences::SCHEMA => {
 				(SchemaId(1), "schema")
 			}
-			crate::system::ids::sequences::STORE => {
-				(SchemaId(1), "store")
+			crate::system::ids::sequences::SOURCE => {
+				(SchemaId(1), "source")
 			}
 			crate::system::ids::sequences::COLUMN => {
 				(SchemaId(1), "column")

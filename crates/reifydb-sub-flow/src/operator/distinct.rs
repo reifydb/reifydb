@@ -156,7 +156,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					store,
+					source,
 					row_ids,
 					after,
 				} => {
@@ -239,14 +239,14 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						// A real implementation would
 						// properly handle columnar data
 						output_diffs.push(FlowDiff::Insert {
-                            store: *store,
+                            source: *source,
                             row_ids: new_distinct_rows,
                             after: after.clone()});
 					}
 				}
 
 				FlowDiff::Remove {
-					store,
+					source,
 					row_ids,
 					before,
 				} => {
@@ -306,14 +306,14 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 
 					if !removed_distinct_rows.is_empty() {
 						output_diffs.push(FlowDiff::Remove {
-                            store: *store,
+                            source: *source,
                             row_ids: removed_distinct_rows,
                             before: before.clone()});
 					}
 				}
 
 				FlowDiff::Update {
-					store,
+					source,
 					row_ids,
 					before,
 					after,
@@ -321,7 +321,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 					// Handle update as remove + insert
 					// First process the remove
 					let remove_diff = FlowDiff::Remove {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						before: before.clone(),
 					};
@@ -336,7 +336,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 
 					// Then process the insert
 					let insert_diff = FlowDiff::Insert {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						after: after.clone(),
 					};

@@ -32,20 +32,20 @@ impl<E: Evaluator> Operator<E> for ExtendOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					store,
+					source,
 					row_ids,
 					after,
 				} => {
 					let extended_columns =
 						self.extend(ctx, &after)?;
 					output.push(FlowDiff::Insert {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						after: extended_columns,
 					});
 				}
 				FlowDiff::Update {
-					store,
+					source,
 					row_ids,
 					before,
 					after,
@@ -55,21 +55,21 @@ impl<E: Evaluator> Operator<E> for ExtendOperator {
 					let extended_after =
 						self.extend(ctx, &after)?;
 					output.push(FlowDiff::Update {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						before: extended_before,
 						after: extended_after,
 					});
 				}
 				FlowDiff::Remove {
-					store,
+					source,
 					row_ids,
 					before,
 				} => {
 					let extended_before =
 						self.extend(ctx, &before)?;
 					output.push(FlowDiff::Remove {
-						store: *store,
+						source: *source,
 						row_ids: row_ids.clone(),
 						before: extended_before,
 					});

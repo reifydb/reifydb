@@ -30,16 +30,16 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					auto_increment: false,
 				},
 				ColumnDef {
-					id: STORE_ID,
-					name: "store_id".to_string(),
+					id: SOURCE_ID,
+					name: "source_id".to_string(),
 					ty: Type::Uint8,
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
 				},
 				ColumnDef {
-					id: STORE_TYPE,
-					name: "store_type".to_string(),
+					id: SOURCE_TYPE,
+					name: "source_type".to_string(),
 					ty: Type::Utf8, // "table" or "view"
 					policies: vec![],
 					index: ColumnIndex(2),

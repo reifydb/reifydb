@@ -91,7 +91,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
 
 		let batch_size = ctx.batch_size;
 		let range = RowKeyRange {
-			store: self.table.id.into(),
+			source: self.table.id.into(),
 		};
 
 		let range = if let Some(_) = &self.last_key {

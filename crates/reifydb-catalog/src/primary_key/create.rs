@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	interface::{
 		ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey,
-		StoreId,
+		SourceId,
 	},
 	return_error, return_internal_error,
 };
@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub struct PrimaryKeyToCreate {
-	pub store: StoreId,
+	pub source: SourceId,
 	pub column_ids: Vec<ColumnId>,
 }
 
@@ -36,13 +36,13 @@ impl CatalogStore {
 
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
-		let store_columns = Self::list_columns(txn, to_create.store)?;
-		let store_column_ids: std::collections::HashSet<_> =
-			store_columns.iter().map(|c| c.id).collect();
+		let source_columns = Self::list_columns(txn, to_create.source)?;
+		let source_column_ids: std::collections::HashSet<_> =
+			source_columns.iter().map(|c| c.id).collect();
 
 		// Validate that all columns belong to the table/view
 		for column_id in &to_create.column_ids {
-			if !store_column_ids.contains(column_id) {
+			if !source_column_ids.contains(column_id) {
 				return_error!(primary_key_column_not_found(
 					None,
 					column_id.0
@@ -57,8 +57,8 @@ impl CatalogStore {
 		LAYOUT.set_u64(&mut row, primary_key::ID, id.0);
 		LAYOUT.set_u64(
 			&mut row,
-			primary_key::STORE,
-			to_create.store.as_u64(),
+			primary_key::SOURCE,
+			to_create.source.as_u64(),
 		);
 		LAYOUT.set_blob(
 			&mut row,
@@ -76,14 +76,14 @@ impl CatalogStore {
 		)?;
 
 		// Update the table or view to reference this primary key
-		match to_create.store {
-			StoreId::Table(table_id) => {
+		match to_create.source {
+			SourceId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;
 			}
-			StoreId::View(view_id) => {
+			SourceId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
 			}
-			StoreId::TableVirtual(_) => {
+			SourceId::TableVirtual(_) => {
 				// Virtual tables don't support primary keys
 				return_internal_error!(
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
@@ -98,7 +98,7 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{
-		ColumnId, PrimaryKeyId, StoreId, TableId, ViewId,
+		ColumnId, PrimaryKeyId, SourceId, TableId, ViewId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
@@ -157,7 +157,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(table.id),
+				source: SourceId::Table(table.id),
 				column_ids: vec![col1.id, col2.id],
 			},
 		)
@@ -217,7 +217,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::View(view.id),
+				source: SourceId::View(view.id),
 				column_ids: vec![columns[0].id],
 			},
 		)
@@ -270,7 +270,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(table.id),
+				source: SourceId::Table(table.id),
 				column_ids: column_ids.clone(),
 			},
 		)
@@ -324,7 +324,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(table.id),
+				source: SourceId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)
@@ -349,7 +349,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(TableId(999)),
+				source: SourceId::Table(TableId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -371,7 +371,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::View(ViewId(999)),
+				source: SourceId::View(ViewId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -392,7 +392,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(table.id),
+				source: SourceId::Table(table.id),
 				column_ids: vec![],
 			},
 		);
@@ -411,7 +411,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(table.id),
+				source: SourceId::Table(table.id),
 				column_ids: vec![ColumnId(999)],
 			},
 		);
@@ -484,7 +484,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				store: StoreId::Table(table1.id),
+				source: SourceId::Table(table1.id),
 				column_ids: vec![col2.id],
 			},
 		);
