@@ -1,0 +1,23 @@
+# Generated from: statement_handling.tap.md#multiple_statements_different_structure
+# Test: Multiple statements with different structure
+
+command 'MAP 1 as result;MAP { 2 as a, 3 as b };MAP "ReifyDB" as result;'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |    1     |
+> +----------+
+> 
+> +-----+-----+
+> |  a  |  b  |
+> +-----+-----+
+> |  2  |  3  |
+> +-----+-----+
+> 
+> +-----------+
+> |  result   |
+> +-----------+
+> |  ReifyDB  |
+> +-----------+
+> 

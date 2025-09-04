@@ -9,9 +9,5 @@ repository.workspace = true
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }
 
-goldenfile = { workspace = true }
-regex = { workspace = true, features = [] }
-uuid = { workspace = true }
-
 [dev-dependencies]
 test_each_file = { workspace = true }

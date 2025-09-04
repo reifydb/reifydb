@@ -4,9 +4,12 @@
 use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{Transaction, subsystem::SubsystemFactory},
+	interface::{
+		CdcTransaction, UnversionedTransaction, VersionedTransaction,
+		subsystem::SubsystemFactory,
+	},
 };
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_server")]
@@ -16,23 +19,37 @@ use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
 #[cfg(feature = "sub_server")]
-pub struct ServerBuilder<T: Transaction> {
-	versioned: T::Versioned,
-	unversioned: T::Unversioned,
-	cdc: T::Cdc,
+pub struct ServerBuilder<
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
+> {
+	versioned: VT,
+	unversioned: UT,
+	cdc: C,
 	eventbus: EventBus,
-	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+	interceptors: StandardInterceptorBuilder<
+		StandardCommandTransaction<EngineTransaction<VT, UT, C>>,
+	>,
 	subsystem_factories: Vec<
-		Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>,
+		Box<
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<VT, UT, C>,
+				>,
+			>,
+		>,
 	>,
 }
 
 #[cfg(feature = "sub_server")]
-impl<T: Transaction> ServerBuilder<T> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
+	ServerBuilder<VT, UT, C>
+{
 	pub fn new(
-		versioned: T::Versioned,
-		unversioned: T::Unversioned,
-		cdc: T::Cdc,
+		versioned: VT,
+		unversioned: UT,
+		cdc: C,
 		eventbus: EventBus,
 	) -> Self {
 		Self {
@@ -47,8 +64,11 @@ impl<T: Transaction> ServerBuilder<T> {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<StandardCommandTransaction<T>>
-			+ Send
+		I: RegisterInterceptor<
+				StandardCommandTransaction<
+					EngineTransaction<VT, UT, C>,
+				>,
+			> + Send
 			+ Sync
 			+ Clone
 			+ 'static,
@@ -67,7 +87,7 @@ impl<T: Transaction> ServerBuilder<T> {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database<T>> {
+	pub fn build(self) -> crate::Result<Database<VT, UT, C>> {
 		let mut database_builder = DatabaseBuilder::new(
 			self.versioned,
 			self.unversioned,
@@ -90,7 +110,9 @@ impl<T: Transaction> ServerBuilder<T> {
 }
 
 #[cfg(feature = "sub_server")]
-impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
+	WithSubsystem<EngineTransaction<VT, UT, C>> for ServerBuilder<VT, UT, C>
+{
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
 	where
@@ -107,7 +129,11 @@ impl<T: Transaction> WithSubsystem<T> for ServerBuilder<T> {
 	fn with_subsystem(
 		mut self,
 		factory: Box<
-			dyn SubsystemFactory<StandardCommandTransaction<T>>,
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<VT, UT, C>,
+				>,
+			>,
 		>,
 	) -> Self {
 		self.subsystem_factories.push(factory);

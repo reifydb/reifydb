@@ -9,8 +9,10 @@ repository.workspace = true
 [features]
 
 [dependencies]
-chrono = { workspace = true }
 serde = { workspace = true}
+serde_json = { workspace = true}
+
+[target.'cfg(target_os = "linux")'.dependencies]
 uuid = { workspace = true }
 num-bigint = { workspace = true }
 bigdecimal = { workspace = true }

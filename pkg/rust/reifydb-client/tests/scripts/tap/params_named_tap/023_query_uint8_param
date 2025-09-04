@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#uint8_param
+# Test: Query with named UINT8 parameter
+
+query_named 'MAP $uint8_val as result' 'uint8_val=18446744073709551615'
+---
+> +------------------------+
+> |         result         |
+> +------------------------+
+> |  18446744073709552000  |
+> +------------------------+
+> 

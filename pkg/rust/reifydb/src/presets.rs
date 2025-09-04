@@ -34,7 +34,11 @@ pub type MemorySerializableTransaction = EngineTransaction<
 >;
 
 /// In-memory post with serializable isolation
-pub type MemoryDatabaseSerializable = Database<MemorySerializableTransaction>;
+pub type MemoryDatabaseSerializable = Database<
+	Serializable<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
+>;
 
 /// In-memory with optimistic concurrency control
 pub type MemoryOptimisticTransaction = EngineTransaction<
@@ -44,7 +48,11 @@ pub type MemoryOptimisticTransaction = EngineTransaction<
 >;
 
 /// In-memory post with optimistic concurrency control
-pub type MemoryDatabaseOptimistic = Database<MemoryOptimisticTransaction>;
+pub type MemoryDatabaseOptimistic = Database<
+	Optimistic<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
+>;
 
 /// SQLite with serializable isolation
 pub type SqliteSerializableTransaction = EngineTransaction<
@@ -54,7 +62,11 @@ pub type SqliteSerializableTransaction = EngineTransaction<
 >;
 
 /// SQLite-backed with serializable isolations
-pub type SqliteDatabaseSerializable = Database<SqliteSerializableTransaction>;
+pub type SqliteDatabaseSerializable = Database<
+	Serializable<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
+>;
 
 /// SQLite with optimistic concurrency control
 pub type SqliteOptimisticTransaction = EngineTransaction<
@@ -64,4 +76,8 @@ pub type SqliteOptimisticTransaction = EngineTransaction<
 >;
 
 /// SQLite-backed post with optimistic concurrency control
-pub type SqliteDatabaseOptimistic = Database<SqliteOptimisticTransaction>;
+pub type SqliteDatabaseOptimistic = Database<
+	Optimistic<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
+>;

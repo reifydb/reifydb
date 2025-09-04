@@ -6,7 +6,6 @@ use std::{
 	ops::{Deref, RangeBounds},
 };
 
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::util::{CowVec, encoding::binary::decode_binary};
@@ -146,35 +145,46 @@ impl EncodedKeyRange {
 			Bound::<EncodedKey>::Unbounded,
 		);
 
-		let re = Regex::new(r"^(\S+)?\.\.(=)?(\S+)?")
-			.expect("invalid regex");
+		// Find the ".." separator
+		if let Some(dot_pos) = str.find("..") {
+			let start_part = &str[..dot_pos];
+			let end_part = &str[dot_pos + 2..];
 
-		re.captures(str)
-			.map(|groups| {
-				if let Some(m) = groups.get(1) {
-					start = Bound::Included(EncodedKey(
-						decode_binary(m.as_str()),
+			// Parse start bound
+			if !start_part.is_empty() {
+				start = Bound::Included(EncodedKey(
+					decode_binary(start_part),
+				));
+			}
+
+			// Parse end bound - check for inclusive marker "="
+			if let Some(end_str) = end_part.strip_prefix('=') {
+				// Inclusive end: "..="
+				if !end_str.is_empty() {
+					end = Bound::Included(EncodedKey(
+						decode_binary(end_str),
 					));
 				}
-				if let Some(m) = groups.get(3) {
-					let decoded = EncodedKey(
-						decode_binary(m.as_str()),
-					);
-					if groups.get(2).is_some() {
-						end = Bound::Included(decoded)
-					} else {
-						end = Bound::Excluded(decoded)
-					}
+			} else {
+				// Exclusive end: ".."
+				if !end_part.is_empty() {
+					end = Bound::Excluded(EncodedKey(
+						decode_binary(end_part),
+					));
 				}
-				Self {
-					start,
-					end,
-				}
-			})
-			.unwrap_or(Self {
+			}
+
+			Self {
+				start,
+				end,
+			}
+		} else {
+			// Invalid format - return degenerate range
+			Self {
 				start: Bound::Included(EncodedKey::new([0xff])),
 				end: Bound::Excluded(EncodedKey::new([0xff])),
-			})
+			}
+		}
 	}
 }
 

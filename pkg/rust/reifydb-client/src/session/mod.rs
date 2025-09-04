@@ -21,11 +21,30 @@ use crate::{
 	domain::{Frame, FrameColumn},
 };
 
+/// Channel response enum for different response types
+#[derive(Debug)]
+pub enum ChannelResponse {
+	/// Authentication response
+	Auth {
+		request_id: String,
+	},
+	/// Command execution response with frames
+	Command {
+		request_id: String,
+		result: CommandResult,
+	},
+	/// Query execution response with frames
+	Query {
+		request_id: String,
+		result: QueryResult,
+	},
+}
+
 /// Response message for channel sessions
 #[derive(Debug)]
 pub struct ResponseMessage {
 	pub request_id: String,
-	pub response: Result<Response, Error>,
+	pub response: Result<ChannelResponse, Error>,
 	pub timestamp: Instant,
 }
 

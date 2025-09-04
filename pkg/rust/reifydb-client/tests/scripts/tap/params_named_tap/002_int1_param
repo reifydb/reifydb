@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#int1_param
+# Test: Named parameter with INT1 type
+
+command_named 'MAP $int1_val as result' 'int1_val=42'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |    42    |
+> +----------+
+> 

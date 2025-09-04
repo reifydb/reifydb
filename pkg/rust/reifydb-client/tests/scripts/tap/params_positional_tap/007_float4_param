@@ -1,0 +1,11 @@
+# Generated from: params_positional.tap.md#float4_param
+# Test: Positional parameter with FLOAT4 type
+
+command_positional 'MAP $1 as result' '3.14'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   3.14   |
+> +----------+
+> 

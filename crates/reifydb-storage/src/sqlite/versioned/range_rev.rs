@@ -3,8 +3,6 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Result, Version,
 	interface::{Versioned, VersionedRangeRev},
@@ -13,7 +11,7 @@ use reifydb_core::{
 use super::{
 	build_range_query, execute_batched_range_query, table_name_for_range,
 };
-use crate::sqlite::Sqlite;
+use crate::sqlite::{Sqlite, read::Reader};
 
 impl VersionedRangeRev for Sqlite {
 	type RangeIterRev<'a> = RangeRev;
@@ -23,12 +21,12 @@ impl VersionedRangeRev for Sqlite {
 		range: EncodedKeyRange,
 		version: Version,
 	) -> Result<Self::RangeIterRev<'_>> {
-		Ok(RangeRev::new(self.get_conn(), range, version, 1024))
+		Ok(RangeRev::new(self.get_reader(), range, version, 1024))
 	}
 }
 
 pub struct RangeRev {
-	conn: PooledConnection<SqliteConnectionManager>,
+	conn: Reader,
 	range: EncodedKeyRange,
 	version: Version,
 	table: String,
@@ -40,7 +38,7 @@ pub struct RangeRev {
 
 impl RangeRev {
 	pub fn new(
-		conn: PooledConnection<SqliteConnectionManager>,
+		conn: Reader,
 		range: EncodedKeyRange,
 		version: Version,
 		batch_size: usize,
@@ -82,7 +80,8 @@ impl RangeRev {
 			build_range_query(start_bound, end_bound, "DESC");
 
 		let query = query_template.replace("{}", &self.table);
-		let mut stmt = self.conn.prepare(&query).unwrap();
+		let conn_guard = self.conn.lock().unwrap();
+		let mut stmt = conn_guard.prepare(&query).unwrap();
 
 		let count = execute_batched_range_query(
 			&mut stmt,

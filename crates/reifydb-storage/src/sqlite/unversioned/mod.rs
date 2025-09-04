@@ -11,12 +11,12 @@ mod scan_rev;
 
 use std::{collections::VecDeque, ops::Bound};
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	CowVec, EncodedKey, interface::Unversioned, row::EncodedRow,
 };
 use rusqlite::Statement;
+
+use crate::sqlite::read::ReadConnection;
 
 /// Helper function to build unversioned query template and determine parameter
 /// count
@@ -235,7 +235,7 @@ pub(crate) fn execute_range_query(
 
 /// Helper function to execute batched unversioned iteration queries
 pub(crate) fn execute_scan_query(
-	conn: &PooledConnection<SqliteConnectionManager>,
+	conn: &ReadConnection,
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
@@ -261,7 +261,8 @@ pub(crate) fn execute_scan_query(
         ),
         _ => unreachable!()};
 
-	let mut stmt = conn.prepare(&query).unwrap();
+	let conn_guard = conn.lock().unwrap();
+	let mut stmt = conn_guard.prepare(&query).unwrap();
 
 	let rows = stmt
 		.query_map(rusqlite::params_from_iter(params.iter()), |row| {

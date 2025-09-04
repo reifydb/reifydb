@@ -241,11 +241,11 @@ impl Type {
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
-			Type::Blob => 8,       // offset: u32 + length: u32
-			Type::BigInt => 8,     /* variable size, stored as
-			                         * offset + length */
-			Type::BigDecimal => 8, /* variable size, stored as
-			                         * offset + length */
+			Type::Blob => 8,   // offset: u32 + length: u32
+			Type::BigInt => 8, // variable size, stored as
+			// offset + length
+			Type::BigDecimal => 8, // variable size, stored as
+			// offset + length
 			Type::Undefined => 0,
 		}
 	}
@@ -274,11 +274,11 @@ impl Type {
 			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
-			Type::Blob => 4,       // u32 alignment
-			Type::BigInt => 4,     /* u32 alignment for
-			                         * offset/length */
-			Type::BigDecimal => 4, /* u32 alignment for
-			                         * offset/length */
+			Type::Blob => 4,   // u32 alignment
+			Type::BigInt => 4, // u32 alignment for
+			// offset/length
+			Type::BigDecimal => 4, // u32 alignment for
+			// offset/length
 			Type::Undefined => 0,
 		}
 	}

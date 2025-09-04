@@ -4,7 +4,13 @@
 use std::{collections::HashMap, time::Instant};
 
 use super::message::ResponseRoute;
-use crate::{Response, session::ResponseMessage};
+use crate::{
+	Response, ResponsePayload,
+	session::{
+		ChannelResponse, ResponseMessage, parse_command_response,
+		parse_query_response,
+	},
+};
 
 /// Routes responses to the appropriate session
 pub(crate) struct RequestRouter {
@@ -58,9 +64,44 @@ pub(crate) fn route_response(response: Response, route: ResponseRoute) {
 			callback(Ok(response));
 		}
 		ResponseRoute::Channel(tx) => {
+			// Parse the response based on its type
+			let request_id = response.id.clone();
+			let channel_response = match response.payload {
+				ResponsePayload::Auth(_) => {
+					Ok(ChannelResponse::Auth {
+						request_id: request_id.clone(),
+					})
+				}
+				ResponsePayload::Command(_) => {
+					parse_command_response(response).map(
+						|result| {
+							ChannelResponse::Command {
+							request_id: request_id.clone(),
+							result,
+						}
+						},
+					)
+				}
+				ResponsePayload::Query(_) => {
+					parse_query_response(response).map(
+						|result| {
+							ChannelResponse::Query {
+							request_id: request_id.clone(),
+							result,
+						}
+						},
+					)
+				}
+				ResponsePayload::Err(ref err) => {
+					reifydb_type::err!(
+						err.diagnostic.clone()
+					)
+				}
+			};
+
 			let _ = tx.send(ResponseMessage {
-				request_id: response.id.clone(),
-				response: Ok(response),
+				request_id,
+				response: channel_response,
 				timestamp: Instant::now(),
 			});
 		}

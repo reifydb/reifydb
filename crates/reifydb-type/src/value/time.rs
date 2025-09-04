@@ -3,46 +3,53 @@
 
 use std::fmt::{Display, Formatter};
 
-use chrono::{NaiveTime, Timelike};
-use serde::{Deserialize, Serialize};
+use serde::{
+	Deserialize, Deserializer, Serialize, Serializer,
+	de::{self, Visitor},
+};
 
 /// A time value representing time of day (hour, minute, second, nanosecond)
 /// without date information.
-#[derive(
-	Copy,
-	Clone,
-	Debug,
-	PartialEq,
-	Eq,
-	Hash,
-	Serialize,
-	Deserialize,
-	PartialOrd,
-	Ord,
-)]
+///
+/// Internally stored as nanoseconds since midnight (00:00:00.000000000).
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Time {
-	inner: NaiveTime,
+	// Nanoseconds since midnight (0 to 86_399_999_999_999)
+	nanos_since_midnight: u64,
 }
 
 impl Default for Time {
 	fn default() -> Self {
-		Self::new(0, 0, 0, 0).unwrap()
+		Self {
+			nanos_since_midnight: 0,
+		} // 00:00:00.000000000
 	}
 }
 
 impl Time {
-	pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
-		NaiveTime::from_hms_nano_opt(hour, min, sec, nano).map(
-			|inner| Self {
-				inner,
-			},
-		)
-	}
+	/// Maximum valid nanoseconds in a day
+	const MAX_NANOS_IN_DAY: u64 = 86_399_999_999_999;
+	const NANOS_PER_SECOND: u64 = 1_000_000_000;
+	const NANOS_PER_MINUTE: u64 = 60 * Self::NANOS_PER_SECOND;
+	const NANOS_PER_HOUR: u64 = 60 * Self::NANOS_PER_MINUTE;
 
-	pub fn from_naive_time(time: NaiveTime) -> Self {
-		Self {
-			inner: time,
+	pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
+		// Validate inputs
+		if hour >= 24
+			|| min >= 60 || sec >= 60
+			|| nano >= Self::NANOS_PER_SECOND as u32
+		{
+			return None;
 		}
+
+		let nanos = hour as u64 * Self::NANOS_PER_HOUR
+			+ min as u64 * Self::NANOS_PER_MINUTE
+			+ sec as u64 * Self::NANOS_PER_SECOND
+			+ nano as u64;
+
+		Some(Self {
+			nanos_since_midnight: nanos,
+		})
 	}
 
 	pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, String> {
@@ -69,55 +76,152 @@ impl Time {
 	}
 
 	pub fn midnight() -> Self {
-		Self::new(0, 0, 0, 0).unwrap()
+		Self {
+			nanos_since_midnight: 0,
+		}
 	}
 
 	pub fn noon() -> Self {
-		Self::new(12, 0, 0, 0).unwrap()
+		Self {
+			nanos_since_midnight: 12 * Self::NANOS_PER_HOUR,
+		}
 	}
 
 	pub fn hour(&self) -> u32 {
-		self.inner.hour()
+		(self.nanos_since_midnight / Self::NANOS_PER_HOUR) as u32
 	}
 
 	pub fn minute(&self) -> u32 {
-		self.inner.minute()
+		((self.nanos_since_midnight % Self::NANOS_PER_HOUR)
+			/ Self::NANOS_PER_MINUTE) as u32
 	}
 
 	pub fn second(&self) -> u32 {
-		self.inner.second()
+		((self.nanos_since_midnight % Self::NANOS_PER_MINUTE)
+			/ Self::NANOS_PER_SECOND) as u32
 	}
 
 	pub fn nanosecond(&self) -> u32 {
-		self.inner.nanosecond()
+		(self.nanos_since_midnight % Self::NANOS_PER_SECOND) as u32
 	}
 
-	pub fn inner(&self) -> &NaiveTime {
-		&self.inner
-	}
-}
-
-impl Time {
 	/// Convert to nanoseconds since midnight for storage
 	pub fn to_nanos_since_midnight(&self) -> u64 {
-		self.inner.num_seconds_from_midnight() as u64 * 1_000_000_000
-			+ self.inner.nanosecond() as u64
+		self.nanos_since_midnight
 	}
 
 	/// Create from nanoseconds since midnight for storage
 	pub fn from_nanos_since_midnight(nanos: u64) -> Option<Self> {
-		let seconds = (nanos / 1_000_000_000) as u32;
-		let nano = (nanos % 1_000_000_000) as u32;
-		NaiveTime::from_num_seconds_from_midnight_opt(seconds, nano)
-			.map(|inner| Self {
-				inner,
-			})
+		if nanos > Self::MAX_NANOS_IN_DAY {
+			return None;
+		}
+		Some(Self {
+			nanos_since_midnight: nanos,
+		})
 	}
 }
 
 impl Display for Time {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.inner.format("%H:%M:%S%.9f"))
+		let hours = self.hour();
+		let minutes = self.minute();
+		let seconds = self.second();
+		let nanos = self.nanosecond();
+
+		write!(
+			f,
+			"{:02}:{:02}:{:02}.{:09}",
+			hours, minutes, seconds, nanos
+		)
+	}
+}
+
+// Serde implementation for ISO 8601 format
+impl Serialize for Time {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_str(&self.to_string())
+	}
+}
+
+struct TimeVisitor;
+
+impl<'de> Visitor<'de> for TimeVisitor {
+	type Value = Time;
+
+	fn expecting(
+		&self,
+		formatter: &mut std::fmt::Formatter,
+	) -> std::fmt::Result {
+		formatter.write_str(
+			"a time in ISO 8601 format (HH:MM:SS or HH:MM:SS.nnnnnnnnn)",
+		)
+	}
+
+	fn visit_str<E>(self, value: &str) -> Result<Time, E>
+	where
+		E: de::Error,
+	{
+		// Parse ISO 8601 time format: HH:MM:SS[.nnnnnnnnn]
+		let (time_part, nano_part) =
+			if let Some(dot_pos) = value.find('.') {
+				(&value[..dot_pos], Some(&value[dot_pos + 1..]))
+			} else {
+				(value, None)
+			};
+
+		let time_parts: Vec<&str> = time_part.split(':').collect();
+		if time_parts.len() != 3 {
+			return Err(E::custom(format!(
+				"invalid time format: {}",
+				value
+			)));
+		}
+
+		let hour = time_parts[0].parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid hour: {}", time_parts[0]))
+		})?;
+		let minute = time_parts[1].parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid minute: {}", time_parts[1]))
+		})?;
+		let second = time_parts[2].parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid second: {}", time_parts[2]))
+		})?;
+
+		let nano = if let Some(nano_str) = nano_part {
+			// Pad or truncate to 9 digits
+			let padded = if nano_str.len() < 9 {
+				format!("{:0<9}", nano_str)
+			} else {
+				nano_str[..9].to_string()
+			};
+			padded.parse::<u32>().map_err(|_| {
+				E::custom(format!(
+					"invalid nanoseconds: {}",
+					nano_str
+				))
+			})?
+		} else {
+			0
+		};
+
+		Time::new(hour, minute, second, nano).ok_or_else(|| {
+			E::custom(format!(
+				"invalid time: {:02}:{:02}:{:02}.{:09}",
+				hour, minute, second, nano
+			))
+		})
+	}
+}
+
+impl<'de> Deserialize<'de> for Time {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		deserializer.deserialize_str(TimeVisitor)
 	}
 }
 
@@ -296,7 +400,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(format!("{}", time), "01:00:00.000000000");
 
-		// Test comptokenize time with nanoseconds
+		// Test complex time with nanoseconds
 		let nanos = 14 * 3600 * 1_000_000_000
 			+ 30 * 60 * 1_000_000_000
 			+ 45 * 1_000_000_000 + 123456789;
@@ -345,5 +449,44 @@ mod tests {
 
 		let time = Time::new(14, 30, 45, 000000001).unwrap(); // 0.000000001 seconds
 		assert_eq!(format!("{}", time), "14:30:45.000000001");
+	}
+
+	#[test]
+	fn test_invalid_times() {
+		assert!(Time::new(24, 0, 0, 0).is_none()); // Invalid hour
+		assert!(Time::new(0, 60, 0, 0).is_none()); // Invalid minute
+		assert!(Time::new(0, 0, 60, 0).is_none()); // Invalid second
+		assert!(Time::new(0, 0, 0, 1_000_000_000).is_none()); // Invalid nanosecond
+	}
+
+	#[test]
+	fn test_time_roundtrip() {
+		let test_times = [
+			(0, 0, 0, 0),
+			(12, 30, 45, 123456789),
+			(23, 59, 59, 999999999),
+		];
+
+		for (h, m, s, n) in test_times {
+			let time = Time::new(h, m, s, n).unwrap();
+			let nanos = time.to_nanos_since_midnight();
+			let recovered =
+				Time::from_nanos_since_midnight(nanos).unwrap();
+
+			assert_eq!(time.hour(), recovered.hour());
+			assert_eq!(time.minute(), recovered.minute());
+			assert_eq!(time.second(), recovered.second());
+			assert_eq!(time.nanosecond(), recovered.nanosecond());
+		}
+	}
+
+	#[test]
+	fn test_serde_roundtrip() {
+		let time = Time::new(14, 30, 45, 123456789).unwrap();
+		let json = serde_json::to_string(&time).unwrap();
+		assert_eq!(json, "\"14:30:45.123456789\"");
+
+		let recovered: Time = serde_json::from_str(&json).unwrap();
+		assert_eq!(time, recovered);
 	}
 }

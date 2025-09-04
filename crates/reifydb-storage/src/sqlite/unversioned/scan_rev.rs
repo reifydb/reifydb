@@ -3,26 +3,24 @@
 
 use std::collections::VecDeque;
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	EncodedKey, Result,
 	interface::{Unversioned, UnversionedScanRev},
 };
 
 use super::execute_scan_query;
-use crate::sqlite::Sqlite;
+use crate::sqlite::{Sqlite, read::Reader};
 
 impl UnversionedScanRev for Sqlite {
 	type ScanIterRev<'a> = IterRev;
 
 	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-		Ok(IterRev::new(self.get_conn(), 1024))
+		Ok(IterRev::new(self.get_reader(), 1024))
 	}
 }
 
 pub struct IterRev {
-	conn: PooledConnection<SqliteConnectionManager>,
+	conn: Reader,
 	buffer: VecDeque<Unversioned>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
@@ -30,10 +28,7 @@ pub struct IterRev {
 }
 
 impl IterRev {
-	pub fn new(
-		conn: PooledConnection<SqliteConnectionManager>,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, batch_size: usize) -> Self {
 		Self {
 			conn,
 			buffer: VecDeque::new(),

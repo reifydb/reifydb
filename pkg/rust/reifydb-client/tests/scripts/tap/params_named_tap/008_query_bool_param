@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#bool_param
+# Test: Named parameter with boolean type using query
+
+query_named 'MAP $bool_val as result' 'bool_val=false'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |  false   |
+> +----------+
+> 

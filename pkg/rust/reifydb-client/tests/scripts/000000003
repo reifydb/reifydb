@@ -1,0 +1,34 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test multiple sequential operations
+command 'create schema ops'
+command 'create table ops.numbers{val: int4}'
+command 'from [{ val: 10 }, { val: 20 }] insert ops.numbers'
+query 'from ops.numbers'
+---
+> +----------+-----------+
+> |  schema  |  created  |
+> +----------+-----------+
+> |   ops    |   true    |
+> +----------+-----------+
+> 
+> +----------+-----------+-----------+
+> |  schema  |   table   |  created  |
+> +----------+-----------+-----------+
+> |   ops    |  numbers  |   true    |
+> +----------+-----------+-----------+
+> 
+> +----------+-----------+------------+
+> |  schema  |   table   |  inserted  |
+> +----------+-----------+------------+
+> |   ops    |  numbers  |     2      |
+> +----------+-----------+------------+
+> 
+> +-------+
+> |  val  |
+> +-------+
+> |  20   |
+> |  10   |
+> +-------+
+> 

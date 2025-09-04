@@ -28,7 +28,7 @@ fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 
 	let dir = out_path.parent().expect("invalid path");
 	let filename = out_path.file_name().expect("invalid path");
-	let mut mint = goldenfile::Mint::new(dir);
+	let mint = reifydb_testing::goldenfile::Mint::new(dir);
 	let mut f = mint
 		.new_goldenfile(filename)
 		.expect("failed to create goldenfile");
@@ -58,7 +58,7 @@ fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 
 	let dir = out_path.parent().expect("invalid path");
 	let filename = out_path.file_name().expect("invalid path");
-	let mut mint = goldenfile::Mint::new(dir);
+	let mint = reifydb_testing::goldenfile::Mint::new(dir);
 	let mut f = mint
 		.new_goldenfile(filename)
 		.expect("failed to create goldenfile");

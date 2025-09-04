@@ -10,9 +10,10 @@ use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcCount for Sqlite {
 	fn count(&self, version: Version) -> Result<usize> {
-		let conn = self.get_conn();
+		let conn = self.get_reader();
+		let conn_guard = conn.lock().unwrap();
 
-		let mut stmt = conn
+		let mut stmt = conn_guard
 			.prepare_cached(
 				"SELECT value FROM cdc WHERE version = ?",
 			)

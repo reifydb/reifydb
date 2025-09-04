@@ -9,9 +9,8 @@ use std::{
 	thread::current,
 };
 
-use chrono::{DateTime, Utc};
 use crossbeam_channel::{SendError, Sender};
-use reifydb_type::{IntoValue, Value};
+use reifydb_type::{IntoValue, Value, value::DateTime};
 use serde::{Deserialize, Serialize};
 
 use crate::util;
@@ -65,7 +64,7 @@ impl fmt::Display for LogLevel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Record {
 	/// Timestamp when the log was created
-	pub timestamp: DateTime<Utc>,
+	pub timestamp: DateTime,
 	/// Log severity level
 	pub level: LogLevel,
 	/// Source module/crate (with reifydb- prefix stripped)

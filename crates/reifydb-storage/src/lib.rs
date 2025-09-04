@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub(crate) mod cdc;
+mod diagnostic;
 pub mod memory;
 pub mod sqlite;
 

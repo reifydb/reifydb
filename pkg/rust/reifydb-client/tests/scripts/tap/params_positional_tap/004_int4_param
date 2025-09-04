@@ -1,0 +1,11 @@
+# Generated from: params_positional.tap.md#int4_param
+# Test: Positional parameter with INT4 type
+
+command_positional 'MAP $1 as result' '12345678'
+---
+> +------------+
+> |   result   |
+> +------------+
+> |  12345678  |
+> +------------+
+> 

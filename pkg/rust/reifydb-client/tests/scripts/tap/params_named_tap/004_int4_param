@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#int4_param
+# Test: Named parameter with INT4 type
+
+command_named 'MAP $int4_val as result' 'int4_val=12345678'
+---
+> +------------+
+> |   result   |
+> +------------+
+> |  12345678  |
+> +------------+
+> 

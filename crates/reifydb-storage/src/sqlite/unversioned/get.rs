@@ -12,22 +12,28 @@ use crate::sqlite::Sqlite;
 
 impl UnversionedGet for Sqlite {
 	fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>> {
-		let conn = self.get_conn();
-		Ok(conn.query_row(
-			"SELECT key, value FROM unversioned WHERE key = ?1  LIMIT 1",
-			params![key.to_vec()],
-			|row| {
-				Ok(Unversioned {
-					key: EncodedKey::new(
-						row.get::<_, Vec<u8>>(0)?,
-					),
-					row: EncodedRow(CowVec::new(
-						row.get::<_, Vec<u8>>(1)?,
-					)),
-				})
-			},
-		)
-		.optional()
-		.unwrap())
+		let conn = self.get_reader();
+		let conn_guard = conn.lock().unwrap();
+		Ok(conn_guard
+			.query_row(
+				"SELECT key, value FROM unversioned WHERE key = ?1  LIMIT 1",
+				params![key.to_vec()],
+				|row| {
+					Ok(Unversioned {
+						key: EncodedKey::new(
+							row.get::<_, Vec<u8>>(
+								0,
+							)?,
+						),
+						row: EncodedRow(CowVec::new(
+							row.get::<_, Vec<u8>>(
+								1,
+							)?,
+						)),
+					})
+				},
+			)
+			.optional()
+			.unwrap())
 	}
 }

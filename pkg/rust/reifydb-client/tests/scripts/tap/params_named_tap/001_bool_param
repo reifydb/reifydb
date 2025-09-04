@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#bool_param
+# Test: Named parameter with boolean type
+
+command_named 'MAP $bool_val as result' 'bool_val=true'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |   true   |
+> +----------+
+> 

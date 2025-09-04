@@ -1,0 +1,6 @@
+# Generated from: statement_handling.tap.md#query_many_empty_statements
+# Test: Query with many empty statements
+
+query ';;;;;'
+---
+ok

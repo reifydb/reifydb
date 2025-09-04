@@ -8,8 +8,9 @@ use crate::sqlite::Sqlite;
 
 impl UnversionedContains for Sqlite {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		let conn = self.get_conn();
-		let exists: bool = conn
+		let conn = self.get_reader();
+		let conn_guard = conn.lock().unwrap();
+		let exists: bool = conn_guard
 			.query_row(
 				"SELECT EXISTS(SELECT 1 FROM unversioned WHERE key = ?)",
 				params![key.to_vec()],

@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, Utc};
+use reifydb_type::value::DateTime;
 
 #[cfg(debug_assertions)]
 thread_local! {
@@ -43,16 +43,16 @@ pub fn now_millis() -> u64 {
 	(now_nanos() / 1_000_000) as u64
 }
 
-/// Get current time as DateTime<Utc>
+/// Get current time as DateTime
 /// Preserves nanosecond precision when available
 #[inline(always)]
-pub fn now() -> DateTime<Utc> {
+pub fn now() -> DateTime {
 	let nanos = now_nanos();
 	let secs = (nanos / 1_000_000_000) as i64;
 	let nanos_remainder = (nanos % 1_000_000_000) as u32;
 
-	DateTime::<Utc>::from_timestamp(secs, nanos_remainder)
-		.unwrap_or_else(|| Utc::now())
+	DateTime::from_parts(secs, nanos_remainder)
+		.unwrap_or_else(|_| DateTime::now())
 }
 
 // ============================================================================
@@ -338,7 +338,7 @@ mod tests {
 
 		let dt = now();
 		assert_eq!(dt.timestamp(), 1_234_567_890);
-		assert_eq!(dt.timestamp_subsec_nanos(), 123_456_789);
+		assert_eq!(dt.timestamp_nanos() % 1_000_000_000, 123_456_789);
 
 		mock_time_clear();
 	}
@@ -362,7 +362,7 @@ mod tests {
 
 		let dt = now();
 		assert_eq!(dt.timestamp(), 1_700_000_000);
-		assert_eq!(dt.timestamp_subsec_nanos(), 987_654_321);
+		assert_eq!(dt.timestamp_nanos() % 1_000_000_000, 987_654_321);
 		assert_eq!(dt.timestamp_millis(), 1_700_000_000_987);
 
 		mock_time_clear();

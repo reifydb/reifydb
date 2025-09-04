@@ -4,11 +4,13 @@
 #![no_std]
 extern crate alloc;
 
+mod sha1;
 mod xxh;
 
 use core::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
+pub use sha1::{Sha1, sha1};
 pub use xxh::{xxh3_64, xxh3_128, xxh32, xxh64};
 
 #[repr(transparent)]
@@ -77,5 +79,28 @@ impl From<Hash128> for u128 {
 impl Hash for Hash128 {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		state.write_u128(self.0)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Hash160(pub [u8; 20]);
+
+impl From<[u8; 20]> for Hash160 {
+	fn from(value: [u8; 20]) -> Self {
+		Hash160(value)
+	}
+}
+
+impl From<Hash160> for [u8; 20] {
+	fn from(hash: Hash160) -> Self {
+		hash.0
+	}
+}
+
+impl Hash for Hash160 {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		state.write(&self.0)
 	}
 }

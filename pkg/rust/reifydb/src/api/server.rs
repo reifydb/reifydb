@@ -3,16 +3,24 @@
 
 #![cfg(feature = "sub_server")]
 
-use reifydb_storage::sqlite::SqliteConfig;
-
-use crate::{
-	MemoryOptimisticTransaction, MemorySerializableTransaction,
-	ServerBuilder, SqliteOptimisticTransaction,
-	SqliteSerializableTransaction, memory, optimistic, serializable,
-	sqlite,
+use reifydb_storage::{
+	memory::Memory,
+	sqlite::{Sqlite, SqliteConfig},
+};
+use reifydb_transaction::mvcc::transaction::{
+	optimistic::Optimistic, serializable::Serializable,
 };
 
-pub fn memory_optimistic() -> ServerBuilder<MemoryOptimisticTransaction> {
+use crate::{
+	MemoryCdc, ServerBuilder, SqliteCdc, UnversionedMemory,
+	UnversionedSqlite, memory, optimistic, serializable, sqlite,
+};
+
+pub fn memory_optimistic() -> ServerBuilder<
+	Optimistic<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = memory();
 	let (versioned, _, _, _) = optimistic((
 		storage.clone(),
@@ -23,7 +31,11 @@ pub fn memory_optimistic() -> ServerBuilder<MemoryOptimisticTransaction> {
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
-pub fn memory_serializable() -> ServerBuilder<MemorySerializableTransaction> {
+pub fn memory_serializable() -> ServerBuilder<
+	Serializable<Memory, UnversionedMemory>,
+	UnversionedMemory,
+	MemoryCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = memory();
 	let (versioned, _, _, _) = serializable((
 		storage.clone(),
@@ -36,7 +48,11 @@ pub fn memory_serializable() -> ServerBuilder<MemorySerializableTransaction> {
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> ServerBuilder<SqliteOptimisticTransaction> {
+) -> ServerBuilder<
+	Optimistic<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = sqlite(config);
 	let (versioned, _, _, _) = optimistic((
 		storage.clone(),
@@ -49,7 +65,11 @@ pub fn sqlite_optimistic(
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
-) -> ServerBuilder<SqliteSerializableTransaction> {
+) -> ServerBuilder<
+	Serializable<Sqlite, UnversionedSqlite>,
+	UnversionedSqlite,
+	SqliteCdc,
+> {
 	let (storage, unversioned, cdc, eventbus) = sqlite(config);
 	let (versioned, _, _, _) = serializable((
 		storage.clone(),

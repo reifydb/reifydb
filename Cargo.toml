@@ -22,7 +22,6 @@ members = [
     "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
-    "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
@@ -89,6 +88,7 @@ overflow-checks = true
 [workspace.dependencies]
 reifydb = { path = "pkg/rust/reifydb", version = "0.0.1" }
 reifydb-client = { path = "pkg/rust/reifydb-client", version = "0.0.1" }
+
 #internal
 reifydb-auth = { path = "crates/reifydb-auth", version = "0.0.1" }
 reifydb-catalog = { path = "crates/reifydb-catalog", version = "0.0.1" }
@@ -108,31 +108,35 @@ reifydb-type = { path = "crates/reifydb-type", version = "0.0.1" }
 reifydb-sub-logging = { path = "crates/reifydb-sub-logging", version = "0.0.1" }
 reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.0.1" }
 
-# util
-chrono = { version = "0.4.41", features = ["serde"] }
 once_cell = { version = "1.21.3" }
 regex = { version = "1.11.1" }
-uuid = { version = "1.16.0", features = ["v4", "v7", "serde"] }
-libc = { version = "1.0.0-alpha.1" }
+uuid = { version = "1.18.1", default-features = false, features = ["v4", "v7", "serde", "std"] }
+libc = { version = "0.2.175" }
 num-bigint = { version = "0.4", features = ["serde"] }
 bigdecimal = { version = "0.4", features = ["serde"] }
 
 crossbeam-skiplist = { version = "0.1.3" }
 crossbeam-channel = { version = "0.5.15" }
-parking_lot = { version = "0.12" }
+parking_lot = { version = "0.12.4" }
+
+# Network and server
+mio = { version = "1.0.4", features = ["net", "os-poll"] }
+slab = { version = "0.4.11" }
+socket2 = { version = "0.6.0", features = ["all"] }
+num_cpus = { version = "1.17.0" }
+core_affinity = { version = "0.8.3" }
+httparse = { version = "1.10.1" }
+urlencoding = { version = "2.1.3" }
 
 # sqlite
-rusqlite = { version = "0.36.0", features = ["bundled"] }
-r2d2 = { version = "0.8.10" }
-r2d2_sqlite = { version = "0.29.0" }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
 
 # serde
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = { version = "0.11.17" }
-serde_json = { version = "1.0.140" }
+serde_json = { version = "1.0.143" }
 
 # reifydb-testing
-goldenfile = { version = "1.8.0" }
-test_each_file = { version = "0.3.4" }
+test_each_file = { version = "0.3.5" }
 
 

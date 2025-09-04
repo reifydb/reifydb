@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#int8_param
+# Test: Query with named INT8 parameter
+
+query_named 'MAP $int8_val as result' 'int8_val=9223372036854775807'
+---
+> +-----------------------+
+> |        result         |
+> +-----------------------+
+> |  9223372036854775807  |
+> +-----------------------+
+> 

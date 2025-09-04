@@ -151,6 +151,7 @@ impl Display for Frame {
 mod tests {
 	use reifydb_type::{
 		Blob, Date, DateTime, Interval, RowNumber, Time, Uuid4, Uuid7,
+		parse_uuid4, parse_uuid7,
 	};
 
 	use super::*;
@@ -163,350 +164,435 @@ mod tests {
 		},
 	};
 
-	fn bool_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = bool>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Bool(BoolContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
+	// Macro to create test columns with optional values (None = undefined)
+	macro_rules! column_with_undefineds {
+		($name:expr, Bool, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (false, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Bool(BoolContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Float4, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0.0_f32, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Float4(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Float8, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0.0_f64, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Float8(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Int1, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_i8, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Int1(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Int2, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_i16, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Int2(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Int4, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_i32, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Int4(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Int8, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_i64, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Int8(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Int16, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_i128, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Int16(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uint1, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_u8, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uint1(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uint2, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_u16, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uint2(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uint4, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_u32, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uint4(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uint8, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_u64, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uint8(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uint16, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (0_u128, false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uint16(NumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Utf8, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v.to_string(), true),
+					None => (String::new(), false), // dummy value, will be marked as undefined
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Utf8(Utf8Container::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Date, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (Date::from_ymd(1970, 1, 1).unwrap(), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Date(TemporalContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, DateTime, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (DateTime::from_timestamp(0).unwrap(), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::DateTime(TemporalContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Time, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (Time::from_hms(0, 0, 0).unwrap(), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Time(TemporalContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Interval, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (Interval::from_days(0), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Interval(TemporalContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Blob, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (Blob::new(vec![]), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Blob(BlobContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uuid4, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (Uuid4::from(parse_uuid4("550e8400-e29b-41d4-a716-446655440000").unwrap()), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uuid4(UuidContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, Uuid7, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (Uuid7::from(parse_uuid7("00000000-0000-7000-8000-000000000000").unwrap()), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: $name.to_string(),
+				data: FrameColumnData::Uuid7(UuidContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
+		($name:expr, RowNumber, $data:expr) => {{
+			let (values, bitvec): (Vec<_>, Vec<_>) = $data
+				.into_iter()
+				.map(|opt| match opt {
+					Some(v) => (v, true),
+					None => (RowNumber(0), false), // dummy value
+				})
+				.unzip();
+
+			FrameColumn {
+				schema: None,
+				store: None,
+				name: ROW_NUMBER_COLUMN_NAME.to_string(),
+				data: FrameColumnData::RowNumber(RowNumberContainer::new(
+					values,
+					BitVec::from_slice(&bitvec),
+				)),
+			}
+		}};
 	}
 
-	fn float4_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = f32>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Float4(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn float8_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = f64>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Float8(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn int1_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i8>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Int1(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn int2_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i16>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Int2(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn int4_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i32>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Int4(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn int8_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i64>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Int8(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn int16_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i128>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Int16(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uint1_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u8>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uint1(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uint2_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u16>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uint2(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uint4_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u32>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uint4(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uint8_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u64>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uint8(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uint16_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u128>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uint16(NumberContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn utf8_column_with_bitvec(
-		name: &str,
-		data: Vec<String>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Utf8(Utf8Container::new(
-				data,
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn undefined_column(name: &str, len: usize) -> FrameColumn {
+	fn undefined_column(name: &str, count: usize) -> FrameColumn {
 		FrameColumn {
 			schema: None,
 			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Undefined(
-				UndefinedContainer::new(len),
-			),
-		}
-	}
-
-	fn date_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Date>,
-		bitvec: BitVec,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Date(TemporalContainer::new(
-				data.into_iter().collect(),
-				bitvec,
-			)),
-		}
-	}
-
-	fn datetime_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = DateTime>,
-		bitvec: BitVec,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::DateTime(
-				TemporalContainer::new(
-					data.into_iter().collect(),
-					bitvec,
-				),
-			),
-		}
-	}
-
-	fn time_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Time>,
-		bitvec: BitVec,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Time(TemporalContainer::new(
-				data.into_iter().collect(),
-				bitvec,
-			)),
-		}
-	}
-
-	fn interval_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Interval>,
-		bitvec: BitVec,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Interval(
-				TemporalContainer::new(
-					data.into_iter().collect(),
-					bitvec,
-				),
-			),
-		}
-	}
-
-	fn row_number_column_with_bitvec(
-		data: impl IntoIterator<Item = RowNumber>,
-		bitvec: BitVec,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: "__ROW__ID__".to_string(),
-			data: FrameColumnData::RowNumber(
-				RowNumberContainer::new(
-					data.into_iter().collect(),
-					bitvec,
-				),
+				UndefinedContainer::new(count),
 			),
 		}
 	}
@@ -519,73 +605,19 @@ mod tests {
 		FrameColumn {
 			schema: None,
 			store: None,
-			name: "__ROW__ID__".to_string(),
+			name: ROW_NUMBER_COLUMN_NAME.to_string(),
 			data: FrameColumnData::RowNumber(
 				RowNumberContainer::new(data_vec, bitvec),
 			),
 		}
 	}
 
-	fn blob_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Blob>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Blob(BlobContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uuid4_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Uuid4>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uuid4(UuidContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
-	fn uuid7_column_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Uuid7>,
-		bitvec: impl IntoIterator<Item = bool>,
-	) -> FrameColumn {
-		FrameColumn {
-			schema: None,
-			store: None,
-			name: name.to_string(),
-			data: FrameColumnData::Uuid7(UuidContainer::new(
-				data.into_iter().collect(),
-				BitVec::from_slice(
-					&bitvec.into_iter().collect::<Vec<_>>(),
-				),
-			)),
-		}
-	}
-
 	#[test]
 	fn test_bool() {
-		let frame = Frame::new(vec![bool_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"bool",
-			[true, false],
-			[true, false],
+			Bool,
+			[Some(true), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -601,10 +633,10 @@ mod tests {
 
 	#[test]
 	fn test_float4() {
-		let frame = Frame::new(vec![float4_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"float4",
-			[1.2, 2.5],
-			[true, false],
+			Float4,
+			[Some(1.2_f32), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -621,10 +653,10 @@ mod tests {
 	#[test]
 	#[allow(clippy::approx_constant)]
 	fn test_float8() {
-		let frame = Frame::new(vec![float8_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"float8",
-			[3.14, 6.28],
-			[true, false],
+			Float8,
+			[Some(3.14_f64), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -640,10 +672,10 @@ mod tests {
 
 	#[test]
 	fn test_int1() {
-		let frame = Frame::new(vec![int1_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"int1",
-			[1, -1],
-			[true, false],
+			Int1,
+			[Some(1_i8), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -659,10 +691,10 @@ mod tests {
 
 	#[test]
 	fn test_int2() {
-		let frame = Frame::new(vec![int2_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"int2",
-			[100, 200],
-			[true, false],
+			Int2,
+			[Some(100_i16), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -678,10 +710,10 @@ mod tests {
 
 	#[test]
 	fn test_int4() {
-		let frame = Frame::new(vec![int4_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"int4",
-			[1000, 2000],
-			[true, false],
+			Int4,
+			[Some(1000_i32), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -697,10 +729,10 @@ mod tests {
 
 	#[test]
 	fn test_int8() {
-		let frame = Frame::new(vec![int8_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"int8",
-			[10000, 20000],
-			[true, false],
+			Int8,
+			[Some(10000_i64), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -716,10 +748,10 @@ mod tests {
 
 	#[test]
 	fn test_int16() {
-		let frame = Frame::new(vec![int16_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"int16",
-			[100000, 200000],
-			[true, false],
+			Int16,
+			[Some(100000_i128), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -735,10 +767,10 @@ mod tests {
 
 	#[test]
 	fn test_uint1() {
-		let frame = Frame::new(vec![uint1_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uint1",
-			[1, 2],
-			[true, false],
+			Uint1,
+			[Some(1_u8), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -754,10 +786,10 @@ mod tests {
 
 	#[test]
 	fn test_uint2() {
-		let frame = Frame::new(vec![uint2_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uint2",
-			[100, 200],
-			[true, false],
+			Uint2,
+			[Some(100_u16), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -773,10 +805,10 @@ mod tests {
 
 	#[test]
 	fn test_uint4() {
-		let frame = Frame::new(vec![uint4_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uint4",
-			[1000, 2000],
-			[true, false],
+			Uint4,
+			[Some(1000_u32), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -792,10 +824,10 @@ mod tests {
 
 	#[test]
 	fn test_uint8() {
-		let frame = Frame::new(vec![uint8_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uint8",
-			[10000, 20000],
-			[true, false],
+			Uint8,
+			[Some(10000_u64), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -811,10 +843,10 @@ mod tests {
 
 	#[test]
 	fn test_uint16() {
-		let frame = Frame::new(vec![uint16_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uint16",
-			[100000, 200000],
-			[true, false],
+			Uint16,
+			[Some(100000_u128), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -830,10 +862,10 @@ mod tests {
 
 	#[test]
 	fn test_string() {
-		let frame = Frame::new(vec![utf8_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"string",
-			vec!["foo".to_string(), "bar".to_string()],
-			[true, false],
+			Utf8,
+			[Some("foo"), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -864,14 +896,10 @@ mod tests {
 
 	#[test]
 	fn test_date() {
-		let dates = vec![
-			Date::from_ymd(2025, 1, 15).unwrap(),
-			Date::from_ymd(2025, 12, 25).unwrap(),
-		];
-		let frame = Frame::new(vec![date_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"date",
-			dates,
-			BitVec::from_slice(&[true, false]),
+			Date,
+			[Some(Date::from_ymd(2025, 1, 15).unwrap()), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -887,14 +915,14 @@ mod tests {
 
 	#[test]
 	fn test_datetime() {
-		let datetimes = vec![
-			DateTime::from_timestamp(1642694400).unwrap(),
-			DateTime::from_timestamp(1735142400).unwrap(),
-		];
-		let frame = Frame::new(vec![datetime_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"datetime",
-			datetimes,
-			BitVec::from_slice(&[true, false]),
+			DateTime,
+			[
+				Some(DateTime::from_timestamp(1642694400)
+					.unwrap()),
+				None
+			]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -910,14 +938,10 @@ mod tests {
 
 	#[test]
 	fn test_time() {
-		let times = vec![
-			Time::from_hms(14, 30, 45).unwrap(),
-			Time::from_hms(9, 15, 30).unwrap(),
-		];
-		let frame = Frame::new(vec![time_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"time",
-			times,
-			BitVec::from_slice(&[true, false]),
+			Time,
+			[Some(Time::from_hms(14, 30, 45).unwrap()), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -933,12 +957,10 @@ mod tests {
 
 	#[test]
 	fn test_interval() {
-		let intervals =
-			vec![Interval::from_days(30), Interval::from_hours(24)];
-		let frame = Frame::new(vec![interval_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"interval",
-			intervals,
-			BitVec::from_slice(&[true, false]),
+			Interval,
+			[Some(Interval::from_days(30)), None]
 		)]);
 		let output = format!("{}", frame);
 
@@ -955,19 +977,19 @@ mod tests {
 
 	#[test]
 	fn test_row_number() {
-		let ids = vec![RowNumber(1234), RowNumber(5678)];
-		let frame = Frame::new(vec![row_number_column_with_bitvec(
-			ids,
-			BitVec::from_slice(&[true, false]),
+		let frame = Frame::new(vec![column_with_undefineds!(
+			"__ROW__NUMBER__",
+			RowNumber,
+			[Some(RowNumber(1234)), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
-+---------------+
-|  __ROW__ID__  |
-+---------------+
-|     1234      |
-|   Undefined   |
-+---------------+
++-------------------+
+|  __ROW__NUMBER__  |
++-------------------+
+|       1234        |
+|     Undefined     |
++-------------------+
 ";
 		assert_eq!(output, expected);
 	}
@@ -975,14 +997,17 @@ mod tests {
 	#[test]
 	fn test_row_number_column_ordering() {
 		// Create a frame with regular columns and a RowNumber column
-		let regular_column = utf8_column_with_bitvec(
+		let regular_column = column_with_undefineds!(
 			"name",
-			vec!["Alice".to_string(), "Bob".to_string()],
-			[true, true],
+			Utf8,
+			[Some("Alice"), Some("Bob")]
 		);
 
-		let age_column =
-			int4_column_with_bitvec("age", [25, 30], [true, true]);
+		let age_column = column_with_undefineds!(
+			"age",
+			Int4,
+			[Some(25_i32), Some(30_i32)]
+		);
 
 		let row_number_column = row_number_column([
 			RowNumber::new(1),
@@ -1004,7 +1029,7 @@ mod tests {
 		let header_line = lines[1]; // Second line contains the header
 
 		// The header should start with __ROW__ID__ column
-		assert!(header_line.contains("__ROW__ID__"));
+		assert!(header_line.contains("__ROW__NUMBER__"));
 
 		// Check that the first data value in the first row is from the
 		// RowNumber column
@@ -1015,10 +1040,11 @@ mod tests {
 	#[test]
 	fn test_row_number_undefined_display() {
 		// Create a RowNumber column with one undefined value
-		let row_number_column = row_number_column_with_bitvec(
-			[RowNumber::new(1), RowNumber::new(2)],
-			BitVec::from_slice(&[true, false]), /* Second value
-			                                     * is undefined */
+		let row_number_column = column_with_undefineds!(
+			"__ROW__NUMBER__",
+			RowNumber,
+			[Some(RowNumber::new(1)), None] /* Second value is
+			                                 * undefined */
 		);
 
 		let frame = Frame::new(vec![row_number_column]);
@@ -1035,14 +1061,10 @@ mod tests {
 
 	#[test]
 	fn test_blob() {
-		let blobs = vec![
-			Blob::new(vec![0x01, 0x02, 0x03]),
-			Blob::new(vec![0xFF, 0xEE, 0xDD]),
-		];
-		let frame = Frame::new(vec![blob_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"blob",
-			blobs,
-			[true, false],
+			Blob,
+			[Some(Blob::new(vec![0x01, 0x02, 0x03])), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -1058,24 +1080,18 @@ mod tests {
 
 	#[test]
 	fn test_uuid4() {
-		let uuids = vec![
-			Uuid4::from(
-				::uuid::Uuid::parse_str(
-					"550e8400-e29b-41d4-a716-446655440000",
-				)
-				.unwrap(),
-			),
-			Uuid4::from(
-				::uuid::Uuid::parse_str(
-					"550e8400-e29b-41d4-a716-446655440001",
-				)
-				.unwrap(),
-			),
-		];
-		let frame = Frame::new(vec![uuid4_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uuid4",
-			uuids,
-			[true, false],
+			Uuid4,
+			[
+				Some(Uuid4::from(
+					parse_uuid4(
+						"550e8400-e29b-41d4-a716-446655440000"
+					)
+					.unwrap()
+				)),
+				None
+			]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -1091,24 +1107,18 @@ mod tests {
 
 	#[test]
 	fn test_uuid7() {
-		let uuids = vec![
-			Uuid7::from(
-				::uuid::Uuid::parse_str(
-					"01890a5d-ac96-774b-b9aa-789c0686aaa4",
-				)
-				.unwrap(),
-			),
-			Uuid7::from(
-				::uuid::Uuid::parse_str(
-					"01890a5d-ac96-774b-b9aa-789c0686aaa5",
-				)
-				.unwrap(),
-			),
-		];
-		let frame = Frame::new(vec![uuid7_column_with_bitvec(
+		let frame = Frame::new(vec![column_with_undefineds!(
 			"uuid7",
-			uuids,
-			[true, false],
+			Uuid7,
+			[
+				Some(Uuid7::from(
+					parse_uuid7(
+						"01890a5d-ac96-774b-b9aa-789c0686aaa4"
+					)
+					.unwrap()
+				)),
+				None
+			]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\

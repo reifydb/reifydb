@@ -3,15 +3,16 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	CowVec, Result, Version,
 	interface::{CdcEvent, CdcRange},
 	row::EncodedRow,
 };
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
+use crate::{
+	cdc::codec::decode_cdc_transaction,
+	sqlite::{Sqlite, read::Reader},
+};
 
 impl CdcRange for Sqlite {
 	type RangeIter<'a> = Range;
@@ -21,12 +22,12 @@ impl CdcRange for Sqlite {
 		start: Bound<Version>,
 		end: Bound<Version>,
 	) -> Result<Self::RangeIter<'_>> {
-		Ok(Range::new(self.get_conn(), start, end, 1024))
+		Ok(Range::new(self.get_reader(), start, end, 1024))
 	}
 }
 
 pub struct Range {
-	conn: PooledConnection<SqliteConnectionManager>,
+	conn: Reader,
 	start: Bound<Version>,
 	end: Bound<Version>,
 	buffer: VecDeque<CdcEvent>,
@@ -37,7 +38,7 @@ pub struct Range {
 
 impl Range {
 	pub fn new(
-		conn: PooledConnection<SqliteConnectionManager>,
+		conn: Reader,
 		start: Bound<Version>,
 		end: Bound<Version>,
 		batch_size: usize,
@@ -72,7 +73,8 @@ impl Range {
 			)
 		};
 
-		let mut stmt = self.conn.prepare_cached(&query).unwrap();
+		let conn_guard = self.conn.lock().unwrap();
+		let mut stmt = conn_guard.prepare_cached(&query).unwrap();
 
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);

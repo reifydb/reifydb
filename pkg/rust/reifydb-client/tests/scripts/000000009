@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test query with named parameters in SELECT
+query_named 'SELECT { a: $first, b: $second }' 'first=true' 'second=false'
+---
+> +--------+---------+
+> |   a    |    b    |
+> +--------+---------+
+> |  true  |  false  |
+> +--------+---------+
+> 

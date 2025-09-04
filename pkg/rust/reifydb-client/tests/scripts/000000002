@@ -1,0 +1,33 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Test command execution (schema creation and data insertion)
+command 'create schema test'
+command 'create table test.simple{id: int4, name: text}'
+command 'from [{ id: 1, name: "Alice" }] insert test.simple'
+query 'from test.simple'
+---
+> +----------+-----------+
+> |  schema  |  created  |
+> +----------+-----------+
+> |   test   |   true    |
+> +----------+-----------+
+> 
+> +----------+----------+-----------+
+> |  schema  |  table   |  created  |
+> +----------+----------+-----------+
+> |   test   |  simple  |   true    |
+> +----------+----------+-----------+
+> 
+> +----------+----------+------------+
+> |  schema  |  table   |  inserted  |
+> +----------+----------+------------+
+> |   test   |  simple  |     1      |
+> +----------+----------+------------+
+> 
+> +------+---------+
+> |  id  |  name   |
+> +------+---------+
+> |  1   |  Alice  |
+> +------+---------+
+> 

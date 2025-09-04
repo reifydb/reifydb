@@ -1,0 +1,23 @@
+# Generated from: statement_handling.tap.md#multiple_statements_same_structure
+# Test: Multiple statements with same structure
+
+command 'MAP 1 as result;MAP 2 as result;MAP 3 as result;'
+---
+> +----------+
+> |  result  |
+> +----------+
+> |    1     |
+> +----------+
+> 
+> +----------+
+> |  result  |
+> +----------+
+> |    2     |
+> +----------+
+> 
+> +----------+
+> |  result  |
+> +----------+
+> |    3     |
+> +----------+
+> 

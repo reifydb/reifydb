@@ -11,7 +11,6 @@ pub struct SqliteConfig {
 	pub(crate) journal_mode: JournalMode,
 	pub(crate) synchronous_mode: SynchronousMode,
 	pub(crate) temp_store: TempStore,
-	pub(crate) max_pool_size: u32,
 }
 
 impl SqliteConfig {
@@ -23,7 +22,6 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
 			temp_store: TempStore::Memory,
-			max_pool_size: 4,
 		}
 	}
 
@@ -39,7 +37,6 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Full,
 			temp_store: TempStore::File,
-			max_pool_size: 2,
 		}
 	}
 
@@ -55,7 +52,6 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Memory,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			max_pool_size: 8,
 		}
 	}
 
@@ -71,7 +67,6 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
 			temp_store: TempStore::Memory,
-			max_pool_size: 2,
 		}
 	}
 
@@ -102,12 +97,6 @@ impl SqliteConfig {
 	/// Set the temp store location
 	pub fn temp_store(mut self, store: TempStore) -> Self {
 		self.temp_store = store;
-		self
-	}
-
-	/// Set the maximum connection pool size
-	pub fn max_pool_size(mut self, size: u32) -> Self {
-		self.max_pool_size = size;
 		self
 	}
 }
@@ -284,7 +273,6 @@ mod tests {
 			.journal_mode(JournalMode::Wal)
 			.synchronous_mode(SynchronousMode::Normal)
 			.temp_store(TempStore::Memory)
-			.max_pool_size(8)
 			.flags(OpenFlags::new()
 				.read_write(true)
 				.create(true)
@@ -294,7 +282,6 @@ mod tests {
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.max_pool_size, 8);
 		assert!(config.flags.read_write);
 		assert!(config.flags.create);
 		assert!(config.flags.full_mutex);
@@ -339,7 +326,6 @@ mod tests {
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.max_pool_size, 4);
 	}
 
 	#[test]
@@ -355,7 +341,6 @@ mod tests {
 				SynchronousMode::Full
 			);
 			assert_eq!(config.temp_store, TempStore::File);
-			assert_eq!(config.max_pool_size, 2);
 			Ok(())
 		})
 		.expect("test failed");
@@ -374,7 +359,6 @@ mod tests {
 				SynchronousMode::Off
 			);
 			assert_eq!(config.temp_store, TempStore::Memory);
-			assert_eq!(config.max_pool_size, 8);
 			Ok(())
 		})
 		.expect("test failed");
@@ -389,7 +373,6 @@ mod tests {
 				.journal_mode(JournalMode::Delete)
 				.synchronous_mode(SynchronousMode::Extra)
 				.temp_store(TempStore::File)
-				.max_pool_size(16)
 				.flags(OpenFlags::new()
 					.read_write(false)
 					.create(false)
@@ -401,7 +384,6 @@ mod tests {
 				SynchronousMode::Extra
 			);
 			assert_eq!(config.temp_store, TempStore::File);
-			assert_eq!(config.max_pool_size, 16);
 			assert!(!config.flags.read_write);
 			assert!(!config.flags.create);
 			assert!(config.flags.shared_cache);

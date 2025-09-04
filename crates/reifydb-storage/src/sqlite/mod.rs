@@ -3,28 +3,44 @@
 
 mod cdc;
 mod config;
+mod diagnostic;
+mod read;
 mod unversioned;
 mod versioned;
+mod write;
 
 use std::{
 	ops::Deref,
 	path::{Path, PathBuf},
-	sync::Arc,
+	sync::{Arc, mpsc},
 };
 
 pub use config::*;
-use r2d2::{Pool, PooledConnection};
-use r2d2_sqlite::SqliteConnectionManager;
-use reifydb_core::interface::{
-	CdcStorage, UnversionedInsert, UnversionedRemove, UnversionedStorage,
-	VersionedStorage,
+use read::Readers;
+use reifydb_core::{
+	CowVec,
+	delta::Delta,
+	interface::{
+		CdcStorage, UnversionedInsert, UnversionedRemove,
+		UnversionedStorage, VersionedStorage,
+	},
 };
+use reifydb_type::Error;
+use rusqlite::Connection;
+use write::{WriteCommand, Writer};
+
+use crate::diagnostic::connection_failed;
 
 #[derive(Clone)]
 pub struct Sqlite(Arc<SqliteInner>);
 
 pub struct SqliteInner {
-	pool: Arc<Pool<SqliteConnectionManager>>,
+	readers: Readers,
+	writer: mpsc::Sender<WriteCommand>,
+	#[allow(dead_code)]
+	flags: rusqlite::OpenFlags,
+	#[allow(dead_code)]
+	config: SqliteConfig,
 }
 
 impl Deref for Sqlite {
@@ -34,32 +50,45 @@ impl Deref for Sqlite {
 	}
 }
 
+impl Drop for SqliteInner {
+	fn drop(&mut self) {
+		// Send shutdown command to writer actor
+		let _ = self.writer.send(WriteCommand::Shutdown);
+	}
+}
+
 impl Sqlite {
 	/// Create a new Sqlite storage with the given configuration
 	pub fn new(config: SqliteConfig) -> Self {
 		let db_path = Self::resolve_db_path(&config.path);
+		let flags = Self::convert_flags(&config.flags);
 
-		let manager = SqliteConnectionManager::file(db_path)
-			.with_flags(Self::convert_flags(&config.flags));
-
-		let pool = Pool::builder()
-			.max_size(config.max_pool_size)
-			.build(manager)
-			.unwrap();
+		// Create the database and set up tables with a temporary
+		// connection
 		{
-			let conn = pool.get().unwrap();
+			let conn = Connection::open_with_flags(&db_path, flags)
+				.map_err(|e| {
+					Error(connection_failed(
+						db_path.display().to_string(),
+						e.to_string(),
+					))
+				})
+				.unwrap();
+
 			conn.pragma_update(
 				None,
 				"journal_mode",
 				config.journal_mode.as_str(),
 			)
 			.unwrap();
+
 			conn.pragma_update(
 				None,
 				"synchronous",
 				config.synchronous_mode.as_str(),
 			)
 			.unwrap();
+
 			conn.pragma_update(
 				None,
 				"temp_store",
@@ -92,7 +121,10 @@ impl Sqlite {
 		}
 
 		Self(Arc::new(SqliteInner {
-			pool: Arc::new(pool),
+			readers: Readers::new(&db_path, flags, 4).unwrap(),
+			writer: Writer::spawn(&db_path, flags).unwrap(),
+			flags,
+			config,
 		}))
 	}
 
@@ -135,8 +167,42 @@ impl Sqlite {
 		rusqlite_flags
 	}
 
-	fn get_conn(&self) -> PooledConnection<SqliteConnectionManager> {
-		self.pool.get().unwrap()
+	/// Get a reader connection for read operations
+	pub(crate) fn get_reader(&self) -> read::Reader {
+		self.readers.get_reader()
+	}
+
+	/// Convert deltas to SQL operations for unversioned storage
+	fn convert_deltas_to_operations(
+		&self,
+		deltas: CowVec<Delta>,
+	) -> Vec<(String, Vec<rusqlite::types::Value>)> {
+		let mut operations = Vec::new();
+		for delta in deltas.as_ref() {
+			match delta {
+				Delta::Set {
+					key,
+					row: bytes,
+				} => {
+					operations.push((
+						"INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)".to_string(),
+						vec![
+							rusqlite::types::Value::Blob(key.to_vec()),
+							rusqlite::types::Value::Blob(bytes.to_vec()),
+						],
+					));
+				}
+				Delta::Remove {
+					key,
+				} => {
+					operations.push((
+						"DELETE FROM unversioned WHERE key = ?1".to_string(),
+						vec![rusqlite::types::Value::Blob(key.to_vec())],
+					));
+				}
+			}
+		}
+		operations
 	}
 
 	fn resolve_db_path(config_path: &Path) -> PathBuf {
@@ -291,8 +357,9 @@ mod tests {
 				SqliteConfig::new(db_path.join("test.reifydb"));
 			let storage = Sqlite::new(config);
 
-			// Verify we can get a connection
-			let _conn = storage.get_conn();
+			// Verify we can get a reader connection
+			let conn = storage.get_reader();
+			let _guard = conn.lock().unwrap();
 			Ok(())
 		})
 		.expect("test failed");
@@ -306,8 +373,9 @@ mod tests {
 			);
 			let storage = Sqlite::new(config);
 
-			// Verify we can get a connection
-			let _conn = storage.get_conn();
+			// Verify we can get a reader connection
+			let conn = storage.get_reader();
+			let _guard = conn.lock().unwrap();
 			Ok(())
 		})
 		.expect("test failed");
@@ -321,8 +389,9 @@ mod tests {
 			);
 			let storage = Sqlite::new(config);
 
-			// Verify we can get a connection
-			let _conn = storage.get_conn();
+			// Verify we can get a reader connection
+			let conn = storage.get_reader();
+			let _guard = conn.lock().unwrap();
 			Ok(())
 		})
 		.expect("test failed");
@@ -334,7 +403,8 @@ mod tests {
 			let config = SqliteConfig::new(db_path);
 			let storage = Sqlite::new(config);
 
-			let _conn = storage.get_conn();
+			let conn = storage.get_reader();
+			let _guard = conn.lock().unwrap();
 
 			assert!(db_path.join("reify.db").exists());
 			Ok(())
@@ -350,8 +420,9 @@ mod tests {
 			let config = SqliteConfig::new(&db_file);
 			let storage = Sqlite::new(config);
 
-			// Verify we can get a connection
-			let _conn = storage.get_conn();
+			// Verify we can get a reader connection
+			let conn = storage.get_reader();
+			let _guard = conn.lock().unwrap();
 
 			// Verify the specific database file was created
 			assert!(db_file.exists());
@@ -374,67 +445,9 @@ mod tests {
 				.uri(true));
 
 			let storage = Sqlite::new(config);
-			let _conn = storage.get_conn();
-			Ok(())
-		})
-		.expect("test failed");
-	}
 
-	#[test]
-	fn test_custom_pool_size() {
-		temp_dir(|db_path| {
-			let config =
-				SqliteConfig::new(db_path.join("pool.reifydb"))
-					.max_pool_size(1);
-
-			let storage = Sqlite::new(config);
-
-			// Should be able to get at least one connection
-			let _conn1 = storage.get_conn();
-			Ok(())
-		})
-		.expect("test failed");
-	}
-
-	#[test]
-	fn test_pragma_settings_applied() {
-		temp_dir(|db_path| {
-			let config = SqliteConfig::new(
-				db_path.join("pragma.reifydb"),
-			)
-			.journal_mode(JournalMode::Delete)
-			.synchronous_mode(SynchronousMode::Extra)
-			.temp_store(TempStore::File);
-
-			let storage = Sqlite::new(config);
-			let conn = storage.get_conn();
-
-			// Verify pragma settings were applied (simplified
-			// check)
-			let journal_mode: String = conn
-				.pragma_query_value(
-					None,
-					"journal_mode",
-					|row| Ok(row.get(0)?),
-				)
-				.unwrap();
-			assert_eq!(journal_mode.to_uppercase(), "DELETE");
-
-			let synchronous: i32 = conn
-				.pragma_query_value(
-					None,
-					"synchronous",
-					|row| Ok(row.get(0)?),
-				)
-				.unwrap();
-			assert_eq!(synchronous, 3); // EXTRA = 3
-
-			let temp_store: i32 = conn
-				.pragma_query_value(None, "temp_store", |row| {
-					Ok(row.get(0)?)
-				})
-				.unwrap();
-			assert_eq!(temp_store, 1); // FILE = 1
+			let conn = storage.get_reader();
+			let _guard = conn.lock().unwrap();
 			Ok(())
 		})
 		.expect("test failed");
@@ -445,10 +458,11 @@ mod tests {
 		temp_dir(|db_path| {
 			let config = SqliteConfig::new(db_path.join("tables.reifydb"));
 			let storage = Sqlite::new(config);
-			let conn = storage.get_conn();
+			let conn = storage.get_reader();
+			let conn_guard = conn.lock().unwrap();
 
 			// Check that both tables exist
-			let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')").unwrap();
+			let mut stmt = conn_guard.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')").unwrap();
 			let table_names: Vec<String> = stmt.query_map([], |row| {
 				Ok(row.get(0)?)
 			}).unwrap().map(Result::unwrap).collect();

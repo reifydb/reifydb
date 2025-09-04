@@ -3,26 +3,27 @@
 
 use std::collections::VecDeque;
 
-use r2d2::PooledConnection;
-use r2d2_sqlite::SqliteConnectionManager;
 use reifydb_core::{
 	CowVec, Result, Version,
 	interface::{CdcEvent, CdcScan},
 	row::EncodedRow,
 };
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
+use crate::{
+	cdc::codec::decode_cdc_transaction,
+	sqlite::{Sqlite, read::Reader},
+};
 
 impl CdcScan for Sqlite {
 	type ScanIter<'a> = Scan;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		Ok(Scan::new(self.get_conn(), 1024))
+		Ok(Scan::new(self.get_reader(), 1024))
 	}
 }
 
 pub struct Scan {
-	conn: PooledConnection<SqliteConnectionManager>,
+	conn: Reader,
 	buffer: VecDeque<CdcEvent>,
 	last_version: Option<Version>,
 	batch_size: usize,
@@ -30,10 +31,7 @@ pub struct Scan {
 }
 
 impl Scan {
-	pub fn new(
-		conn: PooledConnection<SqliteConnectionManager>,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, batch_size: usize) -> Self {
 		Self {
 			conn,
 			buffer: VecDeque::new(),
@@ -69,7 +67,8 @@ impl Scan {
 			)
 		};
 
-		let mut stmt = self.conn.prepare_cached(&query).unwrap();
+		let conn_guard = self.conn.lock().unwrap();
+		let mut stmt = conn_guard.prepare_cached(&query).unwrap();
 
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);

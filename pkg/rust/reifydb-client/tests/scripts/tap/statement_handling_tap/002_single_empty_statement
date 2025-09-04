@@ -1,0 +1,6 @@
+# Generated from: statement_handling.tap.md#single_empty_statement
+# Test: Single empty statement
+
+command ';'
+---
+ok

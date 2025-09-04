@@ -1,34 +1,36 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use std::fmt::{Display, Formatter};
+use std::{
+	fmt::{Display, Formatter},
+	time::{SystemTime, UNIX_EPOCH},
+};
 
-use chrono::{DateTime as ChronoDateTime, NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{
+	Deserialize, Deserializer, Serialize, Serializer,
+	de::{self, Visitor},
+};
 
 use crate::{Date, Time};
 
 /// A date and time value with nanosecond precision.
 /// Always in UTC timezone.
-#[derive(
-	Copy,
-	Clone,
-	Debug,
-	PartialEq,
-	Eq,
-	Hash,
-	Serialize,
-	Deserialize,
-	PartialOrd,
-	Ord,
-)]
+///
+/// Internally stored as seconds and nanoseconds since Unix epoch.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DateTime {
-	inner: ChronoDateTime<Utc>,
+	// Seconds since Unix epoch (can be negative for dates before 1970)
+	seconds: i64,
+	// Nanosecond part (0 to 999_999_999)
+	nanos: u32,
 }
 
 impl Default for DateTime {
 	fn default() -> Self {
-		Self::new(1970, 1, 1, 0, 0, 0, 0).unwrap()
+		Self {
+			seconds: 0,
+			nanos: 0,
+		} // 1970-01-01T00:00:00.000000000Z
 	}
 }
 
@@ -42,19 +44,25 @@ impl DateTime {
 		sec: u32,
 		nano: u32,
 	) -> Option<Self> {
-		NaiveDate::from_ymd_opt(year, month, day)
-			.and_then(|date| {
-				date.and_hms_nano_opt(hour, min, sec, nano)
-			})
-			.map(|naive| Self {
-				inner: naive.and_utc(),
-			})
-	}
+		// Validate date
+		let date = Date::new(year, month, day)?;
 
-	pub fn from_chrono_datetime(dt: ChronoDateTime<Utc>) -> Self {
-		Self {
-			inner: dt,
-		}
+		// Validate time
+		let time = Time::new(hour, min, sec, nano)?;
+
+		// Convert date to seconds since epoch
+		let days = date.to_days_since_epoch() as i64;
+		let date_seconds = days * 86400;
+
+		// Convert time to seconds and nanos
+		let time_nanos = time.to_nanos_since_midnight();
+		let time_seconds = (time_nanos / 1_000_000_000) as i64;
+		let time_nano_part = (time_nanos % 1_000_000_000) as u32;
+
+		Some(Self {
+			seconds: date_seconds + time_seconds,
+			nanos: time_nano_part,
+		})
 	}
 
 	pub fn from_ymd_hms(
@@ -76,84 +84,298 @@ impl DateTime {
 	}
 
 	pub fn from_timestamp(timestamp: i64) -> Result<Self, String> {
-		chrono::DateTime::from_timestamp(timestamp, 0)
-			.map(Self::from_chrono_datetime)
-			.ok_or_else(|| {
-				format!("Invalid timestamp: {}", timestamp)
-			})
+		Ok(Self {
+			seconds: timestamp,
+			nanos: 0,
+		})
 	}
 
 	pub fn from_timestamp_millis(millis: i64) -> Result<Self, String> {
-		chrono::DateTime::from_timestamp_millis(millis)
-			.map(Self::from_chrono_datetime)
-			.ok_or_else(|| {
-				format!("Invalid timestamp millis: {}", millis)
-			})
+		let seconds = millis / 1000;
+		let nanos = ((millis % 1000) * 1_000_000) as u32;
+		Ok(Self {
+			seconds,
+			nanos,
+		})
 	}
 
 	pub fn now() -> Self {
+		let duration = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("System time before Unix epoch");
+
 		Self {
-			inner: Utc::now(),
+			seconds: duration.as_secs() as i64,
+			nanos: duration.subsec_nanos(),
 		}
 	}
 
 	pub fn timestamp(&self) -> i64 {
-		self.inner.timestamp()
+		self.seconds
+	}
+
+	pub fn timestamp_millis(&self) -> i64 {
+		self.seconds * 1000 + (self.nanos / 1_000_000) as i64
 	}
 
 	pub fn timestamp_nanos(&self) -> i64 {
-		self.inner.timestamp_nanos_opt().unwrap_or(0)
+		self.seconds
+			.saturating_mul(1_000_000_000)
+			.saturating_add(self.nanos as i64)
 	}
 
 	pub fn date(&self) -> Date {
-		Date::from_naive_date(self.inner.date_naive())
+		// Convert seconds to days
+		let days = (self.seconds / 86400) as i32;
+		Date::from_days_since_epoch(days).unwrap()
 	}
 
 	pub fn time(&self) -> Time {
-		Time::from_naive_time(self.inner.time())
+		// Get the time portion of the day
+		let seconds_in_day = self.seconds % 86400;
+		let seconds_in_day = if seconds_in_day < 0 {
+			seconds_in_day + 86400
+		} else {
+			seconds_in_day
+		} as u64;
+
+		let nanos_in_day =
+			seconds_in_day * 1_000_000_000 + self.nanos as u64;
+		Time::from_nanos_since_midnight(nanos_in_day).unwrap()
 	}
 
-	pub fn inner(&self) -> &ChronoDateTime<Utc> {
-		&self.inner
-	}
-}
-
-impl DateTime {
 	/// Convert to nanoseconds since Unix epoch for storage
 	pub fn to_nanos_since_epoch(&self) -> i64 {
-		self.inner.timestamp_nanos_opt().unwrap_or(0)
+		self.timestamp_nanos()
 	}
 
 	/// Create from nanoseconds since Unix epoch for storage
 	pub fn from_nanos_since_epoch(nanos: i64) -> Self {
+		let seconds = nanos / 1_000_000_000;
+		let nano_part = nanos % 1_000_000_000;
+
+		// Handle negative nanoseconds
+		let (seconds, nanos) = if nanos < 0 && nano_part != 0 {
+			(seconds - 1, (1_000_000_000 - nano_part.abs()) as u32)
+		} else {
+			(seconds, nano_part.abs() as u32)
+		};
+
 		Self {
-			inner: chrono::DateTime::from_timestamp_nanos(nanos),
+			seconds,
+			nanos,
 		}
 	}
 
 	/// Create from separate seconds and nanoseconds
 	pub fn from_parts(seconds: i64, nanos: u32) -> Result<Self, String> {
-		chrono::DateTime::from_timestamp(seconds, nanos)
-			.map(Self::from_chrono_datetime)
-			.ok_or_else(|| {
-				format!(
-					"Invalid timestamp parts: seconds={}, nanos={}",
-					seconds, nanos
-				)
-			})
+		if nanos >= 1_000_000_000 {
+			return Err(format!(
+				"Invalid nanoseconds: {} (must be < 1_000_000_000)",
+				nanos
+			));
+		}
+		Ok(Self {
+			seconds,
+			nanos,
+		})
 	}
 
 	/// Get separate seconds and nanoseconds for storage
 	pub fn to_parts(&self) -> (i64, u32) {
-		let seconds = self.inner.timestamp();
-		let nanos = self.inner.timestamp_subsec_nanos();
-		(seconds, nanos)
+		(self.seconds, self.nanos)
+	}
+
+	/// Get year component
+	pub fn year(&self) -> i32 {
+		self.date().year()
+	}
+
+	/// Get month component (1-12)
+	pub fn month(&self) -> u32 {
+		self.date().month()
+	}
+
+	/// Get day component (1-31)
+	pub fn day(&self) -> u32 {
+		self.date().day()
+	}
+
+	/// Get hour component (0-23)
+	pub fn hour(&self) -> u32 {
+		self.time().hour()
+	}
+
+	/// Get minute component (0-59)
+	pub fn minute(&self) -> u32 {
+		self.time().minute()
+	}
+
+	/// Get second component (0-59)
+	pub fn second(&self) -> u32 {
+		self.time().second()
+	}
+
+	/// Get nanosecond component (0-999_999_999)
+	pub fn nanosecond(&self) -> u32 {
+		self.time().nanosecond()
 	}
 }
 
 impl Display for DateTime {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.inner.format("%Y-%m-%dT%H:%M:%S%.9fZ"))
+		let date = self.date();
+		let time = self.time();
+
+		// Format as ISO 8601: YYYY-MM-DDTHH:MM:SS.nnnnnnnnnZ
+		write!(f, "{}T{}Z", date, time)
+	}
+}
+
+// Serde implementation for ISO 8601 format
+impl Serialize for DateTime {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_str(&self.to_string())
+	}
+}
+
+struct DateTimeVisitor;
+
+impl<'de> Visitor<'de> for DateTimeVisitor {
+	type Value = DateTime;
+
+	fn expecting(
+		&self,
+		formatter: &mut std::fmt::Formatter,
+	) -> std::fmt::Result {
+		formatter.write_str(
+			"a datetime in ISO 8601 format (YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z)",
+		)
+	}
+
+	fn visit_str<E>(self, value: &str) -> Result<DateTime, E>
+	where
+		E: de::Error,
+	{
+		// Parse ISO 8601 datetime format:
+		// YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z Remove trailing Z if
+		// present
+		let value = value.strip_suffix('Z').unwrap_or(value);
+
+		// Split on T
+		let parts: Vec<&str> = value.split('T').collect();
+		if parts.len() != 2 {
+			return Err(E::custom(format!(
+				"invalid datetime format: {}",
+				value
+			)));
+		}
+
+		// Parse date part
+		let date_parts: Vec<&str> = parts[0].split('-').collect();
+		if date_parts.len() != 3 {
+			return Err(E::custom(format!(
+				"invalid date format: {}",
+				parts[0]
+			)));
+		}
+
+		// Handle negative years
+		let (year_str, month_str, day_str) =
+			if date_parts[0].is_empty() && date_parts.len() == 4 {
+				// Negative year case
+				(
+					format!("-{}", date_parts[1]),
+					date_parts[2],
+					date_parts[3],
+				)
+			} else {
+				(
+					date_parts[0].to_string(),
+					date_parts[1],
+					date_parts[2],
+				)
+			};
+
+		let year = year_str.parse::<i32>().map_err(|_| {
+			E::custom(format!("invalid year: {}", year_str))
+		})?;
+		let month = month_str.parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid month: {}", month_str))
+		})?;
+		let day = day_str.parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid day: {}", day_str))
+		})?;
+
+		// Parse time part
+		let (time_part, nano_part) = if let Some(dot_pos) =
+			parts[1].find('.')
+		{
+			(&parts[1][..dot_pos], Some(&parts[1][dot_pos + 1..]))
+		} else {
+			(parts[1], None)
+		};
+
+		let time_parts: Vec<&str> = time_part.split(':').collect();
+		if time_parts.len() != 3 {
+			return Err(E::custom(format!(
+				"invalid time format: {}",
+				parts[1]
+			)));
+		}
+
+		let hour = time_parts[0].parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid hour: {}", time_parts[0]))
+		})?;
+		let minute = time_parts[1].parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid minute: {}", time_parts[1]))
+		})?;
+		let second = time_parts[2].parse::<u32>().map_err(|_| {
+			E::custom(format!("invalid second: {}", time_parts[2]))
+		})?;
+
+		let nano = if let Some(nano_str) = nano_part {
+			// Pad or truncate to 9 digits
+			let padded = if nano_str.len() < 9 {
+				format!("{:0<9}", nano_str)
+			} else {
+				nano_str[..9].to_string()
+			};
+			padded.parse::<u32>().map_err(|_| {
+				E::custom(format!(
+					"invalid nanoseconds: {}",
+					nano_str
+				))
+			})?
+		} else {
+			0
+		};
+
+		DateTime::new(year, month, day, hour, minute, second, nano)
+			.ok_or_else(|| {
+				E::custom(format!(
+					"invalid datetime: {}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z",
+					year,
+					month,
+					day,
+					hour,
+					minute,
+					second,
+					nano
+				))
+			})
+	}
+}
+
+impl<'de> Deserialize<'de> for DateTime {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		deserializer.deserialize_str(DateTimeVisitor)
 	}
 }
 
@@ -481,5 +703,59 @@ mod tests {
 			format!("{}", datetime),
 			"1970-01-01T00:00:00.000000000Z"
 		);
+	}
+
+	#[test]
+	fn test_datetime_roundtrip() {
+		let test_cases = [
+			(1970, 1, 1, 0, 0, 0, 0),
+			(2024, 3, 15, 14, 30, 45, 123456789),
+			(2000, 2, 29, 23, 59, 59, 999999999),
+		];
+
+		for (y, m, d, h, min, s, n) in test_cases {
+			let datetime =
+				DateTime::new(y, m, d, h, min, s, n).unwrap();
+			let nanos = datetime.to_nanos_since_epoch();
+			let recovered = DateTime::from_nanos_since_epoch(nanos);
+
+			assert_eq!(datetime.year(), recovered.year());
+			assert_eq!(datetime.month(), recovered.month());
+			assert_eq!(datetime.day(), recovered.day());
+			assert_eq!(datetime.hour(), recovered.hour());
+			assert_eq!(datetime.minute(), recovered.minute());
+			assert_eq!(datetime.second(), recovered.second());
+			assert_eq!(
+				datetime.nanosecond(),
+				recovered.nanosecond()
+			);
+		}
+	}
+
+	#[test]
+	fn test_datetime_components() {
+		let datetime =
+			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789)
+				.unwrap();
+
+		assert_eq!(datetime.year(), 2024);
+		assert_eq!(datetime.month(), 3);
+		assert_eq!(datetime.day(), 15);
+		assert_eq!(datetime.hour(), 14);
+		assert_eq!(datetime.minute(), 30);
+		assert_eq!(datetime.second(), 45);
+		assert_eq!(datetime.nanosecond(), 123456789);
+	}
+
+	#[test]
+	fn test_serde_roundtrip() {
+		let datetime =
+			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789)
+				.unwrap();
+		let json = serde_json::to_string(&datetime).unwrap();
+		assert_eq!(json, "\"2024-03-15T14:30:45.123456789Z\"");
+
+		let recovered: DateTime = serde_json::from_str(&json).unwrap();
+		assert_eq!(datetime, recovered);
 	}
 }
