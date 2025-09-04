@@ -6,8 +6,9 @@ use reifydb_type::{diagnostic::engine, return_error};
 use crate::value::{
 	columnar::ColumnData,
 	container::{
-		BlobContainer, BoolContainer, NumberContainer,
-		TemporalContainer, Utf8Container, UuidContainer,
+		BigDecimalContainer, BigIntContainer, BlobContainer,
+		BoolContainer, NumberContainer, TemporalContainer,
+		Utf8Container, UuidContainer,
 	},
 };
 
@@ -87,6 +88,13 @@ impl ColumnData {
 			(ColumnData::Blob(l), ColumnData::Blob(r)) => {
 				l.extend(&r)?
 			}
+			(ColumnData::BigInt(l), ColumnData::BigInt(r)) => {
+				l.extend(&r)?
+			}
+			(
+				ColumnData::BigDecimal(l),
+				ColumnData::BigDecimal(r),
+			) => l.extend(&r)?,
 			(
 				ColumnData::Undefined(l),
 				ColumnData::Undefined(r),
@@ -327,6 +335,28 @@ impl ColumnData {
 							new_container,
 						);
 					}
+					ColumnData::BigInt(r) => {
+						let mut new_container = BigIntContainer::with_capacity(l_len + r.len());
+						new_container
+							.extend_from_undefined(
+								l_len,
+							);
+						new_container.extend(&r)?;
+						*self = ColumnData::BigInt(
+							new_container,
+						);
+					}
+					ColumnData::BigDecimal(r) => {
+						let mut new_container = BigDecimalContainer::with_capacity(l_len + r.len());
+						new_container
+							.extend_from_undefined(
+								l_len,
+							);
+						new_container.extend(&r)?;
+						*self = ColumnData::BigDecimal(
+							new_container,
+						);
+					}
 					ColumnData::RowNumber(_) => {
 						return_error!(engine::frame_error(
                             "Cannot extend RowNumber column from Undefined".to_string()
@@ -412,6 +442,12 @@ impl ColumnData {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::Blob(l) => {
+						l.extend_from_undefined(r_len)
+					}
+					ColumnData::BigInt(l) => {
+						l.extend_from_undefined(r_len)
+					}
+					ColumnData::BigDecimal(l) => {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::Undefined(_) => {

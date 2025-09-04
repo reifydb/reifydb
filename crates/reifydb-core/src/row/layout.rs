@@ -69,10 +69,12 @@ impl EncodedRowLayoutInner {
 			max_align = max_align.max(align);
 		}
 
-		let size = align_up(offset, max_align);
+		// Calculate the static section size
+		let static_section_size = align_up(offset, max_align);
+
 		EncodedRowLayoutInner {
 			fields,
-			static_section_size: size,
+			static_section_size,
 			alignment: max_align,
 			bitvec_size: bitvec_bytes,
 		}

@@ -55,6 +55,12 @@ impl ColumnData {
 				ColumnData::uuid7(vec![v; row_count])
 			}
 			Value::Blob(v) => ColumnData::blob(vec![v; row_count]),
+			Value::BigInt(v) => {
+				ColumnData::bigint(vec![v; row_count])
+			}
+			Value::BigDecimal(v) => {
+				ColumnData::bigdecimal(vec![v; row_count])
+			}
 			Value::Undefined => ColumnData::undefined(row_count),
 		}
 	}

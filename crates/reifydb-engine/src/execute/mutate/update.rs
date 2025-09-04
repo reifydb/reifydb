@@ -334,6 +334,16 @@ impl Executor {
 								&mut row,
 								table_idx, &v,
 							),
+						Value::BigInt(v) => layout
+							.set_bigint(
+								&mut row,
+								table_idx, &v,
+							),
+						Value::BigDecimal(v) => layout
+							.set_bigdecimal(
+								&mut row,
+								table_idx, &v,
+							),
 						Value::Undefined => layout
 							.set_undefined(
 								&mut row,

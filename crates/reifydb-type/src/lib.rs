@@ -17,6 +17,8 @@ pub use fragment::{
 	StatementColumn, StatementLine,
 };
 pub use value::{
+	BigDecimal,
+	BigInt,
 	Blob,
 	Date,
 	DateTime,
@@ -37,7 +39,8 @@ pub use value::{
 
 	// Number traits and operations
 	Value,
-	// Constants
+
+	// Parse functions
 	boolean::parse_bool,
 	is::{
 		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
@@ -48,7 +51,6 @@ pub use value::{
 		SafePromote, SafeRemainder, SafeSub, parse_float, parse_int,
 		parse_uint,
 	},
-	// Core types
 	row_number::ROW_NUMBER_COLUMN_NAME,
 	temporal::parse::{
 		parse_date, parse_datetime, parse_interval, parse_time,

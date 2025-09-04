@@ -5,9 +5,9 @@ use reifydb_type::{Date, DateTime, Interval, Time, Type, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::value::container::{
-	BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-	RowNumberContainer, TemporalContainer, UndefinedContainer,
-	Utf8Container, UuidContainer,
+	BigDecimalContainer, BigIntContainer, BlobContainer, BoolContainer,
+	IdentityIdContainer, NumberContainer, RowNumberContainer,
+	TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -35,6 +35,8 @@ pub enum FrameColumnData {
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
 	Blob(BlobContainer),
+	BigInt(BigIntContainer),
+	BigDecimal(BigDecimalContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -65,6 +67,8 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(_) => Type::Uuid4,
 			FrameColumnData::Uuid7(_) => Type::Uuid7,
 			FrameColumnData::Blob(_) => Type::Blob,
+			FrameColumnData::BigInt(_) => Type::BigInt,
+			FrameColumnData::BigDecimal(_) => Type::BigDecimal,
 			FrameColumnData::Undefined(_) => Type::Undefined,
 		}
 	}
@@ -138,6 +142,12 @@ impl FrameColumnData {
 				container.is_defined(idx)
 			}
 			FrameColumnData::Blob(container) => {
+				container.is_defined(idx)
+			}
+			FrameColumnData::BigInt(container) => {
+				container.is_defined(idx)
+			}
+			FrameColumnData::BigDecimal(container) => {
 				container.is_defined(idx)
 			}
 			FrameColumnData::Undefined(_) => false,
@@ -220,6 +230,10 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => container.len(),
 			FrameColumnData::Uuid7(container) => container.len(),
 			FrameColumnData::Blob(container) => container.len(),
+			FrameColumnData::BigInt(container) => container.len(),
+			FrameColumnData::BigDecimal(container) => {
+				container.len()
+			}
 			FrameColumnData::Undefined(container) => {
 				container.len()
 			}
@@ -295,6 +309,12 @@ impl FrameColumnData {
 				container.as_string(index)
 			}
 			FrameColumnData::Blob(container) => {
+				container.as_string(index)
+			}
+			FrameColumnData::BigInt(container) => {
+				container.as_string(index)
+			}
+			FrameColumnData::BigDecimal(container) => {
 				container.as_string(index)
 			}
 			FrameColumnData::Undefined(container) => {
@@ -374,6 +394,12 @@ impl FrameColumnData {
 				container.get_value(index)
 			}
 			FrameColumnData::Blob(container) => {
+				container.get_value(index)
+			}
+			FrameColumnData::BigInt(container) => {
+				container.get_value(index)
+			}
+			FrameColumnData::BigDecimal(container) => {
 				container.get_value(index)
 			}
 			FrameColumnData::Undefined(container) => {

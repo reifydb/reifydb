@@ -78,6 +78,12 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				ColumnData::Blob(container.take(num))
 			}
+			ColumnData::BigInt(container) => {
+				ColumnData::BigInt(container.take(num))
+			}
+			ColumnData::BigDecimal(container) => {
+				ColumnData::BigDecimal(container.take(num))
+			}
 		}
 	}
 }

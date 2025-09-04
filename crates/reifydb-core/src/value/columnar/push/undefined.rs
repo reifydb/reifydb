@@ -78,6 +78,12 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.push_undefined()
 			}
+			ColumnData::BigInt(container) => {
+				container.push_undefined()
+			}
+			ColumnData::BigDecimal(container) => {
+				container.push_undefined()
+			}
 		}
 	}
 }

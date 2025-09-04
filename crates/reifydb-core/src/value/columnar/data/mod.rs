@@ -16,9 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	BitVec,
 	value::container::{
-		BlobContainer, BoolContainer, IdentityIdContainer,
-		NumberContainer, RowNumberContainer, TemporalContainer,
-		UndefinedContainer, Utf8Container, UuidContainer,
+		BigDecimalContainer, BigIntContainer, BlobContainer,
+		BoolContainer, IdentityIdContainer, NumberContainer,
+		RowNumberContainer, TemporalContainer, UndefinedContainer,
+		Utf8Container, UuidContainer,
 	},
 };
 
@@ -47,6 +48,8 @@ pub enum ColumnData {
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
 	Blob(BlobContainer),
+	BigInt(BigIntContainer),
+	BigDecimal(BigDecimalContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -77,6 +80,8 @@ impl ColumnData {
 			ColumnData::Uuid4(_) => Type::Uuid4,
 			ColumnData::Uuid7(_) => Type::Uuid7,
 			ColumnData::Blob(_) => Type::Blob,
+			ColumnData::BigInt(_) => Type::BigInt,
+			ColumnData::BigDecimal(_) => Type::BigDecimal,
 			ColumnData::Undefined(_) => Type::Undefined,
 		}
 	}
@@ -152,6 +157,12 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.is_defined(idx)
 			}
+			ColumnData::BigInt(container) => {
+				container.is_defined(idx)
+			}
+			ColumnData::BigDecimal(container) => {
+				container.is_defined(idx)
+			}
 			ColumnData::Undefined(_) => false,
 		}
 	}
@@ -176,7 +187,8 @@ impl ColumnData {
 				| Type::Float8 | Type::Int1 | Type::Int2
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
-				| Type::Uint8 | Type::Uint16
+				| Type::Uint8 | Type::Uint16 | Type::BigInt
+				| Type::BigDecimal
 		)
 	}
 
@@ -224,6 +236,8 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.bitvec(),
 			ColumnData::Uuid7(container) => container.bitvec(),
 			ColumnData::Blob(container) => container.bitvec(),
+			ColumnData::BigInt(container) => container.bitvec(),
+			ColumnData::BigDecimal(container) => container.bitvec(),
 			ColumnData::Undefined(_) => unreachable!(),
 		}
 	}
@@ -263,6 +277,10 @@ impl ColumnData {
 			Type::Uuid4 => Self::uuid4_with_capacity(capacity),
 			Type::Uuid7 => Self::uuid7_with_capacity(capacity),
 			Type::Blob => Self::blob_with_capacity(capacity),
+			Type::BigInt => Self::bigint_with_capacity(capacity),
+			Type::BigDecimal => {
+				Self::bigdecimal_with_capacity(capacity)
+			}
 			Type::Undefined => panic!(
 				"it is not possible to create an undefined container with capacity without setting the values alread"
 			),
@@ -300,6 +318,8 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.len(),
 			ColumnData::Uuid7(container) => container.len(),
 			ColumnData::Blob(container) => container.len(),
+			ColumnData::BigInt(container) => container.len(),
+			ColumnData::BigDecimal(container) => container.len(),
 			ColumnData::Undefined(container) => container.len(),
 		}
 	}
@@ -333,6 +353,10 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.capacity(),
 			ColumnData::Uuid7(container) => container.capacity(),
 			ColumnData::Blob(container) => container.capacity(),
+			ColumnData::BigInt(container) => container.capacity(),
+			ColumnData::BigDecimal(container) => {
+				container.capacity()
+			}
 			ColumnData::Undefined(container) => {
 				container.capacity()
 			}
@@ -408,6 +432,12 @@ impl ColumnData {
 				container.as_string(index)
 			}
 			ColumnData::Blob(container) => {
+				container.as_string(index)
+			}
+			ColumnData::BigInt(container) => {
+				container.as_string(index)
+			}
+			ColumnData::BigDecimal(container) => {
 				container.as_string(index)
 			}
 			ColumnData::Undefined(container) => {

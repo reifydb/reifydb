@@ -706,6 +706,58 @@ impl StandardEvaluator {
 					),
 				))
 			}
+			Value::BigInt(_) => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::BigInt(b) => {
+							data.push(b.clone());
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(reifydb_type::BigInt::zero());
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(
+					ColumnData::bigint_with_bitvec(
+						data, bitvec,
+					),
+				))
+			}
+			Value::BigDecimal(_) => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::BigDecimal(b) => {
+							data.push(b.clone());
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(reifydb_type::BigDecimal::zero());
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(
+					ColumnData::bigdecimal_with_bitvec(
+						data, bitvec,
+					),
+				))
+			}
 			Value::Undefined => {
 				let count = std::cmp::min(ctx.row_count, take);
 				Ok(col.with_new_data(ColumnData::undefined(

@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, fmt, str::FromStr};
 
+use num_bigint;
 use reifydb_type::{
 	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value,
 	parse_bool, parse_date, parse_datetime, parse_float, parse_int,
@@ -86,83 +87,92 @@ fn parse_typed_value(
 	// If parsing fails, return Value::Undefined
 	let fragment = BorrowedFragment::new_internal(str_val);
 
-	let parsed_value =
-		match value_type {
-			Type::Bool => parse_bool(fragment.clone())
-				.map(Value::Bool)
-				.unwrap_or(Value::Undefined),
-			Type::Float4 => parse_float::<f32>(fragment.clone())
-				.ok()
-				.and_then(|f| OrderedF32::try_from(f).ok())
-				.map(Value::Float4)
-				.unwrap_or(Value::Undefined),
-			Type::Float8 => parse_float::<f64>(fragment.clone())
-				.ok()
-				.and_then(|f| OrderedF64::try_from(f).ok())
-				.map(Value::Float8)
-				.unwrap_or(Value::Undefined),
-			Type::Int1 => parse_int::<i8>(fragment.clone())
-				.map(Value::Int1)
-				.unwrap_or(Value::Undefined),
-			Type::Int2 => parse_int::<i16>(fragment.clone())
-				.map(Value::Int2)
-				.unwrap_or(Value::Undefined),
-			Type::Int4 => parse_int::<i32>(fragment.clone())
-				.map(Value::Int4)
-				.unwrap_or(Value::Undefined),
-			Type::Int8 => parse_int::<i64>(fragment.clone())
-				.map(Value::Int8)
-				.unwrap_or(Value::Undefined),
-			Type::Int16 => parse_int::<i128>(fragment.clone())
-				.map(Value::Int16)
-				.unwrap_or(Value::Undefined),
-			Type::Utf8 => Value::Utf8(str_val.to_string()),
-			Type::Uint1 => parse_uint::<u8>(fragment.clone())
-				.map(Value::Uint1)
-				.unwrap_or(Value::Undefined),
-			Type::Uint2 => parse_uint::<u16>(fragment.clone())
-				.map(Value::Uint2)
-				.unwrap_or(Value::Undefined),
-			Type::Uint4 => parse_uint::<u32>(fragment.clone())
-				.map(Value::Uint4)
-				.unwrap_or(Value::Undefined),
-			Type::Uint8 => parse_uint::<u64>(fragment.clone())
-				.map(Value::Uint8)
-				.unwrap_or(Value::Undefined),
-			Type::Uint16 => parse_uint::<u128>(fragment.clone())
-				.map(Value::Uint16)
-				.unwrap_or(Value::Undefined),
-			Type::Date => parse_date(fragment.clone())
-				.map(Value::Date)
-				.unwrap_or(Value::Undefined),
-			Type::DateTime => parse_datetime(fragment.clone())
-				.map(Value::DateTime)
-				.unwrap_or(Value::Undefined),
-			Type::Time => parse_time(fragment.clone())
-				.map(Value::Time)
-				.unwrap_or(Value::Undefined),
-			Type::Interval => parse_interval(fragment.clone())
-				.map(Value::Interval)
-				.unwrap_or(Value::Undefined),
-			Type::RowNumber => parse_uint::<u64>(fragment.clone())
-				.map(|id| Value::RowNumber(RowNumber::from(id)))
-				.unwrap_or(Value::Undefined),
-			Type::Uuid4 => parse_uuid4(fragment.clone())
-				.map(Value::Uuid4)
-				.unwrap_or(Value::Undefined),
-			Type::Uuid7 => parse_uuid7(fragment.clone())
-				.map(Value::Uuid7)
-				.unwrap_or(Value::Undefined),
-			Type::IdentityId => parse_uuid7(fragment.clone())
+	let parsed_value = match value_type {
+		Type::Bool => parse_bool(fragment.clone())
+			.map(Value::Bool)
+			.unwrap_or(Value::Undefined),
+		Type::Float4 => parse_float::<f32>(fragment.clone())
+			.ok()
+			.and_then(|f| OrderedF32::try_from(f).ok())
+			.map(Value::Float4)
+			.unwrap_or(Value::Undefined),
+		Type::Float8 => parse_float::<f64>(fragment.clone())
+			.ok()
+			.and_then(|f| OrderedF64::try_from(f).ok())
+			.map(Value::Float8)
+			.unwrap_or(Value::Undefined),
+		Type::Int1 => parse_int::<i8>(fragment.clone())
+			.map(Value::Int1)
+			.unwrap_or(Value::Undefined),
+		Type::Int2 => parse_int::<i16>(fragment.clone())
+			.map(Value::Int2)
+			.unwrap_or(Value::Undefined),
+		Type::Int4 => parse_int::<i32>(fragment.clone())
+			.map(Value::Int4)
+			.unwrap_or(Value::Undefined),
+		Type::Int8 => parse_int::<i64>(fragment.clone())
+			.map(Value::Int8)
+			.unwrap_or(Value::Undefined),
+		Type::Int16 => parse_int::<i128>(fragment.clone())
+			.map(Value::Int16)
+			.unwrap_or(Value::Undefined),
+		Type::Utf8 => Value::Utf8(str_val.to_string()),
+		Type::Uint1 => parse_uint::<u8>(fragment.clone())
+			.map(Value::Uint1)
+			.unwrap_or(Value::Undefined),
+		Type::Uint2 => parse_uint::<u16>(fragment.clone())
+			.map(Value::Uint2)
+			.unwrap_or(Value::Undefined),
+		Type::Uint4 => parse_uint::<u32>(fragment.clone())
+			.map(Value::Uint4)
+			.unwrap_or(Value::Undefined),
+		Type::Uint8 => parse_uint::<u64>(fragment.clone())
+			.map(Value::Uint8)
+			.unwrap_or(Value::Undefined),
+		Type::Uint16 => parse_uint::<u128>(fragment.clone())
+			.map(Value::Uint16)
+			.unwrap_or(Value::Undefined),
+		Type::Date => parse_date(fragment.clone())
+			.map(Value::Date)
+			.unwrap_or(Value::Undefined),
+		Type::DateTime => parse_datetime(fragment.clone())
+			.map(Value::DateTime)
+			.unwrap_or(Value::Undefined),
+		Type::Time => parse_time(fragment.clone())
+			.map(Value::Time)
+			.unwrap_or(Value::Undefined),
+		Type::Interval => parse_interval(fragment.clone())
+			.map(Value::Interval)
+			.unwrap_or(Value::Undefined),
+		Type::RowNumber => parse_uint::<u64>(fragment.clone())
+			.map(|id| Value::RowNumber(RowNumber::from(id)))
+			.unwrap_or(Value::Undefined),
+		Type::Uuid4 => parse_uuid4(fragment.clone())
+			.map(Value::Uuid4)
+			.unwrap_or(Value::Undefined),
+		Type::Uuid7 => parse_uuid7(fragment.clone())
+			.map(Value::Uuid7)
+			.unwrap_or(Value::Undefined),
+		Type::IdentityId => {
+			parse_uuid7(fragment.clone())
 				.map(|uuid7| {
 					Value::IdentityId(reifydb_type::value::IdentityId::from(uuid7))
 				})
-				.unwrap_or(Value::Undefined),
-			Type::Blob => Blob::from_hex(fragment.clone())
-				.map(Value::Blob)
-				.unwrap_or(Value::Undefined),
-			Type::Undefined => Value::Undefined,
-		};
+				.unwrap_or(Value::Undefined)
+		}
+		Type::Blob => Blob::from_hex(fragment.clone())
+			.map(Value::Blob)
+			.unwrap_or(Value::Undefined),
+		Type::BigInt => str_val
+			.parse::<num_bigint::BigInt>()
+			.map(|bi| Value::BigInt(reifydb_type::BigInt::from(bi)))
+			.unwrap_or(Value::Undefined),
+		Type::BigDecimal => str_val
+			.parse::<reifydb_type::BigDecimal>()
+			.map(Value::BigDecimal)
+			.unwrap_or(Value::Undefined),
+		Type::Undefined => Value::Undefined,
+	};
 
 	Ok(parsed_value)
 }

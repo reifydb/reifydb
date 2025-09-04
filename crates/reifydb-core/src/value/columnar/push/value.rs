@@ -487,6 +487,55 @@ impl ColumnData {
 				}
 				_ => unimplemented!(),
 			},
+
+			Value::BigInt(v) => match self {
+				ColumnData::BigInt(container) => {
+					container.push(Value::BigInt(v))
+				}
+				ColumnData::Undefined(container) => {
+					let mut new_container =
+						ColumnData::bigint(vec![]);
+					if let ColumnData::BigInt(
+						new_container,
+					) = &mut new_container
+					{
+						for _ in 0..container.len() {
+							new_container
+								.push_undefined(
+								);
+						}
+						new_container
+							.push(Value::BigInt(v));
+					}
+					*self = new_container;
+				}
+				_ => unimplemented!(),
+			},
+
+			Value::BigDecimal(v) => match self {
+				ColumnData::BigDecimal(container) => {
+					container.push(Value::BigDecimal(v))
+				}
+				ColumnData::Undefined(container) => {
+					let mut new_container =
+						ColumnData::bigdecimal(vec![]);
+					if let ColumnData::BigDecimal(
+						new_container,
+					) = &mut new_container
+					{
+						for _ in 0..container.len() {
+							new_container
+								.push_undefined(
+								);
+						}
+						new_container.push(
+							Value::BigDecimal(v),
+						);
+					}
+					*self = new_container;
+				}
+				_ => unimplemented!(),
+			},
 		}
 	}
 }

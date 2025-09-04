@@ -407,6 +407,58 @@ impl StandardEvaluator {
                 }
                 _ => err!(frame_error(
                     "Cannot apply arithmetic prefix operator to BLOB".to_string()
-                ))}}
+                ))},
+            ColumnData::BigInt(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
+                    if container.is_defined(idx) {
+                        result.push(match prefix.operator {
+                            PrefixOperator::Minus(_) => reifydb_type::BigInt::zero(),  // TODO: implement negation
+                            PrefixOperator::Plus(_) => val.clone(),
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.full_fragment_owned()
+                                ));
+                            }
+                        });
+                    } else {
+                        result.push(reifydb_type::BigInt::zero());
+                    }
+                }
+                Ok(match column.table() {
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
+                        name: column.name().to_string(),
+                        data: ColumnData::bigint_with_bitvec(result, container.bitvec())}),
+                    None => Column::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        data: ColumnData::bigint_with_bitvec(result, container.bitvec())})})
+            },
+            ColumnData::BigDecimal(container) => {
+                let mut result = Vec::with_capacity(container.data().len());
+                for (idx, val) in container.data().iter().enumerate() {
+                    if container.is_defined(idx) {
+                        result.push(match prefix.operator {
+                            PrefixOperator::Minus(_) => reifydb_type::BigDecimal::zero(),  // TODO: implement negation
+                            PrefixOperator::Plus(_) => val.clone(),
+                            PrefixOperator::Not(_) => {
+                                return err!(operator::not_can_not_applied_to_number(
+                                    prefix.full_fragment_owned()
+                                ));
+                            }
+                        });
+                    } else {
+                        result.push(reifydb_type::BigDecimal::zero());
+                    }
+                }
+                Ok(match column.table() {
+                    Some(table) => Column::SourceQualified(SourceQualified {
+                        source: table.to_string(),
+                        name: column.name().to_string(),
+                        data: ColumnData::bigdecimal_with_bitvec(result, container.bitvec())}),
+                    None => Column::ColumnQualified(ColumnQualified {
+                        name: column.name().to_string(),
+                        data: ColumnData::bigdecimal_with_bitvec(result, container.bitvec())})})
+            }}
 	}
 }

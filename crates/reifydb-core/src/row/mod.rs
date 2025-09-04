@@ -6,6 +6,8 @@ pub use key::{EncodedKey, EncodedKeyRange};
 pub use layout::{EncodedRowLayout, Field};
 use reifydb_type::RowNumber;
 
+mod bigdecimal;
+mod bigint;
 mod encoded;
 mod get;
 mod get_try;

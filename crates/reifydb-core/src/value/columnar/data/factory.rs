@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Blob, Date, DateTime, IdentityId, Interval, RowNumber, Time, Uuid4,
-	Uuid7,
+	BigDecimal, BigInt, Blob, Date, DateTime, IdentityId, Interval,
+	RowNumber, Time, Uuid4, Uuid7,
 };
 
 use crate::{
@@ -11,8 +11,9 @@ use crate::{
 	value::{
 		columnar::ColumnData,
 		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowNumberContainer, TemporalContainer,
+			BigDecimalContainer, BigIntContainer, BlobContainer,
+			BoolContainer, IdentityIdContainer, NumberContainer,
+			RowNumberContainer, TemporalContainer,
 			UndefinedContainer, Utf8Container, UuidContainer,
 		},
 	},
@@ -463,6 +464,46 @@ impl ColumnData {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		ColumnData::IdentityId(IdentityIdContainer::new(data, bitvec))
+	}
+
+	pub fn bigint(data: impl IntoIterator<Item = BigInt>) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnData::BigInt(BigIntContainer::from_vec(data))
+	}
+
+	pub fn bigint_with_capacity(capacity: usize) -> Self {
+		ColumnData::BigInt(BigIntContainer::with_capacity(capacity))
+	}
+
+	pub fn bigint_with_bitvec(
+		data: impl IntoIterator<Item = BigInt>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		ColumnData::BigInt(BigIntContainer::new(data, bitvec))
+	}
+
+	pub fn bigdecimal(data: impl IntoIterator<Item = BigDecimal>) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnData::BigDecimal(BigDecimalContainer::from_vec(data))
+	}
+
+	pub fn bigdecimal_with_capacity(capacity: usize) -> Self {
+		ColumnData::BigDecimal(BigDecimalContainer::with_capacity(
+			capacity,
+		))
+	}
+
+	pub fn bigdecimal_with_bitvec(
+		data: impl IntoIterator<Item = BigDecimal>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		ColumnData::BigDecimal(BigDecimalContainer::new(data, bitvec))
 	}
 
 	pub fn undefined(len: usize) -> Self {

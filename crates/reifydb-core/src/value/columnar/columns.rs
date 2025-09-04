@@ -102,6 +102,10 @@ impl Columns {
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),
 				Value::Blob(v) => ColumnData::blob([v.clone()]),
+				Value::BigInt(v) => ColumnData::bigint(vec![v]),
+				Value::BigDecimal(v) => {
+					ColumnData::bigdecimal(vec![v])
+				}
 			};
 
 			let column = Column::ColumnQualified(ColumnQualified {
@@ -246,6 +250,12 @@ impl Columns {
 						ColumnData::uuid7(vec![])
 					}
 					Type::Blob => ColumnData::blob(vec![]),
+					Type::BigInt => {
+						ColumnData::bigint(vec![])
+					}
+					Type::BigDecimal => {
+						ColumnData::bigdecimal(vec![])
+					}
 					Type::Undefined => {
 						ColumnData::undefined(0)
 					}
@@ -322,6 +332,12 @@ impl Columns {
 						ColumnData::uuid7(vec![])
 					}
 					Type::Blob => ColumnData::blob(vec![]),
+					Type::BigInt => {
+						ColumnData::bigint(vec![])
+					}
+					Type::BigDecimal => {
+						ColumnData::bigdecimal(vec![])
+					}
 					Type::Undefined => {
 						ColumnData::undefined(0)
 					}

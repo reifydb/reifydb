@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Date, DateTime, Interval, Time};
+use reifydb_type::{BigDecimal, BigInt, Date, DateTime, Interval, Time};
 
 use crate::value::columnar::ColumnData;
 
@@ -301,6 +301,42 @@ impl AsSlice<Interval> for ColumnData {
 			other => {
 				panic!(
 					"called `as_slice::<Interval>()` on EngineColumnData::{:?}",
+					other.get_type()
+				)
+			}
+		}
+	}
+}
+
+impl AsSlice<BigInt> for ColumnData {
+	fn as_slice(&self) -> &[BigInt] {
+		match self {
+			ColumnData::BigInt(_) => {
+				panic!(
+					"as_slice() is not supported for variable-length BigInt. Use to_vec() instead."
+				)
+			}
+			other => {
+				panic!(
+					"called `as_slice::<BigInt>()` on EngineColumnData::{:?}",
+					other.get_type()
+				)
+			}
+		}
+	}
+}
+
+impl AsSlice<BigDecimal> for ColumnData {
+	fn as_slice(&self) -> &[BigDecimal] {
+		match self {
+			ColumnData::BigDecimal(_) => {
+				panic!(
+					"as_slice() is not supported for variable-length BigDecimal. Use to_vec() instead."
+				)
+			}
+			other => {
+				panic!(
+					"called `as_slice::<BigDecimal>()` on EngineColumnData::{:?}",
 					other.get_type()
 				)
 			}

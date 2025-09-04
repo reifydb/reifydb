@@ -431,6 +431,7 @@ dependencies = [
 name = "reifydb-client"
 version = "0.0.1"
 dependencies = [
+ "num-bigint",
  "reifydb",
  "reifydb-hash",
  "reifydb-testing",
@@ -444,8 +445,11 @@ dependencies = [
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [
+ "bigdecimal",
  "crossbeam-channel",
  "crossbeam-skiplist",
+ "num-bigint",
+ "num-traits",
  "once_cell",
  "reifydb-type",
  "serde",
@@ -539,6 +543,7 @@ dependencies = [
  "core_affinity",
  "httparse",
  "mio",
+ "num-bigint",
  "num_cpus",
  "reifydb-core",
  "reifydb-engine",

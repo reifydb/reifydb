@@ -117,6 +117,14 @@ impl StandardEvaluator {
                 *id;
                 ctx.row_count
             ]),
+			Value::BigInt(bi) => ColumnData::bigint(vec![
+                bi.clone();
+                ctx.row_count
+            ]),
+			Value::BigDecimal(bd) => ColumnData::bigdecimal(vec![
+                bd.clone();
+                ctx.row_count
+            ]),
 			Value::Undefined => {
 				ColumnData::undefined(ctx.row_count)
 			}

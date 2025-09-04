@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+pub mod bigdecimal;
+pub mod bigint;
 pub mod blob;
 pub mod bool;
 pub mod identity_id;
@@ -11,6 +13,8 @@ pub mod undefined;
 pub mod utf8;
 pub mod uuid;
 
+pub use bigdecimal::*;
+pub use bigint::*;
 pub use blob::*;
 pub use bool::*;
 pub use identity_id::*;

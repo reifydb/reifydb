@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Blob, Date, DateTime, Interval, Time, Type, Uuid4, Uuid7,
-	diagnostic::engine, return_error,
+	BigDecimal, BigInt, Blob, Date, DateTime, Interval, Time, Type, Uuid4,
+	Uuid7, Value, diagnostic::engine, return_error,
 };
 
 use crate::{
@@ -156,7 +156,16 @@ impl Columns {
                     Type::Blob => ColumnData::blob_with_bitvec(
                         vec![Blob::new(vec![]); size],
                         BitVec::repeat(size, false),
-                    )};
+                    ),
+                    Type::BigInt => ColumnData::bigint_with_bitvec(
+                        vec![BigInt::default(); size],
+                        BitVec::repeat(size, false),
+                    ),
+                    Type::BigDecimal => ColumnData::bigdecimal_with_bitvec(
+                        vec![BigDecimal::default(); size],
+                        BitVec::repeat(size, false),
+                    )
+                };
 
 				*column = column.with_new_data(new_data);
 			}
@@ -300,6 +309,24 @@ impl Columns {
 					container
 						.push(layout
 							.get_blob(&row, index));
+				}
+				(
+					ColumnData::BigInt(container),
+					Type::BigInt,
+				) => {
+					container.push(Value::BigInt(
+						layout.get_bigint(&row, index),
+					));
+				}
+				(
+					ColumnData::BigDecimal(container),
+					Type::BigDecimal,
+				) => {
+					container.push(Value::BigDecimal(
+						layout.get_bigdecimal(
+							&row, index,
+						),
+					));
 				}
 				(_, v) => {
 					return_error!(engine::frame_error(
@@ -471,6 +498,32 @@ impl Columns {
 				(ColumnData::Uuid7(container), Type::Uuid7) => {
 					match layout.try_get_uuid7(row, index) {
 						Some(v) => container.push(v),
+						None => container
+							.push_undefined(),
+					}
+				}
+				(
+					ColumnData::BigInt(container),
+					Type::BigInt,
+				) => {
+					match layout.try_get_bigint(row, index)
+					{
+						Some(v) => container
+							.push(Value::BigInt(v)),
+						None => container
+							.push_undefined(),
+					}
+				}
+				(
+					ColumnData::BigDecimal(container),
+					Type::BigDecimal,
+				) => {
+					match layout
+						.try_get_bigdecimal(row, index)
+					{
+						Some(v) => container.push(
+							Value::BigDecimal(v),
+						),
 						None => container
 							.push_undefined(),
 					}

@@ -10,9 +10,10 @@ use std::time::Instant;
 pub use blocking::BlockingSession;
 pub use callback::CallbackSession;
 pub use channel::ChannelSession;
+use num_bigint;
 use reifydb_type::{
-	Blob, Date, DateTime, Error, IdentityId, RowNumber, Time, Uuid7, err,
-	parse_uuid4, parse_uuid7, util::hex,
+	BigDecimal, BigInt, Blob, Date, DateTime, Error, IdentityId, RowNumber,
+	Time, Uuid7, err, parse_uuid4, parse_uuid7, util::hex,
 };
 
 use crate::{
@@ -322,6 +323,24 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 				} else {
 					Value::Undefined
 				}
+			} else {
+				Value::Undefined
+			}
+		}
+		Type::BigInt => {
+			// Parse as BigInt using the underlying
+			// num_bigint::BigInt
+			if let Ok(std_big_int) = s.parse::<num_bigint::BigInt>()
+			{
+				Value::BigInt(BigInt::from(std_big_int))
+			} else {
+				Value::Undefined
+			}
+		}
+		Type::BigDecimal => {
+			// Parse as BigDecimal
+			if let Ok(big_decimal) = s.parse::<BigDecimal>() {
+				Value::BigDecimal(big_decimal)
 			} else {
 				Value::Undefined
 			}

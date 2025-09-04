@@ -25,6 +25,7 @@ default = []
 reifydb-type = { workspace = true }
 reifydb-hash = { workspace = true }
 
+num-bigint = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

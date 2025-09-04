@@ -78,6 +78,12 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::Blob(container) => {
 				FrameColumnData::Blob(container)
 			}
+			ColumnData::BigInt(container) => {
+				FrameColumnData::BigInt(container)
+			}
+			ColumnData::BigDecimal(container) => {
+				FrameColumnData::BigDecimal(container)
+			}
 			ColumnData::Undefined(container) => {
 				FrameColumnData::Undefined(container)
 			}
