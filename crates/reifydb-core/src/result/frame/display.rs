@@ -1107,20 +1107,6 @@ mod tests {
 
 	#[test]
 	fn test_uuid7() {
-		let uuids = vec![
-			Uuid7::from(
-				::uuid::Uuid::parse_str(
-					"01890a5d-ac96-774b-b9aa-789c0686aaa4",
-				)
-				.unwrap(),
-			),
-			Uuid7::from(
-				::uuid::Uuid::parse_str(
-					"01890a5d-ac96-774b-b9aa-789c0686aaa5",
-				)
-				.unwrap(),
-			),
-		];
 		let frame = Frame::new(vec![column_with_undefineds!(
 			"uuid7",
 			Uuid7,

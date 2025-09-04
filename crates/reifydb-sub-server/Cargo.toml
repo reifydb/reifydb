@@ -14,13 +14,14 @@ reifydb-hash = { workspace = true }
 mio = { workspace = true }
 slab = { workspace = true }
 socket2 = { workspace = true }
-num_cpus = { workspace = true }
-core_affinity = { workspace = true }
 httparse = { workspace = true }
 urlencoding = { workspace = true }
+num_cpus = { workspace = true }
+core_affinity = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { path = "../reifydb-testing" }
+

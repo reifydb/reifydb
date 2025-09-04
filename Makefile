@@ -6,6 +6,13 @@
 TEST_SUITE_DIR ?= ../testsuite
 TEST_PKG_DIR := ./pkg
 
+# Check if vendor directory exists and set offline flag
+ifneq (,$(wildcard ./vendor))
+    CARGO_OFFLINE := --offline
+else
+    CARGO_OFFLINE :=
+endif
+
 # Load .env file if it exists
 ifneq (,$(wildcard ./.env))
     include ./.env
@@ -113,6 +120,9 @@ ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)
 include mk/test-bench.mk
 endif
 
+# Include vendor makefile
+include mk/vendor.mk
+
 # =============================================================================
 # Build Targets
 # =============================================================================
@@ -120,7 +130,13 @@ endif
 .PHONY: build
 build:
 	@echo "🏗️  Building release version..."
-	cargo build --release
+	@if [ -d "vendor" ]; then \
+		echo "Using vendored dependencies (offline mode)"; \
+		./mk/build-vendored.sh; \
+	else \
+		echo "Using network dependencies"; \
+		cargo build --release --workspace; \
+	fi
 
 .PHONY: format
 format:

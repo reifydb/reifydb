@@ -28,7 +28,7 @@ testsuite-dev:
 $(TEST_SUITES):
 	@if [ -d "$(TEST_SUITE_DIR)/$@" ]; then \
 		echo "🔍 Running $@ tests in $(TEST_SUITE_DIR)/$@ ..."; \
-		cd $(TEST_SUITE_DIR)/$@ && cargo nextest run --no-fail-fast; \
+		cd $(TEST_SUITE_DIR)/$@ && cargo nextest run --no-fail-fast $(CARGO_OFFLINE); \
 	else \
 		echo "⚠️ Skipping $@ – directory $(TEST_SUITE_DIR)/$@ not found"; \
 	fi

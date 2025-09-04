@@ -6,7 +6,7 @@ test-examples: build-examples run-examples
 .PHONY: build-examples
 build-examples:
 	@echo "Building examples (release mode)..."
-	cd bin/examples && cargo build --bins
+	cd bin/examples && cargo build --bins $(CARGO_OFFLINE)
 
 # Run all examples in release mode (in order by directory, then by filename)
 .PHONY: run-examples
@@ -18,4 +18,4 @@ run-examples:
 .PHONY: clean-examples
 clean-examples:
 	@echo "Cleaning examples..."
-	cd bin/examples && cargo clean
+	cd bin/examples && cargo clean $(CARGO_OFFLINE)

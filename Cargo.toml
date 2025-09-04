@@ -22,7 +22,6 @@ members = [
     "crates/reifydb-sub-flow",
     "crates/reifydb-sub-logging",
     "crates/reifydb-sub-workerpool",
-    "pkg/python/reifydb-py",
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
     "testsuite/limit",
@@ -112,7 +111,7 @@ reifydb-sub-workerpool = { path = "crates/reifydb-sub-workerpool", version = "0.
 libc = { version = "0.2.175" }
 
 once_cell = { version = "1.21.3" }
-uuid = { version = "1.18.1", features = ["v4", "v7", "serde"] }
+uuid = { version = "1.18.1", default-features = false, features = ["v4", "v7", "serde", "std"] }
 
 crossbeam-skiplist = { version = "0.1.3" }
 crossbeam-channel = { version = "0.5.15" }

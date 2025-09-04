@@ -1,0 +1,60 @@
+[dependencies.alloc]
+optional = true
+package = "rustc-std-workspace-alloc"
+version = "1.0"
+
+[dependencies.bitflags]
+optional = true
+version = "2.3.3"
+
+[dependencies.core]
+optional = true
+package = "rustc-std-workspace-core"
+version = "1.0"
+
+[dependencies.futures]
+optional = true
+version = "0.3.30"
+
+[dependencies.once_cell]
+optional = true
+version = "1.19.0"
+
+[dependencies.wit-bindgen-rust-macro]
+optional = true
+version = "0.45.0"
+
+[features]
+async = ["macros", "dep:futures", "dep:once_cell", "wit-bindgen-rust-macro/async"]
+bitflags = ["dep:bitflags"]
+default = ["macros", "realloc", "async", "std", "bitflags"]
+macros = ["dep:wit-bindgen-rust-macro"]
+realloc = []
+rustc-dep-of-std = ["dep:core", "dep:alloc"]
+std = []
+
+[lib]
+path = "src/lib.rs"
+
+[package]
+authors = ["Alex Crichton <alex@alexcrichton.com>"]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+description = """
+Rust bindings generator and runtime support for WIT and the component model.
+Used when compiling Rust programs to the component model.
+"""
+edition = "2021"
+homepage = "https://github.com/bytecodealliance/wit-bindgen"
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+name = "wit-bindgen"
+readme = "README.md"
+repository = "https://github.com/bytecodealliance/wit-bindgen"
+rust-version = "1.82.0"
+version = "0.45.0"
+
+[package.metadata.docs.rs]
+all-features = true
