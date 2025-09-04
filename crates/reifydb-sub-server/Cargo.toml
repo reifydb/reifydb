@@ -9,6 +9,7 @@ authors = ["Dominique Chuo <dominique@reifydb.com>"]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-hash = { workspace = true }
 
 mio = { workspace = true }
 slab = { workspace = true }
@@ -16,7 +17,6 @@ socket2 = { workspace = true }
 num_cpus = { workspace = true }
 core_affinity = { workspace = true }
 httparse = { workspace = true }
-sha1 = { workspace = true }
 urlencoding = { workspace = true }
 
 serde = { workspace = true }

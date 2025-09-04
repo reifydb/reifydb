@@ -14,6 +14,7 @@ use std::{
 // Re-export main client and session types
 pub use client::Client;
 pub use domain::{Frame, FrameColumn};
+use reifydb_hash::sha1;
 use reifydb_type::diagnostic::Diagnostic;
 // Re-export types from reifydb
 pub use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
@@ -22,7 +23,6 @@ pub use session::{
 	BlockingSession, CallbackSession, ChannelResponse, ChannelSession,
 	CommandResult, QueryResult, ResponseMessage,
 };
-use sha1::{Digest, Sha1};
 
 // ============================================================================
 // Request Types (matching server)
@@ -393,11 +393,9 @@ fn calculate_accept_key(key: &str) -> String {
 	const MAGIC: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	let combined = format!("{}{}", key, MAGIC);
 
-	let mut hasher = Sha1::new();
-	hasher.update(combined.as_bytes());
-	let hash = hasher.finalize();
+	let hash = sha1(combined.as_bytes());
 
-	base64_encode(&hash)
+	base64_encode(&hash.0)
 }
 
 /// Simple base64 encoding
