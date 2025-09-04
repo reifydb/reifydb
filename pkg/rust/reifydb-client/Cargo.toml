@@ -23,8 +23,7 @@ default = []
 
 [dependencies]
 reifydb-type = { workspace = true }
-
-sha1 = "0.10"
+reifydb-hash = { workspace = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

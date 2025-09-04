@@ -4,4 +4,10 @@ fn main() {
 	cc.file("src/xxh/c/xxhash.c");
 	cc.warnings(false);
 	cc.compile("xxhash");
+
+	let mut cc = cc::Build::new();
+	cc.include("src/sha1/c/");
+	cc.file("src/sha1/c/sha1.c");
+	cc.warnings(false);
+	cc.compile("sha1");
 }

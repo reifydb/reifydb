@@ -9,6 +9,7 @@ authors = ["Dominique Chuo <dominique@reifydb.com>"]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-hash = { workspace = true }
 
 # Network and async dependencies
 mio = { version = "1.0.4", features = ["net", "os-poll"] }
@@ -21,7 +22,6 @@ core_affinity = "0.8"
 
 # WebSocket protocol support  
 httparse = "1.8"
-sha1 = "0.10"
 
 # HTTP protocol support
 urlencoding = "2.1"
