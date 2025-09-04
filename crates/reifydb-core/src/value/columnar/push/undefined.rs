@@ -78,7 +78,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.push_undefined()
 			}
-			ColumnData::BigInt(container) => {
+			ColumnData::VarInt(container) => {
+				container.push_undefined()
+			}
+			ColumnData::VarUint(container) => {
 				container.push_undefined()
 			}
 			ColumnData::BigDecimal(container) => {

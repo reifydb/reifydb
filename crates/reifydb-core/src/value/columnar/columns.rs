@@ -102,7 +102,10 @@ impl Columns {
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),
 				Value::Blob(v) => ColumnData::blob([v.clone()]),
-				Value::BigInt(v) => ColumnData::bigint(vec![v]),
+				Value::VarInt(v) => ColumnData::varint(vec![v]),
+				Value::VarUint(v) => {
+					ColumnData::varuint(vec![v])
+				}
 				Value::BigDecimal(v) => {
 					ColumnData::bigdecimal(vec![v])
 				}
@@ -250,8 +253,11 @@ impl Columns {
 						ColumnData::uuid7(vec![])
 					}
 					Type::Blob => ColumnData::blob(vec![]),
-					Type::BigInt => {
-						ColumnData::bigint(vec![])
+					Type::VarInt => {
+						ColumnData::varint(vec![])
+					}
+					Type::VarUint => {
+						ColumnData::varuint(vec![])
 					}
 					Type::BigDecimal => {
 						ColumnData::bigdecimal(vec![])
@@ -332,8 +338,11 @@ impl Columns {
 						ColumnData::uuid7(vec![])
 					}
 					Type::Blob => ColumnData::blob(vec![]),
-					Type::BigInt => {
-						ColumnData::bigint(vec![])
+					Type::VarInt => {
+						ColumnData::varint(vec![])
+					}
+					Type::VarUint => {
+						ColumnData::varuint(vec![])
 					}
 					Type::BigDecimal => {
 						ColumnData::bigdecimal(vec![])

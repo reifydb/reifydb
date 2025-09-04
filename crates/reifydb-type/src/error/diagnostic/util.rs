@@ -32,7 +32,8 @@ pub fn value_max<'a>(value: Type) -> &'a str {
 		Type::Uuid4 => unreachable!(),
 		Type::Uuid7 => unreachable!(),
 		Type::Blob => unreachable!(),
-		Type::BigInt => "unlimited",
+		Type::VarInt => "unlimited",
+		Type::VarUint => "unlimited",
 		Type::BigDecimal => "unlimited",
 		Type::Undefined => unreachable!(),
 	}
@@ -69,7 +70,8 @@ pub fn value_range<'a>(value: Type) -> &'a str {
 		Type::Uuid4 => unreachable!(),
 		Type::Uuid7 => unreachable!(),
 		Type::Blob => unreachable!(),
-		Type::BigInt => "unlimited",
+		Type::VarInt => "unlimited",
+		Type::VarUint => "unlimited",
 		Type::BigDecimal => "unlimited",
 		Type::Undefined => unreachable!(),
 	}

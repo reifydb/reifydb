@@ -18,7 +18,6 @@ pub use fragment::{
 };
 pub use value::{
 	BigDecimal,
-	BigInt,
 	Blob,
 	Date,
 	DateTime,
@@ -40,6 +39,8 @@ pub use value::{
 	// Number traits and operations
 	Value,
 
+	VarInt,
+	VarUint,
 	// Parse functions
 	boolean::parse_bool,
 	is::{
@@ -56,5 +57,7 @@ pub use value::{
 		parse_date, parse_datetime, parse_interval, parse_time,
 	},
 	uuid::{parse_uuid4, parse_uuid7},
+	varint::parse_varint,
+	varuint::parse_varuint,
 };
 pub use value::{blob, boolean, temporal, uuid};

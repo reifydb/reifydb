@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	diagnostic,
+	VarInt, VarUint, diagnostic,
 	diagnostic::{engine::frame_error, operator},
 };
 
@@ -408,12 +408,12 @@ impl StandardEvaluator {
                 _ => err!(frame_error(
                     "Cannot apply arithmetic prefix operator to BLOB".to_string()
                 ))},
-            ColumnData::BigInt(container) => {
+            ColumnData::VarInt(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus(_) => reifydb_type::BigInt::zero(),  // TODO: implement negation
+                            PrefixOperator::Minus(_) => VarInt(-val.0.clone()),
                             PrefixOperator::Plus(_) => val.clone(),
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
@@ -422,17 +422,63 @@ impl StandardEvaluator {
                             }
                         });
                     } else {
-                        result.push(reifydb_type::BigInt::zero());
+                        result.push(VarInt::zero());
                     }
                 }
                 Ok(match column.table() {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::bigint_with_bitvec(result, container.bitvec())}),
+                        data: ColumnData::varint_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::bigint_with_bitvec(result, container.bitvec())})})
+                        data: ColumnData::varint_with_bitvec(result, container.bitvec())})})
+            },
+            ColumnData::VarUint(container) => {
+                match prefix.operator {
+                    PrefixOperator::Minus(_) => {
+                        let mut result = Vec::with_capacity(container.data().len());
+                        for (idx, val) in container.data().iter().enumerate() {
+                            if container.is_defined(idx) {
+                                let negated = -val.0.clone();
+                                result.push(VarInt::from(negated));
+                            } else {
+                                result.push(VarInt::zero());
+                            }
+                        }
+                        Ok(match column.table() {
+                            Some(table) => Column::SourceQualified(SourceQualified {
+                                source: table.to_string(),
+                                name: column.name().to_string(),
+                                data: ColumnData::varint_with_bitvec(result, container.bitvec())}),
+                            None => Column::ColumnQualified(ColumnQualified {
+                                name: column.name().to_string(),
+                                data: ColumnData::varint_with_bitvec(result, container.bitvec())})})
+                    },
+                    PrefixOperator::Plus(_) => {
+                        let mut result = Vec::with_capacity(container.data().len());
+                        for (idx, val) in container.data().iter().enumerate() {
+                            if container.is_defined(idx) {
+                                result.push(val.clone());
+                            } else {
+                                result.push(VarUint::zero());
+                            }
+                        }
+                        Ok(match column.table() {
+                            Some(table) => Column::SourceQualified(SourceQualified {
+                                source: table.to_string(),
+                                name: column.name().to_string(),
+                                data: ColumnData::varuint_with_bitvec(result, container.bitvec())}),
+                            None => Column::ColumnQualified(ColumnQualified {
+                                name: column.name().to_string(),
+                                data: ColumnData::varuint_with_bitvec(result, container.bitvec())})})
+                    },
+                    PrefixOperator::Not(_) => {
+                        err!(operator::not_can_not_applied_to_number(
+                            prefix.full_fragment_owned()
+                        ))
+                    }
+                }
             },
             ColumnData::BigDecimal(container) => {
                 let mut result = Vec::with_capacity(container.data().len());

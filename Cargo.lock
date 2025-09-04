@@ -595,6 +595,7 @@ version = "0.0.1"
 dependencies = [
  "bigdecimal",
  "num-bigint",
+ "num-traits",
  "serde",
  "serde_json",
  "uuid",

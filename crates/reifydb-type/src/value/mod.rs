@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 
 mod as_string;
 pub mod bigdecimal;
-pub mod bigint;
 pub mod blob;
 pub mod boolean;
 mod date;
@@ -27,9 +26,10 @@ pub mod temporal;
 mod time;
 mod r#type;
 pub mod uuid;
+pub mod varint;
+pub mod varuint;
 
 pub use bigdecimal::BigDecimal;
-pub use bigint::BigInt;
 pub use blob::Blob;
 pub use date::Date;
 pub use datetime::DateTime;
@@ -42,6 +42,8 @@ pub use row_number::RowNumber;
 pub use time::Time;
 pub use r#type::{GetType, Type};
 pub use uuid::{Uuid4, Uuid7};
+pub use varint::VarInt;
+pub use varuint::VarUint;
 
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -94,8 +96,10 @@ pub enum Value {
 	Uuid7(Uuid7),
 	/// A binary large object (BLOB)
 	Blob(Blob),
-	/// An arbitrary-precision integer
-	BigInt(BigInt),
+	/// An arbitrary-precision signed integer
+	VarInt(VarInt),
+	/// An arbitrary-precision unsigned integer
+	VarUint(VarUint),
 	/// An arbitrary-precision decimal
 	BigDecimal(BigDecimal),
 }
@@ -153,7 +157,10 @@ impl PartialOrd for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
-			(Value::BigInt(l), Value::BigInt(r)) => {
+			(Value::VarInt(l), Value::VarInt(r)) => {
+				l.partial_cmp(r)
+			}
+			(Value::VarUint(l), Value::VarUint(r)) => {
 				l.partial_cmp(r)
 			}
 			(Value::BigDecimal(l), Value::BigDecimal(r)) => {
@@ -195,7 +202,8 @@ impl Ord for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
-			(Value::BigInt(l), Value::BigInt(r)) => l.cmp(r),
+			(Value::VarInt(l), Value::VarInt(r)) => l.cmp(r),
+			(Value::VarUint(l), Value::VarUint(r)) => l.cmp(r),
 			(Value::BigDecimal(l), Value::BigDecimal(r)) => {
 				l.cmp(r)
 			}
@@ -231,7 +239,8 @@ impl Display for Value {
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
 			Value::Blob(value) => Display::fmt(value, f),
-			Value::BigInt(value) => Display::fmt(value, f),
+			Value::VarInt(value) => Display::fmt(value, f),
+			Value::VarUint(value) => Display::fmt(value, f),
 			Value::BigDecimal(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
@@ -265,7 +274,8 @@ impl Value {
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,
-			Value::BigInt(_) => Type::BigInt,
+			Value::VarInt(_) => Type::VarInt,
+			Value::VarUint(_) => Type::VarUint,
 			Value::BigDecimal(_) => Type::BigDecimal,
 		}
 	}

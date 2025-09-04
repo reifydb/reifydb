@@ -5,11 +5,11 @@ use std::ptr;
 
 use num_bigint::BigInt as StdBigInt;
 use num_traits::ToPrimitive;
-use reifydb_type::{BigInt, Type};
+use reifydb_type::{Type, VarInt};
 
 use crate::row::{EncodedRow, EncodedRowLayout};
 
-/// BigInt storage modes using MSB of i128 as indicator
+/// VarInt storage modes using MSB of i128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
 /// MSB = 1: Dynamic storage, lower 127 bits contain offset+length
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
@@ -24,17 +24,17 @@ const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
 
 impl EncodedRowLayout {
-	/// Set a BigInt value with 2-tier storage optimization
+	/// Set a VarInt value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_bigint(
+	pub fn set_varint(
 		&self,
 		row: &mut EncodedRow,
 		index: usize,
-		value: &BigInt,
+		value: &VarInt,
 	) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::BigInt);
+		debug_assert_eq!(field.value, Type::VarInt);
 
 		// Try i128 inline storage first (fits in 127 bits)
 		if let Some(i128_val) = value.0.to_i128() {
@@ -63,7 +63,7 @@ impl EncodedRowLayout {
 		// Mode 1: Dynamic storage for arbitrary precision
 		debug_assert!(
 			!row.is_defined(index),
-			"BigInt field {} already set",
+			"VarInt field {} already set",
 			index
 		);
 
@@ -90,10 +90,10 @@ impl EncodedRowLayout {
 		row.set_valid(index, true);
 	}
 
-	/// Get a BigInt value, detecting storage mode from MSB
-	pub fn get_bigint(&self, row: &EncodedRow, index: usize) -> BigInt {
+	/// Get a VarInt value, detecting storage mode from MSB
+	pub fn get_varint(&self, row: &EncodedRow, index: usize) -> VarInt {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::BigInt);
+		debug_assert_eq!(field.value, Type::VarInt);
 
 		let packed = unsafe {
 			(row.as_ptr().add(field.offset) as *const u128)
@@ -112,7 +112,7 @@ impl EncodedRowLayout {
 			} else {
 				value
 			};
-			BigInt::from(signed)
+			VarInt::from(signed)
 		} else {
 			// MODE_DYNAMIC: Extract offset and length for dynamic
 			// storage
@@ -125,20 +125,20 @@ impl EncodedRowLayout {
 				+ offset
 				..dynamic_start + offset + length];
 
-			BigInt::from(StdBigInt::from_signed_bytes_le(
+			VarInt::from(StdBigInt::from_signed_bytes_le(
 				bigint_bytes,
 			))
 		}
 	}
 
-	/// Try to get a BigInt value, returning None if undefined
-	pub fn try_get_bigint(
+	/// Try to get a VarInt value, returning None if undefined
+	pub fn try_get_varint(
 		&self,
 		row: &EncodedRow,
 		index: usize,
-	) -> Option<BigInt> {
+	) -> Option<VarInt> {
 		if row.is_defined(index) {
-			Some(self.get_bigint(row, index))
+			Some(self.get_varint(row, index))
 		} else {
 			None
 		}
@@ -147,82 +147,82 @@ impl EncodedRowLayout {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::{BigInt, Type};
+	use reifydb_type::{Type, VarInt};
 
 	use crate::row::EncodedRowLayout;
 
 	#[test]
-	fn test_bigint_i64_inline() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_i64_inline() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
 		// Test small positive value
-		let small = BigInt::from(42i64);
-		layout.set_bigint(&mut row, 0, &small);
+		let small = VarInt::from(42i64);
+		layout.set_varint(&mut row, 0, &small);
 		assert!(row.is_defined(0));
 
-		let retrieved = layout.get_bigint(&row, 0);
+		let retrieved = layout.get_varint(&row, 0);
 		assert_eq!(retrieved, small);
 
 		// Test small negative value
 		let mut row2 = layout.allocate_row();
-		let negative = BigInt::from(-999999i64);
-		layout.set_bigint(&mut row2, 0, &negative);
-		assert_eq!(layout.get_bigint(&row2, 0), negative);
+		let negative = VarInt::from(-999999i64);
+		layout.set_varint(&mut row2, 0, &negative);
+		assert_eq!(layout.get_varint(&row2, 0), negative);
 	}
 
 	#[test]
-	fn test_bigint_i64_boundary() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_i64_boundary() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 
 		// Test maximum i64 inline value (2^61 - 1)
 		let mut row1 = layout.allocate_row();
-		let max_inline = BigInt::from((1i64 << 61) - 1);
-		layout.set_bigint(&mut row1, 0, &max_inline);
-		assert_eq!(layout.get_bigint(&row1, 0), max_inline);
+		let max_inline = VarInt::from((1i64 << 61) - 1);
+		layout.set_varint(&mut row1, 0, &max_inline);
+		assert_eq!(layout.get_varint(&row1, 0), max_inline);
 
 		// Test minimum i64 inline value (-2^61)
 		let mut row2 = layout.allocate_row();
-		let min_inline = BigInt::from(-(1i64 << 61));
-		layout.set_bigint(&mut row2, 0, &min_inline);
-		assert_eq!(layout.get_bigint(&row2, 0), min_inline);
+		let min_inline = VarInt::from(-(1i64 << 61));
+		layout.set_varint(&mut row2, 0, &min_inline);
+		assert_eq!(layout.get_varint(&row2, 0), min_inline);
 	}
 
 	#[test]
-	fn test_bigint_i128_overflow() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_i128_overflow() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
 		// Value that doesn't fit in 62 bits but fits in i128
-		let large = BigInt::from(i64::MAX);
-		layout.set_bigint(&mut row, 0, &large);
+		let large = VarInt::from(i64::MAX);
+		layout.set_varint(&mut row, 0, &large);
 		assert!(row.is_defined(0));
 
-		let retrieved = layout.get_bigint(&row, 0);
+		let retrieved = layout.get_varint(&row, 0);
 		assert_eq!(retrieved, large);
 
 		// Test i128::MAX
 		let mut row2 = layout.allocate_row();
-		let max_i128 = BigInt::from(i128::MAX);
-		layout.set_bigint(&mut row2, 0, &max_i128);
-		assert_eq!(layout.get_bigint(&row2, 0), max_i128);
+		let max_i128 = VarInt::from(i128::MAX);
+		layout.set_varint(&mut row2, 0, &max_i128);
+		assert_eq!(layout.get_varint(&row2, 0), max_i128);
 
 		// Test i128::MIN
 		let mut row3 = layout.allocate_row();
-		let min_i128 = BigInt::from(i128::MIN);
-		layout.set_bigint(&mut row3, 0, &min_i128);
-		assert_eq!(layout.get_bigint(&row3, 0), min_i128);
+		let min_i128 = VarInt::from(i128::MIN);
+		layout.set_varint(&mut row3, 0, &min_i128);
+		assert_eq!(layout.get_varint(&row3, 0), min_i128);
 	}
 
 	#[test]
-	fn test_bigint_dynamic_storage() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_dynamic_storage() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
 		// Create a value larger than i128 can hold
 		let huge_str =
 			"999999999999999999999999999999999999999999999999";
-		let huge = BigInt::from(
+		let huge = VarInt::from(
 			num_bigint::BigInt::parse_bytes(
 				huge_str.as_bytes(),
 				10,
@@ -230,110 +230,110 @@ mod tests {
 			.unwrap(),
 		);
 
-		layout.set_bigint(&mut row, 0, &huge);
+		layout.set_varint(&mut row, 0, &huge);
 		assert!(row.is_defined(0));
 
-		let retrieved = layout.get_bigint(&row, 0);
+		let retrieved = layout.get_varint(&row, 0);
 		assert_eq!(retrieved, huge);
 		assert_eq!(retrieved.to_string(), huge_str);
 	}
 
 	#[test]
-	fn test_bigint_zero() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_zero() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
-		let zero = BigInt::from(0);
-		layout.set_bigint(&mut row, 0, &zero);
+		let zero = VarInt::from(0);
+		layout.set_varint(&mut row, 0, &zero);
 		assert!(row.is_defined(0));
 
-		let retrieved = layout.get_bigint(&row, 0);
+		let retrieved = layout.get_varint(&row, 0);
 		assert_eq!(retrieved, zero);
 	}
 
 	#[test]
-	fn test_bigint_try_get() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_try_get() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
 		// Undefined initially
-		assert_eq!(layout.try_get_bigint(&row, 0), None);
+		assert_eq!(layout.try_get_varint(&row, 0), None);
 
 		// Set value
-		let value = BigInt::from(12345);
-		layout.set_bigint(&mut row, 0, &value);
-		assert_eq!(layout.try_get_bigint(&row, 0), Some(value));
+		let value = VarInt::from(12345);
+		layout.set_varint(&mut row, 0, &value);
+		assert_eq!(layout.try_get_varint(&row, 0), Some(value));
 	}
 
 	#[test]
-	fn test_bigint_clone_on_write() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_clone_on_write() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let row1 = layout.allocate_row();
 		let mut row2 = row1.clone();
 
-		let value = BigInt::from(999999999999999i64);
-		layout.set_bigint(&mut row2, 0, &value);
+		let value = VarInt::from(999999999999999i64);
+		layout.set_varint(&mut row2, 0, &value);
 
 		assert!(!row1.is_defined(0));
 		assert!(row2.is_defined(0));
 		assert_ne!(row1.as_ptr(), row2.as_ptr());
-		assert_eq!(layout.get_bigint(&row2, 0), value);
+		assert_eq!(layout.get_varint(&row2, 0), value);
 	}
 
 	#[test]
-	fn test_bigint_multiple_fields() {
+	fn test_varint_multiple_fields() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Int4,
-			Type::BigInt,
+			Type::VarInt,
 			Type::Utf8,
-			Type::BigInt,
+			Type::VarInt,
 		]);
 		let mut row = layout.allocate_row();
 
 		layout.set_i32(&mut row, 0, 42);
 
-		let small = BigInt::from(100);
-		layout.set_bigint(&mut row, 1, &small);
+		let small = VarInt::from(100);
+		layout.set_varint(&mut row, 1, &small);
 
 		layout.set_utf8(&mut row, 2, "test");
 
-		let large = BigInt::from(i128::MAX);
-		layout.set_bigint(&mut row, 3, &large);
+		let large = VarInt::from(i128::MAX);
+		layout.set_varint(&mut row, 3, &large);
 
 		assert_eq!(layout.get_i32(&row, 0), 42);
-		assert_eq!(layout.get_bigint(&row, 1), small);
+		assert_eq!(layout.get_varint(&row, 1), small);
 		assert_eq!(layout.get_utf8(&row, 2), "test");
-		assert_eq!(layout.get_bigint(&row, 3), large);
+		assert_eq!(layout.get_varint(&row, 3), large);
 	}
 
 	#[test]
-	fn test_bigint_negative_values() {
-		let layout = EncodedRowLayout::new(&[Type::BigInt]);
+	fn test_varint_negative_values() {
+		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 
 		// Small negative (i64 inline)
 		let mut row1 = layout.allocate_row();
-		let small_neg = BigInt::from(-42);
-		layout.set_bigint(&mut row1, 0, &small_neg);
-		assert_eq!(layout.get_bigint(&row1, 0), small_neg);
+		let small_neg = VarInt::from(-42);
+		layout.set_varint(&mut row1, 0, &small_neg);
+		assert_eq!(layout.get_varint(&row1, 0), small_neg);
 
 		// Large negative (i128 overflow)
 		let mut row2 = layout.allocate_row();
-		let large_neg = BigInt::from(i64::MIN);
-		layout.set_bigint(&mut row2, 0, &large_neg);
-		assert_eq!(layout.get_bigint(&row2, 0), large_neg);
+		let large_neg = VarInt::from(i64::MIN);
+		layout.set_varint(&mut row2, 0, &large_neg);
+		assert_eq!(layout.get_varint(&row2, 0), large_neg);
 
 		// Huge negative (dynamic)
 		let mut row3 = layout.allocate_row();
 		let huge_neg_str =
 			"-999999999999999999999999999999999999999999999999";
-		let huge_neg = BigInt::from(
+		let huge_neg = VarInt::from(
 			-num_bigint::BigInt::parse_bytes(
 				huge_neg_str.trim_start_matches('-').as_bytes(),
 				10,
 			)
 			.unwrap(),
 		);
-		layout.set_bigint(&mut row3, 0, &huge_neg);
-		assert_eq!(layout.get_bigint(&row3, 0), huge_neg);
+		layout.set_varint(&mut row3, 0, &huge_neg);
+		assert_eq!(layout.get_varint(&row3, 0), huge_neg);
 	}
 }

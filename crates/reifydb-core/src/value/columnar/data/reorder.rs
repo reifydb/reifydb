@@ -78,7 +78,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.reorder(indices)
 			}
-			ColumnData::BigInt(container) => {
+			ColumnData::VarInt(container) => {
+				container.reorder(indices)
+			}
+			ColumnData::VarUint(container) => {
 				container.reorder(indices)
 			}
 			ColumnData::BigDecimal(container) => {

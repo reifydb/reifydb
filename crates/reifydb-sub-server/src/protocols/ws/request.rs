@@ -163,9 +163,15 @@ fn parse_typed_value(
 		Type::Blob => Blob::from_hex(fragment.clone())
 			.map(Value::Blob)
 			.unwrap_or(Value::Undefined),
-		Type::BigInt => str_val
+		Type::VarInt => str_val
 			.parse::<num_bigint::BigInt>()
-			.map(|bi| Value::BigInt(reifydb_type::BigInt::from(bi)))
+			.map(|bi| Value::VarInt(reifydb_type::VarInt::from(bi)))
+			.unwrap_or(Value::Undefined),
+		Type::VarUint => str_val
+			.parse::<num_bigint::BigInt>()
+			.map(|bi| {
+				Value::VarUint(reifydb_type::VarUint::from(bi))
+			})
 			.unwrap_or(Value::Undefined),
 		Type::BigDecimal => str_val
 			.parse::<reifydb_type::BigDecimal>()

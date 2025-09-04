@@ -75,8 +75,10 @@ pub enum Type {
 	Uuid7,
 	/// A binary large object (BLOB)
 	Blob,
-	/// An arbitrary-precision integer
-	BigInt,
+	/// An arbitrary-precision signed integer
+	VarInt,
+	/// An arbitrary-precision unsigned integer
+	VarUint,
 	/// An arbitrary-precision decimal
 	BigDecimal,
 	/// Value is not defined (think null in common programming languages)
@@ -91,8 +93,8 @@ impl Type {
 				| Type::Float8 | Type::Int1 | Type::Int2
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
-				| Type::Uint8 | Type::Uint16 | Type::BigInt
-				| Type::BigDecimal
+				| Type::Uint8 | Type::Uint16 | Type::VarInt
+				| Type::VarUint | Type::BigDecimal
 		)
 	}
 
@@ -174,7 +176,8 @@ impl Type {
 			Type::Uuid4 => 0x14,
 			Type::Uuid7 => 0x15,
 			Type::Blob => 0x16,
-			Type::BigInt => 0x18,
+			Type::VarInt => 0x18,
+			Type::VarUint => 0x1A,
 			Type::BigDecimal => 0x19,
 			Type::Undefined => 0x00,
 		}
@@ -208,7 +211,8 @@ impl Type {
 			0x15 => Type::Uuid7,
 			0x16 => Type::Blob,
 			0x17 => Type::IdentityId,
-			0x18 => Type::BigInt,
+			0x18 => Type::VarInt,
+			0x1A => Type::VarUint,
 			0x19 => Type::BigDecimal,
 			_ => unreachable!(),
 		}
@@ -242,7 +246,9 @@ impl Type {
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
 			Type::Blob => 8,    // offset: u32 + length: u32
-			Type::BigInt => 16, // i128 inline or dynamic
+			Type::VarInt => 16, // i128 inline or dynamic
+			// storage with offset + length
+			Type::VarUint => 16, // u128 inline or dynamic
 			// storage with offset + length
 			Type::BigDecimal => 16, // i128 inline or dynamic
 			// storage with offset + length
@@ -275,7 +281,9 @@ impl Type {
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
 			Type::Blob => 4,    // u32 alignment
-			Type::BigInt => 16, // i128 alignment for
+			Type::VarInt => 16, // i128 alignment for
+			// inline storage
+			Type::VarUint => 16, // u128 alignment for
 			// inline storage
 			Type::BigDecimal => 16, // i128 alignment for
 			// inline storage
@@ -310,7 +318,8 @@ impl Display for Type {
 			Type::Uuid4 => f.write_str("Uuid4"),
 			Type::Uuid7 => f.write_str("Uuid7"),
 			Type::Blob => f.write_str("Blob"),
-			Type::BigInt => f.write_str("BigInt"),
+			Type::VarInt => f.write_str("VarInt"),
+			Type::VarUint => f.write_str("VarUint"),
 			Type::BigDecimal => f.write_str("BigDecimal"),
 			Type::Undefined => f.write_str("Undefined"),
 		}
@@ -344,7 +353,8 @@ impl From<&Value> for Type {
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,
-			Value::BigInt(_) => Type::BigInt,
+			Value::VarInt(_) => Type::VarInt,
+			Value::VarUint(_) => Type::VarUint,
 			Value::BigDecimal(_) => Type::BigDecimal,
 		}
 	}
@@ -378,7 +388,8 @@ impl FromStr for Type {
 			"UUID4" => Ok(Type::Uuid4),
 			"UUID7" => Ok(Type::Uuid7),
 			"BLOB" => Ok(Type::Blob),
-			"BIGINT" => Ok(Type::BigInt),
+			"VARINT" => Ok(Type::VarInt),
+			"VARUINT" => Ok(Type::VarUint),
 			"BIGDECIMAL" => Ok(Type::BigDecimal),
 			"UNDEFINED" => Ok(Type::Undefined),
 			_ => Err(()),

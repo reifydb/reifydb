@@ -5,9 +5,10 @@ use reifydb_type::{Date, DateTime, Interval, Time, Type, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::value::container::{
-	BigDecimalContainer, BigIntContainer, BlobContainer, BoolContainer,
-	IdentityIdContainer, NumberContainer, RowNumberContainer,
-	TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
+	BigDecimalContainer, BlobContainer, BoolContainer, IdentityIdContainer,
+	NumberContainer, RowNumberContainer, TemporalContainer,
+	UndefinedContainer, Utf8Container, UuidContainer, VarIntContainer,
+	VarUintContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -35,7 +36,8 @@ pub enum FrameColumnData {
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
 	Blob(BlobContainer),
-	BigInt(BigIntContainer),
+	VarInt(VarIntContainer),
+	VarUint(VarUintContainer),
 	BigDecimal(BigDecimalContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
@@ -67,7 +69,8 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(_) => Type::Uuid4,
 			FrameColumnData::Uuid7(_) => Type::Uuid7,
 			FrameColumnData::Blob(_) => Type::Blob,
-			FrameColumnData::BigInt(_) => Type::BigInt,
+			FrameColumnData::VarInt(_) => Type::VarInt,
+			FrameColumnData::VarUint(_) => Type::VarUint,
 			FrameColumnData::BigDecimal(_) => Type::BigDecimal,
 			FrameColumnData::Undefined(_) => Type::Undefined,
 		}
@@ -144,7 +147,10 @@ impl FrameColumnData {
 			FrameColumnData::Blob(container) => {
 				container.is_defined(idx)
 			}
-			FrameColumnData::BigInt(container) => {
+			FrameColumnData::VarInt(container) => {
+				container.is_defined(idx)
+			}
+			FrameColumnData::VarUint(container) => {
 				container.is_defined(idx)
 			}
 			FrameColumnData::BigDecimal(container) => {
@@ -230,7 +236,8 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => container.len(),
 			FrameColumnData::Uuid7(container) => container.len(),
 			FrameColumnData::Blob(container) => container.len(),
-			FrameColumnData::BigInt(container) => container.len(),
+			FrameColumnData::VarInt(container) => container.len(),
+			FrameColumnData::VarUint(container) => container.len(),
 			FrameColumnData::BigDecimal(container) => {
 				container.len()
 			}
@@ -311,7 +318,10 @@ impl FrameColumnData {
 			FrameColumnData::Blob(container) => {
 				container.as_string(index)
 			}
-			FrameColumnData::BigInt(container) => {
+			FrameColumnData::VarInt(container) => {
+				container.as_string(index)
+			}
+			FrameColumnData::VarUint(container) => {
 				container.as_string(index)
 			}
 			FrameColumnData::BigDecimal(container) => {
@@ -396,7 +406,10 @@ impl FrameColumnData {
 			FrameColumnData::Blob(container) => {
 				container.get_value(index)
 			}
-			FrameColumnData::BigInt(container) => {
+			FrameColumnData::VarInt(container) => {
+				container.get_value(index)
+			}
+			FrameColumnData::VarUint(container) => {
 				container.get_value(index)
 			}
 			FrameColumnData::BigDecimal(container) => {

@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	BigDecimal, BigInt, Blob, Date, DateTime, Interval, Time, Type, Uuid4,
-	Uuid7, Value, diagnostic::engine, return_error,
+	BigDecimal, Blob, Date, DateTime, Interval, Time, Type, Uuid4, Uuid7,
+	Value, VarInt, VarUint, diagnostic::engine, return_error,
 };
 
 use crate::{
@@ -157,8 +157,12 @@ impl Columns {
                         vec![Blob::new(vec![]); size],
                         BitVec::repeat(size, false),
                     ),
-                    Type::BigInt => ColumnData::bigint_with_bitvec(
-                        vec![BigInt::default(); size],
+                    Type::VarInt => ColumnData::varint_with_bitvec(
+                        vec![VarInt::default(); size],
+                        BitVec::repeat(size, false),
+                    ),
+                    Type::VarUint => ColumnData::varuint_with_bitvec(
+                        vec![VarUint::default(); size],
                         BitVec::repeat(size, false),
                     ),
                     Type::BigDecimal => ColumnData::bigdecimal_with_bitvec(
@@ -311,11 +315,19 @@ impl Columns {
 							.get_blob(&row, index));
 				}
 				(
-					ColumnData::BigInt(container),
-					Type::BigInt,
+					ColumnData::VarInt(container),
+					Type::VarInt,
 				) => {
-					container.push(Value::BigInt(
-						layout.get_bigint(&row, index),
+					container.push(Value::VarInt(
+						layout.get_varint(&row, index),
+					));
+				}
+				(
+					ColumnData::VarUint(container),
+					Type::VarUint,
+				) => {
+					container.push(Value::VarUint(
+						layout.get_varuint(&row, index),
 					));
 				}
 				(
@@ -503,13 +515,26 @@ impl Columns {
 					}
 				}
 				(
-					ColumnData::BigInt(container),
-					Type::BigInt,
+					ColumnData::VarInt(container),
+					Type::VarInt,
 				) => {
-					match layout.try_get_bigint(row, index)
+					match layout.try_get_varint(row, index)
 					{
 						Some(v) => container
-							.push(Value::BigInt(v)),
+							.push(Value::VarInt(v)),
+						None => container
+							.push_undefined(),
+					}
+				}
+				(
+					ColumnData::VarUint(container),
+					Type::VarUint,
+				) => {
+					match layout.try_get_varuint(row, index)
+					{
+						Some(v) => container.push(
+							Value::VarUint(v),
+						),
 						None => container
 							.push_undefined(),
 					}

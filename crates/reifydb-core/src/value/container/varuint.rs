@@ -3,27 +3,27 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{BigInt, Value};
+use reifydb_type::{Value, VarUint};
 use serde::{Deserialize, Serialize};
 
 use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BigIntContainer {
-	data: CowVec<BigInt>,
+pub struct VarUintContainer {
+	data: CowVec<VarUint>,
 	bitvec: BitVec,
 }
 
-impl Deref for BigIntContainer {
-	type Target = [BigInt];
+impl Deref for VarUintContainer {
+	type Target = [VarUint];
 
 	fn deref(&self) -> &Self::Target {
 		self.data.as_slice()
 	}
 }
 
-impl BigIntContainer {
-	pub fn new(data: Vec<BigInt>, bitvec: BitVec) -> Self {
+impl VarUintContainer {
+	pub fn new(data: Vec<VarUint>, bitvec: BitVec) -> Self {
 		debug_assert_eq!(data.len(), bitvec.len());
 		Self {
 			data: CowVec::new(data),
@@ -38,7 +38,7 @@ impl BigIntContainer {
 		}
 	}
 
-	pub fn from_vec(data: Vec<BigInt>) -> Self {
+	pub fn from_vec(data: Vec<VarUint>) -> Self {
 		let len = data.len();
 		Self {
 			data: CowVec::new(data),
@@ -59,7 +59,7 @@ impl BigIntContainer {
 		&self.bitvec
 	}
 
-	pub fn as_slice(&self) -> &[BigInt] {
+	pub fn as_slice(&self) -> &[VarUint] {
 		self.data.as_slice()
 	}
 
@@ -72,11 +72,11 @@ impl BigIntContainer {
 	}
 
 	pub fn push_undefined(&mut self) {
-		self.data.push(BigInt::from(0));
+		self.data.push(VarUint::from(0));
 		self.bitvec.push(false);
 	}
 
-	pub fn data(&self) -> &[BigInt] {
+	pub fn data(&self) -> &[VarUint] {
 		self.data.as_slice()
 	}
 
@@ -90,7 +90,7 @@ impl BigIntContainer {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if self.is_defined(index) {
-			Value::BigInt(self.data[index].clone())
+			Value::VarUint(self.data[index].clone())
 		} else {
 			Value::Undefined
 		}
@@ -98,16 +98,16 @@ impl BigIntContainer {
 
 	pub fn push(&mut self, value: Value) {
 		match value {
-			Value::BigInt(v) => {
+			Value::VarUint(v) => {
 				self.data.push(v);
 				self.bitvec.push(true);
 			}
 			Value::Undefined => {
-				self.data.push(BigInt::from(0));
+				self.data.push(VarUint::from(0));
 				self.bitvec.push(false);
 			}
 			_ => unreachable!(
-				"BigIntContainer::push with invalid value: {value:?}"
+				"VarUintContainer::push with invalid value: {value:?}"
 			),
 		}
 	}
@@ -135,7 +135,7 @@ impl BigIntContainer {
 
 	pub fn take(&self, num: usize) -> Self {
 		let count = num.min(self.len());
-		let data: Vec<BigInt> =
+		let data: Vec<VarUint> =
 			self.data.iter().take(count).cloned().collect();
 		let bitvec_data: Vec<bool> =
 			self.bitvec.iter().take(count).collect();
@@ -173,7 +173,7 @@ impl BigIntContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<BigInt> = self
+		let new_data: Vec<VarUint> = self
 			.data
 			.iter()
 			.skip(start)
@@ -194,7 +194,7 @@ impl BigIntContainer {
 
 	pub fn extend_from_undefined(&mut self, count: usize) {
 		for _ in 0..count {
-			self.data.push(BigInt::from(0));
+			self.data.push(VarUint::from(0));
 			self.bitvec.push(false);
 		}
 	}

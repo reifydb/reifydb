@@ -706,7 +706,7 @@ impl StandardEvaluator {
 					),
 				))
 			}
-			Value::BigInt(_) => {
+			Value::VarInt(_) => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -715,19 +715,45 @@ impl StandardEvaluator {
 						break;
 					}
 					match v {
-						Value::BigInt(b) => {
+						Value::VarInt(b) => {
 							data.push(b.clone());
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::BigInt::zero());
+							data.push(reifydb_type::VarInt::zero());
 							bitvec.push(false);
 						}
 					}
 					count += 1;
 				}
 				Ok(col.with_new_data(
-					ColumnData::bigint_with_bitvec(
+					ColumnData::varint_with_bitvec(
+						data, bitvec,
+					),
+				))
+			}
+			Value::VarUint(_) => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::VarUint(b) => {
+							data.push(b.clone());
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(reifydb_type::VarUint::zero());
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(
+					ColumnData::varuint_with_bitvec(
 						data, bitvec,
 					),
 				))

@@ -7,7 +7,6 @@ pub use layout::{EncodedRowLayout, Field};
 use reifydb_type::RowNumber;
 
 mod bigdecimal;
-mod bigint;
 mod encoded;
 mod get;
 mod get_try;
@@ -15,6 +14,8 @@ mod key;
 mod layout;
 mod set;
 mod value;
+mod varint;
+mod varuint;
 
 pub struct Row {
 	pub number: RowNumber,

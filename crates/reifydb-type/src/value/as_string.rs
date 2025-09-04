@@ -34,7 +34,8 @@ impl AsString for Value {
 			Value::Uuid4(u) => u.to_string(),
 			Value::Uuid7(u) => u.to_string(),
 			Value::Blob(b) => b.to_string(),
-			Value::BigInt(bi) => bi.to_string(),
+			Value::VarInt(bi) => bi.to_string(),
+			Value::VarUint(bu) => bu.to_string(),
 			Value::BigDecimal(bd) => bd.to_string(),
 		}
 	}

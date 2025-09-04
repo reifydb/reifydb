@@ -49,7 +49,10 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.filter(mask),
 			ColumnData::Uuid7(container) => container.filter(mask),
 			ColumnData::Blob(container) => container.filter(mask),
-			ColumnData::BigInt(container) => container.filter(mask),
+			ColumnData::VarInt(container) => container.filter(mask),
+			ColumnData::VarUint(container) => {
+				container.filter(mask)
+			}
 			ColumnData::BigDecimal(container) => {
 				container.filter(mask)
 			}

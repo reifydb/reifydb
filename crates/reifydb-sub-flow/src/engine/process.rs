@@ -249,7 +249,8 @@ impl<E: Evaluator> FlowEngine<E> {
                                 Value::Uuid4(v) => layout.set_uuid4(&mut row, view_idx, v),
                                 Value::Uuid7(v) => layout.set_uuid7(&mut row, view_idx, v),
                                 Value::Blob(v) => layout.set_blob(&mut row, view_idx, &v),
-                                Value::BigInt(v) => layout.set_bigint(&mut row, view_idx, &v),
+                                Value::VarInt(v) => layout.set_varint(&mut row, view_idx, &v),
+                                Value::VarUint(v) => layout.set_varuint(&mut row, view_idx, &v),
                                 Value::BigDecimal(v) => layout.set_bigdecimal(&mut row, view_idx, &v),
                                 Value::Undefined => layout.set_undefined(&mut row, view_idx)}
 						}
@@ -341,7 +342,8 @@ impl<E: Evaluator> FlowEngine<E> {
 								Value::Uuid4(v) => layout.set_uuid4(&mut new_row, view_idx, v),
 								Value::Uuid7(v) => layout.set_uuid7(&mut new_row, view_idx, v),
 								Value::Blob(v) => layout.set_blob(&mut new_row, view_idx, &v),
-								Value::BigInt(v) => layout.set_bigint(&mut new_row, view_idx, &v),
+								Value::VarInt(v) => layout.set_varint(&mut new_row, view_idx, &v),
+							Value::VarUint(v) => layout.set_varuint(&mut new_row, view_idx, &v),
 								Value::BigDecimal(v) => layout.set_bigdecimal(&mut new_row, view_idx, &v),
 								Value::Undefined => layout.set_undefined(&mut new_row, view_idx)}
 						}

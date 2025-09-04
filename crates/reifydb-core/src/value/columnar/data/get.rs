@@ -77,7 +77,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.get_value(index)
 			}
-			ColumnData::BigInt(container) => {
+			ColumnData::VarInt(container) => {
+				container.get_value(index)
+			}
+			ColumnData::VarUint(container) => {
 				container.get_value(index)
 			}
 			ColumnData::BigDecimal(container) => {

@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	BitVec,
 	value::container::{
-		BigDecimalContainer, BigIntContainer, BlobContainer,
-		BoolContainer, IdentityIdContainer, NumberContainer,
-		RowNumberContainer, TemporalContainer, UndefinedContainer,
-		Utf8Container, UuidContainer,
+		BigDecimalContainer, BlobContainer, BoolContainer,
+		IdentityIdContainer, NumberContainer, RowNumberContainer,
+		TemporalContainer, UndefinedContainer, Utf8Container,
+		UuidContainer, VarIntContainer, VarUintContainer,
 	},
 };
 
@@ -48,7 +48,8 @@ pub enum ColumnData {
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
 	Blob(BlobContainer),
-	BigInt(BigIntContainer),
+	VarInt(VarIntContainer),
+	VarUint(VarUintContainer),
 	BigDecimal(BigDecimalContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
@@ -80,7 +81,8 @@ impl ColumnData {
 			ColumnData::Uuid4(_) => Type::Uuid4,
 			ColumnData::Uuid7(_) => Type::Uuid7,
 			ColumnData::Blob(_) => Type::Blob,
-			ColumnData::BigInt(_) => Type::BigInt,
+			ColumnData::VarInt(_) => Type::VarInt,
+			ColumnData::VarUint(_) => Type::VarUint,
 			ColumnData::BigDecimal(_) => Type::BigDecimal,
 			ColumnData::Undefined(_) => Type::Undefined,
 		}
@@ -157,7 +159,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.is_defined(idx)
 			}
-			ColumnData::BigInt(container) => {
+			ColumnData::VarInt(container) => {
+				container.is_defined(idx)
+			}
+			ColumnData::VarUint(container) => {
 				container.is_defined(idx)
 			}
 			ColumnData::BigDecimal(container) => {
@@ -187,8 +192,8 @@ impl ColumnData {
 				| Type::Float8 | Type::Int1 | Type::Int2
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
-				| Type::Uint8 | Type::Uint16 | Type::BigInt
-				| Type::BigDecimal
+				| Type::Uint8 | Type::Uint16 | Type::VarInt
+				| Type::VarUint | Type::BigDecimal
 		)
 	}
 
@@ -236,7 +241,8 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.bitvec(),
 			ColumnData::Uuid7(container) => container.bitvec(),
 			ColumnData::Blob(container) => container.bitvec(),
-			ColumnData::BigInt(container) => container.bitvec(),
+			ColumnData::VarInt(container) => container.bitvec(),
+			ColumnData::VarUint(container) => container.bitvec(),
 			ColumnData::BigDecimal(container) => container.bitvec(),
 			ColumnData::Undefined(_) => unreachable!(),
 		}
@@ -277,7 +283,8 @@ impl ColumnData {
 			Type::Uuid4 => Self::uuid4_with_capacity(capacity),
 			Type::Uuid7 => Self::uuid7_with_capacity(capacity),
 			Type::Blob => Self::blob_with_capacity(capacity),
-			Type::BigInt => Self::bigint_with_capacity(capacity),
+			Type::VarInt => Self::varint_with_capacity(capacity),
+			Type::VarUint => Self::varuint_with_capacity(capacity),
 			Type::BigDecimal => {
 				Self::bigdecimal_with_capacity(capacity)
 			}
@@ -318,7 +325,8 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.len(),
 			ColumnData::Uuid7(container) => container.len(),
 			ColumnData::Blob(container) => container.len(),
-			ColumnData::BigInt(container) => container.len(),
+			ColumnData::VarInt(container) => container.len(),
+			ColumnData::VarUint(container) => container.len(),
 			ColumnData::BigDecimal(container) => container.len(),
 			ColumnData::Undefined(container) => container.len(),
 		}
@@ -353,7 +361,8 @@ impl ColumnData {
 			ColumnData::Uuid4(container) => container.capacity(),
 			ColumnData::Uuid7(container) => container.capacity(),
 			ColumnData::Blob(container) => container.capacity(),
-			ColumnData::BigInt(container) => container.capacity(),
+			ColumnData::VarInt(container) => container.capacity(),
+			ColumnData::VarUint(container) => container.capacity(),
 			ColumnData::BigDecimal(container) => {
 				container.capacity()
 			}
@@ -434,7 +443,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				container.as_string(index)
 			}
-			ColumnData::BigInt(container) => {
+			ColumnData::VarInt(container) => {
+				container.as_string(index)
+			}
+			ColumnData::VarUint(container) => {
 				container.as_string(index)
 			}
 			ColumnData::BigDecimal(container) => {

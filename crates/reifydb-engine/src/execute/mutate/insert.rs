@@ -261,8 +261,13 @@ impl Executor {
 								&mut row,
 								table_idx, &v,
 							),
-						Value::BigInt(v) => layout
-							.set_bigint(
+						Value::VarInt(v) => layout
+							.set_varint(
+								&mut row,
+								table_idx, &v,
+							),
+						Value::VarUint(v) => layout
+							.set_varuint(
 								&mut row,
 								table_idx, &v,
 							),

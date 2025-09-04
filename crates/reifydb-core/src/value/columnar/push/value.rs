@@ -488,14 +488,14 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 
-			Value::BigInt(v) => match self {
-				ColumnData::BigInt(container) => {
-					container.push(Value::BigInt(v))
+			Value::VarInt(v) => match self {
+				ColumnData::VarInt(container) => {
+					container.push(Value::VarInt(v))
 				}
 				ColumnData::Undefined(container) => {
 					let mut new_container =
-						ColumnData::bigint(vec![]);
-					if let ColumnData::BigInt(
+						ColumnData::varint(vec![]);
+					if let ColumnData::VarInt(
 						new_container,
 					) = &mut new_container
 					{
@@ -505,7 +505,31 @@ impl ColumnData {
 								);
 						}
 						new_container
-							.push(Value::BigInt(v));
+							.push(Value::VarInt(v));
+					}
+					*self = new_container;
+				}
+				_ => unimplemented!(),
+			},
+			Value::VarUint(v) => match self {
+				ColumnData::VarUint(container) => {
+					container.push(Value::VarUint(v))
+				}
+				ColumnData::Undefined(container) => {
+					let mut new_container =
+						ColumnData::varuint(vec![]);
+					if let ColumnData::VarUint(
+						new_container,
+					) = &mut new_container
+					{
+						for _ in 0..container.len() {
+							new_container
+								.push_undefined(
+								);
+						}
+						new_container.push(
+							Value::VarUint(v),
+						);
 					}
 					*self = new_container;
 				}

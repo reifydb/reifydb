@@ -6,9 +6,9 @@ use reifydb_type::{diagnostic::engine, return_error};
 use crate::value::{
 	columnar::ColumnData,
 	container::{
-		BigDecimalContainer, BigIntContainer, BlobContainer,
-		BoolContainer, NumberContainer, TemporalContainer,
-		Utf8Container, UuidContainer,
+		BigDecimalContainer, BlobContainer, BoolContainer,
+		NumberContainer, TemporalContainer, Utf8Container,
+		UuidContainer, VarIntContainer, VarUintContainer,
 	},
 };
 
@@ -88,7 +88,10 @@ impl ColumnData {
 			(ColumnData::Blob(l), ColumnData::Blob(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::BigInt(l), ColumnData::BigInt(r)) => {
+			(ColumnData::VarInt(l), ColumnData::VarInt(r)) => {
+				l.extend(&r)?
+			}
+			(ColumnData::VarUint(l), ColumnData::VarUint(r)) => {
 				l.extend(&r)?
 			}
 			(
@@ -335,14 +338,25 @@ impl ColumnData {
 							new_container,
 						);
 					}
-					ColumnData::BigInt(r) => {
-						let mut new_container = BigIntContainer::with_capacity(l_len + r.len());
+					ColumnData::VarInt(r) => {
+						let mut new_container = VarIntContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::BigInt(
+						*self = ColumnData::VarInt(
+							new_container,
+						);
+					}
+					ColumnData::VarUint(r) => {
+						let mut new_container = VarUintContainer::with_capacity(l_len + r.len());
+						new_container
+							.extend_from_undefined(
+								l_len,
+							);
+						new_container.extend(&r)?;
+						*self = ColumnData::VarUint(
 							new_container,
 						);
 					}
@@ -444,7 +458,10 @@ impl ColumnData {
 					ColumnData::Blob(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::BigInt(l) => {
+					ColumnData::VarInt(l) => {
+						l.extend_from_undefined(r_len)
+					}
+					ColumnData::VarUint(l) => {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::BigDecimal(l) => {

@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	BigDecimal, BigInt, Blob, Date, DateTime, IdentityId, Interval,
-	RowNumber, Time, Uuid4, Uuid7,
+	BigDecimal, Blob, Date, DateTime, IdentityId, Interval, RowNumber,
+	Time, Uuid4, Uuid7, VarInt, VarUint,
 };
 
 use crate::{
@@ -11,10 +11,11 @@ use crate::{
 	value::{
 		columnar::ColumnData,
 		container::{
-			BigDecimalContainer, BigIntContainer, BlobContainer,
-			BoolContainer, IdentityIdContainer, NumberContainer,
+			BigDecimalContainer, BlobContainer, BoolContainer,
+			IdentityIdContainer, NumberContainer,
 			RowNumberContainer, TemporalContainer,
 			UndefinedContainer, Utf8Container, UuidContainer,
+			VarIntContainer, VarUintContainer,
 		},
 	},
 };
@@ -466,23 +467,42 @@ impl ColumnData {
 		ColumnData::IdentityId(IdentityIdContainer::new(data, bitvec))
 	}
 
-	pub fn bigint(data: impl IntoIterator<Item = BigInt>) -> Self {
+	pub fn varint(data: impl IntoIterator<Item = VarInt>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnData::BigInt(BigIntContainer::from_vec(data))
+		ColumnData::VarInt(VarIntContainer::from_vec(data))
 	}
 
-	pub fn bigint_with_capacity(capacity: usize) -> Self {
-		ColumnData::BigInt(BigIntContainer::with_capacity(capacity))
+	pub fn varuint(data: impl IntoIterator<Item = VarUint>) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnData::VarUint(VarUintContainer::from_vec(data))
 	}
 
-	pub fn bigint_with_bitvec(
-		data: impl IntoIterator<Item = BigInt>,
+	pub fn varint_with_capacity(capacity: usize) -> Self {
+		ColumnData::VarInt(VarIntContainer::with_capacity(capacity))
+	}
+
+	pub fn varuint_with_capacity(capacity: usize) -> Self {
+		ColumnData::VarUint(VarUintContainer::with_capacity(capacity))
+	}
+
+	pub fn varint_with_bitvec(
+		data: impl IntoIterator<Item = VarInt>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::BigInt(BigIntContainer::new(data, bitvec))
+		ColumnData::VarInt(VarIntContainer::new(data, bitvec))
+	}
+
+	pub fn varuint_with_bitvec(
+		data: impl IntoIterator<Item = VarUint>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		ColumnData::VarUint(VarUintContainer::new(data, bitvec))
 	}
 
 	pub fn bigdecimal(data: impl IntoIterator<Item = BigDecimal>) -> Self {
