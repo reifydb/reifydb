@@ -81,13 +81,11 @@ macro_rules! impl_safe_convert_decimal_to_float {
     };
 }
 
-// Apply Decimal conversion macros for all target types
 impl_safe_convert_decimal_to_int!(
 	i8, i16, i32, i64, i128, u8, u16, u32, u64, u128
 );
 impl_safe_convert_decimal_to_float!(f32, f64);
 
-// Direct implementations for Decimal conversions
 impl SafeConvert<VarInt> for Decimal {
 	fn checked_convert(self) -> Option<VarInt> {
 		if let Some(big_int) = self.inner().to_bigint() {

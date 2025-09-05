@@ -3,18 +3,14 @@
 
 use super::*;
 
-// Conversions from i16 to signed integers
 impl_safe_convert_demote!(i16 => i8);
 impl_safe_convert_promote!(i16 => i32, i64, i128);
 
-// Conversions from i16 to unsigned integers
 impl_safe_convert!(i16 => u8, u16, u32, u64, u128);
 
-// Conversions from i16 to floats
 impl_safe_convert_signed_to_float!(24; i16 => f32);
 impl_safe_convert_signed_to_float!(53; i16 => f64);
 
-// Conversions from i16 to VarInt/VarUint
 impl_safe_convert_to_varint!(i16);
 
 impl SafeConvert<VarUint> for i16 {
@@ -39,7 +35,6 @@ impl SafeConvert<VarUint> for i16 {
 	}
 }
 
-// Conversions from i16 to Decimal
 impl_safe_convert_to_decimal_from_int!(i16);
 
 #[cfg(test)]

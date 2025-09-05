@@ -6,8 +6,10 @@ use std::{borrow::Cow, str::FromStr};
 use bigdecimal::BigDecimal as BigDecimalInner;
 
 use crate::{
-	Error, IntoFragment, error::diagnostic::number::invalid_number_format,
-	return_error, value::decimal::Decimal,
+	Error, IntoFragment,
+	error::diagnostic::number::invalid_number_format,
+	return_error,
+	value::decimal::{Decimal, Precision},
 };
 
 pub fn parse_decimal<'a>(
@@ -39,10 +41,7 @@ pub fn parse_decimal<'a>(
 		return_error!(invalid_number_format(
 			fragment_owned.clone(),
 			crate::Type::Decimal {
-				precision:
-					crate::value::decimal::Precision::new(
-						38
-					),
+				precision: Precision::new(38),
 				scale: crate::value::decimal::Scale::new(0)
 			}
 		));
@@ -64,7 +63,7 @@ pub fn parse_decimal<'a>(
 	let scale_u8 = determine_scale_from_string(&value);
 	let precision_u8 = calculate_min_precision(&big_decimal, scale_u8);
 
-	let precision = crate::value::decimal::Precision::new(precision_u8);
+	let precision = Precision::new(precision_u8);
 	let scale = crate::value::decimal::Scale::new(scale_u8);
 
 	Decimal::new(big_decimal, precision, scale).map_err(|_| {

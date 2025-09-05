@@ -3,22 +3,17 @@
 
 use super::*;
 
-// Conversions from u32 to unsigned integers
 impl_safe_convert_unsigned_demote!(u32 => u8, u16);
 impl_safe_convert_promote!(u32 => u64, u128);
 
-// Conversions from u32 to signed integers
 impl_safe_unsigned_convert!(u32 => i8, i16, i32, i64, i128);
 
-// Conversions from u32 to floats
 impl_safe_convert_unsigned_to_float!(24; u32 => f32);
 impl_safe_convert_unsigned_to_float!(53; u32 => f64);
 
-// Conversions from u32 to VarInt/VarUint
 impl_safe_convert_to_varint!(u32);
 impl_safe_convert_unsigned_to_varuint!(u32);
 
-// Conversions from u32 to Decimal
 impl_safe_convert_to_decimal_from_int!(u32);
 
 #[cfg(test)]

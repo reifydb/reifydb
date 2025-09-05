@@ -93,12 +93,10 @@ macro_rules! impl_safe_convert_varuint_to_float {
     };
 }
 
-// Apply VarUint conversion macros for all target types
 impl_safe_convert_varuint_to_signed!(i8, i16, i32, i64, i128);
 impl_safe_convert_varuint_to_unsigned!(u8, u16, u32, u64, u128);
 impl_safe_convert_varuint_to_float!(f32, f64);
 
-// Direct implementations for VarUint conversions
 impl SafeConvert<VarInt> for VarUint {
 	fn checked_convert(self) -> Option<VarInt> {
 		Some(VarInt(self.0))
@@ -117,13 +115,13 @@ impl SafeConvert<Decimal> for VarUint {
 	fn checked_convert(self) -> Option<Decimal> {
 		use bigdecimal::BigDecimal as BigDecimalInner;
 		let big_decimal = BigDecimalInner::from(self.0);
-		Some(Decimal(big_decimal))
+		Some(Decimal::from(big_decimal))
 	}
 
 	fn saturating_convert(self) -> Decimal {
 		use bigdecimal::BigDecimal as BigDecimalInner;
 		let big_decimal = BigDecimalInner::from(self.0);
-		Decimal(big_decimal)
+		Decimal::from(big_decimal)
 	}
 
 	fn wrapping_convert(self) -> Decimal {
@@ -294,7 +292,36 @@ mod tests {
 			let x = VarUint::from(12345u32);
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
-			assert_eq!(y.unwrap().to_string(), "12345");
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "12345");
+			assert_eq!(decimal.precision().value(), 5);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_zero() {
+			let x = VarUint::from(0u32);
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "0");
+			assert_eq!(decimal.precision().value(), 1);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_large() {
+			// Test with a very large unsigned number
+			let x = VarUint::from(u128::MAX);
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(
+				decimal.to_string(),
+				"340282366920938463463374607431768211455"
+			);
+			assert_eq!(decimal.precision().value(), 39); // u128::MAX has 39 digits
+			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -302,13 +329,17 @@ mod tests {
 			let x = VarUint::from(999999u32);
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "999999");
+			assert_eq!(y.precision().value(), 6);
+			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
-			let x = VarUint::from(0u32);
+			let x = VarUint::from(100u32);
 			let y: Decimal = x.wrapping_convert();
-			assert_eq!(y.to_string(), "0");
+			assert_eq!(y.to_string(), "100");
+			assert_eq!(y.precision().value(), 3);
+			assert_eq!(y.scale().value(), 0);
 		}
 	}
 

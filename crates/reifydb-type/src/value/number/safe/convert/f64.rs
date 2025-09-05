@@ -3,20 +3,15 @@
 
 use super::*;
 
-// Conversion from f64 to f32 (demotion)
 impl_safe_convert_float_demote!(f64 => f32);
 
-// Conversions from f64 to signed integers
 impl_safe_convert_float_to_signed!(f64 => i8, i16, i32, i64, i128);
 
-// Conversions from f64 to unsigned integers
 impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 
-// Conversions from f64 to VarInt/VarUint
 impl_safe_convert_float_to_varint!(f64);
 impl_safe_convert_float_to_varuint!(f64);
 
-// Conversions from f64 to Decimal
 impl_safe_convert_to_decimal_from_float!(f64);
 
 #[cfg(test)]
@@ -638,6 +633,174 @@ mod tests {
 			let x: f64 = 42.0;
 			let y: u128 = x.wrapping_convert();
 			assert_eq!(y, 42u128);
+		}
+	}
+
+	mod decimal {
+		use super::*;
+		use crate::Decimal;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: f64 = 42.5;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "42.5");
+			assert_eq!(decimal.precision().value(), 3);
+			assert_eq!(decimal.scale().value(), 1);
+		}
+
+		#[test]
+		fn test_checked_convert_high_precision() {
+			let x: f64 = 123.456789;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			// f64 may add precision artifacts
+			assert!(decimal.to_string().starts_with("123.456789"));
+			// Precision and scale will be larger due to f64
+			// representation
+			assert!(decimal.precision().value() >= 9);
+			assert!(decimal.scale().value() >= 6);
+		}
+
+		#[test]
+		fn test_checked_convert_integer() {
+			let x: f64 = 1000.0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "1000");
+			assert_eq!(decimal.precision().value(), 4);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_small_decimal() {
+			let x: f64 = 0.0000125;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			// f64 may have precision artifacts
+			assert!(decimal.to_string().starts_with("0.0000125"));
+			// Precision includes all digits including leading zeros
+			// after decimal
+			assert!(decimal.precision().value() >= 3);
+			assert!(decimal.scale().value() >= 7);
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: f64 = -9876.543210;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			// f64 may have precision artifacts
+			assert!(decimal.to_string().starts_with("-9876.5432"));
+			assert!(decimal.precision().value() >= 9);
+			assert!(decimal.scale().value() >= 5);
+		}
+
+		#[test]
+		fn test_checked_convert_zero() {
+			let x: f64 = 0.0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "0");
+			assert_eq!(decimal.precision().value(), 1);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_negative_zero() {
+			let x: f64 = -0.0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			// -0.0 should convert to 0
+			assert_eq!(decimal.to_string(), "0");
+			assert_eq!(decimal.precision().value(), 1);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_none());
+		}
+
+		#[test]
+		fn test_checked_convert_infinity() {
+			let x: f64 = f64::INFINITY;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_none());
+		}
+
+		#[test]
+		fn test_checked_convert_neg_infinity() {
+			let x: f64 = f64::NEG_INFINITY;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_none());
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: f64 = 999999.999999;
+			let y: Decimal = x.saturating_convert();
+			// f64 may have precision artifacts, check the integer
+			// part
+			let str_repr = y.to_string();
+			assert!(str_repr.starts_with("999999")
+				|| str_repr.starts_with("1000000"));
+			// Due to f64 rounding, value may be 1000000.0
+			assert!(y.precision().value() >= 6);
+			// Scale check removed - scale is u8 so always >= 0
+		}
+
+		#[test]
+		fn test_saturating_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "0");
+			assert_eq!(y.precision().value(), 1);
+			assert_eq!(y.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_saturating_convert_infinity() {
+			let x: f64 = f64::INFINITY;
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "0");
+			assert_eq!(y.precision().value(), 1);
+			assert_eq!(y.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: f64 = 42.0;
+			let y: Decimal = x.wrapping_convert();
+			assert_eq!(y.to_string(), "42");
+			assert_eq!(y.precision().value(), 2);
+			assert_eq!(y.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_wrapping_convert_with_decimal() {
+			let x: f64 = 3.14159;
+			let y: Decimal = x.wrapping_convert();
+			// f64 may have precision artifacts
+			let str_repr = y.to_string();
+			// f64 representation of 3.14159 may not be exact
+			assert!(
+				str_repr.starts_with("3.141"),
+				"actual: {}",
+				str_repr
+			);
+			assert!(y.precision().value() >= 4);
+			assert!(y.scale().value() >= 3);
 		}
 	}
 }

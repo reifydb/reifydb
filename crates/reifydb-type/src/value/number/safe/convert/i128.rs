@@ -3,17 +3,13 @@
 
 use super::*;
 
-// Conversions from i128 to signed integers (all are demotions)
 impl_safe_convert_demote!(i128 => i8, i16, i32, i64);
 
-// Conversions from i128 to unsigned integers
 impl_safe_convert!(i128 => u8, u16, u32, u64, u128);
 
-// Conversions from i128 to floats
 impl_safe_convert_signed_to_float!(24; i128 => f32);
 impl_safe_convert_signed_to_float!(53; i128 => f64);
 
-// Conversions from i128 to VarInt/VarUint
 impl_safe_convert_to_varint!(i128);
 impl SafeConvert<VarUint> for i128 {
 	fn checked_convert(self) -> Option<VarUint> {
@@ -37,7 +33,6 @@ impl SafeConvert<VarUint> for i128 {
 	}
 }
 
-// Conversions from i128 to Decimal
 impl_safe_convert_to_decimal_from_large_int!(i128);
 
 #[cfg(test)]

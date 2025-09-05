@@ -3,18 +3,15 @@
 
 use super::*;
 
-// Conversions from i8 to signed integers (all are promotions)
 impl_safe_convert_promote!(i8 => i16, i32, i64, i128);
 
-// Conversions from i8 to unsigned integers
 impl_safe_convert!(i8 => u8, u16, u32, u64, u128);
 
-// Conversions from i8 to floats
 impl_safe_convert_signed_to_float!(24; i8 => f32);
 impl_safe_convert_signed_to_float!(53; i8 => f64);
 
-// Conversions from i8 to VarInt/VarUint
 impl_safe_convert_to_varint!(i8);
+
 impl SafeConvert<VarUint> for i8 {
 	fn checked_convert(self) -> Option<VarUint> {
 		if self >= 0 {
@@ -37,7 +34,6 @@ impl SafeConvert<VarUint> for i8 {
 	}
 }
 
-// Conversions from i8 to Decimal
 impl_safe_convert_to_decimal_from_int!(i8);
 
 #[cfg(test)]
@@ -257,7 +253,6 @@ mod tests {
 		}
 	}
 
-	// Tests for signed integer conversions
 	mod i16 {
 		use super::*;
 
@@ -358,7 +353,6 @@ mod tests {
 		}
 	}
 
-	// Tests for Decimal conversion
 	mod decimal {
 		use super::*;
 		use crate::Decimal;
@@ -387,7 +381,6 @@ mod tests {
 		}
 	}
 
-	// Tests for VarInt conversion
 	mod varint {
 		use super::*;
 		use crate::VarInt;
@@ -415,7 +408,6 @@ mod tests {
 		}
 	}
 
-	// Tests for VarUint conversion
 	mod varuint {
 		use super::*;
 		use crate::VarUint;

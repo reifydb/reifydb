@@ -3,18 +3,14 @@
 
 use super::*;
 
-// Conversions from i32 to signed integers
 impl_safe_convert_demote!(i32 => i8, i16);
 impl_safe_convert_promote!(i32 => i64, i128);
 
-// Conversions from i32 to unsigned integers
 impl_safe_convert!(i32 => u8, u16, u32, u64, u128);
 
-// Conversions from i32 to floats
 impl_safe_convert_signed_to_float!(24; i32 => f32);
 impl_safe_convert_signed_to_float!(53; i32 => f64);
 
-// Conversions from i32 to VarInt/VarUint
 impl_safe_convert_to_varint!(i32);
 impl SafeConvert<VarUint> for i32 {
 	fn checked_convert(self) -> Option<VarUint> {
@@ -38,14 +34,12 @@ impl SafeConvert<VarUint> for i32 {
 	}
 }
 
-// Conversions from i32 to Decimal
 impl_safe_convert_to_decimal_from_int!(i32);
 
 #[cfg(test)]
 mod tests {
 	use super::SafeConvert;
 
-	// Tests for signed integer conversions
 	mod i8 {
 		use super::*;
 
@@ -381,7 +375,6 @@ mod tests {
 		}
 	}
 
-	// Tests for Decimal conversion
 	mod decimal {
 		use super::*;
 		use crate::Decimal;
@@ -393,6 +386,30 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "42");
+			assert_eq!(decimal.precision().value(), 2);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_zero() {
+			let x: i32 = 0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "0");
+			assert_eq!(decimal.precision().value(), 1);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i32 = -999;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "-999");
+			assert_eq!(decimal.precision().value(), 3);
+			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -400,6 +417,8 @@ mod tests {
 			let x: i32 = -2147483648;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "-2147483648");
+			assert_eq!(y.precision().value(), 10);
+			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -407,10 +426,11 @@ mod tests {
 			let x: i32 = 2147483647;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "2147483647");
+			assert_eq!(y.precision().value(), 10);
+			assert_eq!(y.scale().value(), 0);
 		}
 	}
 
-	// Tests for VarInt conversion
 	mod varint {
 		use super::*;
 		use crate::VarInt;
@@ -438,7 +458,6 @@ mod tests {
 		}
 	}
 
-	// Tests for VarUint conversion
 	mod varuint {
 		use super::*;
 		use crate::VarUint;

@@ -3,21 +3,16 @@
 
 use super::*;
 
-// Conversions from u8 to unsigned integers (all are promotions)
 impl_safe_convert_promote!(u8 => u16, u32, u64, u128);
 
-// Conversions from u8 to signed integers
 impl_safe_unsigned_convert!(u8 => i8, i16, i32, i64, i128);
 
-// Conversions from u8 to floats
 impl_safe_convert_unsigned_to_float!(24; u8 => f32);
 impl_safe_convert_unsigned_to_float!(53; u8 => f64);
 
-// Conversions from u8 to VarInt/VarUint
 impl_safe_convert_to_varint!(u8);
 impl_safe_convert_unsigned_to_varuint!(u8);
 
-// Conversions from u8 to Decimal
 impl_safe_convert_to_decimal_from_int!(u8);
 
 #[cfg(test)]
@@ -231,6 +226,62 @@ mod tests {
 			let x: u8 = u8::MAX;
 			let y: f64 = x.wrapping_convert();
 			assert_eq!(y, 255.0f64);
+		}
+	}
+
+	mod decimal {
+		use super::*;
+		use crate::Decimal;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: u8 = 42;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "42");
+			assert_eq!(decimal.precision().value(), 2);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_zero() {
+			let x: u8 = 0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "0");
+			assert_eq!(decimal.precision().value(), 1);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_max() {
+			let x: u8 = u8::MAX;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "255");
+			assert_eq!(decimal.precision().value(), 3);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u8 = 100;
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "100");
+			assert_eq!(y.precision().value(), 3);
+			assert_eq!(y.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u8 = 99;
+			let y: Decimal = x.wrapping_convert();
+			assert_eq!(y.to_string(), "99");
+			assert_eq!(y.precision().value(), 2);
+			assert_eq!(y.scale().value(), 0);
 		}
 	}
 }

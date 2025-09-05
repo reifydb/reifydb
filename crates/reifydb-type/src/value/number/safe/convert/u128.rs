@@ -3,21 +3,16 @@
 
 use super::*;
 
-// Conversions from u128 to unsigned integers (all are demotions)
 impl_safe_convert_unsigned_demote!(u128 => u8, u16, u32, u64);
 
-// Conversions from u128 to signed integers
 impl_safe_unsigned_convert!(u128 => i8, i16, i32, i64, i128);
 
-// Conversions from u128 to floats
 impl_safe_convert_unsigned_to_float!(24; u128 => f32);
 impl_safe_convert_unsigned_to_float!(53; u128 => f64);
 
-// Conversions from u128 to VarInt/VarUint
 impl_safe_convert_to_varint!(u128);
 impl_safe_convert_unsigned_to_varuint!(u128);
 
-// Conversions from u128 to Decimal
 impl_safe_convert_to_decimal_from_large_int!(u128);
 
 #[cfg(test)]

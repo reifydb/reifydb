@@ -237,7 +237,6 @@ use num_traits::{Signed, ToPrimitive};
 
 use crate::{Decimal, VarInt, VarUint};
 
-// Primitive to VarInt/VarUint conversions
 macro_rules! impl_safe_convert_to_varint {
     ($($from:ty),*) => {
         $(
@@ -365,8 +364,6 @@ macro_rules! impl_safe_convert_float_to_varuint {
     };
 }
 
-// Promotion-style conversion macro for SafeConvert (lossless upward
-// conversions)
 macro_rules! impl_safe_convert_promote {
     ($src:ty => $($dst:ty),* $(,)?) => {
         $(
@@ -387,8 +384,6 @@ macro_rules! impl_safe_convert_promote {
     };
 }
 
-// Demotion-style conversion macro for SafeConvert (potentially lossy downward
-// conversions)
 macro_rules! impl_safe_convert_demote {
     ($src:ty => $($dst:ty),* $(,)?) => {
         $(
@@ -418,7 +413,6 @@ macro_rules! impl_safe_convert_demote {
     };
 }
 
-// Unsigned demotion-style conversion macro for SafeConvert
 macro_rules! impl_safe_convert_unsigned_demote {
     ($src:ty => $($dst:ty),* $(,)?) => {
         $(
@@ -443,7 +437,6 @@ macro_rules! impl_safe_convert_unsigned_demote {
     };
 }
 
-// Float demotion macro (f64 to f32)
 macro_rules! impl_safe_convert_float_demote {
 	($src:ty => $dst:ty) => {
 		impl SafeConvert<$dst> for $src {
@@ -478,7 +471,6 @@ macro_rules! impl_safe_convert_float_demote {
 	};
 }
 
-// Self-conversion macro for identity conversions
 macro_rules! impl_safe_convert_self {
     ($($ty:ty),* $(,)?) => {
         $(
@@ -499,7 +491,6 @@ macro_rules! impl_safe_convert_self {
     };
 }
 
-// Primitive to Decimal conversion macro
 macro_rules! impl_safe_convert_to_decimal_from_int {
     ($($src:ty),* $(,)?) => {
         $(
@@ -568,16 +559,12 @@ macro_rules! impl_safe_convert_to_decimal_from_float {
                     if !self.is_finite() {
                         return None;
                     }
-                    use bigdecimal::BigDecimal as BigDecimalInner;
-                    use std::str::FromStr;
-                    BigDecimalInner::from_str(&self.to_string())
-                        .ok()
-                        .map(Decimal)
+                    Some(Decimal::from(self))
                 }
 
                 fn saturating_convert(self) -> Decimal {
                     self.checked_convert()
-                        .unwrap_or_else(Decimal::zero)
+                        .unwrap_or_else(|| Decimal::default())
                 }
 
                 fn wrapping_convert(self) -> Decimal {
@@ -588,13 +575,11 @@ macro_rules! impl_safe_convert_to_decimal_from_float {
     };
 }
 
-// Implement self-conversions for all primitive types and custom types
 impl_safe_convert_self!(
 	i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64
 );
 impl_safe_convert_self!(VarInt, VarUint, Decimal);
 
-// Module declarations
 mod decimal;
 mod f32;
 mod f64;

@@ -3,20 +3,15 @@
 
 use super::*;
 
-// Conversion from f32 to f64 (promotion)
 impl_safe_convert_promote!(f32 => f64);
 
-// Conversions from f32 to signed integers
 impl_safe_convert_float_to_signed!(f32 => i8, i16, i32, i64, i128);
 
-// Conversions from f32 to unsigned integers
 impl_safe_convert_float_to_unsigned!(f32 => u8, u16, u32, u64, u128);
 
-// Conversions from f32 to VarInt/VarUint
 impl_safe_convert_float_to_varint!(f32);
 impl_safe_convert_float_to_varuint!(f32);
 
-// Conversions from f32 to Decimal
 impl_safe_convert_to_decimal_from_float!(f32);
 
 #[cfg(test)]
@@ -575,6 +570,127 @@ mod tests {
 			let x: f32 = 42.0;
 			let y: u128 = x.wrapping_convert();
 			assert_eq!(y, 42u128);
+		}
+	}
+
+	mod decimal {
+		use super::*;
+		use crate::Decimal;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: f32 = 42.5;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "42.5");
+			assert_eq!(decimal.precision().value(), 3);
+			assert_eq!(decimal.scale().value(), 1);
+		}
+
+		#[test]
+		fn test_checked_convert_integer() {
+			let x: f32 = 100.0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "100");
+			assert_eq!(decimal.precision().value(), 3);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_small_decimal() {
+			let x: f32 = 0.125;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "0.125");
+			assert_eq!(decimal.precision().value(), 4);
+			assert_eq!(decimal.scale().value(), 3);
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: f32 = -123.456;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			// f32 has limited precision, so the value might not be
+			// exact
+			assert!(decimal.to_string().starts_with("-123.45"));
+			// Precision includes all significant digits
+			assert!(decimal.precision().value() >= 6);
+			assert!(decimal.scale().value() >= 3);
+		}
+
+		#[test]
+		fn test_checked_convert_zero() {
+			let x: f32 = 0.0;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "0");
+			assert_eq!(decimal.precision().value(), 1);
+			assert_eq!(decimal.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_checked_convert_nan() {
+			let x: f32 = f32::NAN;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_none());
+		}
+
+		#[test]
+		fn test_checked_convert_infinity() {
+			let x: f32 = f32::INFINITY;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_none());
+		}
+
+		#[test]
+		fn test_checked_convert_neg_infinity() {
+			let x: f32 = f32::NEG_INFINITY;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_none());
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: f32 = 999.99;
+			let y: Decimal = x.saturating_convert();
+			// f32 precision affects the exact value
+			assert!(y.to_string().starts_with("999.9"));
+			assert!(y.precision().value() >= 5);
+			assert!(y.scale().value() >= 1);
+		}
+
+		#[test]
+		fn test_saturating_convert_nan() {
+			let x: f32 = f32::NAN;
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "0");
+			assert_eq!(y.precision().value(), 1);
+			assert_eq!(y.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_saturating_convert_infinity() {
+			let x: f32 = f32::INFINITY;
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "0");
+			assert_eq!(y.precision().value(), 1);
+			assert_eq!(y.scale().value(), 0);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: f32 = 42.0;
+			let y: Decimal = x.wrapping_convert();
+			assert_eq!(y.to_string(), "42");
+			assert_eq!(y.precision().value(), 2);
+			assert_eq!(y.scale().value(), 0);
 		}
 	}
 }

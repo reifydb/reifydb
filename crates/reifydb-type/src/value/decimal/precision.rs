@@ -5,9 +5,11 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, return_error};
+use crate::{
+	Error, diagnostic::number::decimal_precision_invalid, return_error,
+};
 
-/// Precision for a decimal type (1-38 total digits)
+/// Precision for a decimal type (minimum 1 total digit)
 #[derive(
 	Clone,
 	Copy,
@@ -27,11 +29,11 @@ impl Precision {
 	/// Create a new Precision value
 	///
 	/// # Panics
-	/// Panics if precision is 0 or greater than 38
+	/// Panics if precision is 0
 	pub fn new(precision: u8) -> Self {
 		assert!(
-			precision > 0 && precision <= 38,
-			"Precision must be between 1 and 38, got {}",
+			precision > 0,
+			"Precision must be at least 1, got {}",
 			precision
 		);
 		Self(precision)
@@ -39,23 +41,8 @@ impl Precision {
 
 	/// Create a new Precision value, returning an error if invalid
 	pub fn try_new(precision: u8) -> Result<Self, Error> {
-		if precision == 0 || precision > 38 {
-			use crate::error::diagnostic::Diagnostic;
-			return_error!(Diagnostic {
-				code: "NUMBER_006".to_string(),
-				statement: None,
-				message: "invalid decimal precision".to_string(),
-				fragment: crate::OwnedFragment::None,
-				label: Some(format!("precision ({}) must be between 1 and 38", precision)),
-				help: Some("use a precision value between 1 and 38".to_string()),
-				notes: vec![
-					format!("current precision: {}", precision),
-					"precision represents the total number of significant digits".to_string(),
-					"compatible range: 1 to 38".to_string(),
-				],
-				column: None,
-				cause: None,
-			});
+		if precision == 0 {
+			return_error!(decimal_precision_invalid(precision));
 		}
 		Ok(Self(precision))
 	}
@@ -65,8 +52,8 @@ impl Precision {
 		self.0
 	}
 
-	/// Maximum precision (38)
-	pub const MAX: Self = Self(38);
+	/// Maximum precision (255 - maximum u8 value)
+	pub const MAX: Self = Self(255);
 
 	/// Minimum precision (1)
 	pub const MIN: Self = Self(1);

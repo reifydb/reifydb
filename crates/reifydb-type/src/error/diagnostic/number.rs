@@ -285,15 +285,9 @@ pub fn decimal_scale_exceeds_precision<'a>(
 	}
 }
 
-pub fn decimal_precision_invalid(
-	precision: impl Into<Precision>,
-) -> Diagnostic {
-	let precision = precision.into();
-
-	let label = Some(format!(
-		"precision ({}) must be between 1 and 38",
-		precision
-	));
+pub fn decimal_precision_invalid(precision: u8) -> Diagnostic {
+	let label =
+		Some(format!("precision ({}) must be at least 1", precision));
 
 	Diagnostic {
 		code: "NUMBER_006".to_string(),
@@ -301,33 +295,10 @@ pub fn decimal_precision_invalid(
 		message: "invalid decimal precision".to_string(),
 		fragment: OwnedFragment::None,
 		label,
-		help: Some("use a precision value between 1 and 38".to_string()),
+		help: Some("use a precision value of at least 1".to_string()),
 		notes: vec![
 			format!("current precision: {}", precision),
 			"precision represents the total number of significant digits".to_string(),
-			"compatible range: 1 to 38".to_string(),
-		],
-		column: None,
-		cause: None,
-	}
-}
-
-pub fn decimal_scale_invalid(scale: impl Into<Scale>) -> Diagnostic {
-	let scale = scale.into();
-
-	let label = Some(format!("scale ({}) must be between 0 and 38", scale));
-
-	Diagnostic {
-		code: "NUMBER_007".to_string(),
-		statement: None,
-		message: "invalid decimal scale".to_string(),
-		fragment: OwnedFragment::None,
-		label,
-		help: Some("use a scale value between 0 and 38".to_string()),
-		notes: vec![
-			format!("current scale: {}", scale),
-			"scale represents the number of digits after the decimal point".to_string(),
-			"compatible range: 0 to 38".to_string(),
 		],
 		column: None,
 		cause: None,

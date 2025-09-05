@@ -6,9 +6,12 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use super::precision::Precision;
-use crate::{Error, return_error};
+use crate::{
+	Error, OwnedFragment,
+	diagnostic::number::decimal_scale_exceeds_precision, return_error,
+};
 
-/// Scale for a decimal type (0 to precision decimal places)
+/// Scale for a decimal type (decimal places)
 #[derive(
 	Clone,
 	Copy,
@@ -26,39 +29,8 @@ pub struct Scale(u8);
 
 impl Scale {
 	/// Create a new Scale value
-	///
-	/// # Panics
-	/// Panics if scale is greater than 38
 	pub fn new(scale: u8) -> Self {
-		assert!(
-			scale <= 38,
-			"Scale must be between 0 and 38, got {}",
-			scale
-		);
 		Self(scale)
-	}
-
-	/// Create a new Scale value, returning an error if invalid
-	pub fn try_new(scale: u8) -> Result<Self, Error> {
-		if scale > 38 {
-			use crate::error::diagnostic::Diagnostic;
-			return_error!(Diagnostic {
-				code: "NUMBER_007".to_string(),
-				statement: None,
-				message: "invalid decimal scale".to_string(),
-				fragment: crate::OwnedFragment::None,
-				label: Some(format!("scale ({}) must be between 0 and 38", scale)),
-				help: Some("use a scale value between 0 and 38".to_string()),
-				notes: vec![
-					format!("current scale: {}", scale),
-					"scale represents the number of digits after the decimal point".to_string(),
-					"compatible range: 0 to 38".to_string(),
-				],
-				column: None,
-				cause: None,
-			});
-		}
-		Ok(Self(scale))
 	}
 
 	/// Create a new Scale value with validation against precision
@@ -67,41 +39,11 @@ impl Scale {
 		precision: Precision,
 	) -> Result<Self, Error> {
 		if scale > precision.value() {
-			use crate::error::diagnostic::Diagnostic;
-			return_error!(Diagnostic {
-				code: "NUMBER_005".to_string(),
-				statement: None,
-				message: "decimal scale exceeds precision".to_string(),
-				fragment: crate::OwnedFragment::None,
-				label: Some(format!("scale ({}) cannot be greater than precision ({})", scale, precision.value())),
-				help: Some(format!("use a scale value between 0 and {} or increase precision", precision.value())),
-				notes: vec![
-					format!("current precision: {}", precision.value()),
-					format!("current scale: {}", scale),
-					"scale represents the number of digits after the decimal point".to_string(),
-					"precision represents the total number of significant digits".to_string(),
-				],
-				column: None,
-				cause: None,
-			});
-		}
-		if scale > 38 {
-			use crate::error::diagnostic::Diagnostic;
-			return_error!(Diagnostic {
-				code: "NUMBER_007".to_string(),
-				statement: None,
-				message: "invalid decimal scale".to_string(),
-				fragment: crate::OwnedFragment::None,
-				label: Some(format!("scale ({}) must be between 0 and 38", scale)),
-				help: Some("use a scale value between 0 and 38".to_string()),
-				notes: vec![
-					format!("current scale: {}", scale),
-					"scale represents the number of digits after the decimal point".to_string(),
-					"compatible range: 0 to 38".to_string(),
-				],
-				column: None,
-				cause: None,
-			});
+			return_error!(decimal_scale_exceeds_precision(
+				OwnedFragment::None,
+				scale,
+				precision.value()
+			));
 		}
 		Ok(Self(scale))
 	}
@@ -111,8 +53,8 @@ impl Scale {
 		self.0
 	}
 
-	/// Maximum scale (38)
-	pub const MAX: Self = Self(38);
+	/// Maximum scale (255 - maximum u8 value)
+	pub const MAX: Self = Self(255);
 
 	/// Minimum scale (0)
 	pub const MIN: Self = Self(0);
