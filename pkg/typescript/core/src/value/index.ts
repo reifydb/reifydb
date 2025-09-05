@@ -5,7 +5,7 @@
  */
 
 export {BlobValue} from './blob';
-export {BoolValue} from './bool';
+export {BooleanValue} from './boolean';
 export {DateValue} from './date';
 export {DateTimeValue} from './datetime';
 export {Float4Value} from './float4';
@@ -31,7 +31,7 @@ export {IdentityIdValue} from './identityid';
 
 export type Type =
     | "Blob"
-    | "Bool"
+    | "Boolean"
     | "Float4" | "Float8"
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
     | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"

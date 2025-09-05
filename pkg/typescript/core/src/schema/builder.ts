@@ -15,12 +15,12 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Blob'};
     }
 
-    static bool(): PrimitiveSchemaNode<'Bool'> {
-        return {kind: 'primitive', type: 'Bool'};
+    static bool(): PrimitiveSchemaNode<'Boolean'> {
+        return {kind: 'primitive', type: 'Boolean'};
     }
 
-    static boolean(): PrimitiveSchemaNode<'Bool'> {
-        return {kind: 'primitive', type: 'Bool'};
+    static boolean(): PrimitiveSchemaNode<'Boolean'> {
+        return {kind: 'primitive', type: 'Boolean'};
     }
 
     static float4(): PrimitiveSchemaNode<'Float4'> {
@@ -151,8 +151,8 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Float8'};
     }
 
-    static boolValue(): ValueSchemaNode<'Bool'> {
-        return {kind: 'value', type: 'Bool'};
+    static booleanValue(): ValueSchemaNode<'Boolean'> {
+        return {kind: 'value', type: 'Boolean'};
     }
 
     static int1Value(): ValueSchemaNode<'Int1'> {

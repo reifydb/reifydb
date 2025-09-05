@@ -310,7 +310,7 @@ impl Type {
 impl Display for Type {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Type::Boolean => f.write_str("Bool"),
+			Type::Boolean => f.write_str("Boolean"),
 			Type::Float4 => f.write_str("Float4"),
 			Type::Float8 => f.write_str("Float8"),
 			Type::Int1 => f.write_str("Int1"),
@@ -398,7 +398,7 @@ impl FromStr for Type {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s.to_uppercase().as_str() {
-			"BOOL" => Ok(Type::Boolean),
+			"BOOL" | "BOOLEAN" => Ok(Type::Boolean),
 			"FLOAT4" => Ok(Type::Float4),
 			"FLOAT8" => Ok(Type::Float8),
 			"INT1" => Ok(Type::Int1),

@@ -47,7 +47,7 @@ describe('Positional Parameters', () => {
 
     describe('command', () => {
 
-        it('Bool', async () => {
+        it('Boolean', async () => {
             const frames = await wsClient.command(
                 'MAP $1 as result',
                 [true],
@@ -289,7 +289,7 @@ describe('Positional Parameters', () => {
 
     describe('query', () => {
 
-        it('Bool', async () => {
+        it('Boolean', async () => {
             const frames = await wsClient.query(
                 'MAP $1 as result',
                 [true],

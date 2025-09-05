@@ -7,7 +7,7 @@
 import {describe, expect, it} from 'vitest';
 import {
     BlobValue,
-    BoolValue,
+    BooleanValue,
     DateValue,
     DateTimeValue,
     Float4Value,
@@ -34,8 +34,8 @@ describe('UNDEFINED_VALUE parsing', () => {
         expect(blob.value).toBeUndefined();
     });
 
-    it('should parse UNDEFINED_VALUE as undefined for Bool', () => {
-        const bool = BoolValue.parse(undefinedString);
+    it('should parse UNDEFINED_VALUE as undefined for Boolean', () => {
+        const bool = BooleanValue.parse(undefinedString);
         expect(bool.value).toBeUndefined();
     });
 

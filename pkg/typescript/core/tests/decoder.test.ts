@@ -6,33 +6,33 @@
 
 import { describe, expect, it } from 'vitest';
 import { decode } from '../src/decoder';
-import { BoolValue, Int4Value, Utf8Value, UndefinedValue } from '../src/value';
+import { BooleanValue, Int4Value, Utf8Value, UndefinedValue } from '../src/value';
 
 describe('decode', () => {
-    it('should decode Bool type with "true" value', () => {
-        const pair = { type: 'Bool' as const, value: 'true' };
+    it('should decode Boolean type with "true" value', () => {
+        const pair = { type: 'Boolean' as const, value: 'true' };
         const result = decode(pair);
         
-        expect(result).toBeInstanceOf(BoolValue);
-        expect(result.type).toBe('Bool');
+        expect(result).toBeInstanceOf(BooleanValue);
+        expect(result.type).toBe('Boolean');
         expect(result.valueOf()).toBe(true);
     });
 
-    it('should decode Bool type with "false" value', () => {
-        const pair = { type: 'Bool' as const, value: 'false' };
+    it('should decode Boolean type with "false" value', () => {
+        const pair = { type: 'Boolean' as const, value: 'false' };
         const result = decode(pair);
         
-        expect(result).toBeInstanceOf(BoolValue);
-        expect(result.type).toBe('Bool');
+        expect(result).toBeInstanceOf(BooleanValue);
+        expect(result.type).toBe('Boolean');
         expect(result.valueOf()).toBe(false);
     });
 
-    it('should decode Bool type with empty value', () => {
-        const pair = { type: 'Bool' as const, value: '' };
+    it('should decode Boolean type with empty value', () => {
+        const pair = { type: 'Boolean' as const, value: '' };
         const result = decode(pair);
         
-        expect(result).toBeInstanceOf(BoolValue);
-        expect(result.type).toBe('Bool');
+        expect(result).toBeInstanceOf(BooleanValue);
+        expect(result.type).toBe('Boolean');
         expect(result.valueOf()).toBeUndefined();
     });
 
@@ -96,8 +96,8 @@ describe('decode', () => {
         expect(() => decode(pair)).toThrow('Unsupported type: InvalidType');
     });
 
-    it('should handle round-trip encoding/decoding for Bool', () => {
-        const original = new BoolValue(true);
+    it('should handle round-trip encoding/decoding for Boolean', () => {
+        const original = new BooleanValue(true);
         const encoded = original.encode();
         const decoded = decode(encoded);
         

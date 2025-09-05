@@ -15,7 +15,7 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
         }
 
         switch (schemaType) {
-            case 'Bool':
+            case 'Boolean':
                 return typeof value === 'boolean';
             case 'Float4':
             case 'Float8':

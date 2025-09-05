@@ -22,7 +22,7 @@ export function encodeValue(value: any): TypeValuePair {
     }
     
     if (typeof value === 'boolean') {
-        return { type: 'Bool', value: value.toString() };
+        return { type: 'Boolean', value: value.toString() };
     }
     
     if (typeof value === 'number') {

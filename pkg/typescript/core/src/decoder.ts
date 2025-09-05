@@ -5,7 +5,7 @@
  */
 
 import {
-    BlobValue, BoolValue, DateValue, DateTimeValue, Float4Value, Float8Value,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
     RowNumberValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
@@ -17,8 +17,8 @@ export function decode(pair: TypeValuePair): Value {
     switch (pair.type) {
         case "Blob":
             return BlobValue.parse(pair.value);
-        case "Bool":
-            return BoolValue.parse(pair.value);
+        case "Boolean":
+            return BooleanValue.parse(pair.value);
         case "Date":
             return DateValue.parse(pair.value);
         case "DateTime":

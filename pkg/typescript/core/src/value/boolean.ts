@@ -7,14 +7,14 @@
 import {Type, Value, TypeValuePair} from ".";
 import {UNDEFINED_VALUE} from "../constant";
 
-export class BoolValue implements Value {
-    readonly type: Type = "Bool" as const;
+export class BooleanValue implements Value {
+    readonly type: Type = "Boolean" as const;
     public readonly value?: boolean;
 
     constructor(value?: boolean) {
         if (value !== undefined) {
             if (typeof value !== 'boolean') {
-                throw new Error(`Bool value must be a boolean, got ${typeof value}`);
+                throw new Error(`Boolean value must be a boolean, got ${typeof value}`);
             }
             this.value = value;
         } else {
@@ -22,22 +22,22 @@ export class BoolValue implements Value {
         }
     }
 
-    static parse(str: string): BoolValue {
+    static parse(str: string): BooleanValue {
         const trimmed = str.trim().toLowerCase();
 
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new BoolValue(undefined);
+            return new BooleanValue(undefined);
         }
 
         if (trimmed === 'true') {
-            return new BoolValue(true);
+            return new BooleanValue(true);
         }
 
         if (trimmed === 'false') {
-            return new BoolValue(false);
+            return new BooleanValue(false);
         }
 
-        throw new Error(`Cannot parse "${str}" as Bool`);
+        throw new Error(`Cannot parse "${str}" as Boolean`);
     }
 
     valueOf(): boolean | undefined {
@@ -56,8 +56,8 @@ export class BoolValue implements Value {
             return false;
         }
         
-        const otherBool = other as BoolValue;
-        return this.value === otherBool.value;
+        const otherBoolean = other as BooleanValue;
+        return this.value === otherBoolean.value;
     }
 
     encode(): TypeValuePair {

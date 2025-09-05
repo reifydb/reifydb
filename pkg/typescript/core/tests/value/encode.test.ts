@@ -6,7 +6,7 @@
 
 import {describe, expect, it} from 'vitest';
 import {
-    BlobValue, BoolValue, DateValue, DateTimeValue, Float4Value, Float8Value,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
     RowNumberValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, decode
@@ -14,12 +14,12 @@ import {
 import {UNDEFINED_VALUE} from '../../src/constant';
 
 describe('Value encode method', () => {
-    describe('BoolValue', () => {
+    describe('BooleanValue', () => {
         it('should encode true and be parseable', () => {
-            const value = new BoolValue(true);
+            const value = new BooleanValue(true);
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Bool');
+            expect(encoded.type).toBe('Boolean');
             expect(encoded.value).toBe('true');
 
             const decoded = decode(encoded);
@@ -27,10 +27,10 @@ describe('Value encode method', () => {
         });
 
         it('should encode false and be parseable', () => {
-            const value = new BoolValue(false);
+            const value = new BooleanValue(false);
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Bool');
+            expect(encoded.type).toBe('Boolean');
             expect(encoded.value).toBe('false');
 
             const decoded = decode(encoded);
@@ -38,10 +38,10 @@ describe('Value encode method', () => {
         });
 
         it('should encode undefined as UNDEFINED_VALUE', () => {
-            const value = new BoolValue(undefined);
+            const value = new BooleanValue(undefined);
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Bool');
+            expect(encoded.type).toBe('Boolean');
             expect(encoded.value).toBe(UNDEFINED_VALUE);
 
             const decoded = decode(encoded);

@@ -8,7 +8,7 @@ import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
 import {waitForDatabase} from "../setup";
 import {
-    BoolValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
+    BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     Float4Value, Float8Value, Utf8Value, BlobValue, RowNumberValue,
     DateValue, TimeValue, DateTimeValue, IntervalValue,
@@ -49,14 +49,14 @@ describe('Positional Parameters', () => {
     });
 
     describe('command', () => {
-        it('Bool', async () => {
+        it('Boolean', async () => {
             const frames = await wsClient.command(
                 'MAP $1 as result',
-                [new BoolValue(true)],
-                [Schema.object({result: Schema.boolValue()})]
+                [new BooleanValue(true)],
+                [Schema.object({result: Schema.booleanValue()})]
             );
 
-            expectSingleValueResult(frames, new BoolValue(true));
+            expectSingleValueResult(frames, new BooleanValue(true));
         }, 1000);
 
         it('Int1', async () => {
@@ -298,14 +298,14 @@ describe('Positional Parameters', () => {
     });
 
     describe('query', () => {
-        it('Bool', async () => {
+        it('Boolean', async () => {
             const frames = await wsClient.query(
                 'MAP $1 as result',
-                [new BoolValue(true)],
-                [Schema.object({result: Schema.boolValue()})]
+                [new BooleanValue(true)],
+                [Schema.object({result: Schema.booleanValue()})]
             );
 
-            expectSingleValueResult(frames, new BoolValue(true));
+            expectSingleValueResult(frames, new BooleanValue(true));
         }, 1000);
 
         it('Int1', async () => {
