@@ -3,6 +3,9 @@
 
 use super::*;
 
+// Conversion from f64 to f32 (demotion)
+impl_safe_convert_float_demote!(f64 => f32);
+
 // Conversions from f64 to signed integers
 impl_safe_convert_float_to_signed!(f64 => i8, i16, i32, i64, i128);
 
@@ -13,9 +16,86 @@ impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 impl_safe_convert_float_to_varint!(f64);
 impl_safe_convert_float_to_varuint!(f64);
 
+// Conversions from f64 to Decimal
+impl_safe_convert_to_decimal_from_float!(f64);
+
 #[cfg(test)]
 mod tests {
 	use crate::SafeConvert;
+
+	mod f32 {
+		use super::*;
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: f64 = 123.0;
+			let y: Option<f32> = x.checked_convert();
+			assert_eq!(y, Some(123.0f32));
+		}
+
+		#[test]
+		fn test_checked_convert_unhappy_due_to_infinity() {
+			let x: f64 = f64::MAX;
+			let y: Option<f32> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_checked_convert_unhappy_due_to_negative_infinity() {
+			let x: f64 = f64::MIN;
+			let y: Option<f32> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_within_range() {
+			let x: f64 = 456.789;
+			let y: f32 = x.saturating_convert();
+			assert_eq!(y, 456.789f32);
+		}
+
+		#[test]
+		fn test_saturating_convert_too_large() {
+			let x: f64 = f64::MAX;
+			let y: f32 = x.saturating_convert();
+			assert_eq!(y, f32::MAX);
+		}
+
+		#[test]
+		fn test_saturating_convert_too_small() {
+			let x: f64 = f64::MIN;
+			let y: f32 = x.saturating_convert();
+			assert_eq!(y, f32::MIN);
+		}
+
+		#[test]
+		fn test_saturating_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: f32 = x.saturating_convert();
+			assert!(y.is_nan());
+		}
+
+		#[test]
+		fn test_wrapping_convert_regular() {
+			let x: f64 = 789.123;
+			let y: f32 = x.wrapping_convert();
+			assert_eq!(y, 789.123f32);
+		}
+
+		#[test]
+		fn test_wrapping_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: f32 = x.wrapping_convert();
+			assert!(y.is_nan());
+		}
+
+		#[test]
+		fn test_wrapping_convert_infinity() {
+			let x: f64 = f64::INFINITY;
+			let y: f32 = x.wrapping_convert();
+			assert!(y.is_infinite() && y.is_sign_positive());
+		}
+	}
 
 	mod i8 {
 		use crate::SafeConvert;

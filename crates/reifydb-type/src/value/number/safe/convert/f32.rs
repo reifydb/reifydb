@@ -3,6 +3,9 @@
 
 use super::*;
 
+// Conversion from f32 to f64 (promotion)
+impl_safe_convert_promote!(f32 => f64);
+
 // Conversions from f32 to signed integers
 impl_safe_convert_float_to_signed!(f32 => i8, i16, i32, i64, i128);
 
@@ -13,9 +16,37 @@ impl_safe_convert_float_to_unsigned!(f32 => u8, u16, u32, u64, u128);
 impl_safe_convert_float_to_varint!(f32);
 impl_safe_convert_float_to_varuint!(f32);
 
+// Conversions from f32 to Decimal
+impl_safe_convert_to_decimal_from_float!(f32);
+
 #[cfg(test)]
 mod tests {
 	use crate::SafeConvert;
+
+	mod f64 {
+		use super::*;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: f32 = 123.456;
+			let y: Option<f64> = x.checked_convert();
+			assert_eq!(y, Some(x as f64));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: f32 = f32::MAX;
+			let y: f64 = x.saturating_convert();
+			assert_eq!(y, f32::MAX as f64);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: f32 = f32::NEG_INFINITY;
+			let y: f64 = x.wrapping_convert();
+			assert_eq!(y, f64::NEG_INFINITY);
+		}
+	}
 
 	mod i8 {
 		use crate::SafeConvert;

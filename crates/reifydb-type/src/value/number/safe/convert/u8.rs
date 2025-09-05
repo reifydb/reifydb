@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::*;
+
+// Conversions from u8 to unsigned integers (all are promotions)
+impl_safe_convert_promote!(u8 => u16, u32, u64, u128);
 
 // Conversions from u8 to signed integers
 impl_safe_unsigned_convert!(u8 => i8, i16, i32, i64, i128);
@@ -10,8 +13,12 @@ impl_safe_unsigned_convert!(u8 => i8, i16, i32, i64, i128);
 impl_safe_convert_unsigned_to_float!(24; u8 => f32);
 impl_safe_convert_unsigned_to_float!(53; u8 => f64);
 
-// Conversions from u8 to VarUint
+// Conversions from u8 to VarInt/VarUint
+impl_safe_convert_to_varint!(u8);
 impl_safe_convert_unsigned_to_varuint!(u8);
+
+// Conversions from u8 to Decimal
+impl_safe_convert_to_decimal_from_int!(u8);
 
 #[cfg(test)]
 mod tests {

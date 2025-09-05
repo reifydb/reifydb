@@ -73,6 +73,18 @@ impl Ord for VarInt {
 	}
 }
 
+impl From<i8> for VarInt {
+	fn from(value: i8) -> Self {
+		VarInt(StdBigInt::from(value))
+	}
+}
+
+impl From<i16> for VarInt {
+	fn from(value: i16) -> Self {
+		VarInt(StdBigInt::from(value))
+	}
+}
+
 impl From<i32> for VarInt {
 	fn from(value: i32) -> Self {
 		VarInt(StdBigInt::from(value))
@@ -87,6 +99,18 @@ impl From<i64> for VarInt {
 
 impl From<i128> for VarInt {
 	fn from(value: i128) -> Self {
+		VarInt(StdBigInt::from(value))
+	}
+}
+
+impl From<u8> for VarInt {
+	fn from(value: u8) -> Self {
+		VarInt(StdBigInt::from(value))
+	}
+}
+
+impl From<u16> for VarInt {
+	fn from(value: u16) -> Self {
 		VarInt(StdBigInt::from(value))
 	}
 }

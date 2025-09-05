@@ -3,6 +3,9 @@
 
 use super::*;
 
+// Conversions from u128 to unsigned integers (all are demotions)
+impl_safe_convert_unsigned_demote!(u128 => u8, u16, u32, u64);
+
 // Conversions from u128 to signed integers
 impl_safe_unsigned_convert!(u128 => i8, i16, i32, i64, i128);
 
@@ -10,8 +13,12 @@ impl_safe_unsigned_convert!(u128 => i8, i16, i32, i64, i128);
 impl_safe_convert_unsigned_to_float!(24; u128 => f32);
 impl_safe_convert_unsigned_to_float!(53; u128 => f64);
 
-// Conversions from u128 to VarUint
+// Conversions from u128 to VarInt/VarUint
+impl_safe_convert_to_varint!(u128);
 impl_safe_convert_unsigned_to_varuint!(u128);
+
+// Conversions from u128 to Decimal
+impl_safe_convert_to_decimal_from_large_int!(u128);
 
 #[cfg(test)]
 mod tests {
@@ -266,6 +273,228 @@ mod tests {
 			let x: u128 = u128::MAX;
 			let y: f64 = x.wrapping_convert();
 			assert!(y.is_finite());
+		}
+	}
+
+	mod u8 {
+		use super::*;
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u128 = 255;
+			let y: Option<u8> = x.checked_convert();
+			assert_eq!(y, Some(255u8));
+		}
+
+		#[test]
+		fn test_checked_convert_unhappy() {
+			let x: u128 = 256;
+			let y: Option<u8> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = 1000;
+			let y: u8 = x.saturating_convert();
+			assert_eq!(y, u8::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 256;
+			let y: u8 = x.wrapping_convert();
+			assert_eq!(y, 0u8);
+		}
+	}
+
+	mod u16 {
+		use super::*;
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u128 = 65535;
+			let y: Option<u16> = x.checked_convert();
+			assert_eq!(y, Some(65535u16));
+		}
+
+		#[test]
+		fn test_checked_convert_unhappy() {
+			let x: u128 = 65536;
+			let y: Option<u16> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = 100000;
+			let y: u16 = x.saturating_convert();
+			assert_eq!(y, u16::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 65536;
+			let y: u16 = x.wrapping_convert();
+			assert_eq!(y, 0u16);
+		}
+	}
+
+	mod u32 {
+		use super::*;
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u128 = 4294967295;
+			let y: Option<u32> = x.checked_convert();
+			assert_eq!(y, Some(4294967295u32));
+		}
+
+		#[test]
+		fn test_checked_convert_unhappy() {
+			let x: u128 = 4294967296;
+			let y: Option<u32> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = u128::MAX;
+			let y: u32 = x.saturating_convert();
+			assert_eq!(y, u32::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 4294967296;
+			let y: u32 = x.wrapping_convert();
+			assert_eq!(y, 0u32);
+		}
+	}
+
+	mod u64 {
+		use super::*;
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u128 = 18446744073709551615;
+			let y: Option<u64> = x.checked_convert();
+			assert_eq!(y, Some(18446744073709551615u64));
+		}
+
+		#[test]
+		fn test_checked_convert_unhappy() {
+			let x: u128 = 18446744073709551616;
+			let y: Option<u64> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = u128::MAX;
+			let y: u64 = x.saturating_convert();
+			assert_eq!(y, u64::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 18446744073709551616;
+			let y: u64 = x.wrapping_convert();
+			assert_eq!(y, 0u64);
+		}
+	}
+
+	mod decimal {
+		use super::*;
+		use crate::Decimal;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: u128 = 42;
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			let decimal = y.unwrap();
+			assert_eq!(decimal.to_string(), "42");
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = u128::MAX;
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(
+				y.to_string(),
+				"340282366920938463463374607431768211455"
+			);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 1000000000000;
+			let y: Decimal = x.wrapping_convert();
+			assert_eq!(y.to_string(), "1000000000000");
+		}
+	}
+
+	mod varint {
+		use super::*;
+		use crate::VarInt;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: u128 = u128::MAX;
+			let y: Option<VarInt> = x.checked_convert();
+			assert!(y.is_some());
+			assert_eq!(
+				y.unwrap().to_string(),
+				"340282366920938463463374607431768211455"
+			);
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = i128::MAX as u128;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(
+				y.to_string(),
+				"170141183460469231731687303715884105727"
+			);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 0;
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y.to_string(), "0");
+		}
+	}
+
+	mod varuint {
+		use super::*;
+		use crate::VarUint;
+
+		#[test]
+		fn test_checked_convert() {
+			let x: u128 = 42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert!(y.is_some());
+			assert_eq!(y.unwrap().to_string(), "42");
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = u128::MAX;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(
+				y.to_string(),
+				"340282366920938463463374607431768211455"
+			);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 1234567890123456789;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y.to_string(), "1234567890123456789");
 		}
 	}
 }

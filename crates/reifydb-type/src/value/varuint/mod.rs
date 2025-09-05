@@ -83,6 +83,18 @@ impl Ord for VarUint {
 	}
 }
 
+impl From<u8> for VarUint {
+	fn from(value: u8) -> Self {
+		VarUint(StdBigInt::from(value))
+	}
+}
+
+impl From<u16> for VarUint {
+	fn from(value: u16) -> Self {
+		VarUint(StdBigInt::from(value))
+	}
+}
+
 impl From<u32> for VarUint {
 	fn from(value: u32) -> Self {
 		VarUint(StdBigInt::from(value))
@@ -102,6 +114,18 @@ impl From<u128> for VarUint {
 }
 
 // Handle signed integer conversions by ensuring non-negative values
+impl From<i8> for VarUint {
+	fn from(value: i8) -> Self {
+		VarUint(Self::ensure_non_negative(StdBigInt::from(value)))
+	}
+}
+
+impl From<i16> for VarUint {
+	fn from(value: i16) -> Self {
+		VarUint(Self::ensure_non_negative(StdBigInt::from(value)))
+	}
+}
+
 impl From<i32> for VarUint {
 	fn from(value: i32) -> Self {
 		VarUint(Self::ensure_non_negative(StdBigInt::from(value)))

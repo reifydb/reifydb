@@ -235,282 +235,7 @@ macro_rules! impl_safe_convert_float_to_unsigned {
 use num_bigint::{BigInt, ToBigInt};
 use num_traits::{Signed, ToPrimitive};
 
-use crate::{
-	Decimal, VarInt, VarUint,
-	value::decimal::{Precision, Scale},
-};
-
-macro_rules! impl_safe_convert_varint_to_signed {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for VarInt {
-                fn checked_convert(self) -> Option<$dst> {
-                    <$dst>::try_from(&self.0).ok()
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else if self.0 < BigInt::from(0) {
-                        <$dst>::MIN
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        self.saturating_convert()
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_varint_to_unsigned {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for VarInt {
-                fn checked_convert(self) -> Option<$dst> {
-                    if self.0 >= BigInt::from(0) {
-                        <$dst>::try_from(&self.0).ok()
-                    } else {
-                        None
-                    }
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if self.0 < BigInt::from(0) {
-                        0
-                    } else if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    if self.0 < BigInt::from(0) {
-                        0
-                    } else if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        self.saturating_convert()
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_varint_to_float {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for VarInt {
-                fn checked_convert(self) -> Option<$dst> {
-                    self.0.to_f64().and_then(|f| {
-                        if f.is_finite() {
-                            Some(f as $dst)
-                        } else {
-                            None
-                        }
-                    })
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Some(f) = self.0.to_f64() {
-                        if f.is_finite() {
-                            f as $dst
-                        } else if f.is_sign_negative() {
-                            <$dst>::MIN
-                        } else {
-                            <$dst>::MAX
-                        }
-                    } else if self.0 < BigInt::from(0) {
-                        <$dst>::MIN
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    self.saturating_convert()
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_varuint_to_signed {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for VarUint {
-                fn checked_convert(self) -> Option<$dst> {
-                    <$dst>::try_from(&self.0).ok()
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    if let Ok(val) = u64::try_from(&self.0) {
-                        val as $dst
-                    } else {
-                        self.saturating_convert()
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_varuint_to_unsigned {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for VarUint {
-                fn checked_convert(self) -> Option<$dst> {
-                    <$dst>::try_from(&self.0).ok()
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Ok(val) = <$dst>::try_from(&self.0) {
-                        val
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    if let Ok(val) = u64::try_from(&self.0) {
-                        val as $dst
-                    } else {
-                        self.saturating_convert()
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_varuint_to_float {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for VarUint {
-                fn checked_convert(self) -> Option<$dst> {
-                    self.0.to_f64().and_then(|f| {
-                        if f.is_finite() {
-                            Some(f as $dst)
-                        } else {
-                            None
-                        }
-                    })
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Some(f) = self.0.to_f64() {
-                        if f.is_finite() {
-                            f as $dst
-                        } else {
-                            <$dst>::MAX
-                        }
-                    } else {
-                        <$dst>::MAX
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    self.saturating_convert()
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_decimal_to_int {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for Decimal {
-                fn checked_convert(self) -> Option<$dst> {
-                    if let Some(int_part) = self.inner().to_bigint() {
-                        <$dst>::try_from(int_part).ok()
-                    } else {
-                        None
-                    }
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Some(int_part) = self.inner().to_bigint() {
-                        if let Ok(val) = <$dst>::try_from(&int_part) {
-                            val
-                        } else if int_part < BigInt::from(0) {
-                            <$dst>::MIN
-                        } else {
-                            <$dst>::MAX
-                        }
-                    } else {
-                        0
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    if let Some(int_part) = self.inner().to_bigint() {
-                        if let Ok(val) = <$dst>::try_from(&int_part) {
-                            val
-                        } else {
-                            self.saturating_convert()
-                        }
-                    } else {
-                        0
-                    }
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_decimal_to_float {
-    ($($dst:ty),*) => {
-        $(
-            impl SafeConvert<$dst> for Decimal {
-                fn checked_convert(self) -> Option<$dst> {
-                    self.inner().to_f64().and_then(|f| {
-                        if f.is_finite() {
-                            Some(f as $dst)
-                        } else {
-                            None
-                        }
-                    })
-                }
-
-                fn saturating_convert(self) -> $dst {
-                    if let Some(f) = self.inner().to_f64() {
-                        if f.is_finite() {
-                            f as $dst
-                        } else if f.is_sign_negative() {
-                            <$dst>::MIN
-                        } else {
-                            <$dst>::MAX
-                        }
-                    } else {
-                        0.0
-                    }
-                }
-
-                fn wrapping_convert(self) -> $dst {
-                    self.saturating_convert()
-                }
-            }
-        )*
-    };
-}
+use crate::{Decimal, VarInt, VarUint};
 
 // Primitive to VarInt/VarUint conversions
 macro_rules! impl_safe_convert_to_varint {
@@ -527,34 +252,6 @@ macro_rules! impl_safe_convert_to_varint {
 
                 fn wrapping_convert(self) -> VarInt {
                     VarInt(BigInt::from(self))
-                }
-            }
-        )*
-    };
-}
-
-macro_rules! impl_safe_convert_signed_to_varuint {
-    ($($from:ty),*) => {
-        $(
-            impl SafeConvert<VarUint> for $from {
-                fn checked_convert(self) -> Option<VarUint> {
-                    if self >= 0 {
-                        Some(VarUint(BigInt::from(self)))
-                    } else {
-                        None
-                    }
-                }
-
-                fn saturating_convert(self) -> VarUint {
-                    if self >= 0 {
-                        VarUint(BigInt::from(self))
-                    } else {
-                        VarUint::zero()
-                    }
-                }
-
-                fn wrapping_convert(self) -> VarUint {
-                    VarUint(BigInt::from(self.wrapping_abs() as u64))
                 }
             }
         )*
@@ -654,8 +351,11 @@ macro_rules! impl_safe_convert_float_to_varuint {
                 }
 
                 fn wrapping_convert(self) -> VarUint {
-                    if self.is_finite() {
-                        VarUint(BigInt::from((self.trunc() as i64).wrapping_abs() as u64))
+                    if self.is_finite() && self >= 0.0 {
+                        VarUint(BigInt::from(self.trunc() as u64))
+                    } else if self.is_finite() && self < 0.0 {
+                        // For negative floats, convert to i64 then cast to u64 for two's complement
+                        VarUint(BigInt::from(self.trunc() as i64 as u64))
                     } else {
                         VarUint::zero()
                     }
@@ -664,6 +364,235 @@ macro_rules! impl_safe_convert_float_to_varuint {
         )*
     };
 }
+
+// Promotion-style conversion macro for SafeConvert (lossless upward
+// conversions)
+macro_rules! impl_safe_convert_promote {
+    ($src:ty => $($dst:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<$dst> for $src {
+                fn checked_convert(self) -> Option<$dst> {
+                   Some(self as $dst)
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    self as $dst
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    self as $dst
+                }
+            }
+        )*
+    };
+}
+
+// Demotion-style conversion macro for SafeConvert (potentially lossy downward
+// conversions)
+macro_rules! impl_safe_convert_demote {
+    ($src:ty => $($dst:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<$dst> for $src {
+                fn checked_convert(self) -> Option<$dst> {
+                    <$dst>::try_from(self).ok()
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    match <$dst>::try_from(self) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            if self < <$dst>::MIN as $src {
+                                <$dst>::MIN
+                            } else {
+                                <$dst>::MAX
+                            }
+                        }
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    self as $dst
+                }
+            }
+        )*
+    };
+}
+
+// Unsigned demotion-style conversion macro for SafeConvert
+macro_rules! impl_safe_convert_unsigned_demote {
+    ($src:ty => $($dst:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<$dst> for $src {
+                fn checked_convert(self) -> Option<$dst> {
+                    <$dst>::try_from(self).ok()
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if self > <$dst>::MAX as $src {
+                        <$dst>::MAX
+                    } else {
+                        self as $dst
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    self as $dst
+                }
+            }
+        )*
+    };
+}
+
+// Float demotion macro (f64 to f32)
+macro_rules! impl_safe_convert_float_demote {
+	($src:ty => $dst:ty) => {
+		impl SafeConvert<$dst> for $src {
+			fn checked_convert(self) -> Option<$dst> {
+				let demoted = self as $dst;
+				if self.is_finite()
+					&& self >= <$dst>::MIN as $src
+					&& self <= <$dst>::MAX as $src
+				{
+					Some(demoted)
+				} else {
+					None
+				}
+			}
+
+			fn saturating_convert(self) -> $dst {
+				if self.is_nan() {
+					<$dst>::NAN
+				} else if self <= <$dst>::MIN as $src {
+					<$dst>::MIN
+				} else if self >= <$dst>::MAX as $src {
+					<$dst>::MAX
+				} else {
+					self as $dst
+				}
+			}
+
+			fn wrapping_convert(self) -> $dst {
+				self as $dst
+			}
+		}
+	};
+}
+
+// Self-conversion macro for identity conversions
+macro_rules! impl_safe_convert_self {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<$ty> for $ty {
+                fn checked_convert(self) -> Option<$ty> {
+                    Some(self)
+                }
+
+                fn saturating_convert(self) -> $ty {
+                    self
+                }
+
+                fn wrapping_convert(self) -> $ty {
+                    self
+                }
+            }
+        )*
+    };
+}
+
+// Primitive to Decimal conversion macro
+macro_rules! impl_safe_convert_to_decimal_from_int {
+    ($($src:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<Decimal> for $src {
+                fn checked_convert(self) -> Option<Decimal> {
+                    Some(Decimal::from(self))
+                }
+
+                fn saturating_convert(self) -> Decimal {
+                    Decimal::from(self)
+                }
+
+                fn wrapping_convert(self) -> Decimal {
+                    Decimal::from(self)
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_to_decimal_from_large_int {
+    ($($src:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<Decimal> for $src {
+                fn checked_convert(self) -> Option<Decimal> {
+                    Some(Decimal::from(self))
+                }
+
+                fn saturating_convert(self) -> Decimal {
+                    Decimal::from(self)
+                }
+
+                fn wrapping_convert(self) -> Decimal {
+                    Decimal::from(self)
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_to_decimal_from_uint {
+    ($($src:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<Decimal> for $src {
+                fn checked_convert(self) -> Option<Decimal> {
+                    Some(Decimal::from(self))
+                }
+
+                fn saturating_convert(self) -> Decimal {
+                    Decimal::from(self)
+                }
+
+                fn wrapping_convert(self) -> Decimal {
+                    Decimal::from(self)
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_to_decimal_from_float {
+    ($($src:ty),* $(,)?) => {
+        $(
+            impl SafeConvert<Decimal> for $src {
+                fn checked_convert(self) -> Option<Decimal> {
+                    if !self.is_finite() {
+                        return None;
+                    }
+                    use bigdecimal::BigDecimal as BigDecimalInner;
+                    use std::str::FromStr;
+                    BigDecimalInner::from_str(&self.to_string())
+                        .ok()
+                        .map(Decimal)
+                }
+
+                fn saturating_convert(self) -> Decimal {
+                    self.checked_convert()
+                        .unwrap_or_else(Decimal::zero)
+                }
+
+                fn wrapping_convert(self) -> Decimal {
+                    self.saturating_convert()
+                }
+            }
+        )*
+    };
+}
+
+// Implement self-conversions for all primitive types and custom types
+impl_safe_convert_self!(
+	i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64
+);
+impl_safe_convert_self!(VarInt, VarUint, Decimal);
 
 // Module declarations
 mod decimal;
