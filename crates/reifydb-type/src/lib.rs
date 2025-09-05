@@ -49,9 +49,8 @@ pub use value::{
 		IsUuid,
 	},
 	number::{
-		Promote, SafeAdd, SafeConvert, SafeDemote, SafeDiv, SafeMul,
-		SafePromote, SafeRemainder, SafeSub, parse_float, parse_int,
-		parse_uint,
+		Promote, SafeAdd, SafeConvert, SafeDiv, SafeMul, SafeRemainder,
+		SafeSub, parse_float, parse_int, parse_uint,
 	},
 	row_number::ROW_NUMBER_COLUMN_NAME,
 	temporal::parse::{

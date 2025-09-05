@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{SafeConvert, SafePromote};
+use reifydb_type::SafeConvert;
 
 use crate::value::columnar::{data::ColumnData, push::Push};
 
@@ -28,7 +28,7 @@ impl Push<i8> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Int2(container) => {
-				match <i8 as SafePromote<i16>>::checked_promote(
+				match <i8 as SafeConvert<i16>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),
@@ -36,7 +36,7 @@ impl Push<i8> for ColumnData {
 				}
 			}
 			ColumnData::Int4(container) => {
-				match <i8 as SafePromote<i32>>::checked_promote(
+				match <i8 as SafeConvert<i32>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),
@@ -44,7 +44,7 @@ impl Push<i8> for ColumnData {
 				}
 			}
 			ColumnData::Int8(container) => {
-				match <i8 as SafePromote<i64>>::checked_promote(
+				match <i8 as SafeConvert<i64>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),
@@ -52,7 +52,7 @@ impl Push<i8> for ColumnData {
 				}
 			}
 			ColumnData::Int16(container) => {
-				match <i8 as SafePromote<i128>>::checked_promote(
+				match <i8 as SafeConvert<i128>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),

@@ -3,13 +3,9 @@
 
 mod arith;
 mod convert;
-mod demote;
 pub mod expression;
-mod promote;
 
 pub use convert::Convert;
-pub use demote::Demote;
-pub use promote::Promote;
 use reifydb_type::Type;
 
 use crate::{

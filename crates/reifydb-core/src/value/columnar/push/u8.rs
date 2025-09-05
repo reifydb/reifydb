@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{SafeConvert, SafePromote};
+use reifydb_type::SafeConvert;
 
 use crate::value::columnar::{data::ColumnData, push::Push};
 
@@ -26,7 +26,7 @@ impl Push<u8> for ColumnData {
 			}
 			ColumnData::Uint1(container) => container.push(value),
 			ColumnData::Uint2(container) => {
-				match <u8 as SafePromote<u16>>::checked_promote(
+				match <u8 as SafeConvert<u16>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),
@@ -34,7 +34,7 @@ impl Push<u8> for ColumnData {
 				}
 			}
 			ColumnData::Uint4(container) => {
-				match <u8 as SafePromote<u32>>::checked_promote(
+				match <u8 as SafeConvert<u32>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),
@@ -42,7 +42,7 @@ impl Push<u8> for ColumnData {
 				}
 			}
 			ColumnData::Uint8(container) => {
-				match <u8 as SafePromote<u64>>::checked_promote(
+				match <u8 as SafeConvert<u64>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),
@@ -50,7 +50,7 @@ impl Push<u8> for ColumnData {
 				}
 			}
 			ColumnData::Uint16(container) => {
-				match <u8 as SafePromote<u128>>::checked_promote(
+				match <u8 as SafeConvert<u128>>::checked_convert(
 					value,
 				) {
 					Some(v) => container.push(v),

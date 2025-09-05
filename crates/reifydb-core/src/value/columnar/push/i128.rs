@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{SafeConvert, SafeDemote};
+use reifydb_type::SafeConvert;
 
 use crate::value::columnar::{data::ColumnData, push::Push};
 
@@ -18,16 +18,16 @@ impl Push<i128> for ColumnData {
                     Some(v) => container.push(v),
                     None => container.push_undefined()}
             }
-            ColumnData::Int1(container) => match <i128 as SafeDemote<i8>>::checked_demote(value) {
+            ColumnData::Int1(container) => match <i128 as SafeConvert<i8>>::checked_convert(value) {
                 Some(v) => container.push(v),
                 None => container.push_undefined()},
-            ColumnData::Int2(container) => match <i128 as SafeDemote<i16>>::checked_demote(value) {
+            ColumnData::Int2(container) => match <i128 as SafeConvert<i16>>::checked_convert(value) {
                 Some(v) => container.push(v),
                 None => container.push_undefined()},
-            ColumnData::Int4(container) => match <i128 as SafeDemote<i32>>::checked_demote(value) {
+            ColumnData::Int4(container) => match <i128 as SafeConvert<i32>>::checked_convert(value) {
                 Some(v) => container.push(v),
                 None => container.push_undefined()},
-            ColumnData::Int8(container) => match <i128 as SafeDemote<i64>>::checked_demote(value) {
+            ColumnData::Int8(container) => match <i128 as SafeConvert<i64>>::checked_convert(value) {
                 Some(v) => container.push(v),
                 None => container.push_undefined()},
             ColumnData::Int16(container) => container.push(value),

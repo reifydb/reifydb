@@ -2,18 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	interface::{Convert, Demote, Promote},
+	interface::Convert,
 	value::{columnar::ColumnData, container::NumberContainer},
 };
 use reifydb_type::{
 	BorrowedFragment, Decimal, GetType, IsNumber, LazyFragment,
-	SafeConvert, SafeDemote, SafePromote, Type, VarInt, VarUint,
-	diagnostic::cast, error, parse_decimal, parse_float, parse_int,
-	parse_uint, parse_varint, parse_varuint, return_error,
+	SafeConvert, Type, VarInt, VarUint, diagnostic::cast, error,
+	parse_decimal, parse_float, parse_int, parse_uint, parse_varint,
+	parse_varuint, return_error,
 };
 
 pub fn to_number<'a>(
-	ctx: impl Promote + Demote + Convert,
+	ctx: impl Convert,
 	data: &ColumnData,
 	target: Type,
 	lazy_fragment: impl LazyFragment<'a>,
@@ -823,7 +823,7 @@ fn f64_to_decimal_vec(
 fn number_to_number<'a>(
 	data: &ColumnData,
 	target: Type,
-	ctx: impl Promote + Demote + Convert,
+	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
@@ -837,37 +837,17 @@ fn number_to_number<'a>(
 	macro_rules! cast {
             (
                 $src_variant:ident, $src_ty:ty,
-                promote => [ $( ($pro_variant:ident, $pro_ty:ty) ),* ],
-                demote => [ $( ($dem_variant:ident, $dem_ty:ty) ),* ],
-                convert => [ $( ($con_variant:ident, $con_ty:ty) ),* ]
+                to => [ $( ($dst_variant:ident, $dst_ty:ty) ),* ]
             ) => {
             if let ColumnData::$src_variant(container) = data {
                     match target {
                         $(
-                        Type::$pro_variant => return promote_vec::<$src_ty, $pro_ty>(
+                        Type::$dst_variant => return convert_vec::<$src_ty, $dst_ty>(
                             container,
                                 ctx,
                                 lazy_fragment,
-                                Type::$pro_variant,
-                                ColumnData::push::<$pro_ty>,
-                            ),
-                        )*
-                        $(
-                        Type::$dem_variant => return demote_vec::<$src_ty, $dem_ty>(
-                            container,
-                                    ctx,
-                                    lazy_fragment,
-                                    Type::$dem_variant,
-                                    ColumnData::push::<$dem_ty>,
-                                ),
-                        )*
-                        $(
-                        Type::$con_variant => return convert_vec::<$src_ty, $con_ty>(
-                            container,
-                                ctx,
-                                lazy_fragment,
-                                Type::$con_variant,
-                                ColumnData::push::<$con_ty>,
+                                Type::$dst_variant,
+                                ColumnData::push::<$dst_ty>,
                             ),
                         )*
                         _ => {}
@@ -877,75 +857,51 @@ fn number_to_number<'a>(
         }
 
 	cast!(Float4, f32,
-	    promote => [(Float8, f64) ],
-	    demote => [ ],
-	    convert => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Float8, f64,
-	    promote => [ ],
-	    demote => [(Float4, f32)],
-	    convert => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Float4, f32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Int1, i8,
-	    promote => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)],
-	    demote => [],
-	    convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Int2, i16,
-	    promote => [(Int4, i32), (Int8, i64), (Int16, i128)],
-	    demote => [(Int1, i8)],
-	    convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Int4, i32,
-	    promote => [(Int8, i64), (Int16, i128)],
-	    demote => [(Int2, i16), (Int1, i8)],
-	    convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int2, i16), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Int8, i64,
-	    promote => [(Int16, i128)],
-	    demote => [(Int4, i32), (Int2, i16), (Int1, i8)],
-	    convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Int16, i128,
-	    promote => [],
-	    demote => [(Int8, i64), (Int4, i32), (Int2, i16), (Int1, i8)],
-	    convert => [(Float4, f32), (Float8,f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
 	);
 
 	cast!(Uint1, u8,
-	    promote => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    demote => [],
-	    convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
 	);
 
 	cast!(Uint2, u16,
-	    promote => [(Uint4, u32), (Uint8, u64), (Uint16, u128)],
-	    demote => [(Uint1, u8)],
-	    convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
 	);
 
 	cast!(Uint4, u32,
-	    promote => [(Uint8, u64), (Uint16, u128)],
-	    demote => [(Uint2, u16), (Uint1, u8)],
-	    convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint2, u16), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
 	);
 
 	cast!(Uint8, u64,
-	    promote => [(Uint16, u128)],
-	    demote => [(Uint4, u32), (Uint2, u16), (Uint1, u8)],
-	    convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
 	);
 
 	cast!(Uint16, u128,
-	    promote => [],
-	    demote => [(Uint8, u64), (Uint4, u32), (Uint2, u16), (Uint1, u8)],
-	    convert => [(Float4, f32), (Float8,f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
 	);
 
 	let source_type = data.get_type();
@@ -954,58 +910,6 @@ fn number_to_number<'a>(
 		source_type,
 		target
 	))
-}
-
-pub(crate) fn demote_vec<'a, From, To>(
-	container: &NumberContainer<From>,
-	demote: impl Demote,
-	lazy_fragment: impl LazyFragment<'a>,
-	target_kind: Type,
-	mut push: impl FnMut(&mut ColumnData, To),
-) -> crate::Result<ColumnData>
-where
-	From: Copy + SafeDemote<To> + IsNumber + Default,
-	To: GetType,
-{
-	let mut out = ColumnData::with_capacity(target_kind, container.len());
-	for idx in 0..container.len() {
-		if container.is_defined(idx) {
-			let val = container[idx];
-			match demote.demote::<From, To>(val, lazy_fragment)? {
-				Some(v) => push(&mut out, v),
-				None => out.push_undefined(),
-			}
-		} else {
-			out.push_undefined();
-		}
-	}
-	Ok(out)
-}
-
-pub(crate) fn promote_vec<'a, From, To>(
-	container: &NumberContainer<From>,
-	ctx: impl Promote,
-	lazy_fragment: impl LazyFragment<'a>,
-	target_kind: Type,
-	mut push: impl FnMut(&mut ColumnData, To),
-) -> crate::Result<ColumnData>
-where
-	From: Copy + SafePromote<To> + IsNumber + Default,
-	To: GetType,
-{
-	let mut out = ColumnData::with_capacity(target_kind, container.len());
-	for idx in 0..container.len() {
-		if container.is_defined(idx) {
-			let val = container[idx];
-			match ctx.promote::<From, To>(val, lazy_fragment)? {
-				Some(v) => push(&mut out, v),
-				None => out.push_undefined(),
-			}
-		} else {
-			out.push_undefined();
-		}
-	}
-	Ok(out)
 }
 
 pub(crate) fn convert_vec<'a, From, To>(
@@ -1038,26 +942,24 @@ where
 
 #[cfg(test)]
 mod tests {
-	mod promote {
+	mod convert {
 		use reifydb_core::{
-			BitVec, interface::Promote,
+			BitVec, interface::Convert,
 			value::container::NumberContainer,
 		};
-		use reifydb_type::{
-			Fragment, GetType, LazyFragment, SafePromote, Type,
-		};
+		use reifydb_type::{Fragment, GetType, SafeConvert, Type};
 
-		use crate::evaluate::cast::number::promote_vec;
+		use crate::evaluate::cast::number::convert_vec;
 
 		#[test]
-		fn test_ok() {
+		fn test_promote_ok() {
 			let data = [1i8, 2i8];
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
+			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1071,7 +973,7 @@ mod tests {
 		}
 
 		#[test]
-		fn test_none_maps_to_undefined() {
+		fn test_promote_none_maps_to_undefined() {
 			// 42 mapped to None
 			let data = [42i8];
 			let bitvec = BitVec::from_slice(&[true]);
@@ -1079,7 +981,7 @@ mod tests {
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
+			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1092,14 +994,14 @@ mod tests {
 		}
 
 		#[test]
-		fn test_invalid_bitmaps_are_undefined() {
+		fn test_promote_invalid_bitmaps_are_undefined() {
 			let data = [1i8];
 			let bitvec = BitVec::from_slice(&[false]);
 			let ctx = TestCtx::new();
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
+			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1112,7 +1014,7 @@ mod tests {
 		}
 
 		#[test]
-		fn test_mixed_bitvec_and_promote_failure() {
+		fn test_promote_mixed_bitvec_and_failure() {
 			let data = [1i8, 42i8, 3i8, 4i8];
 			let bitvec =
 				BitVec::from_slice(&[true, true, false, true]);
@@ -1120,7 +1022,7 @@ mod tests {
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = promote_vec::<i8, i16>(
+			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1145,49 +1047,47 @@ mod tests {
 			}
 		}
 
-		impl Promote for &TestCtx {
+		impl Convert for &TestCtx {
 			/// Can only used with i8
-			fn promote<'a, From, To>(
+			fn convert<From, To>(
 				&self,
 				val: From,
-				_fragment: impl LazyFragment<'a>,
+				_fragment: impl reifydb_type::IntoFragment<'static>,
 			) -> crate::Result<Option<To>>
 			where
-				From: SafePromote<To>,
+				From: SafeConvert<To> + GetType,
 				To: GetType,
 			{
-				// Only simulate promotion failure for i8 == 42
-				let raw: i8 = unsafe {
-					std::mem::transmute_copy(&val)
-				};
-				if raw == 42 {
-					return Ok(None);
+				// Only simulate conversion failure for i8 == 42
+				// or i16 == 42
+				if std::mem::size_of::<From>() == 1 {
+					let raw: i8 = unsafe {
+						std::mem::transmute_copy(&val)
+					};
+					if raw == 42 {
+						return Ok(None);
+					}
+				} else if std::mem::size_of::<From>() == 2 {
+					let raw: i16 = unsafe {
+						std::mem::transmute_copy(&val)
+					};
+					if raw == 42 {
+						return Ok(None);
+					}
 				}
-				Ok(Some(val.checked_promote().unwrap()))
+				Ok(Some(val.checked_convert().unwrap()))
 			}
 		}
-	}
-
-	mod demote {
-		use reifydb_core::{
-			BitVec, interface::Demote,
-			value::container::NumberContainer,
-		};
-		use reifydb_type::{
-			Fragment, GetType, LazyFragment, SafeDemote, Type,
-		};
-
-		use crate::evaluate::cast::number::demote_vec;
 
 		#[test]
-		fn test_ok() {
+		fn test_demote_ok() {
 			let data = [1i16, 2i16];
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
+			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1203,14 +1103,14 @@ mod tests {
 		}
 
 		#[test]
-		fn test_none_maps_to_undefined() {
+		fn test_demote_none_maps_to_undefined() {
 			let data = [42i16];
 			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
+			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1223,14 +1123,14 @@ mod tests {
 		}
 
 		#[test]
-		fn test_invalid_bitmaps_are_undefined() {
+		fn test_demote_invalid_bitmaps_are_undefined() {
 			let data = [1i16];
 			let bitvec = BitVec::repeat(1, false);
 			let ctx = TestCtx::new();
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
+			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1243,7 +1143,7 @@ mod tests {
 		}
 
 		#[test]
-		fn test_mixed_bitvec_and_demote_failure() {
+		fn test_demote_mixed_bitvec_and_failure() {
 			let data = [1i16, 42i16, 3i16, 4i16];
 			let bitvec =
 				BitVec::from_slice(&[true, true, false, true]);
@@ -1251,7 +1151,7 @@ mod tests {
 
 			let container =
 				NumberContainer::new(data.to_vec(), bitvec);
-			let result = demote_vec::<i16, i8>(
+			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
 				|| Fragment::testing_empty(),
@@ -1266,36 +1166,6 @@ mod tests {
 			assert!(!result.is_defined(1));
 			assert!(!result.is_defined(2));
 			assert!(result.is_defined(3));
-		}
-
-		struct TestCtx;
-
-		impl TestCtx {
-			fn new() -> Self {
-				Self
-			}
-		}
-
-		impl Demote for &TestCtx {
-			/// Can only be used with i16 → i8
-			fn demote<'a, From, To>(
-				&self,
-				val: From,
-				_fragment: impl LazyFragment<'a>,
-			) -> crate::Result<Option<To>>
-			where
-				From: SafeDemote<To>,
-				To: GetType,
-			{
-				// Only simulate promotion failure for i16 == 42
-				let raw: i16 = unsafe {
-					std::mem::transmute_copy(&val)
-				};
-				if raw == 42 {
-					return Ok(None);
-				}
-				Ok(Some(val.checked_demote().unwrap()))
-			}
 		}
 	}
 }
