@@ -252,6 +252,16 @@ impl From<BigDecimalInner> for Decimal {
 	}
 }
 
+impl Default for Decimal {
+	fn default() -> Self {
+		Self {
+			inner: BigDecimalInner::from(0),
+			precision: Precision::new(38), // Default precision
+			scale: Scale::new(0),          // Default scale
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

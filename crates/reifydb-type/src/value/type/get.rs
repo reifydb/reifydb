@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7};
+use crate::{
+	Date, DateTime, Decimal, IdentityId, Interval, Time, Type, Uuid4,
+	Uuid7, VarInt, VarUint,
+};
 
 pub trait GetType {
 	fn get_type() -> Type;
@@ -130,5 +133,26 @@ impl GetType for IdentityId {
 impl GetType for Uuid7 {
 	fn get_type() -> Type {
 		Type::Uuid7
+	}
+}
+
+impl GetType for VarInt {
+	fn get_type() -> Type {
+		Type::VarInt
+	}
+}
+
+impl GetType for VarUint {
+	fn get_type() -> Type {
+		Type::VarUint
+	}
+}
+
+impl GetType for Decimal {
+	fn get_type() -> Type {
+		Type::Decimal {
+			precision: crate::value::decimal::Precision::new(38),
+			scale: crate::value::decimal::Scale::new(0),
+		}
 	}
 }

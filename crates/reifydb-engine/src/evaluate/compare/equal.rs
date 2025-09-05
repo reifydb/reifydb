@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::fmt::Debug;
-
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::EqExpression},
 	return_error,
@@ -1290,8 +1288,8 @@ fn compare_number<L, R>(
 	fragment: Fragment<'_>,
 ) -> Column
 where
-	L: Promote<R> + IsNumber + Clone + Debug + Default,
-	R: IsNumber + Copy + Clone + Debug + Default,
+	L: Promote<R> + IsNumber + Copy,
+	R: IsNumber + Copy,
 	<L as Promote<R>>::Output: PartialOrd,
 {
 	debug_assert_eq!(l.len(), r.len());
@@ -1318,7 +1316,7 @@ fn compare_temporal<T>(
 	fragment: Fragment<'_>,
 ) -> Column
 where
-	T: IsTemporal + Clone + Debug + Default,
+	T: IsTemporal + Copy,
 {
 	debug_assert_eq!(l.len(), r.len());
 

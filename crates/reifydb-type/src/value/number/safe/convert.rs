@@ -273,6 +273,592 @@ impl_safe_convert_float_to_signed!(f64 => i8, i16, i32, i64, i128);
 impl_safe_convert_float_to_unsigned!(f32 => u8, u16, u32, u64, u128);
 impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 
+use num_bigint::{BigInt, ToBigInt};
+use num_traits::{Signed, ToPrimitive};
+
+use crate::{
+	Decimal, VarInt, VarUint,
+	value::decimal::{Precision, Scale},
+};
+
+macro_rules! impl_safe_convert_varint_to_signed {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for VarInt {
+                fn checked_convert(self) -> Option<$dst> {
+                    <$dst>::try_from(&self.0).ok()
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Ok(val) = <$dst>::try_from(&self.0) {
+                        val
+                    } else if self.0 < BigInt::from(0) {
+                        <$dst>::MIN
+                    } else {
+                        <$dst>::MAX
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if let Ok(val) = <$dst>::try_from(&self.0) {
+                        val
+                    } else {
+                        self.saturating_convert()
+                    }
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_varint_to_unsigned {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for VarInt {
+                fn checked_convert(self) -> Option<$dst> {
+                    if self.0 >= BigInt::from(0) {
+                        <$dst>::try_from(&self.0).ok()
+                    } else {
+                        None
+                    }
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if self.0 < BigInt::from(0) {
+                        0
+                    } else if let Ok(val) = <$dst>::try_from(&self.0) {
+                        val
+                    } else {
+                        <$dst>::MAX
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if self.0 < BigInt::from(0) {
+                        0
+                    } else if let Ok(val) = <$dst>::try_from(&self.0) {
+                        val
+                    } else {
+                        self.saturating_convert()
+                    }
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_varint_to_float {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for VarInt {
+                fn checked_convert(self) -> Option<$dst> {
+                    self.0.to_f64().and_then(|f| {
+                        if f.is_finite() {
+                            Some(f as $dst)
+                        } else {
+                            None
+                        }
+                    })
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Some(f) = self.0.to_f64() {
+                        if f.is_finite() {
+                            f as $dst
+                        } else if f.is_sign_negative() {
+                            <$dst>::MIN
+                        } else {
+                            <$dst>::MAX
+                        }
+                    } else if self.0 < BigInt::from(0) {
+                        <$dst>::MIN
+                    } else {
+                        <$dst>::MAX
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    self.saturating_convert()
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_varuint_to_signed {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for VarUint {
+                fn checked_convert(self) -> Option<$dst> {
+                    <$dst>::try_from(&self.0).ok()
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Ok(val) = <$dst>::try_from(&self.0) {
+                        val
+                    } else {
+                        <$dst>::MAX
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if let Ok(val) = u64::try_from(&self.0) {
+                        val as $dst
+                    } else {
+                        self.saturating_convert()
+                    }
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_varuint_to_unsigned {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for VarUint {
+                fn checked_convert(self) -> Option<$dst> {
+                    <$dst>::try_from(&self.0).ok()
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Ok(val) = <$dst>::try_from(&self.0) {
+                        val
+                    } else {
+                        <$dst>::MAX
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if let Ok(val) = u64::try_from(&self.0) {
+                        val as $dst
+                    } else {
+                        self.saturating_convert()
+                    }
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_varuint_to_float {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for VarUint {
+                fn checked_convert(self) -> Option<$dst> {
+                    self.0.to_f64().and_then(|f| {
+                        if f.is_finite() {
+                            Some(f as $dst)
+                        } else {
+                            None
+                        }
+                    })
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Some(f) = self.0.to_f64() {
+                        if f.is_finite() {
+                            f as $dst
+                        } else {
+                            <$dst>::MAX
+                        }
+                    } else {
+                        <$dst>::MAX
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    self.saturating_convert()
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_decimal_to_int {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for Decimal {
+                fn checked_convert(self) -> Option<$dst> {
+                    if let Some(int_part) = self.inner().to_bigint() {
+                        <$dst>::try_from(int_part).ok()
+                    } else {
+                        None
+                    }
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Some(int_part) = self.inner().to_bigint() {
+                        if let Ok(val) = <$dst>::try_from(&int_part) {
+                            val
+                        } else if int_part < BigInt::from(0) {
+                            <$dst>::MIN
+                        } else {
+                            <$dst>::MAX
+                        }
+                    } else {
+                        0
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    if let Some(int_part) = self.inner().to_bigint() {
+                        if let Ok(val) = <$dst>::try_from(&int_part) {
+                            val
+                        } else {
+                            self.saturating_convert()
+                        }
+                    } else {
+                        0
+                    }
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_decimal_to_float {
+    ($($dst:ty),*) => {
+        $(
+            impl SafeConvert<$dst> for Decimal {
+                fn checked_convert(self) -> Option<$dst> {
+                    self.inner().to_f64().and_then(|f| {
+                        if f.is_finite() {
+                            Some(f as $dst)
+                        } else {
+                            None
+                        }
+                    })
+                }
+
+                fn saturating_convert(self) -> $dst {
+                    if let Some(f) = self.inner().to_f64() {
+                        if f.is_finite() {
+                            f as $dst
+                        } else if f.is_sign_negative() {
+                            <$dst>::MIN
+                        } else {
+                            <$dst>::MAX
+                        }
+                    } else {
+                        0.0
+                    }
+                }
+
+                fn wrapping_convert(self) -> $dst {
+                    self.saturating_convert()
+                }
+            }
+        )*
+    };
+}
+
+// Primitive to VarInt/VarUint conversions
+macro_rules! impl_safe_convert_to_varint {
+    ($($from:ty),*) => {
+        $(
+            impl SafeConvert<VarInt> for $from {
+                fn checked_convert(self) -> Option<VarInt> {
+                    Some(VarInt(BigInt::from(self)))
+                }
+
+                fn saturating_convert(self) -> VarInt {
+                    VarInt(BigInt::from(self))
+                }
+
+                fn wrapping_convert(self) -> VarInt {
+                    VarInt(BigInt::from(self))
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_signed_to_varuint {
+    ($($from:ty),*) => {
+        $(
+            impl SafeConvert<VarUint> for $from {
+                fn checked_convert(self) -> Option<VarUint> {
+                    if self >= 0 {
+                        Some(VarUint(BigInt::from(self)))
+                    } else {
+                        None
+                    }
+                }
+
+                fn saturating_convert(self) -> VarUint {
+                    if self >= 0 {
+                        VarUint(BigInt::from(self))
+                    } else {
+                        VarUint::zero()
+                    }
+                }
+
+                fn wrapping_convert(self) -> VarUint {
+                    VarUint(BigInt::from(self.wrapping_abs() as u64))
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_unsigned_to_varuint {
+    ($($from:ty),*) => {
+        $(
+            impl SafeConvert<VarUint> for $from {
+                fn checked_convert(self) -> Option<VarUint> {
+                    Some(VarUint(BigInt::from(self)))
+                }
+
+                fn saturating_convert(self) -> VarUint {
+                    VarUint(BigInt::from(self))
+                }
+
+                fn wrapping_convert(self) -> VarUint {
+                    VarUint(BigInt::from(self))
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_float_to_varint {
+    ($($from:ty),*) => {
+        $(
+            impl SafeConvert<VarInt> for $from {
+                fn checked_convert(self) -> Option<VarInt> {
+                    if self.is_finite() {
+                        let truncated = self.trunc();
+                        // Use ToBigInt trait for efficient conversion
+                        truncated.to_bigint().map(VarInt)
+                    } else {
+                        None
+                    }
+                }
+
+                fn saturating_convert(self) -> VarInt {
+                    if self.is_nan() {
+                        VarInt::zero()
+                    } else if self.is_infinite() {
+                        if self.is_sign_positive() {
+                            VarInt(BigInt::from(i64::MAX))
+                        } else {
+                            VarInt(BigInt::from(i64::MIN))
+                        }
+                    } else {
+                        let truncated = self.trunc() as i64;
+                        VarInt(BigInt::from(truncated))
+                    }
+                }
+
+                fn wrapping_convert(self) -> VarInt {
+                    if self.is_finite() {
+                        VarInt(BigInt::from(self.trunc() as i64))
+                    } else {
+                        VarInt::zero()
+                    }
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_safe_convert_float_to_varuint {
+    ($($from:ty),*) => {
+        $(
+            impl SafeConvert<VarUint> for $from {
+                fn checked_convert(self) -> Option<VarUint> {
+                    if self.is_finite() && self >= 0.0 {
+                        let truncated = self.trunc();
+                        // Use ToBigInt trait for efficient conversion
+                        truncated.to_bigint().and_then(|big_int| {
+                            if big_int >= BigInt::from(0) {
+                                Some(VarUint(big_int))
+                            } else {
+                                None
+                            }
+                        })
+                    } else {
+                        None
+                    }
+                }
+
+                fn saturating_convert(self) -> VarUint {
+                    if self.is_nan() || self < 0.0 {
+                        VarUint::zero()
+                    } else if self.is_infinite() {
+                        VarUint(BigInt::from(u64::MAX))
+                    } else {
+                        let truncated = self.trunc() as u64;
+                        VarUint(BigInt::from(truncated))
+                    }
+                }
+
+                fn wrapping_convert(self) -> VarUint {
+                    if self.is_finite() {
+                        VarUint(BigInt::from((self.trunc() as i64).wrapping_abs() as u64))
+                    } else {
+                        VarUint::zero()
+                    }
+                }
+            }
+        )*
+    };
+}
+
+// Cross-conversions between VarInt, VarUint, and Decimal
+impl SafeConvert<VarUint> for VarInt {
+	fn checked_convert(self) -> Option<VarUint> {
+		if self.0 >= BigInt::from(0) {
+			Some(VarUint(self.0))
+		} else {
+			None
+		}
+	}
+
+	fn saturating_convert(self) -> VarUint {
+		if self.0 >= BigInt::from(0) {
+			VarUint(self.0)
+		} else {
+			VarUint::zero()
+		}
+	}
+
+	fn wrapping_convert(self) -> VarUint {
+		VarUint(self.0.abs())
+	}
+}
+
+impl SafeConvert<VarInt> for VarUint {
+	fn checked_convert(self) -> Option<VarInt> {
+		Some(VarInt(self.0))
+	}
+
+	fn saturating_convert(self) -> VarInt {
+		VarInt(self.0)
+	}
+
+	fn wrapping_convert(self) -> VarInt {
+		VarInt(self.0)
+	}
+}
+
+impl SafeConvert<Decimal> for VarInt {
+	fn checked_convert(self) -> Option<Decimal> {
+		use bigdecimal::BigDecimal as BigDecimalInner;
+		let big_decimal = BigDecimalInner::from(self.0);
+		Decimal::new(big_decimal, Precision::new(38), Scale::new(0))
+			.ok()
+	}
+
+	fn saturating_convert(self) -> Decimal {
+		use bigdecimal::BigDecimal as BigDecimalInner;
+		let big_decimal = BigDecimalInner::from(self.0);
+		Decimal::new(big_decimal, Precision::new(38), Scale::new(0))
+			.unwrap_or_else(|_| {
+				Decimal::from_i64(0, 38, 0).unwrap()
+			})
+	}
+
+	fn wrapping_convert(self) -> Decimal {
+		self.saturating_convert()
+	}
+}
+
+impl SafeConvert<Decimal> for VarUint {
+	fn checked_convert(self) -> Option<Decimal> {
+		use bigdecimal::BigDecimal as BigDecimalInner;
+		let big_decimal = BigDecimalInner::from(self.0);
+		Decimal::new(big_decimal, Precision::new(38), Scale::new(0))
+			.ok()
+	}
+
+	fn saturating_convert(self) -> Decimal {
+		use bigdecimal::BigDecimal as BigDecimalInner;
+		let big_decimal = BigDecimalInner::from(self.0);
+		Decimal::new(big_decimal, Precision::new(38), Scale::new(0))
+			.unwrap_or_else(|_| {
+				Decimal::from_i64(0, 38, 0).unwrap()
+			})
+	}
+
+	fn wrapping_convert(self) -> Decimal {
+		self.saturating_convert()
+	}
+}
+
+impl SafeConvert<VarInt> for Decimal {
+	fn checked_convert(self) -> Option<VarInt> {
+		if let Some(big_int) = self.inner().to_bigint() {
+			Some(VarInt(big_int))
+		} else {
+			None
+		}
+	}
+
+	fn saturating_convert(self) -> VarInt {
+		self.checked_convert().unwrap_or(VarInt::zero())
+	}
+
+	fn wrapping_convert(self) -> VarInt {
+		self.saturating_convert()
+	}
+}
+
+impl SafeConvert<VarUint> for Decimal {
+	fn checked_convert(self) -> Option<VarUint> {
+		if let Some(big_int) = self.inner().to_bigint() {
+			if big_int >= BigInt::from(0) {
+				Some(VarUint(big_int))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
+	fn saturating_convert(self) -> VarUint {
+		if let Some(big_int) = self.inner().to_bigint() {
+			if big_int >= BigInt::from(0) {
+				VarUint(big_int)
+			} else {
+				VarUint::zero()
+			}
+		} else {
+			VarUint::zero()
+		}
+	}
+
+	fn wrapping_convert(self) -> VarUint {
+		if let Some(big_int) = self.inner().to_bigint() {
+			VarUint(big_int.abs())
+		} else {
+			VarUint::zero()
+		}
+	}
+}
+
+// Apply all the macro implementations
+impl_safe_convert_varint_to_signed!(i8, i16, i32, i64, i128);
+impl_safe_convert_varint_to_unsigned!(u8, u16, u32, u64, u128);
+impl_safe_convert_varint_to_float!(f32, f64);
+
+impl_safe_convert_varuint_to_signed!(i8, i16, i32, i64, i128);
+impl_safe_convert_varuint_to_unsigned!(u8, u16, u32, u64, u128);
+impl_safe_convert_varuint_to_float!(f32, f64);
+
+impl_safe_convert_decimal_to_int!(
+	i8, i16, i32, i64, i128, u8, u16, u32, u64, u128
+);
+impl_safe_convert_decimal_to_float!(f32, f64);
+
+impl_safe_convert_to_varint!(i8, i16, i32, i64, i128);
+impl_safe_convert_signed_to_varuint!(i8, i16, i32, i64, i128);
+impl_safe_convert_unsigned_to_varuint!(u8, u16, u32, u64, u128);
+impl_safe_convert_float_to_varint!(f32, f64);
+impl_safe_convert_float_to_varuint!(f32, f64);
+
 #[cfg(test)]
 mod tests {
 	mod i8_to_u8 {
@@ -3611,6 +4197,1244 @@ mod tests {
 			let x: f64 = 42.0;
 			let y: u128 = x.wrapping_convert();
 			assert_eq!(y, 42u128);
+		}
+	}
+
+	mod i32_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x: i32 = 42;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i32 = -42;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(-42))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: i32 = i32::MAX;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt(BigInt::from(i32::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: i32 = -1;
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y, VarInt(BigInt::from(-1)));
+		}
+	}
+
+	mod f64_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: f64 = 42.0;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_truncated() {
+			let x: f64 = 42.7;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: f64 = -42.5;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(-42))));
+		}
+
+		#[test]
+		fn test_checked_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_checked_convert_infinity() {
+			let x: f64 = f64::INFINITY;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt::zero());
+		}
+	}
+
+	mod varint_to_i32 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(42));
+			let y: Option<i32> = x.checked_convert();
+			assert_eq!(y, Some(42i32));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarInt(BigInt::from(i64::MAX));
+			let y: Option<i32> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarInt(BigInt::from(i64::MAX));
+			let y: i32 = x.saturating_convert();
+			assert_eq!(y, i32::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(42));
+			let y: i32 = x.wrapping_convert();
+			assert_eq!(y, 42i32);
+		}
+	}
+
+	mod u32_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u32 = 42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u32 = u32::MAX;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint(BigInt::from(u32::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u32 = 42;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(42)));
+		}
+	}
+
+	mod i32_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x: i32 = 42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i32 = -42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: i32 = -42;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+
+		#[test]
+		fn test_wrapping_convert_positive() {
+			let x: i32 = 42;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(42)));
+		}
+	}
+
+	mod f64_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: f64 = 42.0;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: f64 = -42.0;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_checked_convert_nan() {
+			let x: f64 = f64::NAN;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: f64 = -42.0;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+	}
+
+	mod varint_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x = VarInt(BigInt::from(42));
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x = VarInt(BigInt::from(-42));
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x = VarInt(BigInt::from(-42));
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(42));
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(42)));
+		}
+	}
+
+	mod varint_to_decimal {
+		use num_bigint::BigInt;
+
+		use crate::{Decimal, VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(42));
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			assert_eq!(y.unwrap().to_string(), "42");
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarInt(BigInt::from(-42));
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "-42");
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(12345));
+			let y: Decimal = x.wrapping_convert();
+			assert_eq!(y.to_string(), "12345");
+		}
+	}
+
+	mod varuint_to_decimal {
+		use num_bigint::BigInt;
+
+		use crate::{Decimal, VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(42));
+			let y: Option<Decimal> = x.checked_convert();
+			assert!(y.is_some());
+			assert_eq!(y.unwrap().to_string(), "42");
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarUint(BigInt::from(12345));
+			let y: Decimal = x.saturating_convert();
+			assert_eq!(y.to_string(), "12345");
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(67890));
+			let y: Decimal = x.wrapping_convert();
+			assert_eq!(y.to_string(), "67890");
+		}
+	}
+
+	mod decimal_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{Decimal, VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = Decimal::from_i64(42, 38, 0).unwrap();
+			let y: Option<VarInt> = x.checked_convert();
+			assert!(y.is_some());
+			assert_eq!(y.unwrap().0, BigInt::from(42));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = Decimal::from_i64(-42, 38, 0).unwrap();
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y.0, BigInt::from(-42));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = Decimal::from_i64(12345, 38, 0).unwrap();
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y.0, BigInt::from(12345));
+		}
+	}
+
+	mod i8_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: i8 = 42;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i8 = -42;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(-42))));
+		}
+
+		#[test]
+		fn test_saturating_convert_max() {
+			let x: i8 = i8::MAX;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt(BigInt::from(i8::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: i8 = i8::MIN;
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y, VarInt(BigInt::from(i8::MIN)));
+		}
+	}
+
+	mod i16_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: i16 = 1000;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(1000))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: i16 = i16::MAX;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt(BigInt::from(i16::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: i16 = -1000;
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y, VarInt(BigInt::from(-1000)));
+		}
+	}
+
+	mod i64_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: i64 = 1000000;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(1000000))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: i64 = i64::MAX;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt(BigInt::from(i64::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: i64 = i64::MIN;
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y, VarInt(BigInt::from(i64::MIN)));
+		}
+	}
+
+	mod i128_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: i128 = 1000000000;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(1000000000))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: i128 = i128::MAX;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt(BigInt::from(i128::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: i128 = i128::MIN;
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y, VarInt(BigInt::from(i128::MIN)));
+		}
+	}
+
+	mod f32_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: f32 = 42.0;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_truncated() {
+			let x: f32 = 42.7;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_nan() {
+			let x: f32 = f32::NAN;
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_infinity() {
+			let x: f32 = f32::INFINITY;
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(
+				y,
+				VarInt::from_i128(9223372036854775807i128)
+			);
+		}
+	}
+
+	mod varint_to_i8 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(42));
+			let y: Option<i8> = x.checked_convert();
+			assert_eq!(y, Some(42i8));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarInt(BigInt::from(1000));
+			let y: Option<i8> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarInt(BigInt::from(1000));
+			let y: i8 = x.saturating_convert();
+			assert_eq!(y, i8::MAX);
+		}
+
+		#[test]
+		fn test_saturating_convert_underflow() {
+			let x = VarInt(BigInt::from(-1000));
+			let y: i8 = x.saturating_convert();
+			assert_eq!(y, i8::MIN);
+		}
+	}
+
+	mod varint_to_i16 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(1000));
+			let y: Option<i16> = x.checked_convert();
+			assert_eq!(y, Some(1000i16));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarInt(BigInt::from(100000));
+			let y: Option<i16> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarInt(BigInt::from(100000));
+			let y: i16 = x.saturating_convert();
+			assert_eq!(y, i16::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(1000));
+			let y: i16 = x.wrapping_convert();
+			assert_eq!(y, 1000i16);
+		}
+	}
+
+	mod varint_to_i64 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(1000000));
+			let y: Option<i64> = x.checked_convert();
+			assert_eq!(y, Some(1000000i64));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarInt(BigInt::from(i128::MAX));
+			let y: Option<i64> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarInt(BigInt::from(i128::MAX));
+			let y: i64 = x.saturating_convert();
+			assert_eq!(y, i64::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(-1000000));
+			let y: i64 = x.wrapping_convert();
+			assert_eq!(y, -1000000i64);
+		}
+	}
+
+	mod varint_to_i128 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(i128::MAX));
+			let y: Option<i128> = x.checked_convert();
+			assert_eq!(y, Some(i128::MAX));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarInt(BigInt::from(i128::MAX) + 1);
+			let y: Option<i128> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarInt(BigInt::from(i128::MAX) + 1);
+			let y: i128 = x.saturating_convert();
+			assert_eq!(y, i128::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(i128::MIN));
+			let y: i128 = x.wrapping_convert();
+			assert_eq!(y, i128::MIN);
+		}
+	}
+
+	mod varint_to_f32 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(42));
+			let y: Option<f32> = x.checked_convert();
+			assert_eq!(y, Some(42.0f32));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarInt(BigInt::from(-1000));
+			let y: f32 = x.saturating_convert();
+			assert_eq!(y, -1000.0f32);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(123));
+			let y: f32 = x.wrapping_convert();
+			assert_eq!(y, 123.0f32);
+		}
+	}
+
+	mod varint_to_f64 {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarInt(BigInt::from(1000000));
+			let y: Option<f64> = x.checked_convert();
+			assert_eq!(y, Some(1000000.0f64));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarInt(BigInt::from(-1000000));
+			let y: f64 = x.saturating_convert();
+			assert_eq!(y, -1000000.0f64);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarInt(BigInt::from(12345));
+			let y: f64 = x.wrapping_convert();
+			assert_eq!(y, 12345.0f64);
+		}
+	}
+
+	// Additional unsigned primitive to VarUint conversions
+	mod u8_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u8 = 42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u8 = u8::MAX;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint(BigInt::from(u8::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u8 = 123;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(123)));
+		}
+	}
+
+	mod u16_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u16 = 1000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(1000))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u16 = u16::MAX;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint(BigInt::from(u16::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u16 = 12345;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(12345)));
+		}
+	}
+
+	mod u64_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u64 = 1000000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(1000000))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u64 = u64::MAX;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint(BigInt::from(u64::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u64 = 123456789;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(123456789)));
+		}
+	}
+
+	mod u128_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: u128 = 1000000000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(1000000000))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x: u128 = u128::MAX;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint(BigInt::from(u128::MAX)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x: u128 = 12345678901234567890;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(
+				y,
+				VarUint(BigInt::from(12345678901234567890u128))
+			);
+		}
+	}
+
+	mod i8_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x: i8 = 42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i8 = -42;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: i8 = -42;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+
+		#[test]
+		fn test_wrapping_convert_positive() {
+			let x: i8 = 42;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(42)));
+		}
+	}
+
+	mod i16_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x: i16 = 1000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(1000))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i16 = -1000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: i16 = -1000;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+
+		#[test]
+		fn test_wrapping_convert_positive() {
+			let x: i16 = 12345;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(12345)));
+		}
+	}
+
+	mod i64_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x: i64 = 1000000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(1000000))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i64 = -1000000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: i64 = -1000000;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+
+		#[test]
+		fn test_wrapping_convert_positive() {
+			let x: i64 = 123456789;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y, VarUint(BigInt::from(123456789)));
+		}
+	}
+
+	mod i128_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_positive() {
+			let x: i128 = 1000000000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(1000000000))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: i128 = -1000000000;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: i128 = -1000000000;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+
+		#[test]
+		fn test_wrapping_convert_positive() {
+			let x: i128 = 12345678901234567890;
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(
+				y,
+				VarUint(BigInt::from(12345678901234567890i128))
+			);
+		}
+	}
+
+	mod f32_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x: f32 = 42.0;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, Some(VarUint(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_checked_convert_negative() {
+			let x: f32 = -42.0;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_checked_convert_nan() {
+			let x: f32 = f32::NAN;
+			let y: Option<VarUint> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_negative() {
+			let x: f32 = -42.0;
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y, VarUint::zero());
+		}
+	}
+
+	// VarUint to primitive conversions
+	mod varuint_to_u8 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(42));
+			let y: Option<u8> = x.checked_convert();
+			assert_eq!(y, Some(42u8));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarUint(BigInt::from(1000));
+			let y: Option<u8> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarUint(BigInt::from(1000));
+			let y: u8 = x.saturating_convert();
+			assert_eq!(y, u8::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(123));
+			let y: u8 = x.wrapping_convert();
+			assert_eq!(y, 123u8);
+		}
+	}
+
+	mod varuint_to_u16 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(1000));
+			let y: Option<u16> = x.checked_convert();
+			assert_eq!(y, Some(1000u16));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarUint(BigInt::from(100000));
+			let y: Option<u16> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarUint(BigInt::from(100000));
+			let y: u16 = x.saturating_convert();
+			assert_eq!(y, u16::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(12345));
+			let y: u16 = x.wrapping_convert();
+			assert_eq!(y, 12345u16);
+		}
+	}
+
+	mod varuint_to_u64 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(1000000));
+			let y: Option<u64> = x.checked_convert();
+			assert_eq!(y, Some(1000000u64));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarUint(BigInt::from(u128::MAX));
+			let y: Option<u64> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarUint(BigInt::from(u128::MAX));
+			let y: u64 = x.saturating_convert();
+			assert_eq!(y, u64::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(123456789));
+			let y: u64 = x.wrapping_convert();
+			assert_eq!(y, 123456789u64);
+		}
+	}
+
+	mod varuint_to_u128 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(u128::MAX));
+			let y: Option<u128> = x.checked_convert();
+			assert_eq!(y, Some(u128::MAX));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarUint(BigInt::from(u128::MAX) + 1);
+			let y: Option<u128> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarUint(BigInt::from(u128::MAX) + 1);
+			let y: u128 = x.saturating_convert();
+			assert_eq!(y, u128::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(12345678901234567890u128));
+			let y: u128 = x.wrapping_convert();
+			assert_eq!(y, 12345678901234567890u128);
+		}
+	}
+
+	mod varuint_to_i8 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(42));
+			let y: Option<i8> = x.checked_convert();
+			assert_eq!(y, Some(42i8));
+		}
+
+		#[test]
+		fn test_checked_convert_overflow() {
+			let x = VarUint(BigInt::from(1000));
+			let y: Option<i8> = x.checked_convert();
+			assert_eq!(y, None);
+		}
+
+		#[test]
+		fn test_saturating_convert_overflow() {
+			let x = VarUint(BigInt::from(1000));
+			let y: i8 = x.saturating_convert();
+			assert_eq!(y, i8::MAX);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(100));
+			let y: i8 = x.wrapping_convert();
+			assert_eq!(y, 100i8);
+		}
+	}
+
+	mod varuint_to_f32 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(42));
+			let y: Option<f32> = x.checked_convert();
+			assert_eq!(y, Some(42.0f32));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarUint(BigInt::from(1000));
+			let y: f32 = x.saturating_convert();
+			assert_eq!(y, 1000.0f32);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(123));
+			let y: f32 = x.wrapping_convert();
+			assert_eq!(y, 123.0f32);
+		}
+	}
+
+	mod varuint_to_f64 {
+		use num_bigint::BigInt;
+
+		use crate::{VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(1000000));
+			let y: Option<f64> = x.checked_convert();
+			assert_eq!(y, Some(1000000.0f64));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarUint(BigInt::from(1000000));
+			let y: f64 = x.saturating_convert();
+			assert_eq!(y, 1000000.0f64);
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(12345));
+			let y: f64 = x.wrapping_convert();
+			assert_eq!(y, 12345.0f64);
+		}
+	}
+
+	// VarUint to VarInt conversion
+	mod varuint_to_varint {
+		use num_bigint::BigInt;
+
+		use crate::{VarInt, VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = VarUint(BigInt::from(42));
+			let y: Option<VarInt> = x.checked_convert();
+			assert_eq!(y, Some(VarInt(BigInt::from(42))));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = VarUint(BigInt::from(12345));
+			let y: VarInt = x.saturating_convert();
+			assert_eq!(y, VarInt(BigInt::from(12345)));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = VarUint(BigInt::from(67890));
+			let y: VarInt = x.wrapping_convert();
+			assert_eq!(y, VarInt(BigInt::from(67890)));
+		}
+	}
+
+	// Additional Decimal conversion tests
+	mod decimal_to_varuint {
+		use num_bigint::BigInt;
+
+		use crate::{Decimal, VarUint, value::number::SafeConvert};
+
+		#[test]
+		fn test_checked_convert_happy() {
+			let x = Decimal::from_i64(42, 38, 0).unwrap();
+			let y: Option<VarUint> = x.checked_convert();
+			assert!(y.is_some());
+			assert_eq!(y.unwrap().0, BigInt::from(42));
+		}
+
+		#[test]
+		fn test_saturating_convert() {
+			let x = Decimal::from_i64(12345, 38, 0).unwrap();
+			let y: VarUint = x.saturating_convert();
+			assert_eq!(y.0, BigInt::from(12345));
+		}
+
+		#[test]
+		fn test_wrapping_convert() {
+			let x = Decimal::from_i64(67890, 38, 0).unwrap();
+			let y: VarUint = x.wrapping_convert();
+			assert_eq!(y.0, BigInt::from(67890));
 		}
 	}
 }

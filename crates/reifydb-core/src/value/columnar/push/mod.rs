@@ -7,6 +7,7 @@ use reifydb_type::{Blob, Date, DateTime, Interval, Time};
 
 use crate::value::columnar::ColumnData;
 
+mod decimal;
 mod i128;
 mod i16;
 mod i32;
@@ -20,6 +21,8 @@ mod u8;
 mod undefined;
 mod uuid;
 mod value;
+mod varint;
+mod varuint;
 
 pub trait Push<T> {
 	fn push(&mut self, value: T);

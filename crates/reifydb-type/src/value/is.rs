@@ -4,19 +4,20 @@
 use std::fmt::{Debug, Display};
 
 use crate::{
-	Date, DateTime, Interval, Time, Uuid4, Uuid7, value::r#type::GetType,
+	Date, DateTime, Decimal, Interval, Time, Uuid4, Uuid7, VarInt, VarUint,
+	value::r#type::GetType,
 };
 
 pub trait IsNumber:
-	Display + Copy + Debug + PartialEq + PartialOrd + GetType
+	Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default
 {
 }
 pub trait IsTemporal:
-	Display + Copy + Debug + PartialEq + PartialOrd + GetType
+	Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default
 {
 }
 pub trait IsUuid:
-	Display + Copy + Debug + PartialEq + PartialOrd + GetType
+	Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default
 {
 }
 
@@ -61,6 +62,15 @@ impl IsUint for u64 {}
 
 impl IsNumber for u128 {}
 impl IsUint for u128 {}
+
+impl IsNumber for VarInt {}
+impl IsInt for VarInt {}
+
+impl IsNumber for VarUint {}
+impl IsUint for VarUint {}
+
+impl IsNumber for Decimal {}
+impl IsFloat for Decimal {}
 
 pub trait IsDate: IsTemporal {}
 pub trait IsTime: IsTemporal {}

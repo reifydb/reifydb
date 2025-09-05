@@ -126,7 +126,7 @@ where
 		T: 'static,
 	{
 		if index < self.len() && self.is_defined(index) {
-			let value = self.data[index];
+			let value = self.data[index].clone();
 
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
 				let f_val = unsafe {

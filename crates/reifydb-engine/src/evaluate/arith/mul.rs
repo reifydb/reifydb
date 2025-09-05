@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::fmt::Debug;
-
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::MulExpression},
 	value::{
@@ -852,8 +850,8 @@ fn mul_numeric<'a, L, R>(
 	fragment: impl LazyFragment<'a> + Copy,
 ) -> crate::Result<Column>
 where
-	L: GetType + Promote<R> + Copy + IsNumber + Clone + Debug + Default,
-	R: GetType + IsNumber + Copy + Clone + Debug + Default,
+	L: GetType + Promote<R> + Copy + IsNumber,
+	R: GetType + IsNumber + Copy,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeMul,
 	ColumnData: Push<<L as Promote<R>>::Output>,

@@ -110,7 +110,7 @@ impl Type {
 			self,
 			Type::Int1
 				| Type::Int2 | Type::Int4 | Type::Int8
-				| Type::Int16
+				| Type::Int16 | Type::VarInt
 		)
 	}
 
@@ -119,7 +119,7 @@ impl Type {
 			self,
 			Type::Uint1
 				| Type::Uint2 | Type::Uint4 | Type::Uint8
-				| Type::Uint16
+				| Type::Uint16 | Type::VarUint
 		)
 	}
 

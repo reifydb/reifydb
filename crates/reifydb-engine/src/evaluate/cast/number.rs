@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::fmt::Debug;
-
 use reifydb_core::{
 	interface::{Convert, Demote, Promote},
 	value::{columnar::ColumnData, container::NumberContainer},
 };
 use reifydb_type::{
-	BorrowedFragment, GetType, IsNumber, LazyFragment, SafeConvert,
-	SafeDemote, SafePromote, Type, diagnostic::cast, error, parse_float,
-	parse_int, parse_uint, return_error,
+	BorrowedFragment, Decimal, GetType, IsNumber, LazyFragment,
+	SafeConvert, SafeDemote, SafePromote, Type, VarInt, VarUint,
+	diagnostic::cast, error, parse_decimal, parse_float, parse_int,
+	parse_uint, parse_varint, parse_varuint, return_error,
 };
 
 pub fn to_number<'a>(
@@ -97,6 +96,36 @@ fn bool_to_number<'a>(
 				Type::Float8 => {
 					bool_to_number!(f64, 1.0f64, 0.0f64)
 				}
+				Type::VarInt => {
+					|out: &mut ColumnData, val: bool| {
+						out.push::<VarInt>(if val {
+							VarInt::from_i64(1)
+						} else {
+							VarInt::from_i64(0)
+						})
+					}
+				}
+				Type::VarUint => {
+					|out: &mut ColumnData, val: bool| {
+						out.push::<VarUint>(if val {
+							VarUint::from_u64(1)
+						} else {
+							VarUint::from_u64(0)
+						})
+					}
+				}
+				Type::Decimal {
+					..
+				} => |out: &mut ColumnData, val: bool| {
+					let decimal = if val {
+						Decimal::from_i64(1, 38, 0)
+							.unwrap()
+					} else {
+						Decimal::from_i64(0, 38, 0)
+							.unwrap()
+					};
+					out.push::<Decimal>(decimal)
+				},
 				_ => {
 					let source_type = data.get_type();
 					return_error!(cast::unsupported_cast(
@@ -149,6 +178,11 @@ fn float_to_integer<'a>(
 			Type::Uint4 => f32_to_u32_vec(container),
 			Type::Uint8 => f32_to_u64_vec(container),
 			Type::Uint16 => f32_to_u128_vec(container),
+			Type::VarInt => f32_to_varint_vec(container),
+			Type::VarUint => f32_to_varuint_vec(container),
+			Type::Decimal {
+				..
+			} => f32_to_decimal_vec(container, target),
 			_ => {
 				let source_type = data.get_type();
 				return_error!(cast::unsupported_cast(
@@ -169,6 +203,11 @@ fn float_to_integer<'a>(
 			Type::Uint4 => f64_to_u32_vec(container),
 			Type::Uint8 => f64_to_u64_vec(container),
 			Type::Uint16 => f64_to_u128_vec(container),
+			Type::VarInt => f64_to_varint_vec(container),
+			Type::VarUint => f64_to_varuint_vec(container),
+			Type::Decimal {
+				..
+			} => f64_to_decimal_vec(container, target),
 			_ => {
 				let source_type = data.get_type();
 				return_error!(cast::unsupported_cast(
@@ -345,6 +384,53 @@ fn text_to_integer<'a>(
 								base_fragment
 							)
 						}
+						Type::VarInt => {
+							let result = parse_varint(temp_fragment.clone()).map_err(
+								|mut e| {
+									e.0.with_fragment(base_fragment.clone());
+									error!(cast::invalid_number(
+										base_fragment.clone(),
+										Type::VarInt,
+										e.diagnostic(),
+									))
+								},
+							)?;
+							out.push::<VarInt>(
+								result,
+							);
+						}
+						Type::VarUint => {
+							let result = parse_varuint(temp_fragment.clone()).map_err(
+								|mut e| {
+									e.0.with_fragment(base_fragment.clone());
+									error!(cast::invalid_number(
+										base_fragment.clone(),
+										Type::VarUint,
+										e.diagnostic(),
+									))
+								},
+							)?;
+							out.push::<VarUint>(
+								result,
+							);
+						}
+						Type::Decimal {
+							..
+						} => {
+							let result = parse_decimal(temp_fragment.clone()).map_err(
+								|mut e| {
+									e.0.with_fragment(base_fragment.clone());
+									error!(cast::invalid_number(
+										base_fragment.clone(),
+										target,
+										e.diagnostic(),
+									))
+								},
+							)?;
+							out.push::<Decimal>(
+								result,
+							);
+						}
 						_ => {
 							let source_type =
 								data.get_type();
@@ -467,7 +553,7 @@ macro_rules! float_to_int_vec {
 			container: &NumberContainer<$float_ty>,
 		) -> crate::Result<ColumnData>
 		where
-			$float_ty: Clone + Debug + Default + IsNumber,
+			$float_ty: Copy + IsNumber,
 		{
 			let mut out = ColumnData::with_capacity(
 				$target_type,
@@ -600,6 +686,127 @@ float_to_int_vec!(
 	0.0,
 	u128::MAX as f64
 );
+
+// Float to VarInt conversion
+fn f32_to_varint_vec(
+	container: &NumberContainer<f32>,
+) -> crate::Result<ColumnData> {
+	let mut out = ColumnData::with_capacity(Type::VarInt, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx];
+			let truncated = val.trunc();
+			let varint = VarInt::from_i64(truncated as i64);
+			out.push::<VarInt>(varint);
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
+
+fn f64_to_varint_vec(
+	container: &NumberContainer<f64>,
+) -> crate::Result<ColumnData> {
+	let mut out = ColumnData::with_capacity(Type::VarInt, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx];
+			let truncated = val.trunc();
+			let varint = VarInt::from_i64(truncated as i64);
+			out.push::<VarInt>(varint);
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
+
+// Float to VarUint conversion
+fn f32_to_varuint_vec(
+	container: &NumberContainer<f32>,
+) -> crate::Result<ColumnData> {
+	let mut out = ColumnData::with_capacity(Type::VarUint, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx];
+			let truncated = val.trunc();
+			if truncated >= 0.0 {
+				let varuint =
+					VarUint::from_u64(truncated as u64);
+				out.push::<VarUint>(varuint);
+			} else {
+				out.push_undefined();
+			}
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
+
+fn f64_to_varuint_vec(
+	container: &NumberContainer<f64>,
+) -> crate::Result<ColumnData> {
+	let mut out = ColumnData::with_capacity(Type::VarUint, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx];
+			let truncated = val.trunc();
+			if truncated >= 0.0 {
+				let varuint =
+					VarUint::from_u64(truncated as u64);
+				out.push::<VarUint>(varuint);
+			} else {
+				out.push_undefined();
+			}
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
+
+// Float to Decimal conversion
+fn f32_to_decimal_vec(
+	container: &NumberContainer<f32>,
+	target: Type,
+) -> crate::Result<ColumnData> {
+	let mut out = ColumnData::with_capacity(target, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx];
+			// Convert float to decimal with default precision/scale
+			let decimal =
+				Decimal::from_i64(val.trunc() as i64, 38, 0)
+					.unwrap();
+			out.push::<Decimal>(decimal);
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
+
+fn f64_to_decimal_vec(
+	container: &NumberContainer<f64>,
+	target: Type,
+) -> crate::Result<ColumnData> {
+	let mut out = ColumnData::with_capacity(target, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx];
+			// Convert float to decimal with default precision/scale
+			let decimal =
+				Decimal::from_i64(val.trunc() as i64, 38, 0)
+					.unwrap();
+			out.push::<Decimal>(decimal);
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
 
 fn number_to_number<'a>(
 	data: &ColumnData,
@@ -745,7 +952,7 @@ pub(crate) fn demote_vec<'a, From, To>(
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
 where
-	From: Copy + SafeDemote<To> + Clone + Debug + Default + IsNumber,
+	From: Copy + SafeDemote<To> + IsNumber + Default,
 	To: GetType,
 {
 	let mut out = ColumnData::with_capacity(target_kind, container.len());
@@ -771,7 +978,7 @@ pub(crate) fn promote_vec<'a, From, To>(
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
 where
-	From: Copy + SafePromote<To> + Clone + Debug + Default + IsNumber,
+	From: Copy + SafePromote<To> + IsNumber + Default,
 	To: GetType,
 {
 	let mut out = ColumnData::with_capacity(target_kind, container.len());
@@ -797,13 +1004,7 @@ pub(crate) fn convert_vec<'a, From, To>(
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
 where
-	From: Copy
-		+ SafeConvert<To>
-		+ GetType
-		+ Clone
-		+ Debug
-		+ Default
-		+ IsNumber,
+	From: Copy + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
 {
 	let mut out = ColumnData::with_capacity(target_kind, container.len());

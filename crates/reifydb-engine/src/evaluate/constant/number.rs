@@ -53,6 +53,13 @@ impl NumberParser {
 			Type::Uint16 => {
 				Self::parse_uint16(fragment, target, row_count)
 			}
+			Type::VarInt => Self::parse_varint(fragment, row_count),
+			Type::VarUint => {
+				Self::parse_varuint(fragment, row_count)
+			}
+			Type::Decimal {
+				..
+			} => Self::parse_decimal(fragment, row_count),
 			_ => return_error!(cast::unsupported_cast(
 				fragment,
 				Type::Float8,
@@ -451,6 +458,54 @@ impl NumberParser {
 				ty,
 				number::invalid_number_format(&fragment, ty),
 			))
+		}
+	}
+
+	fn parse_varint<'a>(
+		fragment: impl IntoFragment<'a>,
+		row_count: usize,
+	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
+		match reifydb_type::parse_varint(&fragment) {
+			Ok(v) => Ok(ColumnData::varint(vec![v; row_count])),
+			Err(err) => return_error!(cast::invalid_number(
+				fragment,
+				Type::VarInt,
+				err.diagnostic()
+			)),
+		}
+	}
+
+	fn parse_varuint<'a>(
+		fragment: impl IntoFragment<'a>,
+		row_count: usize,
+	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
+		match reifydb_type::parse_varuint(&fragment) {
+			Ok(v) => Ok(ColumnData::varuint(vec![v; row_count])),
+			Err(err) => return_error!(cast::invalid_number(
+				fragment,
+				Type::VarUint,
+				err.diagnostic()
+			)),
+		}
+	}
+
+	fn parse_decimal<'a>(
+		fragment: impl IntoFragment<'a>,
+		row_count: usize,
+	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
+		match reifydb_type::parse_decimal(&fragment) {
+			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
+			Err(err) => return_error!(cast::invalid_number(
+				fragment,
+				Type::Decimal {
+					precision: reifydb_type::value::decimal::Precision::new(38),
+					scale: reifydb_type::value::decimal::Scale::new(0),
+				},
+				err.diagnostic()
+			)),
 		}
 	}
 }

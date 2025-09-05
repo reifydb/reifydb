@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::fmt::{Debug, Display};
+use std::fmt::Display;
 
 use reifydb_core::{
 	interface::LazyFragment,
@@ -78,7 +78,7 @@ fn to_bool<'a, T>(
 	validate: impl Fn(T) -> Option<bool>,
 ) -> crate::Result<ColumnData>
 where
-	T: Copy + Display + IsNumber + Clone + Debug + Default,
+	T: Copy + Display + IsNumber + Default,
 {
 	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
 	for idx in 0..container.len() {

@@ -120,7 +120,7 @@ where
 		T: 'static,
 	{
 		if index < self.len() && self.is_defined(index) {
-			let value = self.data[index];
+			let value = self.data[index].clone();
 
 			if TypeId::of::<T>() == TypeId::of::<Uuid4>() {
 				let uuid_val = unsafe {
