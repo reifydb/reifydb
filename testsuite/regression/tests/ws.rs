@@ -16,7 +16,7 @@ use reifydb::{
 	memory, optimistic,
 	sub_server::ServerConfig,
 };
-use reifydb_client::{BlockingSession, Client};
+use reifydb_client::{Client, WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
@@ -27,8 +27,8 @@ where
 	C: CdcTransaction,
 {
 	instance: Option<Database<VT, UT, C>>,
-	client: Option<Client>,
-	session: Option<BlockingSession>,
+	client: Option<WsClient>,
+	session: Option<WsBlockingSession>,
 }
 
 impl<VT, UT, C> WsRunner<VT, UT, C>
@@ -45,7 +45,7 @@ where
 			cdc,
 			eventbus,
 		)
-		.with_config(ServerConfig::new().bind_addr("[::1]:0"))
+		.with_config(ServerConfig::new().bind_addr("::1:0"))
 		.build()
 		.unwrap();
 
@@ -114,10 +114,9 @@ where
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let ws_port = server.sub_server().unwrap().port().unwrap();
+		let port = server.sub_server().unwrap().port().unwrap();
 
-		let client =
-			Client::connect(&format!("ws://[::1]:{}", ws_port))?;
+		let client = Client::ws(&format!("ws://::1:{}", port))?;
 
 		let session = client
 			.blocking_session(Some("mysecrettoken".to_string()))?;

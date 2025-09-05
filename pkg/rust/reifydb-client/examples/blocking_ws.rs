@@ -1,15 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use reifydb_client::http::HttpBlockingSession;
+use reifydb_client::Client;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	// Connect to ReifyDB HTTP server
-	let mut session = HttpBlockingSession::new(
-		"127.0.0.1",
-		8090,
-		Some("mysecrettoken".to_string()),
-	)?;
+	// Connect to ReifyDB server - various ways to specify address:
+	// Using tuple (address, port):
+	let client = Client::ws(("127.0.0.1", 8090))?;
+
+	// Create a blocking session with authentication
+	let mut session =
+		client.blocking_session(Some("mysecrettoken".to_string()))?;
 
 	// Execute a command to create a table
 	let command_result = session.command(

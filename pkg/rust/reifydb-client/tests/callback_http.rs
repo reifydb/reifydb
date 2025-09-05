@@ -12,9 +12,8 @@ use std::{
 };
 
 use common::{
-	cleanup_client, cleanup_server, connect_client, parse_named_params,
-	parse_positional_params, parse_rql, start_server_and_get_port,
-	write_frames,
+	cleanup_server, parse_named_params, parse_positional_params, parse_rql,
+	start_server_and_get_port, write_frames,
 };
 use reifydb::{
 	Database,
@@ -29,14 +28,16 @@ use reifydb::{
 	memory, optimistic,
 };
 use reifydb_client::{
-	CallbackSession, Client,
+	HttpCallbackSession, HttpClient,
 	session::{CommandResult, QueryResult},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 use thread::sleep;
 
-use crate::common::create_server_instance;
+use crate::common::{
+	cleanup_http_client, connect_http, create_server_instance,
+};
 
 pub struct CallbackRunner<VT, UT, C>
 where
@@ -45,8 +46,8 @@ where
 	C: CdcTransaction,
 {
 	instance: Option<Database<VT, UT, C>>,
-	client: Option<Client>,
-	session: Option<CallbackSession>,
+	client: Option<HttpClient>,
+	session: Option<HttpCallbackSession>,
 	last_command_result: Arc<Mutex<Option<Result<CommandResult, String>>>>,
 	last_query_result: Arc<Mutex<Option<Result<QueryResult, String>>>>,
 }
@@ -413,9 +414,9 @@ where
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let ws_port = start_server_and_get_port(server)?;
+		let port = start_server_and_get_port(server)?;
 
-		let client = connect_client(ws_port)?;
+		let client = connect_http(("::1", port))?;
 		let session = client
 			.callback_session(Some("mysecrettoken".to_string()))?;
 
@@ -430,13 +431,13 @@ where
 			drop(session);
 		}
 
-		cleanup_client(self.client.take());
+		cleanup_http_client(self.client.take());
 		cleanup_server(self.instance.take());
 		Ok(())
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as callback => test_callback }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as callback_http => test_callback }
 
 fn test_callback(path: &Path) {
 	retry(3, || {

@@ -7,7 +7,7 @@ use reifydb_client::{ChannelResponse, Client};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// Connect to ReifyDB server
-	let client = Client::connect("127.0.0.1:8090")?;
+	let client = Client::ws(("127.0.0.1", 8090))?;
 
 	// Create a channel session with authentication
 	let (session, receiver) =

@@ -28,8 +28,20 @@ impl HttpBlockingSession {
 		port: u16,
 		token: Option<String>,
 	) -> Result<Self, Error> {
-		let client = HttpClient::new(host, port);
+		let client = HttpClient::new((host, port)).map_err(|e| {
+			Error(internal(format!(
+				"Failed to create client: {}",
+				e
+			)))
+		})?;
+		Self::from_client(client, token)
+	}
 
+	/// Create a new blocking HTTP session from an existing client
+	pub fn from_client(
+		client: HttpClient,
+		token: Option<String>,
+	) -> Result<Self, Error> {
 		// Test connection
 		if let Err(e) = client.test_connection() {
 			return Err(Error(internal(format!(
@@ -114,13 +126,7 @@ impl HttpBlockingSession {
 			params,
 		};
 
-		let response =
-			self.client.send_command(&request).map_err(|e| {
-				Error(internal(format!(
-					"Command failed: {}",
-					e
-				)))
-			})?;
+		let response = self.client.send_command(&request)?;
 
 		Ok(CommandResult {
 			frames: convert_execute_response(response),
@@ -138,10 +144,7 @@ impl HttpBlockingSession {
 			params,
 		};
 
-		let response =
-			self.client.send_query(&request).map_err(|e| {
-				Error(internal(format!("Query failed: {}", e)))
-			})?;
+		let response = self.client.send_query(&request)?;
 
 		Ok(QueryResult {
 			frames: convert_query_response(response),

@@ -60,7 +60,21 @@ impl HttpChannelSession {
 		port: u16,
 		token: Option<String>,
 	) -> Result<(Self, mpsc::Receiver<HttpResponseMessage>), Error> {
-		let client = Arc::new(HttpClient::new(host, port));
+		let client = HttpClient::new((host, port)).map_err(|e| {
+			Error(internal(format!(
+				"Failed to create client: {}",
+				e
+			)))
+		})?;
+		Self::from_client(client, token)
+	}
+
+	/// Create a new channel HTTP session from an existing client
+	pub fn from_client(
+		client: HttpClient,
+		token: Option<String>,
+	) -> Result<(Self, mpsc::Receiver<HttpResponseMessage>), Error> {
+		let client = Arc::new(client);
 
 		// Test connection
 		if let Err(e) = client.test_connection() {
@@ -154,10 +168,9 @@ impl HttpChannelSession {
 		// For HTTP, we'll just simulate authentication
 		// In a real implementation, this might send an auth request to
 		// /v1/auth
+		// Note: HTTP doesn't have persistent authentication like
+		// WebSocket, but we simulate it for API consistency
 		thread::spawn(move || {
-			// Simulate some async work
-			thread::sleep(Duration::from_millis(100));
-
 			let message = HttpResponseMessage {
 				request_id: id.clone(),
 				response: Ok(HttpChannelResponse::Auth {
@@ -200,7 +213,7 @@ impl HttpChannelSession {
 						frames: convert_execute_response(response),
 					},
 				}),
-				Err(e) => Err(Error(internal(format!("Command failed: {}", e)))),
+				Err(e) => Err(e),
 			};
 
 			let message = HttpResponseMessage {
@@ -243,7 +256,7 @@ impl HttpChannelSession {
 						frames: convert_query_response(response),
 					},
 				}),
-				Err(e) => Err(Error(internal(format!("Query failed: {}", e)))),
+				Err(e) => Err(e),
 			};
 
 			let message = HttpResponseMessage {

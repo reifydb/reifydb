@@ -4,8 +4,7 @@
 use reifydb_client::Client;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	// Connect to ReifyDB server
-	let client = Client::connect("127.0.0.1:8090")?;
+	let client = Client::http(("127.0.0.1", 8090))?;
 
 	// Create a blocking session with authentication
 	let mut session =

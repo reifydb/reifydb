@@ -32,7 +32,21 @@ impl HttpCallbackSession {
 		port: u16,
 		token: Option<String>,
 	) -> Result<Self, Error> {
-		let client = Arc::new(HttpClient::new(host, port));
+		let client = HttpClient::new((host, port)).map_err(|e| {
+			Error(internal(format!(
+				"Failed to create client: {}",
+				e
+			)))
+		})?;
+		Self::from_client(client, token)
+	}
+
+	/// Create a new callback HTTP session from an existing client
+	pub fn from_client(
+		client: HttpClient,
+		token: Option<String>,
+	) -> Result<Self, Error> {
+		let client = Arc::new(client);
 
 		// Test connection
 		if let Err(e) = client.test_connection() {
@@ -169,18 +183,14 @@ impl HttpCallbackSession {
 		let client = self.client.clone();
 
 		thread::spawn(move || {
-			let result = client
-				.send_command(&request)
-				.map_err(|e| {
-					Error(internal(format!(
-						"Command failed: {}",
-						e
-					)))
-				})
-				.map(|response| CommandResult {
-					frames: convert_execute_response(
-						response,
-					),
+			let result =
+				client.send_command(&request).map(|response| {
+					CommandResult {
+						frames:
+							convert_execute_response(
+								response,
+							),
+					}
 				});
 
 			callback(result);
@@ -207,18 +217,13 @@ impl HttpCallbackSession {
 		let client = self.client.clone();
 
 		thread::spawn(move || {
-			let result = client
-				.send_query(&request)
-				.map_err(|e| {
-					Error(internal(format!(
-						"Query failed: {}",
-						e
-					)))
-				})
-				.map(|response| QueryResult {
-					frames: convert_query_response(
-						response,
-					),
+			let result =
+				client.send_query(&request).map(|response| {
+					QueryResult {
+						frames: convert_query_response(
+							response,
+						),
+					}
 				});
 
 			callback(result);

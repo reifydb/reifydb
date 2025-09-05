@@ -4,7 +4,7 @@
 use std::{
 	collections::HashMap,
 	io::{Read, Write},
-	net::{SocketAddr, TcpStream},
+	net::{SocketAddr, TcpStream, ToSocketAddrs},
 	time::Duration,
 };
 
@@ -24,13 +24,24 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-	/// Create a new HTTP client for the given host and port
-	pub fn new(host: &str, port: u16) -> Self {
-		Self {
-			host: host.to_string(),
+	/// Create a new HTTP client from a socket address
+	pub fn new<A: ToSocketAddrs>(
+		addr: A,
+	) -> Result<Self, Box<dyn std::error::Error>> {
+		// Resolve the address to get the first valid SocketAddr
+		let socket_addr = addr
+			.to_socket_addrs()?
+			.next()
+			.ok_or("Failed to resolve address")?;
+
+		let host = socket_addr.ip().to_string();
+		let port = socket_addr.port();
+
+		Ok(Self {
+			host,
 			port,
 			timeout: Duration::from_secs(30),
-		}
+		})
 	}
 
 	/// Create HTTP client from URL (e.g., "http://localhost:8080")
@@ -49,7 +60,7 @@ impl HttpClient {
 			8080
 		};
 
-		Ok(Self::new(&host, port))
+		Self::new((host.as_str(), port))
 	}
 
 	/// Set timeout for requests
@@ -62,10 +73,26 @@ impl HttpClient {
 	pub fn send_command(
 		&self,
 		request: &CommandRequest,
-	) -> Result<CommandResponse, Box<dyn std::error::Error>> {
-		let json_body = serde_json::to_string(request)?;
+	) -> Result<CommandResponse, reifydb_type::Error> {
+		let json_body =
+			serde_json::to_string(request).map_err(|e| {
+				reifydb_type::Error(
+					reifydb_type::diagnostic::internal(
+						format!(
+							"Failed to serialize request: {}",
+							e
+						),
+					),
+				)
+			})?;
 		let response_body =
-			self.send_request("/v1/command", &json_body)?;
+			self.send_request("/v1/command", &json_body).map_err(
+				|e| {
+					reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Request failed: {}", e)
+			))
+				},
+			)?;
 
 		// Try to parse as CommandResponse first, then as error
 		match serde_json::from_str::<CommandResponse>(&response_body) {
@@ -75,16 +102,10 @@ impl HttpClient {
 				match serde_json::from_str::<ErrResponse>(
 					&response_body,
 				) {
-					Ok(err_response) => Err(format!(
-						"Server error: {:?}",
-						err_response.diagnostic
-					)
-					.into()),
-					Err(_) => Err(format!(
-						"Failed to parse response: {}",
-						response_body
-					)
-					.into()),
+					Ok(err_response) => Err(reifydb_type::Error(err_response.diagnostic)),
+					Err(_) => Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+						format!("Failed to parse response: {}", response_body)
+					))),
 				}
 			}
 		}
@@ -94,10 +115,26 @@ impl HttpClient {
 	pub fn send_query(
 		&self,
 		request: &QueryRequest,
-	) -> Result<QueryResponse, Box<dyn std::error::Error>> {
-		let json_body = serde_json::to_string(request)?;
+	) -> Result<QueryResponse, reifydb_type::Error> {
+		let json_body =
+			serde_json::to_string(request).map_err(|e| {
+				reifydb_type::Error(
+					reifydb_type::diagnostic::internal(
+						format!(
+							"Failed to serialize request: {}",
+							e
+						),
+					),
+				)
+			})?;
 		let response_body =
-			self.send_request("/v1/query", &json_body)?;
+			self.send_request("/v1/query", &json_body).map_err(
+				|e| {
+					reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Request failed: {}", e)
+			))
+				},
+			)?;
 
 		// Try to parse as QueryResponse first, then as error
 		match serde_json::from_str::<QueryResponse>(&response_body) {
@@ -107,16 +144,10 @@ impl HttpClient {
 				match serde_json::from_str::<ErrResponse>(
 					&response_body,
 				) {
-					Ok(err_response) => Err(format!(
-						"Server error: {:?}",
-						err_response.diagnostic
-					)
-					.into()),
-					Err(_) => Err(format!(
-						"Failed to parse response: {}",
-						response_body
-					)
-					.into()),
+					Ok(err_response) => Err(reifydb_type::Error(err_response.diagnostic)),
+					Err(_) => Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+						format!("Failed to parse response: {}", response_body)
+					))),
 				}
 			}
 		}
@@ -129,7 +160,12 @@ impl HttpClient {
 		body: &str,
 	) -> Result<String, Box<dyn std::error::Error>> {
 		// Parse socket address
-		let addr_str = format!("{}:{}", self.host, self.port);
+		// Check if host is an IPv6 address by looking for colons
+		let addr_str = if self.host.contains(':') {
+			format!("[{}]:{}", self.host, self.port)
+		} else {
+			format!("{}:{}", self.host, self.port)
+		};
 		let addr: SocketAddr = addr_str.parse()?;
 
 		// Create TCP connection
@@ -279,9 +315,62 @@ impl HttpClient {
 	pub fn test_connection(
 		&self,
 	) -> Result<(), Box<dyn std::error::Error>> {
-		let addr_str = format!("{}:{}", self.host, self.port);
+		// Check if host is an IPv6 address by looking for colons
+		let addr_str = if self.host.contains(':') {
+			format!("[{}]:{}", self.host, self.port)
+		} else {
+			format!("{}:{}", self.host, self.port)
+		};
 		let addr: SocketAddr = addr_str.parse()?;
 		let _stream = TcpStream::connect(addr)?;
+		Ok(())
+	}
+
+	/// Create a blocking session
+	pub fn blocking_session(
+		&self,
+		token: Option<String>,
+	) -> Result<crate::http::HttpBlockingSession, reifydb_type::Error> {
+		crate::http::HttpBlockingSession::from_client(
+			self.clone(),
+			token,
+		)
+	}
+
+	/// Create a callback session
+	pub fn callback_session(
+		&self,
+		token: Option<String>,
+	) -> Result<crate::http::HttpCallbackSession, reifydb_type::Error> {
+		crate::http::HttpCallbackSession::from_client(
+			self.clone(),
+			token,
+		)
+	}
+
+	/// Create a channel session
+	pub fn channel_session(
+		&self,
+		token: Option<String>,
+	) -> Result<
+		(
+			crate::http::HttpChannelSession,
+			std::sync::mpsc::Receiver<
+				crate::http::HttpResponseMessage,
+			>,
+		),
+		reifydb_type::Error,
+	> {
+		crate::http::HttpChannelSession::from_client(
+			self.clone(),
+			token,
+		)
+	}
+
+	/// Close the client (HTTP doesn't maintain persistent connections)
+	pub fn close(self) -> Result<(), Box<dyn std::error::Error>> {
+		// HTTP clients don't maintain persistent connections
+		// so no cleanup needed
 		Ok(())
 	}
 }

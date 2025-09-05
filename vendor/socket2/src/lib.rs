@@ -37,7 +37,7 @@
 //! let socket = Socket::new(Domain::IPV6, Type::STREAM, None)?;
 //!
 //! socket.set_only_v6(false)?;
-//! let address: SocketAddr = "[::1]:12345".parse().unwrap();
+//! let address: SocketAddr = "::1:12345".parse().unwrap();
 //! socket.bind(&address.into())?;
 //! socket.listen(128)?;
 //!

@@ -6,7 +6,7 @@ mod common;
 use std::{error::Error, path::Path, sync::mpsc::Receiver, time::Duration};
 
 use common::{
-	cleanup_client, cleanup_server, create_server_instance,
+	cleanup_server, cleanup_ws_client, create_server_instance,
 	parse_named_params, parse_positional_params, parse_rql, write_frames,
 };
 use reifydb::{
@@ -22,7 +22,7 @@ use reifydb::{
 	memory, optimistic,
 };
 use reifydb_client::{
-	ChannelResponse, ChannelSession, Client, session::ResponseMessage,
+	ChannelResponse, Client, ResponseMessage, WsChannelSession, WsClient,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
@@ -34,8 +34,8 @@ where
 	C: CdcTransaction,
 {
 	instance: Option<Database<VT, UT, C>>,
-	client: Option<Client>,
-	session: Option<ChannelSession>,
+	client: Option<WsClient>,
+	session: Option<WsChannelSession>,
 	receiver: Option<Receiver<ResponseMessage>>,
 }
 
@@ -280,9 +280,9 @@ where
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let ws_port = common::start_server_and_get_port(server)?;
+		let port = common::start_server_and_get_port(server)?;
 
-		let client = common::connect_client(ws_port)?;
+		let client = common::connect_ws(("::1", port))?;
 		let (session, receiver) = client
 			.channel_session(Some("mysecrettoken".to_string()))?;
 
@@ -330,13 +330,13 @@ where
 			drop(receiver);
 		}
 
-		cleanup_client(self.client.take());
+		cleanup_ws_client(self.client.take());
 		cleanup_server(self.instance.take());
 		Ok(())
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel => test_channel }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel_ws => test_channel }
 
 fn test_channel(path: &Path) {
 	retry(3, || {

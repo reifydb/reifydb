@@ -4,7 +4,10 @@ mod common;
 
 use std::{error::Error, path::Path};
 
-use common::{cleanup_client, cleanup_server, create_server_instance};
+use common::{
+	cleanup_http_client, cleanup_server, connect_http,
+	create_server_instance, start_server_and_get_port,
+};
 use reifydb::{
 	Database,
 	core::{
@@ -17,7 +20,7 @@ use reifydb::{
 	},
 	memory, optimistic,
 };
-use reifydb_client::{BlockingSession, Client};
+use reifydb_client::{HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
@@ -32,8 +35,8 @@ where
 	C: CdcTransaction,
 {
 	instance: Option<Database<VT, UT, C>>,
-	client: Option<Client>,
-	session: Option<BlockingSession>,
+	client: Option<HttpClient>,
+	session: Option<HttpBlockingSession>,
 }
 
 impl<VT, UT, C> BlockingRunner<VT, UT, C>
@@ -122,9 +125,9 @@ where
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let ws_port = common::start_server_and_get_port(server)?;
+		let port = start_server_and_get_port(server)?;
 
-		let client = common::connect_client(ws_port)?;
+		let client = connect_http(("::1", port))?;
 		let session = client
 			.blocking_session(Some("mysecrettoken".to_string()))?;
 
@@ -135,18 +138,17 @@ where
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		// Drop the session first
 		if let Some(session) = self.session.take() {
 			drop(session);
 		}
 
-		cleanup_client(self.client.take());
+		cleanup_http_client(self.client.take());
 		cleanup_server(self.instance.take());
 		Ok(())
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking => test_blocking }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking_http => test_blocking }
 
 fn test_blocking(path: &Path) {
 	retry(3, || {

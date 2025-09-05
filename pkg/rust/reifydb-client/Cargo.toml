@@ -8,15 +8,15 @@ repository.workspace = true
 
 [[example]]
 name = "blocking_session"
-path = "examples/blocking.rs"
+path = "examples/blocking_ws.rs"
 
 [[example]]
 name = "callback_session"
-path = "examples/callback.rs"
+path = "examples/callback_ws.rs"
 
 [[example]]
 name = "channel_session"
-path = "examples/channel.rs"
+path = "examples/channel_ws.rs"
 
 [features]
 default = []

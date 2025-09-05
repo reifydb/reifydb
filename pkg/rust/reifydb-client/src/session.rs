@@ -1,15 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-mod blocking;
-mod callback;
-mod channel;
-
-use std::time::Instant;
-
-pub use blocking::BlockingSession;
-pub use callback::CallbackSession;
-pub use channel::ChannelSession;
 use num_bigint;
 use reifydb_type::{
 	Blob, Date, DateTime, Decimal, Error, IdentityId, RowNumber, Time,
@@ -17,37 +8,9 @@ use reifydb_type::{
 };
 
 use crate::{
-	CommandResponse, OrderedF32, OrderedF64, QueryResponse, Response,
-	ResponsePayload, Type, Value,
+	OrderedF32, OrderedF64, Type, Value,
 	domain::{Frame, FrameColumn},
 };
-
-/// Channel response enum for different response types
-#[derive(Debug)]
-pub enum ChannelResponse {
-	/// Authentication response
-	Auth {
-		request_id: String,
-	},
-	/// Command execution response with frames
-	Command {
-		request_id: String,
-		result: CommandResult,
-	},
-	/// Query execution response with frames
-	Query {
-		request_id: String,
-		result: QueryResult,
-	},
-}
-
-/// Response message for channel sessions
-#[derive(Debug)]
-pub struct ResponseMessage {
-	pub request_id: String,
-	pub response: Result<ChannelResponse, Error>,
-	pub timestamp: Instant,
-}
 
 /// Result type for command operations
 #[derive(Debug)]
@@ -61,15 +24,17 @@ pub struct QueryResult {
 	pub frames: Vec<Frame>,
 }
 
-// Helper functions for parsing responses
-pub(crate) fn parse_command_response(
-	response: Response,
+// Helper functions for parsing responses - made public for ws module
+pub fn parse_command_response(
+	response: crate::Response,
 ) -> Result<CommandResult, Error> {
 	match response.payload {
-		ResponsePayload::Command(cmd_response) => Ok(CommandResult {
-			frames: convert_execute_response(cmd_response),
-		}),
-		ResponsePayload::Err(err) => {
+		crate::ResponsePayload::Command(cmd_response) => {
+			Ok(CommandResult {
+				frames: convert_execute_response(cmd_response),
+			})
+		}
+		crate::ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
 		}
 		other => {
@@ -79,17 +44,17 @@ pub(crate) fn parse_command_response(
 	}
 }
 
-pub(crate) fn parse_query_response(
-	response: Response,
+pub fn parse_query_response(
+	response: crate::Response,
 ) -> Result<QueryResult, Error> {
 	match response.payload {
-		ResponsePayload::Query(query_response) => {
+		crate::ResponsePayload::Query(query_response) => {
 			let frames = convert_query_response(query_response);
 			Ok(QueryResult {
 				frames,
 			})
 		}
-		ResponsePayload::Err(err) => {
+		crate::ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
 		}
 		other => {
@@ -99,7 +64,7 @@ pub(crate) fn parse_query_response(
 	}
 }
 
-pub(crate) fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
+pub fn convert_execute_response(payload: crate::CommandResponse) -> Vec<Frame> {
 	let mut result = Vec::new();
 
 	for frame in payload.frames {
@@ -123,7 +88,7 @@ pub(crate) fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
 	result
 }
 
-pub(crate) fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
+pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 	let mut result = Vec::new();
 
 	for frame in payload.frames {

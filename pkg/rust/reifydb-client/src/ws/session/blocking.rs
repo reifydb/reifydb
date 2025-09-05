@@ -8,17 +8,16 @@ use std::{
 
 use reifydb_type::Error;
 
-use super::{
-	CommandResult, QueryResult, parse_command_response,
-	parse_query_response,
-};
 use crate::{
 	AuthRequest, CommandRequest, Params, QueryRequest, Request,
 	RequestPayload,
-	client::{
-		ClientInner, InternalMessage, ResponseRoute,
-		generate_request_id,
+	message::{InternalMessage, ResponseRoute},
+	session::{
+		CommandResult, QueryResult, parse_command_response,
+		parse_query_response,
 	},
+	utils::generate_request_id,
+	ws::client::ClientInner,
 };
 
 /// A blocking session that waits for responses synchronously

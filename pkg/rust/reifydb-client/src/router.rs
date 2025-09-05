@@ -3,13 +3,11 @@
 
 use std::{collections::HashMap, time::Instant};
 
-use super::message::ResponseRoute;
 use crate::{
 	Response, ResponsePayload,
-	session::{
-		ChannelResponse, ResponseMessage, parse_command_response,
-		parse_query_response,
-	},
+	message::ResponseRoute,
+	session::{parse_command_response, parse_query_response},
+	ws::{ChannelResponse, ResponseMessage},
 };
 
 /// Routes responses to the appropriate session

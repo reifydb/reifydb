@@ -1,26 +1,28 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
+	net::SocketAddr,
 	sync::{Arc, Mutex, mpsc},
 	thread,
 	time::Duration,
 };
 
-use super::{
+use crate::{
 	message::InternalMessage,
 	router::{RequestRouter, route_error, route_response},
+	ws::WebSocketClient,
 };
-use crate::WebSocketClient;
 
-/// The background worker thread that handles all WebSocket communication
-pub(crate) fn worker_thread(
-	url: String,
+/// The background worker thread that handles all WebSocket communication using
+/// a SocketAddr
+pub(crate) fn worker_thread_with_addr(
+	addr: SocketAddr,
 	command_rx: mpsc::Receiver<InternalMessage>,
 	request_router: Arc<Mutex<RequestRouter>>,
 ) {
 	// Connect to WebSocket
-	let mut ws_client = match WebSocketClient::connect(&url) {
+	let mut ws_client = match WebSocketClient::connect(addr) {
 		Ok(client) => client,
 		Err(e) => {
 			eprintln!("Failed to connect to WebSocket: {}", e);
@@ -28,7 +30,7 @@ pub(crate) fn worker_thread(
 		}
 	};
 
-	println!("WebSocket worker thread started for {}", url);
+	println!("WebSocket worker thread started for {}", addr);
 
 	// Poll for commands and responses
 	loop {
@@ -90,7 +92,7 @@ pub(crate) fn worker_thread(
 						e
 					);
 					// Try to reconnect
-					match WebSocketClient::connect(&url) {
+					match WebSocketClient::connect(addr) {
 						Ok(new_client) => {
 							ws_client = new_client;
 							println!(
