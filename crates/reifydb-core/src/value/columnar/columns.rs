@@ -67,7 +67,7 @@ impl Columns {
 		for (idx, (name, value)) in rows.into_iter().enumerate() {
 			let data = match value {
 				Value::Undefined => ColumnData::undefined(1),
-				Value::Bool(v) => ColumnData::bool([v]),
+				Value::Boolean(v) => ColumnData::bool([v]),
 				Value::Float4(v) => {
 					ColumnData::float4([v.into()])
 				}
@@ -199,7 +199,9 @@ impl Columns {
 			.map(|col| {
 				let name = col.name.clone();
 				let data = match col.ty {
-					Type::Bool => ColumnData::bool(vec![]),
+					Type::Boolean => {
+						ColumnData::bool(vec![])
+					}
 					Type::Float4 => {
 						ColumnData::float4(vec![])
 					}
@@ -284,7 +286,9 @@ impl Columns {
 			.map(|col| {
 				let name = col.name.clone();
 				let data = match col.ty {
-					Type::Bool => ColumnData::bool(vec![]),
+					Type::Boolean => {
+						ColumnData::bool(vec![])
+					}
 					Type::Float4 => {
 						ColumnData::float4(vec![])
 					}
@@ -417,7 +421,7 @@ mod tests {
 		let time = Time::from_hms(9, 15, 30).unwrap();
 
 		let columns = Columns::single_row([
-			("bool_col", Value::Bool(true)),
+			("bool_col", Value::Boolean(true)),
 			("int_col", Value::Int4(42)),
 			("str_col", Value::Utf8("hello".to_string())),
 			("date_col", Value::Date(date.clone())),
@@ -431,7 +435,7 @@ mod tests {
 		// Check all values are correctly stored
 		assert_eq!(
 			columns.column("bool_col").unwrap().data().get_value(0),
-			Value::Bool(true)
+			Value::Boolean(true)
 		);
 		assert_eq!(
 			columns.column("int_col").unwrap().data().get_value(0),

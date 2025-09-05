@@ -137,7 +137,7 @@ mod tests {
 	use crate::row::EncodedRowLayout;
 
 	#[test]
-	fn test_decimal_compact_inline() {
+	fn test_compact_inline() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(5),
 			scale: Scale::new(2),
@@ -160,7 +160,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_compact_boundaries() {
+	fn test_compact_boundaries() {
 		// Test high precision decimal
 		let layout1 = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(38),
@@ -194,7 +194,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_extended_i128() {
+	fn test_extended_i128() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(30),
 			scale: Scale::new(9),
@@ -216,7 +216,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_dynamic_storage() {
+	fn test_dynamic_storage() {
 		// Use a smaller test that will still trigger dynamic storage
 		// due to large mantissa
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
@@ -243,7 +243,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_zero() {
+	fn test_zero() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(2),
 			scale: Scale::new(1),
@@ -259,7 +259,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_currency_values() {
+	fn test_currency_values() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(10),
 			scale: Scale::new(2),
@@ -288,7 +288,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_scientific_notation() {
+	fn test_scientific_notation() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(11),
 			scale: Scale::new(0),
@@ -303,7 +303,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_try_get() {
+	fn test_try_get() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(4),
 			scale: Scale::new(2),
@@ -323,7 +323,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_clone_on_write() {
+	fn test_clone_on_write() {
 		let layout = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(6),
 			scale: Scale::new(5),
@@ -341,9 +341,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_mixed_with_other_types() {
+	fn test_mixed_with_other_types() {
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::Decimal {
 				precision: Precision::new(4),
 				scale: Scale::new(2),
@@ -381,7 +381,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_decimal_negative_values() {
+	fn test_negative_values() {
 		// Small negative (compact inline) - needs scale 2
 		let layout1 = EncodedRowLayout::new(&[Type::Decimal {
 			precision: Precision::new(3),

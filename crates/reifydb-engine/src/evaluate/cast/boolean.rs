@@ -66,7 +66,7 @@ pub fn to_boolean<'a>(
 			return_error!(cast::unsupported_cast(
 				lazy_fragment.fragment(),
 				source_type,
-				Type::Bool
+				Type::Boolean
 			))
 		}
 	}
@@ -80,7 +80,7 @@ fn to_bool<'a, T>(
 where
 	T: Copy + Display + IsNumber + Default,
 {
-	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
+	let mut out = ColumnData::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			match validate(container[idx]) {
@@ -164,7 +164,7 @@ fn from_utf8<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	use reifydb_type::BorrowedFragment;
-	let mut out = ColumnData::with_capacity(Type::Bool, container.len());
+	let mut out = ColumnData::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			// Parse with internal fragment, then replace with

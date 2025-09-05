@@ -76,8 +76,8 @@ mod tests {
 		col.filter(&mask).unwrap();
 
 		assert_eq!(col.len(), 2);
-		assert_eq!(col.get_value(0), Value::Bool(true));
-		assert_eq!(col.get_value(1), Value::Bool(true));
+		assert_eq!(col.get_value(0), Value::Boolean(true));
+		assert_eq!(col.get_value(1), Value::Boolean(true));
 	}
 
 	#[test]

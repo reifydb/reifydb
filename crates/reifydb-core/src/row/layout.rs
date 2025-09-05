@@ -177,7 +177,7 @@ mod tests {
 
 		#[test]
 		fn test_single_field_bool() {
-			let layout = EncodedRowLayout::new(&[Type::Bool]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean]);
 			assert_eq!(layout.bitvec_size, 1);
 			assert_eq!(layout.fields.len(), 1);
 			assert_eq!(layout.fields[0].offset, 1);
@@ -238,7 +238,7 @@ mod tests {
 		#[test]
 		fn test_nine_fields_bitvec_size_two() {
 			let kinds = vec![
-				Type::Bool,
+				Type::Boolean,
 				Type::Int1,
 				Type::Int2,
 				Type::Int4,
@@ -278,7 +278,7 @@ mod tests {
 		#[test]
 		fn test_initial_state() {
 			let layout = EncodedRowLayout::new(&[
-				Type::Bool,
+				Type::Boolean,
 				Type::Int1,
 				Type::Uint2,
 			]);
@@ -295,9 +295,9 @@ mod tests {
 		#[test]
 		fn test_clone_on_write_semantics() {
 			let layout = EncodedRowLayout::new(&[
-				Type::Bool,
-				Type::Bool,
-				Type::Bool,
+				Type::Boolean,
+				Type::Boolean,
+				Type::Boolean,
 			]);
 
 			let row1 = layout.allocate_row();
@@ -326,7 +326,7 @@ mod tests {
 
 		#[test]
 		fn test_one_field_none_valid() {
-			let layout = EncodedRowLayout::new(&[Type::Bool; 1]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean; 1]);
 			let mut row = layout.allocate_row();
 			layout.set_undefined(&mut row, 0);
 			assert!(!layout.all_defined(&row));
@@ -334,7 +334,7 @@ mod tests {
 
 		#[test]
 		fn test_one_field_valid() {
-			let layout = EncodedRowLayout::new(&[Type::Bool; 1]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean; 1]);
 			let mut row = layout.allocate_row();
 			layout.set_bool(&mut row, 0, true);
 			assert!(layout.all_defined(&row));
@@ -342,7 +342,7 @@ mod tests {
 
 		#[test]
 		fn test_seven_fields_none_valid() {
-			let kinds = vec![Type::Bool; 7];
+			let kinds = vec![Type::Boolean; 7];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -355,7 +355,7 @@ mod tests {
 
 		#[test]
 		fn test_seven_fields_allv() {
-			let kinds = vec![Type::Bool; 7];
+			let kinds = vec![Type::Boolean; 7];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -368,7 +368,7 @@ mod tests {
 
 		#[test]
 		fn test_seven_fields_partial_valid() {
-			let kinds = vec![Type::Bool; 7];
+			let kinds = vec![Type::Boolean; 7];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -385,7 +385,7 @@ mod tests {
 
 		#[test]
 		fn test_eight_fields_none_valid() {
-			let kinds = vec![Type::Bool; 8];
+			let kinds = vec![Type::Boolean; 8];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -398,7 +398,7 @@ mod tests {
 
 		#[test]
 		fn test_eight_fields_allv() {
-			let kinds = vec![Type::Bool; 8];
+			let kinds = vec![Type::Boolean; 8];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -411,7 +411,7 @@ mod tests {
 
 		#[test]
 		fn test_eight_fields_partial_valid() {
-			let kinds = vec![Type::Bool; 8];
+			let kinds = vec![Type::Boolean; 8];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -428,7 +428,7 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_allv() {
-			let kinds = vec![Type::Bool; 9];
+			let kinds = vec![Type::Boolean; 9];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -441,7 +441,7 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_none_valid() {
-			let kinds = vec![Type::Bool; 9];
+			let kinds = vec![Type::Boolean; 9];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -454,7 +454,7 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_partial_valid() {
-			let kinds = vec![Type::Bool; 9];
+			let kinds = vec![Type::Boolean; 9];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -471,7 +471,7 @@ mod tests {
 
 		#[test]
 		fn test_sixteen_fields_allv() {
-			let kinds = vec![Type::Bool; 16];
+			let kinds = vec![Type::Boolean; 16];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -484,7 +484,7 @@ mod tests {
 
 		#[test]
 		fn test_sixteen_fields_none_valid() {
-			let kinds = vec![Type::Bool; 16];
+			let kinds = vec![Type::Boolean; 16];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 
@@ -497,7 +497,7 @@ mod tests {
 
 		#[test]
 		fn test_sixteen_fields_partial_valid() {
-			let kinds = vec![Type::Bool; 16];
+			let kinds = vec![Type::Boolean; 16];
 			let layout = EncodedRowLayout::new(&kinds);
 			let mut row = layout.allocate_row();
 

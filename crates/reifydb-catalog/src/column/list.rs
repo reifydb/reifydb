@@ -125,7 +125,7 @@ mod tests {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "a_col".to_string(),
-				value: Type::Bool,
+				value: Type::Boolean,
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

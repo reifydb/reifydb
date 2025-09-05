@@ -21,7 +21,7 @@ impl EncodedIndexLayout {
 		value: impl Into<bool>,
 	) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Bool);
+		debug_assert_eq!(field.value, Type::Boolean);
 		key.set_valid(index, true);
 
 		let byte_value = match field.direction {
@@ -709,7 +709,7 @@ mod tests {
 		#[test]
 		fn test_asc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::Bool],
+				&[Type::Boolean],
 				&[SortDirection::Asc],
 			)
 			.unwrap();
@@ -735,7 +735,7 @@ mod tests {
 		#[test]
 		fn test_desc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::Bool],
+				&[Type::Boolean],
 				&[SortDirection::Desc],
 			)
 			.unwrap();

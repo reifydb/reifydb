@@ -17,8 +17,8 @@ pub mod plan;
 
 pub(crate) fn convert_data_type(ast: &AstIdentifier) -> Result<Type> {
 	Ok(match ast.value().to_ascii_lowercase().as_str() {
-		"bool" => Type::Bool,
-		"boolean" => Type::Bool,
+		"bool" => Type::Boolean,
+		"boolean" => Type::Boolean,
 		"float4" => Type::Float4,
 		"float8" => Type::Float8,
 		"int1" => Type::Int1,

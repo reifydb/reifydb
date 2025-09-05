@@ -71,7 +71,7 @@ impl StandardEvaluator {
 		let take = ctx.take.unwrap_or(usize::MAX);
 
 		match col.data().get_value(0) {
-			Value::Bool(_) => {
+			Value::Boolean(_) => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -80,7 +80,7 @@ impl StandardEvaluator {
 						break;
 					}
 					match v {
-						Value::Bool(b) => {
+						Value::Boolean(b) => {
 							data.push(b);
 							bitvec.push(true);
 						}

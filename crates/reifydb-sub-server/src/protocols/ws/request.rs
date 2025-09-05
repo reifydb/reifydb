@@ -88,8 +88,8 @@ fn parse_typed_value(
 	let fragment = BorrowedFragment::new_internal(str_val);
 
 	let parsed_value = match value_type {
-		Type::Bool => parse_bool(fragment.clone())
-			.map(Value::Bool)
+		Type::Boolean => parse_bool(fragment.clone())
+			.map(Value::Boolean)
 			.unwrap_or(Value::Undefined),
 		Type::Float4 => parse_float::<f32>(fragment.clone())
 			.ok()

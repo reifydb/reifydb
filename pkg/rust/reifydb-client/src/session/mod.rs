@@ -158,9 +158,9 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 
 	match value_type {
 		Type::Undefined => Value::Undefined,
-		Type::Bool => match s {
-			"true" => Value::Bool(true),
-			"false" => Value::Bool(false),
+		Type::Boolean => match s {
+			"true" => Value::Boolean(true),
+			"false" => Value::Boolean(false),
 			_ => Value::Undefined,
 		},
 		Type::Float4 => s

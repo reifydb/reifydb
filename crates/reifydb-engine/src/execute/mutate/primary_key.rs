@@ -41,7 +41,7 @@ pub fn encode_primary_key(
 
 		// Copy value based on type
 		match pk_column.ty {
-			Type::Bool => {
+			Type::Boolean => {
 				let val = layout.get_bool(row, table_idx);
 				index_layout.set_bool(
 					&mut index_key,

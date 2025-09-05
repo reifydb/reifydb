@@ -19,8 +19,8 @@ impl Type {
 			return Utf8;
 		}
 
-		if left == Bool || right == Bool {
-			return Bool;
+		if left == Boolean || right == Boolean {
+			return Boolean;
 		}
 
 		if left == Float8 || right == Float8 {
@@ -78,7 +78,7 @@ mod tests {
 	use crate::{
 		Type,
 		Type::{
-			Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
+			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
 			Uint1, Uint2, Uint4, Uint8, Uint16, Undefined, Utf8,
 		},
 	};
@@ -86,21 +86,21 @@ mod tests {
 	#[test]
 	fn test_promote_bool() {
 		let cases = [
-			(Bool, Bool, Bool),
-			(Bool, Float4, Bool),
-			(Bool, Float8, Bool),
-			(Bool, Int1, Bool),
-			(Bool, Int2, Bool),
-			(Bool, Int4, Bool),
-			(Bool, Int8, Bool),
-			(Bool, Int16, Bool),
-			(Bool, Utf8, Utf8),
-			(Bool, Uint1, Bool),
-			(Bool, Uint2, Bool),
-			(Bool, Uint4, Bool),
-			(Bool, Uint8, Bool),
-			(Bool, Uint16, Bool),
-			(Bool, Undefined, Undefined),
+			(Boolean, Boolean, Boolean),
+			(Boolean, Float4, Boolean),
+			(Boolean, Float8, Boolean),
+			(Boolean, Int1, Boolean),
+			(Boolean, Int2, Boolean),
+			(Boolean, Int4, Boolean),
+			(Boolean, Int8, Boolean),
+			(Boolean, Int16, Boolean),
+			(Boolean, Utf8, Utf8),
+			(Boolean, Uint1, Boolean),
+			(Boolean, Uint2, Boolean),
+			(Boolean, Uint4, Boolean),
+			(Boolean, Uint8, Boolean),
+			(Boolean, Uint16, Boolean),
+			(Boolean, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -110,7 +110,7 @@ mod tests {
 	#[test]
 	fn test_promote_float4() {
 		let cases = [
-			(Float4, Bool, Bool),
+			(Float4, Boolean, Boolean),
 			(Float4, Float4, Float8),
 			(Float4, Float8, Float8),
 			(Float4, Int1, Float8),
@@ -134,7 +134,7 @@ mod tests {
 	#[test]
 	fn test_promote_float8() {
 		let cases = [
-			(Float8, Bool, Bool),
+			(Float8, Boolean, Boolean),
 			(Float8, Float4, Float8),
 			(Float8, Float8, Float8),
 			(Float8, Int1, Float8),
@@ -158,7 +158,7 @@ mod tests {
 	#[test]
 	fn test_promote_int1() {
 		let cases = [
-			(Int1, Bool, Bool),
+			(Int1, Boolean, Boolean),
 			(Int1, Float4, Float8),
 			(Int1, Float8, Float8),
 			(Int1, Int1, Int2),
@@ -182,7 +182,7 @@ mod tests {
 	#[test]
 	fn test_promote_int2() {
 		let cases = [
-			(Int2, Bool, Bool),
+			(Int2, Boolean, Boolean),
 			(Int2, Float4, Float8),
 			(Int2, Float8, Float8),
 			(Int2, Int1, Int4),
@@ -206,7 +206,7 @@ mod tests {
 	#[test]
 	fn test_promote_int4() {
 		let cases = [
-			(Int4, Bool, Bool),
+			(Int4, Boolean, Boolean),
 			(Int4, Float4, Float8),
 			(Int4, Float8, Float8),
 			(Int4, Int1, Int8),
@@ -230,7 +230,7 @@ mod tests {
 	#[test]
 	fn test_promote_int8() {
 		let cases = [
-			(Int8, Bool, Bool),
+			(Int8, Boolean, Boolean),
 			(Int8, Float4, Float8),
 			(Int8, Float8, Float8),
 			(Int8, Int1, Int16),
@@ -254,7 +254,7 @@ mod tests {
 	#[test]
 	fn test_promote_int16() {
 		let cases = [
-			(Int16, Bool, Bool),
+			(Int16, Boolean, Boolean),
 			(Int16, Float4, Float8),
 			(Int16, Float8, Float8),
 			(Int16, Int1, Int16),
@@ -278,7 +278,7 @@ mod tests {
 	#[test]
 	fn test_promote_string() {
 		let kinds = [
-			Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
+			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
 			Utf8, Uint1, Uint2, Uint4, Uint8, Uint16,
 		];
 		for ty in kinds {
@@ -291,7 +291,7 @@ mod tests {
 	#[test]
 	fn test_promote_uint1() {
 		let cases = [
-			(Uint1, Bool, Bool),
+			(Uint1, Boolean, Boolean),
 			(Uint1, Float4, Float8),
 			(Uint1, Float8, Float8),
 			(Uint1, Int1, Int2),
@@ -315,7 +315,7 @@ mod tests {
 	#[test]
 	fn test_promote_uint2() {
 		let cases = [
-			(Uint2, Bool, Bool),
+			(Uint2, Boolean, Boolean),
 			(Uint2, Float4, Float8),
 			(Uint2, Float8, Float8),
 			(Uint2, Int1, Int4),
@@ -339,7 +339,7 @@ mod tests {
 	#[test]
 	fn test_promote_uint4() {
 		let cases = [
-			(Uint4, Bool, Bool),
+			(Uint4, Boolean, Boolean),
 			(Uint4, Float4, Float8),
 			(Uint4, Float8, Float8),
 			(Uint4, Int1, Int8),
@@ -363,7 +363,7 @@ mod tests {
 	#[test]
 	fn test_promote_uint8() {
 		let cases = [
-			(Uint8, Bool, Bool),
+			(Uint8, Boolean, Boolean),
 			(Uint8, Float4, Float8),
 			(Uint8, Float8, Float8),
 			(Uint8, Int1, Int16),
@@ -387,7 +387,7 @@ mod tests {
 	#[test]
 	fn test_promote_uint16() {
 		let cases = [
-			(Uint16, Bool, Bool),
+			(Uint16, Boolean, Boolean),
 			(Uint16, Float4, Float8),
 			(Uint16, Float8, Float8),
 			(Uint16, Int1, Int16),
@@ -411,7 +411,7 @@ mod tests {
 	#[test]
 	fn test_promote_undefined() {
 		let kinds = [
-			Bool, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
+			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
 			Utf8, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined,
 		];
 		for ty in kinds {

@@ -126,10 +126,10 @@ fn parse_param_value(s: &str) -> Value {
 
 	// Handle boolean
 	if s == "true" {
-		return Value::Bool(true);
+		return Value::Boolean(true);
 	}
 	if s == "false" {
-		return Value::Bool(false);
+		return Value::Boolean(false);
 	}
 
 	// Handle quoted strings

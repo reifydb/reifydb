@@ -15,12 +15,12 @@ pub(crate) mod column {
 
 	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
-			Type::Uint8, // id
-			Type::Uint8, // table
-			Type::Utf8,  // name
-			Type::Uint1, // value
-			Type::Uint2, // index
-			Type::Bool,  // auto_increment
+			Type::Uint8,   // id
+			Type::Uint8,   // table
+			Type::Utf8,    // name
+			Type::Uint1,   // value
+			Type::Uint2,   // index
+			Type::Boolean, // auto_increment
 		])
 	});
 }

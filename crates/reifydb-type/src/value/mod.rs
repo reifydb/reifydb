@@ -51,7 +51,7 @@ pub enum Value {
 	/// Value is not defined (think null in common programming languages)
 	Undefined,
 	/// A boolean: true or false.
-	Bool(bool),
+	Boolean(bool),
 	/// A 4-byte floating point
 	Float4(OrderedF32),
 	/// An 8-byte floating point
@@ -120,7 +120,9 @@ impl Value {
 impl PartialOrd for Value {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		match (self, other) {
-			(Value::Bool(l), Value::Bool(r)) => l.partial_cmp(r),
+			(Value::Boolean(l), Value::Boolean(r)) => {
+				l.partial_cmp(r)
+			}
 			(Value::Float4(l), Value::Float4(r)) => {
 				l.partial_cmp(r)
 			}
@@ -177,7 +179,7 @@ impl PartialOrd for Value {
 impl Ord for Value {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(Value::Bool(l), Value::Bool(r)) => l.cmp(r),
+			(Value::Boolean(l), Value::Boolean(r)) => l.cmp(r),
 			(Value::Float4(l), Value::Float4(r)) => l.cmp(r),
 			(Value::Float8(l), Value::Float8(r)) => l.cmp(r),
 			(Value::Int1(l), Value::Int1(r)) => l.cmp(r),
@@ -213,8 +215,8 @@ impl Ord for Value {
 impl Display for Value {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Value::Bool(true) => f.write_str("true"),
-			Value::Bool(false) => f.write_str("false"),
+			Value::Boolean(true) => f.write_str("true"),
+			Value::Boolean(false) => f.write_str("false"),
 			Value::Float4(value) => Display::fmt(value, f),
 			Value::Float8(value) => Display::fmt(value, f),
 			Value::Int1(value) => Display::fmt(value, f),
@@ -249,7 +251,7 @@ impl Value {
 	pub fn get_type(&self) -> Type {
 		match self {
 			Value::Undefined => Type::Undefined,
-			Value::Bool(_) => Type::Bool,
+			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,
 			Value::Int1(_) => Type::Int1,

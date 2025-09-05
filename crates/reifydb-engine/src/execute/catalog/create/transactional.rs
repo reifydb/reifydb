@@ -39,7 +39,7 @@ impl Executor {
 								.to_string(),
 						),
 					),
-					("created", Value::Bool(false)),
+					("created", Value::Boolean(false)),
 				]));
 			}
 
@@ -65,7 +65,7 @@ impl Executor {
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
 			("view", Value::Utf8(plan.view.text().to_string())),
-			("created", Value::Bool(true)),
+			("created", Value::Boolean(true)),
 		]))
 	}
 }

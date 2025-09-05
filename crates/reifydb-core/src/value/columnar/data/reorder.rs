@@ -104,9 +104,9 @@ mod tests {
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
-		assert_eq!(col.get_value(0), Value::Bool(true));
-		assert_eq!(col.get_value(1), Value::Bool(true));
-		assert_eq!(col.get_value(2), Value::Bool(false));
+		assert_eq!(col.get_value(0), Value::Boolean(true));
+		assert_eq!(col.get_value(1), Value::Boolean(true));
+		assert_eq!(col.get_value(2), Value::Boolean(false));
 	}
 
 	#[test]

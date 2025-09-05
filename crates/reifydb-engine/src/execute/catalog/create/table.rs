@@ -40,7 +40,7 @@ impl Executor {
 								.to_string(),
 						),
 					),
-					("created", Value::Bool(false)),
+					("created", Value::Boolean(false)),
 				]));
 			}
 			// The error will be returned by create_table if the
@@ -57,7 +57,7 @@ impl Executor {
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
 			("table", Value::Utf8(plan.table.text().to_string())),
-			("created", Value::Bool(true)),
+			("created", Value::Boolean(true)),
 		]))
 	}
 }
@@ -106,7 +106,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_table".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 
 		// Creating the same table again with `if_not_exists = true`
 		// should not error
@@ -126,7 +126,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_table".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(false));
+		assert_eq!(result.row(0)[2], Value::Boolean(false));
 
 		// Creating the same table again with `if_not_exists = false`
 		// should return error
@@ -173,7 +173,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_table".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 		let plan = CreateTablePlan {
 			schema: SchemaDef {
 				id: another_schema.id,
@@ -199,7 +199,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_table".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
 	#[test]
@@ -234,6 +234,6 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("my_table".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 }

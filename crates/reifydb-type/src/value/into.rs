@@ -18,7 +18,7 @@ impl IntoValue for Value {
 
 impl IntoValue for bool {
 	fn into_value(self) -> Value {
-		Value::Bool(self)
+		Value::Boolean(self)
 	}
 }
 
@@ -219,8 +219,8 @@ mod tests {
 	#[test]
 	fn test_into_value_primitives() {
 		// Test boolean
-		assert_eq!(true.into_value(), Value::Bool(true));
-		assert_eq!(false.into_value(), Value::Bool(false));
+		assert_eq!(true.into_value(), Value::Boolean(true));
+		assert_eq!(false.into_value(), Value::Boolean(false));
 
 		// Test integers
 		assert_eq!(42i8.into_value(), Value::Int1(42));

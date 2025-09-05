@@ -225,7 +225,7 @@ impl Executor {
 					)?;
 
 						match value {
-						Value::Bool(v) => layout
+						Value::Boolean(v) => layout
 							.set_bool(
 								&mut row,
 								table_idx, v,

@@ -260,8 +260,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				Type::Float8 // Start with widest float type
 			} else if first_value_type == Type::Utf8 {
 				Type::Utf8
-			} else if first_value_type == Type::Bool {
-				Type::Bool
+			} else if first_value_type == Type::Boolean {
+				Type::Boolean
 			} else {
 				Type::Undefined
 			};

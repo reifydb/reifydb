@@ -173,7 +173,7 @@ mod tests {
 				.map(|opt| {
 					opt.map_or(
 						Value::Undefined,
-						Value::Bool,
+						Value::Boolean,
 					)
 				})
 				.collect();
@@ -182,7 +182,7 @@ mod tests {
 				schema: None,
 				store: None,
 				name: $name.to_string(),
-				r#type: Type::Bool,
+				r#type: Type::Boolean,
 				data: result_data,
 			}
 		}};

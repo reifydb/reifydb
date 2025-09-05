@@ -45,7 +45,7 @@ impl StandardEvaluator {
 		};
 
 		let column_data = match value {
-			Value::Bool(b) => {
+			Value::Boolean(b) => {
 				ColumnData::bool(vec![*b; ctx.row_count])
 			}
 			Value::Float4(f) => ColumnData::float4(vec![

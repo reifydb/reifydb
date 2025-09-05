@@ -117,7 +117,7 @@ mod tests {
 			Params::Positional(values) => {
 				assert_eq!(values.len(), 3);
 				assert_eq!(values[0], Value::Int4(42));
-				assert_eq!(values[1], Value::Bool(true));
+				assert_eq!(values[1], Value::Boolean(true));
 				assert_eq!(
 					values[2],
 					Value::Utf8("hello".to_string())
@@ -139,7 +139,7 @@ mod tests {
 				assert_eq!(map.len(), 3);
 				assert_eq!(
 					map.get("name"),
-					Some(&Value::Bool(true))
+					Some(&Value::Boolean(true))
 				);
 				assert_eq!(
 					map.get("other"),

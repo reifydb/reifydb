@@ -46,7 +46,7 @@ pub enum FrameColumnData {
 impl FrameColumnData {
 	pub fn get_type(&self) -> Type {
 		match self {
-			FrameColumnData::Bool(_) => Type::Bool,
+			FrameColumnData::Bool(_) => Type::Boolean,
 			FrameColumnData::Float4(_) => Type::Float4,
 			FrameColumnData::Float8(_) => Type::Float8,
 			FrameColumnData::Int1(_) => Type::Int1,
@@ -161,7 +161,7 @@ impl FrameColumnData {
 	}
 
 	pub fn is_bool(&self) -> bool {
-		self.get_type() == Type::Bool
+		self.get_type() == Type::Boolean
 	}
 
 	pub fn is_float(&self) -> bool {

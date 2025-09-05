@@ -30,7 +30,7 @@ use crate::Value;
 )]
 pub enum Type {
 	/// A boolean: true or false.
-	Bool,
+	Boolean,
 	/// A 4-byte floating point
 	Float4,
 	/// An 8-byte floating point
@@ -102,7 +102,7 @@ impl Type {
 	}
 
 	pub fn is_bool(&self) -> bool {
-		matches!(self, Type::Bool)
+		matches!(self, Type::Boolean)
 	}
 
 	pub fn is_signed_integer(&self) -> bool {
@@ -156,7 +156,7 @@ impl Type {
 impl Type {
 	pub fn to_u8(&self) -> u8 {
 		match self {
-			Type::Bool => 0x0E,
+			Type::Boolean => 0x0E,
 			Type::Float4 => 0x01,
 			Type::Float8 => 0x02,
 			Type::Int1 => 0x03,
@@ -206,7 +206,7 @@ impl Type {
 			0x0B => Type::Uint4,
 			0x0C => Type::Uint8,
 			0x0D => Type::Uint16,
-			0x0E => Type::Bool,
+			0x0E => Type::Boolean,
 			0x0F => Type::Date,
 			0x10 => Type::DateTime,
 			0x11 => Type::Time,
@@ -233,7 +233,7 @@ impl Type {
 impl Type {
 	pub fn size(&self) -> usize {
 		match self {
-			Type::Bool => 1,
+			Type::Boolean => 1,
 			Type::Float4 => 4,
 			Type::Float8 => 8,
 			Type::Int1 => 1,
@@ -271,7 +271,7 @@ impl Type {
 
 	pub fn alignment(&self) -> usize {
 		match self {
-			Type::Bool => 1,
+			Type::Boolean => 1,
 			Type::Float4 => 4,
 			Type::Float8 => 8,
 			Type::Int1 => 1,
@@ -310,7 +310,7 @@ impl Type {
 impl Display for Type {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Type::Bool => f.write_str("Bool"),
+			Type::Boolean => f.write_str("Bool"),
 			Type::Float4 => f.write_str("Float4"),
 			Type::Float8 => f.write_str("Float8"),
 			Type::Int1 => f.write_str("Int1"),
@@ -355,7 +355,7 @@ impl From<&Value> for Type {
 	fn from(value: &Value) -> Self {
 		match value {
 			Value::Undefined => Type::Undefined,
-			Value::Bool(_) => Type::Bool,
+			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,
 			Value::Int1(_) => Type::Int1,
@@ -398,7 +398,7 @@ impl FromStr for Type {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s.to_uppercase().as_str() {
-			"BOOL" => Ok(Type::Bool),
+			"BOOL" => Ok(Type::Boolean),
 			"FLOAT4" => Ok(Type::Float4),
 			"FLOAT8" => Ok(Type::Float8),
 			"INT1" => Ok(Type::Int1),

@@ -8,7 +8,9 @@ use crate::value::columnar::ColumnData;
 impl ColumnData {
 	pub fn from_many(value: Value, row_count: usize) -> Self {
 		match value {
-			Value::Bool(v) => ColumnData::bool(vec![v; row_count]),
+			Value::Boolean(v) => {
+				ColumnData::bool(vec![v; row_count])
+			}
 			Value::Float4(v) => ColumnData::float4([v.value()]),
 			Value::Float8(v) => ColumnData::float8([v.value()]),
 			Value::Int1(v) => ColumnData::int1(vec![v; row_count]),

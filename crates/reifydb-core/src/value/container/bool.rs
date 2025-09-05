@@ -100,7 +100,7 @@ impl BoolContainer {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() && self.is_defined(index) {
-			Value::Bool(self.data.get(index))
+			Value::Boolean(self.data.get(index))
 		} else {
 			Value::Undefined
 		}

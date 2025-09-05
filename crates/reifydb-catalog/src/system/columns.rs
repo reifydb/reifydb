@@ -72,7 +72,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: AUTO_INCREMENT,
 					name: "auto_increment".to_string(),
-					ty: Type::Bool,
+					ty: Type::Boolean,
 					policies: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,

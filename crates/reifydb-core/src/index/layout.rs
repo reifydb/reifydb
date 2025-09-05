@@ -232,7 +232,7 @@ mod tests {
 	#[test]
 	fn test_allocate_key() {
 		let layout = EncodedIndexLayout::new(
-			&[Type::Bool, Type::Int4],
+			&[Type::Boolean, Type::Int4],
 			&[SortDirection::Asc, SortDirection::Desc],
 		)
 		.unwrap();

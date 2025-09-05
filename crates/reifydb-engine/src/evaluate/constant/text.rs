@@ -21,7 +21,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		match target {
-			Type::Bool => Self::parse_bool(fragment, row_count),
+			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
 			Type::Float8 => Self::parse_float8(fragment, row_count),
 			Type::Int1 => Self::parse_int1(fragment, row_count),

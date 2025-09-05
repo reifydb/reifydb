@@ -11,7 +11,7 @@ impl AsString for Value {
 	fn as_string(&self) -> String {
 		match self {
 			Value::Undefined => "Undefined".to_string(),
-			Value::Bool(b) => b.to_string(),
+			Value::Boolean(b) => b.to_string(),
 			Value::Float4(f) => f.to_string(),
 			Value::Float8(f) => f.to_string(),
 			Value::Int1(i) => i.to_string(),

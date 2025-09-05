@@ -326,7 +326,7 @@ mod tests {
 				)),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
-					ty: Type::Bool,
+					ty: Type::Boolean,
 				},
 			}),
 		)
@@ -352,7 +352,7 @@ mod tests {
 				)),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
-					ty: Type::Bool,
+					ty: Type::Boolean,
 				},
 			}),
 		);
@@ -370,7 +370,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cast_bool_to_date_should_fail() {
+	fn test_cast_boolean_to_date_should_fail() {
 		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,

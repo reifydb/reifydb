@@ -12,7 +12,7 @@ pub trait GetType {
 
 impl GetType for bool {
 	fn get_type() -> Type {
-		Type::Bool
+		Type::Boolean
 	}
 }
 

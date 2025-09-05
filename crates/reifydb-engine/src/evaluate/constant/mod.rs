@@ -228,7 +228,7 @@ impl StandardEvaluator {
 				let source_type = match expr {
 					ConstantExpression::Bool {
 						..
-					} => Type::Bool,
+					} => Type::Boolean,
 					ConstantExpression::Number {
 						..
 					} => Type::Float8,

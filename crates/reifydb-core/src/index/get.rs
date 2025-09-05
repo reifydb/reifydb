@@ -14,7 +14,7 @@ use crate::{
 impl EncodedIndexLayout {
 	pub fn get_bool(&self, key: &EncodedIndexKey, index: usize) -> bool {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Bool);
+		debug_assert_eq!(field.value, Type::Boolean);
 
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -569,7 +569,7 @@ mod tests {
 		#[test]
 		fn test_asc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::Bool],
+				&[Type::Boolean],
 				&[SortDirection::Asc],
 			)
 			.unwrap();
@@ -587,7 +587,7 @@ mod tests {
 		#[test]
 		fn test_desc() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::Bool],
+				&[Type::Boolean],
 				&[SortDirection::Desc],
 			)
 			.unwrap();

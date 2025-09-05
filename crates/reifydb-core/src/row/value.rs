@@ -26,10 +26,10 @@ impl EncodedRowLayout {
 		debug_assert!(row.len() >= self.total_static_size());
 
 		match (field.value, val) {
-			(Type::Bool, Value::Bool(v)) => {
+			(Type::Boolean, Value::Boolean(v)) => {
 				self.set_bool(row, index, *v)
 			}
-			(Type::Bool, Value::Undefined) => {
+			(Type::Boolean, Value::Undefined) => {
 				self.set_undefined(row, index)
 			}
 
@@ -210,7 +210,9 @@ impl EncodedRowLayout {
 			return Value::Undefined;
 		}
 		match field.value {
-			Type::Bool => Value::Bool(self.get_bool(row, index)),
+			Type::Boolean => {
+				Value::Boolean(self.get_bool(row, index))
+			}
 			Type::Float4 => {
 				OrderedF32::try_from(self.get_f32(row, index))
 					.map(Value::Float4)
@@ -284,7 +286,7 @@ mod tests {
 	use crate::row::EncodedRowLayout;
 
 	#[test]
-	fn test_set_value_utf8_with_dynamic_content() {
+	fn test_set_utf8_with_dynamic_content() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Utf8,
 			Type::Int4,
@@ -308,7 +310,7 @@ mod tests {
 	#[test]
 	fn test_set_values_with_mixed_dynamic_content() {
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::Utf8,
 			Type::Float4,
 			Type::Utf8,
@@ -317,7 +319,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		let values = vec![
-			Value::Bool(true),
+			Value::Boolean(true),
 			Value::Utf8("first_string".to_string()),
 			Value::Float4(OrderedF32::try_from(3.14f32).unwrap()),
 			Value::Utf8("second_string".to_string()),
@@ -334,7 +336,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_set_value_with_empty_and_large_utf8() {
+	fn test_set_with_empty_and_large_utf8() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Utf8,
 			Type::Utf8,
@@ -358,7 +360,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_value_from_dynamic_content() {
+	fn test_get_from_dynamic_content() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Utf8,
 			Type::Int8,
@@ -391,10 +393,10 @@ mod tests {
 	}
 
 	#[test]
-	fn test_set_value_undefined_with_utf8_fields() {
+	fn test_set_undefined_with_utf8_fields() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Utf8,
-			Type::Bool,
+			Type::Boolean,
 			Type::Utf8,
 		]);
 		let mut row = layout.allocate_row();
@@ -405,7 +407,7 @@ mod tests {
 			0,
 			&Value::Utf8("hello".to_string()),
 		);
-		layout.set_value(&mut row, 1, &Value::Bool(true));
+		layout.set_value(&mut row, 1, &Value::Boolean(true));
 		layout.set_value(
 			&mut row,
 			2,
@@ -428,9 +430,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_value_all_types_including_utf8() {
+	fn test_get_all_types_including_utf8() {
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::Int1,
 			Type::Int2,
 			Type::Int4,
@@ -461,7 +463,7 @@ mod tests {
 		let values: Vec<Value> =
 			(0..12).map(|i| layout.get_value(&row, i)).collect();
 
-		assert_eq!(values[0], Value::Bool(true));
+		assert_eq!(values[0], Value::Boolean(true));
 		assert_eq!(values[1], Value::Int1(-42));
 		assert_eq!(values[2], Value::Int2(-1000));
 		assert_eq!(values[3], Value::Int4(-50000));
@@ -540,14 +542,14 @@ mod tests {
 	#[test]
 	fn test_static_fields_only_no_dynamic_with_values() {
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::Int4,
 			Type::Float8,
 		]);
 		let mut row = layout.allocate_row();
 
 		let values = vec![
-			Value::Bool(false),
+			Value::Boolean(false),
 			Value::Int4(999),
 			Value::Float8(
 				OrderedF64::try_from(std::f64::consts::E)
@@ -627,7 +629,7 @@ mod tests {
 	#[test]
 	fn test_mixed_temporal_and_regular_types() {
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::Date,
 			Type::Utf8,
 			Type::DateTime,
@@ -638,7 +640,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		let values = vec![
-			Value::Bool(true),
+			Value::Boolean(true),
 			Value::Date(Date::new(1985, 10, 26).unwrap()),
 			Value::Utf8("time travel".to_string()),
 			Value::DateTime(
@@ -659,7 +661,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_value_roundtrip_with_dynamic_content() {
+	fn test_roundtrip_with_dynamic_content() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Utf8,
 			Type::Int2,
@@ -835,7 +837,7 @@ mod tests {
 		// except row id
 
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::Int1,
 			Type::Int2,
 			Type::Int4,
@@ -860,7 +862,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		let values = vec![
-			Value::Bool(true),
+			Value::Boolean(true),
 			Value::Int1(-128),
 			Value::Int2(-32768),
 			Value::Int4(-2147483648),

@@ -226,7 +226,7 @@ impl<E: Evaluator> FlowEngine<E> {
                             };
 
 							match value {
-                                Value::Bool(v) => layout.set_bool(&mut row, view_idx, v),
+                                Value::Boolean(v) => layout.set_bool(&mut row, view_idx, v),
                                 Value::Float4(v) => layout.set_f32(&mut row, view_idx, *v),
                                 Value::Float8(v) => layout.set_f64(&mut row, view_idx, *v),
                                 Value::Int1(v) => layout.set_i8(&mut row, view_idx, v),
@@ -319,7 +319,7 @@ impl<E: Evaluator> FlowEngine<E> {
 							};
 
 							match value {
-								Value::Bool(v) => layout.set_bool(&mut new_row, view_idx, v),
+								Value::Boolean(v) => layout.set_bool(&mut new_row, view_idx, v),
 								Value::Float4(v) => layout.set_f32(&mut new_row, view_idx, *v),
 								Value::Float8(v) => layout.set_f64(&mut new_row, view_idx, *v),
 								Value::Int1(v) => layout.set_i8(&mut new_row, view_idx, v),

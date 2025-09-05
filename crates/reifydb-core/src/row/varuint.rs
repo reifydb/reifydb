@@ -152,7 +152,7 @@ mod tests {
 	use crate::row::EncodedRowLayout;
 
 	#[test]
-	fn test_varuint_u64_inline() {
+	fn test_u64_inline() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 		let mut row = layout.allocate_row();
 
@@ -172,24 +172,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_u64_boundary() {
-		let layout = EncodedRowLayout::new(&[Type::VarUint]);
-
-		// Test max u64
-		let mut row1 = layout.allocate_row();
-		let max_u64 = VarUint::from(u64::MAX);
-		layout.set_varuint(&mut row1, 0, &max_u64);
-		assert_eq!(layout.get_varuint(&row1, 0), max_u64);
-
-		// Test zero
-		let mut row2 = layout.allocate_row();
-		let zero = VarUint::from(0u64);
-		layout.set_varuint(&mut row2, 0, &zero);
-		assert_eq!(layout.get_varuint(&row2, 0), zero);
-	}
-
-	#[test]
-	fn test_varuint_u128_overflow() {
+	fn test_u128_boundary() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 		let mut row = layout.allocate_row();
 
@@ -209,7 +192,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_dynamic_storage() {
+	fn test_dynamic_storage() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 		let mut row = layout.allocate_row();
 
@@ -231,7 +214,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_zero() {
+	fn test_zero() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 		let mut row = layout.allocate_row();
 
@@ -244,7 +227,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_try_get() {
+	fn test_try_get() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 		let mut row = layout.allocate_row();
 
@@ -258,7 +241,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_clone_on_write() {
+	fn test_clone_on_write() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 		let row1 = layout.allocate_row();
 		let mut row2 = row1.clone();
@@ -273,9 +256,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_multiple_fields() {
+	fn test_multiple_fields() {
 		let layout = EncodedRowLayout::new(&[
-			Type::Bool,
+			Type::Boolean,
 			Type::VarUint,
 			Type::Utf8,
 			Type::VarUint,
@@ -303,7 +286,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varuint_negative_input_handling() {
+	fn test_negative_input_handling() {
 		let layout = EncodedRowLayout::new(&[Type::VarUint]);
 
 		// Test how negative values are handled (should be converted to

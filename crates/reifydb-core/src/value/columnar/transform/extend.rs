@@ -73,7 +73,7 @@ impl Columns {
 			{
 				let size = container.len();
 				let new_data = match layout.value(index) {
-                    Type::Bool => {
+                    Type::Boolean => {
                         ColumnData::bool_with_bitvec(vec![false; size], BitVec::repeat(size, false))
                     }
                     Type::Float4 => ColumnData::float4_with_bitvec(
@@ -196,7 +196,10 @@ impl Columns {
 	) -> crate::Result<()> {
 		for (index, column) in self.iter_mut().enumerate() {
 			match (column.data_mut(), layout.value(index)) {
-				(ColumnData::Bool(container), Type::Bool) => {
+				(
+					ColumnData::Bool(container),
+					Type::Boolean,
+				) => {
 					container
 						.push(layout
 							.get_bool(&row, index));
@@ -366,13 +369,13 @@ impl Columns {
 	) -> crate::Result<()> {
 		for (index, column) in self.iter_mut().enumerate() {
 			match (column.data_mut(), layout.value(index)) {
-				(ColumnData::Bool(container), Type::Bool) => {
-					match layout.try_get_bool(row, index) {
-						Some(v) => container.push(v),
-						None => container
-							.push_undefined(),
-					}
-				}
+				(
+					ColumnData::Bool(container),
+					Type::Boolean,
+				) => match layout.try_get_bool(row, index) {
+					Some(v) => container.push(v),
+					None => container.push_undefined(),
+				},
 				(
 					ColumnData::Float4(container),
 					Type::Float4,
@@ -1215,9 +1218,9 @@ mod tests {
 					"test_col", 2,
 				)]);
 
-			let layout = EncodedRowLayout::new(&[Type::Bool]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean]);
 			let mut row = layout.allocate_row();
-			layout.set_values(&mut row, &[Value::Bool(true)]);
+			layout.set_values(&mut row, &[Value::Boolean(true)]);
 
 			test_instance.append_rows(&layout, [row]).unwrap();
 
@@ -1568,17 +1571,17 @@ mod tests {
 
 			let layout = EncodedRowLayout::new(&[
 				Type::Int2,
-				Type::Bool,
+				Type::Boolean,
 			]);
 			let mut row_one = layout.allocate_row();
 			layout.set_values(
 				&mut row_one,
-				&[Value::Int2(2), Value::Bool(true)],
+				&[Value::Int2(2), Value::Boolean(true)],
 			);
 			let mut row_two = layout.allocate_row();
 			layout.set_values(
 				&mut row_two,
-				&[Value::Int2(3), Value::Bool(false)],
+				&[Value::Int2(3), Value::Boolean(false)],
 			);
 
 			test_instance
@@ -1603,7 +1606,7 @@ mod tests {
 					[],
 				)]);
 
-			let layout = EncodedRowLayout::new(&[Type::Bool]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean]);
 			let mut row_one = layout.allocate_row();
 			layout.set_bool(&mut row_one, 0, true);
 			let mut row_two = layout.allocate_row();
@@ -1966,12 +1969,12 @@ mod tests {
 
 			let layout = EncodedRowLayout::new(&[
 				Type::Int2,
-				Type::Bool,
+				Type::Boolean,
 			]);
 			let mut row = layout.allocate_row();
 			layout.set_values(
 				&mut row,
-				&[Value::Undefined, Value::Bool(false)],
+				&[Value::Undefined, Value::Boolean(false)],
 			);
 
 			test_instance.append_rows(&layout, [row]).unwrap();
@@ -1997,13 +2000,13 @@ mod tests {
 			let mut test_instance = test_instance_with_columns();
 
 			let layout = EncodedRowLayout::new(&[
-				Type::Bool,
-				Type::Bool,
+				Type::Boolean,
+				Type::Boolean,
 			]);
 			let mut row = layout.allocate_row();
 			layout.set_values(
 				&mut row,
-				&[Value::Bool(true), Value::Bool(true)],
+				&[Value::Boolean(true), Value::Boolean(true)],
 			);
 
 			let result = test_instance.append_rows(&layout, [row]);
@@ -2038,8 +2041,8 @@ mod tests {
 			]);
 
 			let layout = EncodedRowLayout::new(&[
-				Type::Bool,
-				Type::Bool,
+				Type::Boolean,
+				Type::Boolean,
 			]);
 			let mut row_one = layout.allocate_row();
 			layout.set_bool(&mut row_one, 0, true);

@@ -62,7 +62,7 @@ pub enum ColumnData {
 impl ColumnData {
 	pub fn get_type(&self) -> Type {
 		match self {
-			ColumnData::Bool(_) => Type::Bool,
+			ColumnData::Bool(_) => Type::Boolean,
 			ColumnData::Float4(_) => Type::Float4,
 			ColumnData::Float8(_) => Type::Float8,
 			ColumnData::Int1(_) => Type::Int1,
@@ -185,7 +185,7 @@ impl ColumnData {
 	}
 
 	pub fn is_bool(&self) -> bool {
-		self.get_type() == Type::Bool
+		self.get_type() == Type::Boolean
 	}
 
 	pub fn is_float(&self) -> bool {
@@ -267,7 +267,7 @@ impl ColumnData {
 impl ColumnData {
 	pub fn with_capacity(target: Type, capacity: usize) -> Self {
 		match target {
-			Type::Bool => Self::bool_with_capacity(capacity),
+			Type::Boolean => Self::bool_with_capacity(capacity),
 			Type::Float4 => Self::float4_with_capacity(capacity),
 			Type::Float8 => Self::float8_with_capacity(capacity),
 			Type::Int1 => Self::int1_with_capacity(capacity),

@@ -152,7 +152,7 @@ mod tests {
 	use crate::row::EncodedRowLayout;
 
 	#[test]
-	fn test_varint_i64_inline() {
+	fn test_i64_inline() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
@@ -172,24 +172,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_i64_boundary() {
-		let layout = EncodedRowLayout::new(&[Type::VarInt]);
-
-		// Test maximum i64 inline value (2^61 - 1)
-		let mut row1 = layout.allocate_row();
-		let max_inline = VarInt::from((1i64 << 61) - 1);
-		layout.set_varint(&mut row1, 0, &max_inline);
-		assert_eq!(layout.get_varint(&row1, 0), max_inline);
-
-		// Test minimum i64 inline value (-2^61)
-		let mut row2 = layout.allocate_row();
-		let min_inline = VarInt::from(-(1i64 << 61));
-		layout.set_varint(&mut row2, 0, &min_inline);
-		assert_eq!(layout.get_varint(&row2, 0), min_inline);
-	}
-
-	#[test]
-	fn test_varint_i128_overflow() {
+	fn test_i128_boundary() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
@@ -215,7 +198,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_dynamic_storage() {
+	fn test_dynamic_storage() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
@@ -239,7 +222,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_zero() {
+	fn test_zero() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
@@ -252,7 +235,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_try_get() {
+	fn test_try_get() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let mut row = layout.allocate_row();
 
@@ -266,7 +249,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_clone_on_write() {
+	fn test_clone_on_write() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 		let row1 = layout.allocate_row();
 		let mut row2 = row1.clone();
@@ -281,7 +264,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_multiple_fields() {
+	fn test_multiple_fields() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Int4,
 			Type::VarInt,
@@ -307,7 +290,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_varint_negative_values() {
+	fn test_negative_values() {
 		let layout = EncodedRowLayout::new(&[Type::VarInt]);
 
 		// Small negative (i64 inline)

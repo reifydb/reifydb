@@ -38,7 +38,7 @@ impl Executor {
 								.to_string(),
 						),
 					),
-					("created", Value::Bool(false)),
+					("created", Value::Boolean(false)),
 				]));
 			}
 		}
@@ -55,7 +55,7 @@ impl Executor {
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
 			("view", Value::Utf8(plan.view.text().to_string())),
-			("created", Value::Bool(true)),
+			("created", Value::Boolean(true)),
 		]))
 	}
 }
@@ -112,7 +112,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_view".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 
 		// Creating the same view again with `if_not_exists = true`
 		// should not error
@@ -133,7 +133,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_view".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(false));
+		assert_eq!(result.row(0)[2], Value::Boolean(false));
 
 		// Creating the same view again with `if_not_exists = false`
 		// should return error
@@ -184,7 +184,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_view".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 		let plan = CreateDeferredViewPlan {
 			schema: SchemaDef {
 				id: another_schema.id,
@@ -213,7 +213,7 @@ mod tests {
 			result.row(0)[1],
 			Value::Utf8("test_view".to_string())
 		);
-		assert_eq!(result.row(0)[2], Value::Bool(true));
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
 	#[test]

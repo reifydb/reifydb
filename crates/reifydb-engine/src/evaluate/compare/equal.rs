@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	Fragment, IsNumber, IsTemporal, Promote, Type::Bool,
+	Fragment, IsNumber, IsTemporal, Promote, Type::Boolean,
 	diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	temporal, value::number,
 };
@@ -1265,7 +1265,7 @@ fn compare_bool(
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(Bool, l.len());
+	let mut data = ctx.pooled(Boolean, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
@@ -1294,7 +1294,7 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(Bool, l.len());
+	let mut data = ctx.pooled(Boolean, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {

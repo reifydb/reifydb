@@ -151,7 +151,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for LeftJoinNode<'a, T> {
 						.unwrap();
 						matches!(
 							col.data().get_value(0),
-							Value::Bool(true)
+							Value::Boolean(true)
 						) && acc
 					},
 				);

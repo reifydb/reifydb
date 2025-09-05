@@ -5,7 +5,7 @@ use crate::Type;
 
 pub fn value_max<'a>(value: Type) -> &'a str {
 	match value {
-		Type::Bool => unreachable!(),
+		Type::Boolean => unreachable!(),
 		Type::Float4 => "+3.4e38",
 		Type::Float8 => "+1.8e308",
 		Type::Int1 => "127",
@@ -43,7 +43,7 @@ pub fn value_max<'a>(value: Type) -> &'a str {
 
 pub fn value_range<'a>(value: Type) -> &'a str {
 	match value {
-		Type::Bool => unreachable!(),
+		Type::Boolean => unreachable!(),
 		Type::Float4 => "-3.4e38 to +3.4e38",
 		Type::Float8 => "-1.8e308 to +1.8e308",
 		Type::Int1 => "-128 to 127",

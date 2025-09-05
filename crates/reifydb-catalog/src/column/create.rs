@@ -171,7 +171,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				value: Type::Bool,
+				value: Type::Boolean,
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -204,7 +204,7 @@ mod test {
 
 		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
-		assert_eq!(column_1.ty, Type::Bool);
+		assert_eq!(column_1.ty, Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
 		let column_2 =
@@ -290,7 +290,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "is_active".to_string(),
-				value: Type::Bool,
+				value: Type::Boolean,
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -337,7 +337,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				value: Type::Bool,
+				value: Type::Boolean,
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -356,7 +356,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				value: Type::Bool,
+				value: Type::Boolean,
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),

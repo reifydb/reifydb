@@ -7,7 +7,7 @@ use crate::value::columnar::data::ColumnData;
 impl ColumnData {
 	pub fn push_value(&mut self, value: Value) {
 		match value {
-			Value::Bool(v) => match self {
+			Value::Boolean(v) => match self {
 				ColumnData::Bool(_) => self.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
@@ -580,7 +580,7 @@ mod tests {
 	#[test]
 	fn test_bool() {
 		let mut col = ColumnData::bool(vec![true]);
-		col.push_value(Value::Bool(false));
+		col.push_value(Value::Boolean(false));
 		let ColumnData::Bool(container) = col else {
 			panic!("Expected Bool");
 		};
@@ -602,7 +602,7 @@ mod tests {
 	#[test]
 	fn test_push_value_to_undefined_bool() {
 		let mut col = ColumnData::undefined(2);
-		col.push_value(Value::Bool(true));
+		col.push_value(Value::Boolean(true));
 		let ColumnData::Bool(container) = col else {
 			panic!("Expected Bool");
 		};

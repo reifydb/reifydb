@@ -32,7 +32,7 @@ pub fn to_number<'a>(
 	}
 
 	if data.is_bool() {
-		return bool_to_number(data, target, lazy_fragment);
+		return boolean_to_number(data, target, lazy_fragment);
 	}
 
 	if data.is_utf8() {
@@ -56,12 +56,12 @@ pub fn to_number<'a>(
 	))
 }
 
-fn bool_to_number<'a>(
+fn boolean_to_number<'a>(
 	data: &ColumnData,
 	target: Type,
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
-	macro_rules! bool_to_number {
+	macro_rules! boolean_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
 			|out: &mut ColumnData, val: bool| {
 				out.push::<$target_ty>(if val {
@@ -76,25 +76,37 @@ fn bool_to_number<'a>(
 	match data {
 		ColumnData::Bool(container) => {
 			let converter = match target {
-				Type::Int1 => bool_to_number!(i8, 1i8, 0i8),
-				Type::Int2 => bool_to_number!(i16, 1i16, 0i16),
-				Type::Int4 => bool_to_number!(i32, 1i32, 0i32),
-				Type::Int8 => bool_to_number!(i64, 1i64, 0i64),
-				Type::Int16 => {
-					bool_to_number!(i128, 1i128, 0i128)
+				Type::Int1 => boolean_to_number!(i8, 1i8, 0i8),
+				Type::Int2 => {
+					boolean_to_number!(i16, 1i16, 0i16)
 				}
-				Type::Uint1 => bool_to_number!(u8, 1u8, 0u8),
-				Type::Uint2 => bool_to_number!(u16, 1u16, 0u16),
-				Type::Uint4 => bool_to_number!(u32, 1u32, 0u32),
-				Type::Uint8 => bool_to_number!(u64, 1u64, 0u64),
+				Type::Int4 => {
+					boolean_to_number!(i32, 1i32, 0i32)
+				}
+				Type::Int8 => {
+					boolean_to_number!(i64, 1i64, 0i64)
+				}
+				Type::Int16 => {
+					boolean_to_number!(i128, 1i128, 0i128)
+				}
+				Type::Uint1 => boolean_to_number!(u8, 1u8, 0u8),
+				Type::Uint2 => {
+					boolean_to_number!(u16, 1u16, 0u16)
+				}
+				Type::Uint4 => {
+					boolean_to_number!(u32, 1u32, 0u32)
+				}
+				Type::Uint8 => {
+					boolean_to_number!(u64, 1u64, 0u64)
+				}
 				Type::Uint16 => {
-					bool_to_number!(u128, 1u128, 0u128)
+					boolean_to_number!(u128, 1u128, 0u128)
 				}
 				Type::Float4 => {
-					bool_to_number!(f32, 1.0f32, 0.0f32)
+					boolean_to_number!(f32, 1.0f32, 0.0f32)
 				}
 				Type::Float8 => {
-					bool_to_number!(f64, 1.0f64, 0.0f64)
+					boolean_to_number!(f64, 1.0f64, 0.0f64)
 				}
 				Type::VarInt => {
 					|out: &mut ColumnData, val: bool| {
