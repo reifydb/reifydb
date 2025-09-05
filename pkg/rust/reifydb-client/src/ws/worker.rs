@@ -8,10 +8,10 @@ use std::{
 	time::Duration,
 };
 
-use crate::{
+use crate::ws::{
+	WebSocketClient,
 	message::InternalMessage,
 	router::{RequestRouter, route_error, route_response},
-	ws::WebSocketClient,
 };
 
 /// The background worker thread that handles all WebSocket communication using

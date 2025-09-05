@@ -2,8 +2,11 @@
 // This file is licensed under the MIT
 
 pub mod client;
+pub mod message;
 pub mod protocol;
+mod router;
 pub mod session;
+mod worker;
 
 pub use client::{WebSocketClient, WsClient};
 pub use session::{

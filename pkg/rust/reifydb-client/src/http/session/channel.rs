@@ -1,20 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::{
-	sync::{Arc, mpsc},
-	thread,
-	time::{Duration, Instant},
-};
+use std::{sync::mpsc, time::Instant};
 
 use reifydb_type::{Error, diagnostic::internal};
 
 use crate::{
 	CommandRequest, Params, QueryRequest,
-	http::client::HttpClient,
-	session::{
-		CommandResult, QueryResult, convert_execute_response,
-		convert_query_response,
+	http::{
+		client::HttpClient,
+		message::{HttpInternalMessage, HttpResponseRoute},
 	},
 	utils::generate_request_id,
 };
@@ -29,12 +24,12 @@ pub enum HttpChannelResponse {
 	/// Command execution response with frames
 	Command {
 		request_id: String,
-		result: CommandResult,
+		result: crate::session::CommandResult,
 	},
 	/// Query execution response with frames
 	Query {
 		request_id: String,
-		result: QueryResult,
+		result: crate::session::QueryResult,
 	},
 }
 
@@ -48,7 +43,7 @@ pub struct HttpResponseMessage {
 
 /// A channel-based HTTP session for message-passing style communication
 pub struct HttpChannelSession {
-	client: Arc<HttpClient>,
+	client: HttpClient,
 	token: Option<String>,
 	response_tx: mpsc::Sender<HttpResponseMessage>,
 }
@@ -74,16 +69,6 @@ impl HttpChannelSession {
 		client: HttpClient,
 		token: Option<String>,
 	) -> Result<(Self, mpsc::Receiver<HttpResponseMessage>), Error> {
-		let client = Arc::new(client);
-
-		// Test connection
-		if let Err(e) = client.test_connection() {
-			return Err(Error(internal(format!(
-				"Connection failed: {}",
-				e
-			))));
-		}
-
 		let (tx, rx) = mpsc::channel();
 
 		let session = Self {
@@ -105,40 +90,10 @@ impl HttpChannelSession {
 		url: &str,
 		token: Option<String>,
 	) -> Result<(Self, mpsc::Receiver<HttpResponseMessage>), Error> {
-		let client =
-			Arc::new(HttpClient::from_url(url).map_err(|e| {
-				Error(internal(format!("Invalid URL: {}", e)))
-			})?);
-
-		// Test connection
-		if let Err(e) = client.test_connection() {
-			return Err(Error(internal(format!(
-				"Connection failed: {}",
-				e
-			))));
-		}
-
-		let (tx, rx) = mpsc::channel();
-
-		let session = Self {
-			client,
-			token: token.clone(),
-			response_tx: tx,
-		};
-
-		// Authenticate if token provided
-		if token.is_some() {
-			let _ = session.authenticate();
-		}
-
-		Ok((session, rx))
-	}
-
-	/// Set timeout for requests
-	pub fn with_timeout(mut self, timeout: Duration) -> Self {
-		self.client =
-			Arc::new((*self.client).clone().with_timeout(timeout));
-		self
+		let client = HttpClient::from_url(url).map_err(|e| {
+			Error(internal(format!("Invalid URL: {}", e)))
+		})?;
+		Self::from_client(client, token)
 	}
 
 	/// Authenticate (response arrives on channel)
@@ -148,27 +103,24 @@ impl HttpChannelSession {
 		}
 
 		let id = generate_request_id();
-		let return_id = id.clone();
-		let tx = self.response_tx.clone();
 
-		// For HTTP, we'll just simulate authentication
-		// In a real implementation, this might send an auth request to
-		// /v1/auth
-		// Note: HTTP doesn't have persistent authentication like
-		// WebSocket, but we simulate it for API consistency
-		thread::spawn(move || {
-			let message = HttpResponseMessage {
-				request_id: id.clone(),
-				response: Ok(HttpChannelResponse::Auth {
-					request_id: id,
-				}),
-				timestamp: Instant::now(),
-			};
+		// Send auth message to worker thread
+		if let Err(e) = self.client.command_tx().send(
+			HttpInternalMessage::Auth {
+				id: id.clone(),
+				token: self.token.clone(),
+				route: HttpResponseRoute::Channel(
+					self.response_tx.clone(),
+				),
+			},
+		) {
+			return Err(Error(internal(format!(
+				"Failed to send auth request: {}",
+				e
+			))));
+		}
 
-			let _ = tx.send(message);
-		});
-
-		Ok(return_id)
+		Ok(id)
 	}
 
 	/// Send a command (response arrives on channel)
@@ -178,40 +130,30 @@ impl HttpChannelSession {
 		params: Option<Params>,
 	) -> Result<String, Box<dyn std::error::Error>> {
 		let id = generate_request_id();
-		let return_id = id.clone();
 
 		let request = CommandRequest {
 			statements: vec![rql.to_string()],
 			params,
 		};
 
-		let client = self.client.clone();
-		let tx = self.response_tx.clone();
-		let request_id = id;
+		// Send command message to worker thread
+		if let Err(e) = self.client.command_tx().send(
+			HttpInternalMessage::Command {
+				id: id.clone(),
+				request,
+				route: HttpResponseRoute::Channel(
+					self.response_tx.clone(),
+				),
+			},
+		) {
+			return Err(format!(
+				"Failed to send command request: {}",
+				e
+			)
+			.into());
+		}
 
-		thread::spawn(move || {
-			let timestamp = Instant::now();
-
-			let response = match client.send_command(&request) {
-				Ok(response) => Ok(HttpChannelResponse::Command {
-					request_id: request_id.clone(),
-					result: CommandResult {
-						frames: convert_execute_response(response),
-					},
-				}),
-				Err(e) => Err(e),
-			};
-
-			let message = HttpResponseMessage {
-				request_id,
-				response,
-				timestamp,
-			};
-
-			let _ = tx.send(message);
-		});
-
-		Ok(return_id)
+		Ok(id)
 	}
 
 	/// Send a query (response arrives on channel)
@@ -221,39 +163,29 @@ impl HttpChannelSession {
 		params: Option<Params>,
 	) -> Result<String, Box<dyn std::error::Error>> {
 		let id = generate_request_id();
-		let return_id = id.clone();
 
 		let request = QueryRequest {
 			statements: vec![rql.to_string()],
 			params,
 		};
 
-		let client = self.client.clone();
-		let tx = self.response_tx.clone();
-		let request_id = id;
+		// Send query message to worker thread
+		if let Err(e) = self.client.command_tx().send(
+			HttpInternalMessage::Query {
+				id: id.clone(),
+				request,
+				route: HttpResponseRoute::Channel(
+					self.response_tx.clone(),
+				),
+			},
+		) {
+			return Err(format!(
+				"Failed to send query request: {}",
+				e
+			)
+			.into());
+		}
 
-		thread::spawn(move || {
-			let timestamp = Instant::now();
-
-			let response = match client.send_query(&request) {
-				Ok(response) => Ok(HttpChannelResponse::Query {
-					request_id: request_id.clone(),
-					result: QueryResult {
-						frames: convert_query_response(response),
-					},
-				}),
-				Err(e) => Err(e),
-			};
-
-			let message = HttpResponseMessage {
-				request_id,
-				response,
-				timestamp,
-			};
-
-			let _ = tx.send(message);
-		});
-
-		Ok(return_id)
+		Ok(id)
 	}
 }

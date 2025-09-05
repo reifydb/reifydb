@@ -5,6 +5,8 @@ use std::{
 	collections::HashMap,
 	io::{Read, Write},
 	net::{SocketAddr, TcpStream, ToSocketAddrs},
+	sync::{Arc, Mutex, mpsc},
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
@@ -13,14 +15,39 @@ use serde_json;
 use crate::{
 	CommandRequest, CommandResponse, ErrResponse, QueryRequest,
 	QueryResponse,
+	http::{message::HttpInternalMessage, worker::http_worker_thread},
 };
 
-/// HTTP client implementation using mio for non-blocking I/O
+/// HTTP client implementation with worker thread
 #[derive(Clone)]
 pub struct HttpClient {
+	inner: Arc<HttpClientInner>,
+}
+
+pub(crate) struct HttpClientInner {
+	pub(crate) command_tx: mpsc::Sender<HttpInternalMessage>,
+	worker_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
+}
+
+/// HTTP client configuration for the worker thread
+#[derive(Clone)]
+pub(crate) struct HttpClientConfig {
 	pub(crate) host: String,
 	pub(crate) port: u16,
 	pub(crate) timeout: Duration,
+}
+
+impl Drop for HttpClient {
+	fn drop(&mut self) {
+		// Only send close if this is the last reference
+		if Arc::strong_count(&self.inner) == 1 {
+			// Send close message to worker thread
+			let _ = self
+				.inner
+				.command_tx
+				.send(HttpInternalMessage::Close);
+		}
+	}
 }
 
 impl HttpClient {
@@ -37,11 +64,13 @@ impl HttpClient {
 		let host = socket_addr.ip().to_string();
 		let port = socket_addr.port();
 
-		Ok(Self {
+		let config = HttpClientConfig {
 			host,
 			port,
 			timeout: Duration::from_secs(30),
-		})
+		};
+
+		Self::with_config(config)
 	}
 
 	/// Create HTTP client from URL (e.g., "http://localhost:8080")
@@ -63,12 +92,92 @@ impl HttpClient {
 		Self::new((host.as_str(), port))
 	}
 
-	/// Set timeout for requests
-	pub fn with_timeout(mut self, timeout: Duration) -> Self {
-		self.timeout = timeout;
-		self
+	/// Create HTTP client with specific configuration
+	fn with_config(
+		config: HttpClientConfig,
+	) -> Result<Self, Box<dyn std::error::Error>> {
+		let (command_tx, command_rx) = mpsc::channel();
+
+		// Test connection first
+		let test_config = config.clone();
+		test_config.test_connection()?;
+
+		// Start the background worker thread
+		let worker_config = config.clone();
+		let worker_handle = thread::spawn(move || {
+			http_worker_thread(worker_config, command_rx);
+		});
+
+		Ok(Self {
+			inner: Arc::new(HttpClientInner {
+				command_tx,
+				worker_handle: Arc::new(Mutex::new(Some(
+					worker_handle,
+				))),
+			}),
+		})
 	}
 
+	/// Get the command sender for internal use
+	pub(crate) fn command_tx(&self) -> &mpsc::Sender<HttpInternalMessage> {
+		&self.inner.command_tx
+	}
+
+	/// Close the client connection
+	pub fn close(self) -> Result<(), Box<dyn std::error::Error>> {
+		// The Drop impl handles cleanup
+		Ok(())
+	}
+
+	/// Test connection to the server
+	pub fn test_connection(
+		&self,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		// The connection was already tested during creation
+		Ok(())
+	}
+
+	/// Create a blocking session
+	pub fn blocking_session(
+		&self,
+		token: Option<String>,
+	) -> Result<crate::http::HttpBlockingSession, reifydb_type::Error> {
+		crate::http::HttpBlockingSession::from_client(
+			self.clone(),
+			token,
+		)
+	}
+
+	/// Create a callback session
+	pub fn callback_session(
+		&self,
+		token: Option<String>,
+	) -> Result<crate::http::HttpCallbackSession, reifydb_type::Error> {
+		crate::http::HttpCallbackSession::from_client(
+			self.clone(),
+			token,
+		)
+	}
+
+	/// Create a channel session
+	pub fn channel_session(
+		&self,
+		token: Option<String>,
+	) -> Result<
+		(
+			crate::http::HttpChannelSession,
+			mpsc::Receiver<crate::http::HttpResponseMessage>,
+		),
+		reifydb_type::Error,
+	> {
+		crate::http::HttpChannelSession::from_client(
+			self.clone(),
+			token,
+		)
+	}
+}
+
+impl HttpClientConfig {
 	/// Send a command request
 	pub fn send_command(
 		&self,
@@ -188,16 +297,13 @@ impl HttpClient {
 
 		// Send request
 		stream.write_all(request.as_bytes())?;
-		stream.flush()?;
 
 		// Read response
-		let mut response_buffer = Vec::new();
-		stream.read_to_end(&mut response_buffer)?;
-
-		let response_str = String::from_utf8_lossy(&response_buffer);
+		let mut response = String::new();
+		stream.read_to_string(&mut response)?;
 
 		// Parse HTTP response
-		self.parse_http_response(&response_str)
+		self.parse_http_response(&response)
 	}
 
 	/// Parse HTTP response and extract body
@@ -282,11 +388,10 @@ impl HttpClient {
 				continue;
 			}
 
-			// Parse chunk size (hex)
+			// Parse chunk size (hexadecimal)
 			let chunk_size = usize::from_str_radix(size_line, 16)?;
-
 			if chunk_size == 0 {
-				break; // End of chunks
+				break; // Last chunk
 			}
 
 			// Read chunk data
@@ -323,54 +428,6 @@ impl HttpClient {
 		};
 		let addr: SocketAddr = addr_str.parse()?;
 		let _stream = TcpStream::connect(addr)?;
-		Ok(())
-	}
-
-	/// Create a blocking session
-	pub fn blocking_session(
-		&self,
-		token: Option<String>,
-	) -> Result<crate::http::HttpBlockingSession, reifydb_type::Error> {
-		crate::http::HttpBlockingSession::from_client(
-			self.clone(),
-			token,
-		)
-	}
-
-	/// Create a callback session
-	pub fn callback_session(
-		&self,
-		token: Option<String>,
-	) -> Result<crate::http::HttpCallbackSession, reifydb_type::Error> {
-		crate::http::HttpCallbackSession::from_client(
-			self.clone(),
-			token,
-		)
-	}
-
-	/// Create a channel session
-	pub fn channel_session(
-		&self,
-		token: Option<String>,
-	) -> Result<
-		(
-			crate::http::HttpChannelSession,
-			std::sync::mpsc::Receiver<
-				crate::http::HttpResponseMessage,
-			>,
-		),
-		reifydb_type::Error,
-	> {
-		crate::http::HttpChannelSession::from_client(
-			self.clone(),
-			token,
-		)
-	}
-
-	/// Close the client (HTTP doesn't maintain persistent connections)
-	pub fn close(self) -> Result<(), Box<dyn std::error::Error>> {
-		// HTTP clients don't maintain persistent connections
-		// so no cleanup needed
 		Ok(())
 	}
 }

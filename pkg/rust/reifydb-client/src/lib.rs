@@ -4,11 +4,8 @@
 mod client;
 mod domain;
 pub mod http;
-mod message;
-mod router;
 pub mod session;
 mod utils;
-mod worker;
 pub mod ws;
 
 use std::collections::HashMap;

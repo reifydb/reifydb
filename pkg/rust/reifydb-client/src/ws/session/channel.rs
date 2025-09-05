@@ -7,9 +7,11 @@ use super::ResponseMessage;
 use crate::{
 	AuthRequest, CommandRequest, Params, QueryRequest, Request,
 	RequestPayload,
-	message::{InternalMessage, ResponseRoute},
 	utils::generate_request_id,
-	ws::client::ClientInner,
+	ws::{
+		client::ClientInner,
+		message::{InternalMessage, ResponseRoute},
+	},
 };
 
 /// A channel-based session for message-passing style communication
