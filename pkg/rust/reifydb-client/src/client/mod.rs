@@ -17,6 +17,7 @@ pub(crate) use utils::generate_request_id;
 
 use crate::{
 	WebSocketClient,
+	http::{HttpBlockingSession, HttpCallbackSession, HttpChannelSession},
 	session::{
 		BlockingSession, CallbackSession, ChannelSession,
 		ResponseMessage,
@@ -94,6 +95,73 @@ impl Client {
 		reifydb_type::Error,
 	> {
 		ChannelSession::new(self.inner.clone(), token)
+	}
+
+	/// Create an HTTP blocking session
+	pub fn http_blocking_session(
+		host: &str,
+		port: u16,
+		token: Option<String>,
+	) -> Result<HttpBlockingSession, reifydb_type::Error> {
+		HttpBlockingSession::new(host, port, token)
+	}
+
+	/// Create an HTTP blocking session from URL
+	pub fn http_blocking_session_from_url(
+		url: &str,
+		token: Option<String>,
+	) -> Result<HttpBlockingSession, reifydb_type::Error> {
+		HttpBlockingSession::from_url(url, token)
+	}
+
+	/// Create an HTTP callback session
+	pub fn http_callback_session(
+		host: &str,
+		port: u16,
+		token: Option<String>,
+	) -> Result<HttpCallbackSession, reifydb_type::Error> {
+		HttpCallbackSession::new(host, port, token)
+	}
+
+	/// Create an HTTP callback session from URL
+	pub fn http_callback_session_from_url(
+		url: &str,
+		token: Option<String>,
+	) -> Result<HttpCallbackSession, reifydb_type::Error> {
+		HttpCallbackSession::from_url(url, token)
+	}
+
+	/// Create an HTTP channel session
+	pub fn http_channel_session(
+		host: &str,
+		port: u16,
+		token: Option<String>,
+	) -> Result<
+		(
+			HttpChannelSession,
+			std::sync::mpsc::Receiver<
+				crate::http::HttpResponseMessage,
+			>,
+		),
+		reifydb_type::Error,
+	> {
+		HttpChannelSession::new(host, port, token)
+	}
+
+	/// Create an HTTP channel session from URL
+	pub fn http_channel_session_from_url(
+		url: &str,
+		token: Option<String>,
+	) -> Result<
+		(
+			HttpChannelSession,
+			std::sync::mpsc::Receiver<
+				crate::http::HttpResponseMessage,
+			>,
+		),
+		reifydb_type::Error,
+	> {
+		HttpChannelSession::from_url(url, token)
 	}
 
 	/// Close the client connection

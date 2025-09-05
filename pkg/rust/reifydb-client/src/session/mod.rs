@@ -99,7 +99,7 @@ pub(crate) fn parse_query_response(
 	}
 }
 
-fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
+pub(crate) fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
 	let mut result = Vec::new();
 
 	for frame in payload.frames {
@@ -123,7 +123,7 @@ fn convert_execute_response(payload: CommandResponse) -> Vec<Frame> {
 	result
 }
 
-fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
+pub(crate) fn convert_query_response(payload: QueryResponse) -> Vec<Frame> {
 	let mut result = Vec::new();
 
 	for frame in payload.frames {

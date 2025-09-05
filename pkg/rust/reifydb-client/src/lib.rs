@@ -3,6 +3,7 @@
 
 mod client;
 mod domain;
+pub mod http;
 pub mod session;
 
 use std::{
@@ -14,6 +15,11 @@ use std::{
 // Re-export main client and session types
 pub use client::Client;
 pub use domain::{Frame, FrameColumn};
+// Re-export HTTP types
+pub use http::{
+	HttpBlockingSession, HttpCallbackSession, HttpChannelSession,
+	HttpClient, HttpResponseMessage,
+};
 use reifydb_hash::sha1;
 use reifydb_type::diagnostic::Diagnostic;
 // Re-export types from reifydb
