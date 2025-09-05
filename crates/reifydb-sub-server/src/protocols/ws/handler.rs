@@ -3,20 +3,17 @@
 
 use std::io::{Read, Write};
 
-use reifydb_core::{
-	Frame,
-	interface::{Engine, Identity, Params, Transaction},
-};
-use reifydb_type::Value;
+use reifydb_core::interface::{Engine, Identity, Transaction};
 
 use super::{
 	CommandResponse, QueryResponse, Request, Response, ResponsePayload,
-	WebSocketConnectionData, WebsocketColumn, WebsocketFrame, WsState,
+	WebSocketConnectionData, WsState,
 };
 use crate::{
 	core::Connection,
 	protocols::{
 		ProtocolError, ProtocolHandler, ProtocolResult,
+		convert::{convert_params, convert_result_to_frames},
 		utils::{
 			build_ws_frame, build_ws_response, find_header_end,
 			parse_ws_frame,
@@ -592,7 +589,7 @@ impl WebSocketHandler {
 		let mut all_frames = Vec::new();
 
 		for statement in &cmd_req.statements {
-			let params = self.convert_params(&cmd_req.params)?;
+			let params = convert_params(&cmd_req.params)?;
 
 			match conn.engine().command_as(
 				&Identity::System {
@@ -603,10 +600,9 @@ impl WebSocketHandler {
 				params,
 			) {
 				Ok(result) => {
-					let frames = self
-						.convert_result_to_frames(
-							result,
-						)?;
+					let frames = convert_result_to_frames(
+						result,
+					)?;
 					all_frames.extend(frames);
 				}
 				Err(e) => {
@@ -640,7 +636,7 @@ impl WebSocketHandler {
 		let mut all_frames = Vec::new();
 
 		for statement in &query_req.statements {
-			let params = self.convert_params(&query_req.params)?;
+			let params = convert_params(&query_req.params)?;
 
 			match conn.engine().query_as(
 				&Identity::System {
@@ -651,10 +647,9 @@ impl WebSocketHandler {
 				params,
 			) {
 				Ok(result) => {
-					let frames = self
-						.convert_result_to_frames(
-							result,
-						)?;
+					let frames = convert_result_to_frames(
+						result,
+					)?;
 					all_frames.extend(frames);
 				}
 				Err(e) => {
@@ -677,59 +672,6 @@ impl WebSocketHandler {
 		Ok(ResponsePayload::Query(QueryResponse {
 			frames: all_frames,
 		}))
-	}
-
-	fn convert_params(
-		&self,
-		params: &Option<super::WsParams>,
-	) -> ProtocolResult<Params> {
-		match params {
-			Some(super::WsParams::Positional(values)) => {
-				Ok(Params::Positional(values.clone()))
-			}
-			Some(super::WsParams::Named(map)) => {
-				Ok(Params::Named(map.clone()))
-			}
-			None => Ok(Params::None),
-		}
-	}
-
-	fn convert_result_to_frames(
-		&self,
-		result: Vec<Frame>,
-	) -> ProtocolResult<Vec<WebsocketFrame>> {
-		let mut ws_frames = Vec::new();
-
-		for frame in result {
-			let mut ws_columns = Vec::new();
-
-			for column in frame.iter() {
-				let column_data: Vec<String> = column
-					.data
-					.iter()
-					.map(|value| {
-						match value {
-						Value::Undefined => "⟪undefined⟫".to_string(),
-						Value::Blob(b) => reifydb_type::util::hex::encode(&b),
-						_ => value.to_string()}
-					})
-					.collect();
-
-				ws_columns.push(WebsocketColumn {
-					schema: column.schema.clone(),
-					store: column.store.clone(),
-					name: column.name.clone(),
-					r#type: column.data.get_type(),
-					data: column_data,
-				});
-			}
-
-			ws_frames.push(WebsocketFrame {
-				columns: ws_columns,
-			});
-		}
-
-		Ok(ws_frames)
 	}
 
 	fn send_frame<T: Transaction>(

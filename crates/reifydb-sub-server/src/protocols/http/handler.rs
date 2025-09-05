@@ -4,11 +4,18 @@
 use std::io::{Read, Write};
 
 use reifydb_core::interface::{Engine, Identity, Params, Transaction};
+use reifydb_type::diagnostic::Diagnostic;
 
-use super::{HttpConnectionData, HttpState};
+use super::{
+	HttpConnectionData, HttpState, command::handle_v1_command,
+	query::handle_v1_query,
+};
 use crate::{
 	core::Connection,
-	protocols::{ProtocolError, ProtocolHandler, ProtocolResult},
+	protocols::{
+		ProtocolError, ProtocolHandler, ProtocolResult,
+		ws::{CommandRequest, ErrResponse, QueryRequest},
+	},
 };
 
 #[derive(Clone)]
@@ -373,6 +380,78 @@ impl HttpHandler {
                     return Ok(()); // Wait for more data
                 }
             }
+            ("POST", "/v1/command") => {
+                // Handle /v1/command endpoint with CommandRequest
+                let body_start = header_end + 4; // Skip \r\n\r\n
+                let content_length: usize = headers.get("content-length")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+
+                if conn.buffer().len() >= body_start + content_length {
+                    let body = &conn.buffer()[body_start..body_start + content_length];
+                    let body_str = String::from_utf8_lossy(body);
+
+                    match serde_json::from_str::<CommandRequest>(&body_str) {
+                        Ok(cmd_req) => {
+                            match handle_v1_command(conn, &cmd_req) {
+                                Ok(response) => serde_json::to_string(&response)
+                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
+                                Err(error_response) => serde_json::to_string(&error_response)
+                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
+                            }
+                        }
+                        Err(e) => {
+                            let error_response = ErrResponse {
+                                diagnostic: Diagnostic {
+                                    code: "INVALID_JSON".to_string(),
+                                    message: format!("Invalid CommandRequest JSON: {}", e),
+                                    ..Default::default()
+                                }
+                            };
+                            serde_json::to_string(&error_response)
+                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?
+                        }
+                    }
+                } else {
+                    return Ok(()); // Wait for more data
+                }
+            }
+            ("POST", "/v1/query") => {
+                // Handle /v1/query endpoint with QueryRequest
+                let body_start = header_end + 4; // Skip \r\n\r\n
+                let content_length: usize = headers.get("content-length")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+
+                if conn.buffer().len() >= body_start + content_length {
+                    let body = &conn.buffer()[body_start..body_start + content_length];
+                    let body_str = String::from_utf8_lossy(body);
+
+                    match serde_json::from_str::<QueryRequest>(&body_str) {
+                        Ok(query_req) => {
+                            match handle_v1_query(conn, &query_req) {
+                                Ok(response) => serde_json::to_string(&response)
+                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
+                                Err(error_response) => serde_json::to_string(&error_response)
+                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
+                            }
+                        }
+                        Err(e) => {
+                            let error_response = ErrResponse {
+                                diagnostic: Diagnostic {
+                                    code: "INVALID_JSON".to_string(),
+                                    message: format!("Invalid QueryRequest JSON: {}", e),
+                                    ..Default::default()
+                                }
+                            };
+                            serde_json::to_string(&error_response)
+                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?
+                        }
+                    }
+                } else {
+                    return Ok(()); // Wait for more data
+                }
+            }
             ("GET", path) if path.starts_with("/query?") => {
                 // Handle query via GET parameters
                 if let Some(query_start) = path.find("q=") {
@@ -394,6 +473,8 @@ impl HttpHandler {
 		// Build HTTP response
 		let response = if path == "/health"
 			|| (method == "POST" && path == "/query")
+			|| (method == "POST" && path == "/v1/command")
+			|| (method == "POST" && path == "/v1/query")
 			|| path.starts_with("/query?")
 		{
 			self.build_response(200, "OK", &response_body, None)
