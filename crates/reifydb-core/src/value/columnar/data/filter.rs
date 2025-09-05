@@ -53,9 +53,10 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				container.filter(mask)
 			}
-			ColumnData::Decimal(container) => {
-				container.filter(mask)
-			}
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.filter(mask),
 		}
 		Ok(())
 	}

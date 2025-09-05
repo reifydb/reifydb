@@ -537,15 +537,17 @@ impl ColumnData {
 			},
 
 			Value::Decimal(v) => match self {
-				ColumnData::Decimal(container) => {
-					container.push(Value::Decimal(v))
-				}
+				ColumnData::Decimal {
+					container,
+					..
+				} => container.push(Value::Decimal(v)),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
 						ColumnData::decimal(vec![]);
-					if let ColumnData::Decimal(
-						new_container,
-					) = &mut new_container
+					if let ColumnData::Decimal {
+						container: new_container,
+						..
+					} = &mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container

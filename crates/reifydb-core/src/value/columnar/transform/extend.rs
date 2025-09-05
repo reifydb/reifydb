@@ -331,7 +331,10 @@ impl Columns {
 					));
 				}
 				(
-					ColumnData::Decimal(container),
+					ColumnData::Decimal {
+						container,
+						..
+					},
 					Type::Decimal {
 						..
 					},
@@ -540,7 +543,10 @@ impl Columns {
 					}
 				}
 				(
-					ColumnData::Decimal(container),
+					ColumnData::Decimal {
+						container,
+						..
+					},
 					Type::Decimal {
 						..
 					},

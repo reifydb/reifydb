@@ -84,9 +84,10 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::VarUint(container) => {
 				FrameColumnData::VarUint(container)
 			}
-			ColumnData::Decimal(container) => {
-				FrameColumnData::Decimal(container)
-			}
+			ColumnData::Decimal {
+				container,
+				..
+			} => FrameColumnData::Decimal(container),
 			ColumnData::Undefined(container) => {
 				FrameColumnData::Undefined(container)
 			}

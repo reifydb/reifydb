@@ -84,9 +84,15 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				ColumnData::VarUint(container.take(num))
 			}
-			ColumnData::Decimal(container) => {
-				ColumnData::Decimal(container.take(num))
-			}
+			ColumnData::Decimal {
+				container,
+				precision,
+				scale,
+			} => ColumnData::Decimal {
+				container: container.take(num),
+				precision: *precision,
+				scale: *scale,
+			},
 		}
 	}
 }

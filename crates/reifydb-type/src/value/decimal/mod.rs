@@ -118,6 +118,14 @@ impl Decimal {
 		self.inner
 	}
 
+	pub fn negate(self) -> Self {
+		Self {
+			inner: -self.inner,
+			precision: self.precision,
+			scale: self.scale,
+		}
+	}
+
 	fn validate_digits(&self) -> Result<(), Error> {
 		let str_repr = self.inner.to_string();
 		let digits: Vec<char> = str_repr

@@ -1,6 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use operator::{
+	not_can_not_applied_to_number, not_can_not_applied_to_temporal,
+	not_can_not_applied_to_uuid,
+};
 use reifydb_core::{
 	err,
 	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
@@ -9,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	VarInt, VarUint, diagnostic,
+	Decimal, VarInt, VarUint, diagnostic,
 	diagnostic::{engine::frame_error, operator},
 };
 
@@ -55,7 +59,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -82,7 +86,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -109,7 +113,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -136,7 +140,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -163,7 +167,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -190,7 +194,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -217,7 +221,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => -*val,
                             PrefixOperator::Plus(_) => *val,
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -252,7 +256,7 @@ impl StandardEvaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()));
+                            return err!(not_can_not_applied_to_number(prefix.full_fragment_owned()));
                         }
                     });
                 }
@@ -274,7 +278,7 @@ impl StandardEvaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()));
+                            return err!(not_can_not_applied_to_number(prefix.full_fragment_owned()));
                         }
                     });
                 }
@@ -296,7 +300,7 @@ impl StandardEvaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()));
+                            return err!(not_can_not_applied_to_number(prefix.full_fragment_owned()));
                         }
                     });
                 }
@@ -318,7 +322,7 @@ impl StandardEvaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()));
+                            return err!(not_can_not_applied_to_number(prefix.full_fragment_owned()));
                         }
                     });
                 }
@@ -339,7 +343,7 @@ impl StandardEvaluator {
                         PrefixOperator::Minus(_) => -signed,
                         PrefixOperator::Plus(_) => signed,
                         PrefixOperator::Not(_) => {
-                            return err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()));
+                            return err!(not_can_not_applied_to_number(prefix.full_fragment_owned()));
                         }
                     });
                 }
@@ -361,42 +365,42 @@ impl StandardEvaluator {
 
             ColumnData::Date(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::DateTime(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::Time(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::Interval(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::RowNumber(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_number(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::IdentityId(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::Uuid4(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::Uuid7(_) => match prefix.operator {
                 PrefixOperator::Not(_) => {
-                    err!(operator::not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+                    err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
             ColumnData::Blob(_) => match prefix.operator {
@@ -416,7 +420,7 @@ impl StandardEvaluator {
                             PrefixOperator::Minus(_) => VarInt(-val.0.clone()),
                             PrefixOperator::Plus(_) => val.clone(),
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
@@ -474,27 +478,27 @@ impl StandardEvaluator {
                                 data: ColumnData::varuint_with_bitvec(result, container.bitvec())})})
                     },
                     PrefixOperator::Not(_) => {
-                        err!(operator::not_can_not_applied_to_number(
+                        err!(not_can_not_applied_to_number(
                             prefix.full_fragment_owned()
                         ))
                     }
                 }
             },
-            ColumnData::Decimal(container) => {
+            ColumnData::Decimal { container, .. } => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus(_) => reifydb_type::Decimal::from_i64(0, 38, 0).unwrap(),  // TODO: implement negation
+                            PrefixOperator::Minus(_) => val.clone().negate(),
                             PrefixOperator::Plus(_) => val.clone(),
                             PrefixOperator::Not(_) => {
-                                return err!(operator::not_can_not_applied_to_number(
+                                return err!(not_can_not_applied_to_number(
                                     prefix.full_fragment_owned()
                                 ));
                             }
                         });
                     } else {
-                        result.push(reifydb_type::Decimal::from_i64(0, 38, 0).unwrap());
+                        result.push(Decimal::from(0));
                     }
                 }
                 Ok(match column.table() {

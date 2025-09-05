@@ -50,7 +50,11 @@ pub enum ColumnData {
 	Blob(BlobContainer),
 	VarInt(VarIntContainer),
 	VarUint(VarUintContainer),
-	Decimal(DecimalContainer),
+	Decimal {
+		container: DecimalContainer,
+		precision: reifydb_type::value::decimal::Precision,
+		scale: reifydb_type::value::decimal::Scale,
+	},
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -83,7 +87,14 @@ impl ColumnData {
 			ColumnData::Blob(_) => Type::Blob,
 			ColumnData::VarInt(_) => Type::VarInt,
 			ColumnData::VarUint(_) => Type::VarUint,
-			ColumnData::Decimal(_) => Type::Decimal { precision: reifydb_type::value::decimal::Precision::new(38), scale: reifydb_type::value::decimal::Scale::new(0) },
+			ColumnData::Decimal {
+				precision,
+				scale,
+				..
+			} => Type::Decimal {
+				precision: *precision,
+				scale: *scale,
+			},
 			ColumnData::Undefined(_) => Type::Undefined,
 		}
 	}
@@ -165,9 +176,10 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				container.is_defined(idx)
 			}
-			ColumnData::Decimal(container) => {
-				container.is_defined(idx)
-			}
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.is_defined(idx),
 			ColumnData::Undefined(_) => false,
 		}
 	}
@@ -243,7 +255,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => container.bitvec(),
 			ColumnData::VarInt(container) => container.bitvec(),
 			ColumnData::VarUint(container) => container.bitvec(),
-			ColumnData::Decimal(container) => container.bitvec(),
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.bitvec(),
 			ColumnData::Undefined(_) => unreachable!(),
 		}
 	}
@@ -286,8 +301,11 @@ impl ColumnData {
 			Type::VarInt => Self::varint_with_capacity(capacity),
 			Type::VarUint => Self::varuint_with_capacity(capacity),
 			Type::Decimal {
-				..
-			} => Self::decimal_with_capacity(capacity),
+				precision,
+				scale,
+			} => Self::decimal_with_capacity_typed(
+				capacity, precision, scale,
+			),
 			Type::Undefined => panic!(
 				"it is not possible to create an undefined container with capacity without setting the values alread"
 			),
@@ -327,7 +345,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => container.len(),
 			ColumnData::VarInt(container) => container.len(),
 			ColumnData::VarUint(container) => container.len(),
-			ColumnData::Decimal(container) => container.len(),
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.len(),
 			ColumnData::Undefined(container) => container.len(),
 		}
 	}
@@ -363,7 +384,10 @@ impl ColumnData {
 			ColumnData::Blob(container) => container.capacity(),
 			ColumnData::VarInt(container) => container.capacity(),
 			ColumnData::VarUint(container) => container.capacity(),
-			ColumnData::Decimal(container) => container.capacity(),
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.capacity(),
 			ColumnData::Undefined(container) => {
 				container.capacity()
 			}
@@ -447,9 +471,10 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				container.as_string(index)
 			}
-			ColumnData::Decimal(container) => {
-				container.as_string(index)
-			}
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.as_string(index),
 			ColumnData::Undefined(container) => {
 				container.as_string(index)
 			}

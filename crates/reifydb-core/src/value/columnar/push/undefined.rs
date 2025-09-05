@@ -84,9 +84,10 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				container.push_undefined()
 			}
-			ColumnData::Decimal(container) => {
-				container.push_undefined()
-			}
+			ColumnData::Decimal {
+				container,
+				..
+			} => container.push_undefined(),
 		}
 	}
 }

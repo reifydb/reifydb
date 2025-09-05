@@ -347,7 +347,9 @@ impl AsSlice<VarUint> for ColumnData {
 impl AsSlice<Decimal> for ColumnData {
 	fn as_slice(&self) -> &[Decimal] {
 		match self {
-			ColumnData::Decimal(_) => {
+			ColumnData::Decimal {
+				..
+			} => {
 				panic!(
 					"as_slice() is not supported for variable-length Decimal. Use to_vec() instead."
 				)

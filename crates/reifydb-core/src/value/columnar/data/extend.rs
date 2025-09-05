@@ -94,9 +94,16 @@ impl ColumnData {
 			(ColumnData::VarUint(l), ColumnData::VarUint(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::Decimal(l), ColumnData::Decimal(r)) => {
-				l.extend(&r)?
-			}
+			(
+				ColumnData::Decimal {
+					container: l,
+					..
+				},
+				ColumnData::Decimal {
+					container: r,
+					..
+				},
+			) => l.extend(&r)?,
 			(
 				ColumnData::Undefined(l),
 				ColumnData::Undefined(r),
@@ -359,16 +366,23 @@ impl ColumnData {
 							new_container,
 						);
 					}
-					ColumnData::Decimal(r) => {
+					ColumnData::Decimal {
+						container: r,
+						precision,
+						scale,
+					} => {
 						let mut new_container = DecimalContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::Decimal(
-							new_container,
-						);
+						*self = ColumnData::Decimal {
+							container:
+								new_container,
+							precision,
+							scale,
+						};
 					}
 					ColumnData::RowNumber(_) => {
 						return_error!(engine::frame_error(
@@ -463,9 +477,10 @@ impl ColumnData {
 					ColumnData::VarUint(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::Decimal(l) => {
-						l.extend_from_undefined(r_len)
-					}
+					ColumnData::Decimal {
+						container: l,
+						..
+					} => l.extend_from_undefined(r_len),
 					ColumnData::Undefined(_) => {
 						unreachable!()
 					}
