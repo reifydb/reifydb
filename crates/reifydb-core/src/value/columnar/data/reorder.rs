@@ -84,7 +84,7 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				container.reorder(indices)
 			}
-			ColumnData::BigDecimal(container) => {
+			ColumnData::Decimal(container) => {
 				container.reorder(indices)
 			}
 		}

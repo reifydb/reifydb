@@ -3,27 +3,27 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{BigDecimal, Value};
+use reifydb_type::{Decimal, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{BitVec, CowVec};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BigDecimalContainer {
-	data: CowVec<BigDecimal>,
+pub struct DecimalContainer {
+	data: CowVec<Decimal>,
 	bitvec: BitVec,
 }
 
-impl Deref for BigDecimalContainer {
-	type Target = [BigDecimal];
+impl Deref for DecimalContainer {
+	type Target = [Decimal];
 
 	fn deref(&self) -> &Self::Target {
 		self.data.as_slice()
 	}
 }
 
-impl BigDecimalContainer {
-	pub fn new(data: Vec<BigDecimal>, bitvec: BitVec) -> Self {
+impl DecimalContainer {
+	pub fn new(data: Vec<Decimal>, bitvec: BitVec) -> Self {
 		debug_assert_eq!(data.len(), bitvec.len());
 		Self {
 			data: CowVec::new(data),
@@ -38,7 +38,7 @@ impl BigDecimalContainer {
 		}
 	}
 
-	pub fn from_vec(data: Vec<BigDecimal>) -> Self {
+	pub fn from_vec(data: Vec<Decimal>) -> Self {
 		let len = data.len();
 		Self {
 			data: CowVec::new(data),
@@ -59,7 +59,7 @@ impl BigDecimalContainer {
 		&self.bitvec
 	}
 
-	pub fn as_slice(&self) -> &[BigDecimal] {
+	pub fn as_slice(&self) -> &[Decimal] {
 		self.data.as_slice()
 	}
 
@@ -72,11 +72,11 @@ impl BigDecimalContainer {
 	}
 
 	pub fn push_undefined(&mut self) {
-		self.data.push(BigDecimal::from(0));
+		self.data.push(Decimal::from(0));
 		self.bitvec.push(false);
 	}
 
-	pub fn data(&self) -> &[BigDecimal] {
+	pub fn data(&self) -> &[Decimal] {
 		self.data.as_slice()
 	}
 
@@ -90,7 +90,7 @@ impl BigDecimalContainer {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if self.is_defined(index) {
-			Value::BigDecimal(self.data[index].clone())
+			Value::Decimal(self.data[index].clone())
 		} else {
 			Value::Undefined
 		}
@@ -98,16 +98,16 @@ impl BigDecimalContainer {
 
 	pub fn push(&mut self, value: Value) {
 		match value {
-			Value::BigDecimal(v) => {
+			Value::Decimal(v) => {
 				self.data.push(v);
 				self.bitvec.push(true);
 			}
 			Value::Undefined => {
-				self.data.push(BigDecimal::from(0));
+				self.data.push(Decimal::from(0));
 				self.bitvec.push(false);
 			}
 			_ => unreachable!(
-				"BigDecimalContainer::push with invalid value: {value:?}"
+				"DecimalContainer::push with invalid value: {value:?}"
 			),
 		}
 	}
@@ -135,7 +135,7 @@ impl BigDecimalContainer {
 
 	pub fn take(&self, num: usize) -> Self {
 		let count = num.min(self.len());
-		let data: Vec<BigDecimal> =
+		let data: Vec<Decimal> =
 			self.data.iter().take(count).cloned().collect();
 		let bitvec_data: Vec<bool> =
 			self.bitvec.iter().take(count).collect();
@@ -173,7 +173,7 @@ impl BigDecimalContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<BigDecimal> = self
+		let new_data: Vec<Decimal> = self
 			.data
 			.iter()
 			.skip(start)
@@ -194,7 +194,7 @@ impl BigDecimalContainer {
 
 	pub fn extend_from_undefined(&mut self, count: usize) {
 		for _ in 0..count {
-			self.data.push(BigDecimal::from(0));
+			self.data.push(Decimal::from(0));
 			self.bitvec.push(false);
 		}
 	}

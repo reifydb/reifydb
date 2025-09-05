@@ -173,9 +173,11 @@ fn parse_typed_value(
 				Value::VarUint(reifydb_type::VarUint::from(bi))
 			})
 			.unwrap_or(Value::Undefined),
-		Type::BigDecimal => str_val
-			.parse::<reifydb_type::BigDecimal>()
-			.map(Value::BigDecimal)
+		Type::Decimal {
+			..
+		} => str_val
+			.parse::<reifydb_type::Decimal>()
+			.map(Value::Decimal)
 			.unwrap_or(Value::Undefined),
 		Type::Undefined => Value::Undefined,
 	};

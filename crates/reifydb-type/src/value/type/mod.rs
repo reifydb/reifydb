@@ -79,8 +79,11 @@ pub enum Type {
 	VarInt,
 	/// An arbitrary-precision unsigned integer
 	VarUint,
-	/// An arbitrary-precision decimal
-	BigDecimal,
+	/// An arbitrary-precision decimal with precision and scale
+	Decimal {
+		precision: crate::value::decimal::Precision,
+		scale: crate::value::decimal::Scale,
+	},
 	/// Value is not defined (think null in common programming languages)
 	Undefined,
 }
@@ -94,7 +97,7 @@ impl Type {
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
 				| Type::Uint8 | Type::Uint16 | Type::VarInt
-				| Type::VarUint | Type::BigDecimal
+				| Type::VarUint | Type::Decimal { .. }
 		)
 	}
 
@@ -178,7 +181,9 @@ impl Type {
 			Type::Blob => 0x16,
 			Type::VarInt => 0x18,
 			Type::VarUint => 0x1A,
-			Type::BigDecimal => 0x19,
+			Type::Decimal {
+				..
+			} => 0x19,
 			Type::Undefined => 0x00,
 		}
 	}
@@ -213,7 +218,13 @@ impl Type {
 			0x17 => Type::IdentityId,
 			0x18 => Type::VarInt,
 			0x1A => Type::VarUint,
-			0x19 => Type::BigDecimal,
+			0x19 => Type::Decimal {
+				precision:
+					crate::value::decimal::Precision::new(
+						38,
+					),
+				scale: crate::value::decimal::Scale::new(0),
+			},
 			_ => unreachable!(),
 		}
 	}
@@ -250,7 +261,9 @@ impl Type {
 			// storage with offset + length
 			Type::VarUint => 16, // u128 inline or dynamic
 			// storage with offset + length
-			Type::BigDecimal => 16, // i128 inline or dynamic
+			Type::Decimal {
+				..
+			} => 16, // i128 inline or dynamic
 			// storage with offset + length
 			Type::Undefined => 0,
 		}
@@ -285,7 +298,9 @@ impl Type {
 			// inline storage
 			Type::VarUint => 16, // u128 alignment for
 			// inline storage
-			Type::BigDecimal => 16, // i128 alignment for
+			Type::Decimal {
+				..
+			} => 16, // i128 alignment for
 			// inline storage
 			Type::Undefined => 0,
 		}
@@ -320,7 +335,17 @@ impl Display for Type {
 			Type::Blob => f.write_str("Blob"),
 			Type::VarInt => f.write_str("VarInt"),
 			Type::VarUint => f.write_str("VarUint"),
-			Type::BigDecimal => f.write_str("BigDecimal"),
+			Type::Decimal {
+				precision,
+				scale,
+			} => {
+				write!(
+					f,
+					"Decimal({}, {})",
+					precision.value(),
+					scale.value()
+				)
+			}
 			Type::Undefined => f.write_str("Undefined"),
 		}
 	}
@@ -355,7 +380,15 @@ impl From<&Value> for Type {
 			Value::Blob(_) => Type::Blob,
 			Value::VarInt(_) => Type::VarInt,
 			Value::VarUint(_) => Type::VarUint,
-			Value::BigDecimal(_) => Type::BigDecimal,
+			Value::Decimal(decimal) => Type::Decimal {
+				precision:
+					crate::value::decimal::Precision::new(
+						decimal.precision().value(),
+					),
+				scale: crate::value::decimal::Scale::new(
+					decimal.scale().value(),
+				),
+			},
 		}
 	}
 }
@@ -390,7 +423,13 @@ impl FromStr for Type {
 			"BLOB" => Ok(Type::Blob),
 			"VARINT" => Ok(Type::VarInt),
 			"VARUINT" => Ok(Type::VarUint),
-			"BIGDECIMAL" => Ok(Type::BigDecimal),
+			"BIGDECIMAL" | "DECIMAL" => Ok(Type::Decimal {
+				precision:
+					crate::value::decimal::Precision::new(
+						38,
+					),
+				scale: crate::value::decimal::Scale::new(0),
+			}),
 			"UNDEFINED" => Ok(Type::Undefined),
 			_ => Err(()),
 		}

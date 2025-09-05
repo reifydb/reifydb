@@ -125,7 +125,7 @@ impl StandardEvaluator {
                 bu.clone();
                 ctx.row_count
             ]),
-			Value::BigDecimal(bd) => ColumnData::bigdecimal(vec![
+			Value::Decimal(bd) => ColumnData::decimal(vec![
                 bd.clone();
                 ctx.row_count
             ]),

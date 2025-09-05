@@ -251,7 +251,7 @@ impl<E: Evaluator> FlowEngine<E> {
                                 Value::Blob(v) => layout.set_blob(&mut row, view_idx, &v),
                                 Value::VarInt(v) => layout.set_varint(&mut row, view_idx, &v),
                                 Value::VarUint(v) => layout.set_varuint(&mut row, view_idx, &v),
-                                Value::BigDecimal(v) => layout.set_bigdecimal(&mut row, view_idx, &v),
+                                Value::Decimal(v) => layout.set_decimal(&mut row, view_idx, &v),
                                 Value::Undefined => layout.set_undefined(&mut row, view_idx)}
 						}
 
@@ -344,7 +344,7 @@ impl<E: Evaluator> FlowEngine<E> {
 								Value::Blob(v) => layout.set_blob(&mut new_row, view_idx, &v),
 								Value::VarInt(v) => layout.set_varint(&mut new_row, view_idx, &v),
 							Value::VarUint(v) => layout.set_varuint(&mut new_row, view_idx, &v),
-								Value::BigDecimal(v) => layout.set_bigdecimal(&mut new_row, view_idx, &v),
+								Value::Decimal(v) => layout.set_decimal(&mut new_row, view_idx, &v),
 								Value::Undefined => layout.set_undefined(&mut new_row, view_idx)}
 						}
 

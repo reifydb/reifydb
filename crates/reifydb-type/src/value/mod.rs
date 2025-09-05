@@ -9,11 +9,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 mod as_string;
-pub mod bigdecimal;
 pub mod blob;
 pub mod boolean;
 mod date;
 mod datetime;
+pub mod decimal;
 mod identity;
 mod interval;
 mod into;
@@ -29,10 +29,10 @@ pub mod uuid;
 pub mod varint;
 pub mod varuint;
 
-pub use bigdecimal::BigDecimal;
 pub use blob::Blob;
 pub use date::Date;
 pub use datetime::DateTime;
+pub use decimal::Decimal;
 pub use identity::IdentityId;
 pub use interval::Interval;
 pub use into::IntoValue;
@@ -101,7 +101,7 @@ pub enum Value {
 	/// An arbitrary-precision unsigned integer
 	VarUint(VarUint),
 	/// An arbitrary-precision decimal
-	BigDecimal(BigDecimal),
+	Decimal(Decimal),
 }
 
 impl Value {
@@ -163,7 +163,7 @@ impl PartialOrd for Value {
 			(Value::VarUint(l), Value::VarUint(r)) => {
 				l.partial_cmp(r)
 			}
-			(Value::BigDecimal(l), Value::BigDecimal(r)) => {
+			(Value::Decimal(l), Value::Decimal(r)) => {
 				l.partial_cmp(r)
 			}
 			(Value::Undefined, Value::Undefined) => None,
@@ -204,9 +204,7 @@ impl Ord for Value {
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
 			(Value::VarInt(l), Value::VarInt(r)) => l.cmp(r),
 			(Value::VarUint(l), Value::VarUint(r)) => l.cmp(r),
-			(Value::BigDecimal(l), Value::BigDecimal(r)) => {
-				l.cmp(r)
-			}
+			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
 			_ => unimplemented!(),
 		}
 	}
@@ -241,7 +239,7 @@ impl Display for Value {
 			Value::Blob(value) => Display::fmt(value, f),
 			Value::VarInt(value) => Display::fmt(value, f),
 			Value::VarUint(value) => Display::fmt(value, f),
-			Value::BigDecimal(value) => Display::fmt(value, f),
+			Value::Decimal(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
 	}
@@ -276,7 +274,10 @@ impl Value {
 			Value::Blob(_) => Type::Blob,
 			Value::VarInt(_) => Type::VarInt,
 			Value::VarUint(_) => Type::VarUint,
-			Value::BigDecimal(_) => Type::BigDecimal,
+			Value::Decimal(decimal) => Type::Decimal {
+				precision: decimal.precision(),
+				scale: decimal.scale(),
+			},
 		}
 	}
 }

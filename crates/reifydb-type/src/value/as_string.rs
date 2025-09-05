@@ -36,7 +36,7 @@ impl AsString for Value {
 			Value::Blob(b) => b.to_string(),
 			Value::VarInt(bi) => bi.to_string(),
 			Value::VarUint(bu) => bu.to_string(),
-			Value::BigDecimal(bd) => bd.to_string(),
+			Value::Decimal(bd) => bd.to_string(),
 		}
 	}
 }

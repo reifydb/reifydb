@@ -84,8 +84,8 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				ColumnData::VarUint(container.take(num))
 			}
-			ColumnData::BigDecimal(container) => {
-				ColumnData::BigDecimal(container.take(num))
+			ColumnData::Decimal(container) => {
+				ColumnData::Decimal(container.take(num))
 			}
 		}
 	}

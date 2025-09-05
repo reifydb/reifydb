@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	BigDecimal, Blob, Date, DateTime, Interval, Time, Type, Uuid4, Uuid7,
+	Blob, Date, DateTime, Decimal, Interval, Time, Type, Uuid4, Uuid7,
 	Value, VarInt, VarUint, diagnostic::engine, return_error,
 };
 
@@ -165,8 +165,8 @@ impl Columns {
                         vec![VarUint::default(); size],
                         BitVec::repeat(size, false),
                     ),
-                    Type::BigDecimal => ColumnData::bigdecimal_with_bitvec(
-                        vec![BigDecimal::default(); size],
+                    Type::Decimal { .. } => ColumnData::decimal_with_bitvec(
+                        vec![Decimal::from(0); size],
                         BitVec::repeat(size, false),
                     )
                 };
@@ -331,13 +331,13 @@ impl Columns {
 					));
 				}
 				(
-					ColumnData::BigDecimal(container),
-					Type::BigDecimal,
+					ColumnData::Decimal(container),
+					Type::Decimal {
+						..
+					},
 				) => {
-					container.push(Value::BigDecimal(
-						layout.get_bigdecimal(
-							&row, index,
-						),
+					container.push(Value::Decimal(
+						layout.get_decimal(&row, index),
 					));
 				}
 				(_, v) => {
@@ -540,14 +540,15 @@ impl Columns {
 					}
 				}
 				(
-					ColumnData::BigDecimal(container),
-					Type::BigDecimal,
+					ColumnData::Decimal(container),
+					Type::Decimal {
+						..
+					},
 				) => {
-					match layout
-						.try_get_bigdecimal(row, index)
+					match layout.try_get_decimal(row, index)
 					{
 						Some(v) => container.push(
-							Value::BigDecimal(v),
+							Value::Decimal(v),
 						),
 						None => container
 							.push_undefined(),

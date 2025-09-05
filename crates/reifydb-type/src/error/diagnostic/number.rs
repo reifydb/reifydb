@@ -5,6 +5,7 @@ use crate::{
 	OwnedFragment, Type,
 	error::diagnostic::{Diagnostic, util::value_range},
 	fragment::IntoFragment,
+	value::decimal::{Precision, Scale},
 };
 
 pub fn invalid_number_format<'a>(
@@ -247,4 +248,88 @@ pub fn integer_precision_loss<'a>(
         ],
         column: None,
         cause: None}
+}
+
+pub fn decimal_scale_exceeds_precision<'a>(
+	fragment: impl IntoFragment<'a>,
+	scale: impl Into<Scale>,
+	precision: impl Into<Precision>,
+) -> Diagnostic {
+	let scale = scale.into();
+	let precision = precision.into();
+
+	let fragment = fragment.into_fragment().into_owned();
+	let label = Some(format!(
+		"scale ({}) cannot be greater than precision ({})",
+		scale, precision
+	));
+
+	Diagnostic {
+		code: "NUMBER_005".to_string(),
+		statement: None,
+		message: "decimal scale exceeds precision".to_string(),
+		fragment,
+		label,
+		help: Some(format!(
+			"use a scale value between 0 and {} or increase precision",
+			precision
+		)),
+		notes: vec![
+			format!("current precision: {}", precision),
+			format!("current scale: {}", scale),
+			"scale represents the number of digits after the decimal point".to_string(),
+			"precision represents the total number of significant digits".to_string(),
+		],
+		column: None,
+		cause: None,
+	}
+}
+
+pub fn decimal_precision_invalid(
+	precision: impl Into<Precision>,
+) -> Diagnostic {
+	let precision = precision.into();
+
+	let label = Some(format!(
+		"precision ({}) must be between 1 and 38",
+		precision
+	));
+
+	Diagnostic {
+		code: "NUMBER_006".to_string(),
+		statement: None,
+		message: "invalid decimal precision".to_string(),
+		fragment: OwnedFragment::None,
+		label,
+		help: Some("use a precision value between 1 and 38".to_string()),
+		notes: vec![
+			format!("current precision: {}", precision),
+			"precision represents the total number of significant digits".to_string(),
+			"compatible range: 1 to 38".to_string(),
+		],
+		column: None,
+		cause: None,
+	}
+}
+
+pub fn decimal_scale_invalid(scale: impl Into<Scale>) -> Diagnostic {
+	let scale = scale.into();
+
+	let label = Some(format!("scale ({}) must be between 0 and 38", scale));
+
+	Diagnostic {
+		code: "NUMBER_007".to_string(),
+		statement: None,
+		message: "invalid decimal scale".to_string(),
+		fragment: OwnedFragment::None,
+		label,
+		help: Some("use a scale value between 0 and 38".to_string()),
+		notes: vec![
+			format!("current scale: {}", scale),
+			"scale represents the number of digits after the decimal point".to_string(),
+			"compatible range: 0 to 38".to_string(),
+		],
+		column: None,
+		cause: None,
+	}
 }

@@ -758,7 +758,7 @@ impl StandardEvaluator {
 					),
 				))
 			}
-			Value::BigDecimal(_) => {
+			Value::Decimal(_) => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -767,19 +767,19 @@ impl StandardEvaluator {
 						break;
 					}
 					match v {
-						Value::BigDecimal(b) => {
+						Value::Decimal(b) => {
 							data.push(b.clone());
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::BigDecimal::zero());
+							data.push(reifydb_type::Decimal::from_i64(0, 38, 0).unwrap());
 							bitvec.push(false);
 						}
 					}
 					count += 1;
 				}
 				Ok(col.with_new_data(
-					ColumnData::bigdecimal_with_bitvec(
+					ColumnData::decimal_with_bitvec(
 						data, bitvec,
 					),
 				))

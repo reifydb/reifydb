@@ -346,8 +346,8 @@ impl Executor {
 								&mut row,
 								table_idx, &v,
 							),
-						Value::BigDecimal(v) => layout
-							.set_bigdecimal(
+						Value::Decimal(v) => layout
+							.set_decimal(
 								&mut row,
 								table_idx, &v,
 							),

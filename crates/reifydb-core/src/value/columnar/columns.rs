@@ -106,8 +106,8 @@ impl Columns {
 				Value::VarUint(v) => {
 					ColumnData::varuint(vec![v])
 				}
-				Value::BigDecimal(v) => {
-					ColumnData::bigdecimal(vec![v])
+				Value::Decimal(v) => {
+					ColumnData::decimal(vec![v])
 				}
 			};
 
@@ -259,9 +259,9 @@ impl Columns {
 					Type::VarUint => {
 						ColumnData::varuint(vec![])
 					}
-					Type::BigDecimal => {
-						ColumnData::bigdecimal(vec![])
-					}
+					Type::Decimal {
+						..
+					} => ColumnData::decimal(vec![]),
 					Type::Undefined => {
 						ColumnData::undefined(0)
 					}
@@ -344,9 +344,9 @@ impl Columns {
 					Type::VarUint => {
 						ColumnData::varuint(vec![])
 					}
-					Type::BigDecimal => {
-						ColumnData::bigdecimal(vec![])
-					}
+					Type::Decimal {
+						..
+					} => ColumnData::decimal(vec![]),
 					Type::Undefined => {
 						ColumnData::undefined(0)
 					}

@@ -12,7 +12,7 @@ pub use callback::CallbackSession;
 pub use channel::ChannelSession;
 use num_bigint;
 use reifydb_type::{
-	BigDecimal, Blob, Date, DateTime, Error, IdentityId, RowNumber, Time,
+	Blob, Date, DateTime, Decimal, Error, IdentityId, RowNumber, Time,
 	Uuid7, VarInt, VarUint, err, parse_uuid4, parse_uuid7, util::hex,
 };
 
@@ -337,10 +337,12 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 			.ok()
 			.map(|big_int| Value::VarUint(VarUint::from(big_int)))
 			.unwrap_or(Value::Undefined),
-		Type::BigDecimal => {
-			// Parse as BigDecimal
-			if let Ok(big_decimal) = s.parse::<BigDecimal>() {
-				Value::BigDecimal(big_decimal)
+		Type::Decimal {
+			..
+		} => {
+			// Parse as Decimal
+			if let Ok(decimal) = s.parse::<Decimal>() {
+				Value::Decimal(decimal)
 			} else {
 				Value::Undefined
 			}

@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{
-	BigDecimal, Date, DateTime, Interval, Time, VarInt, VarUint,
-};
+use reifydb_type::{Date, DateTime, Decimal, Interval, Time, VarInt, VarUint};
 
 use crate::value::columnar::ColumnData;
 
@@ -346,17 +344,17 @@ impl AsSlice<VarUint> for ColumnData {
 	}
 }
 
-impl AsSlice<BigDecimal> for ColumnData {
-	fn as_slice(&self) -> &[BigDecimal] {
+impl AsSlice<Decimal> for ColumnData {
+	fn as_slice(&self) -> &[Decimal] {
 		match self {
-			ColumnData::BigDecimal(_) => {
+			ColumnData::Decimal(_) => {
 				panic!(
-					"as_slice() is not supported for variable-length BigDecimal. Use to_vec() instead."
+					"as_slice() is not supported for variable-length Decimal. Use to_vec() instead."
 				)
 			}
 			other => {
 				panic!(
-					"called `as_slice::<BigDecimal>()` on EngineColumnData::{:?}",
+					"called `as_slice::<Decimal>()` on EngineColumnData::{:?}",
 					other.get_type()
 				)
 			}

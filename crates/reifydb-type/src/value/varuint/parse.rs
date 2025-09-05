@@ -33,9 +33,9 @@ pub fn parse_varuint<'a>(
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
-		(false, false) => Cow::Borrowed(raw_value), /* Fast path -
-		                                              * no processing
-		                                              * needed */
+		(false, false) => Cow::Borrowed(raw_value), // Fast path -
+		// no processing
+		// needed
 		(true, false) => Cow::Borrowed(raw_value.trim()),
 		(false, true) => Cow::Owned(raw_value.replace('_', "")),
 		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),

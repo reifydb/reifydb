@@ -17,10 +17,10 @@ pub use fragment::{
 	StatementColumn, StatementLine,
 };
 pub use value::{
-	BigDecimal,
 	Blob,
 	Date,
 	DateTime,
+	Decimal,
 	GetType,
 	IdentityId,
 	Interval,
@@ -43,6 +43,7 @@ pub use value::{
 	VarUint,
 	// Parse functions
 	boolean::parse_bool,
+	decimal::parse_decimal,
 	is::{
 		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
 		IsUuid,

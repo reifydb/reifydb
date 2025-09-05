@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	BigDecimal, Blob, Date, DateTime, IdentityId, Interval, RowNumber,
-	Time, Uuid4, Uuid7, VarInt, VarUint,
+	Blob, Date, DateTime, Decimal, IdentityId, Interval, RowNumber, Time,
+	Uuid4, Uuid7, VarInt, VarUint,
 };
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 	value::{
 		columnar::ColumnData,
 		container::{
-			BigDecimalContainer, BlobContainer, BoolContainer,
+			BlobContainer, BoolContainer, DecimalContainer,
 			IdentityIdContainer, NumberContainer,
 			RowNumberContainer, TemporalContainer,
 			UndefinedContainer, Utf8Container, UuidContainer,
@@ -505,25 +505,23 @@ impl ColumnData {
 		ColumnData::VarUint(VarUintContainer::new(data, bitvec))
 	}
 
-	pub fn bigdecimal(data: impl IntoIterator<Item = BigDecimal>) -> Self {
+	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnData::BigDecimal(BigDecimalContainer::from_vec(data))
+		ColumnData::Decimal(DecimalContainer::from_vec(data))
 	}
 
-	pub fn bigdecimal_with_capacity(capacity: usize) -> Self {
-		ColumnData::BigDecimal(BigDecimalContainer::with_capacity(
-			capacity,
-		))
+	pub fn decimal_with_capacity(capacity: usize) -> Self {
+		ColumnData::Decimal(DecimalContainer::with_capacity(capacity))
 	}
 
-	pub fn bigdecimal_with_bitvec(
-		data: impl IntoIterator<Item = BigDecimal>,
+	pub fn decimal_with_bitvec(
+		data: impl IntoIterator<Item = Decimal>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::BigDecimal(BigDecimalContainer::new(data, bitvec))
+		ColumnData::Decimal(DecimalContainer::new(data, bitvec))
 	}
 
 	pub fn undefined(len: usize) -> Self {

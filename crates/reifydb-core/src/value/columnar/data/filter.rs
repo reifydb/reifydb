@@ -53,7 +53,7 @@ impl ColumnData {
 			ColumnData::VarUint(container) => {
 				container.filter(mask)
 			}
-			ColumnData::BigDecimal(container) => {
+			ColumnData::Decimal(container) => {
 				container.filter(mask)
 			}
 		}

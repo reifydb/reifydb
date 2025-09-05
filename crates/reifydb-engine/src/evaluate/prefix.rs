@@ -480,12 +480,12 @@ impl StandardEvaluator {
                     }
                 }
             },
-            ColumnData::BigDecimal(container) => {
+            ColumnData::Decimal(container) => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
                         result.push(match prefix.operator {
-                            PrefixOperator::Minus(_) => reifydb_type::BigDecimal::zero(),  // TODO: implement negation
+                            PrefixOperator::Minus(_) => reifydb_type::Decimal::from_i64(0, 38, 0).unwrap(),  // TODO: implement negation
                             PrefixOperator::Plus(_) => val.clone(),
                             PrefixOperator::Not(_) => {
                                 return err!(operator::not_can_not_applied_to_number(
@@ -494,17 +494,17 @@ impl StandardEvaluator {
                             }
                         });
                     } else {
-                        result.push(reifydb_type::BigDecimal::zero());
+                        result.push(reifydb_type::Decimal::from_i64(0, 38, 0).unwrap());
                     }
                 }
                 Ok(match column.table() {
                     Some(table) => Column::SourceQualified(SourceQualified {
                         source: table.to_string(),
                         name: column.name().to_string(),
-                        data: ColumnData::bigdecimal_with_bitvec(result, container.bitvec())}),
+                        data: ColumnData::decimal_with_bitvec(result, container.bitvec())}),
                     None => Column::ColumnQualified(ColumnQualified {
                         name: column.name().to_string(),
-                        data: ColumnData::bigdecimal_with_bitvec(result, container.bitvec())})})
+                        data: ColumnData::decimal_with_bitvec(result, container.bitvec())})})
             }}
 	}
 }

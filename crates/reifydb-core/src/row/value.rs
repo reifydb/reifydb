@@ -186,12 +186,18 @@ impl EncodedRowLayout {
 				self.set_undefined(row, index)
 			}
 
-			(Type::BigDecimal, Value::BigDecimal(v)) => {
-				self.set_bigdecimal(row, index, v)
-			}
-			(Type::BigDecimal, Value::Undefined) => {
-				self.set_undefined(row, index)
-			}
+			(
+				Type::Decimal {
+					..
+				},
+				Value::Decimal(v),
+			) => self.set_decimal(row, index, v),
+			(
+				Type::Decimal {
+					..
+				},
+				Value::Undefined,
+			) => self.set_undefined(row, index),
 
 			(Type::Undefined, Value::Undefined) => {}
 			(_, _) => unreachable!(),
@@ -259,9 +265,9 @@ impl EncodedRowLayout {
 			Type::VarUint => {
 				Value::VarUint(self.get_varuint(row, index))
 			}
-			Type::BigDecimal => Value::BigDecimal(
-				self.get_bigdecimal(row, index),
-			),
+			Type::Decimal {
+				..
+			} => Value::Decimal(self.get_decimal(row, index)),
 			Type::Undefined => Value::Undefined,
 		}
 	}

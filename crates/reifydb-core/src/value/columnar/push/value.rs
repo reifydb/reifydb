@@ -536,14 +536,14 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 
-			Value::BigDecimal(v) => match self {
-				ColumnData::BigDecimal(container) => {
-					container.push(Value::BigDecimal(v))
+			Value::Decimal(v) => match self {
+				ColumnData::Decimal(container) => {
+					container.push(Value::Decimal(v))
 				}
 				ColumnData::Undefined(container) => {
 					let mut new_container =
-						ColumnData::bigdecimal(vec![]);
-					if let ColumnData::BigDecimal(
+						ColumnData::decimal(vec![]);
+					if let ColumnData::Decimal(
 						new_container,
 					) = &mut new_container
 					{
@@ -553,7 +553,7 @@ impl ColumnData {
 								);
 						}
 						new_container.push(
-							Value::BigDecimal(v),
+							Value::Decimal(v),
 						);
 					}
 					*self = new_container;

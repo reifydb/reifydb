@@ -6,7 +6,7 @@ use reifydb_type::{diagnostic::engine, return_error};
 use crate::value::{
 	columnar::ColumnData,
 	container::{
-		BigDecimalContainer, BlobContainer, BoolContainer,
+		BlobContainer, BoolContainer, DecimalContainer,
 		NumberContainer, TemporalContainer, Utf8Container,
 		UuidContainer, VarIntContainer, VarUintContainer,
 	},
@@ -94,10 +94,9 @@ impl ColumnData {
 			(ColumnData::VarUint(l), ColumnData::VarUint(r)) => {
 				l.extend(&r)?
 			}
-			(
-				ColumnData::BigDecimal(l),
-				ColumnData::BigDecimal(r),
-			) => l.extend(&r)?,
+			(ColumnData::Decimal(l), ColumnData::Decimal(r)) => {
+				l.extend(&r)?
+			}
 			(
 				ColumnData::Undefined(l),
 				ColumnData::Undefined(r),
@@ -360,14 +359,14 @@ impl ColumnData {
 							new_container,
 						);
 					}
-					ColumnData::BigDecimal(r) => {
-						let mut new_container = BigDecimalContainer::with_capacity(l_len + r.len());
+					ColumnData::Decimal(r) => {
+						let mut new_container = DecimalContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::BigDecimal(
+						*self = ColumnData::Decimal(
 							new_container,
 						);
 					}
@@ -464,7 +463,7 @@ impl ColumnData {
 					ColumnData::VarUint(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::BigDecimal(l) => {
+					ColumnData::Decimal(l) => {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::Undefined(_) => {

@@ -14,7 +14,7 @@ pub mod uuid;
 pub mod varint;
 pub mod varuint;
 
-pub use bigdecimal::*;
+pub use bigdecimal::DecimalContainer;
 pub use blob::*;
 pub use bool::*;
 pub use identity_id::*;

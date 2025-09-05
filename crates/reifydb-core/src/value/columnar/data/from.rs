@@ -61,8 +61,8 @@ impl ColumnData {
 			Value::VarUint(v) => {
 				ColumnData::varuint(vec![v; row_count])
 			}
-			Value::BigDecimal(v) => {
-				ColumnData::bigdecimal(vec![v; row_count])
+			Value::Decimal(v) => {
+				ColumnData::decimal(vec![v; row_count])
 			}
 			Value::Undefined => ColumnData::undefined(row_count),
 		}
