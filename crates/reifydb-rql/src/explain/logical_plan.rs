@@ -508,16 +508,32 @@ fn render_logical_plan_inner(
 		LogicalPlan::SourceScan(SourceScanNode {
 			schema,
 			source: table,
+			index_name,
 		}) => {
-			let name = format!(
-				"{}.{}",
-				schema.fragment(),
-				table.fragment()
-			);
+			let name = if let Some(idx) = index_name {
+				format!(
+					"{}.{}::{}",
+					schema.fragment(),
+					table.fragment(),
+					idx.fragment()
+				)
+			} else {
+				format!(
+					"{}.{}",
+					schema.fragment(),
+					table.fragment()
+				)
+			};
+
+			let scan_type = if index_name.is_some() {
+				"IndexScan"
+			} else {
+				"TableScan"
+			};
 
 			output.push_str(&format!(
-				"{}{} TableScan {}\n",
-				prefix, branch, name
+				"{}{} {} {}\n",
+				prefix, branch, scan_type, name
 			));
 		}
 		LogicalPlan::InlineData(InlineDataNode {

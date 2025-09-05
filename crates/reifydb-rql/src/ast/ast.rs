@@ -746,6 +746,7 @@ pub enum AstFrom<'a> {
 		token: Token<'a>,
 		schema: Option<AstIdentifier<'a>>,
 		source: AstIdentifier<'a>,
+		index_name: Option<AstIdentifier<'a>>,
 	},
 	Inline {
 		token: Token<'a>,

@@ -60,10 +60,32 @@ impl<'a> Parser<'a> {
 				(None, identifier)
 			};
 
+			// Check for index directive using ::
+			let index_name =
+				if !self.is_eof() {
+					if let Ok(current) = self.current() {
+						if current.is_operator(
+							Operator::DoubleColon,
+						) {
+							self.consume_operator(Operator::DoubleColon)?;
+							let index_token =
+								self.advance()?;
+							Some(crate::ast::ast::AstIdentifier(index_token))
+						} else {
+							None
+						}
+					} else {
+						None
+					}
+				} else {
+					None
+				};
+
 			Ok(AstFrom::Source {
 				token,
 				schema,
 				source: table,
+				index_name,
 			})
 		}
 	}
@@ -119,6 +141,7 @@ mod tests {
 			AstFrom::Source {
 				source: table,
 				schema,
+				index_name,
 				..
 			} => {
 				assert_eq!(
@@ -126,6 +149,7 @@ mod tests {
 					"reifydb"
 				);
 				assert_eq!(table.value(), "users");
+				assert_eq!(index_name, &None);
 			}
 			AstFrom::Inline {
 				..
@@ -147,10 +171,12 @@ mod tests {
 			AstFrom::Source {
 				source: table,
 				schema,
+				index_name,
 				..
 			} => {
 				assert_eq!(schema, &None);
 				assert_eq!(table.value(), "users");
+				assert_eq!(index_name, &None);
 			}
 			AstFrom::Inline {
 				..
@@ -275,6 +301,71 @@ mod tests {
 					"value2"
 				);
 			}
+		}
+	}
+
+	#[test]
+	fn test_from_with_index_directive() {
+		let tokens = tokenize("FROM users::user_id_pk").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Source {
+				source: table,
+				schema,
+				index_name,
+				..
+			} => {
+				assert_eq!(schema, &None);
+				assert_eq!(table.value(), "users");
+				assert_eq!(
+					index_name.as_ref().unwrap().value(),
+					"user_id_pk"
+				);
+			}
+			AstFrom::Inline {
+				..
+			} => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_from_schema_table_with_index_directive() {
+		let tokens =
+			tokenize("FROM company.employees::employee_email_pk")
+				.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Source {
+				source: table,
+				schema,
+				index_name,
+				..
+			} => {
+				assert_eq!(
+					schema.as_ref().unwrap().value(),
+					"company"
+				);
+				assert_eq!(table.value(), "employees");
+				assert_eq!(
+					index_name.as_ref().unwrap().value(),
+					"employee_email_pk"
+				);
+			}
+			AstFrom::Inline {
+				..
+			} => unreachable!(),
 		}
 	}
 

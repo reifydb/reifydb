@@ -35,24 +35,100 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Test system.sequences virtual table query
-	log_info!("=== Testing system.sequences virtual table ===");
+	// Split commands to isolate transaction issues
 	for frame in
-		db.query_as_root("from system.tables", Params::None).unwrap()
+		db.command_as_root("create schema test", Params::None).unwrap()
 	{
-		log_info!("Basic query\n{}", frame);
+		log_info!("{frame}")
 	}
 
-	// Test with projection
-	log_info!("=== Testing system.sequences with projection ===");
 	for frame in db
-		.query_as_root(
-			"from system.sequences map { name, value }",
+		.command_as_root(
+			"create table test.users { id: int4, name: utf8 }",
 			Params::None,
 		)
 		.unwrap()
 	{
-		log_info!("Projected query: {}", frame);
+		log_info!("{frame}")
+	}
+
+	for frame in db
+		.command_as_root(
+			"alter table test.users { create primary key users_pk { id} }",
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	// Check system catalog immediately after primary key creation
+	log_info!("=== Primary keys immediately after creation ===");
+	for frame in db
+		.command_as_root(r#"from system.primary_keys"#, Params::None)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	for frame in db
+		.command_as_root(
+			r#"from [{id: 1, name: "M"}] insert test.users"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	// Test regular table scan without index
+	log_info!("=== Regular table scan ===");
+	for frame in
+		db.command_as_root(r#"from test.users"#, Params::None).unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	// Let's check what primary keys exist in the system
+	log_info!("=== Primary keys in system ===");
+	for frame in db
+		.command_as_root(r#"from system.primary_keys"#, Params::None)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	// Let's check primary key columns
+	log_info!("=== Primary key columns in system ===");
+	for frame in db
+		.command_as_root(
+			r#"from system.primary_key_columns"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	// Test index scan without filter
+	log_info!("=== Index scan without filter ===");
+	for frame in db
+		.command_as_root(r#"from test.users::users_pk"#, Params::None)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
+	// Test index scan with filter
+	log_info!("=== Index scan with filter ===");
+	for frame in db
+		.command_as_root(
+			r#"from test.users::users_pk filter { id = 1 }"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{frame}")
 	}
 
 	sleep(Duration::from_millis(10));

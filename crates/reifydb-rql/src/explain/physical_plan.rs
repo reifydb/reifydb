@@ -391,6 +391,18 @@ fn render_physical_plan_inner(
 			});
 		}
 
+		PhysicalPlan::IndexScan(physical::IndexScanNode {
+			schema,
+			table,
+			index_name,
+		}) => {
+			let label = format!(
+				"IndexScan {}.{}::{}",
+				schema.name, table.name, index_name
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
+
 		PhysicalPlan::TableScan(physical::TableScanNode {
 			schema,
 			table,

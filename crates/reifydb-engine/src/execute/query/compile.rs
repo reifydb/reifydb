@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{SchemaId, Transaction};
+use reifydb_core::interface::{IndexId, SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::{
@@ -13,6 +13,7 @@ use crate::{
 			aggregate::AggregateNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
+			index_scan::IndexScanNode,
 			inline::InlineDataNode,
 			join_inner::InnerJoinNode,
 			join_left::LeftJoinNode,
@@ -159,6 +160,25 @@ pub(crate) fn compile<'a, T: Transaction>(
 		}) => ExecutionPlan::InlineData(InlineDataNode::new(
 			rows, context,
 		)),
+
+		PhysicalPlan::IndexScan(physical::IndexScanNode {
+			schema: _,
+			table,
+			index_name: _,
+		}) => {
+			let Some(pk) = table.primary_key.clone() else {
+				unimplemented!()
+			};
+
+			ExecutionPlan::IndexScan(
+				IndexScanNode::new(
+					table,
+					IndexId::primary(pk.id),
+					context,
+				)
+				.unwrap(),
+			)
+		}
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
 			schema: _,

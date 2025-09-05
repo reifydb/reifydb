@@ -133,6 +133,12 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		plan: PhysicalPlan,
 	) -> crate::Result<FlowNodeId> {
 		match plan {
+			PhysicalPlan::IndexScan(_index_scan) => {
+				// TODO: Implement IndexScanCompiler for flow
+				unimplemented!(
+					"IndexScan compilation not yet implemented for flow"
+				)
+			}
 			PhysicalPlan::TableScan(table_scan) => {
 				TableScanCompiler::from(table_scan)
 					.compile(self)
