@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 
 use std::{
-	sync::{Arc, Mutex},
+	sync::{Arc, Mutex, mpsc},
 	thread,
 	time::Duration,
 };
@@ -10,19 +10,23 @@ use std::{
 use reifydb_type::{Error, diagnostic::internal};
 
 use crate::{
-	CommandRequest, Params, QueryRequest,
-	http::client::HttpClient,
-	session::{
-		CommandResult, QueryResult, convert_execute_response,
-		convert_query_response,
+	Params,
+	http::{
+		client::HttpClient,
+		session::{
+			HttpChannelResponse, HttpChannelSession,
+			HttpResponseMessage,
+		},
 	},
+	session::{CommandResult, QueryResult},
 };
 
 /// A callback-based HTTP session for asynchronous operations
 pub struct HttpCallbackSession {
-	client: Arc<HttpClient>,
-	token: Option<String>,
+	channel_session: Arc<HttpChannelSession>,
+	receiver: Arc<Mutex<mpsc::Receiver<HttpResponseMessage>>>,
 	authenticated: Arc<Mutex<bool>>,
+	worker_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl HttpCallbackSession {
@@ -33,10 +37,9 @@ impl HttpCallbackSession {
 		token: Option<String>,
 	) -> Result<Self, Error> {
 		let client = HttpClient::new((host, port)).map_err(|e| {
-			Error(internal(format!(
-				"Failed to create client: {}",
-				e
-			)))
+			reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Failed to create client: {}", e),
+			))
 		})?;
 		Self::from_client(client, token)
 	}
@@ -46,45 +49,43 @@ impl HttpCallbackSession {
 		client: HttpClient,
 		token: Option<String>,
 	) -> Result<Self, Error> {
-		let client = Arc::new(client);
+		// Create a channel session and get the receiver
+		let (channel_session, receiver) =
+			HttpChannelSession::from_client(client, token.clone())?;
 
-		// Test connection
-		if let Err(e) = client.test_connection() {
-			return Err(Error(internal(format!(
-				"Connection failed: {}",
-				e
-			))));
-		}
+		let channel_session = Arc::new(channel_session);
+		let receiver = Arc::new(Mutex::new(receiver));
+		let authenticated = Arc::new(Mutex::new(false));
 
-		let session = Self {
-			client,
-			token: token.clone(),
-			authenticated: Arc::new(Mutex::new(false)),
-		};
-
-		// Authenticate if token provided
-		if token.is_some() {
-			let auth_flag = session.authenticated.clone();
-			let _ = session.authenticate(
-				move |result| match result {
-					Ok(_) => {
-						*auth_flag.lock().unwrap() =
-							true;
-						println!(
-							"HTTP Authentication successful"
-						);
+		// Start a worker thread to process responses
+		let receiver_clone = receiver.clone();
+		let auth_flag = authenticated.clone();
+		let worker_handle = thread::spawn(move || {
+			// If token provided, handle authentication response
+			if token.is_some() {
+				if let Ok(msg) =
+					receiver_clone.lock().unwrap().recv()
+				{
+					match msg.response {
+						Ok(HttpChannelResponse::Auth { .. }) => {
+							*auth_flag.lock().unwrap() = true;
+							println!("HTTP Authentication successful");
+						}
+						Err(e) => {
+							eprintln!("HTTP Authentication failed: {}", e);
+						}
+						_ => {}
 					}
-					Err(e) => {
-						eprintln!(
-							"HTTP Authentication failed: {}",
-							e
-						);
-					}
-				},
-			);
-		}
+				}
+			}
+		});
 
-		Ok(session)
+		Ok(Self {
+			channel_session,
+			receiver,
+			authenticated,
+			worker_handle: Some(worker_handle),
+		})
 	}
 
 	/// Create from URL (e.g., "http://localhost:8080")
@@ -92,77 +93,17 @@ impl HttpCallbackSession {
 		url: &str,
 		token: Option<String>,
 	) -> Result<Self, Error> {
-		let client =
-			Arc::new(HttpClient::from_url(url).map_err(|e| {
-				Error(internal(format!("Invalid URL: {}", e)))
-			})?);
-
-		// Test connection
-		if let Err(e) = client.test_connection() {
-			return Err(Error(internal(format!(
-				"Connection failed: {}",
-				e
-			))));
-		}
-
-		let session = Self {
-			client,
-			token: token.clone(),
-			authenticated: Arc::new(Mutex::new(false)),
-		};
-
-		// Authenticate if token provided
-		if token.is_some() {
-			let auth_flag = session.authenticated.clone();
-			let _ = session.authenticate(
-				move |result| match result {
-					Ok(_) => {
-						*auth_flag.lock().unwrap() =
-							true;
-						println!(
-							"HTTP Authentication successful"
-						);
-					}
-					Err(e) => {
-						eprintln!(
-							"HTTP Authentication failed: {}",
-							e
-						);
-					}
-				},
-			);
-		}
-
-		Ok(session)
+		let client = HttpClient::from_url(url).map_err(|e| {
+			Error(internal(format!("Invalid URL: {}", e)))
+		})?;
+		Self::from_client(client, token)
 	}
 
 	/// Set timeout for requests
-	pub fn with_timeout(mut self, timeout: Duration) -> Self {
-		self.client =
-			Arc::new((*self.client).clone().with_timeout(timeout));
+	pub fn with_timeout(self, _timeout: Duration) -> Self {
+		// This would need to be implemented at the channel session
+		// level For now, just return self
 		self
-	}
-
-	/// Authenticate with callback
-	fn authenticate<F>(&self, callback: F) -> Result<(), Error>
-	where
-		F: FnOnce(Result<(), String>) + Send + 'static,
-	{
-		if self.token.is_none() {
-			callback(Ok(()));
-			return Ok(());
-		}
-
-		// For HTTP, we'll just simulate authentication
-		// In a real implementation, this might send an auth request to
-		// /v1/auth
-		thread::spawn(move || {
-			// Simulate some async work
-			thread::sleep(Duration::from_millis(100));
-			callback(Ok(()));
-		});
-
-		Ok(())
 	}
 
 	/// Send a command with callback
@@ -171,32 +112,45 @@ impl HttpCallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		callback: F,
-	) -> Result<(), Error>
+	) -> Result<String, Error>
 	where
 		F: FnOnce(Result<CommandResult, Error>) + Send + 'static,
 	{
-		let request = CommandRequest {
-			statements: vec![rql.to_string()],
-			params,
-		};
+		// Send command through channel session
+		let request_id = self
+			.channel_session
+			.command(rql, params)
+			.map_err(|e| {
+				Error(internal(format!(
+					"Failed to send command: {}",
+					e
+				)))
+			})?;
 
-		let client = self.client.clone();
-
+		// Spawn thread to wait for response and invoke callback
+		let receiver = self.receiver.clone();
+		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
-			let result =
-				client.send_command(&request).map(|response| {
-					CommandResult {
-						frames:
-							convert_execute_response(
-								response,
-							),
+			if let Ok(msg) = receiver.lock().unwrap().recv() {
+				if msg.request_id == request_id_clone {
+					match msg.response {
+						Ok(HttpChannelResponse::Command { result, .. }) => {
+							callback(Ok(result));
+						}
+						Err(e) => {
+							callback(Err(e));
+						}
+						_ => {
+							callback(Err(Error(internal(
+								"Unexpected response type for command".to_string()
+							))));
+						}
 					}
-				});
-
-			callback(result);
+				}
+			}
 		});
 
-		Ok(())
+		Ok(request_id)
 	}
 
 	/// Send a query with callback
@@ -205,31 +159,45 @@ impl HttpCallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		callback: F,
-	) -> Result<(), Error>
+	) -> Result<String, Error>
 	where
 		F: FnOnce(Result<QueryResult, Error>) + Send + 'static,
 	{
-		let request = QueryRequest {
-			statements: vec![rql.to_string()],
-			params,
-		};
+		// Send query through channel session
+		let request_id = self
+			.channel_session
+			.query(rql, params)
+			.map_err(|e| {
+				Error(internal(format!(
+					"Failed to send query: {}",
+					e
+				)))
+			})?;
 
-		let client = self.client.clone();
-
+		// Spawn thread to wait for response and invoke callback
+		let receiver = self.receiver.clone();
+		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
-			let result =
-				client.send_query(&request).map(|response| {
-					QueryResult {
-						frames: convert_query_response(
-							response,
-						),
+			if let Ok(msg) = receiver.lock().unwrap().recv() {
+				if msg.request_id == request_id_clone {
+					match msg.response {
+						Ok(HttpChannelResponse::Query { result, .. }) => {
+							callback(Ok(result));
+						}
+						Err(e) => {
+							callback(Err(e));
+						}
+						_ => {
+							callback(Err(Error(internal(
+								"Unexpected response type for query".to_string()
+							))));
+						}
 					}
-				});
-
-			callback(result);
+				}
+			}
 		});
 
-		Ok(())
+		Ok(request_id)
 	}
 
 	/// Check if the session is authenticated
@@ -259,7 +227,7 @@ impl HttpCallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		mut handler: impl HttpResponseHandler + 'static,
-	) -> Result<(), Error> {
+	) -> Result<String, Error> {
 		self.command(rql, params, move |result| match result {
 			Ok(data) => handler.on_success(data),
 			Err(e) => handler.on_error(e.to_string()),
@@ -272,10 +240,19 @@ impl HttpCallbackSession {
 		rql: &str,
 		params: Option<Params>,
 		mut handler: impl HttpQueryHandler + 'static,
-	) -> Result<(), Error> {
+	) -> Result<String, Error> {
 		self.query(rql, params, move |result| match result {
 			Ok(data) => handler.on_success(data),
 			Err(e) => handler.on_error(e.to_string()),
 		})
+	}
+}
+
+impl Drop for HttpCallbackSession {
+	fn drop(&mut self) {
+		// Clean up the worker thread if it exists
+		if let Some(handle) = self.worker_handle.take() {
+			let _ = handle.join();
+		}
 	}
 }

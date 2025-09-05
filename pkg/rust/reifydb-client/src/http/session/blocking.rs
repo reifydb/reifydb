@@ -1,24 +1,28 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::time::Duration;
+use std::{sync::mpsc, time::Duration};
 
 use reifydb_type::{Error, diagnostic::internal};
 
 use crate::{
-	CommandRequest, Params, QueryRequest,
-	http::client::HttpClient,
-	session::{
-		CommandResult, QueryResult, convert_execute_response,
-		convert_query_response,
+	Params,
+	http::{
+		client::HttpClient,
+		session::{
+			HttpChannelResponse, HttpChannelSession,
+			HttpResponseMessage,
+		},
 	},
+	session::{CommandResult, QueryResult},
 };
 
 /// A blocking HTTP session that waits for responses synchronously
 pub struct HttpBlockingSession {
-	client: HttpClient,
-	token: Option<String>,
+	channel_session: HttpChannelSession,
+	receiver: mpsc::Receiver<HttpResponseMessage>,
 	authenticated: bool,
+	timeout: Duration,
 }
 
 impl HttpBlockingSession {
@@ -42,23 +46,20 @@ impl HttpBlockingSession {
 		client: HttpClient,
 		token: Option<String>,
 	) -> Result<Self, Error> {
-		// Test connection
-		if let Err(e) = client.test_connection() {
-			return Err(Error(internal(format!(
-				"Connection failed: {}",
-				e
-			))));
-		}
+		// Create a channel session and get the receiver
+		let (channel_session, receiver) =
+			HttpChannelSession::from_client(client, token.clone())?;
 
 		let mut session = Self {
-			client,
-			token: token.clone(),
+			channel_session,
+			receiver,
 			authenticated: false,
+			timeout: Duration::from_secs(30),
 		};
 
-		// Authenticate if token provided
+		// If token provided, wait for authentication response
 		if token.is_some() {
-			session.authenticate()?;
+			session.wait_for_auth()?;
 		}
 
 		Ok(session)
@@ -72,47 +73,37 @@ impl HttpBlockingSession {
 		let client = HttpClient::from_url(url).map_err(|e| {
 			Error(internal(format!("Invalid URL: {}", e)))
 		})?;
+		Self::from_client(client, token)
+	}
 
-		// Test connection
-		if let Err(e) = client.test_connection() {
-			return Err(Error(internal(format!(
-				"Connection failed: {}",
-				e
-			))));
+	/// Wait for authentication response
+	fn wait_for_auth(&mut self) -> Result<(), Error> {
+		// Authentication was already initiated by
+		// HttpChannelSession::from_client We just need to wait for
+		// the response
+		match self.receiver.recv_timeout(self.timeout) {
+			Ok(msg) => match msg.response {
+				Ok(HttpChannelResponse::Auth {
+					..
+				}) => {
+					self.authenticated = true;
+					Ok(())
+				}
+				Err(e) => Err(e),
+				_ => Err(Error(internal(
+					"Unexpected response type during authentication",
+				))),
+			},
+			Err(_) => {
+				Err(Error(internal("Authentication timeout")))
+			}
 		}
-
-		let mut session = Self {
-			client,
-			token: token.clone(),
-			authenticated: false,
-		};
-
-		// Authenticate if token provided
-		if token.is_some() {
-			session.authenticate()?;
-		}
-
-		Ok(session)
 	}
 
 	/// Set timeout for requests
 	pub fn with_timeout(mut self, timeout: Duration) -> Self {
-		self.client = self.client.with_timeout(timeout);
+		self.timeout = timeout;
 		self
-	}
-
-	/// Authenticate the session
-	fn authenticate(&mut self) -> Result<(), Error> {
-		if self.token.is_none() {
-			return Ok(());
-		}
-
-		// For HTTP, we'll handle authentication per-request basis or
-		// via headers For now, we'll just mark as authenticated if
-		// token is provided In a real implementation, this might send
-		// an auth request to /v1/auth
-		self.authenticated = true;
-		Ok(())
 	}
 
 	/// Send a command and wait for response
@@ -121,16 +112,38 @@ impl HttpBlockingSession {
 		rql: &str,
 		params: Option<Params>,
 	) -> Result<CommandResult, Error> {
-		let request = CommandRequest {
-			statements: vec![rql.to_string()],
-			params,
-		};
+		// Send command through channel session
+		let request_id = self
+			.channel_session
+			.command(rql, params)
+			.map_err(|e| {
+				Error(internal(format!(
+					"Failed to send command: {}",
+					e
+				)))
+			})?;
 
-		let response = self.client.send_command(&request)?;
-
-		Ok(CommandResult {
-			frames: convert_execute_response(response),
-		})
+		// Wait for response
+		match self.receiver.recv_timeout(self.timeout) {
+			Ok(msg) => {
+				if msg.request_id != request_id {
+					return Err(Error(internal(
+						"Received response for wrong request ID",
+					)));
+				}
+				match msg.response {
+					Ok(HttpChannelResponse::Command {
+						result,
+						..
+					}) => Ok(result),
+					Err(e) => Err(e),
+					_ => Err(Error(internal(
+						"Unexpected response type for command",
+					))),
+				}
+			}
+			Err(_) => Err(Error(internal("Command timeout"))),
+		}
 	}
 
 	/// Send a query and wait for response
@@ -139,16 +152,38 @@ impl HttpBlockingSession {
 		rql: &str,
 		params: Option<Params>,
 	) -> Result<QueryResult, Error> {
-		let request = QueryRequest {
-			statements: vec![rql.to_string()],
-			params,
-		};
+		// Send query through channel session
+		let request_id = self
+			.channel_session
+			.query(rql, params)
+			.map_err(|e| {
+				Error(internal(format!(
+					"Failed to send query: {}",
+					e
+				)))
+			})?;
 
-		let response = self.client.send_query(&request)?;
-
-		Ok(QueryResult {
-			frames: convert_query_response(response),
-		})
+		// Wait for response
+		match self.receiver.recv_timeout(self.timeout) {
+			Ok(msg) => {
+				if msg.request_id != request_id {
+					return Err(Error(internal(
+						"Received response for wrong request ID",
+					)));
+				}
+				match msg.response {
+					Ok(HttpChannelResponse::Query {
+						result,
+						..
+					}) => Ok(result),
+					Err(e) => Err(e),
+					_ => Err(Error(internal(
+						"Unexpected response type for query",
+					))),
+				}
+			}
+			Err(_) => Err(Error(internal("Query timeout"))),
+		}
 	}
 
 	/// Check if the session is authenticated

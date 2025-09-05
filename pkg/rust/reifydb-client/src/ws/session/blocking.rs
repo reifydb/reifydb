@@ -9,21 +9,18 @@ use std::{
 use reifydb_type::Error;
 
 use crate::{
-	AuthRequest, CommandRequest, Params, QueryRequest, Request,
-	RequestPayload,
-	message::{InternalMessage, ResponseRoute},
-	session::{
-		CommandResult, QueryResult, parse_command_response,
-		parse_query_response,
+	Params,
+	session::{CommandResult, QueryResult},
+	ws::{
+		client::ClientInner,
+		session::{ChannelResponse, ChannelSession, ResponseMessage},
 	},
-	utils::generate_request_id,
-	ws::client::ClientInner,
 };
 
 /// A blocking session that waits for responses synchronously
 pub struct BlockingSession {
-	client: Arc<ClientInner>,
-	token: Option<String>,
+	channel_session: ChannelSession,
+	receiver: mpsc::Receiver<ResponseMessage>,
 	authenticated: bool,
 	timeout: Duration,
 }
@@ -34,63 +31,43 @@ impl BlockingSession {
 		client: Arc<ClientInner>,
 		token: Option<String>,
 	) -> Result<Self, Error> {
+		// Create a channel session and get the receiver
+		let (channel_session, receiver) =
+			ChannelSession::new(client, token.clone())?;
+
 		let mut session = Self {
-			client,
-			token: token.clone(),
+			channel_session,
+			receiver,
 			authenticated: false,
 			timeout: Duration::from_secs(30),
 		};
 
-		// Authenticate if token provided
+		// If token provided, wait for authentication response
 		if token.is_some() {
-			session.authenticate()?;
+			session.wait_for_auth()?;
 		}
 
 		Ok(session)
 	}
 
-	/// Authenticate the session
-	fn authenticate(&mut self) -> Result<(), Error> {
-		if self.token.is_none() {
-			return Ok(());
-		}
-
-		let id = generate_request_id();
-		let (tx, rx) = mpsc::channel();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Auth(AuthRequest {
-				token: self.token.clone(),
-			}),
-		};
-
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Blocking(tx),
-			}) {
-			panic!("Failed to send auth request: {}", e);
-		}
-
-		let response = match rx.recv_timeout(self.timeout) {
-			Ok(Ok(resp)) => resp,
-			Ok(Err(e)) => return Err(e),
+	/// Wait for authentication response
+	fn wait_for_auth(&mut self) -> Result<(), Error> {
+		// Authentication was already initiated by ChannelSession::new
+		// We just need to wait for the response
+		match self.receiver.recv_timeout(self.timeout) {
+			Ok(msg) => match msg.response {
+				Ok(ChannelResponse::Auth {
+					..
+				}) => {
+					self.authenticated = true;
+					Ok(())
+				}
+				Err(e) => Err(e),
+				_ => panic!(
+					"Unexpected response type during authentication"
+				),
+			},
 			Err(_) => panic!("Authentication timeout"),
-		};
-
-		match response.payload {
-			crate::ResponsePayload::Auth(_) => {
-				self.authenticated = true;
-				Ok(())
-			}
-			crate::ResponsePayload::Err(e) => {
-				panic!("Authentication failed: {:?}", e)
-			}
-			_ => panic!(
-				"Unexpected response type during authentication"
-			),
 		}
 	}
 
@@ -100,33 +77,37 @@ impl BlockingSession {
 		rql: &str,
 		params: Option<Params>,
 	) -> Result<CommandResult, Error> {
-		let id = generate_request_id();
-		let (tx, rx) = mpsc::channel();
+		// Send command through channel session
+		let request_id =
+			self.channel_session.command(rql, params).map_err(
+				|e| {
+					reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Failed to send command: {}", e)
+			))
+				},
+			)?;
 
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Command(CommandRequest {
-				statements: vec![rql.to_string()],
-				params,
-			}),
-		};
-
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Blocking(tx),
-			}) {
-			panic!("Failed to send command request: {}", e);
-		}
-
-		let response = match rx.recv_timeout(self.timeout) {
-			Ok(Ok(resp)) => resp,
-			Ok(Err(e)) => return Err(e),
+		// Wait for response
+		match self.receiver.recv_timeout(self.timeout) {
+			Ok(msg) => {
+				if msg.request_id != request_id {
+					panic!(
+						"Received response for wrong request ID"
+					);
+				}
+				match msg.response {
+					Ok(ChannelResponse::Command {
+						result,
+						..
+					}) => Ok(result),
+					Err(e) => Err(e),
+					_ => panic!(
+						"Unexpected response type for command"
+					),
+				}
+			}
 			Err(_) => panic!("Command timeout"),
-		};
-
-		parse_command_response(response)
+		}
 	}
 
 	/// Send a query and wait for response
@@ -135,33 +116,37 @@ impl BlockingSession {
 		rql: &str,
 		params: Option<Params>,
 	) -> Result<QueryResult, Error> {
-		let id = generate_request_id();
-		let (tx, rx) = mpsc::channel();
+		// Send query through channel session
+		let request_id =
+			self.channel_session.query(rql, params).map_err(
+				|e| {
+					reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Failed to send query: {}", e)
+			))
+				},
+			)?;
 
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Query(QueryRequest {
-				statements: vec![rql.to_string()],
-				params,
-			}),
-		};
-
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Blocking(tx),
-			}) {
-			panic!("Failed to send query request: {}", e);
-		}
-
-		let response = match rx.recv_timeout(self.timeout) {
-			Ok(Ok(resp)) => resp,
-			Ok(Err(e)) => return Err(e),
+		// Wait for response
+		match self.receiver.recv_timeout(self.timeout) {
+			Ok(msg) => {
+				if msg.request_id != request_id {
+					panic!(
+						"Received response for wrong request ID"
+					);
+				}
+				match msg.response {
+					Ok(ChannelResponse::Query {
+						result,
+						..
+					}) => Ok(result),
+					Err(e) => Err(e),
+					_ => panic!(
+						"Unexpected response type for query"
+					),
+				}
+			}
 			Err(_) => panic!("Query timeout"),
-		};
-
-		parse_query_response(response)
+		}
 	}
 
 	/// Check if the session is authenticated

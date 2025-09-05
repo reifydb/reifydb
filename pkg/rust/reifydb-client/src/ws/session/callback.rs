@@ -1,25 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::sync::{Arc, Mutex};
+use std::{
+	sync::{Arc, Mutex, mpsc},
+	thread,
+};
 
 use crate::{
-	AuthRequest, CommandRequest, Params, QueryRequest, Request,
-	RequestPayload, Response,
-	message::{InternalMessage, ResponseRoute},
-	session::{
-		CommandResult, QueryResult, parse_command_response,
-		parse_query_response,
+	Params,
+	session::{CommandResult, QueryResult},
+	ws::{
+		client::ClientInner,
+		session::{ChannelResponse, ChannelSession, ResponseMessage},
 	},
-	utils::generate_request_id,
-	ws::client::ClientInner,
 };
 
 /// A callback-based session for asynchronous operations
 pub struct CallbackSession {
-	client: Arc<ClientInner>,
-	token: Option<String>,
+	channel_session: Arc<ChannelSession>,
+	receiver: Arc<Mutex<mpsc::Receiver<ResponseMessage>>>,
 	authenticated: Arc<Mutex<bool>>,
+	worker_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl CallbackSession {
@@ -28,87 +29,48 @@ impl CallbackSession {
 		client: Arc<ClientInner>,
 		token: Option<String>,
 	) -> Result<Self, reifydb_type::Error> {
-		let session = Self {
-			client: client.clone(),
-			token: token.clone(),
-			authenticated: Arc::new(Mutex::new(false)),
-		};
+		// Create a channel session and get the receiver
+		let (channel_session, receiver) =
+			ChannelSession::new(client, token.clone())?;
 
-		// Authenticate if token provided
-		if let Some(_token) = &token {
-			let auth_flag = session.authenticated.clone();
-			let _ = session.authenticate(
-				move |result| match result {
-					Ok(_) => {
-						*auth_flag.lock().unwrap() =
-							true;
-						println!(
-							"Authentication successful"
-						);
+		let channel_session = Arc::new(channel_session);
+		let receiver = Arc::new(Mutex::new(receiver));
+		let authenticated = Arc::new(Mutex::new(false));
+
+		// Start a worker thread to process responses and invoke
+		// callbacks
+		let receiver_clone = receiver.clone();
+		let auth_flag = authenticated.clone();
+		let worker_handle =
+			thread::spawn(move || {
+				// If token provided, handle authentication
+				// response
+				if token.is_some() {
+					if let Ok(msg) = receiver_clone
+						.lock()
+						.unwrap()
+						.recv()
+					{
+						match msg.response {
+						Ok(ChannelResponse::Auth { .. }) => {
+							*auth_flag.lock().unwrap() = true;
+							println!("Authentication successful");
+						}
+						Err(e) => {
+							eprintln!("Authentication failed: {}", e);
+						}
+						_ => {}
 					}
-					Err(e) => {
-						eprintln!(
-							"Authentication failed: {}",
-							e
-						);
 					}
-				},
-			);
-		}
+				}
+			});
 
-		Ok(session)
-	}
-
-	/// Authenticate with callback
-	fn authenticate<F>(
-		&self,
-		callback: F,
-	) -> Result<String, reifydb_type::Error>
-	where
-		F: FnOnce(Result<(), String>) + Send + 'static,
-	{
-		let id = generate_request_id();
-
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Auth(AuthRequest {
-				token: self.token.clone(),
-			}),
-		};
-
-		let callback = Box::new(
-			move |result: Result<Response, reifydb_type::Error>| {
-				match result {
-				Ok(response) => match response.payload {
-					crate::ResponsePayload::Auth(_) => {
-						callback(Ok(()))
-					}
-					crate::ResponsePayload::Err(e) => {
-						callback(Err(format!(
-							"Authentication error: {:?}",
-							e
-						)))
-					}
-					_ => callback(Err(
-						"Unexpected response type"
-							.to_string(),
-					)),
-				},
-				Err(e) => callback(Err(e.to_string())),
-			}
-			},
-		);
-
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Callback(callback),
-			}) {
-			panic!("Failed to send request: {}", e);
-		}
-
-		Ok(id)
+		Ok(Self {
+			channel_session,
+			receiver,
+			authenticated,
+			worker_handle: Some(worker_handle),
+		})
 	}
 
 	/// Send a command with callback
@@ -123,34 +85,40 @@ impl CallbackSession {
 			+ Send
 			+ 'static,
 	{
-		let id = generate_request_id();
+		// Send command through channel session
+		let request_id =
+			self.channel_session.command(rql, params).map_err(
+				|e| {
+					reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Failed to send command: {}", e)
+			))
+				},
+			)?;
 
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Command(CommandRequest {
-				statements: vec![rql.to_string()],
-				params,
-			}),
-		};
+		// Spawn thread to wait for response and invoke callback
+		let receiver = self.receiver.clone();
+		let request_id_clone = request_id.clone();
+		thread::spawn(move || {
+			if let Ok(msg) = receiver.lock().unwrap().recv() {
+				if msg.request_id == request_id_clone {
+					match msg.response {
+						Ok(ChannelResponse::Command { result, .. }) => {
+							callback(Ok(result));
+						}
+						Err(e) => {
+							callback(Err(e));
+						}
+						_ => {
+							callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+								"Unexpected response type for command".to_string()
+							))));
+						}
+					}
+				}
+			}
+		});
 
-		let callback = Box::new(
-			move |result: Result<Response, reifydb_type::Error>| {
-				callback(
-					result.and_then(parse_command_response),
-				)
-			},
-		);
-
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Callback(callback),
-			}) {
-			panic!("Failed to send request: {}", e);
-		}
-
-		Ok(id)
+		Ok(request_id)
 	}
 
 	/// Send a query with callback
@@ -165,37 +133,54 @@ impl CallbackSession {
 			+ Send
 			+ 'static,
 	{
-		let id = generate_request_id();
+		// Send query through channel session
+		let request_id =
+			self.channel_session.query(rql, params).map_err(
+				|e| {
+					reifydb_type::Error(reifydb_type::diagnostic::internal(
+				format!("Failed to send query: {}", e)
+			))
+				},
+			)?;
 
-		let request = Request {
-			id: id.clone(),
-			payload: RequestPayload::Query(QueryRequest {
-				statements: vec![rql.to_string()],
-				params,
-			}),
-		};
+		// Spawn thread to wait for response and invoke callback
+		let receiver = self.receiver.clone();
+		let request_id_clone = request_id.clone();
+		thread::spawn(move || {
+			if let Ok(msg) = receiver.lock().unwrap().recv() {
+				if msg.request_id == request_id_clone {
+					match msg.response {
+						Ok(ChannelResponse::Query { result, .. }) => {
+							callback(Ok(result));
+						}
+						Err(e) => {
+							callback(Err(e));
+						}
+						_ => {
+							callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+								"Unexpected response type for query".to_string()
+							))));
+						}
+					}
+				}
+			}
+		});
 
-		let callback = Box::new(
-			move |result: Result<Response, reifydb_type::Error>| {
-				callback(result.and_then(parse_query_response))
-			},
-		);
-
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Callback(callback),
-			}) {
-			panic!("Failed to send request: {}", e);
-		}
-
-		Ok(id)
+		Ok(request_id)
 	}
 
 	/// Check if the session is authenticated
 	pub fn is_authenticated(&self) -> bool {
 		*self.authenticated.lock().unwrap()
+	}
+}
+
+impl Drop for CallbackSession {
+	fn drop(&mut self) {
+		// Clean up the worker thread if it exists
+		if let Some(handle) = self.worker_handle.take() {
+			let _ = handle.join();
+		}
 	}
 }
 

@@ -16,6 +16,7 @@ use crate::{
 		CommandResult, QueryResult, convert_execute_response,
 		convert_query_response,
 	},
+	utils::generate_request_id,
 };
 
 /// HTTP Channel response enum for different response types
@@ -50,7 +51,6 @@ pub struct HttpChannelSession {
 	client: Arc<HttpClient>,
 	token: Option<String>,
 	response_tx: mpsc::Sender<HttpResponseMessage>,
-	request_counter: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl HttpChannelSession {
@@ -90,9 +90,6 @@ impl HttpChannelSession {
 			client,
 			token: token.clone(),
 			response_tx: tx,
-			request_counter: Arc::new(
-				std::sync::atomic::AtomicU64::new(0),
-			),
 		};
 
 		// Authenticate if token provided
@@ -127,9 +124,6 @@ impl HttpChannelSession {
 			client,
 			token: token.clone(),
 			response_tx: tx,
-			request_counter: Arc::new(
-				std::sync::atomic::AtomicU64::new(0),
-			),
 		};
 
 		// Authenticate if token provided
@@ -147,21 +141,13 @@ impl HttpChannelSession {
 		self
 	}
 
-	/// Generate a unique request ID
-	fn next_request_id(&self) -> String {
-		let counter = self
-			.request_counter
-			.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-		format!("http_req_{}", counter)
-	}
-
 	/// Authenticate (response arrives on channel)
 	fn authenticate(&self) -> Result<String, Error> {
 		if self.token.is_none() {
 			return Ok(String::new());
 		}
 
-		let id = self.next_request_id();
+		let id = generate_request_id();
 		let return_id = id.clone();
 		let tx = self.response_tx.clone();
 
@@ -191,7 +177,7 @@ impl HttpChannelSession {
 		rql: &str,
 		params: Option<Params>,
 	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = self.next_request_id();
+		let id = generate_request_id();
 		let return_id = id.clone();
 
 		let request = CommandRequest {
@@ -234,7 +220,7 @@ impl HttpChannelSession {
 		rql: &str,
 		params: Option<Params>,
 	) -> Result<String, Box<dyn std::error::Error>> {
-		let id = self.next_request_id();
+		let id = generate_request_id();
 		let return_id = id.clone();
 
 		let request = QueryRequest {
