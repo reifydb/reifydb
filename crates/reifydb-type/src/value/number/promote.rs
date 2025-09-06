@@ -7,9 +7,9 @@ use crate::value::is::IsNumber;
 
 pub trait Promote<R> where Self: IsNumber, R: IsNumber {
     type Output: IsNumber;
-    fn checked_promote(self, r: R) -> Option<(Self::Output, Self::Output)>;
-    fn saturating_promote(self, r: R) -> (Self::Output, Self::Output);
-    fn wrapping_promote(self, r: R) -> (Self::Output, Self::Output);
+    fn checked_promote(&self, r: &R) -> Option<(Self::Output, Self::Output)>;
+    fn saturating_promote(&self, r: &R) -> (Self::Output, Self::Output);
+    fn wrapping_promote(&self, r: &R) -> (Self::Output, Self::Output);
 
 }
 
@@ -18,24 +18,24 @@ macro_rules! impl_promote_float_float {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)> {
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)> {
                 if self.is_finite() && r.is_finite() {
-                    Some((self as $common, r as $common))
+                    Some((*self as $common, *r as $common))
                 } else {
                     None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
                 let l = if self.is_finite() {
-                    self as $common
+                    *self as $common
                 } else if self.is_sign_negative() {
                     <$common>::MIN
                 } else {
                     <$common>::MAX
                 };
                 let r = if r.is_finite() {
-                    r as $common
+                    *r as $common
                 } else if r.is_sign_negative() {
                     <$common>::MIN
                 } else {
@@ -44,8 +44,8 @@ macro_rules! impl_promote_float_float {
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -56,29 +56,29 @@ macro_rules! impl_promote_float_integer {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)> {
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)> {
                 if self.is_finite() {
-                    Some((self as $common, r as $common))
+                    Some((*self as $common, *r as $common))
                 } else {
                     None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
                 let l = if self.is_finite() {
-                    self as $common
+                    *self as $common
                 } else if self.is_sign_negative() {
                     <$common>::MIN
                 } else {
                     <$common>::MAX
                 };
 
-                let r = r as $common;
+                let r = *r as $common;
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -90,18 +90,18 @@ macro_rules! impl_promote_integer_float {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)> {
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)> {
                 if r.is_finite() {
-                    Some((self as $common, r as $common))
+                    Some((*self as $common, *r as $common))
                 } else {
                     None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                let l = self as $common;
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                let l = *self as $common;
                 let r = if r.is_finite() {
-                    r as $common
+                    *r as $common
                 } else if r.is_sign_negative() {
                     <$common>::MIN
                 } else {
@@ -110,8 +110,8 @@ macro_rules! impl_promote_integer_float {
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -157,27 +157,27 @@ macro_rules! impl_promote_signed_signed {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
-                let l: Option<$common> = <$common>::try_from(self).ok();
-                let r: Option<$common> = <$common>::try_from(r).ok();
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(*self).ok();
+                let r: Option<$common> = <$common>::try_from(*r).ok();
                 match(l,r){
                     (Some(l),Some(r)) => Some((l,r)),
                     _ => None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                let l = match <$common>::try_from(self) {
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(*self) {
                     Ok(v) => v,
-                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX }};
-                let r = match <$common>::try_from(r) {
+                    Err(_) => if *self < 0 { <$common>::MIN } else { <$common>::MAX }};
+                let r = match <$common>::try_from(*r) {
                     Ok(v) => v,
-                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX }};
+                    Err(_) => if *r < 0 { <$common>::MIN } else { <$common>::MAX }};
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -207,27 +207,27 @@ macro_rules! impl_promote_unsigned_unsigned {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
-                let l: Option<$common> = <$common>::try_from(self).ok();
-                let r: Option<$common> = <$common>::try_from(r).ok();
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(*self).ok();
+                let r: Option<$common> = <$common>::try_from(*r).ok();
                 match(l,r){
                     (Some(l),Some(r)) => Some((l,r)),
                     _ => None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                let l = match <$common>::try_from(self) {
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(*self) {
                     Ok(v) => v,
                     Err(_) =>  <$common>::MAX};
-                let r = match <$common>::try_from(r) {
+                let r = match <$common>::try_from(*r) {
                     Ok(v) => v,
                     Err(_) => <$common>::MAX};
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -259,27 +259,27 @@ macro_rules! impl_promote_signed_unsigned {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
-                let l: Option<$common> = <$common>::try_from(self).ok();
-                let r: Option<$common> = <$common>::try_from(r).ok();
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(*self).ok();
+                let r: Option<$common> = <$common>::try_from(*r).ok();
                 match(l,r){
                     (Some(l),Some(r)) => Some((l,r)),
                     _ => None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                let l = match <$common>::try_from(self) {
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(*self) {
                     Ok(v) => v,
-                    Err(_) => if self < 0 { <$common>::MIN } else { <$common>::MAX }};
-                let r = match <$common>::try_from(r) {
+                    Err(_) => if *self < 0 { <$common>::MIN } else { <$common>::MAX }};
+                let r = match <$common>::try_from(*r) {
                     Ok(v) => v,
                     Err(_) => <$common>::MAX};
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -290,27 +290,27 @@ macro_rules! impl_promote_unsigned_signed {
         impl Promote<$r> for $l {
             type Output = $common;
 
-            fn checked_promote(self, r: $r) -> Option<(Self::Output, Self::Output)>{
-                let l: Option<$common> = <$common>::try_from(self).ok();
-                let r: Option<$common> = <$common>::try_from(r).ok();
+            fn checked_promote(&self, r: &$r) -> Option<(Self::Output, Self::Output)>{
+                let l: Option<$common> = <$common>::try_from(*self).ok();
+                let r: Option<$common> = <$common>::try_from(*r).ok();
                 match(l,r){
                     (Some(l),Some(r)) => Some((l,r)),
                     _ => None
                 }
             }
 
-            fn saturating_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                let l = match <$common>::try_from(self) {
+            fn saturating_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                let l = match <$common>::try_from(*self) {
                     Ok(v) => v,
                     Err(_) => <$common>::MAX};
-                let r = match <$common>::try_from(r) {
+                let r = match <$common>::try_from(*r) {
                     Ok(v) => v,
-                    Err(_) => if r < 0 { <$common>::MIN } else { <$common>::MAX }};
+                    Err(_) => if *r < 0 { <$common>::MIN } else { <$common>::MAX }};
                 (l, r)
             }
 
-            fn wrapping_promote(self, r: $r) -> (Self::Output, Self::Output) {
-                (self as $common, r as $common)
+            fn wrapping_promote(&self, r: &$r) -> (Self::Output, Self::Output) {
+                (*self as $common, *r as $common)
             }
         }
     };
@@ -341,3 +341,747 @@ impl_promote_signed_unsigned!(i128, u16 => i128);  impl_promote_unsigned_signed!
 impl_promote_signed_unsigned!(i128, u32 => i128);  impl_promote_unsigned_signed!(u32, i128 => i128);
 impl_promote_signed_unsigned!(i128, u64 => i128);  impl_promote_unsigned_signed!(u64, i128 => i128);
 impl_promote_signed_unsigned!(i128, u128 => i128); impl_promote_unsigned_signed!(u128, i128 => i128);
+
+use crate::{Decimal, VarInt, VarUint};
+
+impl Promote<VarInt> for VarInt {
+    type Output = VarInt;
+
+    fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+        Some((self.clone(), r.clone()))
+    }
+
+    fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        (self.clone(), r.clone())
+    }
+
+    fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        (self.clone(), r.clone())
+    }
+}
+
+impl Promote<VarUint> for VarUint {
+    type Output = VarUint;
+
+    fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+        Some((self.clone(), r.clone()))
+    }
+
+    fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        (self.clone(), r.clone())
+    }
+
+    fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        (self.clone(), r.clone())
+    }
+}
+
+impl Promote<Decimal> for Decimal {
+    type Output = Decimal;
+
+    fn checked_promote(&self, r: &Decimal) -> Option<(Self::Output, Self::Output)> {
+        Some((self.clone(), r.clone()))
+    }
+
+    fn saturating_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        (self.clone(), r.clone())
+    }
+
+    fn wrapping_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        (self.clone(), r.clone())
+    }
+}
+
+impl Promote<VarUint> for VarInt {
+    type Output = VarInt;
+
+    fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+        let r_as_varint = VarInt::from(r.0.clone());
+        Some((self.clone(), r_as_varint))
+    }
+
+    fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let r_as_varint = VarInt::from(r.0.clone());
+        (self.clone(), r_as_varint)
+    }
+
+    fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let r_as_varint = VarInt::from(r.0.clone());
+        (self.clone(), r_as_varint)
+    }
+}
+
+impl Promote<VarInt> for VarUint {
+    type Output = VarInt;
+
+    fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+        let l_as_varint = VarInt::from(self.0.clone());
+        Some((l_as_varint, r.clone()))
+    }
+
+    fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let l_as_varint = VarInt::from(self.0.clone());
+        (l_as_varint, r.clone())
+    }
+
+    fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let l_as_varint = VarInt::from(self.0.clone());
+        (l_as_varint, r.clone())
+    }
+}
+
+impl Promote<Decimal> for VarInt {
+    type Output = Decimal;
+
+    fn checked_promote(&self, r: &Decimal) -> Option<(Self::Output, Self::Output)> {
+        let l_as_decimal = Decimal::from(self.clone());
+        Some((l_as_decimal, r.clone()))
+    }
+
+    fn saturating_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        (l_as_decimal, r.clone())
+    }
+
+    fn wrapping_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        (l_as_decimal, r.clone())
+    }
+}
+
+impl Promote<VarInt> for Decimal {
+    type Output = Decimal;
+
+    fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+        let r_as_decimal = Decimal::from(r.clone());
+        Some((self.clone(), r_as_decimal))
+    }
+
+    fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let r_as_decimal = Decimal::from(r.clone());
+        (self.clone(), r_as_decimal)
+    }
+
+    fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let r_as_decimal = Decimal::from(r.clone());
+        (self.clone(), r_as_decimal)
+    }
+}
+
+impl Promote<Decimal> for VarUint {
+    type Output = Decimal;
+
+    fn checked_promote(&self, r: &Decimal) -> Option<(Self::Output, Self::Output)> {
+        let l_as_decimal = Decimal::from(self.clone());
+        Some((l_as_decimal, r.clone()))
+    }
+
+    fn saturating_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        (l_as_decimal, r.clone())
+    }
+
+    fn wrapping_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        (l_as_decimal, r.clone())
+    }
+}
+
+impl Promote<VarUint> for Decimal {
+    type Output = Decimal;
+
+    fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+        let r_as_decimal = Decimal::from(r.clone());
+        Some((self.clone(), r_as_decimal))
+    }
+
+    fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let r_as_decimal = Decimal::from(r.clone());
+        (self.clone(), r_as_decimal)
+    }
+
+    fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let r_as_decimal = Decimal::from(r.clone());
+        (self.clone(), r_as_decimal)
+    }
+}
+// Float to VarInt, VarUint, Decimal promotions
+impl Promote<VarInt> for f32 {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+        if self.is_finite() {
+            Some((Decimal::from(*self), Decimal::from(r.clone())))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, Decimal::from(r.clone()))
+    }
+    
+    fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, Decimal::from(r.clone()))
+    }
+}
+
+impl Promote<f32> for VarInt {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &f32) -> Option<(Self::Output, Self::Output)> {
+        if r.is_finite() {
+            Some((Decimal::from(self.clone()), Decimal::from(*r)))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &f32) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (Decimal::from(self.clone()), r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &f32) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (Decimal::from(self.clone()), r_as_decimal)
+    }
+}
+
+impl Promote<VarUint> for f32 {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+        if self.is_finite() {
+            Some((Decimal::from(*self), Decimal::from(r.clone())))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, Decimal::from(r.clone()))
+    }
+    
+    fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, Decimal::from(r.clone()))
+    }
+}
+
+impl Promote<f32> for VarUint {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &f32) -> Option<(Self::Output, Self::Output)> {
+        if r.is_finite() {
+            Some((Decimal::from(self.clone()), Decimal::from(*r)))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &f32) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (Decimal::from(self.clone()), r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &f32) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (Decimal::from(self.clone()), r_as_decimal)
+    }
+}
+
+impl Promote<Decimal> for f32 {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &Decimal) -> Option<(Self::Output, Self::Output)> {
+        if self.is_finite() {
+            Some((Decimal::from(*self), r.clone()))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r.clone())
+    }
+    
+    fn wrapping_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r.clone())
+    }
+}
+
+impl Promote<f32> for Decimal {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &f32) -> Option<(Self::Output, Self::Output)> {
+        if r.is_finite() {
+            Some((self.clone(), Decimal::from(*r)))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &f32) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (self.clone(), r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &f32) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (self.clone(), r_as_decimal)
+    }
+}
+
+// f64 implementations
+impl Promote<VarInt> for f64 {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+        if self.is_finite() {
+            Some((Decimal::from(*self), Decimal::from(r.clone())))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, Decimal::from(r.clone()))
+    }
+    
+    fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, Decimal::from(r.clone()))
+    }
+}
+
+impl Promote<f64> for VarInt {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &f64) -> Option<(Self::Output, Self::Output)> {
+        if r.is_finite() {
+            let l_as_decimal = Decimal::from(self.clone());
+            let r_as_decimal = Decimal::from(*r);
+            Some((l_as_decimal, r_as_decimal))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &f64) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &f64) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r_as_decimal)
+    }
+}
+
+impl Promote<VarUint> for f64 {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+        if self.is_finite() {
+            let l_as_decimal = Decimal::from(*self);
+            let r_as_decimal = Decimal::from(r.clone());
+            Some((l_as_decimal, r_as_decimal))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        let r_as_decimal = Decimal::from(r.clone());
+        (l_as_decimal, r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        let r_as_decimal = Decimal::from(r.clone());
+        (l_as_decimal, r_as_decimal)
+    }
+}
+
+impl Promote<f64> for VarUint {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &f64) -> Option<(Self::Output, Self::Output)> {
+        if r.is_finite() {
+            let l_as_decimal = Decimal::from(self.clone());
+            let r_as_decimal = Decimal::from(*r);
+            Some((l_as_decimal, r_as_decimal))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &f64) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &f64) -> (Self::Output, Self::Output) {
+        let l_as_decimal = Decimal::from(self.clone());
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r_as_decimal)
+    }
+}
+
+impl Promote<Decimal> for f64 {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &Decimal) -> Option<(Self::Output, Self::Output)> {
+        if self.is_finite() {
+            let l_as_decimal = Decimal::from(*self);
+            Some((l_as_decimal, r.clone()))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r.clone())
+    }
+    
+    fn wrapping_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+        let l_as_decimal = if self.is_finite() {
+            Decimal::from(*self)
+        } else {
+            Decimal::zero()
+        };
+        (l_as_decimal, r.clone())
+    }
+}
+
+impl Promote<f64> for Decimal {
+    type Output = Decimal;
+    
+    fn checked_promote(&self, r: &f64) -> Option<(Self::Output, Self::Output)> {
+        if r.is_finite() {
+            let r_as_decimal = Decimal::from(*r);
+            Some((self.clone(), r_as_decimal))
+        } else {
+            None
+        }
+    }
+    
+    fn saturating_promote(&self, r: &f64) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (self.clone(), r_as_decimal)
+    }
+    
+    fn wrapping_promote(&self, r: &f64) -> (Self::Output, Self::Output) {
+        let r_as_decimal = if r.is_finite() {
+            Decimal::from(*r)
+        } else {
+            Decimal::zero()
+        };
+        (self.clone(), r_as_decimal)
+    }
+}
+
+// Promote implementations for integer types with VarInt
+macro_rules! impl_promote_int_to_varint {
+    ($($t:ty),*) => {
+        $(
+            impl Promote<VarInt> for $t {
+                type Output = VarInt;
+                
+                fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+                    Some((VarInt::from(*self), r.clone()))
+                }
+                
+                fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+                    (VarInt::from(*self), r.clone())
+                }
+                
+                fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+                    (VarInt::from(*self), r.clone())
+                }
+            }
+            
+            impl Promote<$t> for VarInt {
+                type Output = VarInt;
+                
+                fn checked_promote(&self, r: &$t) -> Option<(Self::Output, Self::Output)> {
+                    Some((self.clone(), VarInt::from(*r)))
+                }
+                
+                fn saturating_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), VarInt::from(*r))
+                }
+                
+                fn wrapping_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), VarInt::from(*r))
+                }
+            }
+        )*
+    }
+}
+
+impl_promote_int_to_varint!(i8, i16, i32, i64, i128);
+
+// Promote implementations for unsigned integer types with VarUint
+macro_rules! impl_promote_uint_to_varuint {
+    ($($t:ty),*) => {
+        $(
+            impl Promote<VarUint> for $t {
+                type Output = VarUint;
+                
+                fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+                    Some((VarUint::from(*self), r.clone()))
+                }
+                
+                fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+                    (VarUint::from(*self), r.clone())
+                }
+                
+                fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+                    (VarUint::from(*self), r.clone())
+                }
+            }
+            
+            impl Promote<$t> for VarUint {
+                type Output = VarUint;
+                
+                fn checked_promote(&self, r: &$t) -> Option<(Self::Output, Self::Output)> {
+                    Some((self.clone(), VarUint::from(*r)))
+                }
+                
+                fn saturating_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), VarUint::from(*r))
+                }
+                
+                fn wrapping_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), VarUint::from(*r))
+                }
+            }
+        )*
+    }
+}
+
+impl_promote_uint_to_varuint!(u8, u16, u32, u64, u128);
+
+// Promote implementations for unsigned integers with VarInt (promotes to VarInt)
+macro_rules! impl_promote_uint_to_varint {
+    ($($t:ty),*) => {
+        $(
+            impl Promote<VarInt> for $t {
+                type Output = VarInt;
+                
+                fn checked_promote(&self, r: &VarInt) -> Option<(Self::Output, Self::Output)> {
+                    Some((VarInt::from(*self), r.clone()))
+                }
+                
+                fn saturating_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+                    (VarInt::from(*self), r.clone())
+                }
+                
+                fn wrapping_promote(&self, r: &VarInt) -> (Self::Output, Self::Output) {
+                    (VarInt::from(*self), r.clone())
+                }
+            }
+            
+            impl Promote<$t> for VarInt {
+                type Output = VarInt;
+                
+                fn checked_promote(&self, r: &$t) -> Option<(Self::Output, Self::Output)> {
+                    Some((self.clone(), VarInt::from(*r)))
+                }
+                
+                fn saturating_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), VarInt::from(*r))
+                }
+                
+                fn wrapping_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), VarInt::from(*r))
+                }
+            }
+        )*
+    }
+}
+
+impl_promote_uint_to_varint!(u8, u16, u32, u64, u128);
+
+// Promote implementations for signed integers with VarUint (promotes to VarInt)
+macro_rules! impl_promote_int_to_varuint {
+    ($($t:ty),*) => {
+        $(
+            impl Promote<VarUint> for $t {
+                type Output = VarInt;
+                
+                fn checked_promote(&self, r: &VarUint) -> Option<(Self::Output, Self::Output)> {
+                    Some((VarInt::from(*self), VarInt(r.0.clone())))
+                }
+                
+                fn saturating_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+                    (VarInt::from(*self), VarInt(r.0.clone()))
+                }
+                
+                fn wrapping_promote(&self, r: &VarUint) -> (Self::Output, Self::Output) {
+                    (VarInt::from(*self), VarInt(r.0.clone()))
+                }
+            }
+            
+            impl Promote<$t> for VarUint {
+                type Output = VarInt;
+                
+                fn checked_promote(&self, r: &$t) -> Option<(Self::Output, Self::Output)> {
+                    Some((VarInt(self.0.clone()), VarInt::from(*r)))
+                }
+                
+                fn saturating_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (VarInt(self.0.clone()), VarInt::from(*r))
+                }
+                
+                fn wrapping_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (VarInt(self.0.clone()), VarInt::from(*r))
+                }
+            }
+        )*
+    }
+}
+
+impl_promote_int_to_varuint!(i8, i16, i32, i64, i128);
+
+// Promote implementations for all integer types with Decimal
+macro_rules! impl_promote_int_to_decimal {
+    ($($t:ty),*) => {
+        $(
+            impl Promote<Decimal> for $t {
+                type Output = Decimal;
+                
+                fn checked_promote(&self, r: &Decimal) -> Option<(Self::Output, Self::Output)> {
+                    Some((Decimal::from(*self), r.clone()))
+                }
+                
+                fn saturating_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+                    (Decimal::from(*self), r.clone())
+                }
+                
+                fn wrapping_promote(&self, r: &Decimal) -> (Self::Output, Self::Output) {
+                    (Decimal::from(*self), r.clone())
+                }
+            }
+            
+            impl Promote<$t> for Decimal {
+                type Output = Decimal;
+                
+                fn checked_promote(&self, r: &$t) -> Option<(Self::Output, Self::Output)> {
+                    Some((self.clone(), Decimal::from(*r)))
+                }
+                
+                fn saturating_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), Decimal::from(*r))
+                }
+                
+                fn wrapping_promote(&self, r: &$t) -> (Self::Output, Self::Output) {
+                    (self.clone(), Decimal::from(*r))
+                }
+            }
+        )*
+    }
+}
+
+impl_promote_int_to_decimal!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);

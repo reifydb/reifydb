@@ -12,8 +12,8 @@ use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
 impl EvaluationContext<'_> {
 	pub fn add<'a, L, R>(
 		&self,
-		l: L,
-		r: R,
+		l: &L,
+		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
@@ -39,7 +39,7 @@ impl EvaluationContext<'_> {
                     ));
 				};
 
-				lp.checked_add(rp)
+				lp.checked_add(&rp)
 					.ok_or_else(|| {
 						let descriptor = self
 							.target_column
@@ -61,7 +61,7 @@ impl EvaluationContext<'_> {
 					return Ok(None);
 				};
 
-				match lp.checked_add(rp) {
+				match lp.checked_add(&rp) {
 					None => Ok(None),
 					Some(value) => Ok(Some(value)),
 				}
@@ -73,8 +73,8 @@ impl EvaluationContext<'_> {
 impl EvaluationContext<'_> {
 	pub fn sub<'a, L, R>(
 		&self,
-		l: L,
-		r: R,
+		l: &L,
+		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
@@ -100,7 +100,7 @@ impl EvaluationContext<'_> {
                     ));
 				};
 
-				lp.checked_sub(rp)
+				lp.checked_sub(&rp)
 					.ok_or_else(|| {
 						let descriptor = self
 							.target_column
@@ -122,7 +122,7 @@ impl EvaluationContext<'_> {
 					return Ok(None);
 				};
 
-				match lp.checked_sub(rp) {
+				match lp.checked_sub(&rp) {
 					None => Ok(None),
 					Some(value) => Ok(Some(value)),
 				}
@@ -134,8 +134,8 @@ impl EvaluationContext<'_> {
 impl EvaluationContext<'_> {
 	pub fn mul<'a, L, R>(
 		&self,
-		l: L,
-		r: R,
+		l: &L,
+		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
@@ -161,7 +161,7 @@ impl EvaluationContext<'_> {
                     ));
 				};
 
-				lp.checked_mul(rp)
+				lp.checked_mul(&rp)
 					.ok_or_else(|| {
 						let descriptor = self
 							.target_column
@@ -183,7 +183,7 @@ impl EvaluationContext<'_> {
 					return Ok(None);
 				};
 
-				match lp.checked_mul(rp) {
+				match lp.checked_mul(&rp) {
 					None => Ok(None),
 					Some(value) => Ok(Some(value)),
 				}
@@ -195,8 +195,8 @@ impl EvaluationContext<'_> {
 impl EvaluationContext<'_> {
 	pub fn div<'a, L, R>(
 		&self,
-		l: L,
-		r: R,
+		l: &L,
+		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
@@ -222,7 +222,7 @@ impl EvaluationContext<'_> {
                     ));
 				};
 
-				lp.checked_div(rp)
+				lp.checked_div(&rp)
 					.ok_or_else(|| {
 						let descriptor = self
 							.target_column
@@ -244,7 +244,7 @@ impl EvaluationContext<'_> {
 					return Ok(None);
 				};
 
-				match lp.checked_div(rp) {
+				match lp.checked_div(&rp) {
 					None => Ok(None),
 					Some(value) => Ok(Some(value)),
 				}
@@ -256,8 +256,8 @@ impl EvaluationContext<'_> {
 impl EvaluationContext<'_> {
 	pub fn remainder<'a, L, R>(
 		&self,
-		l: L,
-		r: R,
+		l: &L,
+		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
 	) -> crate::Result<Option<<L as Promote<R>>::Output>>
 	where
@@ -283,7 +283,7 @@ impl EvaluationContext<'_> {
                     ));
 				};
 
-				lp.checked_rem(rp)
+				lp.checked_rem(&rp)
 					.ok_or_else(|| {
 						let descriptor = self
 							.target_column
@@ -305,7 +305,7 @@ impl EvaluationContext<'_> {
 					return Ok(None);
 				};
 
-				match lp.checked_rem(rp) {
+				match lp.checked_rem(&rp) {
 					None => Ok(None),
 					Some(value) => Ok(Some(value)),
 				}
@@ -324,7 +324,7 @@ mod tests {
 	fn test_add() {
 		let test_instance = EvaluationContext::testing();
 		let result = test_instance
-			.add(1i8, 255i16, || Fragment::testing_empty());
+			.add(&1i8, &255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(256i128)));
 	}
 
@@ -332,7 +332,7 @@ mod tests {
 	fn test_sub() {
 		let test_instance = EvaluationContext::testing();
 		let result = test_instance
-			.sub(1i8, 255i16, || Fragment::testing_empty());
+			.sub(&1i8, &255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(-254i128)));
 	}
 
@@ -340,7 +340,7 @@ mod tests {
 	fn test_mul() {
 		let test_instance = EvaluationContext::testing();
 		let result = test_instance
-			.mul(23i8, 255i16, || Fragment::testing_empty());
+			.mul(&23i8, &255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(5865i128)));
 	}
 
@@ -348,15 +348,16 @@ mod tests {
 	fn test_div() {
 		let test_instance = EvaluationContext::testing();
 		let result = test_instance
-			.div(120i8, 20i16, || Fragment::testing_empty());
+			.div(&120i8, &20i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(6i128)));
 	}
 
 	#[test]
 	fn test_remainder() {
 		let test_instance = EvaluationContext::testing();
-		let result = test_instance
-			.remainder(120i8, 21i16, || Fragment::testing_empty());
+		let result = test_instance.remainder(&120i8, &21i16, || {
+			Fragment::testing_empty()
+		});
 		assert_eq!(result, Ok(Some(15i128)));
 	}
 }

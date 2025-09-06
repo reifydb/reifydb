@@ -2,23 +2,23 @@
 // This file is licensed under the MIT, see license.md file.
 
 pub trait SafeAdd: Sized {
-	fn checked_add(self, r: Self) -> Option<Self>;
-	fn saturating_add(self, r: Self) -> Self;
-	fn wrapping_add(self, r: Self) -> Self;
+	fn checked_add(&self, r: &Self) -> Option<Self>;
+	fn saturating_add(&self, r: &Self) -> Self;
+	fn wrapping_add(&self, r: &Self) -> Self;
 }
 
 macro_rules! impl_safe_add {
     ($($t:ty),*) => {
         $(
             impl SafeAdd for $t {
-                fn checked_add(self, r: Self) -> Option<Self> {
-                    <$t>::checked_add(self, r)
+                fn checked_add(&self, r: &Self) -> Option<Self> {
+                    <$t>::checked_add(*self, *r)
                 }
-                fn saturating_add(self, r: Self) -> Self {
-                    <$t>::saturating_add(self, r)
+                fn saturating_add(&self, r: &Self) -> Self {
+                    <$t>::saturating_add(*self, *r)
                 }
-                fn wrapping_add(self, r: Self) -> Self {
-                    <$t>::wrapping_add(self, r)
+                fn wrapping_add(&self, r: &Self) -> Self {
+                    <$t>::wrapping_add(*self, *r)
                 }
             }
         )*
@@ -27,9 +27,56 @@ macro_rules! impl_safe_add {
 
 impl_safe_add!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
+use crate::{Decimal, VarInt, VarUint};
+
+impl SafeAdd for VarInt {
+	fn checked_add(&self, r: &Self) -> Option<Self> {
+		Some(VarInt::from(&self.0 + &r.0))
+	}
+
+	fn saturating_add(&self, r: &Self) -> Self {
+		VarInt::from(&self.0 + &r.0)
+	}
+
+	fn wrapping_add(&self, r: &Self) -> Self {
+		VarInt::from(&self.0 + &r.0)
+	}
+}
+
+impl SafeAdd for VarUint {
+	fn checked_add(&self, r: &Self) -> Option<Self> {
+		Some(VarUint::from(&self.0 + &r.0))
+	}
+
+	fn saturating_add(&self, r: &Self) -> Self {
+		VarUint::from(&self.0 + &r.0)
+	}
+
+	fn wrapping_add(&self, r: &Self) -> Self {
+		VarUint::from(&self.0 + &r.0)
+	}
+}
+
+impl SafeAdd for Decimal {
+	fn checked_add(&self, r: &Self) -> Option<Self> {
+		let result = self.inner() + r.inner();
+		Some(Decimal::from(result))
+	}
+
+	fn saturating_add(&self, r: &Self) -> Self {
+		let result = self.inner() + r.inner();
+		Decimal::from(result)
+	}
+
+	fn wrapping_add(&self, r: &Self) -> Self {
+		let result = self.inner() + r.inner();
+		Decimal::from(result)
+	}
+}
+
 impl SafeAdd for f32 {
-	fn checked_add(self, r: Self) -> Option<Self> {
-		let result = self + r;
+	fn checked_add(&self, r: &Self) -> Option<Self> {
+		let result = *self + *r;
 		if result.is_finite() {
 			Some(result)
 		} else {
@@ -37,8 +84,8 @@ impl SafeAdd for f32 {
 		}
 	}
 
-	fn saturating_add(self, r: Self) -> Self {
-		let result = self + r;
+	fn saturating_add(&self, r: &Self) -> Self {
+		let result = *self + *r;
 		if result.is_infinite() {
 			if result.is_sign_positive() {
 				f32::MAX
@@ -50,14 +97,14 @@ impl SafeAdd for f32 {
 		}
 	}
 
-	fn wrapping_add(self, r: Self) -> Self {
-		self + r
+	fn wrapping_add(&self, r: &Self) -> Self {
+		*self + *r
 	}
 }
 
 impl SafeAdd for f64 {
-	fn checked_add(self, r: Self) -> Option<Self> {
-		let result = self + r;
+	fn checked_add(&self, r: &Self) -> Option<Self> {
+		let result = *self + *r;
 		if result.is_finite() {
 			Some(result)
 		} else {
@@ -65,8 +112,8 @@ impl SafeAdd for f64 {
 		}
 	}
 
-	fn saturating_add(self, r: Self) -> Self {
-		let result = self + r;
+	fn saturating_add(&self, r: &Self) -> Self {
+		let result = *self + *r;
 		if result.is_infinite() {
 			if result.is_sign_positive() {
 				f64::MAX
@@ -78,8 +125,8 @@ impl SafeAdd for f64 {
 		}
 	}
 
-	fn wrapping_add(self, r: Self) -> Self {
-		self + r
+	fn wrapping_add(&self, r: &Self) -> Self {
+		*self + *r
 	}
 }
 
@@ -96,42 +143,42 @@ mod tests {
                     fn checked_add_happy() {
                         let x: $t = 10;
                         let y: $t = 20;
-                        assert_eq!(SafeAdd::checked_add(x, y), Some(30));
+                        assert_eq!(SafeAdd::checked_add(&x, &y), Some(30));
                     }
 
                     #[test]
                     fn checked_add_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 1;
-                        assert_eq!(SafeAdd::checked_add(x, y), None);
+                        assert_eq!(SafeAdd::checked_add(&x, &y), None);
                     }
 
                     #[test]
                     fn saturating_add_happy() {
                         let x: $t = 10;
                         let y: $t = 20;
-                        assert_eq!(SafeAdd::saturating_add(x, y), 30);
+                        assert_eq!(SafeAdd::saturating_add(&x, &y), 30);
                     }
 
                     #[test]
                     fn saturating_add_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 1;
-                        assert_eq!(SafeAdd::saturating_add(x, y), <$t>::MAX);
+                        assert_eq!(SafeAdd::saturating_add(&x, &y), <$t>::MAX);
                     }
 
                     #[test]
                     fn wrapping_add_happy() {
                         let x: $t = 10;
                         let y: $t = 20;
-                        assert_eq!(SafeAdd::wrapping_add(x, y), 30);
+                        assert_eq!(SafeAdd::wrapping_add(&x, &y), 30);
                     }
 
                     #[test]
                     fn wrapping_add_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 1;
-                        assert_eq!(SafeAdd::wrapping_add(x, y), <$t>::MIN);
+                        assert_eq!(SafeAdd::wrapping_add(&x, &y), <$t>::MIN);
                     }
                 }
             )*

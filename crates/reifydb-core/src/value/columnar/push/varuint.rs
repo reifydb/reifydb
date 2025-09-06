@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Value, VarUint};
+use reifydb_type::VarUint;
 
 use crate::value::columnar::{ColumnData, push::Push};
 
@@ -9,7 +9,7 @@ impl Push<VarUint> for ColumnData {
 	fn push(&mut self, value: VarUint) {
 		match self {
 			ColumnData::VarUint(container) => {
-				container.push(Value::VarUint(value));
+				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
 				let mut new_container =
@@ -23,8 +23,7 @@ impl Push<VarUint> for ColumnData {
 					for _ in 0..container.len() {
 						new_container.push_undefined();
 					}
-					new_container
-						.push(Value::VarUint(value));
+					new_container.push(value);
 				}
 				*self = new_container;
 			}

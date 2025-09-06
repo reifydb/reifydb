@@ -868,8 +868,8 @@ fn add_numeric<'a, L, R>(
 	fragment: impl LazyFragment<'a> + Copy,
 ) -> crate::Result<Column>
 where
-	L: GetType + Promote<R> + Copy + IsNumber,
-	R: GetType + IsNumber + Copy,
+	L: GetType + Promote<R> + IsNumber,
+	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeAdd,
 	ColumnData: Push<<L as Promote<R>>::Output>,
@@ -880,9 +880,7 @@ where
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
-				if let Some(value) =
-					ctx.add(*l, *r, fragment)?
-				{
+				if let Some(value) = ctx.add(l, r, fragment)? {
 					data.push(value);
 				} else {
 					data.push_undefined()
@@ -917,7 +915,9 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 			| ColumnData::Time(_) | ColumnData::Interval(_)
 			| ColumnData::Uuid4(_)
 			| ColumnData::Uuid7(_)
-			| ColumnData::Blob(_)
+			| ColumnData::Blob(_) | ColumnData::VarInt(_)
+			| ColumnData::VarUint(_)
+			| ColumnData::Decimal { .. }
 	)
 }
 

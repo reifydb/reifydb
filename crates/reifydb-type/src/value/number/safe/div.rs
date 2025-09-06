@@ -2,23 +2,23 @@
 // This file is licensed under the MIT, see license.md file.
 
 pub trait SafeDiv: Sized {
-	fn checked_div(self, r: Self) -> Option<Self>;
-	fn saturating_div(self, r: Self) -> Self;
-	fn wrapping_div(self, r: Self) -> Self;
+	fn checked_div(&self, r: &Self) -> Option<Self>;
+	fn saturating_div(&self, r: &Self) -> Self;
+	fn wrapping_div(&self, r: &Self) -> Self;
 }
 
 macro_rules! impl_safe_div_signed {
     ($($t:ty),*) => {
         $(
             impl SafeDiv for $t {
-                fn checked_div(self, r: Self) -> Option<Self> {
-                    <$t>::checked_div(self, r)
+                fn checked_div(&self, r: &Self) -> Option<Self> {
+                    <$t>::checked_div(*self, *r)
                 }
-                fn saturating_div(self, r: Self) -> Self {
-                    match <$t>::checked_div(self, r) {
+                fn saturating_div(&self, r: &Self) -> Self {
+                    match <$t>::checked_div(*self, *r) {
                         Some(result) => result,
                         None => {
-                            if r == 0 {
+                            if *r == 0 {
                                 0 // division by zero
                             } else {
                                 <$t>::MAX
@@ -26,8 +26,8 @@ macro_rules! impl_safe_div_signed {
                         }
                     }
                 }
-                fn wrapping_div(self, r: Self) -> Self {
-                    if r == 0 { 0 } else { <$t>::wrapping_div(self, r) }
+                fn wrapping_div(&self, r: &Self) -> Self {
+                    if *r == 0 { 0 } else { <$t>::wrapping_div(*self, *r) }
                 }
             }
         )*
@@ -38,17 +38,17 @@ macro_rules! impl_safe_div_unsigned {
     ($($t:ty),*) => {
         $(
             impl SafeDiv for $t {
-                fn checked_div(self, r: Self) -> Option<Self> {
-                    <$t>::checked_div(self, r)
+                fn checked_div(&self, r: &Self) -> Option<Self> {
+                    <$t>::checked_div(*self, *r)
                 }
-                fn saturating_div(self, r: Self) -> Self {
-                    match <$t>::checked_div(self, r) {
+                fn saturating_div(&self, r: &Self) -> Self {
+                    match <$t>::checked_div(*self, *r) {
                         Some(result) => result,
                         None => 0 // division by zero
                     }
                 }
-                fn wrapping_div(self, r: Self) -> Self {
-                   if r == 0 { 0 } else { <$t>::wrapping_div(self, r) }
+                fn wrapping_div(&self, r: &Self) -> Self {
+                   if *r == 0 { 0 } else { <$t>::wrapping_div(*self, *r) }
                 }
             }
         )*
@@ -58,9 +58,96 @@ macro_rules! impl_safe_div_unsigned {
 impl_safe_div_signed!(i8, i16, i32, i64, i128);
 impl_safe_div_unsigned!(u8, u16, u32, u64, u128);
 
+use bigdecimal::Zero;
+use num_bigint::BigInt;
+
+use crate::{Decimal, VarInt, VarUint};
+
+impl SafeDiv for VarInt {
+	fn checked_div(&self, r: &Self) -> Option<Self> {
+		if r.0 == BigInt::from(0) {
+			None
+		} else {
+			Some(VarInt::from(&self.0 / &r.0))
+		}
+	}
+
+	fn saturating_div(&self, r: &Self) -> Self {
+		if r.0 == BigInt::from(0) {
+			self.clone()
+		} else {
+			VarInt::from(&self.0 / &r.0)
+		}
+	}
+
+	fn wrapping_div(&self, r: &Self) -> Self {
+		// For division by zero, return zero
+		if r.0 == BigInt::from(0) {
+			VarInt::from(0)
+		} else {
+			VarInt::from(&self.0 / &r.0)
+		}
+	}
+}
+
+impl SafeDiv for VarUint {
+	fn checked_div(&self, r: &Self) -> Option<Self> {
+		if r.0 == BigInt::from(0) {
+			None
+		} else {
+			Some(VarUint::from(&self.0 / &r.0))
+		}
+	}
+
+	fn saturating_div(&self, r: &Self) -> Self {
+		if r.0 == BigInt::from(0) {
+			self.clone()
+		} else {
+			VarUint::from(&self.0 / &r.0)
+		}
+	}
+
+	fn wrapping_div(&self, r: &Self) -> Self {
+		if r.0 == BigInt::from(0) {
+			VarUint::from(0u64)
+		} else {
+			VarUint::from(&self.0 / &r.0)
+		}
+	}
+}
+
+impl SafeDiv for Decimal {
+	fn checked_div(&self, r: &Self) -> Option<Self> {
+		if r.inner().is_zero() {
+			None
+		} else {
+			let result = self.inner() / r.inner();
+			Some(Decimal::from(result))
+		}
+	}
+
+	fn saturating_div(&self, r: &Self) -> Self {
+		if r.inner().is_zero() {
+			self.clone()
+		} else {
+			let result = self.inner() / r.inner();
+			Decimal::from(result)
+		}
+	}
+
+	fn wrapping_div(&self, r: &Self) -> Self {
+		if r.inner().is_zero() {
+			Decimal::from(bigdecimal::BigDecimal::from(0))
+		} else {
+			let result = self.inner() / r.inner();
+			Decimal::from(result)
+		}
+	}
+}
+
 impl SafeDiv for f32 {
-	fn checked_div(self, r: Self) -> Option<Self> {
-		let result = self / r;
+	fn checked_div(&self, r: &Self) -> Option<Self> {
+		let result = *self / *r;
 		if result.is_finite() {
 			Some(result)
 		} else {
@@ -68,8 +155,8 @@ impl SafeDiv for f32 {
 		}
 	}
 
-	fn saturating_div(self, r: Self) -> Self {
-		let result = self / r;
+	fn saturating_div(&self, r: &Self) -> Self {
+		let result = *self / *r;
 		if result.is_infinite() {
 			if result.is_sign_positive() {
 				f32::MAX
@@ -81,32 +168,21 @@ impl SafeDiv for f32 {
 		}
 	}
 
-	fn wrapping_div(self, r: Self) -> Self {
-		let result = self / r;
-		if result.is_infinite() || result.is_nan() {
-			// For overflow/underflow, create a finite wrapped value
-			let sign = if (self.is_sign_positive()
-				&& r.is_sign_positive()) || (self
-				.is_sign_negative()
-				&& r.is_sign_negative())
-			{
-				1.0
-			} else {
-				-1.0
-			};
-			// Use a simple wrapping approach: take a reasonable
-			// fraction of the max
-			let wrapped_val = f32::MAX / 2.0; // Start with half of MAX
-			wrapped_val * sign
-		} else {
+	fn wrapping_div(&self, r: &Self) -> Self {
+		let result = *self / *r;
+		if result.is_finite() {
 			result
+		} else {
+			// For division by zero, infinity, or NaN results,
+			// return 0.0 to match integer wrapping behavior
+			0.0
 		}
 	}
 }
 
 impl SafeDiv for f64 {
-	fn checked_div(self, r: Self) -> Option<Self> {
-		let result = self / r;
+	fn checked_div(&self, r: &Self) -> Option<Self> {
+		let result = *self / *r;
 		if result.is_finite() {
 			Some(result)
 		} else {
@@ -114,8 +190,8 @@ impl SafeDiv for f64 {
 		}
 	}
 
-	fn saturating_div(self, r: Self) -> Self {
-		let result = self / r;
+	fn saturating_div(&self, r: &Self) -> Self {
+		let result = *self / *r;
 		if result.is_infinite() {
 			if result.is_sign_positive() {
 				f64::MAX
@@ -127,25 +203,14 @@ impl SafeDiv for f64 {
 		}
 	}
 
-	fn wrapping_div(self, r: Self) -> Self {
-		let result = self / r;
-		if result.is_infinite() || result.is_nan() {
-			// For overflow/underflow, create a finite wrapped value
-			let sign = if (self.is_sign_positive()
-				&& r.is_sign_positive()) || (self
-				.is_sign_negative()
-				&& r.is_sign_negative())
-			{
-				1.0
-			} else {
-				-1.0
-			};
-			// Use a simple wrapping approach: take a reasonable
-			// fraction of the max
-			let wrapped_val = f64::MAX / 2.0; // Start with half of MAX
-			wrapped_val * sign
-		} else {
+	fn wrapping_div(&self, r: &Self) -> Self {
+		let result = *self / *r;
+		if result.is_finite() {
 			result
+		} else {
+			// For division by zero, infinity, or NaN results,
+			// return 0.0 to match integer wrapping behavior
+			0.0
 		}
 	}
 }
@@ -163,28 +228,28 @@ mod tests {
                     fn checked_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::checked_div(x, y), Some(10));
+                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10));
                     }
 
                     #[test]
                     fn checked_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        assert_eq!(super::SafeDiv::checked_div(x, y), None);
+                        assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
                     }
 
                     #[test]
                     fn saturating_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::saturating_div(x, y), 10);
+                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10);
                     }
 
                     #[test]
                     fn saturating_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::saturating_div(x, y);
+                        let result = super::SafeDiv::saturating_div(&x, &y);
                         // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
@@ -193,7 +258,7 @@ mod tests {
                     fn saturating_div_negative() {
                         let x: $t = -10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::saturating_div(x, y);
+                        let result = super::SafeDiv::saturating_div(&x, &y);
                         // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
@@ -202,7 +267,7 @@ mod tests {
                     fn wrapping_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::wrapping_div(x, y), 10);
+                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10);
                     }
 
                     #[test]
@@ -210,7 +275,7 @@ mod tests {
                         let x: $t = <$t>::MIN;
                         let y: $t = -1;
                         // For signed types, MIN / -1 would overflow, so it wraps
-                        let result = super::SafeDiv::wrapping_div(x, y);
+                        let result = super::SafeDiv::wrapping_div(&x, &y);
                         // The exact wrapped value depends on the type, but should wrap to MIN
                         assert_eq!(result, <$t>::MIN);
                     }
@@ -220,9 +285,9 @@ mod tests {
                         let x: $t = 5;
                         let y: $t = <$t>::MAX;
 
-                        assert_eq!(super::SafeDiv::checked_div(x, y), Some(0));
-                        assert_eq!(super::SafeDiv::saturating_div(x, y), 0);
-                        assert_eq!(super::SafeDiv::wrapping_div(x, y), 0);
+                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(0));
+                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 0);
+                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 0);
                     }
                 }
             )*
@@ -238,28 +303,28 @@ mod tests {
                     fn checked_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::checked_div(x, y), Some(10));
+                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10));
                     }
 
                     #[test]
                     fn checked_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        assert_eq!(super::SafeDiv::checked_div(x, y), None);
+                        assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
                     }
 
                     #[test]
                     fn saturating_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::saturating_div(x, y), 10);
+                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10);
                     }
 
                     #[test]
                     fn saturating_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::saturating_div(x, y);
+                        let result = super::SafeDiv::saturating_div(&x, &y);
                         // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
@@ -268,14 +333,14 @@ mod tests {
                     fn wrapping_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::wrapping_div(x, y), 10);
+                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10);
                     }
 
                     #[test]
                     fn wrapping_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::wrapping_div(x, y);
+                        let result = super::SafeDiv::wrapping_div(&x, &y);
                         assert_eq!(result, 0);
                     }
 
@@ -284,9 +349,9 @@ mod tests {
                         let x: $t = 5;
                         let y: $t = <$t>::MAX;
 
-                        assert_eq!(super::SafeDiv::checked_div(x, y), Some(0));
-                        assert_eq!(super::SafeDiv::saturating_div(x, y), 0);
-                        assert_eq!(super::SafeDiv::wrapping_div(x, y), 0);
+                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(0));
+                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 0);
+                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 0);
                     }
                 }
             )*
@@ -316,7 +381,7 @@ mod tests {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
 			assert_eq!(
-				super::SafeDiv::checked_div(x, y),
+				super::SafeDiv::checked_div(&x, &y),
 				Some(10.0)
 			);
 		}
@@ -325,14 +390,17 @@ mod tests {
 		fn checked_div_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
-			assert_eq!(super::SafeDiv::checked_div(x, y), None);
+			assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
 		}
 
 		#[test]
 		fn saturating_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(super::SafeDiv::saturating_div(x, y), 10.0);
+			assert_eq!(
+				super::SafeDiv::saturating_div(&x, &y),
+				10.0
+			);
 		}
 
 		#[test]
@@ -340,7 +408,7 @@ mod tests {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
 			assert_eq!(
-				super::SafeDiv::saturating_div(x, y),
+				super::SafeDiv::saturating_div(&x, &y),
 				f32::MAX
 			);
 		}
@@ -349,35 +417,25 @@ mod tests {
 		fn wrapping_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(super::SafeDiv::wrapping_div(x, y), 10.0);
+			assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn wrapping_div_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
-			let result = super::SafeDiv::wrapping_div(x, y);
-			// Should wrap around instead of being infinite
+			let result = super::SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
-			// Should be positive since f32::MAX / 0.1 is positive
-			assert!(result > 0.0);
-			// With our simple wrapping, overflow results in
-			// f32::MAX / 2.0
-			assert_eq!(result, f32::MAX / 2.0);
+			assert_eq!(result, 0.0);
 		}
 
 		#[test]
 		fn wrapping_div_negative() {
 			let x: f32 = f32::MAX;
 			let y: f32 = -0.1;
-			let result = super::SafeDiv::wrapping_div(x, y);
-			// Should wrap around instead of being infinite
+			let result = super::SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
-			// Should be negative since f32::MAX / -0.1 is negative
-			assert!(result < 0.0);
-			// With our simple wrapping, overflow results in
-			// -(f32::MAX / 2.0)
-			assert_eq!(result, -(f32::MAX / 2.0));
+			assert_eq!(result, 0.0);
 		}
 	}
 
@@ -388,7 +446,7 @@ mod tests {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
 			assert_eq!(
-				super::SafeDiv::checked_div(x, y),
+				super::SafeDiv::checked_div(&x, &y),
 				Some(10.0)
 			);
 		}
@@ -397,14 +455,17 @@ mod tests {
 		fn checked_div_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
-			assert_eq!(super::SafeDiv::checked_div(x, y), None);
+			assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
 		}
 
 		#[test]
 		fn saturating_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(super::SafeDiv::saturating_div(x, y), 10.0);
+			assert_eq!(
+				super::SafeDiv::saturating_div(&x, &y),
+				10.0
+			);
 		}
 
 		#[test]
@@ -412,7 +473,7 @@ mod tests {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
 			assert_eq!(
-				super::SafeDiv::saturating_div(x, y),
+				super::SafeDiv::saturating_div(&x, &y),
 				f64::MAX
 			);
 		}
@@ -421,35 +482,25 @@ mod tests {
 		fn wrapping_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(super::SafeDiv::wrapping_div(x, y), 10.0);
+			assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn wrapping_div_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
-			let result = super::SafeDiv::wrapping_div(x, y);
-			// Should wrap around instead of being infinite
+			let result = super::SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
-			// Should be positive since f64::MAX / 0.1 is positive
-			assert!(result > 0.0);
-			// With our simple wrapping, overflow results in
-			// f64::MAX / 2.0
-			assert_eq!(result, f64::MAX / 2.0);
+			assert_eq!(result, 0.0);
 		}
 
 		#[test]
 		fn wrapping_div_negative() {
 			let x: f64 = f64::MAX;
 			let y: f64 = -0.1;
-			let result = super::SafeDiv::wrapping_div(x, y);
-			// Should wrap around instead of being infinite
+			let result = super::SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
-			// Should be negative since f64::MAX / -0.1 is negative
-			assert!(result < 0.0);
-			// With our simple wrapping, overflow results in
-			// -(f64::MAX / 2.0)
-			assert_eq!(result, -(f64::MAX / 2.0));
+			assert_eq!(result, 0.0);
 		}
 	}
 }

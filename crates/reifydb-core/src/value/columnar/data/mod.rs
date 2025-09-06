@@ -10,16 +10,18 @@ mod reorder;
 mod slice;
 mod take;
 
-use reifydb_type::{Date, DateTime, Interval, Time, Type, Uuid4, Uuid7, Value};
+use reifydb_type::{
+	Date, DateTime, Decimal, Interval, Time, Type, Uuid4, Uuid7, Value,
+	VarInt, VarUint,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	BitVec,
 	value::container::{
-		BlobContainer, BoolContainer, DecimalContainer,
-		IdentityIdContainer, NumberContainer, RowNumberContainer,
-		TemporalContainer, UndefinedContainer, Utf8Container,
-		UuidContainer, VarIntContainer, VarUintContainer,
+		BlobContainer, BoolContainer, IdentityIdContainer,
+		NumberContainer, RowNumberContainer, TemporalContainer,
+		UndefinedContainer, Utf8Container, UuidContainer,
 	},
 };
 
@@ -48,10 +50,10 @@ pub enum ColumnData {
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
 	Blob(BlobContainer),
-	VarInt(VarIntContainer),
-	VarUint(VarUintContainer),
+	VarInt(NumberContainer<VarInt>),
+	VarUint(NumberContainer<VarUint>),
 	Decimal {
-		container: DecimalContainer,
+		container: NumberContainer<Decimal>,
 		precision: reifydb_type::value::decimal::Precision,
 		scale: reifydb_type::value::decimal::Scale,
 	},

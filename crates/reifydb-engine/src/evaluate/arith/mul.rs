@@ -850,8 +850,8 @@ fn mul_numeric<'a, L, R>(
 	fragment: impl LazyFragment<'a> + Copy,
 ) -> crate::Result<Column>
 where
-	L: GetType + Promote<R> + Copy + IsNumber,
-	R: GetType + IsNumber + Copy,
+	L: GetType + Promote<R> + IsNumber,
+	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeMul,
 	ColumnData: Push<<L as Promote<R>>::Output>,
@@ -862,9 +862,7 @@ where
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
-				if let Some(value) =
-					ctx.mul(*l, *r, fragment)?
-				{
+				if let Some(value) = ctx.mul(l, r, fragment)? {
 					data.push(value);
 				} else {
 					data.push_undefined()

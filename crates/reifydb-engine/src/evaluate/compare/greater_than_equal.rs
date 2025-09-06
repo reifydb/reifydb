@@ -504,8 +504,8 @@ pub fn compare_number<L, R>(
 	fragment: Fragment<'_>,
 ) -> Column
 where
-	L: Promote<R> + IsNumber + Copy,
-	R: IsNumber + Copy,
+	L: Promote<R> + IsNumber,
+	R: IsNumber,
 	<L as Promote<R>>::Output: PartialOrd,
 {
 	debug_assert_eq!(l.len(), r.len());
@@ -514,9 +514,7 @@ where
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
-				data.push(number::is_greater_than_equal(
-					*l, *r,
-				));
+				data.push(number::is_greater_than_equal(l, r));
 			}
 			_ => data.push_undefined(),
 		}
@@ -545,7 +543,7 @@ where
 		match (l.get(i), r.get(i)) {
 			(Some(l), Some(r)) => {
 				data.push(temporal::is_greater_than_equal(
-					*l, *r,
+					l, r,
 				));
 				bitvec.push(true);
 			}

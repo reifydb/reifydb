@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Decimal, Value};
+use reifydb_type::Decimal;
 
 use crate::value::columnar::{ColumnData, push::Push};
 
@@ -12,11 +12,11 @@ impl Push<Decimal> for ColumnData {
 				container,
 				..
 			} => {
-				container.push(Value::Decimal(value));
+				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
 				let mut new_container =
-					ColumnData::varuint_with_capacity(
+					ColumnData::decimal_with_capacity(
 						container.len(),
 					);
 
@@ -28,8 +28,7 @@ impl Push<Decimal> for ColumnData {
 					for _ in 0..container.len() {
 						new_container.push_undefined();
 					}
-					new_container
-						.push(Value::Decimal(value));
+					new_container.push(value);
 				}
 				*self = new_container;
 			}

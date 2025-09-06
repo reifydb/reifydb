@@ -11,11 +11,9 @@ use crate::{
 	value::{
 		columnar::ColumnData,
 		container::{
-			BlobContainer, BoolContainer, DecimalContainer,
-			IdentityIdContainer, NumberContainer,
-			RowNumberContainer, TemporalContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer,
+			NumberContainer, RowNumberContainer, TemporalContainer,
 			UndefinedContainer, Utf8Container, UuidContainer,
-			VarIntContainer, VarUintContainer,
 		},
 	},
 };
@@ -469,20 +467,20 @@ impl ColumnData {
 
 	pub fn varint(data: impl IntoIterator<Item = VarInt>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnData::VarInt(VarIntContainer::from_vec(data))
+		ColumnData::VarInt(NumberContainer::from_vec(data))
 	}
 
 	pub fn varuint(data: impl IntoIterator<Item = VarUint>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnData::VarUint(VarUintContainer::from_vec(data))
+		ColumnData::VarUint(NumberContainer::from_vec(data))
 	}
 
 	pub fn varint_with_capacity(capacity: usize) -> Self {
-		ColumnData::VarInt(VarIntContainer::with_capacity(capacity))
+		ColumnData::VarInt(NumberContainer::with_capacity(capacity))
 	}
 
 	pub fn varuint_with_capacity(capacity: usize) -> Self {
-		ColumnData::VarUint(VarUintContainer::with_capacity(capacity))
+		ColumnData::VarUint(NumberContainer::with_capacity(capacity))
 	}
 
 	pub fn varint_with_bitvec(
@@ -492,7 +490,7 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::VarInt(VarIntContainer::new(data, bitvec))
+		ColumnData::VarInt(NumberContainer::new(data, bitvec))
 	}
 
 	pub fn varuint_with_bitvec(
@@ -502,14 +500,14 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::VarUint(VarUintContainer::new(data, bitvec))
+		ColumnData::VarUint(NumberContainer::new(data, bitvec))
 	}
 
 	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
 		use reifydb_type::value::decimal::{Precision, Scale};
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Decimal {
-			container: DecimalContainer::from_vec(data),
+			container: NumberContainer::from_vec(data),
 			precision: Precision::new(38),
 			scale: Scale::new(0),
 		}
@@ -518,7 +516,7 @@ impl ColumnData {
 	pub fn decimal_with_capacity(capacity: usize) -> Self {
 		use reifydb_type::value::decimal::{Precision, Scale};
 		ColumnData::Decimal {
-			container: DecimalContainer::with_capacity(capacity),
+			container: NumberContainer::with_capacity(capacity),
 			precision: Precision::new(38),
 			scale: Scale::new(0),
 		}
@@ -530,7 +528,7 @@ impl ColumnData {
 		scale: reifydb_type::value::decimal::Scale,
 	) -> Self {
 		ColumnData::Decimal {
-			container: DecimalContainer::with_capacity(capacity),
+			container: NumberContainer::with_capacity(capacity),
 			precision,
 			scale,
 		}
@@ -545,7 +543,7 @@ impl ColumnData {
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		ColumnData::Decimal {
-			container: DecimalContainer::new(data, bitvec),
+			container: NumberContainer::new(data, bitvec),
 			precision: Precision::new(38),
 			scale: Scale::new(0),
 		}

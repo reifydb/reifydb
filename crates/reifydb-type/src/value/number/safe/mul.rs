@@ -2,23 +2,23 @@
 // This file is licensed under the MIT, see license.md file.
 
 pub trait SafeMul: Sized {
-	fn checked_mul(self, r: Self) -> Option<Self>;
-	fn saturating_mul(self, r: Self) -> Self;
-	fn wrapping_mul(self, r: Self) -> Self;
+	fn checked_mul(&self, r: &Self) -> Option<Self>;
+	fn saturating_mul(&self, r: &Self) -> Self;
+	fn wrapping_mul(&self, r: &Self) -> Self;
 }
 
 macro_rules! impl_safe_mul {
     ($($t:ty),*) => {
         $(
             impl SafeMul for $t {
-                fn checked_mul(self, r: Self) -> Option<Self> {
-                    <$t>::checked_mul(self, r)
+                fn checked_mul(&self, r: &Self) -> Option<Self> {
+                    <$t>::checked_mul(*self, *r)
                 }
-                fn saturating_mul(self, r: Self) -> Self {
-                    <$t>::saturating_mul(self, r)
+                fn saturating_mul(&self, r: &Self) -> Self {
+                    <$t>::saturating_mul(*self, *r)
                 }
-                fn wrapping_mul(self, r: Self) -> Self {
-                    <$t>::wrapping_mul(self, r)
+                fn wrapping_mul(&self, r: &Self) -> Self {
+                    <$t>::wrapping_mul(*self, *r)
                 }
             }
         )*
@@ -27,9 +27,56 @@ macro_rules! impl_safe_mul {
 
 impl_safe_mul!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
+use crate::{Decimal, VarInt, VarUint};
+
+impl SafeMul for VarInt {
+	fn checked_mul(&self, r: &Self) -> Option<Self> {
+		Some(VarInt::from(&self.0 * &r.0))
+	}
+
+	fn saturating_mul(&self, r: &Self) -> Self {
+		VarInt::from(&self.0 * &r.0)
+	}
+
+	fn wrapping_mul(&self, r: &Self) -> Self {
+		VarInt::from(&self.0 * &r.0)
+	}
+}
+
+impl SafeMul for VarUint {
+	fn checked_mul(&self, r: &Self) -> Option<Self> {
+		Some(VarUint::from(&self.0 * &r.0))
+	}
+
+	fn saturating_mul(&self, r: &Self) -> Self {
+		VarUint::from(&self.0 * &r.0)
+	}
+
+	fn wrapping_mul(&self, r: &Self) -> Self {
+		VarUint::from(&self.0 * &r.0)
+	}
+}
+
+impl SafeMul for Decimal {
+	fn checked_mul(&self, r: &Self) -> Option<Self> {
+		let result = self.inner() * r.inner();
+		Some(Decimal::from(result))
+	}
+
+	fn saturating_mul(&self, r: &Self) -> Self {
+		let result = self.inner() * r.inner();
+		Decimal::from(result)
+	}
+
+	fn wrapping_mul(&self, r: &Self) -> Self {
+		let result = self.inner() * r.inner();
+		Decimal::from(result)
+	}
+}
+
 impl SafeMul for f32 {
-	fn checked_mul(self, r: Self) -> Option<Self> {
-		let result = self * r;
+	fn checked_mul(&self, r: &Self) -> Option<Self> {
+		let result = *self * *r;
 		if result.is_finite() {
 			Some(result)
 		} else {
@@ -37,8 +84,8 @@ impl SafeMul for f32 {
 		}
 	}
 
-	fn saturating_mul(self, r: Self) -> Self {
-		let result = self * r;
+	fn saturating_mul(&self, r: &Self) -> Self {
+		let result = *self * *r;
 		if result.is_infinite() {
 			if result.is_sign_positive() {
 				f32::MAX
@@ -50,8 +97,8 @@ impl SafeMul for f32 {
 		}
 	}
 
-	fn wrapping_mul(self, r: Self) -> Self {
-		let result = self * r;
+	fn wrapping_mul(&self, r: &Self) -> Self {
+		let result = *self * *r;
 		if result.is_infinite() || result.is_nan() {
 			// For overflow, create a finite wrapped value
 			let sign = if (self.is_sign_positive()
@@ -74,8 +121,8 @@ impl SafeMul for f32 {
 }
 
 impl SafeMul for f64 {
-	fn checked_mul(self, r: Self) -> Option<Self> {
-		let result = self * r;
+	fn checked_mul(&self, r: &Self) -> Option<Self> {
+		let result = *self * *r;
 		if result.is_finite() {
 			Some(result)
 		} else {
@@ -83,8 +130,8 @@ impl SafeMul for f64 {
 		}
 	}
 
-	fn saturating_mul(self, r: Self) -> Self {
-		let result = self * r;
+	fn saturating_mul(&self, r: &Self) -> Self {
+		let result = *self * *r;
 		if result.is_infinite() {
 			if result.is_sign_positive() {
 				f64::MAX
@@ -96,8 +143,8 @@ impl SafeMul for f64 {
 		}
 	}
 
-	fn wrapping_mul(self, r: Self) -> Self {
-		let result = self * r;
+	fn wrapping_mul(&self, r: &Self) -> Self {
+		let result = *self * *r;
 		if result.is_infinite() || result.is_nan() {
 			// For overflow, create a finite wrapped value
 			let sign = if (self.is_sign_positive()
@@ -132,42 +179,42 @@ mod tests {
                     fn checked_mul_happy() {
                         let x: $t = 10;
                         let y: $t = 2;
-                        assert_eq!(SafeMul::checked_mul(x, y), Some(20));
+                        assert_eq!(SafeMul::checked_mul(&x, &y), Some(20));
                     }
 
                     #[test]
                     fn checked_mul_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 2;
-                        assert_eq!(SafeMul::checked_mul(x, y), None);
+                        assert_eq!(SafeMul::checked_mul(&x, &y), None);
                     }
 
                     #[test]
                     fn saturating_mul_happy() {
                         let x: $t = 10;
                         let y: $t = 2;
-                        assert_eq!(SafeMul::saturating_mul(x, y), 20);
+                        assert_eq!(SafeMul::saturating_mul(&x, &y), 20);
                     }
 
                     #[test]
                     fn saturating_mul_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 2;
-                        assert_eq!(SafeMul::saturating_mul(x, y), <$t>::MAX);
+                        assert_eq!(SafeMul::saturating_mul(&x, &y), <$t>::MAX);
                     }
 
                     #[test]
                     fn wrapping_mul_happy() {
                         let x: $t = 10;
                         let y: $t = 2;
-                        assert_eq!(SafeMul::wrapping_mul(x, y), 20);
+                        assert_eq!(SafeMul::wrapping_mul(&x, &y), 20);
                     }
 
                     #[test]
                     fn wrapping_mul_unhappy() {
                         let x: $t = <$t>::MAX;
                         let y: $t = 2;
-                        assert_eq!(SafeMul::wrapping_mul(x, y), <$t>::wrapping_mul(<$t>::MAX, 2));
+                        assert_eq!(SafeMul::wrapping_mul(&x, &y), <$t>::wrapping_mul(<$t>::MAX, 2));
                     }
                 }
             )*
@@ -194,42 +241,42 @@ mod tests {
 		fn checked_mul_happy() {
 			let x: f32 = 10.0;
 			let y: f32 = 2.0;
-			assert_eq!(SafeMul::checked_mul(x, y), Some(20.0));
+			assert_eq!(SafeMul::checked_mul(&x, &y), Some(20.0));
 		}
 
 		#[test]
 		fn checked_mul_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 2.0;
-			assert_eq!(SafeMul::checked_mul(x, y), None);
+			assert_eq!(SafeMul::checked_mul(&x, &y), None);
 		}
 
 		#[test]
 		fn saturating_mul_happy() {
 			let x: f32 = 10.0;
 			let y: f32 = 2.0;
-			assert_eq!(SafeMul::saturating_mul(x, y), 20.0);
+			assert_eq!(SafeMul::saturating_mul(&x, &y), 20.0);
 		}
 
 		#[test]
 		fn saturating_mul_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 2.0;
-			assert_eq!(SafeMul::saturating_mul(x, y), f32::MAX);
+			assert_eq!(SafeMul::saturating_mul(&x, &y), f32::MAX);
 		}
 
 		#[test]
 		fn wrapping_mul_happy() {
 			let x: f32 = 10.0;
 			let y: f32 = 2.0;
-			assert_eq!(SafeMul::wrapping_mul(x, y), 20.0);
+			assert_eq!(SafeMul::wrapping_mul(&x, &y), 20.0);
 		}
 
 		#[test]
 		fn wrapping_mul_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 2.0;
-			let result = SafeMul::wrapping_mul(x, y);
+			let result = SafeMul::wrapping_mul(&x, &y);
 			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
 			// Should be positive since f32::MAX * 2.0 is positive
@@ -243,7 +290,7 @@ mod tests {
 		fn wrapping_mul_negative() {
 			let x: f32 = f32::MAX;
 			let y: f32 = -2.0;
-			let result = SafeMul::wrapping_mul(x, y);
+			let result = SafeMul::wrapping_mul(&x, &y);
 			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
 			// Should be negative since f32::MAX * -2.0 is negative
@@ -261,42 +308,42 @@ mod tests {
 		fn checked_mul_happy() {
 			let x: f64 = 10.0;
 			let y: f64 = 2.0;
-			assert_eq!(SafeMul::checked_mul(x, y), Some(20.0));
+			assert_eq!(SafeMul::checked_mul(&x, &y), Some(20.0));
 		}
 
 		#[test]
 		fn checked_mul_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 2.0;
-			assert_eq!(SafeMul::checked_mul(x, y), None);
+			assert_eq!(SafeMul::checked_mul(&x, &y), None);
 		}
 
 		#[test]
 		fn saturating_mul_happy() {
 			let x: f64 = 10.0;
 			let y: f64 = 2.0;
-			assert_eq!(SafeMul::saturating_mul(x, y), 20.0);
+			assert_eq!(SafeMul::saturating_mul(&x, &y), 20.0);
 		}
 
 		#[test]
 		fn saturating_mul_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 2.0;
-			assert_eq!(SafeMul::saturating_mul(x, y), f64::MAX);
+			assert_eq!(SafeMul::saturating_mul(&x, &y), f64::MAX);
 		}
 
 		#[test]
 		fn wrapping_mul_happy() {
 			let x: f64 = 10.0;
 			let y: f64 = 2.0;
-			assert_eq!(SafeMul::wrapping_mul(x, y), 20.0);
+			assert_eq!(SafeMul::wrapping_mul(&x, &y), 20.0);
 		}
 
 		#[test]
 		fn wrapping_mul_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 2.0;
-			let result = SafeMul::wrapping_mul(x, y);
+			let result = SafeMul::wrapping_mul(&x, &y);
 			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
 			// Should be positive since f64::MAX * 2.0 is positive
@@ -310,7 +357,7 @@ mod tests {
 		fn wrapping_mul_negative() {
 			let x: f64 = f64::MAX;
 			let y: f64 = -2.0;
-			let result = SafeMul::wrapping_mul(x, y);
+			let result = SafeMul::wrapping_mul(&x, &y);
 			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
 			// Should be negative since f64::MAX * -2.0 is negative

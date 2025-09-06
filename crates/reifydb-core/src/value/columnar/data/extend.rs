@@ -6,9 +6,8 @@ use reifydb_type::{diagnostic::engine, return_error};
 use crate::value::{
 	columnar::ColumnData,
 	container::{
-		BlobContainer, BoolContainer, DecimalContainer,
-		NumberContainer, TemporalContainer, Utf8Container,
-		UuidContainer, VarIntContainer, VarUintContainer,
+		BlobContainer, BoolContainer, NumberContainer,
+		TemporalContainer, Utf8Container, UuidContainer,
 	},
 };
 
@@ -345,7 +344,7 @@ impl ColumnData {
 						);
 					}
 					ColumnData::VarInt(r) => {
-						let mut new_container = VarIntContainer::with_capacity(l_len + r.len());
+						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
@@ -356,7 +355,7 @@ impl ColumnData {
 						);
 					}
 					ColumnData::VarUint(r) => {
-						let mut new_container = VarUintContainer::with_capacity(l_len + r.len());
+						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
@@ -371,7 +370,7 @@ impl ColumnData {
 						precision,
 						scale,
 					} => {
-						let mut new_container = DecimalContainer::with_capacity(l_len + r.len());
+						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,

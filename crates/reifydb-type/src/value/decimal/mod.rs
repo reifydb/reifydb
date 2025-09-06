@@ -8,10 +8,11 @@ use std::{
 };
 
 use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive};
+use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Error, OwnedFragment, Type, error,
+	Error, OwnedFragment, Type, VarInt, VarUint, error,
 	error::diagnostic::number::decimal_scale_exceeds_precision,
 	return_error,
 };
@@ -31,6 +32,16 @@ pub struct Decimal {
 	inner: BigDecimalInner,
 	precision: Precision,
 	scale: Scale,
+}
+
+impl Decimal {
+	pub fn zero() -> Self {
+		Self {
+			inner: BigDecimalInner::zero(),
+			precision: Precision::new(1),
+			scale: Scale::new(0),
+		}
+	}
 }
 
 impl Decimal {
@@ -228,12 +239,8 @@ impl From<i64> for Decimal {
 	fn from(value: i64) -> Self {
 		let inner = BigDecimalInner::from(value);
 		let precision_u8 = Self::calculate_min_precision(&inner, 0);
-		Self::new(
-			inner,
-			Precision::new(precision_u8.max(1)),
-			Scale::new(0),
-		)
-		.unwrap()
+		Self::new(inner, Precision::new(precision_u8), Scale::new(0))
+			.unwrap()
 	}
 }
 
@@ -259,12 +266,8 @@ impl From<i128> for Decimal {
 	fn from(value: i128) -> Self {
 		let inner = BigDecimalInner::from(value);
 		let precision_u8 = Self::calculate_min_precision(&inner, 0);
-		Self::new(
-			inner,
-			Precision::new(precision_u8.max(1)),
-			Scale::new(0),
-		)
-		.unwrap()
+		Self::new(inner, Precision::new(precision_u8), Scale::new(0))
+			.unwrap()
 	}
 }
 
@@ -290,12 +293,8 @@ impl From<u64> for Decimal {
 	fn from(value: u64) -> Self {
 		let inner = BigDecimalInner::from(value);
 		let precision_u8 = Self::calculate_min_precision(&inner, 0);
-		Self::new(
-			inner,
-			Precision::new(precision_u8.max(1)),
-			Scale::new(0),
-		)
-		.unwrap()
+		Self::new(inner, Precision::new(precision_u8), Scale::new(0))
+			.unwrap()
 	}
 }
 
@@ -303,12 +302,8 @@ impl From<u128> for Decimal {
 	fn from(value: u128) -> Self {
 		let inner = BigDecimalInner::from(value);
 		let precision_u8 = Self::calculate_min_precision(&inner, 0);
-		Self::new(
-			inner,
-			Precision::new(precision_u8.max(1)),
-			Scale::new(0),
-		)
-		.unwrap()
+		Self::new(inner, Precision::new(precision_u8), Scale::new(0))
+			.unwrap()
 	}
 }
 
@@ -322,7 +317,7 @@ impl From<f32> for Decimal {
 			Self::calculate_min_precision(&inner, scale_u8);
 		Self::new(
 			inner,
-			Precision::new(precision_u8.max(1)),
+			Precision::new(precision_u8),
 			Scale::new(scale_u8),
 		)
 		.unwrap()
@@ -339,7 +334,7 @@ impl From<f64> for Decimal {
 			Self::calculate_min_precision(&inner, scale_u8);
 		Self::new(
 			inner,
-			Precision::new(precision_u8.max(1)),
+			Precision::new(precision_u8),
 			Scale::new(scale_u8),
 		)
 		.unwrap()
@@ -351,6 +346,7 @@ impl From<BigDecimalInner> for Decimal {
 		let scale_u8 = 0;
 		let precision_u8 =
 			Self::calculate_min_precision(&value, scale_u8);
+
 		Self::new(
 			value,
 			Precision::new(precision_u8),
@@ -360,14 +356,29 @@ impl From<BigDecimalInner> for Decimal {
 	}
 }
 
+impl From<VarInt> for Decimal {
+	fn from(value: VarInt) -> Self {
+		let value = BigDecimalInner::from_bigint(value.0, 0);
+		let precision = Self::calculate_min_precision(&value, 0);
+
+		Self::new(value, Precision::new(precision), Scale::new(0))
+			.unwrap()
+	}
+}
+
+impl From<VarUint> for Decimal {
+	fn from(value: VarUint) -> Self {
+		let value = BigDecimalInner::from_bigint(value.0, 0);
+		let precision = Self::calculate_min_precision(&value, 0);
+
+		Self::new(value, Precision::new(precision), Scale::new(0))
+			.unwrap()
+	}
+}
+
 impl Default for Decimal {
 	fn default() -> Self {
-		Self {
-			inner: BigDecimalInner::from(0),
-			precision: Precision::new(1), /* Minimum precision
-			                               * for zero */
-			scale: Scale::new(0), // Default scale
-		}
+		Self::zero()
 	}
 }
 

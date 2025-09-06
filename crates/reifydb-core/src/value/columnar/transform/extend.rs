@@ -3,7 +3,7 @@
 
 use reifydb_type::{
 	Blob, Date, DateTime, Decimal, Interval, Time, Type, Uuid4, Uuid7,
-	Value, VarInt, VarUint, diagnostic::engine, return_error,
+	VarInt, VarUint, diagnostic::engine, return_error,
 };
 
 use crate::{
@@ -321,17 +321,17 @@ impl Columns {
 					ColumnData::VarInt(container),
 					Type::VarInt,
 				) => {
-					container.push(Value::VarInt(
-						layout.get_varint(&row, index),
-					));
+					container.push(
+						layout.get_varint(&row, index)
+					);
 				}
 				(
 					ColumnData::VarUint(container),
 					Type::VarUint,
 				) => {
-					container.push(Value::VarUint(
-						layout.get_varuint(&row, index),
-					));
+					container.push(
+						layout.get_varuint(&row, index)
+					);
 				}
 				(
 					ColumnData::Decimal {
@@ -342,9 +342,9 @@ impl Columns {
 						..
 					},
 				) => {
-					container.push(Value::Decimal(
-						layout.get_decimal(&row, index),
-					));
+					container.push(
+						layout.get_decimal(&row, index)
+					);
 				}
 				(_, v) => {
 					return_error!(engine::frame_error(
@@ -526,8 +526,7 @@ impl Columns {
 				) => {
 					match layout.try_get_varint(row, index)
 					{
-						Some(v) => container
-							.push(Value::VarInt(v)),
+						Some(v) => container.push(v),
 						None => container
 							.push_undefined(),
 					}
@@ -538,9 +537,7 @@ impl Columns {
 				) => {
 					match layout.try_get_varuint(row, index)
 					{
-						Some(v) => container.push(
-							Value::VarUint(v),
-						),
+						Some(v) => container.push(v),
 						None => container
 							.push_undefined(),
 					}
@@ -556,9 +553,7 @@ impl Columns {
 				) => {
 					match layout.try_get_decimal(row, index)
 					{
-						Some(v) => container.push(
-							Value::Decimal(v),
-						),
+						Some(v) => container.push(v),
 						None => container
 							.push_undefined(),
 					}

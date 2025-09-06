@@ -490,7 +490,7 @@ impl ColumnData {
 
 			Value::VarInt(v) => match self {
 				ColumnData::VarInt(container) => {
-					container.push(Value::VarInt(v))
+					container.push(v)
 				}
 				ColumnData::Undefined(container) => {
 					let mut new_container =
@@ -504,8 +504,7 @@ impl ColumnData {
 								.push_undefined(
 								);
 						}
-						new_container
-							.push(Value::VarInt(v));
+						new_container.push(v);
 					}
 					*self = new_container;
 				}
@@ -513,7 +512,7 @@ impl ColumnData {
 			},
 			Value::VarUint(v) => match self {
 				ColumnData::VarUint(container) => {
-					container.push(Value::VarUint(v))
+					container.push(v)
 				}
 				ColumnData::Undefined(container) => {
 					let mut new_container =
@@ -527,9 +526,7 @@ impl ColumnData {
 								.push_undefined(
 								);
 						}
-						new_container.push(
-							Value::VarUint(v),
-						);
+						new_container.push(v);
 					}
 					*self = new_container;
 				}
@@ -540,7 +537,7 @@ impl ColumnData {
 				ColumnData::Decimal {
 					container,
 					..
-				} => container.push(Value::Decimal(v)),
+				} => container.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
 						ColumnData::decimal(vec![]);
@@ -554,9 +551,7 @@ impl ColumnData {
 								.push_undefined(
 								);
 						}
-						new_container.push(
-							Value::Decimal(v),
-						);
+						new_container.push(v);
 					}
 					*self = new_container;
 				}
