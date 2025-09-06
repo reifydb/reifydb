@@ -24,22 +24,6 @@ fn init_embedded_files() -> HashMap<&'static str, EmbeddedFile> {
 				mime_type,
 			},
 		);
-
-		// Also map /assets/* paths to app/* files
-		// This handles the mismatch between HTML references and actual
-		// file locations
-		if path.starts_with("app/") {
-			let asset_path = path.replacen("app/", "assets/", 1);
-			files.insert(
-				// We need to leak the string to get a 'static
-				// lifetime
-				Box::leak(asset_path.into_boxed_str()),
-				EmbeddedFile {
-					content,
-					mime_type,
-				},
-			);
-		}
 	}
 
 	files

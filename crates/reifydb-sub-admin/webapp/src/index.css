@@ -1,17 +1,49 @@
-* {
-  box-sizing: border-box;
+@import "tailwindcss";
+
+@theme {
+  --color-background: hsl(210 17% 92%);
+  --color-foreground: hsl(222 47% 11%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222 47% 11%);
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(222 47% 11%);
+  --color-primary: hsl(221.2 83.2% 53.3%);
+  --color-primary-foreground: hsl(210 40% 98%);
+  --color-secondary: hsl(210 17% 85%);
+  --color-secondary-foreground: hsl(222 47% 11%);
+  --color-muted: hsl(214 20% 80%);
+  --color-muted-foreground: hsl(217 19% 35%);
+  --color-accent: hsl(210 17% 85%);
+  --color-accent-foreground: hsl(222 47% 11%);
+  --color-destructive: hsl(0 72% 51%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-border: hsl(214 20% 70%);
+  --color-input: hsl(214 20% 70%);
+  --color-ring: hsl(221.2 83.2% 53.3%);
+  
+  --radius-lg: 0rem;
+  --radius-md: 0rem;
+  --radius-sm: 0rem;
 }
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+.dark {
+  --color-background: hsl(240 6% 10%);
+  --color-foreground: hsl(0 0% 90%);
+  --color-card: hsl(240 6% 12%);
+  --color-card-foreground: hsl(0 0% 85%);
+  --color-popover: hsl(240 6% 12%);
+  --color-popover-foreground: hsl(0 0% 85%);
+  --color-primary: hsl(217.2 91.2% 59.8%);
+  --color-primary-foreground: hsl(222.2 47.4% 11.2%);
+  --color-secondary: hsl(240 5% 18%);
+  --color-secondary-foreground: hsl(0 0% 90%);
+  --color-muted: hsl(240 5% 20%);
+  --color-muted-foreground: hsl(240 5% 60%);
+  --color-accent: hsl(240 5% 22%);
+  --color-accent-foreground: hsl(0 0% 90%);
+  --color-destructive: hsl(0 72% 51%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-border: hsl(240 5% 22%);
+  --color-input: hsl(240 5% 22%);
+  --color-ring: hsl(224.3 76.3% 48%);
 }
