@@ -81,10 +81,10 @@ impl HttpHandler {
 		let mut response =
 			format!("HTTP/1.1 {} {}\r\n", status_code, status_text);
 
-		// Add default headers
+		// Add default headers - use byte length for Content-Length
 		response.push_str(&format!(
 			"Content-Length: {}\r\n",
-			body.len()
+			body.as_bytes().len()
 		));
 		response.push_str("Content-Type: application/json\r\n");
 		response.push_str("Connection: close\r\n");
@@ -230,40 +230,93 @@ impl HttpHandler {
 			conn.buffer().len()
 		);
 
-		// First, try to process any data already in the buffer (from
-		// protocol detection)
-		if !conn.buffer().is_empty() {
-			if let Some(header_end) =
-				self.find_header_end(conn.buffer())
-			{
-				self.process_http_request(conn, header_end)?;
-				return Ok(());
+		// Check if we already found headers and are waiting for body
+		let header_end = if let crate::core::ConnectionState::Http(
+			HttpState::ReadingRequest(data),
+		) = conn.state()
+		{
+			data.header_end
+		} else {
+			None
+		};
+
+		// If we haven't found headers yet, look for them
+		let header_end = if header_end.is_none() {
+			// First, check any data already in the buffer
+			if !conn.buffer().is_empty() {
+				if let Some(end) =
+					self.find_header_end(conn.buffer())
+				{
+					// Store the header end position
+					if let crate::core::ConnectionState::Http(
+						HttpState::ReadingRequest(data),
+					) = conn.state_mut()
+					{
+						data.header_end = Some(end);
+					}
+					Some(end)
+				} else {
+					None
+				}
+			} else {
+				None
+			}
+		} else {
+			header_end
+		};
+
+		// Read more data if needed
+		let mut buf = [0u8; 4096];
+		loop {
+			match conn.stream().read(&mut buf) {
+				Ok(0) => {
+					// Connection closed
+					if conn.buffer().is_empty() {
+						return Err(ProtocolError::ConnectionClosed);
+					}
+					break; // Process what we have
+				}
+				Ok(n) => {
+					// Add data to connection buffer
+					conn.buffer_mut().extend_from_slice(&buf[..n]);
+
+					// If we don't have headers yet, look for them
+					if header_end.is_none() {
+						if let Some(end) = self.find_header_end(conn.buffer()) {
+							// Store the header end position
+							if let crate::core::ConnectionState::Http(
+								HttpState::ReadingRequest(data),
+							) = conn.state_mut()
+							{
+								data.header_end = Some(end);
+							}
+							// Try to process the complete request
+							return self.process_http_request(conn, end);
+						}
+					}
+				}
+				Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+					break; // No more data available now
+				}
+				Err(e) => return Err(ProtocolError::Io(e)),
 			}
 		}
 
-		// If we don't have complete headers yet, read more data
-		let mut buf = [0u8; 4096];
-
-		loop {
-			match conn.stream().read(&mut buf) {
-                Ok(0) => return Err(ProtocolError::ConnectionClosed),
-                Ok(n) => {
-                    // Add data to connection buffer
-                    conn.buffer_mut().extend_from_slice(&buf[..n]);
-
-                    // Check if we have complete HTTP headers
-                    if let Some(header_end) = self.find_header_end(conn.buffer()) {
-                        self.process_http_request(conn, header_end)?;
-                        return Ok(());
-                    }
-
-                    if n < buf.len() {
-                        break;
-                    }
-                }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e))}
+		// If we have headers, try to process the request
+		if let Some(end) = header_end {
+			// Try to process - this will check if we have enough
+			// body data
+			self.process_http_request(conn, end)?;
+		} else if let crate::core::ConnectionState::Http(
+			HttpState::ReadingRequest(data),
+		) = conn.state()
+		{
+			// Check again if we have headers after reading
+			if let Some(end) = data.header_end {
+				self.process_http_request(conn, end)?;
+			}
 		}
+
 		Ok(())
 	}
 
@@ -349,107 +402,95 @@ impl HttpHandler {
 				))
 			})?;
 
+		// Calculate content length for POST requests
+		let content_length: usize = headers
+			.get("content-length")
+			.and_then(|v| v.parse().ok())
+			.unwrap_or(0);
+
+		let body_start = header_end + 4; // Skip \r\n\r\n
+		let total_needed = body_start + content_length;
+
+		// Check if we have the complete request (headers + body)
+		if method == "POST" && conn.buffer().len() < total_needed {
+			// We don't have the full body yet, keep waiting
+			return Ok(());
+		}
+
 		// Process the request based on method and path
 		let response_body = match (&method[..], &path[..]) {
             ("GET", "/health") => {
                 serde_json::json!({"status": "ok", "service": "reifydb"}).to_string()
             }
             ("POST", "/query") => {
-                // For POST requests, we need the body
-                let body_start = header_end + 4; // Skip \r\n\r\n
-                let content_length: usize = headers.get("content-length")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0);
+                // Body is guaranteed to be complete at this point
+                let body = &conn.buffer()[body_start..body_start + content_length];
+                let body_str = String::from_utf8_lossy(body);
 
-                if conn.buffer().len() >= body_start + content_length {
-                    let body = &conn.buffer()[body_start..body_start + content_length];
-                    let body_str = String::from_utf8_lossy(body);
-
-                    // Try to parse JSON body for query
-                    if let Ok(query_json) = serde_json::from_str::<serde_json::Value>(&body_str) {
-                        if let Some(query) = query_json.get("query").and_then(|q| q.as_str()) {
-                            self.handle_query(conn, query)
-                                .map_err(|e| ProtocolError::Custom(e))?
-                        } else {
-                            serde_json::json!({"error": "Missing 'query' field in request body"}).to_string()
-                        }
+                // Try to parse JSON body for query
+                if let Ok(query_json) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                    if let Some(query) = query_json.get("query").and_then(|q| q.as_str()) {
+                        self.handle_query(conn, query)
+                            .map_err(|e| ProtocolError::Custom(e))?
                     } else {
-                        serde_json::json!({"error": "Invalid JSON in request body"}).to_string()
+                        serde_json::json!({"error": "Missing 'query' field in request body"}).to_string()
                     }
                 } else {
-                    return Ok(()); // Wait for more data
+                    serde_json::json!({"error": "Invalid JSON in request body"}).to_string()
                 }
             }
             ("POST", "/v1/command") => {
-                // Handle /v1/command endpoint with CommandRequest
-                let body_start = header_end + 4; // Skip \r\n\r\n
-                let content_length: usize = headers.get("content-length")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0);
+                // Body is guaranteed to be complete at this point
+                let body = &conn.buffer()[body_start..body_start + content_length];
+                let body_str = String::from_utf8_lossy(body);
 
-                if conn.buffer().len() >= body_start + content_length {
-                    let body = &conn.buffer()[body_start..body_start + content_length];
-                    let body_str = String::from_utf8_lossy(body);
-
-                    match serde_json::from_str::<CommandRequest>(&body_str) {
-                        Ok(cmd_req) => {
-                            match handle_v1_command(conn, &cmd_req) {
-                                Ok(response) => serde_json::to_string(&response)
-                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
-                                Err(error_response) => serde_json::to_string(&error_response)
-                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
-                            }
-                        }
-                        Err(e) => {
-                            let error_response = ErrResponse {
-                                diagnostic: Diagnostic {
-                                    code: "INVALID_JSON".to_string(),
-                                    message: format!("Invalid CommandRequest JSON: {}", e),
-                                    ..Default::default()
-                                }
-                            };
-                            serde_json::to_string(&error_response)
-                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?
+                match serde_json::from_str::<CommandRequest>(&body_str) {
+                    Ok(cmd_req) => {
+                        match handle_v1_command(conn, &cmd_req) {
+                            Ok(response) => serde_json::to_string(&response)
+                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
+                            Err(error_response) => serde_json::to_string(&error_response)
+                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
                         }
                     }
-                } else {
-                    return Ok(()); // Wait for more data
+                    Err(e) => {
+                        let error_response = ErrResponse {
+                            diagnostic: Diagnostic {
+                                code: "INVALID_JSON".to_string(),
+                                message: format!("Invalid CommandRequest JSON: {}", e),
+                                ..Default::default()
+                            }
+                        };
+                        serde_json::to_string(&error_response)
+                            .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?
+                    }
                 }
             }
             ("POST", "/v1/query") => {
-                // Handle /v1/query endpoint with QueryRequest
-                let body_start = header_end + 4; // Skip \r\n\r\n
-                let content_length: usize = headers.get("content-length")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(0);
+                // Body is guaranteed to be complete at this point
+                let body = &conn.buffer()[body_start..body_start + content_length];
+                let body_str = String::from_utf8_lossy(body);
 
-                if conn.buffer().len() >= body_start + content_length {
-                    let body = &conn.buffer()[body_start..body_start + content_length];
-                    let body_str = String::from_utf8_lossy(body);
-
-                    match serde_json::from_str::<QueryRequest>(&body_str) {
-                        Ok(query_req) => {
-                            match handle_v1_query(conn, &query_req) {
-                                Ok(response) => serde_json::to_string(&response)
-                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
-                                Err(error_response) => serde_json::to_string(&error_response)
-                                    .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
-                            }
-                        }
-                        Err(e) => {
-                            let error_response = ErrResponse {
-                                diagnostic: Diagnostic {
-                                    code: "INVALID_JSON".to_string(),
-                                    message: format!("Invalid QueryRequest JSON: {}", e),
-                                    ..Default::default()
-                                }
-                            };
-                            serde_json::to_string(&error_response)
-                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?
+                match serde_json::from_str::<QueryRequest>(&body_str) {
+                    Ok(query_req) => {
+                        match handle_v1_query(conn, &query_req) {
+                            Ok(response) => serde_json::to_string(&response)
+                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
+                            Err(error_response) => serde_json::to_string(&error_response)
+                                .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?,
                         }
                     }
-                } else {
-                    return Ok(()); // Wait for more data
+                    Err(e) => {
+                        let error_response = ErrResponse {
+                            diagnostic: Diagnostic {
+                                code: "INVALID_JSON".to_string(),
+                                message: format!("Invalid QueryRequest JSON: {}", e),
+                                ..Default::default()
+                            }
+                        };
+                        serde_json::to_string(&error_response)
+                            .map_err(|e| ProtocolError::Custom(format!("Serialization error: {}", e)))?
+                    }
                 }
             }
             ("GET", path) if path.starts_with("/query?") => {
@@ -486,6 +527,16 @@ impl HttpHandler {
 				None,
 			)
 		};
+
+		// Clear the processed request from the buffer
+		let bytes_consumed = if method == "POST" {
+			body_start + content_length
+		} else {
+			header_end + 4 // Just headers + \r\n\r\n
+		};
+
+		// Remove processed data from buffer
+		conn.buffer_mut().drain(0..bytes_consumed);
 
 		// Update state to writing response
 		let mut response_data = HttpConnectionData::new();

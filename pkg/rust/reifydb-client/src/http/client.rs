@@ -3,7 +3,7 @@
 
 use std::{
 	collections::HashMap,
-	io::{Read, Write},
+	io::{BufRead, BufReader, Read, Write},
 	net::{SocketAddr, TcpStream, ToSocketAddrs},
 	sync::{Arc, Mutex, mpsc},
 	thread::{self, JoinHandle},
@@ -34,19 +34,12 @@ pub(crate) struct HttpClientInner {
 pub(crate) struct HttpClientConfig {
 	pub(crate) host: String,
 	pub(crate) port: u16,
-	pub(crate) timeout: Duration,
+	pub(crate) _timeout: Duration,
 }
 
 impl Drop for HttpClient {
 	fn drop(&mut self) {
-		// Only send close if this is the last reference
-		if Arc::strong_count(&self.inner) == 1 {
-			// Send close message to worker thread
-			let _ = self
-				.inner
-				.command_tx
-				.send(HttpInternalMessage::Close);
-		}
+		let _ = self.inner.command_tx.send(HttpInternalMessage::Close);
 	}
 }
 
@@ -67,7 +60,7 @@ impl HttpClient {
 		let config = HttpClientConfig {
 			host,
 			port,
-			timeout: Duration::from_secs(30),
+			_timeout: Duration::from_secs(30),
 		};
 
 		Self::with_config(config)
@@ -77,16 +70,59 @@ impl HttpClient {
 	pub fn from_url(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
 		let url = if url.starts_with("http://") {
 			&url[7..] // Remove "http://"
+		} else if url.starts_with("https://") {
+			return Err("HTTPS is not yet supported".into());
 		} else {
 			url
 		};
 
-		let parts: Vec<&str> = url.split(':').collect();
-		let host = parts[0].to_string();
-		let port = if parts.len() > 1 {
-			parts[1].parse()?
+		// Parse host and port, handling IPv6 addresses
+		let (host, port) = if url.starts_with('[') {
+			// IPv6 address with brackets: [::1]:8080
+			if let Some(end_bracket) = url.find(']') {
+				let host = &url[1..end_bracket];
+				let port_str = &url[end_bracket + 1..];
+				let port = if port_str.starts_with(':') {
+					port_str[1..].parse()?
+				} else {
+					80
+				};
+				(host.to_string(), port)
+			} else {
+				return Err(
+					"Invalid IPv6 address format".into()
+				);
+			}
+		} else if url.starts_with("::") || url.contains("::") {
+			// IPv6 address without brackets: ::1:8080
+			// Find the last colon that's likely the port separator
+			if let Some(port_idx) = url.rfind(':') {
+				// Check if what follows the last colon is a
+				// port number
+				if url[port_idx + 1..]
+					.chars()
+					.all(|c| c.is_ascii_digit())
+				{
+					let host = &url[..port_idx];
+					let port: u16 =
+						url[port_idx + 1..].parse()?;
+					(host.to_string(), port)
+				} else {
+					// No port specified, use default
+					(url.to_string(), 80)
+				}
+			} else {
+				(url.to_string(), 80)
+			}
 		} else {
-			8080
+			// Regular hostname or IPv4 address
+			if let Some(colon_idx) = url.find(':') {
+				let host = &url[..colon_idx];
+				let port: u16 = url[colon_idx + 1..].parse()?;
+				(host.to_string(), port)
+			} else {
+				(url.to_string(), 80)
+			}
 		};
 
 		Self::new((host.as_str(), port))
@@ -125,7 +161,14 @@ impl HttpClient {
 
 	/// Close the client connection
 	pub fn close(self) -> Result<(), Box<dyn std::error::Error>> {
-		// The Drop impl handles cleanup
+		self.inner.command_tx.send(HttpInternalMessage::Close)?;
+
+		// Wait for worker thread to finish
+		if let Ok(mut handle_guard) = self.inner.worker_handle.lock() {
+			if let Some(handle) = handle_guard.take() {
+				let _ = handle.join();
+			}
+		}
 		Ok(())
 	}
 
@@ -280,45 +323,42 @@ impl HttpClientConfig {
 		// Create TCP connection
 		let mut stream = TcpStream::connect(addr)?;
 
-		// Build HTTP request
-		let request = format!(
+		// Convert body to bytes first to get accurate Content-Length
+		let body_bytes = body.as_bytes();
+
+		// Build HTTP request header
+		let header = format!(
 			"POST {} HTTP/1.1\r\n\
 			Host: {}\r\n\
 			Content-Type: application/json\r\n\
 			Content-Length: {}\r\n\
 			Connection: close\r\n\
-			\r\n\
-			{}",
+			\r\n",
 			path,
 			self.host,
-			body.len(),
-			body
+			body_bytes.len()
 		);
 
-		// Send request
-		stream.write_all(request.as_bytes())?;
+		// Send request header and body
+		stream.write_all(header.as_bytes())?;
+		stream.write_all(body_bytes)?;
+		stream.flush()?;
 
-		// Read response
-		let mut response = String::new();
-		stream.read_to_string(&mut response)?;
-
-		// Parse HTTP response
-		self.parse_http_response(&response)
+		// Parse HTTP response using buffered reader
+		self.parse_http_response_buffered(stream)
 	}
 
-	/// Parse HTTP response and extract body
-	fn parse_http_response(
+	/// Parse HTTP response using buffered reading for large responses
+	fn parse_http_response_buffered(
 		&self,
-		response: &str,
+		stream: TcpStream,
 	) -> Result<String, Box<dyn std::error::Error>> {
-		let lines: Vec<&str> = response.lines().collect();
+		let mut reader = BufReader::new(stream);
+		let mut line = String::new();
 
-		if lines.is_empty() {
-			return Err("Empty HTTP response".into());
-		}
-
-		// Parse status line
-		let status_line = lines[0];
+		// Read status line
+		reader.read_line(&mut line)?;
+		let status_line = line.trim_end();
 		let status_parts: Vec<&str> =
 			status_line.split_whitespace().collect();
 
@@ -330,90 +370,104 @@ impl HttpClientConfig {
 		if status_code < 200 || status_code >= 300 {
 			return Err(format!(
 				"HTTP error {}: {}",
-				status_code, status_parts[2]
+				status_code,
+				status_parts.get(2).unwrap_or(&"")
 			)
 			.into());
 		}
 
-		// Find headers and body separator
-		let mut headers_end = None;
-		for (i, line) in lines.iter().enumerate() {
-			if line.is_empty() {
-				headers_end = Some(i);
-				break;
-			}
-		}
-
-		let headers_end =
-			headers_end.ok_or("No headers/body separator found")?;
-
-		// Parse headers
+		// Read headers
 		let mut headers = HashMap::new();
-		for line in &lines[1..headers_end] {
+		let mut content_length: Option<usize> = None;
+		let mut is_chunked = false;
+
+		loop {
+			line.clear();
+			reader.read_line(&mut line)?;
+
+			if line == "\r\n" || line == "\n" {
+				break; // End of headers
+			}
+
 			if let Some(colon_pos) = line.find(':') {
 				let key =
 					line[..colon_pos].trim().to_lowercase();
 				let value = line[colon_pos + 1..]
 					.trim()
 					.to_string();
+
+				if key == "content-length" {
+					content_length = value.parse().ok();
+				} else if key == "transfer-encoding"
+					&& value.contains("chunked")
+				{
+					is_chunked = true;
+				}
+
 				headers.insert(key, value);
 			}
 		}
 
-		// Get body
-		let body_lines = &lines[headers_end + 1..];
-		let body = body_lines.join("\n");
-
-		// Handle chunked encoding if present
-		if headers.get("transfer-encoding").map(|s| s.as_str())
-			== Some("chunked")
-		{
-			return self.parse_chunked_body(&body);
-		}
+		// Read body based on transfer method
+		let body = if is_chunked {
+			self.read_chunked_body(&mut reader)?
+		} else if let Some(length) = content_length {
+			// Read exact content length
+			let mut body = vec![0u8; length];
+			reader.read_exact(&mut body)?;
+			String::from_utf8(body)?
+		} else {
+			// Read until EOF (Connection: close)
+			let mut body = String::new();
+			reader.read_to_string(&mut body)?;
+			body
+		};
 
 		Ok(body)
 	}
 
-	/// Parse chunked HTTP response body
-	fn parse_chunked_body(
+	/// Read chunked HTTP response body
+	fn read_chunked_body(
 		&self,
-		body: &str,
+		reader: &mut BufReader<TcpStream>,
 	) -> Result<String, Box<dyn std::error::Error>> {
-		let mut result = String::new();
-		let mut lines = body.lines();
+		let mut result = Vec::new();
+		let mut line = String::new();
 
-		while let Some(size_line) = lines.next() {
-			let size_line = size_line.trim();
-			if size_line.is_empty() {
-				continue;
-			}
+		loop {
+			// Read chunk size line
+			line.clear();
+			reader.read_line(&mut line)?;
 
-			// Parse chunk size (hexadecimal)
-			let chunk_size = usize::from_str_radix(size_line, 16)?;
+			// Parse chunk size (hexadecimal), ignoring any chunk
+			// extensions after ';'
+			let size_str =
+				line.trim().split(';').next().unwrap_or("0");
+			let chunk_size = usize::from_str_radix(size_str, 16)?;
+
 			if chunk_size == 0 {
-				break; // Last chunk
-			}
-
-			// Read chunk data
-			let mut chunk_data = String::new();
-			let mut bytes_read = 0;
-
-			while bytes_read < chunk_size {
-				if let Some(line) = lines.next() {
-					if !chunk_data.is_empty() {
-						chunk_data.push('\n');
+				// Last chunk - read trailing headers if any
+				loop {
+					line.clear();
+					reader.read_line(&mut line)?;
+					if line == "\r\n" || line == "\n" {
+						break;
 					}
-					chunk_data.push_str(line);
-					bytes_read += line.len() + 1; // +1 for newline
-				} else {
-					break;
 				}
+				break;
 			}
 
-			result.push_str(&chunk_data);
+			// Read exact chunk data
+			let mut chunk = vec![0u8; chunk_size];
+			reader.read_exact(&mut chunk)?;
+			result.extend_from_slice(&chunk);
+
+			// Read trailing CRLF after chunk data
+			line.clear();
+			reader.read_line(&mut line)?;
 		}
 
-		Ok(result)
+		String::from_utf8(result).map_err(|e| e.into())
 	}
 
 	/// Test connection to the server

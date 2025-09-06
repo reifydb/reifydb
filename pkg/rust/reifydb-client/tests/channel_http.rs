@@ -6,9 +6,8 @@ mod common;
 use std::{error::Error, path::Path, sync::mpsc::Receiver, time::Duration};
 
 use common::{
-	cleanup_http_client, cleanup_server, connect_http,
-	create_server_instance, parse_named_params, parse_positional_params,
-	parse_rql, start_server_and_get_port, write_frames,
+	cleanup_http_client, cleanup_server, create_server_instance,
+	parse_named_params, parse_positional_params, parse_rql, write_frames,
 };
 use reifydb::{
 	Database,

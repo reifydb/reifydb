@@ -108,7 +108,7 @@ impl HttpChannelSession {
 		if let Err(e) = self.client.command_tx().send(
 			HttpInternalMessage::Auth {
 				id: id.clone(),
-				token: self.token.clone(),
+				_token: self.token.clone(),
 				route: HttpResponseRoute::Channel(
 					self.response_tx.clone(),
 				),

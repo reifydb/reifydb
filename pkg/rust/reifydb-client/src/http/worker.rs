@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::{sync::mpsc, time::Instant};
+use std::{
+	sync::mpsc,
+	time::{Duration, Instant},
+};
 
 use crate::{
 	http::{
@@ -20,18 +23,21 @@ pub(crate) fn http_worker_thread(
 	client: HttpClientConfig,
 	command_rx: mpsc::Receiver<HttpInternalMessage>,
 ) {
-	// Process messages from the command channel
-	while let Ok(msg) = command_rx.recv() {
-		match msg {
-			HttpInternalMessage::Command {
-				id,
-				request,
-				route,
-			} => {
-				let timestamp = Instant::now();
+	// Process messages from the command channel with timeout to prevent
+	// hanging
+	loop {
+		match command_rx.recv_timeout(Duration::from_millis(100)) {
+			Ok(msg) => {
+				match msg {
+					HttpInternalMessage::Command {
+						id,
+						request,
+						route,
+					} => {
+						let timestamp = Instant::now();
 
-				// Send the HTTP request
-				let response = match client.send_command(&request) {
+						// Send the HTTP request
+						let response = match client.send_command(&request) {
 					Ok(response) => Ok(HttpChannelResponse::Command {
 						request_id: id.clone(),
 						result: CommandResult {
@@ -41,8 +47,8 @@ pub(crate) fn http_worker_thread(
 					Err(e) => Err(e),
 				};
 
-				// Route the response
-				match route {
+						// Route the response
+						match route {
 					HttpResponseRoute::Channel(tx) => {
 						let message =
 							HttpResponseMessage {
@@ -53,16 +59,16 @@ pub(crate) fn http_worker_thread(
 						let _ = tx.send(message);
 					}
 				}
-			}
-			HttpInternalMessage::Query {
-				id,
-				request,
-				route,
-			} => {
-				let timestamp = Instant::now();
+					}
+					HttpInternalMessage::Query {
+						id,
+						request,
+						route,
+					} => {
+						let timestamp = Instant::now();
 
-				// Send the HTTP request
-				let response = match client.send_query(&request) {
+						// Send the HTTP request
+						let response = match client.send_query(&request) {
 					Ok(response) => Ok(HttpChannelResponse::Query {
 						request_id: id.clone(),
 						result: QueryResult {
@@ -72,8 +78,8 @@ pub(crate) fn http_worker_thread(
 					Err(e) => Err(e),
 				};
 
-				// Route the response
-				match route {
+						// Route the response
+						match route {
 					HttpResponseRoute::Channel(tx) => {
 						let message =
 							HttpResponseMessage {
@@ -84,22 +90,24 @@ pub(crate) fn http_worker_thread(
 						let _ = tx.send(message);
 					}
 				}
-			}
-			HttpInternalMessage::Auth {
-				id,
-				token: _,
-				route,
-			} => {
-				// For HTTP, authentication is stateless, so we
-				// just send a success response
-				// In a real implementation, this might send an
-				// auth request to /v1/auth
-				let timestamp = Instant::now();
-				let response = Ok(HttpChannelResponse::Auth {
+					}
+					HttpInternalMessage::Auth {
+						id,
+						_token: _,
+						route,
+					} => {
+						// For HTTP, authentication is
+						// stateless, so we
+						// just send a success response
+						// In a real implementation,
+						// this might send an auth
+						// request to /v1/auth
+						let timestamp = Instant::now();
+						let response = Ok(HttpChannelResponse::Auth {
 					request_id: id.clone(),
 				});
 
-				match route {
+						match route {
 					HttpResponseRoute::Channel(tx) => {
 						let message =
 							HttpResponseMessage {
@@ -110,8 +118,18 @@ pub(crate) fn http_worker_thread(
 						let _ = tx.send(message);
 					}
 				}
+					}
+					HttpInternalMessage::Close => {
+						break;
+					}
+				}
 			}
-			HttpInternalMessage::Close => {
+			Err(mpsc::RecvTimeoutError::Timeout) => {
+				// Continue loop to check for messages
+				continue;
+			}
+			Err(mpsc::RecvTimeoutError::Disconnected) => {
+				// Channel disconnected, exit worker
 				break;
 			}
 		}

@@ -42,6 +42,8 @@ pub struct HttpConnectionData {
 	pub body: Vec<u8>,
 	/// Keep-alive flag
 	pub keep_alive: bool,
+	/// Position where headers end in the buffer (if found)
+	pub header_end: Option<usize>,
 }
 
 impl HttpConnectionData {
@@ -55,6 +57,7 @@ impl HttpConnectionData {
 			headers: HashMap::new(),
 			body: Vec::new(),
 			keep_alive: false,
+			header_end: None,
 		}
 	}
 }

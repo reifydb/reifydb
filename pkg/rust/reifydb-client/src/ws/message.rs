@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::sync::mpsc;
 
-use crate::{Request, Response, ws::ResponseMessage};
+use crate::{Request, ws::ResponseMessage};
 
 /// Internal messages sent to the background thread
 pub(crate) enum InternalMessage {
@@ -17,12 +17,5 @@ pub(crate) enum InternalMessage {
 
 /// Routes responses to the appropriate session
 pub(crate) enum ResponseRoute {
-	Blocking(mpsc::Sender<Result<Response, reifydb_type::Error>>),
-	Callback(
-		Box<
-			dyn FnOnce(Result<Response, reifydb_type::Error>)
-				+ Send,
-		>,
-	),
 	Channel(mpsc::Sender<ResponseMessage>),
 }

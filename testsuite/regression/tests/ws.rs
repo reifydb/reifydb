@@ -116,7 +116,8 @@ where
 
 		let port = server.sub_server().unwrap().port().unwrap();
 
-		let client = Client::ws(&format!("ws://::1:{}", port))?;
+		let client =
+			Client::ws_from_url(&format!("ws://::1:{}", port))?;
 
 		let session = client
 			.blocking_session(Some("mysecrettoken".to_string()))?;

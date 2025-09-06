@@ -29,7 +29,7 @@ use reifydb::{
 	memory, optimistic,
 };
 use reifydb_client::{
-	Client, WsCallbackSession, WsClient,
+	WsCallbackSession, WsClient,
 	session::{CommandResult, QueryResult},
 };
 use reifydb_testing::{testscript, testscript::Command};

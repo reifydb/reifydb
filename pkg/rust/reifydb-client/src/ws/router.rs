@@ -54,12 +54,6 @@ pub(crate) fn route_error(id: &str, error: String, _route: ResponseRoute) {
 /// Route a successful response to the appropriate destination
 pub(crate) fn route_response(response: Response, route: ResponseRoute) {
 	match route {
-		ResponseRoute::Blocking(tx) => {
-			let _ = tx.send(Ok(response));
-		}
-		ResponseRoute::Callback(callback) => {
-			callback(Ok(response));
-		}
 		ResponseRoute::Channel(tx) => {
 			// Parse the response based on its type
 			let request_id = response.id.clone();

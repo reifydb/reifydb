@@ -4,6 +4,7 @@
 use std::{
 	sync::{Arc, Mutex, mpsc},
 	thread,
+	time::Duration,
 };
 
 use crate::{
@@ -37,33 +38,37 @@ impl CallbackSession {
 		let receiver = Arc::new(Mutex::new(receiver));
 		let authenticated = Arc::new(Mutex::new(false));
 
-		// Start a worker thread to process responses and invoke
-		// callbacks
+		// Start a worker thread to process authentication response with
+		// timeout
 		let receiver_clone = receiver.clone();
 		let auth_flag = authenticated.clone();
-		let worker_handle =
-			thread::spawn(move || {
-				// If token provided, handle authentication
+		let worker_handle = thread::spawn(move || {
+			// If token provided, handle authentication response
+			if token.is_some() {
+				// Wait up to 5 seconds for authentication
 				// response
-				if token.is_some() {
-					if let Ok(msg) = receiver_clone
-						.lock()
-						.unwrap()
-						.recv()
-					{
-						match msg.response {
-						Ok(ChannelResponse::Auth { .. }) => {
-							*auth_flag.lock().unwrap() = true;
-							println!("Authentication successful");
+				match receiver_clone.lock().unwrap().recv_timeout(Duration::from_secs(5)) {
+						Ok(msg) => {
+							match msg.response {
+								Ok(ChannelResponse::Auth { .. }) => {
+									*auth_flag.lock().unwrap() = true;
+									println!("WebSocket Authentication successful");
+								}
+								Err(e) => {
+									eprintln!("WebSocket Authentication failed: {}", e);
+								}
+								_ => {}
+							}
 						}
-						Err(e) => {
-							eprintln!("Authentication failed: {}", e);
+						Err(mpsc::RecvTimeoutError::Timeout) => {
+							eprintln!("WebSocket Authentication timeout");
 						}
-						_ => {}
+						Err(mpsc::RecvTimeoutError::Disconnected) => {
+							eprintln!("WebSocket Authentication channel disconnected");
+						}
 					}
-					}
-				}
-			});
+			}
+		});
 
 		Ok(Self {
 			channel_session,
@@ -95,25 +100,43 @@ impl CallbackSession {
 				},
 			)?;
 
-		// Spawn thread to wait for response and invoke callback
+		// Spawn thread to wait for response and invoke callback with
+		// timeout
 		let receiver = self.receiver.clone();
 		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
-			if let Ok(msg) = receiver.lock().unwrap().recv() {
-				if msg.request_id == request_id_clone {
-					match msg.response {
-						Ok(ChannelResponse::Command { result, .. }) => {
-							callback(Ok(result));
-						}
-						Err(e) => {
-							callback(Err(e));
-						}
-						_ => {
-							callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-								"Unexpected response type for command".to_string()
-							))));
+			// Wait up to 30 seconds for response
+			match receiver
+				.lock()
+				.unwrap()
+				.recv_timeout(Duration::from_secs(30))
+			{
+				Ok(msg) => {
+					if msg.request_id == request_id_clone {
+						match msg.response {
+							Ok(ChannelResponse::Command { result, .. }) => {
+								callback(Ok(result));
+							}
+							Err(e) => {
+								callback(Err(e));
+							}
+							_ => {
+								callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+									"Unexpected response type for command".to_string()
+								))));
+							}
 						}
 					}
+				}
+				Err(mpsc::RecvTimeoutError::Timeout) => {
+					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+						"Command request timeout".to_string()
+					))));
+				}
+				Err(mpsc::RecvTimeoutError::Disconnected) => {
+					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+						"Command channel disconnected".to_string()
+					))));
 				}
 			}
 		});
@@ -143,25 +166,43 @@ impl CallbackSession {
 				},
 			)?;
 
-		// Spawn thread to wait for response and invoke callback
+		// Spawn thread to wait for response and invoke callback with
+		// timeout
 		let receiver = self.receiver.clone();
 		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
-			if let Ok(msg) = receiver.lock().unwrap().recv() {
-				if msg.request_id == request_id_clone {
-					match msg.response {
-						Ok(ChannelResponse::Query { result, .. }) => {
-							callback(Ok(result));
-						}
-						Err(e) => {
-							callback(Err(e));
-						}
-						_ => {
-							callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-								"Unexpected response type for query".to_string()
-							))));
+			// Wait up to 30 seconds for response
+			match receiver
+				.lock()
+				.unwrap()
+				.recv_timeout(Duration::from_secs(30))
+			{
+				Ok(msg) => {
+					if msg.request_id == request_id_clone {
+						match msg.response {
+							Ok(ChannelResponse::Query { result, .. }) => {
+								callback(Ok(result));
+							}
+							Err(e) => {
+								callback(Err(e));
+							}
+							_ => {
+								callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+									"Unexpected response type for query".to_string()
+								))));
+							}
 						}
 					}
+				}
+				Err(mpsc::RecvTimeoutError::Timeout) => {
+					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+						"Query request timeout".to_string()
+					))));
+				}
+				Err(mpsc::RecvTimeoutError::Disconnected) => {
+					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
+						"Query channel disconnected".to_string()
+					))));
 				}
 			}
 		});

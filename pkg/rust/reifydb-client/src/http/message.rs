@@ -19,7 +19,7 @@ pub(crate) enum HttpInternalMessage {
 	},
 	Auth {
 		id: String,
-		token: Option<String>,
+		_token: Option<String>,
 		route: HttpResponseRoute,
 	},
 	Close,

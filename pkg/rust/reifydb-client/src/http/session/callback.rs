@@ -57,24 +57,33 @@ impl HttpCallbackSession {
 		let receiver = Arc::new(Mutex::new(receiver));
 		let authenticated = Arc::new(Mutex::new(false));
 
-		// Start a worker thread to process responses
+		// Start a worker thread to process authentication response with
+		// timeout
 		let receiver_clone = receiver.clone();
 		let auth_flag = authenticated.clone();
 		let worker_handle = thread::spawn(move || {
 			// If token provided, handle authentication response
 			if token.is_some() {
-				if let Ok(msg) =
-					receiver_clone.lock().unwrap().recv()
-				{
-					match msg.response {
-						Ok(HttpChannelResponse::Auth { .. }) => {
-							*auth_flag.lock().unwrap() = true;
-							println!("HTTP Authentication successful");
+				// Wait up to 5 seconds for authentication
+				// response
+				match receiver_clone.lock().unwrap().recv_timeout(Duration::from_secs(5)) {
+					Ok(msg) => {
+						match msg.response {
+							Ok(HttpChannelResponse::Auth { .. }) => {
+								*auth_flag.lock().unwrap() = true;
+								println!("HTTP Authentication successful");
+							}
+							Err(e) => {
+								eprintln!("HTTP Authentication failed: {}", e);
+							}
+							_ => {}
 						}
-						Err(e) => {
-							eprintln!("HTTP Authentication failed: {}", e);
-						}
-						_ => {}
+					}
+					Err(mpsc::RecvTimeoutError::Timeout) => {
+						eprintln!("HTTP Authentication timeout");
+					}
+					Err(mpsc::RecvTimeoutError::Disconnected) => {
+						eprintln!("HTTP Authentication channel disconnected");
 					}
 				}
 			}
@@ -127,25 +136,45 @@ impl HttpCallbackSession {
 				)))
 			})?;
 
-		// Spawn thread to wait for response and invoke callback
+		// Spawn thread to wait for response and invoke callback with
+		// timeout
 		let receiver = self.receiver.clone();
 		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
-			if let Ok(msg) = receiver.lock().unwrap().recv() {
-				if msg.request_id == request_id_clone {
-					match msg.response {
-						Ok(HttpChannelResponse::Command { result, .. }) => {
-							callback(Ok(result));
-						}
-						Err(e) => {
-							callback(Err(e));
-						}
-						_ => {
-							callback(Err(Error(internal(
-								"Unexpected response type for command".to_string()
-							))));
+			// Wait up to 30 seconds for response
+			match receiver
+				.lock()
+				.unwrap()
+				.recv_timeout(Duration::from_secs(30))
+			{
+				Ok(msg) => {
+					if msg.request_id == request_id_clone {
+						match msg.response {
+							Ok(HttpChannelResponse::Command { result, .. }) => {
+								callback(Ok(result));
+							}
+							Err(e) => {
+								callback(Err(e));
+							}
+							_ => {
+								callback(Err(Error(internal(
+									"Unexpected response type for command".to_string()
+								))));
+							}
 						}
 					}
+				}
+				Err(mpsc::RecvTimeoutError::Timeout) => {
+					callback(Err(Error(internal(
+						"Command request timeout"
+							.to_string(),
+					))));
+				}
+				Err(mpsc::RecvTimeoutError::Disconnected) => {
+					callback(Err(Error(internal(
+						"Command channel disconnected"
+							.to_string(),
+					))));
 				}
 			}
 		});
@@ -174,25 +203,45 @@ impl HttpCallbackSession {
 				)))
 			})?;
 
-		// Spawn thread to wait for response and invoke callback
+		// Spawn thread to wait for response and invoke callback with
+		// timeout
 		let receiver = self.receiver.clone();
 		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
-			if let Ok(msg) = receiver.lock().unwrap().recv() {
-				if msg.request_id == request_id_clone {
-					match msg.response {
-						Ok(HttpChannelResponse::Query { result, .. }) => {
-							callback(Ok(result));
-						}
-						Err(e) => {
-							callback(Err(e));
-						}
-						_ => {
-							callback(Err(Error(internal(
-								"Unexpected response type for query".to_string()
-							))));
+			// Wait up to 30 seconds for response
+			match receiver
+				.lock()
+				.unwrap()
+				.recv_timeout(Duration::from_secs(30))
+			{
+				Ok(msg) => {
+					if msg.request_id == request_id_clone {
+						match msg.response {
+							Ok(HttpChannelResponse::Query { result, .. }) => {
+								callback(Ok(result));
+							}
+							Err(e) => {
+								callback(Err(e));
+							}
+							_ => {
+								callback(Err(Error(internal(
+									"Unexpected response type for query".to_string()
+								))));
+							}
 						}
 					}
+				}
+				Err(mpsc::RecvTimeoutError::Timeout) => {
+					callback(Err(Error(internal(
+						"Query request timeout"
+							.to_string(),
+					))));
+				}
+				Err(mpsc::RecvTimeoutError::Disconnected) => {
+					callback(Err(Error(internal(
+						"Query channel disconnected"
+							.to_string(),
+					))));
 				}
 			}
 		});

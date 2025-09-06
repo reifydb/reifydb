@@ -17,7 +17,7 @@ use reifydb::{
 	},
 	memory, optimistic,
 };
-use reifydb_client::{Client, WsBlockingSession, WsClient};
+use reifydb_client::{WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 

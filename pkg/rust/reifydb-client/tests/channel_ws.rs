@@ -22,7 +22,7 @@ use reifydb::{
 	memory, optimistic,
 };
 use reifydb_client::{
-	ChannelResponse, Client, ResponseMessage, WsChannelSession, WsClient,
+	ChannelResponse, ResponseMessage, WsChannelSession, WsClient,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

@@ -86,9 +86,58 @@ impl WsClient {
 			};
 
 		// Parse the address string to SocketAddr
-		addr_str.to_socket_addrs()?
-			.next()
-			.ok_or_else(|| "Failed to resolve address".into())
+		// Handle different formats:
+		// - [::1]:8080 (already properly formatted)
+		// - ::1:8080 (needs brackets added)
+		// - localhost:8080 (hostname)
+		// - 127.0.0.1:8080 (IPv4)
+
+		if addr_str.starts_with('[') {
+			// Already has brackets, parse as-is
+			addr_str.to_socket_addrs()?.next().ok_or_else(|| {
+				"Failed to resolve address".into()
+			})
+		} else if addr_str.starts_with("::") {
+			// IPv6 address without brackets
+			// Find the last colon that's likely the port separator
+			// Count colons - if more than 2, it's IPv6
+			let colon_count = addr_str.matches(':').count();
+			if colon_count > 2 {
+				// Definitely IPv6, find the port
+				if let Some(port_start) = addr_str.rfind(':') {
+					// Check if what follows is a port
+					// number
+					if addr_str[port_start + 1..]
+						.chars()
+						.all(|c| c.is_ascii_digit())
+					{
+						let ipv6_part =
+							&addr_str[..port_start];
+						let port_part = &addr_str
+							[port_start + 1..];
+						let formatted = format!(
+							"[{}]:{}",
+							ipv6_part, port_part
+						);
+						return formatted
+							.to_socket_addrs()?
+							.next()
+							.ok_or_else(|| {
+								"Failed to resolve address".into()
+							});
+					}
+				}
+			}
+			// Try as-is
+			addr_str.to_socket_addrs()?.next().ok_or_else(|| {
+				"Failed to resolve address".into()
+			})
+		} else {
+			// Regular address (hostname or IPv4)
+			addr_str.to_socket_addrs()?.next().ok_or_else(|| {
+				"Failed to resolve address".into()
+			})
+		}
 	}
 
 	/// Create a new WebSocket client
