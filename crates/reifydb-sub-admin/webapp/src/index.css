@@ -1,5 +1,42 @@
 @import "tailwindcss";
 
+/* IBM Plex Mono Font Face Declarations */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.woff2') format('woff2'),
+       url('/assets/fonts/ibm-plex-mono/IBMPlexMono-Regular.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/assets/fonts/ibm-plex-mono/IBMPlexMono-Medium.woff2') format('woff2'),
+       url('/assets/fonts/ibm-plex-mono/IBMPlexMono-Medium.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/assets/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff2') format('woff2'),
+       url('/assets/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/assets/fonts/ibm-plex-mono/IBMPlexMono-Bold.woff2') format('woff2'),
+       url('/assets/fonts/ibm-plex-mono/IBMPlexMono-Bold.woff') format('woff');
+}
+
 @theme {
   --color-background: hsl(30 30% 96%);
   --color-foreground: hsl(0 0% 5%);
@@ -20,6 +57,9 @@
   --color-border: hsl(0 0% 20%);
   --color-input: hsl(0 0% 20%);
   --color-ring: hsl(142 76% 36%);
+  
+  --font-family-sans: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --font-family-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
   
   --radius-lg: 0rem;
   --radius-md: 0rem;
@@ -46,4 +86,9 @@
   --color-border: hsl(0 0% 15%);
   --color-input: hsl(0 0% 15%);
   --color-ring: hsl(142 76% 36%);
+}
+
+/* Apply IBM Plex Mono globally */
+body {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
 }
