@@ -1,0 +1,14 @@
+[package]
+name = "reifydb-network"
+version = "0.0.1"
+edition = "2024"
+license = "AGPL-3"
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-hash = { workspace = true }
+
+httparse = { workspace = true }
+mio = { workspace = true }

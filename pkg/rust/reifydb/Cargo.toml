@@ -17,6 +17,7 @@ reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
+reifydb-sub-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-logging = { workspace = true, optional = true }
 reifydb-sub-workerpool = { workspace = true, optional = true }
@@ -28,6 +29,7 @@ libc = { workspace = true }
 default = []
 
 # Subsystem features
+sub_admin = ["dep:reifydb-sub-admin"]
 sub_flow = ["dep:reifydb-sub-flow"]
 sub_logging = ["dep:reifydb-sub-logging"]
 sub_server = ["dep:reifydb-sub-server"]

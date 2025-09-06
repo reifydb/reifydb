@@ -1,0 +1,109 @@
+.app {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+
+.app-header {
+  background: white;
+  border-bottom: 1px solid #e1e5eb;
+  padding: 1rem 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.app-header h1 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.5rem;
+}
+
+.app-main {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+
+.status-section,
+.query-section {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.status-section h2,
+.query-section h2 {
+  margin-top: 0;
+  color: #2c3e50;
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.status-card {
+  background: #f8f9fa;
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.status-card h3 {
+  margin-top: 0;
+  color: #495057;
+  font-size: 1rem;
+}
+
+.status-card pre {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #495057;
+  overflow-x: auto;
+}
+
+.query-input {
+  margin-bottom: 1rem;
+}
+
+.query-input textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.query-input button {
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.5rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.query-input button:hover {
+  background: #0056b3;
+}
+
+.query-result {
+  background: #f8f9fa;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.query-result h3 {
+  margin-top: 0;
+  color: #495057;
+  font-size: 1rem;
+}
+
+.query-result pre {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #495057;
+  overflow-x: auto;
+}

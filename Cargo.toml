@@ -13,7 +13,9 @@ members = [
     "crates/reifydb-core",
     "crates/reifydb-engine",
     "crates/reifydb-hash",
+    "crates/reifydb-network",
     "crates/reifydb-rql",
+    "crates/reifydb-sub-admin",
     "crates/reifydb-sub-server",
     "crates/reifydb-storage",
     "crates/reifydb-testing",
@@ -40,7 +42,9 @@ default-members = [
     "crates/reifydb-core",
     "crates/reifydb-engine",
     "crates/reifydb-hash",
+    "crates/reifydb-network",
     "crates/reifydb-rql",
+    "crates/reifydb-sub-admin",
     "crates/reifydb-sub-server",
     "crates/reifydb-storage",
     "crates/reifydb-testing",
@@ -96,6 +100,8 @@ reifydb-cdc = { path = "crates/reifydb-cdc", version = "0.0.1" }
 reifydb-core = { path = "crates/reifydb-core", version = "0.0.1" }
 reifydb-engine = { path = "crates/reifydb-engine", version = "0.0.1" }
 reifydb-hash = { path = "crates/reifydb-hash", version = "0.0.1" }
+reifydb-network = { path = "crates/reifydb-network", version = "0.0.1" }
+reifydb-sub-admin = { path = "crates/reifydb-sub-admin", version = "0.0.1" }
 reifydb-sub-flow = { path = "crates/reifydb-sub-flow", version = "0.0.1" }
 reifydb-rql = { path = "crates/reifydb-rql", version = "0.0.1" }
 reifydb-sub-server = { path = "crates/reifydb-sub-server", version = "0.0.1" }

@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-sub-server"
+name = "reifydb-sub-admin"
 version = "0.0.1"
 edition = "2024"
 license = "AGPL-3"
@@ -9,21 +9,12 @@ authors = ["Dominique Chuo <dominique@reifydb.com>"]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
-reifydb-hash = { workspace = true }
 reifydb-network = { workspace = true }
 
-num-bigint = { workspace = true }
 mio = { workspace = true }
 slab = { workspace = true }
 socket2 = { workspace = true }
-httparse = { workspace = true }
-urlencoding = { workspace = true }
-num_cpus = { workspace = true }
-core_affinity = { workspace = true }
-
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-[dev-dependencies]
-reifydb-testing = { path = "../reifydb-testing" }
-
+[build-dependencies]
