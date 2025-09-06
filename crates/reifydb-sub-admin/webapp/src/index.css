@@ -44,8 +44,8 @@
   --color-card-foreground: hsl(0 0% 5%);
   --color-popover: hsl(30 30% 98%);
   --color-popover-foreground: hsl(0 0% 5%);
-  --color-primary: hsl(142 76% 36%);
-  --color-primary-foreground: hsl(0 0% 100%);
+  --color-primary: hsl(30 25% 55%);
+  --color-primary-foreground: hsl(0 0% 98%);
   --color-secondary: hsl(0 0% 20%);
   --color-secondary-foreground: hsl(30 30% 96%);
   --color-muted: hsl(30 20% 90%);
@@ -56,7 +56,7 @@
   --color-destructive-foreground: hsl(0 0% 98%);
   --color-border: hsl(0 0% 20%);
   --color-input: hsl(0 0% 20%);
-  --color-ring: hsl(142 76% 36%);
+  --color-ring: hsl(30 25% 55%);
   
   --font-family-sans: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
   --font-family-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
@@ -73,8 +73,8 @@
   --color-card-foreground: hsl(0 0% 98%);
   --color-popover: hsl(0 0% 3%);
   --color-popover-foreground: hsl(0 0% 98%);
-  --color-primary: hsl(142 76% 36%);
-  --color-primary-foreground: hsl(0 0% 100%);
+  --color-primary: hsl(30 20% 45%);
+  --color-primary-foreground: hsl(0 0% 98%);
   --color-secondary: hsl(0 0% 9%);
   --color-secondary-foreground: hsl(0 0% 98%);
   --color-muted: hsl(0 0% 15%);
@@ -85,7 +85,7 @@
   --color-destructive-foreground: hsl(0 0% 98%);
   --color-border: hsl(0 0% 15%);
   --color-input: hsl(0 0% 15%);
-  --color-ring: hsl(142 76% 36%);
+  --color-ring: hsl(30 20% 45%);
 }
 
 /* Apply IBM Plex Mono globally */
