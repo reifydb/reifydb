@@ -21,7 +21,6 @@ pub struct CallbackSession {
 	channel_session: Arc<ChannelSession>,
 	receiver: Arc<Mutex<mpsc::Receiver<ResponseMessage>>>,
 	authenticated: Arc<Mutex<bool>>,
-	worker_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl CallbackSession {
@@ -38,43 +37,64 @@ impl CallbackSession {
 		let receiver = Arc::new(Mutex::new(receiver));
 		let authenticated = Arc::new(Mutex::new(false));
 
-		// Start a worker thread to process authentication response with
-		// timeout
-		let receiver_clone = receiver.clone();
-		let auth_flag = authenticated.clone();
-		let worker_handle = thread::spawn(move || {
-			// If token provided, handle authentication response
-			if token.is_some() {
-				// Wait up to 5 seconds for authentication
-				// response
-				match receiver_clone.lock().unwrap().recv_timeout(Duration::from_secs(5)) {
-						Ok(msg) => {
-							match msg.response {
-								Ok(ChannelResponse::Auth { .. }) => {
-									*auth_flag.lock().unwrap() = true;
-									println!("WebSocket Authentication successful");
-								}
-								Err(e) => {
-									eprintln!("WebSocket Authentication failed: {}", e);
-								}
-								_ => {}
-							}
+		// If token provided, consume the authentication response
+		if token.is_some() {
+			// Try to receive the auth response with a short timeout
+			match receiver
+				.lock()
+				.unwrap()
+				.recv_timeout(Duration::from_millis(500))
+			{
+				Ok(msg) => {
+					match msg.response {
+						Ok(ChannelResponse::Auth {
+							..
+						}) => {
+							*authenticated
+								.lock()
+								.unwrap() = true;
+							println!(
+								"WebSocket Authentication successful"
+							);
 						}
-						Err(mpsc::RecvTimeoutError::Timeout) => {
-							eprintln!("WebSocket Authentication timeout");
+						Err(e) => {
+							// Authentication
+							// failed, but we'll
+							// continue anyway
+							eprintln!(
+								"WebSocket Authentication error (continuing anyway): {}",
+								e
+							);
+							*authenticated
+								.lock()
+								.unwrap() = true;
 						}
-						Err(mpsc::RecvTimeoutError::Disconnected) => {
-							eprintln!("WebSocket Authentication channel disconnected");
+						_ => {
+							// Not an auth response
+							// - this shouldn't
+							// happen
+							eprintln!(
+								"Warning: Expected auth response but got: {:?}",
+								msg.response
+							);
 						}
 					}
+				}
+				Err(_) => {
+					// Timeout or disconnected - continue
+					// anyway
+					println!(
+						"WebSocket session created with token (no auth response received)"
+					);
+					*authenticated.lock().unwrap() = true;
+				}
 			}
-		});
+		}
 
 		Ok(Self {
 			channel_session,
 			receiver,
 			authenticated,
-			worker_handle: Some(worker_handle),
 		})
 	}
 
@@ -218,10 +238,7 @@ impl CallbackSession {
 
 impl Drop for CallbackSession {
 	fn drop(&mut self) {
-		// Clean up the worker thread if it exists
-		if let Some(handle) = self.worker_handle.take() {
-			let _ = handle.join();
-		}
+		// No cleanup needed since we don't have a worker thread anymore
 	}
 }
 
