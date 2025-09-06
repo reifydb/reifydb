@@ -21,7 +21,7 @@ export function MainLayout() {
       <Sidebar />
       
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between px-6 py-4 border-b-2 bg-card shadow-sm">
+        <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
           <div className="flex items-center gap-4 flex-1 max-w-xl">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

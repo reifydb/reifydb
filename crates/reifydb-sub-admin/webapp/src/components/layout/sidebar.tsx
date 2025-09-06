@@ -30,11 +30,11 @@ export function Sidebar() {
 
   return (
     <div className={cn(
-      "relative flex flex-col h-full bg-secondary border-r-2 transition-all duration-300",
-      collapsed ? "w-24" : "w-64"
+      "relative flex flex-col h-full bg-secondary text-secondary-foreground border-r border-border transition-all duration-300",
+      collapsed ? "w-20" : "w-64"
     )}>
       <div className={cn(
-        "flex items-center p-4 border-b-2",
+        "flex items-center p-4 border-b",
         collapsed ? "justify-center" : "justify-between"
       )}>
         <div 
@@ -83,10 +83,10 @@ export function Sidebar() {
               key={item.name}
               to={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-all duration-200 group relative",
+                "flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all duration-200 group relative",
                 isActive
-                  ? "bg-foreground text-background hover:bg-foreground/90"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "bg-primary text-primary-foreground"
+                  : "text-secondary-foreground/70 hover:text-secondary-foreground hover:bg-secondary-foreground/10",
                 collapsed && "justify-center px-2"
               )}
             >
@@ -105,7 +105,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t-2">
+      <div className="p-4 border-t">
         <div className={cn(
           "flex items-center gap-3",
           collapsed && "justify-center"
