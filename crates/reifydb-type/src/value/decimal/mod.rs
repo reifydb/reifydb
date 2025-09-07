@@ -64,7 +64,6 @@ impl Decimal {
 			scale,
 		};
 
-		decimal.validate_digits()?;
 		Ok(decimal)
 	}
 
@@ -143,12 +142,6 @@ impl Decimal {
 			precision: self.precision,
 			scale: self.scale,
 		}
-	}
-
-	fn validate_digits(&self) -> Result<(), Error> {
-		// No validation needed - precision and scale should match
-		// BigDecimalInner
-		Ok(())
 	}
 
 	fn calculate_min_precision(

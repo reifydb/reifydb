@@ -838,6 +838,7 @@ fn number_to_number<'a>(
             (
                 $src_variant:ident, $src_ty:ty,
                 to => [ $( ($dst_variant:ident, $dst_ty:ty) ),* ]
+                $(, to_struct => [ $( ($struct_variant:ident, $struct_ty:ty) ),* ])?
             ) => {
             if let ColumnData::$src_variant(container) = data {
                     match target {
@@ -850,6 +851,15 @@ fn number_to_number<'a>(
                                 ColumnData::push::<$dst_ty>,
                             ),
                         )*
+                        $($(
+                        Type::$struct_variant { .. } => return convert_vec::<$src_ty, $struct_ty>(
+                            container,
+                                ctx,
+                                lazy_fragment,
+                                target,
+                                ColumnData::push::<$struct_ty>,
+                            ),
+                        )*)?
                         _ => {}
                     }
                 }
@@ -857,52 +867,483 @@ fn number_to_number<'a>(
         }
 
 	cast!(Float4, f32,
-	    to => [(Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Float8, f64,
-	    to => [(Float4, f32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Float4, f32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int1, i8,
-	    to => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int2, i16,
-	    to => [(Int1, i8), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int4, i32,
-	    to => [(Int1, i8), (Int2, i16), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int2, i16), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int8, i64,
-	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int16, i128,
-	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128)]
+	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint1, u8,
-	    to => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint2, u16,
-	    to => [(Uint1, u8), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint4, u32,
-	    to => [(Uint1, u8), (Uint2, u16), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint2, u16), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint8, u64,
-	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint16, u128,
-	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128)]
+	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to_struct => [(Decimal, Decimal)]
 	);
+
+	// Special handling for VarInt (uses Clone instead of Copy)
+	if let ColumnData::VarInt(container) = data {
+		match target {
+			Type::Int1 => {
+				return convert_vec_clone::<VarInt, i8>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int1,
+					ColumnData::push::<i8>,
+				);
+			}
+			Type::Int2 => {
+				return convert_vec_clone::<VarInt, i16>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int2,
+					ColumnData::push::<i16>,
+				);
+			}
+			Type::Int4 => {
+				return convert_vec_clone::<VarInt, i32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int4,
+					ColumnData::push::<i32>,
+				);
+			}
+			Type::Int8 => {
+				return convert_vec_clone::<VarInt, i64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int8,
+					ColumnData::push::<i64>,
+				);
+			}
+			Type::Int16 => {
+				return convert_vec_clone::<VarInt, i128>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int16,
+					ColumnData::push::<i128>,
+				);
+			}
+			Type::Uint1 => {
+				return convert_vec_clone::<VarInt, u8>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint1,
+					ColumnData::push::<u8>,
+				);
+			}
+			Type::Uint2 => {
+				return convert_vec_clone::<VarInt, u16>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint2,
+					ColumnData::push::<u16>,
+				);
+			}
+			Type::Uint4 => {
+				return convert_vec_clone::<VarInt, u32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint4,
+					ColumnData::push::<u32>,
+				);
+			}
+			Type::Uint8 => {
+				return convert_vec_clone::<VarInt, u64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint8,
+					ColumnData::push::<u64>,
+				);
+			}
+			Type::Uint16 => {
+				return convert_vec_clone::<VarInt, u128>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint16,
+					ColumnData::push::<u128>,
+				);
+			}
+			Type::Float4 => {
+				return convert_vec_clone::<VarInt, f32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Float4,
+					ColumnData::push::<f32>,
+				);
+			}
+			Type::Float8 => {
+				return convert_vec_clone::<VarInt, f64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Float8,
+					ColumnData::push::<f64>,
+				);
+			}
+			Type::VarUint => {
+				return convert_vec_clone::<VarInt, VarUint>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::VarUint,
+					ColumnData::push::<VarUint>,
+				);
+			}
+			Type::Decimal {
+				..
+			} => {
+				return convert_vec_clone::<VarInt, Decimal>(
+					container,
+					ctx,
+					lazy_fragment,
+					target,
+					ColumnData::push::<Decimal>,
+				);
+			}
+			_ => {}
+		}
+	}
+
+	// Special handling for VarUint (uses Clone instead of Copy)
+	if let ColumnData::VarUint(container) = data {
+		match target {
+			Type::Uint1 => {
+				return convert_vec_clone::<VarUint, u8>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint1,
+					ColumnData::push::<u8>,
+				);
+			}
+			Type::Uint2 => {
+				return convert_vec_clone::<VarUint, u16>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint2,
+					ColumnData::push::<u16>,
+				);
+			}
+			Type::Uint4 => {
+				return convert_vec_clone::<VarUint, u32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint4,
+					ColumnData::push::<u32>,
+				);
+			}
+			Type::Uint8 => {
+				return convert_vec_clone::<VarUint, u64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint8,
+					ColumnData::push::<u64>,
+				);
+			}
+			Type::Uint16 => {
+				return convert_vec_clone::<VarUint, u128>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint16,
+					ColumnData::push::<u128>,
+				);
+			}
+			Type::Int1 => {
+				return convert_vec_clone::<VarUint, i8>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int1,
+					ColumnData::push::<i8>,
+				);
+			}
+			Type::Int2 => {
+				return convert_vec_clone::<VarUint, i16>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int2,
+					ColumnData::push::<i16>,
+				);
+			}
+			Type::Int4 => {
+				return convert_vec_clone::<VarUint, i32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int4,
+					ColumnData::push::<i32>,
+				);
+			}
+			Type::Int8 => {
+				return convert_vec_clone::<VarUint, i64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int8,
+					ColumnData::push::<i64>,
+				);
+			}
+			Type::Int16 => {
+				return convert_vec_clone::<VarUint, i128>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int16,
+					ColumnData::push::<i128>,
+				);
+			}
+			Type::Float4 => {
+				return convert_vec_clone::<VarUint, f32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Float4,
+					ColumnData::push::<f32>,
+				);
+			}
+			Type::Float8 => {
+				return convert_vec_clone::<VarUint, f64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Float8,
+					ColumnData::push::<f64>,
+				);
+			}
+			Type::VarInt => {
+				return convert_vec_clone::<VarUint, VarInt>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::VarInt,
+					ColumnData::push::<VarInt>,
+				);
+			}
+			Type::Decimal {
+				..
+			} => {
+				return convert_vec_clone::<VarUint, Decimal>(
+					container,
+					ctx,
+					lazy_fragment,
+					target,
+					ColumnData::push::<Decimal>,
+				);
+			}
+			_ => {}
+		}
+	}
+
+	// Special handling for Decimal source (which is a struct variant in
+	// ColumnData)
+	if let ColumnData::Decimal {
+		container,
+		..
+	} = data
+	{
+		match target {
+			Type::Int1 => {
+				return convert_vec_clone::<Decimal, i8>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int1,
+					ColumnData::push::<i8>,
+				);
+			}
+			Type::Int2 => {
+				return convert_vec_clone::<Decimal, i16>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int2,
+					ColumnData::push::<i16>,
+				);
+			}
+			Type::Int4 => {
+				return convert_vec_clone::<Decimal, i32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int4,
+					ColumnData::push::<i32>,
+				);
+			}
+			Type::Int8 => {
+				return convert_vec_clone::<Decimal, i64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int8,
+					ColumnData::push::<i64>,
+				);
+			}
+			Type::Int16 => {
+				return convert_vec_clone::<Decimal, i128>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Int16,
+					ColumnData::push::<i128>,
+				);
+			}
+			Type::Uint1 => {
+				return convert_vec_clone::<Decimal, u8>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint1,
+					ColumnData::push::<u8>,
+				);
+			}
+			Type::Uint2 => {
+				return convert_vec_clone::<Decimal, u16>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint2,
+					ColumnData::push::<u16>,
+				);
+			}
+			Type::Uint4 => {
+				return convert_vec_clone::<Decimal, u32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint4,
+					ColumnData::push::<u32>,
+				);
+			}
+			Type::Uint8 => {
+				return convert_vec_clone::<Decimal, u64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint8,
+					ColumnData::push::<u64>,
+				);
+			}
+			Type::Uint16 => {
+				return convert_vec_clone::<Decimal, u128>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Uint16,
+					ColumnData::push::<u128>,
+				);
+			}
+			Type::Float4 => {
+				return convert_vec_clone::<Decimal, f32>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Float4,
+					ColumnData::push::<f32>,
+				);
+			}
+			Type::Float8 => {
+				return convert_vec_clone::<Decimal, f64>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::Float8,
+					ColumnData::push::<f64>,
+				);
+			}
+			Type::VarInt => {
+				return convert_vec_clone::<Decimal, VarInt>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::VarInt,
+					ColumnData::push::<VarInt>,
+				);
+			}
+			Type::VarUint => {
+				return convert_vec_clone::<Decimal, VarUint>(
+					container,
+					ctx,
+					lazy_fragment,
+					Type::VarUint,
+					ColumnData::push::<VarUint>,
+				);
+			}
+			Type::Decimal {
+				..
+			} => {
+				return convert_vec_clone::<Decimal, Decimal>(
+					container,
+					ctx,
+					lazy_fragment,
+					target,
+					ColumnData::push::<Decimal>,
+				);
+			}
+			_ => {}
+		}
+	}
 
 	let source_type = data.get_type();
 	return_error!(cast::unsupported_cast(
@@ -927,6 +1368,34 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
+			match ctx.convert::<From, To>(val, || {
+				lazy_fragment.fragment().into_owned()
+			})? {
+				Some(v) => push(&mut out, v),
+				None => out.push_undefined(),
+			}
+		} else {
+			out.push_undefined();
+		}
+	}
+	Ok(out)
+}
+
+pub(crate) fn convert_vec_clone<'a, From, To>(
+	container: &NumberContainer<From>,
+	ctx: impl Convert,
+	lazy_fragment: impl LazyFragment<'a>,
+	target_kind: Type,
+	mut push: impl FnMut(&mut ColumnData, To),
+) -> crate::Result<ColumnData>
+where
+	From: Clone + SafeConvert<To> + GetType + IsNumber + Default,
+	To: GetType,
+{
+	let mut out = ColumnData::with_capacity(target_kind, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			let val = container[idx].clone();
 			match ctx.convert::<From, To>(val, || {
 				lazy_fragment.fragment().into_owned()
 			})? {
