@@ -294,8 +294,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "12345");
-			assert_eq!(decimal.precision().value(), 5);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -305,8 +303,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -320,8 +316,6 @@ mod tests {
 				decimal.to_string(),
 				"340282366920938463463374607431768211455"
 			);
-			assert_eq!(decimal.precision().value(), 39); // u128::MAX has 39 digits
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -329,8 +323,6 @@ mod tests {
 			let x = Uint::from(999999u32);
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "999999");
-			assert_eq!(y.precision().value(), 6);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -338,8 +330,6 @@ mod tests {
 			let x = Uint::from(100u32);
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "100");
-			assert_eq!(y.precision().value(), 3);
-			assert_eq!(y.scale().value(), 0);
 		}
 	}
 

@@ -7,9 +7,8 @@ use bigdecimal::BigDecimal as BigDecimalInner;
 
 use crate::{
 	Error, IntoFragment, Type,
-	error::diagnostic::number::invalid_number_format,
-	return_error,
-	value::decimal::{Decimal, Precision},
+	error::diagnostic::number::invalid_number_format, return_error,
+	value::decimal::Decimal,
 };
 
 pub fn parse_decimal<'a>(
@@ -46,48 +45,12 @@ pub fn parse_decimal<'a>(
 
 	let big_decimal = BigDecimalInner::from_str(&value).map_err(|_| {
 		crate::error!(invalid_number_format(
-			fragment_owned.clone(),
+			fragment_owned,
 			Type::Decimal
 		))
 	})?;
 
-	let scale_u8 = determine_scale_from_string(&value);
-	let precision_u8 = calculate_min_precision(&big_decimal, scale_u8);
-
-	let precision = Precision::new(precision_u8);
-	let scale = crate::value::decimal::Scale::new(scale_u8);
-
-	Decimal::new(big_decimal, precision, scale).map_err(|_| {
-		crate::error!(invalid_number_format(
-			fragment_owned,
-			Type::Decimal
-		))
-	})
-}
-
-fn determine_scale_from_string(s: &str) -> u8 {
-	if let Some(dot_pos) = s.find('.') {
-		let after_dot = &s[dot_pos + 1..];
-		// Remove any scientific notation part
-		let scale_part = if let Some(e_pos) = after_dot.find(['e', 'E'])
-		{
-			&after_dot[..e_pos]
-		} else {
-			after_dot
-		};
-		scale_part.len().min(38) as u8
-	} else {
-		0
-	}
-}
-
-fn calculate_min_precision(value: &BigDecimalInner, min_scale: u8) -> u8 {
-	let str_repr = value.to_string();
-	let digits: Vec<char> =
-		str_repr.chars().filter(|c| c.is_ascii_digit()).collect();
-	let digit_count = digits.len() as u8;
-
-	std::cmp::max(digit_count, min_scale).min(38)
+	Ok(Decimal::new(big_decimal))
 }
 
 #[cfg(test)]
@@ -100,7 +63,6 @@ mod tests {
 		let decimal =
 			parse_decimal(OwnedFragment::testing("123")).unwrap();
 		assert_eq!(decimal.to_string(), "123");
-		assert_eq!(decimal.scale().value(), 0);
 	}
 
 	#[test]
@@ -108,7 +70,6 @@ mod tests {
 		let decimal = parse_decimal(OwnedFragment::testing("123.45"))
 			.unwrap();
 		assert_eq!(decimal.to_string(), "123.45");
-		assert_eq!(decimal.scale().value(), 2);
 	}
 
 	#[test]
@@ -116,7 +77,6 @@ mod tests {
 		let decimal = parse_decimal(OwnedFragment::testing("1_234.56"))
 			.unwrap();
 		assert_eq!(decimal.to_string(), "1234.56");
-		assert_eq!(decimal.scale().value(), 2);
 	}
 
 	#[test]
@@ -124,7 +84,6 @@ mod tests {
 		let decimal = parse_decimal(OwnedFragment::testing("-123.45"))
 			.unwrap();
 		assert_eq!(decimal.to_string(), "-123.45");
-		assert_eq!(decimal.scale().value(), 2);
 	}
 
 	#[test]

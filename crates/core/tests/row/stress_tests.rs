@@ -3,6 +3,8 @@
 
 //! Stress tests for the row encoding system
 
+use std::str::FromStr;
+
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_type::*;
 
@@ -64,11 +66,7 @@ fn test_mixed_type_stress() {
 	layout.set_identity_id(&mut row, 21, IdentityId::generate());
 	layout.set_int(&mut row, 22, &Int::from(i128::MAX));
 	layout.set_uint(&mut row, 23, &Uint::from(u128::MAX));
-	layout.set_decimal(
-		&mut row,
-		24,
-		&Decimal::from_str_with_precision("123.45", 10, 2).unwrap(),
-	);
+	layout.set_decimal(&mut row, 24, &Decimal::from_str("123.45").unwrap());
 
 	// Verify all fields
 	assert_eq!(layout.get_bool(&row, 0), true);
@@ -110,6 +108,6 @@ fn test_mixed_type_stress() {
 	assert_eq!(layout.get_uint(&row, 23), Uint::from(u128::MAX));
 	assert_eq!(
 		layout.get_decimal(&row, 24),
-		Decimal::from_str_with_precision("123.45", 10, 2).unwrap()
+		Decimal::from_str("123.45").unwrap()
 	);
 }

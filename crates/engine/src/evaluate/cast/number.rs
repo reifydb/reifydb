@@ -127,11 +127,9 @@ fn boolean_to_number<'a>(
 					..
 				} => |out: &mut ColumnData, val: bool| {
 					let decimal = if val {
-						Decimal::from_i64(1, 38, 0)
-							.unwrap()
+						Decimal::from_i64(1)
 					} else {
-						Decimal::from_i64(0, 38, 0)
-							.unwrap()
+						Decimal::from_i64(0)
 					};
 					out.push::<Decimal>(decimal)
 				},
@@ -785,9 +783,7 @@ fn f32_to_decimal_vec(
 		if container.is_defined(idx) {
 			let val = container[idx];
 			// Convert float to decimal with default precision/scale
-			let decimal =
-				Decimal::from_i64(val.trunc() as i64, 38, 0)
-					.unwrap();
+			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
 			out.push_undefined();
@@ -805,9 +801,7 @@ fn f64_to_decimal_vec(
 		if container.is_defined(idx) {
 			let val = container[idx];
 			// Convert float to decimal with default precision/scale
-			let decimal =
-				Decimal::from_i64(val.trunc() as i64, 38, 0)
-					.unwrap();
+			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
 			out.push_undefined();

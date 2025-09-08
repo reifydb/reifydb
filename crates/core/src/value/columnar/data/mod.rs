@@ -13,6 +13,7 @@ mod take;
 use reifydb_type::{
 	Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7,
 	Value,
+	value::constraint::{precision::Precision, scale::Scale},
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,8 +55,8 @@ pub enum ColumnData {
 	Uint(NumberContainer<Uint>),
 	Decimal {
 		container: NumberContainer<Decimal>,
-		precision: reifydb_type::value::decimal::Precision,
-		scale: reifydb_type::value::decimal::Scale,
+		precision: Precision,
+		scale: Scale,
 	},
 	// special case: all undefined
 	Undefined(UndefinedContainer),

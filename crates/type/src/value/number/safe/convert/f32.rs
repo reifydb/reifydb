@@ -584,8 +584,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "42.5");
-			assert_eq!(decimal.precision().value(), 3);
-			assert_eq!(decimal.scale().value(), 1);
 		}
 
 		#[test]
@@ -595,8 +593,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "100");
-			assert_eq!(decimal.precision().value(), 3);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -606,8 +602,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0.125");
-			assert_eq!(decimal.precision().value(), 4);
-			assert_eq!(decimal.scale().value(), 3);
 		}
 
 		#[test]
@@ -620,8 +614,6 @@ mod tests {
 			// exact
 			assert!(decimal.to_string().starts_with("-123.45"));
 			// Precision includes all significant digits
-			assert!(decimal.precision().value() >= 6);
-			assert!(decimal.scale().value() >= 3);
 		}
 
 		#[test]
@@ -631,8 +623,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -662,8 +652,6 @@ mod tests {
 			let y: Decimal = x.saturating_convert();
 			// f32 precision affects the exact value
 			assert!(y.to_string().starts_with("999.9"));
-			assert!(y.precision().value() >= 5);
-			assert!(y.scale().value() >= 1);
 		}
 
 		#[test]
@@ -671,8 +659,6 @@ mod tests {
 			let x: f32 = f32::NAN;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "0");
-			assert_eq!(y.precision().value(), 1);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -680,8 +666,6 @@ mod tests {
 			let x: f32 = f32::INFINITY;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "0");
-			assert_eq!(y.precision().value(), 1);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -689,8 +673,6 @@ mod tests {
 			let x: f32 = 42.0;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "42");
-			assert_eq!(y.precision().value(), 2);
-			assert_eq!(y.scale().value(), 0);
 		}
 	}
 }

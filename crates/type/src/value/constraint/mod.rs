@@ -3,7 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, OwnedFragment, Type, Value};
+use crate::{
+	Error, OwnedFragment, Type, Value,
+	value::constraint::{precision::Precision, scale::Scale},
+};
+
+pub mod precision;
+pub mod scale;
 
 /// Represents a type with optional constraints
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,7 +24,7 @@ pub enum Constraint {
 	/// Maximum number of bytes for UTF8, BLOB, INT, UINT
 	MaxBytes(usize),
 	/// Precision and scale for DECIMAL
-	PrecisionScale(u8, u8),
+	PrecisionScale(Precision, Scale),
 }
 
 impl TypeConstraint {
@@ -143,24 +149,48 @@ impl TypeConstraint {
 				)),
 			) => {
 				if let Value::Decimal(decimal) = value {
-					// Validate precision and scale
-					let decimal_scale: u8 =
-						decimal.scale().into();
-					let decimal_precision: u8 =
-						decimal.precision().into();
+					// Calculate precision and scale from
+					// BigDecimal
+					let decimal_str = decimal.to_string();
 
-					if decimal_scale > *scale {
+					// Calculate scale (digits after decimal
+					// point)
+					let decimal_scale: u8 =
+						if let Some(dot_pos) =
+							decimal_str.find('.')
+						{
+							let after_dot = &decimal_str[dot_pos + 1..];
+							after_dot.len().min(255)
+								as u8
+						} else {
+							0
+						};
+
+					// Calculate precision (total number of
+					// significant digits)
+					let decimal_precision: u8 = decimal_str
+						.chars()
+						.filter(|c| c.is_ascii_digit())
+						.count()
+						.min(255)
+						as u8;
+
+					let scale_value: u8 = (*scale).into();
+					let precision_value: u8 =
+						(*precision).into();
+
+					if decimal_scale > scale_value {
 						return Err(crate::error!(crate::error::diagnostic::constraint::decimal_exceeds_scale(
                             OwnedFragment::None,
                             decimal_scale,
-                            *scale
+                            scale_value
                         )));
 					}
-					if decimal_precision > *precision {
+					if decimal_precision > precision_value {
 						return Err(crate::error!(crate::error::diagnostic::constraint::decimal_exceeds_precision(
                             OwnedFragment::None,
                             decimal_precision,
-                            *precision
+                            precision_value
                         )));
 					}
 				}
@@ -218,12 +248,18 @@ mod tests {
 	fn test_constrained_decimal() {
 		let tc = TypeConstraint::with_constraint(
 			Type::Decimal,
-			Constraint::PrecisionScale(10, 2),
+			Constraint::PrecisionScale(
+				Precision::new(10),
+				Scale::new(2),
+			),
 		);
 		assert_eq!(tc.base_type, Type::Decimal);
 		assert_eq!(
 			tc.constraint,
-			Some(Constraint::PrecisionScale(10, 2))
+			Some(Constraint::PrecisionScale(
+				Precision::new(10),
+				Scale::new(2)
+			))
 		);
 	}
 
@@ -279,7 +315,10 @@ mod tests {
 
 		let tc3 = TypeConstraint::with_constraint(
 			Type::Decimal,
-			Constraint::PrecisionScale(10, 2),
+			Constraint::PrecisionScale(
+				Precision::new(10),
+				Scale::new(2),
+			),
 		);
 		assert_eq!(tc3.to_string(), "Decimal(10,2)");
 	}

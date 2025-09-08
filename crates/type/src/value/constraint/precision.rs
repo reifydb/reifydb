@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Error, diagnostic::number::decimal_precision_invalid, return_error,
+	Error, error::diagnostic::number::decimal_precision_invalid,
+	return_error,
 };
 
 /// Precision for a decimal type (minimum 1 total digit)

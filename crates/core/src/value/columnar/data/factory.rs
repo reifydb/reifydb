@@ -504,7 +504,9 @@ impl ColumnData {
 	}
 
 	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
-		use reifydb_type::value::decimal::{Precision, Scale};
+		use reifydb_type::value::constraint::{
+			precision::Precision, scale::Scale,
+		};
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Decimal {
 			container: NumberContainer::from_vec(data),
@@ -514,7 +516,9 @@ impl ColumnData {
 	}
 
 	pub fn decimal_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::decimal::{Precision, Scale};
+		use reifydb_type::value::constraint::{
+			precision::Precision, scale::Scale,
+		};
 		ColumnData::Decimal {
 			container: NumberContainer::with_capacity(capacity),
 			precision: Precision::new(38),
@@ -526,7 +530,9 @@ impl ColumnData {
 		data: impl IntoIterator<Item = Decimal>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		use reifydb_type::value::decimal::{Precision, Scale};
+		use reifydb_type::value::constraint::{
+			precision::Precision, scale::Scale,
+		};
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());

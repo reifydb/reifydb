@@ -4,6 +4,8 @@
 //! Robustness tests for the row encoding system
 //! Tests error handling, recovery, and stability under stress
 
+use std::str::FromStr;
+
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_type::*;
 
@@ -139,8 +141,7 @@ fn test_repeated_clone_stability() {
 	layout.set_decimal(
 		&mut original,
 		3,
-		&Decimal::from_str_with_precision("99999.99999", 20, 5)
-			.unwrap(),
+		&Decimal::from_str("99999.99999").unwrap(),
 	);
 
 	let mut current = original.clone();

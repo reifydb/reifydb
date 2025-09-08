@@ -27,7 +27,10 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 			// PrecisionScale constraint
 			let precision = bytes[1];
 			let scale = bytes[2];
-			Some(Constraint::PrecisionScale(precision, scale))
+			Some(Constraint::PrecisionScale(
+				precision.into(),
+				scale.into(),
+			))
 		}
 		_ => None, // Unknown or invalid constraint type
 	}

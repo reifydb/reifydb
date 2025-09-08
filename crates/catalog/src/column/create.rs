@@ -25,7 +25,7 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 			bytes
 		}
 		Some(Constraint::PrecisionScale(precision, scale)) => {
-			vec![2, *precision, *scale] // Type 2: PrecisionScale
+			vec![2, (*precision).into(), (*scale).into()] // Type 2: PrecisionScale
 		}
 	}
 }

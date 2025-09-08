@@ -772,7 +772,7 @@ impl StandardEvaluator {
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::Decimal::from_i64(0, 38, 0).unwrap());
+							data.push(reifydb_type::Decimal::from_i64(0));
 							bitvec.push(false);
 						}
 					}

@@ -333,8 +333,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "12345");
-			assert_eq!(decimal.precision().value(), 5);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -344,8 +342,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -359,8 +355,6 @@ mod tests {
 				decimal.to_string(),
 				"170141183460469231731687303715884105727"
 			);
-			assert_eq!(decimal.precision().value(), 39); // i128::MAX has 39 digits
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -368,8 +362,6 @@ mod tests {
 			let x = Int::from(-999999);
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "-999999");
-			assert_eq!(y.precision().value(), 6);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -377,8 +369,6 @@ mod tests {
 			let x = Int::from(42);
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "42");
-			assert_eq!(y.precision().value(), 2);
-			assert_eq!(y.scale().value(), 0);
 		}
 	}
 

@@ -101,7 +101,8 @@ pub(crate) fn convert_data_type_with_constraints(
 						s.value(),
 					)? as u8;
 					Some(Constraint::PrecisionScale(
-						precision, scale,
+						precision.into(),
+						scale.into(),
 					))
 				}
 				// Type doesn't support constraints or invalid

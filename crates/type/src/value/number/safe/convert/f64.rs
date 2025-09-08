@@ -647,8 +647,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "42.5");
-			assert_eq!(decimal.precision().value(), 3);
-			assert_eq!(decimal.scale().value(), 1);
 		}
 
 		#[test]
@@ -661,8 +659,6 @@ mod tests {
 			assert!(decimal.to_string().starts_with("123.456789"));
 			// Precision and scale will be larger due to f64
 			// representation
-			assert!(decimal.precision().value() >= 9);
-			assert!(decimal.scale().value() >= 6);
 		}
 
 		#[test]
@@ -672,8 +668,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "1000");
-			assert_eq!(decimal.precision().value(), 4);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -686,8 +680,6 @@ mod tests {
 			assert!(decimal.to_string().starts_with("0.0000125"));
 			// Precision includes all digits including leading zeros
 			// after decimal
-			assert!(decimal.precision().value() >= 3);
-			assert!(decimal.scale().value() >= 7);
 		}
 
 		#[test]
@@ -698,8 +690,6 @@ mod tests {
 			let decimal = y.unwrap();
 			// f64 may have precision artifacts
 			assert!(decimal.to_string().starts_with("-9876.5432"));
-			assert!(decimal.precision().value() >= 9);
-			assert!(decimal.scale().value() >= 5);
 		}
 
 		#[test]
@@ -709,8 +699,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -721,8 +709,6 @@ mod tests {
 			let decimal = y.unwrap();
 			// -0.0 should convert to 0
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -756,8 +742,6 @@ mod tests {
 			assert!(str_repr.starts_with("999999")
 				|| str_repr.starts_with("1000000"));
 			// Due to f64 rounding, value may be 1000000.0
-			assert!(y.precision().value() >= 6);
-			// Scale check removed - scale is u8 so always >= 0
 		}
 
 		#[test]
@@ -765,8 +749,6 @@ mod tests {
 			let x: f64 = f64::NAN;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "0");
-			assert_eq!(y.precision().value(), 1);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -774,8 +756,6 @@ mod tests {
 			let x: f64 = f64::INFINITY;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "0");
-			assert_eq!(y.precision().value(), 1);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -783,8 +763,6 @@ mod tests {
 			let x: f64 = 42.0;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "42");
-			assert_eq!(y.precision().value(), 2);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -799,8 +777,6 @@ mod tests {
 				"actual: {}",
 				str_repr
 			);
-			assert!(y.precision().value() >= 4);
-			assert!(y.scale().value() >= 3);
 		}
 	}
 }

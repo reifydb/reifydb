@@ -5,7 +5,7 @@ use crate::{
 	OwnedFragment, Type,
 	error::diagnostic::{Diagnostic, util::value_range},
 	fragment::IntoFragment,
-	value::decimal::{Precision, Scale},
+	value::constraint::{precision::Precision, scale::Scale},
 };
 
 pub fn invalid_number_format<'a>(

@@ -240,8 +240,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "42");
-			assert_eq!(decimal.precision().value(), 2);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -251,8 +249,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -262,8 +258,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "255");
-			assert_eq!(decimal.precision().value(), 3);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -271,8 +265,6 @@ mod tests {
 			let x: u8 = 100;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "100");
-			assert_eq!(y.precision().value(), 3);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -280,8 +272,6 @@ mod tests {
 			let x: u8 = 99;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "99");
-			assert_eq!(y.precision().value(), 2);
-			assert_eq!(y.scale().value(), 0);
 		}
 	}
 }
