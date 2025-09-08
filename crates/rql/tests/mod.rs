@@ -14,10 +14,10 @@ use reifydb_rql::explain::{
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-rql/tests/scripts/tokenize" as tokenize => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/ast" as ast => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/logical_plan" as logical_plan => run_test }
-test_each_path! { in "crates/reifydb-rql/tests/scripts/physical_plan" as physical_plan => run_test }
+test_each_path! { in "crates/rql/tests/scripts/tokenize" as tokenize => run_test }
+test_each_path! { in "crates/rql/tests/scripts/ast" as ast => run_test }
+test_each_path! { in "crates/rql/tests/scripts/logical_plan" as logical_plan => run_test }
+test_each_path! { in "crates/rql/tests/scripts/physical_plan" as physical_plan => run_test }
 
 fn run_test(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")

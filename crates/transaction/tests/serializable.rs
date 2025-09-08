@@ -35,8 +35,8 @@ use reifydb_transaction::{
 };
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-transaction/tests/scripts/mvcc" as mvcc => test_serializable }
-test_each_path! { in "crates/reifydb-transaction/tests/scripts/all" as all => test_serializable }
+test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_serializable }
+test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_serializable }
 
 fn test_serializable(path: &Path) {
 	let bus = EventBus::default();

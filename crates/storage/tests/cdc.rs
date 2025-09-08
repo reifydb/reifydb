@@ -22,8 +22,8 @@ use reifydb_storage::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/reifydb-storage/tests/scripts/cdc" as cdc_memory => test_memory }
-test_each_path! { in "crates/reifydb-storage/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
+test_each_path! { in "crates/storage/tests/scripts/cdc" as cdc_memory => test_memory }
+test_each_path! { in "crates/storage/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]

@@ -7,7 +7,6 @@ repository.workspace = true
 
 [dependencies]
 reifydb-core = { workspace = true }
-reifydb-type = { workspace = true }
 
 [dev-dependencies]
 test_each_file = { workspace = true }

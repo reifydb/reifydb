@@ -599,7 +599,6 @@ name = "reifydb-testing"
 version = "0.0.1"
 dependencies = [
  "reifydb-core",
- "reifydb-type",
  "test_each_file",
 ]
 
