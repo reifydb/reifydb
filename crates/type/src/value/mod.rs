@@ -16,6 +16,7 @@ mod date;
 mod datetime;
 pub mod decimal;
 mod identity;
+pub mod int;
 mod interval;
 mod into;
 pub mod is;
@@ -26,9 +27,8 @@ pub mod row_number;
 pub mod temporal;
 mod time;
 mod r#type;
+pub mod uint;
 pub mod uuid;
-pub mod varint;
-pub mod varuint;
 
 pub use blob::Blob;
 pub use constraint::{Constraint, TypeConstraint};
@@ -36,6 +36,7 @@ pub use date::Date;
 pub use datetime::DateTime;
 pub use decimal::Decimal;
 pub use identity::IdentityId;
+pub use int::Int;
 pub use interval::Interval;
 pub use into::IntoValue;
 pub use ordered_f32::OrderedF32;
@@ -43,9 +44,8 @@ pub use ordered_f64::OrderedF64;
 pub use row_number::RowNumber;
 pub use time::Time;
 pub use r#type::{GetType, Type};
+pub use uint::Uint;
 pub use uuid::{Uuid4, Uuid7};
-pub use varint::VarInt;
-pub use varuint::VarUint;
 
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -99,9 +99,9 @@ pub enum Value {
 	/// A binary large object (BLOB)
 	Blob(Blob),
 	/// An arbitrary-precision signed integer
-	VarInt(VarInt),
+	Int(Int),
 	/// An arbitrary-precision unsigned integer
-	VarUint(VarUint),
+	Uint(Uint),
 	/// An arbitrary-precision decimal
 	Decimal(Decimal),
 }
@@ -161,12 +161,8 @@ impl PartialOrd for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
-			(Value::VarInt(l), Value::VarInt(r)) => {
-				l.partial_cmp(r)
-			}
-			(Value::VarUint(l), Value::VarUint(r)) => {
-				l.partial_cmp(r)
-			}
+			(Value::Int(l), Value::Int(r)) => l.partial_cmp(r),
+			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => {
 				l.partial_cmp(r)
 			}
@@ -206,8 +202,8 @@ impl Ord for Value {
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),
-			(Value::VarInt(l), Value::VarInt(r)) => l.cmp(r),
-			(Value::VarUint(l), Value::VarUint(r)) => l.cmp(r),
+			(Value::Int(l), Value::Int(r)) => l.cmp(r),
+			(Value::Uint(l), Value::Uint(r)) => l.cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
 			_ => unimplemented!(),
 		}
@@ -241,8 +237,8 @@ impl Display for Value {
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
 			Value::Blob(value) => Display::fmt(value, f),
-			Value::VarInt(value) => Display::fmt(value, f),
-			Value::VarUint(value) => Display::fmt(value, f),
+			Value::Int(value) => Display::fmt(value, f),
+			Value::Uint(value) => Display::fmt(value, f),
 			Value::Decimal(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
@@ -276,8 +272,8 @@ impl Value {
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,
-			Value::VarInt(_) => Type::VarInt,
-			Value::VarUint(_) => Type::VarUint,
+			Value::Int(_) => Type::Int,
+			Value::Uint(_) => Type::Uint,
 			Value::Decimal(_) => Type::Decimal,
 		}
 	}

@@ -20,6 +20,7 @@ mod i32;
 mod i64;
 mod i8;
 mod identity_id;
+mod int;
 mod interval;
 mod key;
 mod layout;
@@ -29,13 +30,12 @@ mod u16;
 mod u32;
 mod u64;
 mod u8;
+mod uint;
 mod undefined;
 mod utf8;
 mod uuid4;
 mod uuid7;
 mod value;
-mod varint;
-mod varuint;
 
 pub struct Row {
 	pub number: RowNumber,

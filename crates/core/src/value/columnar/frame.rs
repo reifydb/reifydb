@@ -78,11 +78,11 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::Blob(container) => {
 				FrameColumnData::Blob(container)
 			}
-			ColumnData::VarInt(container) => {
-				FrameColumnData::VarInt(container)
+			ColumnData::Int(container) => {
+				FrameColumnData::Int(container)
 			}
-			ColumnData::VarUint(container) => {
-				FrameColumnData::VarUint(container)
+			ColumnData::Uint(container) => {
+				FrameColumnData::Uint(container)
 			}
 			ColumnData::Decimal {
 				container,

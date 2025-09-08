@@ -1,23 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::VarInt;
+use reifydb_type::Int;
 
 use crate::value::columnar::{ColumnData, push::Push};
 
-impl Push<VarInt> for ColumnData {
-	fn push(&mut self, value: VarInt) {
+impl Push<Int> for ColumnData {
+	fn push(&mut self, value: Int) {
 		match self {
-			ColumnData::VarInt(container) => {
+			ColumnData::Int(container) => {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
 				let mut new_container =
-					ColumnData::varint_with_capacity(
+					ColumnData::int_with_capacity(
 						container.len(),
 					);
 
-				if let ColumnData::VarInt(new_container) =
+				if let ColumnData::Int(new_container) =
 					&mut new_container
 				{
 					for _ in 0..container.len() {
@@ -28,7 +28,7 @@ impl Push<VarInt> for ColumnData {
 				*self = new_container;
 			}
 			_ => unreachable!(
-				"Push<VarInt> for ColumnData with incompatible type"
+				"Push<Int> for ColumnData with incompatible type"
 			),
 		}
 	}

@@ -97,7 +97,7 @@ fn test_large_row() {
 #[test]
 fn test_dynamic_field_reallocation() {
 	let layout =
-		EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::VarInt]);
+		EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Int]);
 
 	let iterations = 1000;
 
@@ -110,11 +110,11 @@ fn test_dynamic_field_reallocation() {
 		let size = (i % 100) + 1;
 		let string = "x".repeat(size);
 		let bytes = vec![0u8; size];
-		let varint = VarInt::from(i as i64);
+		let int = Int::from(i as i64);
 
 		layout.set_utf8(&mut row, 0, &string);
 		layout.set_blob(&mut row, 1, &Blob::from(bytes));
-		layout.set_varint(&mut row, 2, &varint);
+		layout.set_int(&mut row, 2, &int);
 
 		// Verify values
 		assert_eq!(layout.get_utf8(&row, 0).len(), size);
@@ -128,7 +128,7 @@ fn test_dynamic_field_reallocation() {
 		let expected_size = (i % 100) + 1;
 		assert_eq!(layout.get_utf8(row, 0).len(), expected_size);
 		assert_eq!(layout.get_blob(row, 1).len(), expected_size);
-		assert_eq!(layout.get_varint(row, 2), VarInt::from(i as i64));
+		assert_eq!(layout.get_int(row, 2), Int::from(i as i64));
 	}
 }
 

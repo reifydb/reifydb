@@ -87,10 +87,10 @@ impl ColumnData {
 			(ColumnData::Blob(l), ColumnData::Blob(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::VarInt(l), ColumnData::VarInt(r)) => {
+			(ColumnData::Int(l), ColumnData::Int(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::VarUint(l), ColumnData::VarUint(r)) => {
+			(ColumnData::Uint(l), ColumnData::Uint(r)) => {
 				l.extend(&r)?
 			}
 			(
@@ -343,25 +343,25 @@ impl ColumnData {
 							new_container,
 						);
 					}
-					ColumnData::VarInt(r) => {
+					ColumnData::Int(r) => {
 						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::VarInt(
+						*self = ColumnData::Int(
 							new_container,
 						);
 					}
-					ColumnData::VarUint(r) => {
+					ColumnData::Uint(r) => {
 						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::VarUint(
+						*self = ColumnData::Uint(
 							new_container,
 						);
 					}
@@ -470,10 +470,10 @@ impl ColumnData {
 					ColumnData::Blob(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::VarInt(l) => {
+					ColumnData::Int(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::VarUint(l) => {
+					ColumnData::Uint(l) => {
 						l.extend_from_undefined(r_len)
 					}
 					ColumnData::Decimal {

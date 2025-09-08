@@ -10,8 +10,8 @@ impl_safe_unsigned_convert!(u128 => i8, i16, i32, i64, i128);
 impl_safe_convert_unsigned_to_float!(24; u128 => f32);
 impl_safe_convert_unsigned_to_float!(53; u128 => f64);
 
-impl_safe_convert_to_varint!(u128);
-impl_safe_convert_unsigned_to_varuint!(u128);
+impl_safe_convert_to_int!(u128);
+impl_safe_convert_unsigned_to_uint!(u128);
 
 impl_safe_convert_to_decimal_from_large_int!(u128);
 
@@ -430,14 +430,14 @@ mod tests {
 		}
 	}
 
-	mod varint {
+	mod int {
 		use super::*;
-		use crate::VarInt;
+		use crate::Int;
 
 		#[test]
 		fn test_checked_convert() {
 			let x: u128 = u128::MAX;
-			let y: Option<VarInt> = x.checked_convert();
+			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(
 				y.unwrap().to_string(),
@@ -448,7 +448,7 @@ mod tests {
 		#[test]
 		fn test_saturating_convert() {
 			let x: u128 = i128::MAX as u128;
-			let y: VarInt = x.saturating_convert();
+			let y: Int = x.saturating_convert();
 			assert_eq!(
 				y.to_string(),
 				"170141183460469231731687303715884105727"
@@ -458,19 +458,19 @@ mod tests {
 		#[test]
 		fn test_wrapping_convert() {
 			let x: u128 = 0;
-			let y: VarInt = x.wrapping_convert();
+			let y: Int = x.wrapping_convert();
 			assert_eq!(y.to_string(), "0");
 		}
 	}
 
-	mod varuint {
+	mod uint {
 		use super::*;
-		use crate::VarUint;
+		use crate::Uint;
 
 		#[test]
 		fn test_checked_convert() {
 			let x: u128 = 42;
-			let y: Option<VarUint> = x.checked_convert();
+			let y: Option<Uint> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(y.unwrap().to_string(), "42");
 		}
@@ -478,7 +478,7 @@ mod tests {
 		#[test]
 		fn test_saturating_convert() {
 			let x: u128 = u128::MAX;
-			let y: VarUint = x.saturating_convert();
+			let y: Uint = x.saturating_convert();
 			assert_eq!(
 				y.to_string(),
 				"340282366920938463463374607431768211455"
@@ -488,7 +488,7 @@ mod tests {
 		#[test]
 		fn test_wrapping_convert() {
 			let x: u128 = 1234567890123456789;
-			let y: VarUint = x.wrapping_convert();
+			let y: Uint = x.wrapping_convert();
 			assert_eq!(y.to_string(), "1234567890123456789");
 		}
 	}

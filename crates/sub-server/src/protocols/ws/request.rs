@@ -6,8 +6,9 @@ use std::{collections::HashMap, fmt, str::FromStr};
 use num_bigint;
 use reifydb_type::{
 	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value,
-	parse_bool, parse_date, parse_datetime, parse_float, parse_int,
-	parse_interval, parse_time, parse_uint, parse_uuid4, parse_uuid7,
+	parse_bool, parse_date, parse_datetime, parse_float, parse_interval,
+	parse_primitive_int, parse_primitive_uint, parse_time, parse_uuid4,
+	parse_uuid7,
 };
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
@@ -101,35 +102,35 @@ fn parse_typed_value(
 			.and_then(|f| OrderedF64::try_from(f).ok())
 			.map(Value::Float8)
 			.unwrap_or(Value::Undefined),
-		Type::Int1 => parse_int::<i8>(fragment.clone())
+		Type::Int1 => parse_primitive_int::<i8>(fragment.clone())
 			.map(Value::Int1)
 			.unwrap_or(Value::Undefined),
-		Type::Int2 => parse_int::<i16>(fragment.clone())
+		Type::Int2 => parse_primitive_int::<i16>(fragment.clone())
 			.map(Value::Int2)
 			.unwrap_or(Value::Undefined),
-		Type::Int4 => parse_int::<i32>(fragment.clone())
+		Type::Int4 => parse_primitive_int::<i32>(fragment.clone())
 			.map(Value::Int4)
 			.unwrap_or(Value::Undefined),
-		Type::Int8 => parse_int::<i64>(fragment.clone())
+		Type::Int8 => parse_primitive_int::<i64>(fragment.clone())
 			.map(Value::Int8)
 			.unwrap_or(Value::Undefined),
-		Type::Int16 => parse_int::<i128>(fragment.clone())
+		Type::Int16 => parse_primitive_int::<i128>(fragment.clone())
 			.map(Value::Int16)
 			.unwrap_or(Value::Undefined),
 		Type::Utf8 => Value::Utf8(str_val.to_string()),
-		Type::Uint1 => parse_uint::<u8>(fragment.clone())
+		Type::Uint1 => parse_primitive_uint::<u8>(fragment.clone())
 			.map(Value::Uint1)
 			.unwrap_or(Value::Undefined),
-		Type::Uint2 => parse_uint::<u16>(fragment.clone())
+		Type::Uint2 => parse_primitive_uint::<u16>(fragment.clone())
 			.map(Value::Uint2)
 			.unwrap_or(Value::Undefined),
-		Type::Uint4 => parse_uint::<u32>(fragment.clone())
+		Type::Uint4 => parse_primitive_uint::<u32>(fragment.clone())
 			.map(Value::Uint4)
 			.unwrap_or(Value::Undefined),
-		Type::Uint8 => parse_uint::<u64>(fragment.clone())
+		Type::Uint8 => parse_primitive_uint::<u64>(fragment.clone())
 			.map(Value::Uint8)
 			.unwrap_or(Value::Undefined),
-		Type::Uint16 => parse_uint::<u128>(fragment.clone())
+		Type::Uint16 => parse_primitive_uint::<u128>(fragment.clone())
 			.map(Value::Uint16)
 			.unwrap_or(Value::Undefined),
 		Type::Date => parse_date(fragment.clone())
@@ -144,9 +145,11 @@ fn parse_typed_value(
 		Type::Interval => parse_interval(fragment.clone())
 			.map(Value::Interval)
 			.unwrap_or(Value::Undefined),
-		Type::RowNumber => parse_uint::<u64>(fragment.clone())
-			.map(|id| Value::RowNumber(RowNumber::from(id)))
-			.unwrap_or(Value::Undefined),
+		Type::RowNumber => {
+			parse_primitive_uint::<u64>(fragment.clone())
+				.map(|id| Value::RowNumber(RowNumber::from(id)))
+				.unwrap_or(Value::Undefined)
+		}
 		Type::Uuid4 => parse_uuid4(fragment.clone())
 			.map(Value::Uuid4)
 			.unwrap_or(Value::Undefined),
@@ -163,15 +166,13 @@ fn parse_typed_value(
 		Type::Blob => Blob::from_hex(fragment.clone())
 			.map(Value::Blob)
 			.unwrap_or(Value::Undefined),
-		Type::VarInt => str_val
+		Type::Int => str_val
 			.parse::<num_bigint::BigInt>()
-			.map(|bi| Value::VarInt(reifydb_type::VarInt::from(bi)))
+			.map(|bi| Value::Int(reifydb_type::Int::from(bi)))
 			.unwrap_or(Value::Undefined),
-		Type::VarUint => str_val
+		Type::Uint => str_val
 			.parse::<num_bigint::BigInt>()
-			.map(|bi| {
-				Value::VarUint(reifydb_type::VarUint::from(bi))
-			})
+			.map(|bi| Value::Uint(reifydb_type::Uint::from(bi)))
 			.unwrap_or(Value::Undefined),
 		Type::Decimal {
 			..

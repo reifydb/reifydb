@@ -173,16 +173,16 @@ impl EncodedRowLayout {
 				self.set_undefined(row, index)
 			}
 
-			(Type::VarInt, Value::VarInt(v)) => {
-				self.set_varint(row, index, v)
+			(Type::Int, Value::Int(v)) => {
+				self.set_int(row, index, v)
 			}
-			(Type::VarUint, Value::VarUint(v)) => {
-				self.set_varuint(row, index, v)
+			(Type::Uint, Value::Uint(v)) => {
+				self.set_uint(row, index, v)
 			}
-			(Type::VarInt, Value::Undefined) => {
+			(Type::Int, Value::Undefined) => {
 				self.set_undefined(row, index)
 			}
-			(Type::VarUint, Value::Undefined) => {
+			(Type::Uint, Value::Undefined) => {
 				self.set_undefined(row, index)
 			}
 
@@ -261,12 +261,8 @@ impl EncodedRowLayout {
 				self.get_uuid7(row, index),
 			)),
 			Type::Blob => Value::Blob(self.get_blob(row, index)),
-			Type::VarInt => {
-				Value::VarInt(self.get_varint(row, index))
-			}
-			Type::VarUint => {
-				Value::VarUint(self.get_varuint(row, index))
-			}
+			Type::Int => Value::Int(self.get_int(row, index)),
+			Type::Uint => Value::Uint(self.get_uint(row, index)),
 			Type::Decimal {
 				..
 			} => Value::Decimal(self.get_decimal(row, index)),

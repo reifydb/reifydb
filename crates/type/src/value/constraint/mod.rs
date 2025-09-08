@@ -15,7 +15,7 @@ pub struct TypeConstraint {
 /// Constraint types for different data types
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {
-	/// Maximum number of bytes for UTF8, BLOB, VARINT, VARUINT
+	/// Maximum number of bytes for UTF8, BLOB, INT, UINT
 	MaxBytes(usize),
 	/// Precision and scale for DECIMAL
 	PrecisionScale(u8, u8),
@@ -97,9 +97,9 @@ impl TypeConstraint {
 					}
 				}
 			}
-			(Type::VarInt, Some(Constraint::MaxBytes(max))) => {
-				if let Value::VarInt(vi) = value {
-					// Calculate byte size of VarInt by
+			(Type::Int, Some(Constraint::MaxBytes(max))) => {
+				if let Value::Int(vi) = value {
+					// Calculate byte size of Int by
 					// converting to string and estimating
 					// This is a rough estimate: each
 					// decimal digit needs ~3.32 bits, so
@@ -108,7 +108,7 @@ impl TypeConstraint {
 					let byte_len =
 						(str_len * 415 / 1000) + 1; // Rough estimate
 					if byte_len > *max {
-						return Err(crate::error!(crate::error::diagnostic::constraint::varint_exceeds_max_bytes(
+						return Err(crate::error!(crate::error::diagnostic::constraint::int_exceeds_max_bytes(
                             OwnedFragment::None,
                             byte_len,
                             *max
@@ -116,9 +116,9 @@ impl TypeConstraint {
 					}
 				}
 			}
-			(Type::VarUint, Some(Constraint::MaxBytes(max))) => {
-				if let Value::VarUint(vu) = value {
-					// Calculate byte size of VarUint by
+			(Type::Uint, Some(Constraint::MaxBytes(max))) => {
+				if let Value::Uint(vu) = value {
+					// Calculate byte size of Uint by
 					// converting to string and estimating
 					// This is a rough estimate: each
 					// decimal digit needs ~3.32 bits, so
@@ -127,7 +127,7 @@ impl TypeConstraint {
 					let byte_len =
 						(str_len * 415 / 1000) + 1; // Rough estimate
 					if byte_len > *max {
-						return Err(crate::error!(crate::error::diagnostic::constraint::varuint_exceeds_max_bytes(
+						return Err(crate::error!(crate::error::diagnostic::constraint::uint_exceeds_max_bytes(
                             OwnedFragment::None,
                             byte_len,
                             *max

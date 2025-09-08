@@ -6,10 +6,9 @@ use reifydb_core::{
 	value::{columnar::ColumnData, container::NumberContainer},
 };
 use reifydb_type::{
-	BorrowedFragment, Decimal, GetType, IsNumber, LazyFragment,
-	SafeConvert, Type, VarInt, VarUint, diagnostic::cast, error,
-	parse_decimal, parse_float, parse_int, parse_uint, parse_varint,
-	parse_varuint, return_error,
+	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment,
+	SafeConvert, Type, Uint, diagnostic::cast, error, parse_decimal,
+	parse_float, parse_primitive_int, parse_primitive_uint, return_error,
 };
 
 pub fn to_number<'a>(
@@ -108,24 +107,22 @@ fn boolean_to_number<'a>(
 				Type::Float8 => {
 					boolean_to_number!(f64, 1.0f64, 0.0f64)
 				}
-				Type::VarInt => {
-					|out: &mut ColumnData, val: bool| {
-						out.push::<VarInt>(if val {
-							VarInt::from_i64(1)
-						} else {
-							VarInt::from_i64(0)
-						})
-					}
-				}
-				Type::VarUint => {
-					|out: &mut ColumnData, val: bool| {
-						out.push::<VarUint>(if val {
-							VarUint::from_u64(1)
-						} else {
-							VarUint::from_u64(0)
-						})
-					}
-				}
+				Type::Int => |out: &mut ColumnData,
+				              val: bool| {
+					out.push::<Int>(if val {
+						Int::from_i64(1)
+					} else {
+						Int::from_i64(0)
+					})
+				},
+				Type::Uint => |out: &mut ColumnData,
+				               val: bool| {
+					out.push::<Uint>(if val {
+						Uint::from_u64(1)
+					} else {
+						Uint::from_u64(0)
+					})
+				},
 				Type::Decimal {
 					..
 				} => |out: &mut ColumnData, val: bool| {
@@ -190,8 +187,8 @@ fn float_to_integer<'a>(
 			Type::Uint4 => f32_to_u32_vec(container),
 			Type::Uint8 => f32_to_u64_vec(container),
 			Type::Uint16 => f32_to_u128_vec(container),
-			Type::VarInt => f32_to_varint_vec(container),
-			Type::VarUint => f32_to_varuint_vec(container),
+			Type::Int => f32_to_int_vec(container),
+			Type::Uint => f32_to_uint_vec(container),
 			Type::Decimal {
 				..
 			} => f32_to_decimal_vec(container, target),
@@ -215,8 +212,8 @@ fn float_to_integer<'a>(
 			Type::Uint4 => f64_to_u32_vec(container),
 			Type::Uint8 => f64_to_u64_vec(container),
 			Type::Uint16 => f64_to_u128_vec(container),
-			Type::VarInt => f64_to_varint_vec(container),
-			Type::VarUint => f64_to_varuint_vec(container),
+			Type::Int => f64_to_int_vec(container),
+			Type::Uint => f64_to_uint_vec(container),
 			Type::Decimal {
 				..
 			} => f64_to_decimal_vec(container, target),
@@ -242,23 +239,7 @@ fn float_to_integer<'a>(
 
 macro_rules! parse_and_push {
 	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
-		let result = parse_int::<$ty>($temp_fragment.clone()).map_err(
-			|mut e| {
-				// Use the base_fragment (column reference) for
-				// the error position
-				e.0.with_fragment($base_fragment.clone());
-
-				error!(cast::invalid_number(
-					$base_fragment.clone(),
-					$target_type,
-					e.diagnostic(),
-				))
-			},
-		)?;
-		$out.push::<$ty>(result);
-	}};
-	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
-		let result = parse_uint::<$ty>($temp_fragment.clone())
+		let result = parse_primitive_int::<$ty>($temp_fragment.clone())
 			.map_err(|mut e| {
 				// Use the base_fragment (column reference) for
 				// the error position
@@ -270,6 +251,25 @@ macro_rules! parse_and_push {
 					e.diagnostic(),
 				))
 			})?;
+		$out.push::<$ty>(result);
+	}};
+	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
+		let result =
+			parse_primitive_uint::<$ty>($temp_fragment.clone())
+				.map_err(|mut e| {
+					// Use the base_fragment (column
+					// reference) for
+					// the error position
+					e.0.with_fragment(
+						$base_fragment.clone(),
+					);
+
+					error!(cast::invalid_number(
+						$base_fragment.clone(),
+						$target_type,
+						e.diagnostic(),
+					))
+				})?;
 		$out.push::<$ty>(result);
 	}};
 }
@@ -396,33 +396,31 @@ fn text_to_integer<'a>(
 								base_fragment
 							)
 						}
-						Type::VarInt => {
-							let result = parse_varint(temp_fragment.clone()).map_err(
+						Type::Int => {
+							let result = parse_primitive_int(temp_fragment.clone()).map_err(
 								|mut e| {
 									e.0.with_fragment(base_fragment.clone());
 									error!(cast::invalid_number(
 										base_fragment.clone(),
-										Type::VarInt,
+										Type::Int,
 										e.diagnostic(),
 									))
 								},
 							)?;
-							out.push::<VarInt>(
-								result,
-							);
+							out.push::<Int>(result);
 						}
-						Type::VarUint => {
-							let result = parse_varuint(temp_fragment.clone()).map_err(
+						Type::Uint => {
+							let result = parse_primitive_uint(temp_fragment.clone()).map_err(
 								|mut e| {
 									e.0.with_fragment(base_fragment.clone());
 									error!(cast::invalid_number(
 										base_fragment.clone(),
-										Type::VarUint,
+										Type::Uint,
 										e.diagnostic(),
 									))
 								},
 							)?;
-							out.push::<VarUint>(
+							out.push::<Uint>(
 								result,
 							);
 						}
@@ -699,17 +697,17 @@ float_to_int_vec!(
 	u128::MAX as f64
 );
 
-// Float to VarInt conversion
-fn f32_to_varint_vec(
+// Float to Int conversion
+fn f32_to_int_vec(
 	container: &NumberContainer<f32>,
 ) -> crate::Result<ColumnData> {
-	let mut out = ColumnData::with_capacity(Type::VarInt, container.len());
+	let mut out = ColumnData::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
 			let truncated = val.trunc();
-			let varint = VarInt::from_i64(truncated as i64);
-			out.push::<VarInt>(varint);
+			let int = Int::from_i64(truncated as i64);
+			out.push::<Int>(int);
 		} else {
 			out.push_undefined();
 		}
@@ -717,16 +715,16 @@ fn f32_to_varint_vec(
 	Ok(out)
 }
 
-fn f64_to_varint_vec(
+fn f64_to_int_vec(
 	container: &NumberContainer<f64>,
 ) -> crate::Result<ColumnData> {
-	let mut out = ColumnData::with_capacity(Type::VarInt, container.len());
+	let mut out = ColumnData::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
 			let truncated = val.trunc();
-			let varint = VarInt::from_i64(truncated as i64);
-			out.push::<VarInt>(varint);
+			let int = Int::from_i64(truncated as i64);
+			out.push::<Int>(int);
 		} else {
 			out.push_undefined();
 		}
@@ -734,19 +732,18 @@ fn f64_to_varint_vec(
 	Ok(out)
 }
 
-// Float to VarUint conversion
-fn f32_to_varuint_vec(
+// Float to Uint conversion
+fn f32_to_uint_vec(
 	container: &NumberContainer<f32>,
 ) -> crate::Result<ColumnData> {
-	let mut out = ColumnData::with_capacity(Type::VarUint, container.len());
+	let mut out = ColumnData::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
 			let truncated = val.trunc();
 			if truncated >= 0.0 {
-				let varuint =
-					VarUint::from_u64(truncated as u64);
-				out.push::<VarUint>(varuint);
+				let uint = Uint::from_u64(truncated as u64);
+				out.push::<Uint>(uint);
 			} else {
 				out.push_undefined();
 			}
@@ -757,18 +754,17 @@ fn f32_to_varuint_vec(
 	Ok(out)
 }
 
-fn f64_to_varuint_vec(
+fn f64_to_uint_vec(
 	container: &NumberContainer<f64>,
 ) -> crate::Result<ColumnData> {
-	let mut out = ColumnData::with_capacity(Type::VarUint, container.len());
+	let mut out = ColumnData::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
 			let truncated = val.trunc();
 			if truncated >= 0.0 {
-				let varuint =
-					VarUint::from_u64(truncated as u64);
-				out.push::<VarUint>(varuint);
+				let uint = Uint::from_u64(truncated as u64);
+				out.push::<Uint>(uint);
 			} else {
 				out.push_undefined();
 			}
@@ -867,70 +863,70 @@ fn number_to_number<'a>(
         }
 
 	cast!(Float4, f32,
-	    to => [(Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Float8, f64,
-	    to => [(Float4, f32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Float4, f32), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int1, i8,
-	    to => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int2, i16,
-	    to => [(Int1, i8), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Int1, i8), (Int4, i32), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int4, i32,
-	    to => [(Int1, i8), (Int2, i16), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Int1, i8), (Int2, i16), (Int8, i64), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int8, i64,
-	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int16, i128), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Int16, i128,
-	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Float4, f32), (Float8, f64), (Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint1, u8,
-	    to => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Uint2, u16), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint2, u16,
-	    to => [(Uint1, u8), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Uint1, u8), (Uint4, u32), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint4, u32,
-	    to => [(Uint1, u8), (Uint2, u16), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Uint1, u8), (Uint2, u16), (Uint8, u64), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint8, u64,
-	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint16, u128), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
 	cast!(Uint16, u128,
-	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (VarInt, VarInt), (VarUint, VarUint)],
+	    to => [(Uint1, u8), (Uint2, u16), (Uint4, u32), (Uint8, u64), (Float4, f32), (Float8, f64), (Int1, i8), (Int2, i16), (Int4, i32), (Int8, i64), (Int16, i128), (Int, Int), (Uint, Uint)],
 	    to_struct => [(Decimal, Decimal)]
 	);
 
-	// Special handling for VarInt (uses Clone instead of Copy)
-	if let ColumnData::VarInt(container) = data {
+	// Special handling for Int (uses Clone instead of Copy)
+	if let ColumnData::Int(container) = data {
 		match target {
 			Type::Int1 => {
-				return convert_vec_clone::<VarInt, i8>(
+				return convert_vec_clone::<Int, i8>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -939,7 +935,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int2 => {
-				return convert_vec_clone::<VarInt, i16>(
+				return convert_vec_clone::<Int, i16>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -948,7 +944,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int4 => {
-				return convert_vec_clone::<VarInt, i32>(
+				return convert_vec_clone::<Int, i32>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -957,7 +953,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int8 => {
-				return convert_vec_clone::<VarInt, i64>(
+				return convert_vec_clone::<Int, i64>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -966,7 +962,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int16 => {
-				return convert_vec_clone::<VarInt, i128>(
+				return convert_vec_clone::<Int, i128>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -975,7 +971,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint1 => {
-				return convert_vec_clone::<VarInt, u8>(
+				return convert_vec_clone::<Int, u8>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -984,7 +980,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint2 => {
-				return convert_vec_clone::<VarInt, u16>(
+				return convert_vec_clone::<Int, u16>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -993,7 +989,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint4 => {
-				return convert_vec_clone::<VarInt, u32>(
+				return convert_vec_clone::<Int, u32>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1002,7 +998,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint8 => {
-				return convert_vec_clone::<VarInt, u64>(
+				return convert_vec_clone::<Int, u64>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1011,7 +1007,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint16 => {
-				return convert_vec_clone::<VarInt, u128>(
+				return convert_vec_clone::<Int, u128>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1020,7 +1016,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Float4 => {
-				return convert_vec_clone::<VarInt, f32>(
+				return convert_vec_clone::<Int, f32>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1029,7 +1025,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Float8 => {
-				return convert_vec_clone::<VarInt, f64>(
+				return convert_vec_clone::<Int, f64>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1037,19 +1033,19 @@ fn number_to_number<'a>(
 					ColumnData::push::<f64>,
 				);
 			}
-			Type::VarUint => {
-				return convert_vec_clone::<VarInt, VarUint>(
+			Type::Uint => {
+				return convert_vec_clone::<Int, Uint>(
 					container,
 					ctx,
 					lazy_fragment,
-					Type::VarUint,
-					ColumnData::push::<VarUint>,
+					Type::Uint,
+					ColumnData::push::<Uint>,
 				);
 			}
 			Type::Decimal {
 				..
 			} => {
-				return convert_vec_clone::<VarInt, Decimal>(
+				return convert_vec_clone::<Int, Decimal>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1061,11 +1057,11 @@ fn number_to_number<'a>(
 		}
 	}
 
-	// Special handling for VarUint (uses Clone instead of Copy)
-	if let ColumnData::VarUint(container) = data {
+	// Special handling for Uint (uses Clone instead of Copy)
+	if let ColumnData::Uint(container) = data {
 		match target {
 			Type::Uint1 => {
-				return convert_vec_clone::<VarUint, u8>(
+				return convert_vec_clone::<Uint, u8>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1074,7 +1070,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint2 => {
-				return convert_vec_clone::<VarUint, u16>(
+				return convert_vec_clone::<Uint, u16>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1083,7 +1079,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint4 => {
-				return convert_vec_clone::<VarUint, u32>(
+				return convert_vec_clone::<Uint, u32>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1092,7 +1088,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint8 => {
-				return convert_vec_clone::<VarUint, u64>(
+				return convert_vec_clone::<Uint, u64>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1101,7 +1097,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Uint16 => {
-				return convert_vec_clone::<VarUint, u128>(
+				return convert_vec_clone::<Uint, u128>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1110,7 +1106,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int1 => {
-				return convert_vec_clone::<VarUint, i8>(
+				return convert_vec_clone::<Uint, i8>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1119,7 +1115,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int2 => {
-				return convert_vec_clone::<VarUint, i16>(
+				return convert_vec_clone::<Uint, i16>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1128,7 +1124,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int4 => {
-				return convert_vec_clone::<VarUint, i32>(
+				return convert_vec_clone::<Uint, i32>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1137,7 +1133,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int8 => {
-				return convert_vec_clone::<VarUint, i64>(
+				return convert_vec_clone::<Uint, i64>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1146,7 +1142,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Int16 => {
-				return convert_vec_clone::<VarUint, i128>(
+				return convert_vec_clone::<Uint, i128>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1155,7 +1151,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Float4 => {
-				return convert_vec_clone::<VarUint, f32>(
+				return convert_vec_clone::<Uint, f32>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1164,7 +1160,7 @@ fn number_to_number<'a>(
 				);
 			}
 			Type::Float8 => {
-				return convert_vec_clone::<VarUint, f64>(
+				return convert_vec_clone::<Uint, f64>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1172,19 +1168,19 @@ fn number_to_number<'a>(
 					ColumnData::push::<f64>,
 				);
 			}
-			Type::VarInt => {
-				return convert_vec_clone::<VarUint, VarInt>(
+			Type::Int => {
+				return convert_vec_clone::<Uint, Int>(
 					container,
 					ctx,
 					lazy_fragment,
-					Type::VarInt,
-					ColumnData::push::<VarInt>,
+					Type::Int,
+					ColumnData::push::<Int>,
 				);
 			}
 			Type::Decimal {
 				..
 			} => {
-				return convert_vec_clone::<VarUint, Decimal>(
+				return convert_vec_clone::<Uint, Decimal>(
 					container,
 					ctx,
 					lazy_fragment,
@@ -1312,22 +1308,22 @@ fn number_to_number<'a>(
 					ColumnData::push::<f64>,
 				);
 			}
-			Type::VarInt => {
-				return convert_vec_clone::<Decimal, VarInt>(
+			Type::Int => {
+				return convert_vec_clone::<Decimal, Int>(
 					container,
 					ctx,
 					lazy_fragment,
-					Type::VarInt,
-					ColumnData::push::<VarInt>,
+					Type::Int,
+					ColumnData::push::<Int>,
 				);
 			}
-			Type::VarUint => {
-				return convert_vec_clone::<Decimal, VarUint>(
+			Type::Uint => {
+				return convert_vec_clone::<Decimal, Uint>(
 					container,
 					ctx,
 					lazy_fragment,
-					Type::VarUint,
-					ColumnData::push::<VarUint>,
+					Type::Uint,
+					ColumnData::push::<Uint>,
 				);
 			}
 			Type::Decimal {

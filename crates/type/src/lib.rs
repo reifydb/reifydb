@@ -24,6 +24,7 @@ pub use value::{
 	Decimal,
 	GetType,
 	IdentityId,
+	Int,
 	Interval,
 	IntoValue,
 	OrderedF32,
@@ -33,6 +34,7 @@ pub use value::{
 	Type,
 	TypeConstraint,
 
+	Uint,
 	// Parse functions
 	Uuid4,
 	// Traits
@@ -41,25 +43,24 @@ pub use value::{
 	// Number traits and operations
 	Value,
 
-	VarInt,
-	VarUint,
 	// Parse functions
 	boolean::parse_bool,
 	decimal::parse_decimal,
+	int::parse_int,
 	is::{
 		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
 		IsUuid,
 	},
 	number::{
 		Promote, SafeAdd, SafeConvert, SafeDiv, SafeMul, SafeRemainder,
-		SafeSub, parse_float, parse_int, parse_uint,
+		SafeSub, parse_float, parse_primitive_int,
+		parse_primitive_uint,
 	},
 	row_number::ROW_NUMBER_COLUMN_NAME,
 	temporal::parse::{
 		parse_date, parse_datetime, parse_interval, parse_time,
 	},
+	uint::parse_uint,
 	uuid::{parse_uuid4, parse_uuid7},
-	varint::parse_varint,
-	varuint::parse_varuint,
 };
 pub use value::{blob, boolean, temporal, uuid};

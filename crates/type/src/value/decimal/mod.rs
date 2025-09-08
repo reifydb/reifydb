@@ -11,8 +11,9 @@ use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
+use super::{int::Int, uint::Uint};
 use crate::{
-	Error, OwnedFragment, Type, VarInt, VarUint, error,
+	Error, OwnedFragment, Type, error,
 	error::diagnostic::number::decimal_scale_exceeds_precision,
 	return_error,
 };
@@ -341,8 +342,8 @@ impl From<BigDecimalInner> for Decimal {
 	}
 }
 
-impl From<VarInt> for Decimal {
-	fn from(value: VarInt) -> Self {
+impl From<Int> for Decimal {
+	fn from(value: Int) -> Self {
 		let value = BigDecimalInner::from_bigint(value.0, 0);
 		let precision = Self::calculate_min_precision(&value, 0);
 
@@ -351,8 +352,8 @@ impl From<VarInt> for Decimal {
 	}
 }
 
-impl From<VarUint> for Decimal {
-	fn from(value: VarUint) -> Self {
+impl From<Uint> for Decimal {
+	fn from(value: Uint) -> Self {
 		let value = BigDecimalInner::from_bigint(value.0, 0);
 		let precision = Self::calculate_min_precision(&value, 0);
 

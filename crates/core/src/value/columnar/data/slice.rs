@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Date, DateTime, Decimal, Interval, Time, VarInt, VarUint};
+use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Uint};
 
 use crate::value::columnar::ColumnData;
 
@@ -308,17 +308,17 @@ impl AsSlice<Interval> for ColumnData {
 	}
 }
 
-impl AsSlice<VarInt> for ColumnData {
-	fn as_slice(&self) -> &[VarInt] {
+impl AsSlice<Int> for ColumnData {
+	fn as_slice(&self) -> &[Int] {
 		match self {
-			ColumnData::VarInt(_) => {
+			ColumnData::Int(_) => {
 				panic!(
-					"as_slice() is not supported for variable-length VarInt. Use to_vec() instead."
+					"as_slice() is not supported for variable-length Int. Use to_vec() instead."
 				)
 			}
 			other => {
 				panic!(
-					"called `as_slice::<VarInt>()` on EngineColumnData::{:?}",
+					"called `as_slice::<Int>()` on EngineColumnData::{:?}",
 					other.get_type()
 				)
 			}
@@ -326,17 +326,17 @@ impl AsSlice<VarInt> for ColumnData {
 	}
 }
 
-impl AsSlice<VarUint> for ColumnData {
-	fn as_slice(&self) -> &[VarUint] {
+impl AsSlice<Uint> for ColumnData {
+	fn as_slice(&self) -> &[Uint] {
 		match self {
-			ColumnData::VarUint(_) => {
+			ColumnData::Uint(_) => {
 				panic!(
-					"as_slice() is not supported for variable-length VarUint. Use to_vec() instead."
+					"as_slice() is not supported for variable-length Uint. Use to_vec() instead."
 				)
 			}
 			other => {
 				panic!(
-					"called `as_slice::<VarUint>()` on EngineColumnData::{:?}",
+					"called `as_slice::<Uint>()` on EngineColumnData::{:?}",
 					other.get_type()
 				)
 			}

@@ -74,7 +74,7 @@ fn test_dynamic_field_interleaving() {
 		Type::Utf8,
 		Type::Blob,
 		Type::Utf8,
-		Type::VarInt,
+		Type::Int,
 	]);
 
 	// Test initial setting with various sizes
@@ -82,13 +82,13 @@ fn test_dynamic_field_interleaving() {
 	layout.set_utf8(&mut row, 0, "first");
 	layout.set_blob(&mut row, 1, &Blob::from(&b"second"[..]));
 	layout.set_utf8(&mut row, 2, "third");
-	layout.set_varint(&mut row, 3, &VarInt::from(999999999999i64));
+	layout.set_int(&mut row, 3, &Int::from(999999999999i64));
 
 	// Verify all are correct
 	assert_eq!(layout.get_utf8(&row, 0), "first");
 	assert_eq!(layout.get_blob(&row, 1), Blob::from(&b"second"[..]));
 	assert_eq!(layout.get_utf8(&row, 2), "third");
-	assert_eq!(layout.get_varint(&row, 3), VarInt::from(999999999999i64));
+	assert_eq!(layout.get_int(&row, 3), Int::from(999999999999i64));
 
 	// Test with different sizes in a new row (since dynamic fields can only
 	// be set once)
@@ -96,17 +96,17 @@ fn test_dynamic_field_interleaving() {
 	layout.set_utf8(&mut row2, 0, "much longer string than before");
 	layout.set_blob(&mut row2, 1, &Blob::from(&b"x"[..]));
 	layout.set_utf8(&mut row2, 2, "");
-	layout.set_varint(&mut row2, 3, &VarInt::from(123i64));
+	layout.set_int(&mut row2, 3, &Int::from(123i64));
 
 	// Verify the second row
 	assert_eq!(layout.get_utf8(&row2, 0), "much longer string than before");
 	assert_eq!(layout.get_blob(&row2, 1), Blob::from(&b"x"[..]));
 	assert_eq!(layout.get_utf8(&row2, 2), "");
-	assert_eq!(layout.get_varint(&row2, 3), VarInt::from(123i64));
+	assert_eq!(layout.get_int(&row2, 3), Int::from(123i64));
 
 	// Verify the first row is still intact
 	assert_eq!(layout.get_utf8(&row, 0), "first");
 	assert_eq!(layout.get_blob(&row, 1), Blob::from(&b"second"[..]));
 	assert_eq!(layout.get_utf8(&row, 2), "third");
-	assert_eq!(layout.get_varint(&row, 3), VarInt::from(999999999999i64));
+	assert_eq!(layout.get_int(&row, 3), Int::from(999999999999i64));
 }

@@ -11,8 +11,8 @@ impl_safe_unsigned_convert!(u64 => i8, i16, i32, i64, i128);
 impl_safe_convert_unsigned_to_float!(24; u64 => f32);
 impl_safe_convert_unsigned_to_float!(53; u64 => f64);
 
-impl_safe_convert_to_varint!(u64);
-impl_safe_convert_unsigned_to_varuint!(u64);
+impl_safe_convert_to_int!(u64);
+impl_safe_convert_unsigned_to_uint!(u64);
 
 impl_safe_convert_to_decimal_from_uint!(u64);
 
@@ -421,14 +421,14 @@ mod tests {
 		}
 	}
 
-	mod varint {
+	mod int {
 		use super::*;
-		use crate::VarInt;
+		use crate::Int;
 
 		#[test]
 		fn test_checked_convert() {
 			let x: u64 = u64::MAX;
-			let y: Option<VarInt> = x.checked_convert();
+			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(
 				y.unwrap().to_string(),
@@ -439,26 +439,26 @@ mod tests {
 		#[test]
 		fn test_saturating_convert() {
 			let x: u64 = i64::MAX as u64;
-			let y: VarInt = x.saturating_convert();
+			let y: Int = x.saturating_convert();
 			assert_eq!(y.to_string(), "9223372036854775807");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x: u64 = 0;
-			let y: VarInt = x.wrapping_convert();
+			let y: Int = x.wrapping_convert();
 			assert_eq!(y.to_string(), "0");
 		}
 	}
 
-	mod varuint {
+	mod uint {
 		use super::*;
-		use crate::VarUint;
+		use crate::Uint;
 
 		#[test]
 		fn test_checked_convert() {
 			let x: u64 = 42;
-			let y: Option<VarUint> = x.checked_convert();
+			let y: Option<Uint> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(y.unwrap().to_string(), "42");
 		}
@@ -466,14 +466,14 @@ mod tests {
 		#[test]
 		fn test_saturating_convert() {
 			let x: u64 = u64::MAX;
-			let y: VarUint = x.saturating_convert();
+			let y: Uint = x.saturating_convert();
 			assert_eq!(y.to_string(), "18446744073709551615");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x: u64 = 9876543210;
-			let y: VarUint = x.wrapping_convert();
+			let y: Uint = x.wrapping_convert();
 			assert_eq!(y.to_string(), "9876543210");
 		}
 	}

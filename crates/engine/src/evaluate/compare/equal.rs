@@ -13,8 +13,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	Decimal, Fragment, IsNumber, IsTemporal, Promote, Type::Boolean,
-	VarInt, VarUint,
+	Decimal, Fragment, Int, IsNumber, IsTemporal, Promote, Type::Boolean,
+	Uint,
 	diagnostic::operator::equal_cannot_be_applied_to_incompatible_types,
 	temporal, value::number,
 };
@@ -39,17 +39,17 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			// Float4 with VarInt, VarUint, Decimal
-			(ColumnData::Float4(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<f32, VarInt>(
+			// Float4 with Int, Uint, Decimal
+			(ColumnData::Float4(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<f32, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Float4(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<f32, VarUint>(
+			(ColumnData::Float4(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<f32, Uint>(
 					ctx,
 					l,
 					r,
@@ -262,16 +262,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Float8(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<f64, VarInt>(
+			(ColumnData::Float8(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<f64, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Float8(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<f64, VarUint>(
+			(ColumnData::Float8(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<f64, Uint>(
 					ctx,
 					l,
 					r,
@@ -387,16 +387,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int1(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<i8, VarInt>(
+			(ColumnData::Int1(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<i8, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int1(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<i8, VarUint>(
+			(ColumnData::Int1(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<i8, Uint>(
 					ctx,
 					l,
 					r,
@@ -512,16 +512,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int2(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<i16, VarInt>(
+			(ColumnData::Int2(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<i16, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int2(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<i16, VarUint>(
+			(ColumnData::Int2(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<i16, Uint>(
 					ctx,
 					l,
 					r,
@@ -637,16 +637,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int4(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<i32, VarInt>(
+			(ColumnData::Int4(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<i32, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int4(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<i32, VarUint>(
+			(ColumnData::Int4(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<i32, Uint>(
 					ctx,
 					l,
 					r,
@@ -762,16 +762,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int8(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<i64, VarInt>(
+			(ColumnData::Int8(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<i64, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int8(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<i64, VarUint>(
+			(ColumnData::Int8(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<i64, Uint>(
 					ctx,
 					l,
 					r,
@@ -887,16 +887,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int16(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<i128, VarInt>(
+			(ColumnData::Int16(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<i128, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Int16(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<i128, VarUint>(
+			(ColumnData::Int16(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<i128, Uint>(
 					ctx,
 					l,
 					r,
@@ -1012,16 +1012,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint1(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<u8, VarInt>(
+			(ColumnData::Uint1(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<u8, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint1(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<u8, VarUint>(
+			(ColumnData::Uint1(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<u8, Uint>(
 					ctx,
 					l,
 					r,
@@ -1137,16 +1137,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint2(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<u16, VarInt>(
+			(ColumnData::Uint2(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<u16, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint2(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<u16, VarUint>(
+			(ColumnData::Uint2(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<u16, Uint>(
 					ctx,
 					l,
 					r,
@@ -1262,16 +1262,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint4(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<u32, VarInt>(
+			(ColumnData::Uint4(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<u32, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint4(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<u32, VarUint>(
+			(ColumnData::Uint4(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<u32, Uint>(
 					ctx,
 					l,
 					r,
@@ -1387,16 +1387,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint8(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<u64, VarInt>(
+			(ColumnData::Uint8(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<u64, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint8(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<u64, VarUint>(
+			(ColumnData::Uint8(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<u64, Uint>(
 					ctx,
 					l,
 					r,
@@ -1512,16 +1512,16 @@ impl StandardEvaluator {
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint16(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<u128, VarInt>(
+			(ColumnData::Uint16(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<u128, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::Uint16(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<u128, VarUint>(
+			(ColumnData::Uint16(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<u128, Uint>(
 					ctx,
 					l,
 					r,
@@ -1540,113 +1540,113 @@ impl StandardEvaluator {
 				r,
 				eq.full_fragment_owned(),
 			)),
-			// VarInt
-			(ColumnData::VarInt(l), ColumnData::Float4(r)) => {
-				Ok(compare_number::<VarInt, f32>(
+			// Int
+			(ColumnData::Int(l), ColumnData::Float4(r)) => {
+				Ok(compare_number::<Int, f32>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Float8(r)) => {
-				Ok(compare_number::<VarInt, f64>(
+			(ColumnData::Int(l), ColumnData::Float8(r)) => {
+				Ok(compare_number::<Int, f64>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Int1(r)) => {
-				Ok(compare_number::<VarInt, i8>(
+			(ColumnData::Int(l), ColumnData::Int1(r)) => {
+				Ok(compare_number::<Int, i8>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Int2(r)) => {
-				Ok(compare_number::<VarInt, i16>(
+			(ColumnData::Int(l), ColumnData::Int2(r)) => {
+				Ok(compare_number::<Int, i16>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Int4(r)) => {
-				Ok(compare_number::<VarInt, i32>(
+			(ColumnData::Int(l), ColumnData::Int4(r)) => {
+				Ok(compare_number::<Int, i32>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Int8(r)) => {
-				Ok(compare_number::<VarInt, i64>(
+			(ColumnData::Int(l), ColumnData::Int8(r)) => {
+				Ok(compare_number::<Int, i64>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Int16(r)) => {
-				Ok(compare_number::<VarInt, i128>(
+			(ColumnData::Int(l), ColumnData::Int16(r)) => {
+				Ok(compare_number::<Int, i128>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Uint1(r)) => {
-				Ok(compare_number::<VarInt, u8>(
+			(ColumnData::Int(l), ColumnData::Uint1(r)) => {
+				Ok(compare_number::<Int, u8>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Uint2(r)) => {
-				Ok(compare_number::<VarInt, u16>(
+			(ColumnData::Int(l), ColumnData::Uint2(r)) => {
+				Ok(compare_number::<Int, u16>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Uint4(r)) => {
-				Ok(compare_number::<VarInt, u32>(
+			(ColumnData::Int(l), ColumnData::Uint4(r)) => {
+				Ok(compare_number::<Int, u32>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Uint8(r)) => {
-				Ok(compare_number::<VarInt, u64>(
+			(ColumnData::Int(l), ColumnData::Uint8(r)) => {
+				Ok(compare_number::<Int, u64>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::Uint16(r)) => {
-				Ok(compare_number::<VarInt, u128>(
+			(ColumnData::Int(l), ColumnData::Uint16(r)) => {
+				Ok(compare_number::<Int, u128>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<VarInt, VarInt>(
+			(ColumnData::Int(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<Int, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarInt(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<VarInt, VarUint>(
+			(ColumnData::Int(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<Int, Uint>(
 					ctx,
 					l,
 					r,
@@ -1654,124 +1654,124 @@ impl StandardEvaluator {
 				))
 			}
 			(
-				ColumnData::VarInt(l),
+				ColumnData::Int(l),
 				ColumnData::Decimal {
 					container: r,
 					..
 				},
-			) => Ok(compare_number::<VarInt, Decimal>(
+			) => Ok(compare_number::<Int, Decimal>(
 				ctx,
 				l,
 				r,
 				eq.full_fragment_owned(),
 			)),
-			// VarUint
-			(ColumnData::VarUint(l), ColumnData::Float4(r)) => {
-				Ok(compare_number::<VarUint, f32>(
+			// Uint
+			(ColumnData::Uint(l), ColumnData::Float4(r)) => {
+				Ok(compare_number::<Uint, f32>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Float8(r)) => {
-				Ok(compare_number::<VarUint, f64>(
+			(ColumnData::Uint(l), ColumnData::Float8(r)) => {
+				Ok(compare_number::<Uint, f64>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Int1(r)) => {
-				Ok(compare_number::<VarUint, i8>(
+			(ColumnData::Uint(l), ColumnData::Int1(r)) => {
+				Ok(compare_number::<Uint, i8>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Int2(r)) => {
-				Ok(compare_number::<VarUint, i16>(
+			(ColumnData::Uint(l), ColumnData::Int2(r)) => {
+				Ok(compare_number::<Uint, i16>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Int4(r)) => {
-				Ok(compare_number::<VarUint, i32>(
+			(ColumnData::Uint(l), ColumnData::Int4(r)) => {
+				Ok(compare_number::<Uint, i32>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Int8(r)) => {
-				Ok(compare_number::<VarUint, i64>(
+			(ColumnData::Uint(l), ColumnData::Int8(r)) => {
+				Ok(compare_number::<Uint, i64>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Int16(r)) => {
-				Ok(compare_number::<VarUint, i128>(
+			(ColumnData::Uint(l), ColumnData::Int16(r)) => {
+				Ok(compare_number::<Uint, i128>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Uint1(r)) => {
-				Ok(compare_number::<VarUint, u8>(
+			(ColumnData::Uint(l), ColumnData::Uint1(r)) => {
+				Ok(compare_number::<Uint, u8>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Uint2(r)) => {
-				Ok(compare_number::<VarUint, u16>(
+			(ColumnData::Uint(l), ColumnData::Uint2(r)) => {
+				Ok(compare_number::<Uint, u16>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Uint4(r)) => {
-				Ok(compare_number::<VarUint, u32>(
+			(ColumnData::Uint(l), ColumnData::Uint4(r)) => {
+				Ok(compare_number::<Uint, u32>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Uint8(r)) => {
-				Ok(compare_number::<VarUint, u64>(
+			(ColumnData::Uint(l), ColumnData::Uint8(r)) => {
+				Ok(compare_number::<Uint, u64>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::Uint16(r)) => {
-				Ok(compare_number::<VarUint, u128>(
+			(ColumnData::Uint(l), ColumnData::Uint16(r)) => {
+				Ok(compare_number::<Uint, u128>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::VarInt(r)) => {
-				Ok(compare_number::<VarUint, VarInt>(
+			(ColumnData::Uint(l), ColumnData::Int(r)) => {
+				Ok(compare_number::<Uint, Int>(
 					ctx,
 					l,
 					r,
 					eq.full_fragment_owned(),
 				))
 			}
-			(ColumnData::VarUint(l), ColumnData::VarUint(r)) => {
-				Ok(compare_number::<VarUint, VarUint>(
+			(ColumnData::Uint(l), ColumnData::Uint(r)) => {
+				Ok(compare_number::<Uint, Uint>(
 					ctx,
 					l,
 					r,
@@ -1779,12 +1779,12 @@ impl StandardEvaluator {
 				))
 			}
 			(
-				ColumnData::VarUint(l),
+				ColumnData::Uint(l),
 				ColumnData::Decimal {
 					container: r,
 					..
 				},
-			) => Ok(compare_number::<VarUint, Decimal>(
+			) => Ok(compare_number::<Uint, Decimal>(
 				ctx,
 				l,
 				r,
@@ -1940,8 +1940,8 @@ impl StandardEvaluator {
 					container: l,
 					..
 				},
-				ColumnData::VarInt(r),
-			) => Ok(compare_number::<Decimal, VarInt>(
+				ColumnData::Int(r),
+			) => Ok(compare_number::<Decimal, Int>(
 				ctx,
 				l,
 				r,
@@ -1952,8 +1952,8 @@ impl StandardEvaluator {
 					container: l,
 					..
 				},
-				ColumnData::VarUint(r),
-			) => Ok(compare_number::<Decimal, VarUint>(
+				ColumnData::Uint(r),
+			) => Ok(compare_number::<Decimal, Uint>(
 				ctx,
 				l,
 				r,

@@ -52,7 +52,7 @@ pub fn blob_exceeds_max_bytes(
 	}
 }
 
-pub fn varint_exceeds_max_bytes(
+pub fn int_exceeds_max_bytes(
 	fragment: OwnedFragment,
 	actual: usize,
 	max: usize,
@@ -61,14 +61,14 @@ pub fn varint_exceeds_max_bytes(
 		code: "CONSTRAINT_003".to_string(),
 		statement: None,
 		message: format!(
-			"VARINT value exceeds maximum byte length: {} bytes (max: {} bytes)",
+			"INT value exceeds maximum byte length: {} bytes (max: {} bytes)",
 			actual, max
 		),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
 		help: Some(format!(
-			"The VARINT field is constrained to a maximum of {} bytes. Consider using a smaller value or increasing the constraint.",
+			"The INT field is constrained to a maximum of {} bytes. Consider using a smaller value or increasing the constraint.",
 			max
 		)),
 		notes: vec![],
@@ -76,7 +76,7 @@ pub fn varint_exceeds_max_bytes(
 	}
 }
 
-pub fn varuint_exceeds_max_bytes(
+pub fn uint_exceeds_max_bytes(
 	fragment: OwnedFragment,
 	actual: usize,
 	max: usize,
@@ -85,14 +85,14 @@ pub fn varuint_exceeds_max_bytes(
 		code: "CONSTRAINT_004".to_string(),
 		statement: None,
 		message: format!(
-			"VARUINT value exceeds maximum byte length: {} bytes (max: {} bytes)",
+			"UINT value exceeds maximum byte length: {} bytes (max: {} bytes)",
 			actual, max
 		),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
 		help: Some(format!(
-			"The VARUINT field is constrained to a maximum of {} bytes. Consider using a smaller value or increasing the constraint.",
+			"The UINT field is constrained to a maximum of {} bytes. Consider using a smaller value or increasing the constraint.",
 			max
 		)),
 		notes: vec![],

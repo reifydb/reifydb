@@ -86,29 +86,29 @@ impl_safe_convert_decimal_to_int!(
 );
 impl_safe_convert_decimal_to_float!(f32, f64);
 
-impl SafeConvert<VarInt> for Decimal {
-	fn checked_convert(self) -> Option<VarInt> {
+impl SafeConvert<Int> for Decimal {
+	fn checked_convert(self) -> Option<Int> {
 		if let Some(big_int) = self.inner().to_bigint() {
-			Some(VarInt(big_int))
+			Some(Int(big_int))
 		} else {
 			None
 		}
 	}
 
-	fn saturating_convert(self) -> VarInt {
-		self.checked_convert().unwrap_or(VarInt::zero())
+	fn saturating_convert(self) -> Int {
+		self.checked_convert().unwrap_or(Int::zero())
 	}
 
-	fn wrapping_convert(self) -> VarInt {
+	fn wrapping_convert(self) -> Int {
 		self.saturating_convert()
 	}
 }
 
-impl SafeConvert<VarUint> for Decimal {
-	fn checked_convert(self) -> Option<VarUint> {
+impl SafeConvert<Uint> for Decimal {
+	fn checked_convert(self) -> Option<Uint> {
 		if let Some(big_int) = self.inner().to_bigint() {
 			if big_int >= BigInt::from(0) {
-				Some(VarUint(big_int))
+				Some(Uint(big_int))
 			} else {
 				None
 			}
@@ -117,23 +117,23 @@ impl SafeConvert<VarUint> for Decimal {
 		}
 	}
 
-	fn saturating_convert(self) -> VarUint {
+	fn saturating_convert(self) -> Uint {
 		if let Some(big_int) = self.inner().to_bigint() {
 			if big_int >= BigInt::from(0) {
-				VarUint(big_int)
+				Uint(big_int)
 			} else {
-				VarUint::zero()
+				Uint::zero()
 			}
 		} else {
-			VarUint::zero()
+			Uint::zero()
 		}
 	}
 
-	fn wrapping_convert(self) -> VarUint {
+	fn wrapping_convert(self) -> Uint {
 		if let Some(big_int) = self.inner().to_bigint() {
-			VarUint(big_int.abs())
+			Uint(big_int.abs())
 		} else {
-			VarUint::zero()
+			Uint::zero()
 		}
 	}
 }
@@ -278,14 +278,14 @@ mod tests {
 		}
 	}
 
-	mod varint {
+	mod int {
 		use super::*;
-		use crate::VarInt;
+		use crate::Int;
 
 		#[test]
 		fn test_checked_convert() {
 			let x = Decimal::from(12345i64);
-			let y: Option<VarInt> = x.checked_convert();
+			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(y.unwrap().to_string(), "12345");
 		}
@@ -293,26 +293,26 @@ mod tests {
 		#[test]
 		fn test_saturating_convert() {
 			let x = Decimal::from(-999999i64);
-			let y: VarInt = x.saturating_convert();
+			let y: Int = x.saturating_convert();
 			assert_eq!(y.to_string(), "-999999");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x = Decimal::from(0i64);
-			let y: VarInt = x.wrapping_convert();
+			let y: Int = x.wrapping_convert();
 			assert_eq!(y.to_string(), "0");
 		}
 	}
 
-	mod varuint {
+	mod uint {
 		use super::*;
-		use crate::VarUint;
+		use crate::Uint;
 
 		#[test]
 		fn test_checked_convert_positive() {
 			let x = Decimal::from(42i64);
-			let y: Option<VarUint> = x.checked_convert();
+			let y: Option<Uint> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(y.unwrap().to_string(), "42");
 		}
@@ -320,21 +320,21 @@ mod tests {
 		#[test]
 		fn test_checked_convert_negative() {
 			let x = Decimal::from(-1i64);
-			let y: Option<VarUint> = x.checked_convert();
+			let y: Option<Uint> = x.checked_convert();
 			assert!(y.is_none());
 		}
 
 		#[test]
 		fn test_saturating_convert() {
 			let x = Decimal::from(-100i64);
-			let y: VarUint = x.saturating_convert();
+			let y: Uint = x.saturating_convert();
 			assert_eq!(y.to_string(), "0");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x = Decimal::from(-1i64);
-			let y: VarUint = x.wrapping_convert();
+			let y: Uint = x.wrapping_convert();
 			assert_eq!(y.to_string(), "1");
 		}
 	}

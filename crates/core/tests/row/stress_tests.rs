@@ -32,8 +32,8 @@ fn test_mixed_type_stress() {
 		Type::Uuid4,
 		Type::Uuid7,
 		Type::IdentityId,
-		Type::VarInt,
-		Type::VarUint,
+		Type::Int,
+		Type::Uint,
 		Type::Decimal,
 	]);
 
@@ -62,8 +62,8 @@ fn test_mixed_type_stress() {
 	layout.set_uuid4(&mut row, 19, Uuid4::generate());
 	layout.set_uuid7(&mut row, 20, Uuid7::generate());
 	layout.set_identity_id(&mut row, 21, IdentityId::generate());
-	layout.set_varint(&mut row, 22, &VarInt::from(i128::MAX));
-	layout.set_varuint(&mut row, 23, &VarUint::from(u128::MAX));
+	layout.set_int(&mut row, 22, &Int::from(i128::MAX));
+	layout.set_uint(&mut row, 23, &Uint::from(u128::MAX));
 	layout.set_decimal(
 		&mut row,
 		24,
@@ -106,8 +106,8 @@ fn test_mixed_type_stress() {
 	assert!(row.is_defined(19));
 	assert!(row.is_defined(20));
 	assert!(row.is_defined(21));
-	assert_eq!(layout.get_varint(&row, 22), VarInt::from(i128::MAX));
-	assert_eq!(layout.get_varuint(&row, 23), VarUint::from(u128::MAX));
+	assert_eq!(layout.get_int(&row, 22), Int::from(i128::MAX));
+	assert_eq!(layout.get_uint(&row, 23), Uint::from(u128::MAX));
 	assert_eq!(
 		layout.get_decimal(&row, 24),
 		Decimal::from_str_with_precision("123.45", 10, 2).unwrap()

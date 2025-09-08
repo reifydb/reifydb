@@ -76,9 +76,9 @@ pub enum Type {
 	/// A binary large object (BLOB)
 	Blob,
 	/// An arbitrary-precision signed integer
-	VarInt,
+	Int,
 	/// An arbitrary-precision unsigned integer
-	VarUint,
+	Uint,
 	/// An arbitrary-precision decimal with precision and scale
 	Decimal,
 	/// Value is not defined (think null in common programming languages)
@@ -93,8 +93,8 @@ impl Type {
 				| Type::Float8 | Type::Int1 | Type::Int2
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
-				| Type::Uint8 | Type::Uint16 | Type::VarInt
-				| Type::VarUint | Type::Decimal { .. }
+				| Type::Uint8 | Type::Uint16 | Type::Int
+				| Type::Uint | Type::Decimal { .. }
 		)
 	}
 
@@ -107,7 +107,7 @@ impl Type {
 			self,
 			Type::Int1
 				| Type::Int2 | Type::Int4 | Type::Int8
-				| Type::Int16 | Type::VarInt
+				| Type::Int16 | Type::Int
 		)
 	}
 
@@ -116,7 +116,7 @@ impl Type {
 			self,
 			Type::Uint1
 				| Type::Uint2 | Type::Uint4 | Type::Uint8
-				| Type::Uint16 | Type::VarUint
+				| Type::Uint16 | Type::Uint
 		)
 	}
 
@@ -176,8 +176,8 @@ impl Type {
 			Type::Uuid4 => 0x14,
 			Type::Uuid7 => 0x15,
 			Type::Blob => 0x16,
-			Type::VarInt => 0x18,
-			Type::VarUint => 0x1A,
+			Type::Int => 0x18,
+			Type::Uint => 0x1A,
 			Type::Decimal {
 				..
 			} => 0x19,
@@ -213,8 +213,8 @@ impl Type {
 			0x15 => Type::Uuid7,
 			0x16 => Type::Blob,
 			0x17 => Type::IdentityId,
-			0x18 => Type::VarInt,
-			0x1A => Type::VarUint,
+			0x18 => Type::Int,
+			0x1A => Type::Uint,
 			0x19 => Type::Decimal,
 			_ => unreachable!(),
 		}
@@ -247,10 +247,10 @@ impl Type {
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
-			Type::Blob => 8,    // offset: u32 + length: u32
-			Type::VarInt => 16, // i128 inline or dynamic
+			Type::Blob => 8, // offset: u32 + length: u32
+			Type::Int => 16, // i128 inline or dynamic
 			// storage with offset + length
-			Type::VarUint => 16, // u128 inline or dynamic
+			Type::Uint => 16, // u128 inline or dynamic
 			// storage with offset + length
 			Type::Decimal {
 				..
@@ -284,10 +284,10 @@ impl Type {
 			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
-			Type::Blob => 4,    // u32 alignment
-			Type::VarInt => 16, // i128 alignment for
+			Type::Blob => 4, // u32 alignment
+			Type::Int => 16, // i128 alignment for
 			// inline storage
-			Type::VarUint => 16, // u128 alignment for
+			Type::Uint => 16, // u128 alignment for
 			// inline storage
 			Type::Decimal {
 				..
@@ -324,8 +324,8 @@ impl Display for Type {
 			Type::Uuid4 => f.write_str("Uuid4"),
 			Type::Uuid7 => f.write_str("Uuid7"),
 			Type::Blob => f.write_str("Blob"),
-			Type::VarInt => f.write_str("VarInt"),
-			Type::VarUint => f.write_str("VarUint"),
+			Type::Int => f.write_str("Int"),
+			Type::Uint => f.write_str("Uint"),
 			Type::Decimal => f.write_str("Decimal"),
 			Type::Undefined => f.write_str("Undefined"),
 		}
@@ -359,8 +359,8 @@ impl From<&Value> for Type {
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
 			Value::Blob(_) => Type::Blob,
-			Value::VarInt(_) => Type::VarInt,
-			Value::VarUint(_) => Type::VarUint,
+			Value::Int(_) => Type::Int,
+			Value::Uint(_) => Type::Uint,
 			Value::Decimal(_) => Type::Decimal,
 		}
 	}
@@ -394,8 +394,8 @@ impl FromStr for Type {
 			"UUID4" => Ok(Type::Uuid4),
 			"UUID7" => Ok(Type::Uuid7),
 			"BLOB" => Ok(Type::Blob),
-			"VARINT" => Ok(Type::VarInt),
-			"VARUINT" => Ok(Type::VarUint),
+			"INT" => Ok(Type::Int),
+			"UINT" => Ok(Type::Uint),
 			"DECIMAL" => Ok(Type::Decimal),
 			"UNDEFINED" => Ok(Type::Undefined),
 			_ => Err(()),

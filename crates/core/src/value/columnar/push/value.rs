@@ -488,16 +488,13 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 
-			Value::VarInt(v) => match self {
-				ColumnData::VarInt(container) => {
-					container.push(v)
-				}
+			Value::Int(v) => match self {
+				ColumnData::Int(container) => container.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
-						ColumnData::varint(vec![]);
-					if let ColumnData::VarInt(
-						new_container,
-					) = &mut new_container
+						ColumnData::int(vec![]);
+					if let ColumnData::Int(new_container) =
+						&mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container
@@ -510,16 +507,15 @@ impl ColumnData {
 				}
 				_ => unimplemented!(),
 			},
-			Value::VarUint(v) => match self {
-				ColumnData::VarUint(container) => {
+			Value::Uint(v) => match self {
+				ColumnData::Uint(container) => {
 					container.push(v)
 				}
 				ColumnData::Undefined(container) => {
 					let mut new_container =
-						ColumnData::varuint(vec![]);
-					if let ColumnData::VarUint(
-						new_container,
-					) = &mut new_container
+						ColumnData::uint(vec![]);
+					if let ColumnData::Uint(new_container) =
+						&mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container

@@ -78,11 +78,11 @@ impl ColumnData {
 			ColumnData::Blob(container) => {
 				ColumnData::Blob(container.take(num))
 			}
-			ColumnData::VarInt(container) => {
-				ColumnData::VarInt(container.take(num))
+			ColumnData::Int(container) => {
+				ColumnData::Int(container.take(num))
 			}
-			ColumnData::VarUint(container) => {
-				ColumnData::VarUint(container.take(num))
+			ColumnData::Uint(container) => {
+				ColumnData::Uint(container.take(num))
 			}
 			ColumnData::Decimal {
 				container,

@@ -2,8 +2,8 @@
 // This file is licensed under the MIT, see license.md file
 
 use crate::{
-	Date, DateTime, Decimal, IdentityId, Interval, Time, Type, Uuid4,
-	Uuid7, VarInt, VarUint,
+	Date, DateTime, Decimal, IdentityId, Int, Interval, Time, Type, Uint,
+	Uuid4, Uuid7,
 };
 
 pub trait GetType {
@@ -136,15 +136,15 @@ impl GetType for Uuid7 {
 	}
 }
 
-impl GetType for VarInt {
+impl GetType for Int {
 	fn get_type() -> Type {
-		Type::VarInt
+		Type::Int
 	}
 }
 
-impl GetType for VarUint {
+impl GetType for Uint {
 	fn get_type() -> Type {
-		Type::VarUint
+		Type::Uint
 	}
 }
 

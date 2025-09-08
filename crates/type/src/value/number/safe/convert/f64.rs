@@ -9,8 +9,8 @@ impl_safe_convert_float_to_signed!(f64 => i8, i16, i32, i64, i128);
 
 impl_safe_convert_float_to_unsigned!(f64 => u8, u16, u32, u64, u128);
 
-impl_safe_convert_float_to_varint!(f64);
-impl_safe_convert_float_to_varuint!(f64);
+impl_safe_convert_float_to_int!(f64);
+impl_safe_convert_float_to_uint!(f64);
 
 impl_safe_convert_to_decimal_from_float!(f64);
 
