@@ -19,9 +19,8 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 		None => vec![0], // Type 0: No constraint
 		Some(Constraint::MaxBytes(max_bytes)) => {
 			let mut bytes = vec![1]; // Type 1: MaxBytes
-			bytes.extend_from_slice(
-				&(*max_bytes as u32).to_le_bytes(),
-			);
+			let max_value: u32 = (*max_bytes).into();
+			bytes.extend_from_slice(&max_value.to_le_bytes());
 			bytes
 		}
 		Some(Constraint::PrecisionScale(precision, scale)) => {

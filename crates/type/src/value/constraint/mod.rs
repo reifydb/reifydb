@@ -5,9 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Error, OwnedFragment, Type, Value,
-	value::constraint::{precision::Precision, scale::Scale},
+	value::constraint::{
+		bytes::MaxBytes, precision::Precision, scale::Scale,
+	},
 };
 
+pub mod bytes;
 pub mod precision;
 pub mod scale;
 
@@ -22,7 +25,7 @@ pub struct TypeConstraint {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {
 	/// Maximum number of bytes for UTF8, BLOB, INT, UINT
-	MaxBytes(usize),
+	MaxBytes(MaxBytes),
 	/// Precision and scale for DECIMAL
 	PrecisionScale(Precision, Scale),
 }
@@ -82,11 +85,12 @@ impl TypeConstraint {
 			(Type::Utf8, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Utf8(s) = value {
 					let byte_len = s.as_bytes().len();
-					if byte_len > *max {
+					let max_value: usize = (*max).into();
+					if byte_len > max_value {
 						return Err(crate::error!(crate::error::diagnostic::constraint::utf8_exceeds_max_bytes(
                             OwnedFragment::None,
                             byte_len,
-                            *max
+                            max_value
                         )));
 					}
 				}
@@ -94,11 +98,12 @@ impl TypeConstraint {
 			(Type::Blob, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Blob(blob) = value {
 					let byte_len = blob.len();
-					if byte_len > *max {
+					let max_value: usize = (*max).into();
+					if byte_len > max_value {
 						return Err(crate::error!(crate::error::diagnostic::constraint::blob_exceeds_max_bytes(
                             OwnedFragment::None,
                             byte_len,
-                            *max
+                            max_value
                         )));
 					}
 				}
@@ -113,11 +118,12 @@ impl TypeConstraint {
 					let str_len = vi.to_string().len();
 					let byte_len =
 						(str_len * 415 / 1000) + 1; // Rough estimate
-					if byte_len > *max {
+					let max_value: usize = (*max).into();
+					if byte_len > max_value {
 						return Err(crate::error!(crate::error::diagnostic::constraint::int_exceeds_max_bytes(
                             OwnedFragment::None,
                             byte_len,
-                            *max
+                            max_value
                         )));
 					}
 				}
@@ -132,11 +138,12 @@ impl TypeConstraint {
 					let str_len = vu.to_string().len();
 					let byte_len =
 						(str_len * 415 / 1000) + 1; // Rough estimate
-					if byte_len > *max {
+					let max_value: usize = (*max).into();
+					if byte_len > max_value {
 						return Err(crate::error!(crate::error::diagnostic::constraint::uint_exceeds_max_bytes(
                             OwnedFragment::None,
                             byte_len,
-                            *max
+                            max_value
                         )));
 					}
 				}
@@ -211,8 +218,8 @@ impl TypeConstraint {
 	pub fn to_string(&self) -> String {
 		match &self.constraint {
 			None => format!("{}", self.base_type),
-			Some(Constraint::MaxBytes(n)) => {
-				format!("{}({})", self.base_type, n)
+			Some(Constraint::MaxBytes(max)) => {
+				format!("{}({})", self.base_type, max)
 			}
 			Some(Constraint::PrecisionScale(p, s)) => {
 				format!("{}({},{})", self.base_type, p, s)
@@ -237,10 +244,13 @@ mod tests {
 	fn test_constrained_utf8() {
 		let tc = TypeConstraint::with_constraint(
 			Type::Utf8,
-			Constraint::MaxBytes(50),
+			Constraint::MaxBytes(MaxBytes::new(50)),
 		);
 		assert_eq!(tc.base_type, Type::Utf8);
-		assert_eq!(tc.constraint, Some(Constraint::MaxBytes(50)));
+		assert_eq!(
+			tc.constraint,
+			Some(Constraint::MaxBytes(MaxBytes::new(50)))
+		);
 		assert!(!tc.is_unconstrained());
 	}
 
@@ -267,7 +277,7 @@ mod tests {
 	fn test_validate_utf8_within_limit() {
 		let tc = TypeConstraint::with_constraint(
 			Type::Utf8,
-			Constraint::MaxBytes(10),
+			Constraint::MaxBytes(MaxBytes::new(10)),
 		);
 		let value = Value::Utf8("hello".to_string());
 		assert!(tc.validate(&value).is_ok());
@@ -277,7 +287,7 @@ mod tests {
 	fn test_validate_utf8_exceeds_limit() {
 		let tc = TypeConstraint::with_constraint(
 			Type::Utf8,
-			Constraint::MaxBytes(5),
+			Constraint::MaxBytes(MaxBytes::new(5)),
 		);
 		let value = Value::Utf8("hello world".to_string());
 		assert!(tc.validate(&value).is_err());
@@ -296,7 +306,7 @@ mod tests {
 	fn test_validate_undefined() {
 		let tc = TypeConstraint::with_constraint(
 			Type::Utf8,
-			Constraint::MaxBytes(5),
+			Constraint::MaxBytes(MaxBytes::new(5)),
 		);
 		let value = Value::Undefined;
 		assert!(tc.validate(&value).is_ok());
@@ -309,7 +319,7 @@ mod tests {
 
 		let tc2 = TypeConstraint::with_constraint(
 			Type::Utf8,
-			Constraint::MaxBytes(50),
+			Constraint::MaxBytes(MaxBytes::new(50)),
 		);
 		assert_eq!(tc2.to_string(), "Utf8(50)");
 

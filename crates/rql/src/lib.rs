@@ -66,26 +66,34 @@ pub(crate) fn convert_data_type_with_constraints(
 				(Type::Utf8, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
 				(Type::Blob, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
 				(Type::Int, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
 				(Type::Uint, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
 				(
 					Type::Decimal,
