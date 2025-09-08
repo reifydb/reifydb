@@ -592,7 +592,8 @@ impl WebSocketHandler {
 		let mut all_frames = Vec::new();
 
 		for statement in &cmd_req.statements {
-			let params = self.convert_params(&cmd_req.params)?;
+			let params =
+				cmd_req.params.clone().unwrap_or(Params::None);
 
 			match conn.engine().command_as(
 				&Identity::System {
@@ -640,7 +641,10 @@ impl WebSocketHandler {
 		let mut all_frames = Vec::new();
 
 		for statement in &query_req.statements {
-			let params = self.convert_params(&query_req.params)?;
+			let params = query_req
+				.params
+				.clone()
+				.unwrap_or(Params::None);
 
 			match conn.engine().query_as(
 				&Identity::System {
@@ -677,21 +681,6 @@ impl WebSocketHandler {
 		Ok(ResponsePayload::Query(QueryResponse {
 			frames: all_frames,
 		}))
-	}
-
-	fn convert_params(
-		&self,
-		params: &Option<super::WsParams>,
-	) -> ProtocolResult<Params> {
-		match params {
-			Some(super::WsParams::Positional(values)) => {
-				Ok(Params::Positional(values.clone()))
-			}
-			Some(super::WsParams::Named(map)) => {
-				Ok(Params::Named(map.clone()))
-			}
-			None => Ok(Params::None),
-		}
 	}
 
 	fn convert_result_to_frames(
