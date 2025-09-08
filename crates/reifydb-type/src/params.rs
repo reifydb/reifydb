@@ -1,6 +1,9 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the MIT, see license.md file
+
 use std::collections::HashMap;
 
-use reifydb_type::Value;
+use crate::Value;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Params {
@@ -58,12 +61,12 @@ impl<const N: usize> From<[Value; N]> for Params {
 macro_rules! params {
     // Empty params
     () => {
-        $crate::interface::Params::None
+        $crate::Params::None
     };
 
     // Empty named parameters
     {} => {
-        $crate::interface::Params::None
+        $crate::Params::None
     };
 
     // Named parameters with mixed keys: params!{ name: value, "key": value }
@@ -71,24 +74,24 @@ macro_rules! params {
         {
             let mut map = ::std::collections::HashMap::new();
             $(
-                map.insert($crate::params_key!($key), reifydb_type::value::IntoValue::into_value($value));
+                map.insert($crate::params_key!($key), $crate::IntoValue::into_value($value));
             )*
-            $crate::interface::Params::Named(map)
+            $crate::Params::Named(map)
         }
     };
 
     // Empty positional parameters
     [] => {
-        $crate::interface::Params::None
+        $crate::Params::None
     };
 
     // Positional parameters: params![value1, value2, ...]
     [ $($value:expr),+ $(,)? ] => {
         {
             let values = vec![
-                $(reifydb_type::value::IntoValue::into_value($value)),*
+                $($crate::IntoValue::into_value($value)),*
             ];
-            $crate::interface::Params::Positional(values)
+            $crate::Params::Positional(values)
         }
     };
 }
@@ -106,9 +109,8 @@ macro_rules! params_key {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::IntoValue;
-
 	use super::*;
+	use crate::IntoValue;
 
 	#[test]
 	fn test_params_macro_positional() {

@@ -8,7 +8,6 @@ mod engine;
 pub mod evaluate;
 mod execute;
 pub mod key;
-mod params;
 mod storage;
 pub mod subsystem;
 mod transaction;
@@ -20,10 +19,9 @@ pub use engine::*;
 pub use evaluate::*;
 pub use execute::*;
 pub use key::*;
-pub use params::*;
 pub use reifydb_type::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
-	StatementColumn, StatementLine,
+	Params, StatementColumn, StatementLine,
 };
 pub use storage::*;
 pub use transaction::*;
