@@ -340,14 +340,15 @@ impl Compiler {
 							unimplemented!("system tables do not support indexes yet");
 						}
 						let table = match scan.source.fragment() {
-							"sequences" => SystemCatalog::sequences(),
-							"schemas" => SystemCatalog::schemas(),
-							"tables" => SystemCatalog::tables(),
-							"views" => SystemCatalog::views(),
-							"columns" => SystemCatalog::columns(),
-							"primary_keys" => SystemCatalog::primary_keys(),
-							"primary_key_columns" => SystemCatalog::primary_key_columns(),
-							"column_policies" => SystemCatalog::column_policies(),
+							"sequences" => SystemCatalog::get_system_sequences_table_def(),
+							"schemas" => SystemCatalog::get_system_schemas_table_def(),
+							"tables" => SystemCatalog::get_system_tables_table_def(),
+							"views" => SystemCatalog::get_system_views_table_def(),
+							"columns" => SystemCatalog::get_system_columns_table_def(),
+							"primary_keys" => SystemCatalog::get_system_primary_keys_table_def(),
+							"primary_key_columns" => SystemCatalog::get_system_primary_key_columns_table_def(),
+							"column_policies" => SystemCatalog::get_system_column_policies_table_def(),
+							"versions" => SystemCatalog::get_system_versions_table_def(),
 							_ => {
 								return_error!(
 									table_not_found(

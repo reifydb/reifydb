@@ -14,7 +14,7 @@ use std::{ops::Deref, sync::Arc};
 pub use command::*;
 pub use query::*;
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
 	interface::{UnversionedTransaction, VersionedStorage},
 };
@@ -73,7 +73,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
 		}
 	}
 
-	fn version(&self) -> crate::Result<Version> {
+	fn version(&self) -> crate::Result<CommitVersion> {
 		self.tm.version()
 	}
 }
@@ -101,7 +101,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
-	pub fn version(&self) -> crate::Result<Version> {
+	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
 	pub fn begin_query(&self) -> crate::Result<QueryTransaction<VS, UT>> {
@@ -126,7 +126,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 	pub fn get(
 		&self,
 		key: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.versioned.get(key, version)?.map(|sv| sv.into()))
 	}
@@ -134,21 +134,21 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 	pub fn contains_key(
 		&self,
 		key: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<bool, reifydb_type::Error> {
 		self.versioned.contains(key, version)
 	}
 
 	pub fn scan(
 		&self,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<VS::ScanIter<'_>, reifydb_type::Error> {
 		self.versioned.scan(version)
 	}
 
 	pub fn scan_rev(
 		&self,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<VS::ScanIterRev<'_>, reifydb_type::Error> {
 		self.versioned.scan_rev(version)
 	}
@@ -156,7 +156,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<VS::RangeIter<'_>, reifydb_type::Error> {
 		self.versioned.range(range, version)
 	}
@@ -164,7 +164,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<VS::RangeIterRev<'_>, reifydb_type::Error> {
 		self.versioned.range_rev(range, version)
 	}

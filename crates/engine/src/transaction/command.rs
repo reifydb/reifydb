@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
 	event::EventBus,
 	interceptor,
@@ -176,7 +176,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Commit the transaction.
 	/// Since unversioned transactions are short-lived and auto-commit,
 	/// this only commits the versioned transaction.
-	pub fn commit(&mut self) -> crate::Result<Version> {
+	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
 		TransactionInterceptor::pre_commit(self)?;
@@ -221,7 +221,7 @@ impl<T: Transaction> VersionedQueryTransaction
 	for StandardCommandTransaction<T>
 {
 	#[inline]
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		self.versioned.as_ref().unwrap().version()
 	}
 
@@ -314,7 +314,7 @@ impl<T: Transaction> VersionedCommandTransaction
 	}
 
 	#[inline]
-	fn commit(mut self) -> crate::Result<Version> {
+	fn commit(mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
 		self.versioned.take().unwrap().commit()

@@ -16,7 +16,7 @@ use std::{
 };
 
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned,
 	},
@@ -200,7 +200,7 @@ pub(crate) fn execute_batched_range_query(
 	stmt: &mut Statement,
 	start_bound: Bound<&EncodedKey>,
 	end_bound: Bound<&EncodedKey>,
-	version: Version,
+	version: CommitVersion,
 	batch_size: usize,
 	param_count: u8,
 	buffer: &mut VecDeque<Versioned>,
@@ -334,7 +334,7 @@ pub(crate) fn get_table_names(conn: &ReadConnection) -> Vec<String> {
 pub(crate) fn execute_scan_query(
 	conn: &ReadConnection,
 	table_names: &[String],
-	version: Version,
+	version: CommitVersion,
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	interface::{SchemaDef, SchemaId},
 };
 
@@ -13,7 +13,7 @@ impl MaterializedCatalog {
 	pub fn find_schema(
 		&self,
 		schema: SchemaId,
-		version: Version,
+		version: CommitVersion,
 	) -> Option<SchemaDef> {
 		self.schemas.get(&schema).and_then(|entry| {
 			let versioned = entry.value();
@@ -25,7 +25,7 @@ impl MaterializedCatalog {
 	pub fn find_schema_by_name(
 		&self,
 		schema: &str,
-		version: Version,
+		version: CommitVersion,
 	) -> Option<SchemaDef> {
 		self.schemas_by_name.get(schema).and_then(|entry| {
 			let schema_id = *entry.value();
@@ -36,7 +36,7 @@ impl MaterializedCatalog {
 	pub fn set_schema(
 		&self,
 		id: SchemaId,
-		version: Version,
+		version: CommitVersion,
 		schema: Option<SchemaDef>,
 	) {
 		// Look up the current schema to update the index

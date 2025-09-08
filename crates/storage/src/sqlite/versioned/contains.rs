@@ -1,14 +1,20 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::{EncodedKey, Result, Version, interface::VersionedContains};
+use reifydb_core::{
+	CommitVersion, EncodedKey, Result, interface::VersionedContains,
+};
 use rusqlite::params;
 
 use super::table_name;
 use crate::sqlite::Sqlite;
 
 impl VersionedContains for Sqlite {
-	fn contains(&self, key: &EncodedKey, version: Version) -> Result<bool> {
+	fn contains(
+		&self,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<bool> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 

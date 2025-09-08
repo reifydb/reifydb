@@ -11,7 +11,7 @@
 
 use crossbeam_skiplist::map::Range as MapRange;
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Result, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange, Result,
 	interface::{
 		Unversioned, UnversionedRange as RangeInterface, Versioned,
 		VersionedRange,
@@ -30,7 +30,7 @@ impl VersionedRange for Memory {
 	fn range(
 		&self,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<Self::RangeIter<'_>> {
 		Ok(Range {
 			range: self.versioned.range(range),
@@ -47,7 +47,7 @@ pub struct Range<'a> {
 		EncodedKey,
 		VersionedRow,
 	>,
-	pub(crate) version: Version,
+	pub(crate) version: CommitVersion,
 }
 
 impl Iterator for Range<'_> {

@@ -201,7 +201,9 @@ impl PendingWrites {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{CowVec, EncodedKey, Version, row::EncodedRow};
+	use reifydb_core::{
+		CommitVersion, CowVec, EncodedKey, row::EncodedRow,
+	};
 
 	use super::*;
 
@@ -214,7 +216,7 @@ mod tests {
 	}
 
 	fn create_test_pending(
-		version: Version,
+		version: CommitVersion,
 		key: &str,
 		row_data: &str,
 	) -> Pending {
@@ -269,7 +271,7 @@ mod tests {
 		for i in 0..10 {
 			let key = create_test_key(&format!("key{:02}", i));
 			let pending = create_test_pending(
-				i as Version,
+				i as CommitVersion,
 				&format!("key{:02}", i),
 				&format!("value{}", i),
 			);
@@ -291,7 +293,7 @@ mod tests {
 		for i in 0..5 {
 			let key = create_test_key(&format!("key{}", i));
 			let pending = create_test_pending(
-				i as Version,
+				i as CommitVersion,
 				&format!("key{}", i),
 				&format!("value{}", i),
 			);
@@ -325,7 +327,7 @@ mod tests {
 		for i in 0..1000 {
 			let key = create_test_key(&format!("key{:06}", i));
 			let pending = create_test_pending(
-				i as Version,
+				i as CommitVersion,
 				&format!("key{:06}", i),
 				&format!("value{}", i),
 			);
@@ -353,7 +355,7 @@ mod tests {
 		for i in 0..10 {
 			let key = create_test_key(&format!("key{}", i));
 			let pending = create_test_pending(
-				i as Version,
+				i as CommitVersion,
 				&format!("key{}", i),
 				&format!("value{}", i),
 			);

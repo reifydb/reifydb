@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-	Version, define_api_function, define_closure_interceptor,
+	CommitVersion, define_api_function, define_closure_interceptor,
 	define_interceptor, interface::TransactionId,
 };
 
@@ -35,7 +35,7 @@ define_interceptor!(
 	trait: PostCommitInterceptor<T>,
 	fields: {
 		id: TransactionId,
-		version: Version,
+		version: CommitVersion,
 		changes: TransactionalChanges}
 );
 

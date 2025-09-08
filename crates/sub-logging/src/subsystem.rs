@@ -17,9 +17,12 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use parking_lot::RwLock;
 use reifydb_core::{
 	Result,
-	interface::subsystem::{
-		HealthStatus, Subsystem,
-		logging::{LogBackend, LogLevel, Record},
+	interface::{
+		subsystem::{
+			HealthStatus, Subsystem,
+			logging::{LogBackend, LogLevel, Record},
+		},
+		version::{ComponentKind, HasVersion, SystemVersion},
 	},
 	return_internal_error,
 };
@@ -302,5 +305,17 @@ impl Drop for LoggingSubsystem {
 	fn drop(&mut self) {
 		// Shutdown the subsystem gracefully
 		let _ = self.shutdown();
+	}
+}
+
+impl HasVersion for LoggingSubsystem {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: "sub-logging".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "Asynchronous logging subsystem"
+				.to_string(),
+			kind: ComponentKind::Subsystem,
+		}
 	}
 }

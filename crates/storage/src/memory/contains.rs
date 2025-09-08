@@ -2,14 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey, Result, Version,
+	CommitVersion, EncodedKey, Result,
 	interface::{UnversionedContains, VersionedContains},
 };
 
 use crate::memory::Memory;
 
 impl VersionedContains for Memory {
-	fn contains(&self, key: &EncodedKey, version: Version) -> Result<bool> {
+	fn contains(
+		&self,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<bool> {
 		let result = match self.versioned.get(key) {
 			None => false,
 			Some(values) => values.value().get(version).is_some(),

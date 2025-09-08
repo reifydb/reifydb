@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	CatalogViewQueryOperations, MaterializedCatalog,
 };
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	interface::{
 		SchemaDef, SchemaId, TableDef, TableId, Transaction,
 		VersionedQueryTransaction, ViewDef, ViewId,
@@ -22,7 +22,7 @@ impl<T: Transaction> CatalogTransaction for StandardQueryTransaction<T> {
 		&self.catalog
 	}
 
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		self.versioned.version()
 	}
 }

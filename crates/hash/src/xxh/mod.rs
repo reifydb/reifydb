@@ -114,7 +114,7 @@ mod tests {
 
 		#[test]
 		fn test_large_input() {
-			let data = alloc::vec![b'a'; 1024];
+			let data = vec![b'a'; 1024];
 			let result = xxh3_64(&data);
 			assert_eq!(result, Hash64(5358556820880783900));
 		}
@@ -158,7 +158,7 @@ mod tests {
 
 		#[test]
 		fn test_large_input() {
-			let data = alloc::vec![b'a'; 1024];
+			let data = vec![b'a'; 1024];
 			let result = xxh3_128(&data);
 			assert_eq!(
 				result,

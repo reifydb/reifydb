@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	CatalogTransaction, MaterializedCatalog, TransactionalChangesExt,
 };
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	diagnostic::catalog::{
 		schema_already_pending_in_transaction,
 		table_already_pending_in_transaction,
@@ -29,7 +29,7 @@ impl<T: Transaction> CatalogTransaction for StandardCommandTransaction<T> {
 		&self.catalog
 	}
 
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		VersionedQueryTransaction::version(
 			self.versioned.as_ref().unwrap(),
 		)

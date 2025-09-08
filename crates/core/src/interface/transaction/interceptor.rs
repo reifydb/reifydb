@@ -4,7 +4,7 @@
 use reifydb_type::RowNumber;
 
 use crate::{
-	Version,
+	CommitVersion,
 	interceptor::{
 		Chain, PostCommitInterceptor, PreCommitInterceptor,
 		SchemaDefPostCreateInterceptor, SchemaDefPostUpdateInterceptor,
@@ -135,7 +135,7 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 	fn post_commit(
 		&mut self,
 		id: TransactionId,
-		version: Version,
+		version: CommitVersion,
 		changes: TransactionalChanges,
 	) -> crate::Result<()>;
 }

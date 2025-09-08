@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_type::Result;
 
 use super::CdcEvent;
-use crate::Version;
+use crate::CommitVersion;
 
 /// Combined trait for all CDC storage operations
 pub trait CdcStorage:
@@ -16,7 +16,7 @@ pub trait CdcStorage:
 
 /// Retrieve CDC events for a specific version
 pub trait CdcGet: Send + Sync {
-	fn get(&self, version: Version) -> Result<Vec<CdcEvent>>;
+	fn get(&self, version: CommitVersion) -> Result<Vec<CdcEvent>>;
 }
 
 /// Query CDC events within a version range
@@ -27,8 +27,8 @@ pub trait CdcRange: Send + Sync {
 
 	fn range(
 		&self,
-		start: Bound<Version>,
-		end: Bound<Version>,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
 	) -> Result<Self::RangeIter<'_>>;
 }
 
@@ -43,5 +43,5 @@ pub trait CdcScan: Send + Sync {
 
 /// Count CDC events for a specific version
 pub trait CdcCount: Send + Sync {
-	fn count(&self, version: Version) -> Result<usize>;
+	fn count(&self, version: CommitVersion) -> Result<usize>;
 }

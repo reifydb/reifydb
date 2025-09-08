@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	CowVec, Version,
+	CommitVersion, CowVec,
 	interface::{CommandTransaction, QueryTransaction, ToConsumerKey},
 	row::EncodedRow,
 };
@@ -13,7 +13,7 @@ impl CdcCheckpoint {
 	pub fn fetch<K: ToConsumerKey>(
 		txn: &mut impl QueryTransaction,
 		consumer: &K,
-	) -> crate::Result<Version> {
+	) -> crate::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
 		txn.get(&key)?
 			.and_then(|record| {
@@ -34,7 +34,7 @@ impl CdcCheckpoint {
 	pub fn persist<K: ToConsumerKey>(
 		txn: &mut impl CommandTransaction,
 		consumer: &K,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.to_be_bytes().to_vec();

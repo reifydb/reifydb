@@ -26,7 +26,7 @@ pub struct PrimaryKeys<T: Transaction> {
 impl<T: Transaction> PrimaryKeys<T> {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::primary_keys().clone(),
+			definition: SystemCatalog::get_system_primary_keys_table_def().clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}

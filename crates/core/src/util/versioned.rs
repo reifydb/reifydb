@@ -8,7 +8,7 @@ use std::{
 
 use crossbeam_skiplist::SkipMap;
 
-use crate::Version;
+use crate::CommitVersion;
 
 /// A thread-safe container for versioned values.
 ///
@@ -21,7 +21,7 @@ pub struct VersionedContainer<T: Debug + Clone + Send + Sync + 'static> {
 
 #[derive(Debug)]
 struct VersionedDefInner<T: Debug + Clone + Send + Sync + 'static> {
-	versions: SkipMap<Version, Option<T>>,
+	versions: SkipMap<CommitVersion, Option<T>>,
 }
 
 impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
@@ -35,7 +35,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	}
 
 	/// Creates a new versioned definition with initial data.
-	pub fn with_initial(version: Version, def: Option<T>) -> Self {
+	pub fn with_initial(version: CommitVersion, def: Option<T>) -> Self {
 		let versioned = Self::new();
 		versioned.insert(version, def);
 		versioned
@@ -46,7 +46,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// Returns the previous definition at this version if one existed.
 	pub fn insert(
 		&self,
-		version: Version,
+		version: CommitVersion,
 		def: Option<T>,
 	) -> Option<Option<T>> {
 		let inner = self.inner.write().unwrap();
@@ -64,7 +64,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	///
 	/// This returns the definition with the highest version that is <= the
 	/// requested version.
-	pub fn get(&self, version: Version) -> Option<T> {
+	pub fn get(&self, version: CommitVersion) -> Option<T> {
 		let inner = self.inner.read().unwrap();
 
 		// Find the entry with the highest version <= requested version
@@ -78,7 +78,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	///
 	/// Unlike `get`, this only returns a definition if there's an exact
 	/// version match.
-	pub fn get_exact(&self, version: Version) -> Option<T> {
+	pub fn get_exact(&self, version: CommitVersion) -> Option<T> {
 		let inner = self.inner.read().unwrap();
 		inner.versions
 			.get(&version)
@@ -94,9 +94,9 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// Gets all definitions within a version range (inclusive).
 	pub fn get_range(
 		&self,
-		start: Version,
-		end: Version,
-	) -> Vec<(Version, Option<T>)> {
+		start: CommitVersion,
+		end: CommitVersion,
+	) -> Vec<(CommitVersion, Option<T>)> {
 		let inner = self.inner.read().unwrap();
 		inner.versions
 			.range(start..=end)
@@ -105,7 +105,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	}
 
 	/// Gets all versions that have definitions.
-	pub fn versions(&self) -> Vec<Version> {
+	pub fn versions(&self) -> Vec<CommitVersion> {
 		let inner = self.inner.read().unwrap();
 		inner.versions.iter().map(|entry| *entry.key()).collect()
 	}
@@ -113,7 +113,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// Removes a definition at a specific version.
 	///
 	/// Returns the removed definition if one existed.
-	pub fn remove(&self, version: Version) -> Option<Option<T>> {
+	pub fn remove(&self, version: CommitVersion) -> Option<Option<T>> {
 		let inner = self.inner.write().unwrap();
 		inner.versions
 			.remove(&version)
@@ -121,7 +121,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	}
 
 	/// Checks if a definition exists at a specific version.
-	pub fn contains_version(&self, version: Version) -> bool {
+	pub fn contains_version(&self, version: CommitVersion) -> bool {
 		let inner = self.inner.read().unwrap();
 		inner.versions.contains_key(&version)
 	}
@@ -150,7 +150,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// acquires the write lock only once.
 	pub fn bulk_insert(
 		&self,
-		versions: impl IntoIterator<Item = (Version, Option<T>)>,
+		versions: impl IntoIterator<Item = (CommitVersion, Option<T>)>,
 	) {
 		let inner = self.inner.write().unwrap();
 		for (version, def) in versions {

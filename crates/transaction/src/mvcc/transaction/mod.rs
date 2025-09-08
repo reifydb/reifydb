@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 pub use command::*;
 use oracle::*;
-use reifydb_core::{Version, interface::TransactionId};
+use reifydb_core::{CommitVersion, interface::TransactionId};
 use version::VersionProvider;
 
 pub use crate::mvcc::types::*;
@@ -94,7 +94,7 @@ where
 		})
 	}
 
-	pub fn version(&self) -> crate::Result<Version> {
+	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.inner.version()
 	}
 }
@@ -103,13 +103,13 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	pub fn discard_hint(&self) -> Version {
+	pub fn discard_hint(&self) -> CommitVersion {
 		self.inner.discard_at_or_below()
 	}
 
 	pub fn query(
 		&self,
-		version: Option<Version>,
+		version: Option<CommitVersion>,
 	) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			TransactionManagerQuery::new_time_travel(

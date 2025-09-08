@@ -26,7 +26,9 @@ pub struct Sequences<T: Transaction> {
 impl<T: Transaction> Sequences<T> {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::sequences().clone(),
+			definition:
+				SystemCatalog::get_system_sequences_table_def()
+					.clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}

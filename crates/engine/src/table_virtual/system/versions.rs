@@ -1,0 +1,108 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use std::{marker::PhantomData, sync::Arc};
+
+use reifydb_catalog::{CatalogTransaction, system::SystemCatalog};
+use reifydb_core::{
+	Result,
+	interface::{TableVirtualDef, Transaction},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
+};
+
+use crate::{
+	StandardTransaction,
+	execute::Batch,
+	table_virtual::{TableVirtual, TableVirtualContext},
+};
+
+/// Virtual table that exposes system version information
+pub struct Versions<T: Transaction> {
+	definition: Arc<TableVirtualDef>,
+	exhausted: bool,
+	_phantom: PhantomData<T>,
+}
+
+impl<T: Transaction> Versions<T> {
+	pub fn new() -> Self {
+		Self {
+			definition:
+				SystemCatalog::get_system_versions_table_def()
+					.clone(),
+			exhausted: false,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
+	fn initialize(
+		&mut self,
+		_txn: &mut StandardTransaction<'a, T>,
+		_ctx: TableVirtualContext<'a>,
+	) -> Result<()> {
+		self.exhausted = false;
+		Ok(())
+	}
+
+	fn next(
+		&mut self,
+		txn: &mut StandardTransaction<'a, T>,
+	) -> Result<Option<Batch>> {
+		if self.exhausted {
+			return Ok(None);
+		}
+
+		// Get versions from SystemCatalog via MaterializedCatalog
+		let versions = txn
+			.catalog()
+			.system_catalog()
+			.map(|sc| sc.get_system_versions())
+			.unwrap_or(&[]); // Empty if not initialized (for tests)
+
+		let mut names_to_insert =
+			ColumnData::utf8_with_capacity(versions.len());
+		let mut versions_to_insert =
+			ColumnData::utf8_with_capacity(versions.len());
+		let mut descriptions_to_insert =
+			ColumnData::utf8_with_capacity(versions.len());
+		let mut kinds_to_insert =
+			ColumnData::utf8_with_capacity(versions.len());
+
+		for version in versions {
+			names_to_insert.push(version.name.as_str());
+			versions_to_insert.push(version.version.as_str());
+			descriptions_to_insert
+				.push(version.description.as_str());
+			kinds_to_insert.push(version.kind.to_string().as_str());
+		}
+
+		let columns = vec![
+			Column::ColumnQualified(ColumnQualified {
+				name: "name".to_string(),
+				data: names_to_insert,
+			}),
+			Column::ColumnQualified(ColumnQualified {
+				name: "kind".to_string(),
+				data: kinds_to_insert,
+			}),
+			Column::ColumnQualified(ColumnQualified {
+				name: "version".to_string(),
+				data: versions_to_insert,
+			}),
+			Column::ColumnQualified(ColumnQualified {
+				name: "description".to_string(),
+				data: descriptions_to_insert,
+			}),
+		];
+
+		self.exhausted = true;
+		Ok(Some(Batch {
+			columns: Columns::new(columns),
+		}))
+	}
+
+	fn definition(&self) -> &TableVirtualDef {
+		&self.definition
+	}
+}

@@ -18,6 +18,8 @@ use reifydb_core::{
 	util::VersionedContainer,
 };
 
+use crate::system::SystemCatalog;
+
 pub type VersionedSchemaDef = VersionedContainer<SchemaDef>;
 pub type VersionedTableDef = VersionedContainer<TableDef>;
 pub type VersionedViewDef = VersionedContainer<ViewDef>;
@@ -49,6 +51,9 @@ pub struct MaterializedCatalogInner {
 
 	/// Versioned primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, VersionedPrimaryKeyDef>,
+
+	/// System catalog with version information (None until initialized)
+	pub(crate) system_catalog: Option<SystemCatalog>,
 }
 
 impl std::ops::Deref for MaterializedCatalog {
@@ -75,6 +80,23 @@ impl MaterializedCatalog {
 			views: SkipMap::new(),
 			views_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
+			system_catalog: None,
 		}))
+	}
+
+	/// Set the system catalog (called once during database initialization)
+	pub fn set_system_catalog(&self, catalog: SystemCatalog) {
+		// Use unsafe to mutate through Arc (safe because only called
+		// once during init)
+		unsafe {
+			let inner = Arc::as_ptr(&self.0)
+				as *mut MaterializedCatalogInner;
+			(*inner).system_catalog = Some(catalog);
+		}
+	}
+
+	/// Get the system catalog
+	pub fn system_catalog(&self) -> Option<&SystemCatalog> {
+		self.0.system_catalog.as_ref()
 	}
 }

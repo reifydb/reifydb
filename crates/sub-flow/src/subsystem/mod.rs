@@ -14,6 +14,7 @@ use reifydb_core::{
 	interface::{
 		CdcConsumer, ConsumerId, Transaction,
 		subsystem::{HealthStatus, Subsystem, workerpool::Priority},
+		version::{ComponentKind, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
 };
@@ -108,5 +109,18 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
+	}
+}
+
+impl<T: Transaction> HasVersion for FlowSubsystem<T> {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: "sub-flow".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description:
+				"Data flow and stream processing subsystem"
+					.to_string(),
+			kind: ComponentKind::Subsystem,
+		}
 	}
 }

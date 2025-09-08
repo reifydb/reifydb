@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use crossbeam_skiplist::map::Entry;
 use reifydb_core::{
-	Result, Version,
+	CommitVersion, Result,
 	interface::{CdcEvent, CdcRange},
 };
 
@@ -16,8 +16,8 @@ impl CdcRange for Memory {
 
 	fn range(
 		&self,
-		start: Bound<Version>,
-		end: Bound<Version>,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
 	) -> Result<Self::RangeIter<'_>> {
 		Ok(Range {
 			version_iter: Box::new(
@@ -31,7 +31,9 @@ impl CdcRange for Memory {
 
 pub struct Range<'a> {
 	version_iter: Box<
-		dyn Iterator<Item = Entry<'a, Version, CdcTransaction>> + 'a,
+		dyn Iterator<
+				Item = Entry<'a, CommitVersion, CdcTransaction>,
+			> + 'a,
 	>,
 	current_events: Vec<CdcEvent>,
 	current_index: usize,

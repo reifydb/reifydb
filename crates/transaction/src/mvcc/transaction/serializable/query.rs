@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{UnversionedTransaction, VersionedStorage},
 };
 
@@ -32,7 +32,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 {
 	pub fn new(
 		engine: Serializable<VS, UT>,
-		version: Option<Version>,
+		version: Option<CommitVersion>,
 	) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
@@ -45,7 +45,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	QueryTransaction<VS, UT>
 {
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
 

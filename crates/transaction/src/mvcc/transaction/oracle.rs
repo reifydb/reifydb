@@ -7,7 +7,7 @@ use std::{
 };
 
 use parking_lot::{Mutex, RwLock};
-use reifydb_core::{EncodedKey, Version, util::bloom::BloomFilter};
+use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
 
 use crate::mvcc::{
 	conflict::ConflictManager,
@@ -16,7 +16,7 @@ use crate::mvcc::{
 };
 
 /// Configuration for the efficient oracle
-const DEFAULT_WINDOW_SIZE: Version = 1000;
+const DEFAULT_WINDOW_SIZE: CommitVersion = 1000;
 const MAX_WINDOWS: usize = 50;
 const CLEANUP_THRESHOLD: usize = 40;
 pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
@@ -30,14 +30,14 @@ pub(super) struct CommittedWindow {
 	/// Bloom filter for fast negative checks
 	bloom: BloomFilter,
 	/// Maximum version in this window  
-	max_version: Version,
+	max_version: CommitVersion,
 	/// Per-window lock for fine-grained synchronization (parking_lot is
 	/// more efficient)
 	lock: RwLock<()>,
 }
 
 impl CommittedWindow {
-	fn new(min_version: Version) -> Self {
+	fn new(min_version: CommitVersion) -> Self {
 		Self {
 			transactions: Vec::with_capacity(200),
 			modified_keys: HashSet::with_capacity(500),
@@ -78,27 +78,27 @@ where
 	L: VersionProvider,
 {
 	pub clock: L,
-	pub last_cleanup: Version,
+	pub last_cleanup: CommitVersion,
 
 	/// Time windows containing committed transactions, keyed by window
 	/// start version
-	pub time_windows: BTreeMap<Version, CommittedWindow>,
+	pub time_windows: BTreeMap<CommitVersion, CommittedWindow>,
 
 	/// Index: key -> set of window versions that modified this key
-	pub key_to_windows: HashMap<EncodedKey, BTreeSet<Version>>,
+	pub key_to_windows: HashMap<EncodedKey, BTreeSet<CommitVersion>>,
 
 	/// Current window size for new windows
-	pub window_size: Version,
+	pub window_size: CommitVersion,
 }
 
 #[derive(Debug)]
 pub(super) struct CommittedTxn {
-	version: Version,
+	version: CommitVersion,
 	conflict_manager: Option<ConflictManager>,
 }
 
 pub(super) enum CreateCommitResult {
-	Success(Version),
+	Success(CommitVersion),
 	Conflict(ConflictManager),
 }
 
@@ -162,7 +162,7 @@ where
 	pub(super) fn new_commit(
 		&self,
 		done_read: &mut bool,
-		version: Version,
+		version: CommitVersion,
 		conflicts: ConflictManager,
 	) -> crate::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
@@ -177,7 +177,7 @@ where
 			!read_keys.is_empty() || !conflict_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
-		let relevant_windows: Vec<Version> = if !has_keys {
+		let relevant_windows: Vec<CommitVersion> = if !has_keys {
 			// If no specific keys, we need to check recent windows
 			// for range/all operations
 			inner.time_windows
@@ -324,11 +324,11 @@ where
 		Ok(CreateCommitResult::Success(commit_version))
 	}
 
-	pub(super) fn version(&self) -> crate::Result<Version> {
+	pub(super) fn version(&self) -> crate::Result<CommitVersion> {
 		self.inner.read().clock.current()
 	}
 
-	pub(super) fn discard_at_or_below(&self) -> Version {
+	pub(super) fn discard_at_or_below(&self) -> CommitVersion {
 		self.command.done_until()
 	}
 
@@ -343,12 +343,12 @@ where
 	}
 
 	/// Mark a query as done (for compatibility with existing API)
-	pub(super) fn done_query(&self, version: Version) {
+	pub(super) fn done_query(&self, version: CommitVersion) {
 		self.query.done(version);
 	}
 
 	/// Mark a commit as done (for compatibility with existing API)  
-	pub(super) fn done_commit(&self, version: Version) {
+	pub(super) fn done_commit(&self, version: CommitVersion) {
 		self.command.done(version);
 	}
 }
@@ -360,7 +360,7 @@ where
 	/// Add a committed transaction to the appropriate time window
 	fn add_committed_transaction(
 		&mut self,
-		version: Version,
+		version: CommitVersion,
 		conflicts: ConflictManager,
 	) {
 		// Determine which window this transaction belongs to
@@ -400,7 +400,7 @@ where
 
 		// Determine how many windows to remove
 		let windows_to_remove = self.time_windows.len() - MAX_WINDOWS;
-		let old_windows: Vec<Version> = self
+		let old_windows: Vec<CommitVersion> = self
 			.time_windows
 			.keys()
 			.take(windows_to_remove)
@@ -457,7 +457,7 @@ mod tests {
 	}
 
 	impl MockVersionProvider {
-		fn new(start: Version) -> Self {
+		fn new(start: CommitVersion) -> Self {
 			Self {
 				current: Arc::new(AtomicU64::new(start)),
 			}
@@ -465,11 +465,11 @@ mod tests {
 	}
 
 	impl VersionProvider for MockVersionProvider {
-		fn next(&self) -> crate::Result<Version> {
+		fn next(&self) -> crate::Result<CommitVersion> {
 			Ok(self.current.fetch_add(1, Ordering::Relaxed) + 1)
 		}
 
-		fn current(&self) -> crate::Result<Version> {
+		fn current(&self) -> crate::Result<CommitVersion> {
 			Ok(self.current.load(Ordering::Relaxed))
 		}
 	}
@@ -623,7 +623,7 @@ mod tests {
 
 			let mut done_read = false;
 			let version_start =
-				(i as Version) * DEFAULT_WINDOW_SIZE + 1;
+				(i as CommitVersion) * DEFAULT_WINDOW_SIZE + 1;
 			let result = oracle
 				.new_commit(
 					&mut done_read,
@@ -749,7 +749,7 @@ mod tests {
 
 			let mut done_read = false;
 			let version_start =
-				(i as Version) * DEFAULT_WINDOW_SIZE + 1;
+				(i as CommitVersion) * DEFAULT_WINDOW_SIZE + 1;
 			let result = oracle
 				.new_commit(
 					&mut done_read,

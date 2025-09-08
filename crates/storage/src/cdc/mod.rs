@@ -5,7 +5,7 @@ pub(crate) mod codec;
 mod layout;
 
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	delta::Delta,
 	interface::{CdcChange, CdcEvent, TransactionId},
 	row::EncodedRow,
@@ -14,7 +14,7 @@ use reifydb_core::{
 /// Internal structure for storing CDC data with shared metadata
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CdcTransaction {
-	pub version: Version,
+	pub version: CommitVersion,
 	pub timestamp: u64,
 	pub transaction: TransactionId,
 	pub changes: Vec<CdcTransactionChange>,
@@ -29,7 +29,7 @@ pub(crate) struct CdcTransactionChange {
 
 impl CdcTransaction {
 	pub fn new(
-		version: Version,
+		version: CommitVersion,
 		timestamp: u64,
 		transaction: TransactionId,
 		changes: Vec<CdcTransactionChange>,

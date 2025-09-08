@@ -9,13 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{Version, interface::TransactionId};
+use reifydb_core::{CommitVersion, interface::TransactionId};
 
 use crate::mvcc::transaction::{version::VersionProvider, *};
 
 pub enum TransactionKind {
-	Current(Version),
-	TimeTravel(Version),
+	Current(CommitVersion),
+	TimeTravel(CommitVersion),
 }
 
 /// TransactionManagerRx is a read-only transaction manager.
@@ -35,7 +35,7 @@ where
 	pub fn new_current(
 		id: TransactionId,
 		engine: TransactionManager<L>,
-		version: Version,
+		version: CommitVersion,
 	) -> Self {
 		Self {
 			id,
@@ -47,7 +47,7 @@ where
 	pub fn new_time_travel(
 		id: TransactionId,
 		engine: TransactionManager<L>,
-		version: Version,
+		version: CommitVersion,
 	) -> Self {
 		Self {
 			id,
@@ -60,7 +60,7 @@ where
 		self.id
 	}
 
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		match self.transaction {
 			TransactionKind::Current(version) => version,
 			TransactionKind::TimeTravel(version) => version,

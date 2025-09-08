@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_core::{
-	Result, Version,
+	CommitVersion, Result,
 	interface::{
 		CdcEvent, CdcQueryTransaction, CdcStorage, CdcTransaction,
 	},
@@ -49,14 +49,14 @@ impl<S: CdcStorage> StandardCdcQueryTransaction<S> {
 }
 
 impl<S: CdcStorage> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
-	fn get(&self, version: Version) -> Result<Vec<CdcEvent>> {
+	fn get(&self, version: CommitVersion) -> Result<Vec<CdcEvent>> {
 		self.storage.get(version)
 	}
 
 	fn range(
 		&self,
-		start: Bound<Version>,
-		end: Bound<Version>,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
 	) -> Result<Box<dyn Iterator<Item = CdcEvent> + '_>> {
 		Ok(Box::new(self.storage.range(start, end)?))
 	}
@@ -65,7 +65,7 @@ impl<S: CdcStorage> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
 		Ok(Box::new(self.storage.scan()?))
 	}
 
-	fn count(&self, version: Version) -> Result<usize> {
+	fn count(&self, version: CommitVersion) -> Result<usize> {
 		self.storage.count(version)
 	}
 }

@@ -26,7 +26,9 @@ pub struct ColumnsTable<T: Transaction> {
 impl<T: Transaction> ColumnsTable<T> {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::columns().clone(),
+			definition:
+				SystemCatalog::get_system_columns_table_def()
+					.clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}

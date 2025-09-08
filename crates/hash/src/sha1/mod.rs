@@ -122,7 +122,7 @@ mod tests {
 	// Test Vector 5: one million 'a's
 	#[test]
 	fn test_vector_5_million_a() {
-		let data = alloc::vec![b'a'; 1_000_000];
+		let data = vec![b'a'; 1_000_000];
 		let result = sha1(&data);
 		let expected = [
 			0x34, 0xaa, 0x97, 0x3c, 0xd4, 0xc4, 0xda, 0xa4, 0xf6,
@@ -180,7 +180,7 @@ mod tests {
 
 	#[test]
 	fn test_sha1_1024_bytes() {
-		let data = alloc::vec![b'a'; 1024];
+		let data = vec![b'a'; 1024];
 		let result = sha1(&data);
 		let expected = [
 			0x8e, 0xca, 0x55, 0x46, 0x31, 0xdf, 0x9e, 0xad, 0x14,
@@ -222,7 +222,7 @@ mod tests {
 		];
 
 		for size in sizes {
-			let data = alloc::vec![b'x'; size];
+			let data = vec![b'x'; size];
 			let result1 = sha1(&data);
 
 			// Verify incremental gives same result

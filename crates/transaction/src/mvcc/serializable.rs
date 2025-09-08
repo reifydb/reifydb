@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Error, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
 	interface::{
 		BoxedVersionedIter, TransactionId, UnversionedTransaction,
@@ -43,7 +43,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	for QueryTransaction<VS, UT>
 {
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
 
@@ -112,7 +112,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	for CommandTransaction<VS, UT>
 {
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
 
@@ -225,7 +225,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		Ok(())
 	}
 
-	fn commit(mut self) -> Result<Version, Error> {
+	fn commit(mut self) -> Result<CommitVersion, Error> {
 		let version = CommandTransaction::commit(&mut self)?;
 		Ok(version)
 	}

@@ -11,7 +11,7 @@
 
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
-	EncodedKey, Result, Version,
+	CommitVersion, EncodedKey, Result,
 	interface::{Unversioned, UnversionedScan, Versioned, VersionedScan},
 	row::EncodedRow,
 };
@@ -21,7 +21,7 @@ use crate::memory::{Memory, VersionedRow};
 impl VersionedScan for Memory {
 	type ScanIter<'a> = VersionedIter<'a>;
 
-	fn scan(&self, version: Version) -> Result<Self::ScanIter<'_>> {
+	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
 		let iter = self.versioned.iter();
 		Ok(VersionedIter {
 			iter,
@@ -32,7 +32,7 @@ impl VersionedScan for Memory {
 
 pub struct VersionedIter<'a> {
 	pub(crate) iter: MapIter<'a, EncodedKey, VersionedRow>,
-	pub(crate) version: Version,
+	pub(crate) version: CommitVersion,
 }
 
 impl Iterator for VersionedIter<'_> {

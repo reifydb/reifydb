@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	CowVec, EncodedKey, Result, Version,
+	CommitVersion, CowVec, EncodedKey, Result,
 	interface::{Versioned, VersionedGet},
 	row::EncodedRow,
 };
@@ -15,7 +15,7 @@ impl VersionedGet for Sqlite {
 	fn get(
 		&self,
 		key: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<Option<Versioned>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();

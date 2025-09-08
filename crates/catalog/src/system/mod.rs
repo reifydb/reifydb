@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::TableVirtualDef;
+use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 
 mod column_policies;
 mod columns;
@@ -12,6 +12,7 @@ mod primary_keys;
 mod schemas;
 mod sequence;
 mod tables;
+mod versions;
 mod views;
 
 use column_policies::column_policies;
@@ -21,6 +22,7 @@ use primary_keys::primary_keys;
 use schemas::schemas;
 use sequence::sequences;
 use tables::tables;
+use versions::versions;
 use views::views;
 
 pub mod ids {
@@ -124,6 +126,18 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] =
 				[ID, COLUMN_ID, TYPE, VALUE];
 		}
+
+		pub mod versions {
+			use reifydb_core::interface::ColumnId;
+
+			pub const NAME: ColumnId = ColumnId(1);
+			pub const VERSION: ColumnId = ColumnId(2);
+			pub const DESCRIPTION: ColumnId = ColumnId(3);
+			pub const KIND: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] =
+				[NAME, VERSION, DESCRIPTION, KIND];
+		}
 	}
 
 	pub mod sequences {
@@ -162,8 +176,9 @@ pub mod ids {
 		pub const PRIMARY_KEYS: TableVirtualId = TableVirtualId(7);
 		pub const PRIMARY_KEY_COLUMNS: TableVirtualId =
 			TableVirtualId(8);
+		pub const VERSIONS: TableVirtualId = TableVirtualId(9);
 
-		pub const ALL: [TableVirtualId; 8] = [
+		pub const ALL: [TableVirtualId; 9] = [
 			SEQUENCES,
 			SCHEMAS,
 			TABLES,
@@ -172,50 +187,76 @@ pub mod ids {
 			COLUMN_POLICIES,
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
+			VERSIONS,
 		];
 	}
 }
 
-pub struct SystemCatalog;
+#[derive(Clone, Debug)]
+pub struct SystemCatalog(Arc<SystemCatalogInner>);
+
+#[derive(Debug)]
+struct SystemCatalogInner {
+	versions: Vec<SystemVersion>,
+}
 
 impl SystemCatalog {
+	/// Create a new SystemCatalog with the provided
+	/// versions are set once at construction and never change
+	pub fn new(versions: Vec<SystemVersion>) -> Self {
+		Self(Arc::new(SystemCatalogInner {
+			versions,
+		}))
+	}
+
+	/// Get all system versions
+	pub fn get_system_versions(&self) -> &[SystemVersion] {
+		&self.0.versions
+	}
+
 	/// Get the sequences virtual table definition
-	pub fn sequences() -> Arc<TableVirtualDef> {
+	pub fn get_system_sequences_table_def() -> Arc<TableVirtualDef> {
 		sequences()
 	}
 
 	/// Get the schemas virtual table definition
-	pub fn schemas() -> Arc<TableVirtualDef> {
+	pub fn get_system_schemas_table_def() -> Arc<TableVirtualDef> {
 		schemas()
 	}
 
 	/// Get the tables virtual table definition
-	pub fn tables() -> Arc<TableVirtualDef> {
+	pub fn get_system_tables_table_def() -> Arc<TableVirtualDef> {
 		tables()
 	}
 
 	/// Get the views virtual table definition
-	pub fn views() -> Arc<TableVirtualDef> {
+	pub fn get_system_views_table_def() -> Arc<TableVirtualDef> {
 		views()
 	}
 
 	/// Get the columns virtual table definition
-	pub fn columns() -> Arc<TableVirtualDef> {
+	pub fn get_system_columns_table_def() -> Arc<TableVirtualDef> {
 		columns()
 	}
 
 	/// Get the primary_keys virtual table definition
-	pub fn primary_keys() -> Arc<TableVirtualDef> {
+	pub fn get_system_primary_keys_table_def() -> Arc<TableVirtualDef> {
 		primary_keys()
 	}
 
 	/// Get the primary_key_columns virtual table definition
-	pub fn primary_key_columns() -> Arc<TableVirtualDef> {
+	pub fn get_system_primary_key_columns_table_def() -> Arc<TableVirtualDef>
+	{
 		primary_key_columns()
 	}
 
 	/// Get the column_policies virtual table definition
-	pub fn column_policies() -> Arc<TableVirtualDef> {
+	pub fn get_system_column_policies_table_def() -> Arc<TableVirtualDef> {
 		column_policies()
+	}
+
+	/// Get the system versions virtual table definition
+	pub fn get_system_versions_table_def() -> Arc<TableVirtualDef> {
+		versions()
 	}
 }

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey, Result, Version,
+	CommitVersion, EncodedKey, Result,
 	interface::{Unversioned, UnversionedGet, Versioned, VersionedGet},
 };
 
@@ -12,7 +12,7 @@ impl VersionedGet for Memory {
 	fn get(
 		&self,
 		key: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<Option<Versioned>> {
 		let item = match self.versioned.get(key) {
 			Some(item) => item,

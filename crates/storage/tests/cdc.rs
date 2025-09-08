@@ -6,7 +6,7 @@ use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path};
 #[cfg(debug_assertions)]
 use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
-	CowVec, EncodedKey, Version, async_cow_vec,
+	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
 	interface::{
 		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
@@ -48,7 +48,7 @@ pub struct Runner<
 	VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage,
 > {
 	storage: VS,
-	next_version: Version,
+	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
@@ -135,7 +135,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				let kv = args
 					.next_key()
@@ -167,7 +167,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				let kv = args
 					.next_key()
@@ -196,7 +196,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				let kv = args
 					.next_key()
@@ -225,7 +225,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				let key = EncodedKey(decode_binary(
 					&args.next_pos()
@@ -271,7 +271,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				let sequence = args
 					.next_pos()
@@ -308,13 +308,13 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				let end_version = args
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -358,13 +358,13 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				let end_version = args
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -389,13 +389,13 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				let end_version = args
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -420,13 +420,13 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				let end_version = args
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -451,13 +451,13 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				let end_version = args
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -482,7 +482,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -507,7 +507,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("end version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
@@ -532,7 +532,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
@@ -557,7 +557,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("start version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
@@ -597,7 +597,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				args.reject_rest()?;
 
@@ -636,7 +636,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.next_pos()
 					.ok_or("version not given")?
 					.value
-					.parse::<Version>()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
 				let count = args
 					.next_pos()

@@ -3,27 +3,38 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_catalog::{MaterializedCatalog, MaterializedCatalogLoader};
+use reifydb_auth::AuthVersion;
+use reifydb_catalog::{
+	CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader,
+	system::SystemCatalog,
+};
+use reifydb_cdc::CdcVersion;
 use reifydb_core::{
+	CoreVersion,
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
 		CdcTransaction, UnversionedTransaction, VersionedTransaction,
 		subsystem::SubsystemFactory,
+		version::{ComponentKind, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
 	log_timed_debug,
 };
 use reifydb_engine::{
-	EngineTransaction, StandardCommandTransaction, StandardEngine,
-	StandardQueryTransaction,
+	EngineTransaction, EngineVersion, StandardCommandTransaction,
+	StandardEngine, StandardQueryTransaction,
 };
+use reifydb_network::NetworkVersion;
+use reifydb_rql::RqlVersion;
+use reifydb_storage::StorageVersion;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingSubsystemFactory;
 #[cfg(feature = "sub_workerpool")]
 use reifydb_sub_workerpool::WorkerPoolSubsystemFactory;
+use reifydb_transaction::TransactionVersion;
 
 use crate::{
 	database::{Database, DatabaseConfig},
@@ -193,26 +204,67 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 			&catalog,
 		)?;
 
+		// First create the engine (needed by subsystems)
 		let engine = StandardEngine::new(
-			versioned,
-			unversioned,
-			cdc,
-			eventbus,
+			versioned.clone(),
+			unversioned.clone(),
+			cdc.clone(),
+			eventbus.clone(),
 			Box::new(self.interceptors.build()),
-			catalog,
+			catalog.clone(),
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
 
-		// Create subsystems from factories
+		// Collect all versions
+		let mut all_versions = Vec::new();
+
+		// Add core component versions using the version structs from
+		// each crate
+		all_versions.push(SystemVersion {
+			name: "reifydb".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "ReifyDB Database System".to_string(),
+			kind: ComponentKind::Package,
+		});
+
+		all_versions.push(CoreVersion.version());
+		all_versions.push(EngineVersion.version());
+		all_versions.push(CatalogVersion.version());
+		all_versions.push(StorageVersion.version());
+		all_versions.push(TransactionVersion.version());
+		all_versions.push(AuthVersion.version());
+		all_versions.push(RqlVersion.version());
+		all_versions.push(CdcVersion.version());
+		all_versions.push(NetworkVersion.version());
+
+		// Create subsystems from factories and collect their versions
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems =
 			Subsystems::new(Arc::clone(&health_monitor));
 
 		for factory in self.subsystems {
 			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
+
+		// Add git hash if available
+		if let Some(git_hash) = option_env!("GIT_HASH") {
+			all_versions.push(SystemVersion {
+				name: "git".to_string(),
+				version: git_hash.to_string(),
+				description: "Git commit hash at build time"
+					.to_string(),
+				kind: ComponentKind::Build,
+			});
+		}
+
+		// Create SystemCatalog with all versions and set it in
+		// MaterializedCatalog This is done after engine creation but
+		// versions will be available via the catalog
+		let system_catalog = SystemCatalog::new(all_versions);
+		catalog.set_system_catalog(system_catalog);
 
 		Ok(Database::new(
 			engine,

@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	interface::{
 		EncodableKey, TransactionVersionKey,
 		UnversionedCommandTransaction, UnversionedQueryTransaction,
@@ -20,8 +20,8 @@ use reifydb_type::Type;
 const BLOCK_SIZE: u64 = 100_000;
 
 pub trait VersionProvider {
-	fn next(&self) -> crate::Result<Version>;
-	fn current(&self) -> crate::Result<Version>;
+	fn next(&self) -> crate::Result<CommitVersion>;
+	fn current(&self) -> crate::Result<CommitVersion>;
 }
 
 #[derive(Debug)]
@@ -111,7 +111,7 @@ impl<UT> VersionProvider for StdVersionProvider<UT>
 where
 	UT: UnversionedTransaction,
 {
-	fn next(&self) -> crate::Result<Version> {
+	fn next(&self) -> crate::Result<CommitVersion> {
 		// Fast path: try to get version from current block
 		let mut block = self.current_block.lock().unwrap();
 		if let Some(version) = block.next() {
@@ -134,7 +134,7 @@ where
 		panic!("Failed to allocate version from new block")
 	}
 
-	fn current(&self) -> crate::Result<Version> {
+	fn current(&self) -> crate::Result<CommitVersion> {
 		let block = self.current_block.lock().unwrap();
 		Ok(block.current())
 	}

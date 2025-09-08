@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	interface::{PrimaryKeyDef, PrimaryKeyId},
 };
 
@@ -13,7 +13,7 @@ impl MaterializedCatalog {
 	pub fn find_primary_key(
 		&self,
 		primary_key_id: PrimaryKeyId,
-		version: Version,
+		version: CommitVersion,
 	) -> Option<PrimaryKeyDef> {
 		self.primary_keys.get(&primary_key_id).and_then(|entry| {
 			let versioned = entry.value();
@@ -25,7 +25,7 @@ impl MaterializedCatalog {
 	pub fn set_primary_key(
 		&self,
 		id: PrimaryKeyId,
-		version: Version,
+		version: CommitVersion,
 		primary_key: Option<PrimaryKeyDef>,
 	) {
 		// Update the versioned primary key

@@ -4,7 +4,7 @@
 use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
-	CowVec, Result, Version,
+	CommitVersion, CowVec, Result,
 	interface::{CdcEvent, CdcRange},
 	row::EncodedRow,
 };
@@ -19,8 +19,8 @@ impl CdcRange for Sqlite {
 
 	fn range(
 		&self,
-		start: Bound<Version>,
-		end: Bound<Version>,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
 	) -> Result<Self::RangeIter<'_>> {
 		Ok(Range::new(self.get_reader(), start, end, 1024))
 	}
@@ -28,10 +28,10 @@ impl CdcRange for Sqlite {
 
 pub struct Range {
 	conn: Reader,
-	start: Bound<Version>,
-	end: Bound<Version>,
+	start: Bound<CommitVersion>,
+	end: Bound<CommitVersion>,
 	buffer: VecDeque<CdcEvent>,
-	last_version: Option<Version>,
+	last_version: Option<CommitVersion>,
 	batch_size: usize,
 	exhausted: bool,
 }
@@ -39,8 +39,8 @@ pub struct Range {
 impl Range {
 	pub fn new(
 		conn: Reader,
-		start: Bound<Version>,
-		end: Bound<Version>,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
 		batch_size: usize,
 	) -> Self {
 		Self {
@@ -79,14 +79,14 @@ impl Range {
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);
 
-		let transactions: Vec<(Version, EncodedRow)> = stmt
+		let transactions: Vec<(CommitVersion, EncodedRow)> = stmt
 			.query_map(
 				rusqlite::params_from_iter(query_params),
 				|row| {
 					let version: i64 = row.get(0)?;
 					let bytes: Vec<u8> = row.get(1)?;
 					Ok((
-						version as Version,
+						version as CommitVersion,
 						EncodedRow(CowVec::new(bytes)),
 					))
 				},

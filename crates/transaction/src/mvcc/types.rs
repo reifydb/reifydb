@@ -12,13 +12,13 @@
 use std::{cmp, cmp::Reverse};
 
 use reifydb_core::{
-	EncodedKey, Version, delta::Delta, interface::Versioned,
+	CommitVersion, EncodedKey, delta::Delta, interface::Versioned,
 	row::EncodedRow,
 };
 
 pub enum TransactionValue {
 	PendingIter {
-		version: Version,
+		version: CommitVersion,
 		key: EncodedKey,
 		row: EncodedRow,
 	},
@@ -76,7 +76,7 @@ impl TransactionValue {
 		}
 	}
 
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		match self {
 			Self::PendingIter {
 				version,
@@ -105,8 +105,10 @@ impl TransactionValue {
 	}
 }
 
-impl From<(Version, EncodedKey, EncodedRow)> for TransactionValue {
-	fn from((version, k, b): (Version, EncodedKey, EncodedRow)) -> Self {
+impl From<(CommitVersion, EncodedKey, EncodedRow)> for TransactionValue {
+	fn from(
+		(version, k, b): (CommitVersion, EncodedKey, EncodedRow),
+	) -> Self {
 		Self::PendingIter {
 			version,
 			key: k,
@@ -115,8 +117,10 @@ impl From<(Version, EncodedKey, EncodedRow)> for TransactionValue {
 	}
 }
 
-impl From<(Version, &EncodedKey, &EncodedRow)> for TransactionValue {
-	fn from((version, k, b): (Version, &EncodedKey, &EncodedRow)) -> Self {
+impl From<(CommitVersion, &EncodedKey, &EncodedRow)> for TransactionValue {
+	fn from(
+		(version, k, b): (CommitVersion, &EncodedKey, &EncodedRow),
+	) -> Self {
 		Self::PendingIter {
 			version,
 			key: k.clone(),
@@ -141,7 +145,7 @@ impl From<Committed> for TransactionValue {
 pub struct Committed {
 	pub(crate) key: EncodedKey,
 	pub(crate) row: EncodedRow,
-	pub(crate) version: Version,
+	pub(crate) version: CommitVersion,
 }
 
 impl From<Versioned> for Committed {
@@ -163,7 +167,7 @@ impl Committed {
 		&self.row
 	}
 
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		self.version
 	}
 }
@@ -171,7 +175,7 @@ impl Committed {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pending {
 	pub delta: Delta,
-	pub version: Version,
+	pub version: CommitVersion,
 }
 
 impl PartialOrd for Pending {
@@ -202,7 +206,7 @@ impl Pending {
 		&self.delta
 	}
 
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		self.version
 	}
 

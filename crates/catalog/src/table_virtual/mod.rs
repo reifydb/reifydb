@@ -19,12 +19,20 @@ impl VirtualTableRegistry {
 		_rx: &mut impl QueryTransaction,
 		id: TableVirtualId,
 	) -> crate::Result<Option<Arc<TableVirtualDef>>> {
-		// Currently we only have the sequences virtual table
-		if id == crate::system::ids::table_virtual::SEQUENCES {
-			Ok(Some(SystemCatalog::sequences()))
-		} else {
-			Ok(None)
-		}
+		use crate::system::ids::table_virtual::*;
+
+		Ok(match id {
+			SEQUENCES => Some(SystemCatalog::get_system_sequences_table_def()),
+			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
+			TABLES => Some(SystemCatalog::get_system_tables_table_def()),
+			VIEWS => Some(SystemCatalog::get_system_views_table_def()),
+			COLUMNS => Some(SystemCatalog::get_system_columns_table_def()),
+			COLUMN_POLICIES => Some(SystemCatalog::get_system_column_policies_table_def()),
+			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table_def()),
+			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table_def()),
+			VERSIONS => Some(SystemCatalog::get_system_versions_table_def()),
+			_ => None,
+		})
 	}
 
 	/// List all virtual tables
@@ -32,6 +40,17 @@ impl VirtualTableRegistry {
 		_rx: &mut impl QueryTransaction,
 	) -> crate::Result<Vec<Arc<TableVirtualDef>>> {
 		// Return all registered virtual tables
-		Ok(vec![SystemCatalog::sequences()])
+		Ok(vec![
+			SystemCatalog::get_system_sequences_table_def(),
+			SystemCatalog::get_system_schemas_table_def(),
+			SystemCatalog::get_system_tables_table_def(),
+			SystemCatalog::get_system_views_table_def(),
+			SystemCatalog::get_system_columns_table_def(),
+			SystemCatalog::get_system_column_policies_table_def(),
+			SystemCatalog::get_system_primary_keys_table_def(),
+			SystemCatalog::get_system_primary_key_columns_table_def(
+			),
+			SystemCatalog::get_system_versions_table_def(),
+		])
 	}
 }

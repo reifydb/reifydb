@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 
 use reifydb_core::{
-	EncodedKey, Result, Version,
+	CommitVersion, EncodedKey, Result,
 	interface::{Versioned, VersionedScan},
 };
 
@@ -14,14 +14,14 @@ use crate::sqlite::{Sqlite, read::Reader};
 impl VersionedScan for Sqlite {
 	type ScanIter<'a> = Iter;
 
-	fn scan(&self, version: Version) -> Result<Self::ScanIter<'_>> {
+	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
 		Ok(Iter::new(self.get_reader(), version, 1024))
 	}
 }
 
 pub struct Iter {
 	conn: Reader,
-	version: Version,
+	version: CommitVersion,
 	table_names: Vec<String>,
 	buffer: VecDeque<Versioned>,
 	last_key: Option<EncodedKey>,
@@ -30,7 +30,11 @@ pub struct Iter {
 }
 
 impl Iter {
-	pub fn new(conn: Reader, version: Version, batch_size: usize) -> Self {
+	pub fn new(
+		conn: Reader,
+		version: CommitVersion,
+		batch_size: usize,
+	) -> Self {
 		let table_names = get_table_names(&conn);
 
 		Self {

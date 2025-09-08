@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 
 use reifydb_core::{
-	CowVec, Result, Version,
+	CommitVersion, CowVec, Result,
 	interface::{CdcEvent, CdcScan},
 	row::EncodedRow,
 };
@@ -25,7 +25,7 @@ impl CdcScan for Sqlite {
 pub struct Scan {
 	conn: Reader,
 	buffer: VecDeque<CdcEvent>,
-	last_version: Option<Version>,
+	last_version: Option<CommitVersion>,
 	batch_size: usize,
 	exhausted: bool,
 }
@@ -73,14 +73,14 @@ impl Scan {
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);
 
-		let transactions: Vec<(Version, EncodedRow)> = stmt
+		let transactions: Vec<(CommitVersion, EncodedRow)> = stmt
 			.query_map(
 				rusqlite::params_from_iter(query_params),
 				|row| {
 					let version: i64 = row.get(0)?;
 					let bytes: Vec<u8> = row.get(1)?;
 					Ok((
-						version as Version,
+						version as CommitVersion,
 						EncodedRow(CowVec::new(bytes)),
 					))
 				},

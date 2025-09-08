@@ -4,7 +4,7 @@
 use std::sync::mpsc;
 
 use reifydb_core::{
-	CowVec, Result, Version,
+	CommitVersion, CowVec, Result,
 	delta::Delta,
 	interface::{TransactionId, VersionedCommit},
 	util::now_millis,
@@ -20,7 +20,7 @@ impl VersionedCommit for Sqlite {
 	fn commit(
 		&self,
 		deltas: CowVec<Delta>,
-		version: Version,
+		version: CommitVersion,
 		transaction: TransactionId,
 	) -> Result<()> {
 		let (respond_to, response) = mpsc::channel();

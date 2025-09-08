@@ -6,6 +6,7 @@ use std::any::Any;
 use reifydb_core::interface::{
 	Transaction,
 	subsystem::{HealthStatus, Subsystem},
+	version::{ComponentKind, HasVersion, SystemVersion},
 };
 use reifydb_engine::StandardEngine;
 
@@ -97,5 +98,17 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
+	}
+}
+
+impl<T: Transaction> HasVersion for ServerSubsystem<T> {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: "sub-server".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "Network protocol server subsystem"
+				.to_string(),
+			kind: ComponentKind::Subsystem,
+		}
 	}
 }

@@ -3,7 +3,7 @@
 
 use crossbeam_skiplist::map::Entry;
 use reifydb_core::{
-	Result, Version,
+	CommitVersion, Result,
 	interface::{CdcEvent, CdcScan},
 };
 
@@ -23,7 +23,9 @@ impl CdcScan for Memory {
 
 pub struct Scan<'a> {
 	version_iter: Box<
-		dyn Iterator<Item = Entry<'a, Version, CdcTransaction>> + 'a,
+		dyn Iterator<
+				Item = Entry<'a, CommitVersion, CdcTransaction>,
+			> + 'a,
 	>,
 	current_events: Vec<CdcEvent>,
 	current_index: usize,

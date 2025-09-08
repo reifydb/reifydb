@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{TransactionId, Versioned, WithEventBus},
 	row::EncodedRow,
 };
@@ -40,7 +40,7 @@ pub trait VersionedTransaction:
 }
 
 pub trait VersionedQueryTransaction {
-	fn version(&self) -> Version;
+	fn version(&self) -> CommitVersion;
 
 	fn id(&self) -> TransactionId;
 
@@ -83,7 +83,7 @@ pub trait VersionedCommandTransaction: VersionedQueryTransaction {
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 
-	fn commit(self) -> crate::Result<crate::Version>;
+	fn commit(self) -> crate::Result<crate::CommitVersion>;
 
 	fn rollback(self) -> crate::Result<()>;
 }

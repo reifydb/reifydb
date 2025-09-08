@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
 		BoxedVersionedIter, CdcTransaction, QueryTransaction,
 		Transaction, TransactionId, UnversionedTransaction, Versioned,
@@ -78,7 +78,7 @@ impl<'a, T: Transaction> QueryTransaction for StandardTransaction<'a, T> {
 impl<'a, T: Transaction> VersionedQueryTransaction
 	for StandardTransaction<'a, T>
 {
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		match self {
 			Self::Command(txn) => {
 				VersionedQueryTransaction::version(*txn)
@@ -238,7 +238,7 @@ impl<'a, T: Transaction> CatalogTransaction for StandardTransaction<'a, T> {
 		}
 	}
 
-	fn version(&self) -> Version {
+	fn version(&self) -> CommitVersion {
 		match self {
 			StandardTransaction::Command(txn) => {
 				VersionedQueryTransaction::version(*txn)

@@ -21,9 +21,12 @@ use std::{
 pub use reifydb_core::interface::subsystem::workerpool::Priority;
 use reifydb_core::{
 	Result,
-	interface::subsystem::{
-		HealthStatus, Subsystem,
-		workerpool::{TaskHandle, WorkerPool},
+	interface::{
+		subsystem::{
+			HealthStatus, Subsystem,
+			workerpool::{TaskHandle, WorkerPool},
+		},
+		version::{ComponentKind, HasVersion, SystemVersion},
 	},
 	log_debug, log_warn,
 };
@@ -361,6 +364,19 @@ impl Subsystem for WorkerPoolSubsystem {
 
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
+	}
+}
+
+impl HasVersion for WorkerPoolSubsystem {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: "sub-workerpool".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description:
+				"Priority-based task worker pool subsystem"
+					.to_string(),
+			kind: ComponentKind::Subsystem,
+		}
 	}
 }
 

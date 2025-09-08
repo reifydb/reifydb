@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	interface::{SchemaId, ViewDef, ViewId},
 };
 
@@ -13,7 +13,7 @@ impl MaterializedCatalog {
 	pub fn find_view(
 		&self,
 		view: ViewId,
-		version: Version,
+		version: CommitVersion,
 	) -> Option<ViewDef> {
 		self.views.get(&view).and_then(|entry| {
 			let versioned = entry.value();
@@ -26,7 +26,7 @@ impl MaterializedCatalog {
 		&self,
 		schema: SchemaId,
 		name: &str,
-		version: Version,
+		version: CommitVersion,
 	) -> Option<ViewDef> {
 		self.views_by_name.get(&(schema, name.to_string())).and_then(
 			|entry| {
@@ -39,7 +39,7 @@ impl MaterializedCatalog {
 	pub fn set_view(
 		&self,
 		id: ViewId,
-		version: Version,
+		version: CommitVersion,
 		view: Option<ViewDef>,
 	) {
 		// Look up the current view to update the index

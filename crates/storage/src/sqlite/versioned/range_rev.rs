@@ -4,7 +4,7 @@
 use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Result, Version,
+	CommitVersion, EncodedKey, EncodedKeyRange, Result,
 	interface::{Versioned, VersionedRangeRev},
 };
 
@@ -19,7 +19,7 @@ impl VersionedRangeRev for Sqlite {
 	fn range_rev(
 		&self,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 	) -> Result<Self::RangeIterRev<'_>> {
 		Ok(RangeRev::new(self.get_reader(), range, version, 1024))
 	}
@@ -28,7 +28,7 @@ impl VersionedRangeRev for Sqlite {
 pub struct RangeRev {
 	conn: Reader,
 	range: EncodedKeyRange,
-	version: Version,
+	version: CommitVersion,
 	table: String,
 	buffer: VecDeque<Versioned>,
 	last_key: Option<EncodedKey>,
@@ -40,7 +40,7 @@ impl RangeRev {
 	pub fn new(
 		conn: Reader,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Self {
 		let table = table_name_for_range(&range).to_string();

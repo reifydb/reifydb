@@ -7,6 +7,7 @@ use reifydb_core::interface::{IndexId, SchemaId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::{
+	StandardTransaction,
 	execute::{
 		ExecutionContext, ExecutionPlan,
 		query::{
@@ -30,14 +31,15 @@ use crate::{
 		TableVirtual, TableVirtualContext,
 		system::{
 			ColumnPolicies, ColumnsTable, PrimaryKeyColumns,
-			PrimaryKeys, Schemas, Sequences, Tables, Views,
+			PrimaryKeys, Schemas, Sequences, Tables, Versions,
+			Views,
 		},
 	},
 };
 
 pub(crate) fn compile<'a, T: Transaction>(
 	plan: PhysicalPlan<'a>,
-	rx: &mut crate::StandardTransaction<'a, T>,
+	rx: &mut StandardTransaction<'a, T>,
 	context: Arc<ExecutionContext>,
 ) -> ExecutionPlan<'a, T> {
 	match plan {
@@ -213,6 +215,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 						"primary_keys" => Box::new(PrimaryKeys::new()),
 						"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
 						"column_policies" => Box::new(ColumnPolicies::new()),
+						"versions" => Box::new(Versions::new()),
 						_ => panic!("Unknown virtual table type: {}", table.name)
 					}
 				} else {

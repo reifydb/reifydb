@@ -27,7 +27,9 @@ pub struct Tables<T: Transaction> {
 impl<T: Transaction> Tables<T> {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::tables().clone(),
+			definition: SystemCatalog::get_system_tables_table_def(
+			)
+			.clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}

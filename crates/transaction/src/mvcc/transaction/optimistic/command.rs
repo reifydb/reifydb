@@ -12,7 +12,7 @@
 use std::ops::RangeBounds;
 
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, Version,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	event::transaction::PostCommitEvent,
 	interface::{UnversionedTransaction, VersionedStorage},
 	row::EncodedRow,
@@ -50,8 +50,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	CommandTransaction<VS, UT>
 {
-	pub fn commit(&mut self) -> Result<Version, Error> {
-		let mut version: Option<Version> = None;
+	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
+		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
 		let transaction_id = self.tm.id();
 
@@ -89,11 +89,11 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	CommandTransaction<VS, UT>
 {
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
 
-	pub fn as_of_version(&mut self, version: Version) {
+	pub fn as_of_version(&mut self, version: CommitVersion) {
 		self.tm.as_of_version(version);
 	}
 

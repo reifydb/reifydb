@@ -2,14 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, Result, Version, interface::CdcCount, row::EncodedRow,
+	CommitVersion, CowVec, Result, interface::CdcCount, row::EncodedRow,
 };
 use rusqlite::{OptionalExtension, params};
 
 use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcCount for Sqlite {
-	fn count(&self, version: Version) -> Result<usize> {
+	fn count(&self, version: CommitVersion) -> Result<usize> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 

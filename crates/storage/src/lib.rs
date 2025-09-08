@@ -8,4 +8,21 @@ mod diagnostic;
 pub mod memory;
 pub mod sqlite;
 
+use reifydb_core::interface::version::{
+	ComponentKind, HasVersion, SystemVersion,
+};
 pub use reifydb_type::Result;
+
+pub struct StorageVersion;
+
+impl HasVersion for StorageVersion {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: "storage".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "Storage layer and persistence module"
+				.to_string(),
+			kind: ComponentKind::Module,
+		}
+	}
+}

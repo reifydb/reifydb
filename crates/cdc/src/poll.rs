@@ -12,7 +12,7 @@ use std::{
 };
 
 use reifydb_core::{
-	EncodedKey, Result, Version,
+	CommitVersion, EncodedKey, Result,
 	interface::{
 		CdcCheckpoint, CdcConsume, CdcConsumer, CdcEvent,
 		CdcQueryTransaction, CommandTransaction, ConsumerId,
@@ -212,7 +212,7 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 
 fn fetch_events_since(
 	txn: &mut impl CommandTransaction,
-	since_version: Version,
+	since_version: CommitVersion,
 ) -> Result<Vec<CdcEvent>> {
 	Ok(txn.begin_cdc_query()?
 		.range(Bound::Excluded(since_version), Bound::Unbounded)?

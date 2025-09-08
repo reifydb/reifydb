@@ -27,7 +27,8 @@ pub struct Views<T: Transaction> {
 impl<T: Transaction> Views<T> {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::views().clone(),
+			definition: SystemCatalog::get_system_views_table_def()
+				.clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}

@@ -384,6 +384,7 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-network",
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-sub-admin",
@@ -399,6 +400,7 @@ dependencies = [
 name = "reifydb-auth"
 version = "0.0.1"
 dependencies = [
+ "reifydb-core",
  "reifydb-type",
 ]
 

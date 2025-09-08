@@ -4,6 +4,9 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub use reifydb_core::Result;
+use reifydb_core::interface::version::{
+	ComponentKind, HasVersion, SystemVersion,
+};
 
 pub mod column;
 pub mod column_policy;
@@ -30,3 +33,16 @@ pub use transaction::{
 };
 
 pub struct CatalogStore;
+
+pub struct CatalogVersion;
+
+impl HasVersion for CatalogVersion {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+            name: "catalog".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            description: "Database catalog and metadata management module".to_string(),
+            kind: ComponentKind::Module,
+        }
+	}
+}

@@ -21,7 +21,7 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
-use reifydb_core::Version;
+use reifydb_core::CommitVersion;
 
 use crate::mvcc::watermark::Closer;
 
@@ -35,7 +35,7 @@ pub struct WatermarkInner {
 
 #[derive(Debug)]
 pub(crate) struct Mark {
-	pub(crate) version: Version,
+	pub(crate) version: CommitVersion,
 	pub(crate) waiter: Option<Sender<()>>,
 	pub(crate) done: bool,
 }
@@ -98,7 +98,7 @@ impl WaterMark {
 	}
 
 	/// Sets the last index to the given value.
-	pub fn begin(&self, version: Version) {
+	pub fn begin(&self, version: CommitVersion) {
 		// Update last_index to the maximum
 		self.last_index.fetch_max(version, Ordering::SeqCst);
 

@@ -17,8 +17,24 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
+use interface::version::{ComponentKind, HasVersion, SystemVersion};
 pub use interface::{ColumnDescriptor, TransactionId};
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};
+
+pub struct CoreVersion;
+
+impl HasVersion for CoreVersion {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: "core".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description:
+				"Core database interfaces and data structures"
+					.to_string(),
+			kind: ComponentKind::Module,
+		}
+	}
+}

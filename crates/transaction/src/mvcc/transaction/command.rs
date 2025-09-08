@@ -10,8 +10,8 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{
-	EncodedKey, Version, delta::Delta, diagnostic::transaction, error,
-	interface::TransactionId, return_error, row::EncodedRow,
+	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction,
+	error, interface::TransactionId, return_error, row::EncodedRow,
 };
 
 use super::*;
@@ -25,7 +25,7 @@ where
 	L: VersionProvider,
 {
 	pub(super) id: TransactionId,
-	pub(super) version: Version,
+	pub(super) version: CommitVersion,
 	pub(super) size: u64,
 	pub(super) count: u64,
 	pub(super) oracle: Arc<Oracle<L>>,
@@ -59,12 +59,12 @@ where
 	}
 
 	/// Returns the version of the transaction.
-	pub fn version(&self) -> Version {
+	pub fn version(&self) -> CommitVersion {
 		self.version
 	}
 
 	/// Sets the current version of the transaction manager.
-	pub fn as_of_version(&mut self, version: Version) {
+	pub fn as_of_version(&mut self, version: CommitVersion) {
 		self.version = version;
 	}
 
@@ -351,7 +351,7 @@ where
 {
 	fn commit_pending(
 		&mut self,
-	) -> Result<(Version, Vec<Pending>), reifydb_type::Error> {
+	) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}

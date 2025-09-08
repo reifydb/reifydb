@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Version,
+	CommitVersion,
 	interface::{
 		OperationType, SchemaDef, SchemaId, TableDef, TableId,
 		TransactionalChanges, ViewDef, ViewId,
@@ -61,7 +61,7 @@ pub trait CatalogQueryTransaction:
 
 pub trait CatalogTransaction {
 	fn catalog(&self) -> &MaterializedCatalog;
-	fn version(&self) -> Version;
+	fn version(&self) -> CommitVersion;
 }
 
 // Extension trait for TransactionalChanges with catalog-specific helpers

@@ -4,7 +4,8 @@
 use std::any::Any;
 
 use crate::{
-	interceptor::StandardInterceptorBuilder, interface::CommandTransaction,
+	interceptor::StandardInterceptorBuilder,
+	interface::{CommandTransaction, version::HasVersion},
 	ioc::IocContainer,
 };
 
@@ -15,7 +16,7 @@ pub mod workerpool;
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
 /// for all subsystems managed by the Database.
-pub trait Subsystem: Send + Sync + Any {
+pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// Get the unique name of this subsystem
 	fn name(&self) -> &'static str;
 	/// Start the subsystem

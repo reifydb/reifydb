@@ -5,7 +5,7 @@ use std::{collections::HashSet, path::Path, sync::mpsc, thread};
 
 use mpsc::Sender;
 use reifydb_core::{
-	CowVec, EncodedKey, TransactionId, Version, delta::Delta,
+	CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta,
 	row::EncodedRow,
 };
 use reifydb_type::{Error, Result, return_error};
@@ -30,7 +30,7 @@ pub enum WriteCommand {
 	},
 	VersionedCommit {
 		deltas: CowVec<Delta>,
-		version: Version,
+		version: CommitVersion,
 		transaction: TransactionId,
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
@@ -129,7 +129,7 @@ impl Writer {
 	fn handle_versioned_commit(
 		&mut self,
 		deltas: CowVec<Delta>,
-		version: Version,
+		version: CommitVersion,
 		transaction: TransactionId,
 		timestamp: u64,
 	) -> Result<()> {
@@ -165,7 +165,7 @@ impl Writer {
 	fn apply_deltas(
 		tx: &mut Transaction,
 		deltas: &[Delta],
-		version: Version,
+		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
 	) -> Result<Vec<CdcTransactionChange>> {
 		let mut cdc_changes = Vec::with_capacity(deltas.len());
@@ -204,7 +204,7 @@ impl Writer {
 	fn apply_single_delta(
 		tx: &Transaction,
 		delta: &Delta,
-		version: Version,
+		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
 	) -> Result<()> {
 		match delta {
@@ -233,7 +233,7 @@ impl Writer {
 		tx: &Transaction,
 		key: &[u8],
 		row: &[u8],
-		version: Version,
+		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
 	) -> Result<()> {
 		let encoded_key = EncodedKey::new(key.to_vec());
@@ -257,7 +257,7 @@ impl Writer {
 	fn apply_delta_remove(
 		tx: &Transaction,
 		key: &[u8],
-		version: Version,
+		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
 	) -> Result<()> {
 		let encoded_key = EncodedKey::new(key.to_vec());
@@ -296,7 +296,7 @@ impl Writer {
 
 	fn store_cdc_changes(
 		tx: &Transaction,
-		version: Version,
+		version: CommitVersion,
 		timestamp: u64,
 		transaction: TransactionId,
 		cdc_changes: Vec<CdcTransactionChange>,

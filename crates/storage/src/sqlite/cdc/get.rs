@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, Result, Version,
+	CommitVersion, CowVec, Result,
 	interface::{CdcEvent, CdcGet},
 	row::EncodedRow,
 };
@@ -11,7 +11,7 @@ use rusqlite::{OptionalExtension, params};
 use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcGet for Sqlite {
-	fn get(&self, version: Version) -> Result<Vec<CdcEvent>> {
+	fn get(&self, version: CommitVersion) -> Result<Vec<CdcEvent>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 

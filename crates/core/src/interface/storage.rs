@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	CowVec, EncodedKey, EncodedKeyRange, Version, delta::Delta,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta,
 	interface::TransactionId, row::EncodedRow,
 };
 
@@ -10,7 +10,7 @@ use crate::{
 pub struct Versioned {
 	pub key: EncodedKey,
 	pub row: EncodedRow,
-	pub version: Version,
+	pub version: CommitVersion,
 }
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ pub trait VersionedCommit {
 	fn commit(
 		&self,
 		deltas: CowVec<Delta>,
-		version: Version,
+		version: CommitVersion,
 		transaction: TransactionId,
 	) -> crate::Result<()>;
 }
@@ -47,7 +47,7 @@ pub trait VersionedGet {
 	fn get(
 		&self,
 		key: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<Option<Versioned>>;
 }
 
@@ -55,7 +55,7 @@ pub trait VersionedContains {
 	fn contains(
 		&self,
 		key: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<bool>;
 }
 
@@ -67,7 +67,10 @@ pub trait VersionedScan {
 	where
 		Self: 'a;
 
-	fn scan(&self, version: Version) -> crate::Result<Self::ScanIter<'_>>;
+	fn scan(
+		&self,
+		version: CommitVersion,
+	) -> crate::Result<Self::ScanIter<'_>>;
 }
 
 pub trait VersionedScanRev {
@@ -77,7 +80,7 @@ pub trait VersionedScanRev {
 
 	fn scan_rev(
 		&self,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
@@ -89,13 +92,13 @@ pub trait VersionedRange {
 	fn range(
 		&self,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<Self::RangeIter<'_>>;
 
 	fn prefix(
 		&self,
 		prefix: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<Self::RangeIter<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix), version)
 	}
@@ -109,13 +112,13 @@ pub trait VersionedRangeRev {
 	fn range_rev(
 		&self,
 		range: EncodedKeyRange,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<Self::RangeIterRev<'_>>;
 
 	fn prefix_rev(
 		&self,
 		prefix: &EncodedKey,
-		version: Version,
+		version: CommitVersion,
 	) -> crate::Result<Self::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix), version)
 	}

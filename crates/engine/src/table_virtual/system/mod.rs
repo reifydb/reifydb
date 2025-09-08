@@ -8,6 +8,7 @@ mod primary_keys;
 mod schemas;
 mod sequences;
 mod tables;
+mod versions;
 mod views;
 
 pub use column_policies::*;
@@ -17,4 +18,5 @@ pub use primary_keys::*;
 pub use schemas::*;
 pub use sequences::*;
 pub use tables::*;
+pub use versions::*;
 pub use views::*;
