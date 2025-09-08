@@ -150,9 +150,6 @@ impl GetType for VarUint {
 
 impl GetType for Decimal {
 	fn get_type() -> Type {
-		Type::Decimal {
-			precision: crate::value::decimal::Precision::new(38),
-			scale: crate::value::decimal::Scale::new(0),
-		}
+		Type::Decimal
 	}
 }

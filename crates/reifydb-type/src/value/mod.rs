@@ -276,10 +276,7 @@ impl Value {
 			Value::Blob(_) => Type::Blob,
 			Value::VarInt(_) => Type::VarInt,
 			Value::VarUint(_) => Type::VarUint,
-			Value::Decimal(decimal) => Type::Decimal {
-				precision: decimal.precision(),
-				scale: decimal.scale(),
-			},
+			Value::Decimal(_) => Type::Decimal,
 		}
 	}
 }

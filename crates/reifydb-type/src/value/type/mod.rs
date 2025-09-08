@@ -80,10 +80,7 @@ pub enum Type {
 	/// An arbitrary-precision unsigned integer
 	VarUint,
 	/// An arbitrary-precision decimal with precision and scale
-	Decimal {
-		precision: crate::value::decimal::Precision,
-		scale: crate::value::decimal::Scale,
-	},
+	Decimal,
 	/// Value is not defined (think null in common programming languages)
 	Undefined,
 }
@@ -218,13 +215,7 @@ impl Type {
 			0x17 => Type::IdentityId,
 			0x18 => Type::VarInt,
 			0x1A => Type::VarUint,
-			0x19 => Type::Decimal {
-				precision:
-					crate::value::decimal::Precision::new(
-						38,
-					),
-				scale: crate::value::decimal::Scale::new(0),
-			},
+			0x19 => Type::Decimal,
 			_ => unreachable!(),
 		}
 	}
@@ -335,17 +326,7 @@ impl Display for Type {
 			Type::Blob => f.write_str("Blob"),
 			Type::VarInt => f.write_str("VarInt"),
 			Type::VarUint => f.write_str("VarUint"),
-			Type::Decimal {
-				precision,
-				scale,
-			} => {
-				write!(
-					f,
-					"Decimal({}, {})",
-					precision.value(),
-					scale.value()
-				)
-			}
+			Type::Decimal => f.write_str("Decimal"),
 			Type::Undefined => f.write_str("Undefined"),
 		}
 	}
@@ -380,15 +361,7 @@ impl From<&Value> for Type {
 			Value::Blob(_) => Type::Blob,
 			Value::VarInt(_) => Type::VarInt,
 			Value::VarUint(_) => Type::VarUint,
-			Value::Decimal(decimal) => Type::Decimal {
-				precision:
-					crate::value::decimal::Precision::new(
-						decimal.precision().value(),
-					),
-				scale: crate::value::decimal::Scale::new(
-					decimal.scale().value(),
-				),
-			},
+			Value::Decimal(_) => Type::Decimal,
 		}
 	}
 }
@@ -423,13 +396,7 @@ impl FromStr for Type {
 			"BLOB" => Ok(Type::Blob),
 			"VARINT" => Ok(Type::VarInt),
 			"VARUINT" => Ok(Type::VarUint),
-			"BIGDECIMAL" | "DECIMAL" => Ok(Type::Decimal {
-				precision:
-					crate::value::decimal::Precision::new(
-						38,
-					),
-				scale: crate::value::decimal::Scale::new(0),
-			}),
+			"DECIMAL" => Ok(Type::Decimal),
 			"UNDEFINED" => Ok(Type::Undefined),
 			_ => Err(()),
 		}

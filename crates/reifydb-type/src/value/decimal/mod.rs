@@ -108,12 +108,7 @@ impl Decimal {
 			BigDecimalInner::from_str(s).map_err(|_| {
 				error!(invalid_number_format(
 					OwnedFragment::None,
-					Type::Decimal {
-						precision: Precision::new(
-							precision
-						),
-						scale: Scale::new(scale)
-					}
+					Type::Decimal
 				))
 			})?;
 
@@ -199,10 +194,7 @@ impl FromStr for Decimal {
 			BigDecimalInner::from_str(s).map_err(|_| {
 				error!(invalid_number_format(
 					OwnedFragment::None,
-					Type::Decimal {
-						precision: Precision::new(1),
-						scale: Scale::new(0)
-					}
+					Type::Decimal
 				))
 			})?;
 
