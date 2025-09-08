@@ -19,7 +19,7 @@ command 'create deferred view test.transformed {
   original: int4,
   doubled: int4,
   squared: int4
-} with {
+} as {
   from test.source
   map { 
     id,

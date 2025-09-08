@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, value: int4 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.top_five { id: int4, value: int4} with {
+command 'create deferred view test.top_five { id: int4, value: int4} as {
   from test.source take 5
 }'
 ---

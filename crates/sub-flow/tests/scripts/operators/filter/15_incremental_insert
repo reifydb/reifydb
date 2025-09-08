@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, score: int4 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.high_scores { id: int4, score: int4 } with {
+command 'create deferred view test.high_scores { id: int4, score: int4 } as {
   from test.source
   filter { score >= 80 }
 }'

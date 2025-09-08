@@ -20,7 +20,7 @@ command 'create deferred view test.with_constants {
   version: int4,
   status: utf8,
   active: bool
-} with {
+} as {
   from test.source
   map { 
     id,

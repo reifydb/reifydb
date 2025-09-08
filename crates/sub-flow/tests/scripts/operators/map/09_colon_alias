@@ -19,7 +19,7 @@ command 'create deferred view test.invoice {
   subtotal: int4,
   tax: float8,
   total: float8
-} with {
+} as {
   from test.source
   map { 
     quantity: qty,

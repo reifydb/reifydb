@@ -18,7 +18,7 @@ command 'create deferred view test.aliased {
   id: int4, 
   name: utf8, 
   price: int4 
-} with {
+} as {
   from test.source
   map { 
     product_id as id,

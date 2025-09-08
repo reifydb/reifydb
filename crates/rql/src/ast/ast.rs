@@ -614,7 +614,7 @@ pub struct AstCreateDeferredView<'a> {
 	pub schema: AstIdentifier<'a>,
 	pub view: AstIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
-	pub with: Option<AstStatement<'a>>,
+	pub as_clause: Option<AstStatement<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -623,7 +623,7 @@ pub struct AstCreateTransactionalView<'a> {
 	pub schema: AstIdentifier<'a>,
 	pub view: AstIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
-	pub with: Option<AstStatement<'a>>,
+	pub as_clause: Option<AstStatement<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

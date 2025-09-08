@@ -6,16 +6,17 @@ use reifydb_type::Value;
 
 use crate::protocols::{
 	ProtocolResult,
-	ws::{WebsocketColumn, WebsocketFrame, WsParams},
+	ws::{WebsocketColumn, WebsocketFrame},
 };
 
 /// Convert WebSocket params to engine params
-pub fn convert_params(params: &Option<WsParams>) -> ProtocolResult<Params> {
+pub fn convert_params(params: &Option<Params>) -> ProtocolResult<Params> {
 	match params {
-		Some(WsParams::Positional(values)) => {
+		Some(Params::Positional(values)) => {
 			Ok(Params::Positional(values.clone()))
 		}
-		Some(WsParams::Named(map)) => Ok(Params::Named(map.clone())),
+		Some(Params::Named(map)) => Ok(Params::Named(map.clone())),
+		&Some(Params::None) => Ok(Params::None),
 		None => Ok(Params::None),
 	}
 }

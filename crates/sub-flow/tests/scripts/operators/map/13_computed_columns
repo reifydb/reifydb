@@ -26,7 +26,7 @@ command 'create deferred view test.order_summary {
   discount_amount: float8,
   final_price: float8,
   price_per_unit_after_discount: float8
-} with {
+} as {
   from test.source
   map { 
     product,
