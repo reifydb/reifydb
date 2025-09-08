@@ -5,7 +5,6 @@ import { SchemaPage } from '@/pages/schema'
 import { QueryPage } from '@/pages/query'
 import { SettingsPage } from '@/pages/settings'
 import { UsersPage } from '@/pages/users'
-import { ApiDocsPage } from '@/pages/api-docs'
 
 const rootRoute = createRootRoute({
   component: MainLayout,
@@ -51,12 +50,6 @@ const usersRoute = createRoute({
   component: UsersPage,
 })
 
-const apiRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/api',
-  component: ApiDocsPage,
-})
-
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -64,7 +57,6 @@ const routeTree = rootRoute.addChildren([
   queryRoute,
   settingsRoute,
   usersRoute,
-  apiRoute,
 ])
 
 export const router = createRouter({ routeTree })

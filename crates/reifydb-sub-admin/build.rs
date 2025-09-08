@@ -200,6 +200,16 @@ fn get_mime_type(path: &str) -> &'static str {
 		"image/svg+xml"
 	} else if path.ends_with(".ico") {
 		"image/x-icon"
+	} else if path.ends_with(".woff") {
+		"font/woff"
+	} else if path.ends_with(".woff2") {
+		"font/woff2"
+	} else if path.ends_with(".ttf") {
+		"font/ttf"
+	} else if path.ends_with(".otf") {
+		"font/otf"
+	} else if path.ends_with(".eot") {
+		"application/vnd.ms-fontobject"
 	} else {
 		"application/octet-stream"
 	}

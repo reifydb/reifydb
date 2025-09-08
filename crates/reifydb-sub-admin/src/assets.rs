@@ -42,5 +42,14 @@ pub fn get_embedded_file(path: &str) -> Option<&'static EmbeddedFile> {
 		path
 	};
 
-	files.get(path)
+	let result = files.get(path);
+	if result.is_none() && path.starts_with("assets/") {
+		println!("File not found: '{}'. Available asset files:", path);
+		for key in files.keys() {
+			if key.starts_with("assets/") {
+				println!("  - {}", key);
+			}
+		}
+	}
+	result
 }

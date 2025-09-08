@@ -19,7 +19,6 @@ const navigation = [
   { name: 'Schema', href: '/schema', icon: Database },
   { name: 'Query', href: '/query', icon: Terminal },
   { name: 'Users', href: '/users', icon: Users },
-  { name: 'API Docs', href: '/api', icon: FileCode },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
