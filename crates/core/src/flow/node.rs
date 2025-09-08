@@ -15,6 +15,10 @@ pub enum FlowNodeType<'a> {
 		name: String,
 		table: TableId,
 	},
+	SourceView {
+		name: String,
+		view: ViewId,
+	},
 	Operator {
 		operator: OperatorType<'a>,
 	},

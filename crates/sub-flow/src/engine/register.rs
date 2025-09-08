@@ -50,6 +50,15 @@ impl<E: Evaluator> FlowEngine<E> {
 						SourceId::from(*table),
 					);
 				}
+				FlowNodeType::SourceView {
+					view,
+					..
+				} => {
+					self.add_source(
+						flow.id,
+						SourceId::from(*view),
+					);
+				}
 				FlowNodeType::Operator {
 					operator,
 				} => {
@@ -75,6 +84,12 @@ impl<E: Evaluator> FlowEngine<E> {
 	}
 
 	fn add_source(&mut self, flow: FlowId, source: SourceId) {
+		use reifydb_core::log_debug;
+		log_debug!(
+			"FlowEngine: Registering flow {:?} for source {:?}",
+			flow,
+			source
+		);
 		let flows = self.sources.entry(source).or_insert_with(Vec::new);
 
 		debug_assert!(
@@ -85,6 +100,11 @@ impl<E: Evaluator> FlowEngine<E> {
 		);
 
 		flows.push(flow);
+		log_debug!(
+			"FlowEngine: Source {:?} now has {} dependent flows",
+			source,
+			flows.len()
+		);
 	}
 
 	fn add_sink(&mut self, flow: FlowId, sink: SourceId) {

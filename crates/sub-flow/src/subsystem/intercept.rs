@@ -12,7 +12,7 @@ use reifydb_core::{
 		TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
 	},
-	interface::{CommandTransaction, TableId, Transaction},
+	interface::{CommandTransaction, SourceId, Transaction},
 	ioc::{IocContainer, LazyResolveRc},
 };
 use reifydb_engine::StandardEngine;
@@ -22,18 +22,18 @@ use reifydb_type::RowNumber;
 #[derive(Debug, Clone)]
 pub(crate) enum Change {
 	Insert {
-		table_id: TableId,
+		source_id: SourceId,
 		row_number: RowNumber,
 		row: Vec<u8>,
 	},
 	Update {
-		table_id: TableId,
+		source_id: SourceId,
 		row_number: RowNumber,
 		before: Vec<u8>,
 		after: Vec<u8>,
 	},
 	Delete {
-		table_id: TableId,
+		source_id: SourceId,
 		row_number: RowNumber,
 		row: Vec<u8>,
 	},
@@ -74,7 +74,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostInsertInterceptor<CT>
 		ctx: &mut TablePostInsertContext<CT>,
 	) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Insert {
-			table_id: ctx.table.id,
+			source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			row: ctx.row.to_vec(),
 		});
@@ -91,7 +91,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostUpdateInterceptor<CT>
 		ctx: &mut TablePostUpdateContext<CT>,
 	) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Update {
-			table_id: ctx.table.id,
+			source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			before: ctx.old_row.to_vec(),
 			after: ctx.row.to_vec(),
@@ -108,7 +108,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostDeleteInterceptor<CT>
 		ctx: &mut TablePostDeleteContext<CT>,
 	) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Delete {
-			table_id: ctx.table.id,
+			source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			row: ctx.deleted_row.to_vec(),
 		});

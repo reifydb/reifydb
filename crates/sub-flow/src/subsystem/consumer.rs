@@ -8,9 +8,8 @@ use reifydb_core::{
 	interface::{
 		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
 		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
-		SourceId, TableId, Transaction,
+		SourceId, Transaction,
 	},
-	log_debug,
 	row::EncodedRow,
 	util::CowVec,
 	value::columnar::Columns,
@@ -40,20 +39,38 @@ impl<T: Transaction> FlowConsumer<T> {
 	/// Helper method to convert row bytes to Columns format
 	fn to_columns<CT: CommandTransaction>(
 		txn: &mut CT,
-		table: TableId,
+		source: SourceId,
 		row_bytes: &[u8],
 	) -> Result<Columns> {
-		// Get table metadata from catalog
-		let table = CatalogStore::get_table(txn, table)?;
-		let layout = table.get_layout();
-
-		// Create columns structure based on table definition
-		let mut columns = Columns::from_table_def(&table);
+		// Get source metadata from catalog
+		let (columns, layout) = match source {
+			SourceId::Table(table_id) => {
+				let table =
+					CatalogStore::get_table(txn, table_id)?;
+				let layout = table.get_layout();
+				let columns = Columns::from_table_def(&table);
+				(columns, layout)
+			}
+			SourceId::View(view_id) => {
+				let view =
+					CatalogStore::get_view(txn, view_id)?;
+				let layout = view.get_layout();
+				let columns = Columns::from_view_def(&view);
+				(columns, layout)
+			}
+			SourceId::TableVirtual(_) => {
+				// Virtual tables not supported in flows yet
+				unimplemented!(
+					"Virtual table sources not supported in flows"
+				)
+			}
+		};
 
 		// Convert row bytes to EncodedRow
 		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));
 
 		// Append the row data to columns
+		let mut columns = columns;
 		columns.append_rows(&layout, [encoded_row])?;
 
 		Ok(columns)
@@ -104,15 +121,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 		let flows = self.load_flows(txn)?;
 
-		log_debug!(
-			"FlowConsumer: Loaded {} flows from reifydb.flows",
-			flows.len()
-		);
 		for flow in flows {
-			log_debug!(
-				"FlowConsumer: Registering flow with id: {:?}",
-				flow.id
-			);
 			flow_engine.register(txn, flow)?;
 		}
 
@@ -122,81 +131,60 @@ impl<T: Transaction> FlowConsumer<T> {
 		for change in changes {
 			match change {
 				Change::Insert {
-					table_id,
+					source_id,
 					row_number,
 					row,
 				} => {
 					// Convert row bytes to Columns format
 					let columns = Self::to_columns(
-						txn, table_id, &row,
+						txn, source_id, &row,
 					)?;
 
 					let diff = FlowDiff::Insert {
-						source: SourceId::from(
-							table_id,
-						),
+						source: source_id,
 						row_ids: vec![row_number],
 						after: columns,
 					};
 					diffs.push(diff);
-					log_debug!(
-						"Processing insert: table={:?}, row={:?}",
-						table_id,
-						row_number
-					);
 				}
 				Change::Update {
-					table_id,
+					source_id,
 					row_number,
 					before,
 					after,
 				} => {
 					// Convert row bytes to Columns format
 					let before_columns = Self::to_columns(
-						txn, table_id, &before,
+						txn, source_id, &before,
 					)?;
 					let after_columns = Self::to_columns(
-						txn, table_id, &after,
+						txn, source_id, &after,
 					)?;
 
 					let diff = FlowDiff::Update {
-						source: SourceId::from(
-							table_id,
-						),
+						source: source_id,
 						row_ids: vec![row_number],
 						before: before_columns,
 						after: after_columns,
 					};
 					diffs.push(diff);
-					log_debug!(
-						"Processing update: table={:?}, row={:?}",
-						table_id,
-						row_number
-					);
 				}
 				Change::Delete {
-					table_id,
+					source_id,
 					row_number,
 					row,
 				} => {
 					// Convert row bytes to Columns format
 					let columns = Self::to_columns(
-						txn, table_id, &row,
+						txn, source_id, &row,
 					)?;
 
 					let diff = FlowDiff::Remove {
-						source: SourceId::from(
-							table_id,
-						),
+						source: source_id,
 						row_ids: vec![row_number],
 						before: columns,
 					};
 					diffs.push(diff);
-					log_debug!(
-						"Processing delete: table={:?}, row={:?}",
-						table_id,
-						row_number
-					);
 				}
 			}
 		}
@@ -229,62 +217,46 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					CdcChange::Insert { .. }
 				) && table_row.source.as_u64()
 					== FLOWS_TABLE_ID
-				{
-					log_debug!(
-						"FlowConsumer: Detected flow table insert (table={:?})",
-						table_row.source
-					);
-				}
+				{}
 
-				// Only process events for tables, not views
-				// Views are managed by the flow system itself
-				if let Ok(table_id) =
-					table_row.source.to_table_id()
-				{
-					// Convert CDC events to FlowChange
-					// events
-					let flowchange = match &event.change {
-						CdcChange::Insert {
-							after,
-							..
-						} => Change::Insert {
-							table_id,
-							row_number: table_row
-								.row,
-							row: after.to_vec(),
-						},
-						CdcChange::Update {
-							before,
-							after,
-							..
-						} => Change::Update {
-							table_id,
-							row_number: table_row
-								.row,
-							before: before.to_vec(),
-							after: after.to_vec(),
-						},
-						CdcChange::Delete {
-							before,
-							..
-						} => Change::Delete {
-							table_id,
-							row_number: table_row
-								.row,
-							row: before.to_vec(),
-						},
-					};
+				// Process events - flows will handle both
+				// tables and views since both use SourceId
+				let source_id = table_row.source;
 
-					changes.push(flowchange);
-				}
+				// Convert CDC events to FlowChange events
+				let flowchange = match &event.change {
+					CdcChange::Insert {
+						after,
+						..
+					} => Change::Insert {
+						source_id,
+						row_number: table_row.row,
+						row: after.to_vec(),
+					},
+					CdcChange::Update {
+						before,
+						after,
+						..
+					} => Change::Update {
+						source_id,
+						row_number: table_row.row,
+						before: before.to_vec(),
+						after: after.to_vec(),
+					},
+					CdcChange::Delete {
+						before,
+						..
+					} => Change::Delete {
+						source_id,
+						row_number: table_row.row,
+						row: before.to_vec(),
+					},
+				};
+				changes.push(flowchange);
 			}
 		}
 
 		if !changes.is_empty() {
-			log_debug!(
-				"Flow consumer processing {} CDC events",
-				changes.len(),
-			);
 			self.process_changes(txn, changes)?;
 		}
 
