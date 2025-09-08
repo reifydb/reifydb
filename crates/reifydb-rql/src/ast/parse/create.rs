@@ -7,6 +7,7 @@ use Operator::Colon;
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
 	AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
+	AstDataType,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -266,7 +267,37 @@ impl<'a> Parser<'a> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		let name = crate::ast::ast::AstIdentifier(name_token);
-		let ty = crate::ast::ast::AstIdentifier(ty_token);
+
+		// Parse type with optional parameters
+		let ty = if self.current()?.is_operator(Operator::OpenParen) {
+			// Type with parameters like UTF8(50) or DECIMAL(10,2)
+			self.consume_operator(Operator::OpenParen)?;
+			let mut params = Vec::new();
+
+			// Parse first parameter - for type constraints we
+			// expect numbers
+			params.push(self.parse_literal_number()?);
+
+			// Parse additional parameters if comma-separated
+			while self
+				.consume_if(TokenKind::Separator(Comma))?
+				.is_some()
+			{
+				params.push(self.parse_literal_number()?);
+			}
+
+			self.consume_operator(Operator::CloseParen)?;
+
+			AstDataType::WithParams {
+				name: crate::ast::ast::AstIdentifier(ty_token),
+				params,
+			}
+		} else {
+			// Simple type without parameters
+			AstDataType::Simple(crate::ast::ast::AstIdentifier(
+				ty_token,
+			))
+		};
 
 		let auto_increment =
 			if self.current()?.is_keyword(Keyword::Auto) {
@@ -297,7 +328,7 @@ mod tests {
 	use crate::ast::{
 		AstCreate, AstCreateDeferredView, AstCreateSchema,
 		AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
-		AstPolicyKind, parse::Parser, tokenize,
+		AstDataType, AstPolicyKind, parse::Parser, tokenize,
 	};
 
 	#[test]
@@ -349,7 +380,15 @@ mod tests {
 				assert_eq!(columns.len(), 1);
 
 				assert_eq!(columns[0].name.value(), "value");
-				assert_eq!(columns[0].ty.value(), "Int2");
+				match &columns[0].ty {
+					AstDataType::Simple(ident) => {
+						assert_eq!(
+							ident.value(),
+							"Int2"
+						)
+					}
+					_ => panic!("Expected simple type"),
+				}
 				assert_eq!(columns[0].auto_increment, false);
 			}
 			_ => unreachable!(),
@@ -385,7 +424,17 @@ mod tests {
 				{
 					let col = &columns[0];
 					assert_eq!(col.name.value(), "id");
-					assert_eq!(col.ty.value(), "int2");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"int2"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
 				}
@@ -393,7 +442,17 @@ mod tests {
 				{
 					let col = &columns[1];
 					assert_eq!(col.name.value(), "name");
-					assert_eq!(col.ty.value(), "text");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"text"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, false);
 				}
 
@@ -403,7 +462,17 @@ mod tests {
 						col.name.value(),
 						"is_premium"
 					);
-					assert_eq!(col.ty.value(), "bool");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"bool"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
 				}
@@ -441,7 +510,15 @@ mod tests {
 
 				let col = &columns[0];
 				assert_eq!(col.name.value(), "field");
-				assert_eq!(col.ty.value(), "int2");
+				match &col.ty {
+					AstDataType::Simple(ident) => {
+						assert_eq!(
+							ident.value(),
+							"int2"
+						)
+					}
+					_ => panic!("Expected simple type"),
+				}
 				assert_eq!(col.auto_increment, false);
 
 				let policies = &col
@@ -493,7 +570,17 @@ mod tests {
 				{
 					let col = &columns[0];
 					assert_eq!(col.name.value(), "id");
-					assert_eq!(col.ty.value(), "int4");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"int4"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, true);
 					assert!(col.policies.is_none());
 				}
@@ -501,7 +588,17 @@ mod tests {
 				{
 					let col = &columns[1];
 					assert_eq!(col.name.value(), "name");
-					assert_eq!(col.ty.value(), "utf8");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"utf8"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
 				}
@@ -538,7 +635,15 @@ mod tests {
 
 				let col = &columns[0];
 				assert_eq!(col.name.value(), "field");
-				assert_eq!(col.ty.value(), "int2");
+				match &col.ty {
+					AstDataType::Simple(ident) => {
+						assert_eq!(
+							ident.value(),
+							"int2"
+						)
+					}
+					_ => panic!("Expected simple type"),
+				}
 				assert_eq!(col.auto_increment, false);
 
 				let policies = &col
@@ -592,7 +697,17 @@ mod tests {
 				{
 					let col = &columns[0];
 					assert_eq!(col.name.value(), "id");
-					assert_eq!(col.ty.value(), "int4");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"int4"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
 				}
@@ -600,7 +715,17 @@ mod tests {
 				{
 					let col = &columns[1];
 					assert_eq!(col.name.value(), "name");
-					assert_eq!(col.ty.value(), "utf8");
+					match &col.ty {
+						AstDataType::Simple(ident) => {
+							assert_eq!(
+								ident.value(),
+								"utf8"
+							)
+						}
+						_ => panic!(
+							"Expected simple type"
+						),
+					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
 				}

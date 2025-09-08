@@ -3,7 +3,9 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{Type, diagnostic::number::NumberOfRangeColumnDescriptor};
+use reifydb_type::{
+	Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor,
+};
 use serde::{Deserialize, Serialize};
 
 use super::policy::{
@@ -16,7 +18,7 @@ use crate::interface::{ColumnId, ColumnPolicy};
 pub struct ColumnDef {
 	pub id: ColumnId,
 	pub name: String,
-	pub ty: Type,
+	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicy>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,

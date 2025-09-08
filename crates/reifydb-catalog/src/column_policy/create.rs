@@ -85,7 +85,7 @@ mod tests {
 		ColumnPolicyKind, ColumnSaturationPolicy, TableId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore,
@@ -97,7 +97,12 @@ mod tests {
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
-		create_test_column(&mut txn, "col_1", Type::Int2, vec![]);
+		create_test_column(
+			&mut txn,
+			"col_1",
+			TypeConstraint::unconstrained(Type::Int2),
+			vec![],
+		);
 
 		let policy = Saturation(Error);
 
@@ -125,7 +130,9 @@ mod tests {
 				table: TableId(1),
 				table_name: "table",
 				column: "col1".to_string(),
-				value: Type::Int2,
+				constraint: TypeConstraint::unconstrained(
+					Type::Int2,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

@@ -657,9 +657,18 @@ pub enum AstDescribe<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AstDataType<'a> {
+	Simple(AstIdentifier<'a>), // UTF8, BLOB, etc.
+	WithParams {
+		name: AstIdentifier<'a>,
+		params: Vec<AstLiteral<'a>>,
+	}, // UTF8(50), DECIMAL(10,2)
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstColumnToCreate<'a> {
 	pub name: AstIdentifier<'a>,
-	pub ty: AstIdentifier<'a>,
+	pub ty: AstDataType<'a>,
 	pub policies: Option<AstPolicyBlock<'a>>,
 	pub auto_increment: bool,
 }

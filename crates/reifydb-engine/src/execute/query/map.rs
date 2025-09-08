@@ -80,7 +80,9 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 				let target_column = ColumnDescriptor::new()
 					.with_table(&table.name)
 					.with_column(&table_column.name)
-					.with_column_type(table_column.ty)
+					.with_column_type(
+						table_column.constraint.ty(),
+					)
 					.with_policies(policy_kinds.clone());
 
 				result.target_column = Some(target_column);

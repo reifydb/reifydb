@@ -101,7 +101,7 @@ mod tests {
 		ColumnId, PrimaryKeyId, SourceId, TableId, ViewId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use super::PrimaryKeyToCreate;
 	use crate::{
@@ -126,7 +126,9 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				value: Type::Uint8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -144,7 +146,9 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "tenant_id".to_string(),
-				value: Type::Uint8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
@@ -195,12 +199,12 @@ mod tests {
 				columns: vec![
 					ViewColumnToCreate {
 						name: "id".to_string(),
-						ty: Type::Uint8,
+						constraint: TypeConstraint::unconstrained(Type::Uint8),
 						fragment: None,
 					},
 					ViewColumnToCreate {
 						name: "name".to_string(),
-						ty: Type::Utf8,
+						constraint: TypeConstraint::unconstrained(Type::Utf8),
 						fragment: None,
 					},
 				],
@@ -255,7 +259,10 @@ mod tests {
 					table: table.id,
 					table_name: "test_table",
 					column: format!("col_{}", i),
-					value: Type::Uint8,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Uint8,
+						),
 					if_not_exists: false,
 					policies: vec![],
 					index: ColumnIndex(i as u16),
@@ -311,7 +318,9 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				value: Type::Uint8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -436,7 +445,9 @@ mod tests {
 				table: table1.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				value: Type::Uint8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -469,7 +480,9 @@ mod tests {
 				table: table2.id,
 				table_name: "test_table2",
 				column: "id".to_string(),
-				value: Type::Uint8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

@@ -11,7 +11,24 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, Type};
+use reifydb_type::{Constraint, OwnedFragment, Type, TypeConstraint};
+
+/// Encodes a constraint to a byte vector for storage
+fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
+	match constraint {
+		None => vec![0], // Type 0: No constraint
+		Some(Constraint::MaxBytes(max_bytes)) => {
+			let mut bytes = vec![1]; // Type 1: MaxBytes
+			bytes.extend_from_slice(
+				&(*max_bytes as u32).to_le_bytes(),
+			);
+			bytes
+		}
+		Some(Constraint::PrecisionScale(precision, scale)) => {
+			vec![2, *precision, *scale] // Type 2: PrecisionScale
+		}
+	}
+}
 
 use crate::{
 	CatalogStore,
@@ -28,7 +45,7 @@ pub struct ColumnToCreate<'a> {
 	pub table: TableId,
 	pub table_name: &'a str,
 	pub column: String,
-	pub value: Type,
+	pub constraint: TypeConstraint,
 	pub if_not_exists: bool,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub index: ColumnIndex,
@@ -59,8 +76,9 @@ impl CatalogStore {
 
 		// Validate auto_increment is only used with integer types
 		if column_to_create.auto_increment {
+			let base_type = column_to_create.constraint.ty();
 			let is_integer_type = matches!(
-				column_to_create.value,
+				base_type,
 				Type::Int1
 					| Type::Int2 | Type::Int4 | Type::Int8
 					| Type::Int16 | Type::Uint1 | Type::Uint2
@@ -71,7 +89,7 @@ impl CatalogStore {
 				return_error!(auto_increment_invalid_type(
 					column_to_create.fragment,
 					&column_to_create.column,
-					column_to_create.value,
+					base_type,
 				));
 			}
 		}
@@ -89,7 +107,7 @@ impl CatalogStore {
 		column::LAYOUT.set_u8(
 			&mut row,
 			column::VALUE,
-			column_to_create.value.to_u8(),
+			column_to_create.constraint.ty().to_u8(),
 		);
 		column::LAYOUT.set_u16(
 			&mut row,
@@ -101,6 +119,13 @@ impl CatalogStore {
 			column::AUTO_INCREMENT,
 			column_to_create.auto_increment,
 		);
+
+		// Store constraint as encoded blob
+		let constraint_bytes = encode_constraint(
+			column_to_create.constraint.constraint(),
+		);
+		let blob = reifydb_type::Blob::from(constraint_bytes);
+		column::LAYOUT.set_blob(&mut row, column::CONSTRAINT, &blob);
 
 		txn.set(
 			&Key::Columns(ColumnsKey {
@@ -138,7 +163,7 @@ impl CatalogStore {
 		Ok(ColumnDef {
 			id,
 			name: column_to_create.column,
-			ty: column_to_create.value,
+			constraint: column_to_create.constraint,
 			index: column_to_create.index,
 			policies: Self::list_column_policies(txn, id)?,
 			auto_increment: column_to_create.auto_increment,
@@ -150,7 +175,7 @@ impl CatalogStore {
 mod test {
 	use reifydb_core::interface::{ColumnId, ColumnIndex, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore, column::ColumnToCreate,
@@ -171,7 +196,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				value: Type::Boolean,
+				constraint: TypeConstraint::unconstrained(
+					Type::Boolean,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -189,7 +216,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_2".to_string(),
-				value: Type::Int2,
+				constraint: TypeConstraint::unconstrained(
+					Type::Int2,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
@@ -204,7 +233,7 @@ mod test {
 
 		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
-		assert_eq!(column_1.ty, Type::Boolean);
+		assert_eq!(column_1.constraint.ty(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
 		let column_2 =
@@ -213,7 +242,7 @@ mod test {
 
 		assert_eq!(column_2.id, 8194);
 		assert_eq!(column_2.name, "col_2");
-		assert_eq!(column_2.ty, Type::Int2);
+		assert_eq!(column_2.constraint.ty(), Type::Int2);
 		assert_eq!(column_2.auto_increment, false);
 	}
 
@@ -231,7 +260,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "id".to_string(),
-				value: Type::Uint8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -245,7 +276,7 @@ mod test {
 
 		assert_eq!(column.id, ColumnId(8193));
 		assert_eq!(column.name, "id");
-		assert_eq!(column.ty, Type::Uint8);
+		assert_eq!(column.constraint.ty(), Type::Uint8);
 		assert_eq!(column.auto_increment, true);
 	}
 
@@ -265,7 +296,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "name".to_string(),
-				value: Type::Utf8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Utf8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -290,7 +323,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "is_active".to_string(),
-				value: Type::Boolean,
+				constraint: TypeConstraint::unconstrained(
+					Type::Boolean,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -311,7 +346,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "price".to_string(),
-				value: Type::Float8,
+				constraint: TypeConstraint::unconstrained(
+					Type::Float8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -337,7 +374,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				value: Type::Boolean,
+				constraint: TypeConstraint::unconstrained(
+					Type::Boolean,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -356,7 +395,9 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				value: Type::Boolean,
+				constraint: TypeConstraint::unconstrained(
+					Type::Boolean,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),

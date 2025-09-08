@@ -122,7 +122,8 @@ impl MapTerminalOperator {
 
 					let current_type =
 						result.data().get_type();
-					let target_type = view_column.ty;
+					let target_type =
+						view_column.constraint.ty();
 
 					// If types don't match and it's not
 					// undefined, create a cast expression

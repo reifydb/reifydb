@@ -37,8 +37,11 @@ impl<T: Transaction> TableScanNode<T> {
 		table: TableDef,
 		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
-		let data =
-			table.columns.iter().map(|c| c.ty).collect::<Vec<_>>();
+		let data = table
+			.columns
+			.iter()
+			.map(|c| c.constraint.ty())
+			.collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
 		let layout = ColumnsLayout {

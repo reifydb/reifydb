@@ -18,6 +18,7 @@ pub use fragment::{
 };
 pub use value::{
 	Blob,
+	Constraint,
 	Date,
 	DateTime,
 	Decimal,
@@ -30,6 +31,7 @@ pub use value::{
 	RowNumber,
 	Time,
 	Type,
+	TypeConstraint,
 
 	// Parse functions
 	Uuid4,

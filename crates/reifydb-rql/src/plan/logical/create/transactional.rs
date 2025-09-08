@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::view::ViewColumnToCreate;
+use reifydb_type::Fragment;
 
 use crate::{
-	ast::AstCreateTransactionalView,
-	convert_data_type,
+	ast::{AstCreateTransactionalView, AstDataType},
+	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan},
 };
 
@@ -16,15 +17,29 @@ impl Compiler {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.value().to_string();
-			let column_type = convert_data_type(&col.ty)?;
+			let constraint =
+				convert_data_type_with_constraints(&col.ty)?;
+
+			let ty_fragment = match &col.ty {
+				AstDataType::Simple(ident) => {
+					ident.0.fragment.clone()
+				}
+				AstDataType::WithParams {
+					name,
+					..
+				} => name.0.fragment.clone(),
+			};
+
+			let fragment = Some(Fragment::merge_all([
+				col.name.0.fragment.clone(),
+				ty_fragment,
+			])
+			.into_owned());
 
 			columns.push(ViewColumnToCreate {
 				name: column_name,
-				ty: column_type,
-				fragment: Some(col
-					.name
-					.fragment()
-					.into_owned()),
+				constraint,
+				fragment,
 			});
 		}
 

@@ -73,7 +73,7 @@ mod tests {
 	use reifydb_core::interface::{
 		ColumnDef, ColumnId, ColumnIndex, ViewKind,
 	};
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use super::*;
 
@@ -91,7 +91,10 @@ mod tests {
 				ColumnDef {
 					id: ColumnId(1),
 					name: "id".to_string(),
-					ty: Type::Int1,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Int1,
+						),
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -99,7 +102,10 @@ mod tests {
 				ColumnDef {
 					id: ColumnId(2),
 					name: "name".to_string(),
-					ty: Type::Utf8,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Utf8,
+						),
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

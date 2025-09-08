@@ -38,7 +38,7 @@ impl CatalogStore {
 mod tests {
 	use reifydb_core::interface::{SourceId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore,
@@ -53,20 +53,21 @@ mod tests {
 		let schema = ensure_test_schema(&mut txn);
 
 		// Create a view
-		let view = CatalogStore::create_deferred_view(
-			&mut txn,
-			ViewToCreate {
-				fragment: None,
-				schema: schema.id,
-				name: "test_view".to_string(),
-				columns: vec![ViewColumnToCreate {
+		let view =
+			CatalogStore::create_deferred_view(
+				&mut txn,
+				ViewToCreate {
+					fragment: None,
+					schema: schema.id,
+					name: "test_view".to_string(),
+					columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
-					ty: Type::Uint8,
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-			},
-		)
-		.unwrap();
+				},
+			)
+			.unwrap();
 
 		// Get column IDs for the view
 		let columns =
@@ -97,20 +98,21 @@ mod tests {
 		let schema = ensure_test_schema(&mut txn);
 
 		// Create a view
-		let view = CatalogStore::create_deferred_view(
-			&mut txn,
-			ViewToCreate {
-				fragment: None,
-				schema: schema.id,
-				name: "test_view".to_string(),
-				columns: vec![ViewColumnToCreate {
+		let view =
+			CatalogStore::create_deferred_view(
+				&mut txn,
+				ViewToCreate {
+					fragment: None,
+					schema: schema.id,
+					name: "test_view".to_string(),
+					columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
-					ty: Type::Uint8,
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-			},
-		)
-		.unwrap();
+				},
+			)
+			.unwrap();
 
 		// Get the primary key ID - should be None
 		let pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id)

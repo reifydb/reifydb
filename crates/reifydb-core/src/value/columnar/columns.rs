@@ -198,7 +198,7 @@ impl Columns {
 			.iter()
 			.map(|col| {
 				let name = col.name.clone();
-				let data = match col.ty {
+				let data = match col.constraint.ty() {
 					Type::Boolean => {
 						ColumnData::bool(vec![])
 					}
@@ -285,7 +285,7 @@ impl Columns {
 			.iter()
 			.map(|col| {
 				let name = col.name.clone();
-				let data = match col.ty {
+				let data = match col.constraint.ty() {
 					Type::Boolean => {
 						ColumnData::bool(vec![])
 					}

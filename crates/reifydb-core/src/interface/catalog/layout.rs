@@ -10,16 +10,22 @@ pub trait GetEncodedRowLayout {
 
 impl GetEncodedRowLayout for TableDef {
 	fn get_layout(&self) -> EncodedRowLayout {
-		let types: Vec<_> =
-			self.columns.iter().map(|col| col.ty).collect();
+		let types: Vec<_> = self
+			.columns
+			.iter()
+			.map(|col| col.constraint.ty())
+			.collect();
 		EncodedRowLayout::new(&types)
 	}
 }
 
 impl GetEncodedRowLayout for ViewDef {
 	fn get_layout(&self) -> EncodedRowLayout {
-		let types: Vec<_> =
-			self.columns.iter().map(|col| col.ty).collect();
+		let types: Vec<_> = self
+			.columns
+			.iter()
+			.map(|col| col.constraint.ty())
+			.collect();
 		EncodedRowLayout::new(&types)
 	}
 }

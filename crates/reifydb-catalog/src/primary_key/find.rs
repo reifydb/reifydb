@@ -72,7 +72,7 @@ impl CatalogStore {
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,
-				ty: column_def.ty,
+				constraint: column_def.constraint,
 				policies: column_def.policies,
 				index: column_def.index,
 				auto_increment: column_def.auto_increment,

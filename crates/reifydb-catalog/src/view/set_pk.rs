@@ -51,7 +51,7 @@ impl CatalogStore {
 mod tests {
 	use reifydb_core::interface::{PrimaryKeyId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore,
@@ -64,20 +64,21 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let schema = ensure_test_schema(&mut txn);
 
-		let view = CatalogStore::create_deferred_view(
-			&mut txn,
-			ViewToCreate {
-				fragment: None,
-				schema: schema.id,
-				name: "test_view".to_string(),
-				columns: vec![ViewColumnToCreate {
+		let view =
+			CatalogStore::create_deferred_view(
+				&mut txn,
+				ViewToCreate {
+					fragment: None,
+					schema: schema.id,
+					name: "test_view".to_string(),
+					columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
-					ty: Type::Uint8,
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-			},
-		)
-		.unwrap();
+				},
+			)
+			.unwrap();
 
 		// Set primary key
 		CatalogStore::set_view_primary_key(

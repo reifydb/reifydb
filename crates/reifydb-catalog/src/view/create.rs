@@ -10,7 +10,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, Type};
+use reifydb_type::{OwnedFragment, TypeConstraint};
 
 use crate::{
 	CatalogStore,
@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ViewColumnToCreate {
 	pub name: String,
-	pub ty: Type,
+	pub constraint: TypeConstraint,
 	pub fragment: Option<OwnedFragment>,
 }
 
@@ -156,7 +156,9 @@ impl CatalogStore {
 					table: TableId(view.0), /* Convert ViewId to TableId (both are u64) */
 					table_name: &to_create.name,
 					column: column_to_create.name,
-					value: column_to_create.ty,
+					constraint: column_to_create
+						.constraint
+						.clone(),
 					if_not_exists: false,
 					policies: vec![],
 					index: ColumnIndex(idx as u16),

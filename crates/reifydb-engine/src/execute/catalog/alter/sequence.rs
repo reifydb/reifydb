@@ -81,7 +81,10 @@ impl Executor {
 					schema: None,
 					table: None,
 					column: None,
-					column_type: Some(column.ty.clone()),
+					column_type: Some(column
+						.constraint
+						.ty()
+						.clone()),
 					policies: vec![],
 				}),
 				column_policies: vec![],
@@ -127,7 +130,7 @@ mod tests {
 		},
 	};
 	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
-	use reifydb_type::{Fragment, Type, Value};
+	use reifydb_type::{Fragment, Type, TypeConstraint, Value};
 
 	use crate::{
 		execute::Executor, test_utils::create_test_command_transaction,
@@ -148,14 +151,14 @@ mod tests {
 					TableColumnToCreate {
 						fragment: None,
 						name: "id".to_string(),
-						ty: Type::Int4,
+						constraint: TypeConstraint::unconstrained(Type::Int4),
 						policies: vec![],
 						auto_increment: true,
 					},
 					TableColumnToCreate {
 						fragment: None,
 						name: "name".to_string(),
-						ty: Type::Utf8,
+						constraint: TypeConstraint::unconstrained(Type::Utf8),
 						policies: vec![],
 						auto_increment: false,
 					},
@@ -204,7 +207,10 @@ mod tests {
 				columns: vec![TableColumnToCreate {
 					fragment: None,
 					name: "id".to_string(),
-					ty: Type::Int4,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Int4,
+						),
 					policies: vec![],
 					auto_increment: false,
 				}],
@@ -299,7 +305,10 @@ mod tests {
 				columns: vec![TableColumnToCreate {
 					fragment: None,
 					name: "id".to_string(),
-					ty: Type::Int4,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Int4,
+						),
 					policies: vec![],
 					auto_increment: true,
 				}],

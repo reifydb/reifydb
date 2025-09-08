@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 use reifydb_core::interface::{
 	ColumnDef, ColumnIndex, SchemaId, TableVirtualDef,
 };
-use reifydb_type::Type;
+use reifydb_type::{Type, TypeConstraint};
 
 use super::ids::{columns::primary_keys::*, table_virtual::PRIMARY_KEYS};
 
@@ -24,7 +24,10 @@ pub fn primary_keys() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: ID,
 					name: "id".to_string(),
-					ty: Type::Uint8,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Uint8,
+						),
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -32,7 +35,10 @@ pub fn primary_keys() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: SOURCE_ID,
 					name: "source_id".to_string(),
-					ty: Type::Uint8,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Uint8,
+						),
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

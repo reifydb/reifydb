@@ -83,7 +83,7 @@ impl CatalogStore {
 mod tests {
 	use reifydb_core::interface::TableId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore,
@@ -107,7 +107,9 @@ mod tests {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "b_col".to_string(),
-				value: Type::Int4,
+				constraint: TypeConstraint::unconstrained(
+					Type::Int4,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
@@ -125,7 +127,9 @@ mod tests {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "a_col".to_string(),
-				value: Type::Boolean,
+				constraint: TypeConstraint::unconstrained(
+					Type::Boolean,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

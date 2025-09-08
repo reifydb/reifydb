@@ -12,15 +12,17 @@ pub(crate) mod column {
 	pub(crate) const VALUE: usize = 3;
 	pub(crate) const INDEX: usize = 4;
 	pub(crate) const AUTO_INCREMENT: usize = 5;
+	pub(crate) const CONSTRAINT: usize = 6;
 
 	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8,   // id
 			Type::Uint8,   // table
 			Type::Utf8,    // name
-			Type::Uint1,   // value
+			Type::Uint1,   // value (type enum)
 			Type::Uint2,   // index
 			Type::Boolean, // auto_increment
+			Type::Blob,    // constraint
 		])
 	});
 }

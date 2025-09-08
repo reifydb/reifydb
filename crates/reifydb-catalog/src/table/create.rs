@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, Type};
+use reifydb_type::{OwnedFragment, TypeConstraint};
 
 use crate::{
 	CatalogStore,
@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct TableColumnToCreate {
 	pub name: String,
-	pub ty: Type,
+	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
 	pub fragment: Option<OwnedFragment>,
@@ -79,7 +79,9 @@ impl CatalogStore {
 		table::LAYOUT.set_u64(&mut row, table::ID, table);
 		table::LAYOUT.set_u64(&mut row, table::SCHEMA, schema);
 		table::LAYOUT.set_utf8(&mut row, table::NAME, &to_create.table);
-		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64); // Initialize with no primary key
+
+		// Initialize with no primary key
+		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
 		txn.set(
 			&TableKey {
@@ -142,7 +144,9 @@ impl CatalogStore {
 					table,
 					table_name: &to_create.table,
 					column: column_to_create.name,
-					value: column_to_create.ty,
+					constraint: column_to_create
+						.constraint
+						.clone(),
 					if_not_exists: false,
 					policies: column_to_create
 						.policies

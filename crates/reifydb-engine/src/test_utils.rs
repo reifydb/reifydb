@@ -11,7 +11,7 @@ use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
 };
-use reifydb_type::Type;
+use reifydb_type::{Type, TypeConstraint};
 
 use crate::{
 	EngineTransaction, StandardCommandTransaction,
@@ -92,14 +92,20 @@ pub fn create_test_command_transaction_with_internal_schema()
 			columns: vec![
 				TableColumnToCreate {
 					name: "id".to_string(),
-					ty: Type::Int8,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Int8,
+						),
 					policies: vec![],
 					auto_increment: true,
 					fragment: None,
 				},
 				TableColumnToCreate {
 					name: "data".to_string(),
-					ty: Type::Blob,
+					constraint:
+						TypeConstraint::unconstrained(
+							Type::Blob,
+						),
 					policies: vec![],
 					auto_increment: false,
 					fragment: None,

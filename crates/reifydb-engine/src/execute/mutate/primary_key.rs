@@ -18,7 +18,8 @@ pub fn encode_primary_key(
 	layout: &EncodedRowLayout,
 ) -> crate::Result<EncodedIndexKey> {
 	// Create index layout for PK columns
-	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.ty).collect();
+	let types: Vec<Type> =
+		pk_def.columns.iter().map(|c| c.constraint.ty()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
 	let index_layout = EncodedIndexLayout::new(&types, &directions)?;
 
@@ -40,7 +41,7 @@ pub fn encode_primary_key(
 		// are defined
 
 		// Copy value based on type
-		match pk_column.ty {
+		match pk_column.constraint.ty() {
 			Type::Boolean => {
 				let val = layout.get_bool(row, table_idx);
 				index_layout.set_bool(

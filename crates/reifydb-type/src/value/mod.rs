@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 mod as_string;
 pub mod blob;
 pub mod boolean;
+pub mod constraint;
 mod date;
 mod datetime;
 pub mod decimal;
@@ -30,6 +31,7 @@ pub mod varint;
 pub mod varuint;
 
 pub use blob::Blob;
+pub use constraint::{Constraint, TypeConstraint};
 pub use date::Date;
 pub use datetime::DateTime;
 pub use decimal::Decimal;

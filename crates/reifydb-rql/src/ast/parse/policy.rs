@@ -67,8 +67,8 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateTable, AstPolicyKind, parse::Parser,
-		tokenize::tokenize,
+		AstCreate, AstCreateTable, AstDataType, AstPolicyKind,
+		parse::Parser, tokenize::tokenize,
 	};
 
 	#[test]
@@ -142,7 +142,14 @@ mod tests {
 
 				let col = &columns[0];
 				assert_eq!(col.name.value(), "field");
-				assert_eq!(col.ty.value(), "int2");
+				match &col.ty {
+					AstDataType::Simple(id) => {
+						assert_eq!(id.value(), "int2")
+					}
+					_ => panic!(
+						"Expected simple data type"
+					),
+				}
 
 				let policies = col.policies.as_ref().unwrap();
 				assert_eq!(policies.policies.len(), 2);

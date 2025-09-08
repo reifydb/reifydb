@@ -45,16 +45,31 @@ impl CatalogStore {
 mod tests {
 	use reifydb_core::interface::{ColumnId, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		create_test_column(&mut txn, "col_1", Type::Int1, vec![]);
-		create_test_column(&mut txn, "col_2", Type::Int2, vec![]);
-		create_test_column(&mut txn, "col_3", Type::Int4, vec![]);
+		create_test_column(
+			&mut txn,
+			"col_1",
+			TypeConstraint::unconstrained(Type::Int1),
+			vec![],
+		);
+		create_test_column(
+			&mut txn,
+			"col_2",
+			TypeConstraint::unconstrained(Type::Int2),
+			vec![],
+		);
+		create_test_column(
+			&mut txn,
+			"col_3",
+			TypeConstraint::unconstrained(Type::Int4),
+			vec![],
+		);
 
 		let result = CatalogStore::find_column_by_name(
 			&mut txn,
@@ -66,14 +81,19 @@ mod tests {
 
 		assert_eq!(result.id, ColumnId(8195));
 		assert_eq!(result.name, "col_3");
-		assert_eq!(result.ty, Type::Int4);
+		assert_eq!(result.constraint.ty(), Type::Int4);
 		assert_eq!(result.auto_increment, false);
 	}
 
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
-		create_test_column(&mut txn, "col_1", Type::Int1, vec![]);
+		create_test_column(
+			&mut txn,
+			"col_1",
+			TypeConstraint::unconstrained(Type::Int1),
+			vec![],
+		);
 
 		let result = CatalogStore::find_column_by_name(
 			&mut txn,

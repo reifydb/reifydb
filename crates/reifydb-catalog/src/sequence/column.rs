@@ -31,7 +31,7 @@ impl ColumnSequence {
 		}
 		.encode();
 
-		Ok(match column.ty {
+		Ok(match column.constraint.ty() {
 			Type::Int1 => {
 				Value::Int1(GeneratorI8::next(txn, &key, None)?)
 			}
@@ -77,11 +77,11 @@ impl ColumnSequence {
 
 		if !column.auto_increment {
 			// return_error!(can_not_alter_not_auto_increment(plan.
-			// column, column.ty));
+			// column, column.constraint.ty()));
 			unimplemented!()
 		}
 
-		debug_assert!(value.get_type() == column.ty);
+		debug_assert!(value.get_type() == column.constraint.ty());
 
 		let key = ColumnSequenceKey {
 			source: source.into(),

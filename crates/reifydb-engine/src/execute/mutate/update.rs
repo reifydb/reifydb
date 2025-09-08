@@ -93,8 +93,11 @@ impl Executor {
 				);
 			};
 
-		let table_types: Vec<Type> =
-			table.columns.iter().map(|c| c.ty).collect();
+		let table_types: Vec<Type> = table
+			.columns
+			.iter()
+			.map(|c| c.constraint.ty())
+			.collect();
 		let layout = EncodedRowLayout::new(&table_types);
 
 		// Create execution context
@@ -205,7 +208,7 @@ impl Executor {
 
 						value = coerce_value_to_column_type(
 						value,
-						table_column.ty,
+						table_column.constraint.ty(),
 						ColumnDescriptor::new()
 							.with_schema(
 								&schema.name,
@@ -216,13 +219,22 @@ impl Executor {
 									.name,
 							)
 							.with_column_type(
-								table_column.ty,
+								table_column.constraint.ty(),
 							)
 							.with_policies(
 								policies,
 							),
 						&context,
 					)?;
+
+						// Validate the value against
+						// the column's constraint
+						if let Err(e) = table_column
+							.constraint
+							.validate(&value)
+						{
+							return Err(e);
+						}
 
 						match value {
 						Value::Boolean(v) => layout

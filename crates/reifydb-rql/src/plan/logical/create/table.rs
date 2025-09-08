@@ -7,7 +7,7 @@ use reifydb_type::Fragment;
 
 use crate::{
 	ast::AstCreateTable,
-	convert_data_type,
+	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan, convert_policy,
 	},
@@ -21,7 +21,8 @@ impl Compiler {
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.value().to_string();
-			let ty = convert_data_type(&col.ty)?;
+			let constraint =
+				convert_data_type_with_constraints(&col.ty)?;
 
 			let policies = if let Some(policy_block) = &col.policies
 			{
@@ -34,15 +35,25 @@ impl Compiler {
 				vec![]
 			};
 
+			let ty_fragment = match &col.ty {
+				crate::ast::AstDataType::Simple(ident) => {
+					ident.0.fragment.clone()
+				}
+				crate::ast::AstDataType::WithParams {
+					name,
+					..
+				} => name.0.fragment.clone(),
+			};
+
 			let fragment = Some(Fragment::merge_all([
 				col.name.0.fragment.clone(),
-				col.ty.0.fragment.clone(),
+				ty_fragment,
 			])
 			.into_owned());
 
 			columns.push(TableColumnToCreate {
 				name: column_name,
-				ty,
+				constraint,
 				policies,
 				auto_increment: col.auto_increment,
 				fragment,

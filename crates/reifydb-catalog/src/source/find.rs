@@ -57,7 +57,7 @@ mod tests {
 		SourceDef, SourceId, TableId, TableVirtualId, ViewId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore,
@@ -104,20 +104,21 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let schema = ensure_test_schema(&mut txn);
 
-		let view = CatalogStore::create_deferred_view(
-			&mut txn,
-			ViewToCreate {
-				fragment: None,
-				schema: schema.id,
-				name: "test_view".to_string(),
-				columns: vec![ViewColumnToCreate {
+		let view =
+			CatalogStore::create_deferred_view(
+				&mut txn,
+				ViewToCreate {
+					fragment: None,
+					schema: schema.id,
+					name: "test_view".to_string(),
+					columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
-					ty: Type::Uint8,
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-			},
-		)
-		.unwrap();
+				},
+			)
+			.unwrap();
 
 		// Find source by ViewId
 		let source = CatalogStore::find_source(&mut txn, view.id)

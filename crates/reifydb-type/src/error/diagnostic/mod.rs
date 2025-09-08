@@ -11,6 +11,7 @@ pub mod blob;
 pub mod boolean;
 pub mod cast;
 pub mod catalog;
+pub mod constraint;
 pub mod conversion;
 pub mod engine;
 pub mod flow;

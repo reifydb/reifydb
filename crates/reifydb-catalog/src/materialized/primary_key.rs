@@ -41,7 +41,7 @@ mod tests {
 	use reifydb_core::interface::{
 		ColumnDef, ColumnId, ColumnIndex, PrimaryKeyId,
 	};
-	use reifydb_type::Type;
+	use reifydb_type::{Type, TypeConstraint};
 
 	use super::*;
 	use crate::MaterializedCatalog;
@@ -52,7 +52,9 @@ mod tests {
 			columns: vec![ColumnDef {
 				id: ColumnId(1),
 				name: "id".to_string(),
-				ty: Type::Int4,
+				constraint: TypeConstraint::unconstrained(
+					Type::Int4,
+				),
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -97,7 +99,7 @@ mod tests {
 		pk_v2.columns.push(ColumnDef {
 			id: ColumnId(2),
 			name: "name".to_string(),
-			ty: Type::Utf8,
+			constraint: TypeConstraint::unconstrained(Type::Utf8),
 			policies: vec![],
 			index: ColumnIndex(1),
 			auto_increment: false,
@@ -161,7 +163,8 @@ mod tests {
 		let mut pk_v2 = pk_v1.clone();
 		pk_v2.columns[0].name = "pk_id".to_string();
 		let mut pk_v3 = pk_v2.clone();
-		pk_v3.columns[0].ty = Type::Int8;
+		pk_v3.columns[0].constraint =
+			TypeConstraint::unconstrained(Type::Int8);
 
 		// Set at different versions
 		catalog.set_primary_key(pk_id, 10, Some(pk_v1.clone()));

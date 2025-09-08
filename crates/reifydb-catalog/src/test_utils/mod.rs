@@ -5,7 +5,7 @@ use reifydb_core::interface::{
 	ColumnPolicyKind, CommandTransaction, SchemaDef, TableDef, TableId,
 	ViewDef,
 };
-use reifydb_type::Type;
+use reifydb_type::TypeConstraint;
 
 use crate::{
 	CatalogStore,
@@ -78,7 +78,7 @@ pub fn create_table(
 pub fn create_test_column(
 	txn: &mut impl CommandTransaction,
 	name: &str,
-	value: Type,
+	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
 ) {
 	ensure_test_table(txn);
@@ -94,7 +94,7 @@ pub fn create_test_column(
 			table: TableId(1025),
 			table_name: "test_table",
 			column: name.to_string(),
-			value,
+			constraint,
 			if_not_exists: false,
 			policies,
 			index: ColumnIndex(columns.len() as u16),
