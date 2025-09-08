@@ -43,54 +43,26 @@ fn main() {
 <html>
 <head>
     <title>ReifyDB Admin</title>
-    <meta charset="utf-8">
     <style>
-        body { 
-            font-family: system-ui, -apple-system, sans-serif; 
-            max-width: 800px; 
-            margin: 50px auto; 
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 { color: #333; }
-        .info { 
-            background: #fff3cd; 
-            padding: 15px; 
-            border-radius: 4px;
-            margin: 20px 0;
-        }
-        code {
-            background: #f0f0f0;
-            padding: 2px 5px;
-            border-radius: 3px;
-        }
+        body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .error { background: #fee; padding: 20px; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>ReifyDB Admin Console</h1>
-        <div class="info">
-            <p><strong>React app not built yet!</strong></p>
-            <p>To build the React admin interface:</p>
-            <ol>
-                <li>Navigate to <code>crates/reifydb-sub-admin/webapp/</code></li>
-                <li>Run <code>pnpm install</code></li>
-                <li>Run <code>[npm run build</code></li>
-                <li>Rebuild this crate with <code>cargo build</code></li>
-            </ol>
-        </div>
+    <h1>ReifyDB Admin Console</h1>
+    <div class="error">
+        <p>React app not found. Please build the webapp first.</p>
     </div>
 </body>
 </html>"#;
 
 		fs::write(dest_path.join("index.html"), placeholder_html)
 			.expect("Failed to write placeholder index.html");
+
+		// Generate an empty asset manifest so the include! macro
+		// doesn't fail
+		generate_empty_asset_manifest(&dest_path)
+			.expect("Failed to generate empty asset manifest");
 	}
 }
 
@@ -213,4 +185,21 @@ fn get_mime_type(path: &str) -> &'static str {
 	} else {
 		"application/octet-stream"
 	}
+}
+
+fn generate_empty_asset_manifest(webapp_path: &Path) -> std::io::Result<()> {
+	let manifest_path = webapp_path.join("asset_manifest.rs");
+	let mut manifest = fs::File::create(&manifest_path)?;
+
+	writeln!(manifest, "// Auto-generated asset manifest (placeholder)")?;
+	writeln!(manifest, "pub const ASSETS: &[(&str, &[u8], &str)] = &[")?;
+
+	// Include just the placeholder index.html
+	writeln!(
+		manifest,
+		"    (\"index.html\", include_bytes!(\"index.html\"), \"text/html; charset=utf-8\"),",
+	)?;
+
+	writeln!(manifest, "];")?;
+	Ok(())
 }
