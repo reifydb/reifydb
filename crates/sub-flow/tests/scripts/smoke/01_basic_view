@@ -23,7 +23,7 @@ create table test.users { name: utf8, age: int1};"
 
 # Create deferred view with filter and map
 command "
-create deferred view test.basic { name: utf8, age: int1 } with {
+create deferred view test.basic { name: utf8, age: int1 } as {
     from test.users
 };"
 ---

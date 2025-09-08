@@ -107,15 +107,104 @@ pub enum Value {
 }
 
 impl Value {
+	pub fn undefined() -> Self {
+		Value::Undefined
+	}
+
+	pub fn bool(v: impl Into<bool>) -> Self {
+		Value::Boolean(v.into())
+	}
+
 	pub fn float4(v: impl Into<f32>) -> Self {
 		OrderedF32::try_from(v.into())
 			.map(Value::Float4)
 			.unwrap_or(Value::Undefined)
 	}
+
 	pub fn float8(v: impl Into<f64>) -> Self {
 		OrderedF64::try_from(v.into())
 			.map(Value::Float8)
 			.unwrap_or(Value::Undefined)
+	}
+
+	pub fn int1(v: impl Into<i8>) -> Self {
+		Value::Int1(v.into())
+	}
+
+	pub fn int2(v: impl Into<i16>) -> Self {
+		Value::Int2(v.into())
+	}
+
+	pub fn int4(v: impl Into<i32>) -> Self {
+		Value::Int4(v.into())
+	}
+
+	pub fn int8(v: impl Into<i64>) -> Self {
+		Value::Int8(v.into())
+	}
+
+	pub fn int16(v: impl Into<i128>) -> Self {
+		Value::Int16(v.into())
+	}
+
+	pub fn utf8(v: impl Into<String>) -> Self {
+		Value::Utf8(v.into())
+	}
+
+	pub fn uint1(v: impl Into<u8>) -> Self {
+		Value::Uint1(v.into())
+	}
+
+	pub fn uint2(v: impl Into<u16>) -> Self {
+		Value::Uint2(v.into())
+	}
+
+	pub fn uint4(v: impl Into<u32>) -> Self {
+		Value::Uint4(v.into())
+	}
+
+	pub fn uint8(v: impl Into<u64>) -> Self {
+		Value::Uint8(v.into())
+	}
+
+	pub fn uint16(v: impl Into<u128>) -> Self {
+		Value::Uint16(v.into())
+	}
+
+	pub fn date(v: impl Into<Date>) -> Self {
+		Value::Date(v.into())
+	}
+
+	pub fn datetime(v: impl Into<DateTime>) -> Self {
+		Value::DateTime(v.into())
+	}
+
+	pub fn time(v: impl Into<Time>) -> Self {
+		Value::Time(v.into())
+	}
+
+	pub fn interval(v: impl Into<Interval>) -> Self {
+		Value::Interval(v.into())
+	}
+
+	pub fn row_number(v: impl Into<RowNumber>) -> Self {
+		Value::RowNumber(v.into())
+	}
+
+	pub fn identity_id(v: impl Into<IdentityId>) -> Self {
+		Value::IdentityId(v.into())
+	}
+
+	pub fn uuid4(v: impl Into<Uuid4>) -> Self {
+		Value::Uuid4(v.into())
+	}
+
+	pub fn uuid7(v: impl Into<Uuid7>) -> Self {
+		Value::Uuid7(v.into())
+	}
+
+	pub fn blob(v: impl Into<Blob>) -> Self {
+		Value::Blob(v.into())
 	}
 }
 

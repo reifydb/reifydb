@@ -336,6 +336,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
             input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
             extend: to_owned_expressions(node.extend)}),
         PhysicalPlan::TableScan(node) => PhysicalPlan::TableScan(node), // TableScanNode doesn't contain fragments
+        PhysicalPlan::ViewScan(node) => PhysicalPlan::ViewScan(node), // ViewScanNode doesn't contain fragments either
         PhysicalPlan::InlineData(node) => PhysicalPlan::InlineData(crate::plan::physical::InlineDataNode {
             rows: node.rows.into_iter().map(|row| {
                 row.into_iter().map(|alias_expr| {

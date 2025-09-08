@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, name: utf8, value: int4 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.unique_rows { id: int4, name: utf8, value: int4 } with {
+command 'create deferred view test.unique_rows { id: int4, name: utf8, value: int4 } as {
   from test.source
   distinct { id, name, value }
 }'

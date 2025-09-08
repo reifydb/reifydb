@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, age: int4, salary: int8, departmen
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.senior_engineers { id: int4, age: int4, salary: int8, department: utf8 } with {
+command 'create deferred view test.senior_engineers { id: int4, age: int4, salary: int8, department: utf8 } as {
   from test.source
   filter { age >= 30 and salary > 100000 and department == "Engineering" }
 }'

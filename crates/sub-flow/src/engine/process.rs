@@ -7,7 +7,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{
 		Flow, FlowChange, FlowDiff, FlowNode, FlowNodeType,
-		FlowNodeType::{SourceInlineData, SourceTable},
+		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
 	interface::{
 		CommandTransaction, EncodableKey, Evaluator,
@@ -129,6 +129,13 @@ impl<E: Evaluator> FlowEngine<E> {
 				// Source nodes just propagate the change
 				change
 			}
+			SourceView {
+				..
+			} => {
+				// Source view nodes also propagate the change
+				// This enables view-to-view dependencies
+				change
+			}
 			FlowNodeType::Operator {
 				..
 			} => &self.apply_operator(txn, node, &change)?,
@@ -136,28 +143,18 @@ impl<E: Evaluator> FlowEngine<E> {
 				view,
 				..
 			} => {
-				log_debug!(
-					"FlowEngine: Applying {} diffs to view {:?}",
-					change.diffs.len(),
-					view
-				);
 				for diff in &change.diffs {
 					match diff {
 						FlowDiff::Insert {
 							row_ids,
 							..
-						} => {
-							log_debug!(
-								"FlowEngine: Inserting {} rows to view {:?}: {:?}",
-								row_ids.len(),
-								view,
-								row_ids
-							);
-						}
+						} => {}
 						_ => {}
 					}
 				}
 				// Sinks persist the final results
+				// View writes will generate CDC events that
+				// trigger dependent flows
 				self.apply_to_view(txn, *view, &change)?;
 				change
 			}
@@ -267,13 +264,6 @@ impl<E: Evaluator> FlowEngine<E> {
 							row: row_id,
 						}
 						.encode();
-
-						log_debug!(
-							"Writing row to view {:?} with row_id {:?}, key: {:?}",
-							view_id,
-							row_id,
-							key
-						);
 
 						// Insert or update the row
 						txn.set(&key, row)?;
@@ -406,14 +396,24 @@ fn find_source_node<'a>(
 ) -> Option<&'a FlowNode<'static>> {
 	for node_id in flow.get_node_ids() {
 		if let Some(node) = flow.get_node(&node_id) {
-			if let SourceTable {
-				table,
-				..
-			} = &node.ty
-			{
-				if *source == SourceId::table(*table) {
-					return Some(node);
+			match &node.ty {
+				SourceTable {
+					table,
+					..
+				} => {
+					if *source == SourceId::table(*table) {
+						return Some(node);
+					}
 				}
+				SourceView {
+					view,
+					..
+				} => {
+					if *source == SourceId::view(*view) {
+						return Some(node);
+					}
+				}
+				_ => {}
 			}
 		}
 	}

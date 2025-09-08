@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, value: int4 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.at_most_fifty { id: int4, value: int4 } with {
+command 'create deferred view test.at_most_fifty { id: int4, value: int4 } as {
   from test.source
   filter { value <= 50 }
 }'

@@ -16,7 +16,7 @@
     "publish:npm": "pnpm publish --access public"
   },
   "dependencies": {
-    "@reifydb/core": "0.0.1-alpha.4",
+    "@reifydb/core": "workspace:*",
     "uuid": "^11.1.0",
     "ws": "^8.18.3"
   },

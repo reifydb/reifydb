@@ -8,8 +8,6 @@ pub mod session;
 mod utils;
 pub mod ws;
 
-use std::collections::HashMap;
-
 pub use client::Client;
 pub use domain::{Frame, FrameColumn};
 pub use http::{
@@ -17,7 +15,8 @@ pub use http::{
 	HttpClient, HttpResponseMessage,
 };
 use reifydb_type::diagnostic::Diagnostic;
-pub use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
+// Re-export types from reifydb
+pub use reifydb_type::{OrderedF32, OrderedF64, Params, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{CommandResult, QueryResult};
 pub use ws::{
@@ -59,14 +58,6 @@ pub struct CommandRequest {
 pub struct QueryRequest {
 	pub statements: Vec<String>,
 	pub params: Option<Params>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Params {
-	Positional(Vec<Value>),
-	Named(HashMap<String, Value>),
-	None,
 }
 
 // ============================================================================

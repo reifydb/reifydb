@@ -9,9 +9,7 @@ use std::collections::VecDeque;
 
 pub use handler::WebSocketHandler;
 use mio::Interest;
-pub use request::{
-	CommandRequest, QueryRequest, Request, RequestPayload, WsParams,
-};
+pub use request::{CommandRequest, QueryRequest, Request, RequestPayload};
 pub use response::{
 	AuthResponse, CommandResponse, ErrResponse, QueryResponse, Response,
 	ResponsePayload, WebsocketColumn, WebsocketFrame,

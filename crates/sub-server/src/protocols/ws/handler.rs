@@ -172,7 +172,8 @@ impl WebSocketHandler {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e))}
+                Err(e) => return Err(ProtocolError::Io(e))
+            }
 		}
 		Ok(())
 	}
@@ -223,7 +224,8 @@ impl WebSocketHandler {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e))}
+                Err(e) => return Err(ProtocolError::Io(e))
+            }
 		}
 		Ok(())
 	}
@@ -249,7 +251,8 @@ impl WebSocketHandler {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(ProtocolError::Io(e))}
+                Err(e) => return Err(ProtocolError::Io(e))
+            }
 		}
 		Ok(())
 	}
@@ -291,7 +294,8 @@ impl WebSocketHandler {
                         }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                    Err(e) => return Err(ProtocolError::Io(e))}
+                    Err(e) => return Err(ProtocolError::Io(e))
+                }
 			} else {
 				break;
 			}

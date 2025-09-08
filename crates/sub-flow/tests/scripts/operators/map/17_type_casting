@@ -25,7 +25,7 @@ command 'create deferred view test.casted {
   float_to_int: int4,
   mixed_calc: float8,
   ratio: float8
-} with {
+} as {
   from test.source
   map { 
     id,

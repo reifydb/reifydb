@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, name: utf8, is_active: bool, is_ve
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.active_users { id: int4, name: utf8, is_active: bool, is_verified: bool } with {
+command 'create deferred view test.active_users { id: int4, name: utf8, is_active: bool, is_verified: bool } as {
   from test.source
   filter { is_active == true }
 }'

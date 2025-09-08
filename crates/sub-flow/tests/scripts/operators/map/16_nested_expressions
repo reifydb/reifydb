@@ -25,7 +25,7 @@ command 'create deferred view test.nested_calc {
   nested: int4,
   complex: int4,
   very_nested: int4
-} with {
+} as {
   from test.source
   map { 
     id,

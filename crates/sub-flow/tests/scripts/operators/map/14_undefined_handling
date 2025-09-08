@@ -24,7 +24,7 @@ command 'create deferred view test.with_undefined {
   result: int4,
   name: utf8,
   has_value: bool
-} with {
+} as {
   from test.source
   map { 
     id,

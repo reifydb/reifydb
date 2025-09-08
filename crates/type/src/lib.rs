@@ -5,6 +5,7 @@
 
 mod error;
 mod fragment;
+mod params;
 pub mod util;
 pub mod value;
 
@@ -16,6 +17,7 @@ pub use fragment::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
 	StatementColumn, StatementLine,
 };
+pub use params::Params;
 pub use value::{
 	Blob,
 	Constraint,

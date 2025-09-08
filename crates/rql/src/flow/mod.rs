@@ -31,6 +31,7 @@ use self::{
 	},
 	source::{
 		inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
+		view_scan::ViewScanCompiler,
 	},
 };
 use crate::plan::physical::PhysicalPlan;
@@ -143,12 +144,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				TableScanCompiler::from(table_scan)
 					.compile(self)
 			}
-			PhysicalPlan::ViewScan(_view_scan) => {
-				// TODO: Implement ViewScanCompiler
-				// For now, return a placeholder
-				unimplemented!(
-					"ViewScan compilation not yet implemented"
-				)
+			PhysicalPlan::ViewScan(view_scan) => {
+				ViewScanCompiler::from(view_scan).compile(self)
 			}
 			PhysicalPlan::InlineData(inline_data) => {
 				InlineDataCompiler::from(inline_data)

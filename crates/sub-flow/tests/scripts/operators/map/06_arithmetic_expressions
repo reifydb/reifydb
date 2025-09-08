@@ -20,7 +20,7 @@ command 'create deferred view test.computed {
   diff: int4, 
   product: int4, 
   quotient: int4 
-} with {
+} as {
   from test.source
   map { 
     id,

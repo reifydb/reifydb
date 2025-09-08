@@ -107,8 +107,7 @@ impl Push<Blob> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
-				let mut new_container =
-					ColumnData::blob(vec![
+				let mut new_container = ColumnData::blob(vec![
 						Blob::default();
 						container.len()
 					]);
