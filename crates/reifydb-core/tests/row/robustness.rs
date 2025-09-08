@@ -129,10 +129,7 @@ fn test_repeated_clone_stability() {
 		Type::Utf8,
 		Type::Blob,
 		Type::VarInt,
-		Type::Decimal {
-			precision: 20.into(),
-			scale: 5.into(),
-		},
+		Type::Decimal,
 	]);
 
 	let mut original = layout.allocate_row();

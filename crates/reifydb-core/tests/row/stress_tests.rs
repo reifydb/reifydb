@@ -34,10 +34,7 @@ fn test_mixed_type_stress() {
 		Type::IdentityId,
 		Type::VarInt,
 		Type::VarUint,
-		Type::Decimal {
-			precision: 10.into(),
-			scale: 2.into(),
-		},
+		Type::Decimal,
 	]);
 
 	let mut row = layout.allocate_row();

@@ -500,10 +500,7 @@ impl NumberParser {
 			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(
 				fragment,
-				Type::Decimal {
-					precision: reifydb_type::value::decimal::Precision::new(38),
-					scale: reifydb_type::value::decimal::Scale::new(0),
-				},
+				Type::Decimal,
 				err.diagnostic()
 			)),
 		}

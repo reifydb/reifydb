@@ -90,13 +90,8 @@ impl ColumnData {
 			ColumnData::VarInt(_) => Type::VarInt,
 			ColumnData::VarUint(_) => Type::VarUint,
 			ColumnData::Decimal {
-				precision,
-				scale,
 				..
-			} => Type::Decimal {
-				precision: *precision,
-				scale: *scale,
-			},
+			} => Type::Decimal,
 			ColumnData::Undefined(_) => Type::Undefined,
 		}
 	}
@@ -302,12 +297,7 @@ impl ColumnData {
 			Type::Blob => Self::blob_with_capacity(capacity),
 			Type::VarInt => Self::varint_with_capacity(capacity),
 			Type::VarUint => Self::varuint_with_capacity(capacity),
-			Type::Decimal {
-				precision,
-				scale,
-			} => Self::decimal_with_capacity_typed(
-				capacity, precision, scale,
-			),
+			Type::Decimal => Self::decimal_with_capacity(capacity),
 			Type::Undefined => panic!(
 				"it is not possible to create an undefined container with capacity without setting the values alread"
 			),

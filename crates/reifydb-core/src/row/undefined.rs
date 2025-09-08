@@ -229,16 +229,10 @@ mod tests {
 	fn test_set_decimal_varint_varuint() {
 		use std::str::FromStr;
 
-		use reifydb_type::{
-			Decimal, VarInt, VarUint,
-			value::decimal::{Precision, Scale},
-		};
+		use reifydb_type::{Decimal, VarInt, VarUint};
 
 		let layout = EncodedRowLayout::new(&[
-			Type::Decimal {
-				precision: Precision::new(10),
-				scale: Scale::new(2),
-			},
+			Type::Decimal,
 			Type::VarInt,
 			Type::VarUint,
 		]);

@@ -36,10 +36,7 @@ fn test_unaligned_access_all_types() {
 		Type::Blob,
 		Type::VarInt,
 		Type::VarUint,
-		Type::Decimal {
-			precision: 10.into(),
-			scale: 2.into(),
-		},
+		Type::Decimal,
 	];
 
 	for target_type in types_to_test {

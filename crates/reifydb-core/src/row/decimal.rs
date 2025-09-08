@@ -129,19 +129,13 @@ mod tests {
 	use std::str::FromStr;
 
 	use num_traits::Zero;
-	use reifydb_type::{
-		Decimal, Type,
-		value::decimal::{Precision, Scale},
-	};
+	use reifydb_type::{Decimal, Type};
 
 	use crate::row::EncodedRowLayout;
 
 	#[test]
 	fn test_compact_inline() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(5),
-			scale: Scale::new(2),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row = layout.allocate_row();
 
 		// Test simple decimal
@@ -162,10 +156,7 @@ mod tests {
 	#[test]
 	fn test_compact_boundaries() {
 		// Test high precision decimal
-		let layout1 = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(38),
-			scale: Scale::new(31),
-		}]);
+		let layout1 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row1 = layout1.allocate_row();
 		let high_precision =
 			Decimal::from_str("1.0000000000000000000000000000001")
@@ -178,10 +169,7 @@ mod tests {
 		);
 
 		// Test large integer (scale 0)
-		let layout2 = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(38),
-			scale: Scale::new(0),
-		}]);
+		let layout2 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row2 = layout2.allocate_row();
 		let large_int =
 			Decimal::from_str("100000000000000000000000000000000")
@@ -195,10 +183,7 @@ mod tests {
 
 	#[test]
 	fn test_extended_i128() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(30),
-			scale: Scale::new(9),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row = layout.allocate_row();
 
 		// Value that needs i128 mantissa
@@ -219,10 +204,7 @@ mod tests {
 	fn test_dynamic_storage() {
 		// Use a smaller test that will still trigger dynamic storage
 		// due to large mantissa
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(38),
-			scale: Scale::new(9),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row = layout.allocate_row();
 
 		// Create a value with large precision that will exceed i128
@@ -244,10 +226,7 @@ mod tests {
 
 	#[test]
 	fn test_zero() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(2),
-			scale: Scale::new(1),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row = layout.allocate_row();
 
 		let zero = Decimal::from_str("0.0").unwrap();
@@ -260,10 +239,7 @@ mod tests {
 
 	#[test]
 	fn test_currency_values() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(10),
-			scale: Scale::new(2),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 
 		// Test typical currency value (2 decimal places)
 		let mut row1 = layout.allocate_row();
@@ -289,10 +265,7 @@ mod tests {
 
 	#[test]
 	fn test_scientific_notation() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(11),
-			scale: Scale::new(0),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row = layout.allocate_row();
 
 		let scientific = Decimal::from_str("1.23456e10").unwrap();
@@ -304,10 +277,7 @@ mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(4),
-			scale: Scale::new(2),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row = layout.allocate_row();
 
 		// Undefined initially
@@ -324,10 +294,7 @@ mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let layout = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(6),
-			scale: Scale::new(5),
-		}]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal]);
 		let row1 = layout.allocate_row();
 		let mut row2 = row1.clone();
 
@@ -344,15 +311,9 @@ mod tests {
 	fn test_mixed_with_other_types() {
 		let layout = EncodedRowLayout::new(&[
 			Type::Boolean,
-			Type::Decimal {
-				precision: Precision::new(4),
-				scale: Scale::new(2),
-			},
+			Type::Decimal,
 			Type::Utf8,
-			Type::Decimal {
-				precision: Precision::new(12),
-				scale: Scale::new(9),
-			},
+			Type::Decimal,
 			Type::Int4,
 		]);
 		let mut row = layout.allocate_row();
@@ -383,10 +344,7 @@ mod tests {
 	#[test]
 	fn test_negative_values() {
 		// Small negative (compact inline) - needs scale 2
-		let layout1 = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(3),
-			scale: Scale::new(2),
-		}]);
+		let layout1 = EncodedRowLayout::new(&[Type::Decimal]);
 
 		let mut row1 = layout1.allocate_row();
 		let small_neg = Decimal::from_str("-0.01").unwrap();
@@ -394,10 +352,7 @@ mod tests {
 		assert_eq!(layout1.get_decimal(&row1, 0).to_string(), "-0.01");
 
 		// Large negative (extended i128) - needs scale 3
-		let layout2 = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(21),
-			scale: Scale::new(3),
-		}]);
+		let layout2 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row2 = layout2.allocate_row();
 		let large_neg =
 			Decimal::from_str("-999999999999999999.999").unwrap();
@@ -408,10 +363,7 @@ mod tests {
 		);
 
 		// Huge negative (dynamic) - needs scale 9
-		let layout3 = EncodedRowLayout::new(&[Type::Decimal {
-			precision: Precision::new(38),
-			scale: Scale::new(9),
-		}]);
+		let layout3 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row3 = layout3.allocate_row();
 		let huge_neg = Decimal::from_str(
 			"-99999999999999999999999999999.999999999",

@@ -73,7 +73,7 @@ impl FrameColumnData {
 			FrameColumnData::Blob(_) => Type::Blob,
 			FrameColumnData::VarInt(_) => Type::VarInt,
 			FrameColumnData::VarUint(_) => Type::VarUint,
-			FrameColumnData::Decimal(_) => Type::Decimal { precision: reifydb_type::value::decimal::Precision::new(38), scale: reifydb_type::value::decimal::Scale::new(0) },
+			FrameColumnData::Decimal(_) => Type::Decimal,
 			FrameColumnData::Undefined(_) => Type::Undefined,
 		}
 	}

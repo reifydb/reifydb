@@ -522,18 +522,6 @@ impl ColumnData {
 		}
 	}
 
-	pub fn decimal_with_capacity_typed(
-		capacity: usize,
-		precision: reifydb_type::value::decimal::Precision,
-		scale: reifydb_type::value::decimal::Scale,
-	) -> Self {
-		ColumnData::Decimal {
-			container: NumberContainer::with_capacity(capacity),
-			precision,
-			scale,
-		}
-	}
-
 	pub fn decimal_with_bitvec(
 		data: impl IntoIterator<Item = Decimal>,
 		bitvec: impl Into<BitVec>,
