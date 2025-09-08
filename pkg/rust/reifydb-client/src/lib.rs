@@ -6,7 +6,6 @@ mod domain;
 pub mod session;
 
 use std::{
-	collections::HashMap,
 	io::{Read, Write},
 	net::TcpStream,
 };
@@ -17,7 +16,7 @@ pub use domain::{Frame, FrameColumn};
 use reifydb_hash::sha1;
 use reifydb_type::diagnostic::Diagnostic;
 // Re-export types from reifydb
-pub use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
+pub use reifydb_type::{OrderedF32, OrderedF64, Params, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{
 	BlockingSession, CallbackSession, ChannelResponse, ChannelSession,
@@ -58,13 +57,6 @@ pub struct CommandRequest {
 pub struct QueryRequest {
 	pub statements: Vec<String>,
 	pub params: Option<Params>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Params {
-	Positional(Vec<Value>),
-	Named(HashMap<String, Value>),
 }
 
 // ============================================================================
