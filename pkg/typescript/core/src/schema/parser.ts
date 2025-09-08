@@ -5,7 +5,7 @@
  */
 
 import {
-    BlobValue, BoolValue, DateValue, DateTimeValue,
+    BlobValue, BooleanValue, DateValue, DateTimeValue,
     Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     IntervalValue, TimeValue,
@@ -21,8 +21,8 @@ function createValueInstance<T extends Type>(type: T, value: any): PrimitiveToVa
     switch (type) {
         case 'Blob':
             return new BlobValue(value) as PrimitiveToValue<T>;
-        case 'Bool':
-            return new BoolValue(value) as PrimitiveToValue<T>;
+        case 'Boolean':
+            return new BooleanValue(value) as PrimitiveToValue<T>;
         case 'Float4':
             return new Float4Value(value) as PrimitiveToValue<T>;
         case 'Float8':

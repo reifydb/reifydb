@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, error::Error, fmt::Write};
+use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs};
 
 use reifydb::{
 	Database, ServerBuilder,
@@ -14,7 +14,7 @@ use reifydb::{
 	},
 	sub_server::{NetworkConfig, ServerConfig},
 };
-use reifydb_client::{Client, Frame, Params, Value};
+use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;
 
 pub fn create_server_instance<VT, UT, C>(
@@ -34,7 +34,7 @@ where
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
 		.with_config(
 			ServerConfig::new()
-				.bind_addr("[::1]:0")
+				.bind_addr("::1:0")
 				.network(network_config),
 		)
 		.build()
@@ -54,9 +54,18 @@ where
 	Ok(server.sub_server().unwrap().port().unwrap())
 }
 
-/// Connect client to WebSocket server
-pub fn connect_client(ws_port: u16) -> Result<Client, Box<dyn Error>> {
-	Ok(Client::connect(&format!("ws://[::1]:{}", ws_port))?)
+#[allow(dead_code)]
+pub fn connect_ws<A: ToSocketAddrs>(
+	addr: A,
+) -> Result<WsClient, Box<dyn Error>> {
+	Client::ws(addr)
+}
+
+#[allow(dead_code)]
+pub fn connect_http<A: ToSocketAddrs>(
+	addr: A,
+) -> Result<HttpClient, Box<dyn Error>> {
+	Client::http(addr)
 }
 
 /// Parse RQL command from testscript Command
@@ -126,10 +135,10 @@ fn parse_param_value(s: &str) -> Value {
 
 	// Handle boolean
 	if s == "true" {
-		return Value::Bool(true);
+		return Value::Boolean(true);
 	}
 	if s == "false" {
-		return Value::Bool(false);
+		return Value::Boolean(false);
 	}
 
 	// Handle quoted strings
@@ -153,11 +162,18 @@ pub fn write_frames(frames: Vec<Frame>) -> Result<String, Box<dyn Error>> {
 	Ok(output)
 }
 
-/// Clean up client connection
-pub fn cleanup_client(client: Option<Client>) {
+#[allow(dead_code)]
+pub fn cleanup_ws_client(client: Option<WsClient>) {
 	if let Some(client) = client {
 		let _ = client.close();
 	}
+}
+
+#[allow(dead_code)]
+pub fn cleanup_http_client(client: Option<HttpClient>) {
+	// HTTP clients don't maintain persistent connections
+	// so no cleanup needed
+	drop(client);
 }
 
 /// Clean up server instance

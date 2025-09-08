@@ -1,4 +1,7 @@
 packages:
-  - 'core'
-  - 'client'
-  - 'react'
+  - core
+  - client
+  - react
+
+overrides:
+  '@reifydb/core': link:core

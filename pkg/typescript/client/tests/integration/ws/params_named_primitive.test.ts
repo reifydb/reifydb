@@ -47,7 +47,7 @@ describe('Named Parameters', () => {
 
     describe('command', () => {
 
-        it('Bool', async () => {
+        it('Boolean', async () => {
             const frames = await wsClient.command(
                 'MAP $value as result',
                 { value: true },
@@ -289,7 +289,7 @@ describe('Named Parameters', () => {
 
     describe('query', () => {
 
-        it('Bool', async () => {
+        it('Boolean', async () => {
             const frames = await wsClient.query(
                 'MAP $value as result',
                 { value: true },

@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::fmt::{self, Display, Formatter};
 
@@ -173,7 +173,7 @@ mod tests {
 				.map(|opt| {
 					opt.map_or(
 						Value::Undefined,
-						Value::Bool,
+						Value::Boolean,
 					)
 				})
 				.collect();
@@ -182,7 +182,7 @@ mod tests {
 				schema: None,
 				store: None,
 				name: $name.to_string(),
-				r#type: Type::Bool,
+				r#type: Type::Boolean,
 				data: result_data,
 			}
 		}};

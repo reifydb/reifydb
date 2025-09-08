@@ -1,0 +1,245 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use reifydb_catalog::{
+	CatalogViewCommandOperations, CatalogViewQueryOperations,
+	view::ViewToCreate,
+};
+use reifydb_core::{interface::Transaction, value::columnar::Columns};
+use reifydb_rql::plan::physical::CreateDeferredViewPlan;
+use reifydb_type::Value;
+
+use crate::{StandardCommandTransaction, execute::Executor};
+
+impl Executor {
+	pub(crate) fn create_deferred_view<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		plan: CreateDeferredViewPlan,
+	) -> crate::Result<Columns> {
+		if let Some(_) =
+			txn.find_view_by_name(plan.schema.id, plan.view.text())?
+		{
+			if plan.if_not_exists {
+				return Ok(Columns::single_row([
+					(
+						"schema",
+						Value::Utf8(
+							plan.schema
+								.name
+								.to_string(),
+						),
+					),
+					(
+						"view",
+						Value::Utf8(
+							plan.view
+								.text()
+								.to_string(),
+						),
+					),
+					("created", Value::Boolean(false)),
+				]));
+			}
+		}
+
+		let result = txn.create_view(ViewToCreate {
+			fragment: Some(plan.view.clone().into_owned()),
+			name: plan.view.text().to_string(),
+			schema: plan.schema.id,
+			columns: plan.columns,
+		})?;
+
+		self.create_flow(txn, &result, plan.with)?;
+
+		Ok(Columns::single_row([
+			("schema", Value::Utf8(plan.schema.name.to_string())),
+			("view", Value::Utf8(plan.view.text().to_string())),
+			("created", Value::Boolean(true)),
+		]))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use PhysicalPlan::InlineData;
+	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
+	use reifydb_core::interface::{Params, SchemaDef, SchemaId};
+	use reifydb_rql::plan::physical::{
+		CreateDeferredViewPlan, InlineDataNode, PhysicalPlan,
+	};
+	use reifydb_type::{Fragment, Value};
+
+	use crate::{
+		execute::Executor,
+		test_utils::create_test_command_transaction_with_internal_schema,
+	};
+
+	#[test]
+	fn test_create_view() {
+		let mut txn =
+			create_test_command_transaction_with_internal_schema();
+
+		let schema = ensure_test_schema(&mut txn);
+
+		let mut plan = CreateDeferredViewPlan {
+			schema: SchemaDef {
+				id: schema.id,
+				name: schema.name.clone(),
+			},
+			view: Fragment::owned_internal("test_view"),
+			if_not_exists: false,
+			columns: vec![],
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
+		};
+
+		// First creation should succeed
+		let result = Executor::testing()
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan.clone()),
+				Params::default(),
+			)
+			.unwrap();
+
+		assert_eq!(
+			result.row(0)[0],
+			Value::Utf8("test_schema".to_string())
+		);
+		assert_eq!(
+			result.row(0)[1],
+			Value::Utf8("test_view".to_string())
+		);
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
+
+		// Creating the same view again with `if_not_exists = true`
+		// should not error
+		plan.if_not_exists = true;
+		let result = Executor::testing()
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan.clone()),
+				Params::default(),
+			)
+			.unwrap();
+
+		assert_eq!(
+			result.row(0)[0],
+			Value::Utf8("test_schema".to_string())
+		);
+		assert_eq!(
+			result.row(0)[1],
+			Value::Utf8("test_view".to_string())
+		);
+		assert_eq!(result.row(0)[2], Value::Boolean(false));
+
+		// Creating the same view again with `if_not_exists = false`
+		// should return error
+		plan.if_not_exists = false;
+		let err = Executor::testing()
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan),
+				Params::default(),
+			)
+			.unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_003");
+	}
+
+	#[test]
+	fn test_create_same_view_in_different_schema() {
+		let mut txn =
+			create_test_command_transaction_with_internal_schema();
+
+		let schema = ensure_test_schema(&mut txn);
+		let another_schema = create_schema(&mut txn, "another_schema");
+
+		let plan = CreateDeferredViewPlan {
+			schema: SchemaDef {
+				id: schema.id,
+				name: schema.name.clone(),
+			},
+			view: Fragment::owned_internal("test_view"),
+			if_not_exists: false,
+			columns: vec![],
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
+		};
+
+		let result = Executor::testing()
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan.clone()),
+				Params::default(),
+			)
+			.unwrap();
+		assert_eq!(
+			result.row(0)[0],
+			Value::Utf8("test_schema".to_string())
+		);
+		assert_eq!(
+			result.row(0)[1],
+			Value::Utf8("test_view".to_string())
+		);
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
+		let plan = CreateDeferredViewPlan {
+			schema: SchemaDef {
+				id: another_schema.id,
+				name: another_schema.name.clone(),
+			},
+			view: Fragment::owned_internal("test_view"),
+			if_not_exists: false,
+			columns: vec![],
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
+		};
+
+		let result = Executor::testing()
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan.clone()),
+				Params::default(),
+			)
+			.unwrap();
+		assert_eq!(
+			result.row(0)[0],
+			Value::Utf8("another_schema".to_string())
+		);
+		assert_eq!(
+			result.row(0)[1],
+			Value::Utf8("test_view".to_string())
+		);
+		assert_eq!(result.row(0)[2], Value::Boolean(true));
+	}
+
+	#[test]
+	fn test_create_view_missing_schema() {
+		let mut txn =
+			create_test_command_transaction_with_internal_schema();
+
+		let plan = CreateDeferredViewPlan {
+			schema: SchemaDef {
+				id: SchemaId(999),
+				name: "missing_schema".to_string(),
+			},
+			view: Fragment::owned_internal("my_view"),
+			if_not_exists: false,
+			columns: vec![],
+			with: Box::new(InlineData(InlineDataNode {
+				rows: vec![],
+			})),
+		};
+
+		Executor::testing()
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan),
+				Params::default(),
+			)
+			.unwrap_err();
+	}
+}

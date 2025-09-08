@@ -45,6 +45,8 @@ pub use reifydb_storage::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
+#[cfg(feature = "sub_admin")]
+pub use reifydb_sub_admin as sub_admin;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_logging")]

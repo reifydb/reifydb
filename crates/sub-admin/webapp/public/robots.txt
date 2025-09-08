@@ -1,0 +1,8 @@
+# ReifyDB Admin Panel
+User-agent: *
+Allow: /admin/
+Disallow: /admin/api/
+Disallow: /admin/settings/
+
+# Sitemap location
+Sitemap: https://reifydb.com/admin/sitemap.xml

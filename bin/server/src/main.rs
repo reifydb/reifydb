@@ -7,6 +7,7 @@ use reifydb::{
 	WithSubsystem,
 	core::interface::subsystem::logging::LogLevel,
 	server,
+	sub_admin::AdminConfig,
 	sub_logging::{FormatStyle, LoggingBuilder},
 	sub_server::ServerConfig,
 };
@@ -27,6 +28,7 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 fn main() {
 	let mut db = server::memory_optimistic()
 		.with_config(ServerConfig::default())
+		.with_admin(AdminConfig::default().with_port(9092))
 		.with_logging(logger_configuration)
 		.build()
 		.unwrap();
@@ -34,6 +36,7 @@ fn main() {
 	// Start the database
 	db.start().unwrap();
 	println!("Database started successfully!");
+	println!("Admin console available at http://localhost:9092/");
 
 	// Run for a short time to test logging
 	std::thread::sleep(Duration::from_secs(2000));

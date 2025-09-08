@@ -13,5 +13,8 @@
     "publish:all": "pnpm publish:core && pnpm publish:client",
     "publish:core": "pnpm --filter @reifydb/core publish:npm --tag alpha",
     "publish:client": "pnpm --filter @reifydb/client publish:npm --tag alpha"
+  },
+  "dependencies": {
+    "@reifydb/core": "link:core"
   }
 }

@@ -10,6 +10,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
+#[cfg(feature = "sub_admin")]
+use reifydb_sub_admin::{AdminConfig, AdminSubsystemFactory};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_server")]
@@ -83,6 +85,13 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	#[cfg(feature = "sub_server")]
 	pub fn with_config(mut self, config: ServerConfig) -> Self {
 		let factory = ServerSubsystemFactory::new(config);
+		self.subsystem_factories.push(Box::new(factory));
+		self
+	}
+
+	#[cfg(feature = "sub_admin")]
+	pub fn with_admin(mut self, config: AdminConfig) -> Self {
+		let factory = AdminSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}

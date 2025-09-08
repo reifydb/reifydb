@@ -5,7 +5,7 @@
  */
 
 import {
-    BlobValue, BoolValue, DateValue, DateTimeValue,
+    BlobValue, BooleanValue, DateValue, DateTimeValue,
     Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     IntervalValue, TimeValue,
@@ -21,7 +21,7 @@ import {
 
 export type PrimitiveToTS<T extends Type> =
     T extends 'Blob' ? Uint8Array :
-        T extends 'Bool' ? boolean :
+        T extends 'Boolean' ? boolean :
             T extends 'Float4' ? number :
                 T extends 'Float8' ? number :
                     T extends 'Int1' ? number :
@@ -48,7 +48,7 @@ export type PrimitiveToTS<T extends Type> =
 
 export type PrimitiveToValue<T extends Type> =
     T extends 'Blob' ? BlobValue :
-        T extends 'Bool' ? BoolValue :
+        T extends 'Boolean' ? BooleanValue :
             T extends 'Float4' ? Float4Value :
                 T extends 'Float8' ? Float8Value :
                     T extends 'Int1' ? Int1Value :
