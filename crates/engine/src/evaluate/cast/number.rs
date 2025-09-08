@@ -278,7 +278,10 @@ fn text_to_integer<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Utf8(container) => {
+		ColumnData::Utf8 {
+			container,
+			..
+		} => {
 			let base_fragment =
 				lazy_fragment.fragment().into_owned();
 			let mut out = ColumnData::with_capacity(
@@ -471,7 +474,11 @@ fn text_to_float<'a>(
 	target: Type,
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
-	if let ColumnData::Utf8(container) = column_data {
+	if let ColumnData::Utf8 {
+		container,
+		..
+	} = column_data
+	{
 		// Create base fragment once for efficiency
 		let base_fragment = lazy_fragment.fragment().into_owned();
 		let mut out =
@@ -917,7 +924,11 @@ fn number_to_number<'a>(
 	);
 
 	// Special handling for Int (uses Clone instead of Copy)
-	if let ColumnData::Int(container) = data {
+	if let ColumnData::Int {
+		container,
+		..
+	} = data
+	{
 		match target {
 			Type::Int1 => {
 				return convert_vec_clone::<Int, i8>(
@@ -1052,7 +1063,11 @@ fn number_to_number<'a>(
 	}
 
 	// Special handling for Uint (uses Clone instead of Copy)
-	if let ColumnData::Uint(container) = data {
+	if let ColumnData::Uint {
+		container,
+		..
+	} = data
+	{
 		match target {
 			Type::Uint1 => {
 				return convert_vec_clone::<Uint, u8>(

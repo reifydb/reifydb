@@ -30,9 +30,10 @@ impl ColumnData {
 			ColumnData::Int16(container) => {
 				container.reorder(indices)
 			}
-			ColumnData::Utf8(container) => {
-				container.reorder(indices)
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.reorder(indices),
 			ColumnData::Uint1(container) => {
 				container.reorder(indices)
 			}
@@ -75,15 +76,18 @@ impl ColumnData {
 			ColumnData::Uuid7(container) => {
 				container.reorder(indices)
 			}
-			ColumnData::Blob(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Int(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uint(container) => {
-				container.reorder(indices)
-			}
+			ColumnData::Blob {
+				container,
+				..
+			} => container.reorder(indices),
+			ColumnData::Int {
+				container,
+				..
+			} => container.reorder(indices),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.reorder(indices),
 			ColumnData::Decimal {
 				container,
 				..

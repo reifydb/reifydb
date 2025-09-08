@@ -30,9 +30,13 @@ impl ColumnData {
 			ColumnData::Int16(container) => {
 				ColumnData::Int16(container.take(num))
 			}
-			ColumnData::Utf8(container) => {
-				ColumnData::Utf8(container.take(num))
-			}
+			ColumnData::Utf8 {
+				container,
+				max_bytes,
+			} => ColumnData::Utf8 {
+				container: container.take(num),
+				max_bytes: *max_bytes,
+			},
 			ColumnData::Uint1(container) => {
 				ColumnData::Uint1(container.take(num))
 			}
@@ -75,15 +79,27 @@ impl ColumnData {
 			ColumnData::Uuid7(container) => {
 				ColumnData::Uuid7(container.take(num))
 			}
-			ColumnData::Blob(container) => {
-				ColumnData::Blob(container.take(num))
-			}
-			ColumnData::Int(container) => {
-				ColumnData::Int(container.take(num))
-			}
-			ColumnData::Uint(container) => {
-				ColumnData::Uint(container.take(num))
-			}
+			ColumnData::Blob {
+				container,
+				max_bytes,
+			} => ColumnData::Blob {
+				container: container.take(num),
+				max_bytes: *max_bytes,
+			},
+			ColumnData::Int {
+				container,
+				max_bytes,
+			} => ColumnData::Int {
+				container: container.take(num),
+				max_bytes: *max_bytes,
+			},
+			ColumnData::Uint {
+				container,
+				max_bytes,
+			} => ColumnData::Uint {
+				container: container.take(num),
+				max_bytes: *max_bytes,
+			},
 			ColumnData::Decimal {
 				container,
 				precision,

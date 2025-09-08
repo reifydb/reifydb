@@ -780,18 +780,35 @@ impl StandardEvaluator {
 			}
 
 			// Int operations
-			(ColumnData::Int(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
 			(
-				ColumnData::Int(l),
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
 				ColumnData::Decimal {
 					container: r,
 					..
@@ -799,80 +816,145 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Int(l), ColumnData::Float4(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Float8(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int1(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int2(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int4(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int8(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int16(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint1(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint2(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint4(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint8(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint16(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Float4(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Float8(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int1(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int2(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int4(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int8(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int16(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint1(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint2(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint4(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint8(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint16(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 
 			// Uint operations
-			(ColumnData::Uint(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
 			(
-				ColumnData::Uint(l),
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
 				ColumnData::Decimal {
 					container: r,
 					..
@@ -880,66 +962,114 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Uint(l), ColumnData::Float4(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Float8(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int1(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int2(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int4(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int8(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int16(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint1(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint2(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint4(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint8(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint16(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Float4(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Float8(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int1(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int2(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int4(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int8(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int16(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint1(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint2(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint4(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint8(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint16(r),
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 
 			// Decimal operations
 			(
@@ -947,7 +1077,10 @@ impl StandardEvaluator {
 					container: l,
 					..
 				},
-				ColumnData::Int(r),
+				ColumnData::Int {
+					container: r,
+					..
+				},
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
@@ -956,7 +1089,10 @@ impl StandardEvaluator {
 					container: l,
 					..
 				},
-				ColumnData::Uint(r),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
@@ -1083,16 +1219,24 @@ impl StandardEvaluator {
 
 			// Reverse operations - standard types with Int,
 			// Uint, Decimal
-			(ColumnData::Float4(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Float4(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Float4(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Float4(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Float4(l),
 				ColumnData::Decimal {
@@ -1102,16 +1246,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Float8(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Float8(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Float8(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Float8(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Float8(l),
 				ColumnData::Decimal {
@@ -1121,16 +1273,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Int1(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int1(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int1(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int1(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Int1(l),
 				ColumnData::Decimal {
@@ -1140,16 +1300,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Int2(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int2(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int2(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int2(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Int2(l),
 				ColumnData::Decimal {
@@ -1159,16 +1327,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Int4(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int4(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int4(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int4(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Int4(l),
 				ColumnData::Decimal {
@@ -1178,16 +1354,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Int8(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int8(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int8(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int8(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Int8(l),
 				ColumnData::Decimal {
@@ -1197,16 +1381,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Int16(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int16(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int16(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int16(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Int16(l),
 				ColumnData::Decimal {
@@ -1216,16 +1408,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Uint1(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint1(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint1(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint1(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Uint1(l),
 				ColumnData::Decimal {
@@ -1235,16 +1435,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Uint2(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint2(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint2(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint2(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Uint2(l),
 				ColumnData::Decimal {
@@ -1254,16 +1462,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Uint4(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint4(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint4(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint4(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Uint4(l),
 				ColumnData::Decimal {
@@ -1273,16 +1489,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Uint8(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint8(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint8(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint8(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Uint8(l),
 				ColumnData::Decimal {
@@ -1292,16 +1516,24 @@ impl StandardEvaluator {
 			) => sub_numeric_clone(ctx, l, r, target, || {
 				sub.full_fragment_owned()
 			}),
-			(ColumnData::Uint16(l), ColumnData::Int(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint16(l), ColumnData::Uint(r)) => {
-				sub_numeric_clone(ctx, l, r, target, || {
-					sub.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint16(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint16(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => sub_numeric_clone(ctx, l, r, target, || {
+				sub.full_fragment_owned()
+			}),
 			(
 				ColumnData::Uint16(l),
 				ColumnData::Decimal {

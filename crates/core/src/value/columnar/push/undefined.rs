@@ -30,9 +30,10 @@ impl ColumnData {
 			ColumnData::Int16(container) => {
 				container.push_undefined()
 			}
-			ColumnData::Utf8(container) => {
-				container.push_undefined()
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.push_undefined(),
 			ColumnData::Uint1(container) => {
 				container.push_undefined()
 			}
@@ -75,15 +76,18 @@ impl ColumnData {
 			ColumnData::Uuid7(container) => {
 				container.push_undefined()
 			}
-			ColumnData::Blob(container) => {
-				container.push_undefined()
-			}
-			ColumnData::Int(container) => {
-				container.push_undefined()
-			}
-			ColumnData::Uint(container) => {
-				container.push_undefined()
-			}
+			ColumnData::Blob {
+				container,
+				..
+			} => container.push_undefined(),
+			ColumnData::Int {
+				container,
+				..
+			} => container.push_undefined(),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.push_undefined(),
 			ColumnData::Decimal {
 				container,
 				..
@@ -204,7 +208,11 @@ mod tests {
 	fn test_string() {
 		let mut col = ColumnData::utf8(vec!["a"]);
 		col.push_undefined();
-		let ColumnData::Utf8(container) = col else {
+		let ColumnData::Utf8 {
+			container,
+			..
+		} = col
+		else {
 			panic!("Expected Utf8");
 		};
 

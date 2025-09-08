@@ -780,18 +780,35 @@ impl StandardEvaluator {
 			}
 
 			// Int with other types
-			(ColumnData::Int(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
 			(
-				ColumnData::Int(l),
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
 				ColumnData::Decimal {
 					container: r,
 					..
@@ -799,80 +816,145 @@ impl StandardEvaluator {
 			) => rem_numeric_clone(ctx, l, r, target, || {
 				rem.full_fragment_owned()
 			}),
-			(ColumnData::Int(l), ColumnData::Int1(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int2(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int4(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int8(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Int16(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint1(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint2(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint4(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint8(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Uint16(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Float4(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int(l), ColumnData::Float8(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int1(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int2(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int4(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int8(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int16(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint1(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint2(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint4(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint8(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Uint16(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Float4(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Float8(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
 
 			// Uint with other types
-			(ColumnData::Uint(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
 			(
-				ColumnData::Uint(l),
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
 				ColumnData::Decimal {
 					container: r,
 					..
@@ -880,66 +962,114 @@ impl StandardEvaluator {
 			) => rem_numeric_clone(ctx, l, r, target, || {
 				rem.full_fragment_owned()
 			}),
-			(ColumnData::Uint(l), ColumnData::Int1(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int2(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int4(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int8(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Int16(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint1(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint2(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint4(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint8(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Uint16(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Float4(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint(l), ColumnData::Float8(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int1(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int2(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int4(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int8(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Int16(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint1(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint2(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint4(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint8(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint16(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Float4(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Float8(r),
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
 
 			// Decimal with other types
 			(
@@ -947,7 +1077,10 @@ impl StandardEvaluator {
 					container: l,
 					..
 				},
-				ColumnData::Int(r),
+				ColumnData::Int {
+					container: r,
+					..
+				},
 			) => rem_numeric_clone(ctx, l, r, target, || {
 				rem.full_fragment_owned()
 			}),
@@ -956,7 +1089,10 @@ impl StandardEvaluator {
 					container: l,
 					..
 				},
-				ColumnData::Uint(r),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
 			) => rem_numeric_clone(ctx, l, r, target, || {
 				rem.full_fragment_owned()
 			}),
@@ -1082,56 +1218,96 @@ impl StandardEvaluator {
 			}),
 
 			// Standard types with Int, Uint, Decimal
-			(ColumnData::Int1(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int2(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int4(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int8(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int16(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int1(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int2(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int4(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int8(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Int16(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Int1(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int2(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int4(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int8(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int16(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int1(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int2(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int4(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int8(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Int16(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
 			(
 				ColumnData::Int1(l),
 				ColumnData::Decimal {
@@ -1178,56 +1354,96 @@ impl StandardEvaluator {
 				rem.full_fragment_owned()
 			}),
 
-			(ColumnData::Uint1(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint2(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint4(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint8(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint16(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint1(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint2(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint4(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint8(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Uint16(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Uint1(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint2(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint4(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint8(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint16(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint1(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint2(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint4(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint8(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Uint16(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
 			(
 				ColumnData::Uint1(l),
 				ColumnData::Decimal {
@@ -1274,16 +1490,24 @@ impl StandardEvaluator {
 				rem.full_fragment_owned()
 			}),
 
-			(ColumnData::Float4(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Float4(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Float4(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Float4(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
 			(
 				ColumnData::Float4(l),
 				ColumnData::Decimal {
@@ -1293,16 +1517,24 @@ impl StandardEvaluator {
 			) => rem_numeric_clone(ctx, l, r, target, || {
 				rem.full_fragment_owned()
 			}),
-			(ColumnData::Float8(l), ColumnData::Int(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
-			(ColumnData::Float8(l), ColumnData::Uint(r)) => {
-				rem_numeric_clone(ctx, l, r, target, || {
-					rem.full_fragment_owned()
-				})
-			}
+			(
+				ColumnData::Float8(l),
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
+			(
+				ColumnData::Float8(l),
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => rem_numeric_clone(ctx, l, r, target, || {
+				rem.full_fragment_owned()
+			}),
 			(
 				ColumnData::Float8(l),
 				ColumnData::Decimal {

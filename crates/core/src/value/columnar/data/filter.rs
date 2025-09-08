@@ -28,7 +28,10 @@ impl ColumnData {
 			ColumnData::Uint4(container) => container.filter(mask),
 			ColumnData::Uint8(container) => container.filter(mask),
 			ColumnData::Uint16(container) => container.filter(mask),
-			ColumnData::Utf8(container) => container.filter(mask),
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.filter(mask),
 			ColumnData::Date(container) => container.filter(mask),
 			ColumnData::DateTime(container) => {
 				container.filter(mask)
@@ -48,9 +51,18 @@ impl ColumnData {
 			}
 			ColumnData::Uuid4(container) => container.filter(mask),
 			ColumnData::Uuid7(container) => container.filter(mask),
-			ColumnData::Blob(container) => container.filter(mask),
-			ColumnData::Int(container) => container.filter(mask),
-			ColumnData::Uint(container) => container.filter(mask),
+			ColumnData::Blob {
+				container,
+				..
+			} => container.filter(mask),
+			ColumnData::Int {
+				container,
+				..
+			} => container.filter(mask),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.filter(mask),
 			ColumnData::Decimal {
 				container,
 				..

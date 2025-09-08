@@ -58,9 +58,10 @@ pub fn to_boolean<'a>(
 		ColumnData::Float8(container) => {
 			from_float8(container, lazy_fragment)
 		}
-		ColumnData::Utf8(container) => {
-			from_utf8(container, lazy_fragment)
-		}
+		ColumnData::Utf8 {
+			container,
+			..
+		} => from_utf8(container, lazy_fragment),
 		_ => {
 			let source_type = data.get_type();
 			return_error!(cast::unsupported_cast(

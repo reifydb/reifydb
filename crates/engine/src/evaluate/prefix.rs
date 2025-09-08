@@ -240,7 +240,7 @@ impl StandardEvaluator {
                         data: ColumnData::int16_with_bitvec(result, container.bitvec())})})
             }
 
-            ColumnData::Utf8(_) => match prefix.operator {
+            ColumnData::Utf8 { container: _, .. } => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(operator::not_can_not_applied_to_text(prefix.full_fragment_owned()))
                 }
@@ -403,7 +403,7 @@ impl StandardEvaluator {
                     err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
                 }
                 _ => unimplemented!()},
-            ColumnData::Blob(_) => match prefix.operator {
+            ColumnData::Blob { container: _, .. } => match prefix.operator {
                 PrefixOperator::Not(_) => {
                     err!(frame_error(
                         "Cannot apply NOT operator to BLOB".to_string()
@@ -412,7 +412,7 @@ impl StandardEvaluator {
                 _ => err!(frame_error(
                     "Cannot apply arithmetic prefix operator to BLOB".to_string()
                 ))},
-            ColumnData::Int(container) => {
+            ColumnData::Int { container, .. } => {
                 let mut result = Vec::with_capacity(container.data().len());
                 for (idx, val) in container.data().iter().enumerate() {
                     if container.is_defined(idx) {
@@ -438,7 +438,7 @@ impl StandardEvaluator {
                         name: column.name().to_string(),
                         data: ColumnData::int_with_bitvec(result, container.bitvec())})})
             },
-            ColumnData::Uint(container) => {
+            ColumnData::Uint { container, .. } => {
                 match prefix.operator {
                     PrefixOperator::Minus(_) => {
                         let mut result = Vec::with_capacity(container.data().len());

@@ -55,9 +55,16 @@ impl ColumnData {
 			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::Utf8(l), ColumnData::Utf8(r)) => {
-				l.extend(&r)?
-			}
+			(
+				ColumnData::Utf8 {
+					container: l,
+					..
+				},
+				ColumnData::Utf8 {
+					container: r,
+					..
+				},
+			) => l.extend(&r)?,
 			(ColumnData::Date(l), ColumnData::Date(r)) => {
 				l.extend(&r)?
 			}
@@ -84,15 +91,36 @@ impl ColumnData {
 			(ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => {
 				l.extend(&r)?
 			}
-			(ColumnData::Blob(l), ColumnData::Blob(r)) => {
-				l.extend(&r)?
-			}
-			(ColumnData::Int(l), ColumnData::Int(r)) => {
-				l.extend(&r)?
-			}
-			(ColumnData::Uint(l), ColumnData::Uint(r)) => {
-				l.extend(&r)?
-			}
+			(
+				ColumnData::Blob {
+					container: l,
+					..
+				},
+				ColumnData::Blob {
+					container: r,
+					..
+				},
+			) => l.extend(&r)?,
+			(
+				ColumnData::Int {
+					container: l,
+					..
+				},
+				ColumnData::Int {
+					container: r,
+					..
+				},
+			) => l.extend(&r)?,
+			(
+				ColumnData::Uint {
+					container: l,
+					..
+				},
+				ColumnData::Uint {
+					container: r,
+					..
+				},
+			) => l.extend(&r)?,
 			(
 				ColumnData::Decimal {
 					container: l,
@@ -255,16 +283,21 @@ impl ColumnData {
 							new_container,
 						);
 					}
-					ColumnData::Utf8(r) => {
+					ColumnData::Utf8 {
+						container: r,
+						max_bytes,
+					} => {
 						let mut new_container = Utf8Container::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::Utf8(
-							new_container,
-						);
+						*self = ColumnData::Utf8 {
+							container:
+								new_container,
+							max_bytes,
+						};
 					}
 					ColumnData::Date(r) => {
 						let mut new_container = TemporalContainer::with_capacity(l_len + r.len());
@@ -332,38 +365,53 @@ impl ColumnData {
 							new_container,
 						);
 					}
-					ColumnData::Blob(r) => {
+					ColumnData::Blob {
+						container: r,
+						max_bytes,
+					} => {
 						let mut new_container = BlobContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::Blob(
-							new_container,
-						);
+						*self = ColumnData::Blob {
+							container:
+								new_container,
+							max_bytes,
+						};
 					}
-					ColumnData::Int(r) => {
+					ColumnData::Int {
+						container: r,
+						max_bytes,
+					} => {
 						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::Int(
-							new_container,
-						);
+						*self = ColumnData::Int {
+							container:
+								new_container,
+							max_bytes,
+						};
 					}
-					ColumnData::Uint(r) => {
+					ColumnData::Uint {
+						container: r,
+						max_bytes,
+					} => {
 						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
 						new_container
 							.extend_from_undefined(
 								l_len,
 							);
 						new_container.extend(&r)?;
-						*self = ColumnData::Uint(
-							new_container,
-						);
+						*self = ColumnData::Uint {
+							container:
+								new_container,
+							max_bytes,
+						};
 					}
 					ColumnData::Decimal {
 						container: r,
@@ -440,9 +488,10 @@ impl ColumnData {
 					ColumnData::Uint16(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::Utf8(l) => {
-						l.extend_from_undefined(r_len)
-					}
+					ColumnData::Utf8 {
+						container: l,
+						..
+					} => l.extend_from_undefined(r_len),
 					ColumnData::Date(l) => {
 						l.extend_from_undefined(r_len)
 					}
@@ -467,15 +516,18 @@ impl ColumnData {
 					ColumnData::Uuid7(l) => {
 						l.extend_from_undefined(r_len)
 					}
-					ColumnData::Blob(l) => {
-						l.extend_from_undefined(r_len)
-					}
-					ColumnData::Int(l) => {
-						l.extend_from_undefined(r_len)
-					}
-					ColumnData::Uint(l) => {
-						l.extend_from_undefined(r_len)
-					}
+					ColumnData::Blob {
+						container: l,
+						..
+					} => l.extend_from_undefined(r_len),
+					ColumnData::Int {
+						container: l,
+						..
+					} => l.extend_from_undefined(r_len),
+					ColumnData::Uint {
+						container: l,
+						..
+					} => l.extend_from_undefined(r_len),
 					ColumnData::Decimal {
 						container: l,
 						..

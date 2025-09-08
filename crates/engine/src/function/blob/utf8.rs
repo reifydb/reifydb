@@ -29,7 +29,10 @@ impl ScalarFunction for BlobUtf8 {
 		let column = columns.get(0).unwrap();
 
 		match &column.data() {
-			ColumnData::Utf8(container) => {
+			ColumnData::Utf8 {
+				container,
+				..
+			} => {
 				let mut result_data = Vec::with_capacity(
 					container.data().len(),
 				);
@@ -66,6 +69,7 @@ mod tests {
 		columnar::{Column, ColumnQualified, Columns},
 		container::Utf8Container,
 	};
+	use reifydb_type::value::constraint::bytes::MaxBytes;
 
 	use super::*;
 
@@ -77,10 +81,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -92,7 +99,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);
@@ -108,10 +119,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -123,7 +137,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);
@@ -140,10 +158,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -155,7 +176,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);
@@ -175,10 +200,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -190,7 +218,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);
@@ -211,10 +243,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -226,7 +261,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);
@@ -249,10 +288,13 @@ mod tests {
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -264,7 +306,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 3);
@@ -289,10 +335,13 @@ mod tests {
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -304,7 +353,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 3);
@@ -329,10 +382,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -344,7 +400,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);
@@ -366,10 +426,13 @@ mod tests {
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
-			data: ColumnData::Utf8(Utf8Container::new(
-				utf8_data,
-				bitvec.into(),
-			)),
+			data: ColumnData::Utf8 {
+				container: Utf8Container::new(
+					utf8_data,
+					bitvec.into(),
+				),
+				max_bytes: MaxBytes::MAX,
+			},
 		};
 		let columns = Columns::new(vec![Column::ColumnQualified(
 			input_column,
@@ -381,7 +444,11 @@ mod tests {
 
 		let result = function.scalar(ctx).unwrap();
 
-		let ColumnData::Blob(container) = result else {
+		let ColumnData::Blob {
+			container,
+			..
+		} = result
+		else {
 			panic!("Expected BLOB column data");
 		};
 		assert_eq!(container.len(), 1);

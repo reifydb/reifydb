@@ -231,9 +231,10 @@ impl AsSlice<u128> for ColumnData {
 impl AsSlice<String> for ColumnData {
 	fn as_slice(&self) -> &[String] {
 		match self {
-			ColumnData::Utf8(container) => {
-				container.data().as_slice()
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.data().as_slice(),
 			other => {
 				panic!(
 					"called `as_slice::<String>()` on EngineColumnData::{:?}",
@@ -311,7 +312,9 @@ impl AsSlice<Interval> for ColumnData {
 impl AsSlice<Int> for ColumnData {
 	fn as_slice(&self) -> &[Int] {
 		match self {
-			ColumnData::Int(_) => {
+			ColumnData::Int {
+				..
+			} => {
 				panic!(
 					"as_slice() is not supported for variable-length Int. Use to_vec() instead."
 				)
@@ -329,7 +332,9 @@ impl AsSlice<Int> for ColumnData {
 impl AsSlice<Uint> for ColumnData {
 	fn as_slice(&self) -> &[Uint] {
 		match self {
-			ColumnData::Uint(_) => {
+			ColumnData::Uint {
+				..
+			} => {
 				panic!(
 					"as_slice() is not supported for variable-length Uint. Use to_vec() instead."
 				)

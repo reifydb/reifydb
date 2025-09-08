@@ -8,7 +8,10 @@ use crate::value::columnar::{ColumnData, push::Push};
 impl Push<Int> for ColumnData {
 	fn push(&mut self, value: Int) {
 		match self {
-			ColumnData::Int(container) => {
+			ColumnData::Int {
+				container,
+				..
+			} => {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
@@ -17,8 +20,10 @@ impl Push<Int> for ColumnData {
 						container.len(),
 					);
 
-				if let ColumnData::Int(new_container) =
-					&mut new_container
+				if let ColumnData::Int {
+					container: new_container,
+					..
+				} = &mut new_container
 				{
 					for _ in 0..container.len() {
 						new_container.push_undefined();

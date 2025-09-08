@@ -13,7 +13,9 @@ mod take;
 use reifydb_type::{
 	Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7,
 	Value,
-	value::constraint::{precision::Precision, scale::Scale},
+	value::constraint::{
+		bytes::MaxBytes, precision::Precision, scale::Scale,
+	},
 };
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +43,10 @@ pub enum ColumnData {
 	Uint4(NumberContainer<u32>),
 	Uint8(NumberContainer<u64>),
 	Uint16(NumberContainer<u128>),
-	Utf8(Utf8Container),
+	Utf8 {
+		container: Utf8Container,
+		max_bytes: MaxBytes,
+	},
 	Date(TemporalContainer<Date>),
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),
@@ -50,9 +55,18 @@ pub enum ColumnData {
 	IdentityId(IdentityIdContainer),
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
-	Blob(BlobContainer),
-	Int(NumberContainer<Int>),
-	Uint(NumberContainer<Uint>),
+	Blob {
+		container: BlobContainer,
+		max_bytes: MaxBytes,
+	},
+	Int {
+		container: NumberContainer<Int>,
+		max_bytes: MaxBytes,
+	},
+	Uint {
+		container: NumberContainer<Uint>,
+		max_bytes: MaxBytes,
+	},
 	Decimal {
 		container: NumberContainer<Decimal>,
 		precision: Precision,
@@ -78,7 +92,9 @@ impl ColumnData {
 			ColumnData::Uint4(_) => Type::Uint4,
 			ColumnData::Uint8(_) => Type::Uint8,
 			ColumnData::Uint16(_) => Type::Uint16,
-			ColumnData::Utf8(_) => Type::Utf8,
+			ColumnData::Utf8 {
+				..
+			} => Type::Utf8,
 			ColumnData::Date(_) => Type::Date,
 			ColumnData::DateTime(_) => Type::DateTime,
 			ColumnData::Time(_) => Type::Time,
@@ -87,9 +103,15 @@ impl ColumnData {
 			ColumnData::IdentityId(_) => Type::IdentityId,
 			ColumnData::Uuid4(_) => Type::Uuid4,
 			ColumnData::Uuid7(_) => Type::Uuid7,
-			ColumnData::Blob(_) => Type::Blob,
-			ColumnData::Int(_) => Type::Int,
-			ColumnData::Uint(_) => Type::Uint,
+			ColumnData::Blob {
+				..
+			} => Type::Blob,
+			ColumnData::Int {
+				..
+			} => Type::Int,
+			ColumnData::Uint {
+				..
+			} => Type::Uint,
 			ColumnData::Decimal {
 				..
 			} => Type::Decimal,
@@ -138,9 +160,10 @@ impl ColumnData {
 			ColumnData::Uint16(container) => {
 				container.is_defined(idx)
 			}
-			ColumnData::Utf8(container) => {
-				container.is_defined(idx)
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.is_defined(idx),
 			ColumnData::Date(container) => {
 				container.is_defined(idx)
 			}
@@ -165,13 +188,18 @@ impl ColumnData {
 			ColumnData::Uuid7(container) => {
 				container.is_defined(idx)
 			}
-			ColumnData::Blob(container) => {
-				container.is_defined(idx)
-			}
-			ColumnData::Int(container) => container.is_defined(idx),
-			ColumnData::Uint(container) => {
-				container.is_defined(idx)
-			}
+			ColumnData::Blob {
+				container,
+				..
+			} => container.is_defined(idx),
+			ColumnData::Int {
+				container,
+				..
+			} => container.is_defined(idx),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.is_defined(idx),
 			ColumnData::Decimal {
 				container,
 				..
@@ -239,7 +267,10 @@ impl ColumnData {
 			ColumnData::Uint4(container) => container.bitvec(),
 			ColumnData::Uint8(container) => container.bitvec(),
 			ColumnData::Uint16(container) => container.bitvec(),
-			ColumnData::Utf8(container) => container.bitvec(),
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.bitvec(),
 			ColumnData::Date(container) => container.bitvec(),
 			ColumnData::DateTime(container) => container.bitvec(),
 			ColumnData::Time(container) => container.bitvec(),
@@ -248,9 +279,18 @@ impl ColumnData {
 			ColumnData::IdentityId(container) => container.bitvec(),
 			ColumnData::Uuid4(container) => container.bitvec(),
 			ColumnData::Uuid7(container) => container.bitvec(),
-			ColumnData::Blob(container) => container.bitvec(),
-			ColumnData::Int(container) => container.bitvec(),
-			ColumnData::Uint(container) => container.bitvec(),
+			ColumnData::Blob {
+				container,
+				..
+			} => container.bitvec(),
+			ColumnData::Int {
+				container,
+				..
+			} => container.bitvec(),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.bitvec(),
 			ColumnData::Decimal {
 				container,
 				..
@@ -324,7 +364,10 @@ impl ColumnData {
 			ColumnData::Uint4(container) => container.len(),
 			ColumnData::Uint8(container) => container.len(),
 			ColumnData::Uint16(container) => container.len(),
-			ColumnData::Utf8(container) => container.len(),
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.len(),
 			ColumnData::Date(container) => container.len(),
 			ColumnData::DateTime(container) => container.len(),
 			ColumnData::Time(container) => container.len(),
@@ -333,9 +376,18 @@ impl ColumnData {
 			ColumnData::IdentityId(container) => container.len(),
 			ColumnData::Uuid4(container) => container.len(),
 			ColumnData::Uuid7(container) => container.len(),
-			ColumnData::Blob(container) => container.len(),
-			ColumnData::Int(container) => container.len(),
-			ColumnData::Uint(container) => container.len(),
+			ColumnData::Blob {
+				container,
+				..
+			} => container.len(),
+			ColumnData::Int {
+				container,
+				..
+			} => container.len(),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.len(),
 			ColumnData::Decimal {
 				container,
 				..
@@ -359,7 +411,10 @@ impl ColumnData {
 			ColumnData::Uint4(container) => container.capacity(),
 			ColumnData::Uint8(container) => container.capacity(),
 			ColumnData::Uint16(container) => container.capacity(),
-			ColumnData::Utf8(container) => container.capacity(),
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.capacity(),
 			ColumnData::Date(container) => container.capacity(),
 			ColumnData::DateTime(container) => container.capacity(),
 			ColumnData::Time(container) => container.capacity(),
@@ -372,9 +427,18 @@ impl ColumnData {
 			}
 			ColumnData::Uuid4(container) => container.capacity(),
 			ColumnData::Uuid7(container) => container.capacity(),
-			ColumnData::Blob(container) => container.capacity(),
-			ColumnData::Int(container) => container.capacity(),
-			ColumnData::Uint(container) => container.capacity(),
+			ColumnData::Blob {
+				container,
+				..
+			} => container.capacity(),
+			ColumnData::Int {
+				container,
+				..
+			} => container.capacity(),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.capacity(),
 			ColumnData::Decimal {
 				container,
 				..
@@ -426,9 +490,10 @@ impl ColumnData {
 			ColumnData::Uint16(container) => {
 				container.as_string(index)
 			}
-			ColumnData::Utf8(container) => {
-				container.as_string(index)
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.as_string(index),
 			ColumnData::Date(container) => {
 				container.as_string(index)
 			}
@@ -453,15 +518,18 @@ impl ColumnData {
 			ColumnData::Uuid7(container) => {
 				container.as_string(index)
 			}
-			ColumnData::Blob(container) => {
-				container.as_string(index)
-			}
-			ColumnData::Int(container) => {
-				container.as_string(index)
-			}
-			ColumnData::Uint(container) => {
-				container.as_string(index)
-			}
+			ColumnData::Blob {
+				container,
+				..
+			} => container.as_string(index),
+			ColumnData::Int {
+				container,
+				..
+			} => container.as_string(index),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.as_string(index),
 			ColumnData::Decimal {
 				container,
 				..

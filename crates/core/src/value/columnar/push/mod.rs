@@ -96,12 +96,46 @@ impl_push!(Date, Date, date);
 impl_push!(DateTime, DateTime, datetime);
 impl_push!(Time, Time, time);
 impl_push!(Interval, Interval, interval);
-impl_push!(Blob, Blob, blob);
+
+impl Push<Blob> for ColumnData {
+	fn push(&mut self, value: Blob) {
+		match self {
+			ColumnData::Blob {
+				container,
+				..
+			} => {
+				container.push(value);
+			}
+			ColumnData::Undefined(container) => {
+				let mut new_container =
+					ColumnData::blob(vec![
+						Blob::default();
+						container.len()
+					]);
+				if let ColumnData::Blob {
+					container: new_container,
+					..
+				} = &mut new_container
+				{
+					new_container.push(value);
+				}
+				*self = new_container;
+			}
+			other => panic!(
+				"called `push::<Blob>()` on EngineColumnData::{:?}",
+				other.get_type()
+			),
+		}
+	}
+}
 
 impl Push<String> for ColumnData {
 	fn push(&mut self, value: String) {
 		match self {
-			ColumnData::Utf8(container) => {
+			ColumnData::Utf8 {
+				container,
+				..
+			} => {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
@@ -109,8 +143,10 @@ impl Push<String> for ColumnData {
 						String::default();
 						container.len()
 					]);
-				if let ColumnData::Utf8(new_container) =
-					&mut new_container
+				if let ColumnData::Utf8 {
+					container: new_container,
+					..
+				} = &mut new_container
 				{
 					new_container.push(value);
 				}

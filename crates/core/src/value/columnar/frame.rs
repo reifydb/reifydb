@@ -48,9 +48,10 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::Uint16(container) => {
 				FrameColumnData::Uint16(container)
 			}
-			ColumnData::Utf8(container) => {
-				FrameColumnData::Utf8(container)
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => FrameColumnData::Utf8(container),
 			ColumnData::Date(container) => {
 				FrameColumnData::Date(container)
 			}
@@ -75,15 +76,18 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::Uuid7(container) => {
 				FrameColumnData::Uuid7(container)
 			}
-			ColumnData::Blob(container) => {
-				FrameColumnData::Blob(container)
-			}
-			ColumnData::Int(container) => {
-				FrameColumnData::Int(container)
-			}
-			ColumnData::Uint(container) => {
-				FrameColumnData::Uint(container)
-			}
+			ColumnData::Blob {
+				container,
+				..
+			} => FrameColumnData::Blob(container),
+			ColumnData::Int {
+				container,
+				..
+			} => FrameColumnData::Int(container),
+			ColumnData::Uint {
+				container,
+				..
+			} => FrameColumnData::Uint(container),
 			ColumnData::Decimal {
 				container,
 				..

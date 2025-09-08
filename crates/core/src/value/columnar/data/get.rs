@@ -47,9 +47,10 @@ impl ColumnData {
 			ColumnData::Uint16(container) => {
 				container.get_value(index)
 			}
-			ColumnData::Utf8(container) => {
-				container.get_value(index)
-			}
+			ColumnData::Utf8 {
+				container,
+				..
+			} => container.get_value(index),
 			ColumnData::Date(container) => {
 				container.get_value(index)
 			}
@@ -74,15 +75,18 @@ impl ColumnData {
 			ColumnData::Uuid7(container) => {
 				container.get_value(index)
 			}
-			ColumnData::Blob(container) => {
-				container.get_value(index)
-			}
-			ColumnData::Int(container) => {
-				container.get_value(index)
-			}
-			ColumnData::Uint(container) => {
-				container.get_value(index)
-			}
+			ColumnData::Blob {
+				container,
+				..
+			} => container.get_value(index),
+			ColumnData::Int {
+				container,
+				..
+			} => container.get_value(index),
+			ColumnData::Uint {
+				container,
+				..
+			} => container.get_value(index),
 			ColumnData::Decimal {
 				container,
 				..

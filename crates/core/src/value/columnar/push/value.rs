@@ -171,14 +171,18 @@ impl ColumnData {
 			},
 
 			Value::Utf8(v) => match self {
-				ColumnData::Utf8(_) => self.push(v),
+				ColumnData::Utf8 {
+					..
+				} => self.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
 						ColumnData::utf8(
 							Vec::<String>::new(),
 						);
-					if let ColumnData::Utf8(new_container) =
-						&mut new_container
+					if let ColumnData::Utf8 {
+						container: new_container,
+						..
+					} = &mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container
@@ -467,14 +471,17 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 			Value::Blob(v) => match self {
-				ColumnData::Blob(container) => {
-					container.push(v)
-				}
+				ColumnData::Blob {
+					container,
+					..
+				} => container.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
 						ColumnData::blob(vec![]);
-					if let ColumnData::Blob(new_container) =
-						&mut new_container
+					if let ColumnData::Blob {
+						container: new_container,
+						..
+					} = &mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container
@@ -489,12 +496,17 @@ impl ColumnData {
 			},
 
 			Value::Int(v) => match self {
-				ColumnData::Int(container) => container.push(v),
+				ColumnData::Int {
+					container,
+					..
+				} => container.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
 						ColumnData::int(vec![]);
-					if let ColumnData::Int(new_container) =
-						&mut new_container
+					if let ColumnData::Int {
+						container: new_container,
+						..
+					} = &mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container
@@ -508,14 +520,17 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 			Value::Uint(v) => match self {
-				ColumnData::Uint(container) => {
-					container.push(v)
-				}
+				ColumnData::Uint {
+					container,
+					..
+				} => container.push(v),
 				ColumnData::Undefined(container) => {
 					let mut new_container =
 						ColumnData::uint(vec![]);
-					if let ColumnData::Uint(new_container) =
-						&mut new_container
+					if let ColumnData::Uint {
+						container: new_container,
+						..
+					} = &mut new_container
 					{
 						for _ in 0..container.len() {
 							new_container
@@ -1012,7 +1027,11 @@ mod tests {
 	fn test_utf8() {
 		let mut col = ColumnData::utf8(vec!["hello".to_string()]);
 		col.push_value(Value::Utf8("world".to_string()));
-		let ColumnData::Utf8(container) = col else {
+		let ColumnData::Utf8 {
+			container,
+			..
+		} = col
+		else {
 			panic!("Expected Utf8");
 		};
 		assert_eq!(
@@ -1026,7 +1045,11 @@ mod tests {
 	fn test_undefined_utf8() {
 		let mut col = ColumnData::utf8(vec!["hello".to_string()]);
 		col.push_value(Value::Undefined);
-		let ColumnData::Utf8(container) = col else {
+		let ColumnData::Utf8 {
+			container,
+			..
+		} = col
+		else {
 			panic!("Expected Utf8");
 		};
 		assert_eq!(
@@ -1040,7 +1063,11 @@ mod tests {
 	fn test_push_value_to_undefined_utf8() {
 		let mut col = ColumnData::undefined(1);
 		col.push_value(Value::Utf8("ok".to_string()));
-		let ColumnData::Utf8(container) = col else {
+		let ColumnData::Utf8 {
+			container,
+			..
+		} = col
+		else {
 			panic!("Expected Utf8");
 		};
 		assert_eq!(

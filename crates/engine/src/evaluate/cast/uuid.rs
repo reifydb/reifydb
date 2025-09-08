@@ -16,9 +16,10 @@ pub fn to_uuid<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Utf8(container) => {
-			from_text(container, target, lazy_fragment)
-		}
+		ColumnData::Utf8 {
+			container,
+			..
+		} => from_text(container, target, lazy_fragment),
 		ColumnData::Uuid4(container) => {
 			from_uuid4(container, target, lazy_fragment)
 		}
