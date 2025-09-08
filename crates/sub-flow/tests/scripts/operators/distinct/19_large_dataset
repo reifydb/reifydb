@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, group_id: int4 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.unique_groups { id: int4, group_id: int4 } with {
+command 'create deferred view test.unique_groups { id: int4, group_id: int4 } as {
   from test.source
   distinct { group_id }
 }'

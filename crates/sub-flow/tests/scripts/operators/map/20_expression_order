@@ -26,7 +26,7 @@ command 'create deferred view test.precedence {
   right_assoc: int4,
   mixed_ops: int4,
   force_order: int4
-} with {
+} as {
   from test.source
   map { 
     id,

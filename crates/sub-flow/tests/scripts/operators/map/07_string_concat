@@ -18,7 +18,7 @@ command 'create deferred view test.full_names {
   id: int4, 
   full_name: utf8,
   formal: utf8 
-} with {
+} as {
   from test.source
   map { 
     id,

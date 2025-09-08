@@ -48,7 +48,7 @@ fn main() {
 
 	log_info!("Creating view_1 that depends on source table...");
 	db.command_as_root(
-		"create deferred view test.view_1 { id: int4, value: int4 } with { from test.source }",
+		"create deferred view test.view_1 { id: int4, value: int4 } as { from test.source }",
 		Params::None,
 	).unwrap();
 
@@ -56,7 +56,7 @@ fn main() {
 		"Creating view_2 that depends on view_1 (VIEW-TO-VIEW DEPENDENCY)..."
 	);
 	db.command_as_root(
-		"create deferred view test.view_2 { id: int4, value: int4 } with { from test.view_1  map {id, value: value * value }  }",
+		"create deferred view test.view_2 { id: int4, value: int4 } as { from test.view_1  map {id, value: value * value }  }",
 		Params::None,
 	).unwrap();
 

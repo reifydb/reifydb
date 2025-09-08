@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, value: float8 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.above_pi { id: int4, value: float8 } with {
+command 'create deferred view test.above_pi { id: int4, value: float8 } as {
   from test.source
   filter { value > 3.14159 }
 }'

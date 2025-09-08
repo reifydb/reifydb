@@ -24,7 +24,7 @@ command 'create deferred view test.duplicated {
   squared: int4,
   negative: int4,
   mod_three: int4
-} with {
+} as {
   from test.source
   map { 
     id,

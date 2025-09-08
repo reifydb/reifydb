@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, a: int4, b: int4, c: int4, d: int4
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.complex_filter { id: int4, a: int4, b: int4, c: int4, d: int4 } with {
+command 'create deferred view test.complex_filter { id: int4, a: int4, b: int4, c: int4, d: int4 } as {
   from test.source
   filter { ((a > 10 and b < 50) or (c == 100)) and d != 0 }
 }'

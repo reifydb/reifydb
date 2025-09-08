@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, category: utf8, priority: int4 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.urgent_or_bug { id: int4, category: utf8, priority: int4 } with {
+command 'create deferred view test.urgent_or_bug { id: int4, category: utf8, priority: int4 } as {
   from test.source
   filter { priority >= 9 or category == "bug" }
 }'

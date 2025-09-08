@@ -43,8 +43,8 @@ impl Compiler {
 			});
 		}
 
-		let with = if let Some(with_statement) = ast.with {
-			Self::compile(with_statement)?
+		let with = if let Some(as_statement) = ast.as_clause {
+			Self::compile(as_statement)?
 		} else {
 			vec![]
 		};

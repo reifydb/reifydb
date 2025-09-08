@@ -11,7 +11,7 @@ use crate::ast::{
 	parse::Parser,
 	tokenize::{
 		Keyword,
-		Keyword::{Deferred, Series, Table, Transactional, View, With},
+		Keyword::{Deferred, Series, Table, Transactional, View},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
@@ -106,15 +106,15 @@ impl<'a> Parser<'a> {
 		let schema = crate::ast::ast::AstIdentifier(schema_token);
 		let name = crate::ast::ast::AstIdentifier(name_token);
 
-		// Parse optional WITH clause
-		let with = if self
-			.consume_if(TokenKind::Keyword(With))?
+		// Parse optional AS clause
+		let as_clause = if self
+			.consume_if(TokenKind::Operator(Operator::As))?
 			.is_some()
 		{
 			// Expect opening curly brace
 			self.consume_operator(Operator::OpenCurly)?;
 
-			// Parse the query nodes inside the WITH clause
+			// Parse the query nodes inside the AS clause
 			let mut query_nodes = Vec::new();
 
 			// Parse statements until we hit the closing brace
@@ -149,7 +149,7 @@ impl<'a> Parser<'a> {
 			view: name,
 			schema,
 			columns,
-			with,
+			as_clause,
 		}))
 	}
 
@@ -165,15 +165,15 @@ impl<'a> Parser<'a> {
 		let schema = crate::ast::ast::AstIdentifier(schema_token);
 		let name = crate::ast::ast::AstIdentifier(name_token);
 
-		// Parse optional WITH clause
-		let with = if self
-			.consume_if(TokenKind::Keyword(With))?
+		// Parse optional AS clause
+		let as_clause = if self
+			.consume_if(TokenKind::Operator(Operator::As))?
 			.is_some()
 		{
 			// Expect opening curly brace
 			self.consume_operator(Operator::OpenCurly)?;
 
-			// Parse the query nodes inside the WITH clause
+			// Parse the query nodes inside the AS clause
 			let mut query_nodes = Vec::new();
 
 			// Parse statements until we hit the closing brace
@@ -208,7 +208,7 @@ impl<'a> Parser<'a> {
 			view: name,
 			schema,
 			columns,
-			with,
+			as_clause,
 		}))
 	}
 
@@ -738,7 +738,7 @@ mod tests {
 	fn test_create_transactional_view_with_query() {
 		let tokens = tokenize(
 			r#"
-        create transactional view test.myview{id: int4, name: utf8} with {
+        create transactional view test.myview{id: int4, name: utf8} as {
             from test.users
             where age > 18
         }
@@ -757,19 +757,19 @@ mod tests {
 					view: name,
 					schema,
 					columns,
-					with,
+					as_clause,
 					..
 				},
 			) => {
 				assert_eq!(schema.value(), "test");
 				assert_eq!(name.value(), "myview");
 				assert_eq!(columns.len(), 2);
-				assert!(with.is_some());
+				assert!(as_clause.is_some());
 
-				if let Some(with_statement) = with {
-					// The WITH clause should have the query
+				if let Some(as_statement) = as_clause {
+					// The AS clause should have the query
 					// nodes
-					assert!(with_statement.len() > 0);
+					assert!(as_statement.len() > 0);
 				}
 			}
 			_ => unreachable!(),

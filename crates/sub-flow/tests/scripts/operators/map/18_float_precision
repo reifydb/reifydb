@@ -25,7 +25,7 @@ command 'create deferred view test.float_calc {
   sqrt_qty: float8,
   reciprocal: float8,
   percentage: float8
-} with {
+} as {
   from test.source
   map { 
     id,

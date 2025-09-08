@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, name: utf8, score: float8, active:
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.top_active { id: int4, name: utf8, score: float8, active: bool } with {
+command 'create deferred view test.top_active { id: int4, name: utf8, score: float8, active: bool } as {
   from test.source
   filter { score > 75.5 and active == true and name != "Test" }
 }'

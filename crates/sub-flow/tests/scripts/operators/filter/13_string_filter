@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, name: utf8, city: utf8 }'
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.ny_residents { id: int4, name: utf8, city: utf8 } with {
+command 'create deferred view test.ny_residents { id: int4, name: utf8, city: utf8 } as {
   from test.source
   filter { city == "New York" }
 }'

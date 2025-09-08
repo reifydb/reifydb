@@ -14,7 +14,7 @@ command 'create table test.source { id: int4, age: int4, status: utf8, vip: bool
 > +----------+----------+-----------+
 > 
 
-command 'create deferred view test.special_users { id: int4, age: int4, status: utf8, vip: bool } with {
+command 'create deferred view test.special_users { id: int4, age: int4, status: utf8, vip: bool } as {
   from test.source
   filter { (age >= 18 and status == "active") or vip == true }
 }'
