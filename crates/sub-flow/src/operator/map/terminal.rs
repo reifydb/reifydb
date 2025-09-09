@@ -5,6 +5,7 @@ use reifydb_core::{
 		ViewDef,
 		expression::{CastExpression, Expression, TypeExpression},
 	},
+	log_debug, log_error,
 	value::columnar::{Column, ColumnQualified, Columns},
 };
 use reifydb_type::{Fragment, Type};
@@ -45,11 +46,14 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
-					output.push(FlowDiff::Insert {
-						source: *source,
-						row_ids: row_ids.clone(),
-						after: projected_columns,
-					});
+					// Only include if we have valid data
+					if !projected_columns.is_empty() {
+						output.push(FlowDiff::Insert {
+							source: *source,
+							row_ids: row_ids.clone(),
+							after: projected_columns,
+						});
+					}
 				}
 				FlowDiff::Update {
 					source,
@@ -59,12 +63,15 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 				} => {
 					let projected_columns =
 						self.project(ctx, &after)?;
-					output.push(FlowDiff::Update {
-						source: *source,
-						row_ids: row_ids.clone(),
-						before: before.clone(),
-						after: projected_columns,
-					});
+					// Only include if we have valid data
+					if !projected_columns.is_empty() {
+						output.push(FlowDiff::Update {
+							source: *source,
+							row_ids: row_ids.clone(),
+							before: before.clone(),
+							after: projected_columns,
+						});
+					}
 				}
 				FlowDiff::Remove {
 					source,
@@ -75,11 +82,14 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 					// to maintain schema consistency
 					let projected_columns =
 						self.project(ctx, &before)?;
-					output.push(FlowDiff::Remove {
-						source: *source,
-						row_ids: row_ids.clone(),
-						before: projected_columns,
-					});
+					// Only include if we have valid data
+					if !projected_columns.is_empty() {
+						output.push(FlowDiff::Remove {
+							source: *source,
+							row_ids: row_ids.clone(),
+							before: projected_columns,
+						});
+					}
 				}
 			}
 		}
@@ -111,19 +121,79 @@ impl MapTerminalOperator {
 		};
 
 		let mut projected_columns = Vec::new();
+
+		// For deferred views with joins, we may get partial data when
+		// individual tables trigger the flow. We need to detect if we
+		// have sufficient data to evaluate all expressions. If any
+		// expression evaluation fails due to missing columns, we'll
+		// handle it gracefully rather than filtering here.
+		// This allows the system to be generic and work with any table
+		// names.
+
+		// Debug: Log available columns
+		log_debug!("MapTerminal: Available columns for evaluation:");
+		for col in columns.iter() {
+			log_debug!(
+				"  - {}: type={:?}",
+				col.qualified_name(),
+				col.data().get_type()
+			);
+		}
+
 		for (i, expr) in self.expressions.iter().enumerate() {
 			let column =
 				if let Some(view_column) =
 					self.view_def.columns.get(i)
 				{
-					// Evaluate the expression first
+					// Try to evaluate the expression
+					// If it fails due to missing columns,
+					// we'll handle it
+					log_debug!(
+						"MapTerminal: Evaluating expression {} for column {}",
+						i,
+						view_column.name
+					);
 					let result =
-						ctx.evaluate(&eval_ctx, expr)?;
+						match ctx.evaluate(
+							&eval_ctx, expr,
+						) {
+							Ok(r) => r,
+							Err(e) if e
+								.to_string()
+								.contains(
+									"column not found",
+								) =>
+							{
+								// This expression references a column that doesn't exist
+								// This happens
+								// when partial
+								// data flows
+								// through (e.g.
+								// , only right
+								// side of a join)
+								// Skip this entire projection - partial data shouldn't reach the view
+								log_debug!(
+									"MapTerminal: Column not found error for expression {}: {}",
+									i,
+									e
+								);
+								return Ok(Columns::empty());
+							}
+							Err(e) => {
+								log_error!(
+									"MapTerminal: Error evaluating expression {}: {}",
+									i,
+									e
+								);
+								return Err(e);
+							}
+						};
 
 					let current_type =
 						result.data().get_type();
-					let target_type =
-						view_column.constraint.ty();
+					let target_type = view_column
+						.constraint
+						.get_type();
 
 					// If types don't match and it's not
 					// undefined, create a cast expression

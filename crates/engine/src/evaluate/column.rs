@@ -22,45 +22,115 @@ impl StandardEvaluator {
 	) -> crate::Result<Column> {
 		let name = column.0.fragment().to_string();
 
-		// First try exact qualified name match
-		if let Some(col) =
-			ctx.columns.iter().find(|c| c.qualified_name() == name)
-		{
-			return self.extract_column_data(col, ctx);
+		// Check if the name contains dots (qualified reference)
+		let parts: Vec<&str> = name.split('.').collect();
+
+		match parts.len() {
+			3 => {
+				// Fully qualified: schema.table.column
+				let schema = parts[0];
+				let table = parts[1];
+				let col_name = parts[2];
+
+				// Find column matching all three parts
+				let matching_col =
+					ctx.columns.iter().find(|c| {
+						c.name() == col_name && match c {
+						Column::FullyQualified(fq) => {
+							fq.schema == schema && fq.source == table
+						}
+						_ => false,
+					}
+					});
+
+				if let Some(col) = matching_col {
+					return self
+						.extract_column_data(col, ctx);
+				}
+			}
+			2 => {
+				// Source qualified: table.column
+				let source = parts[0];
+				let col_name = parts[1];
+
+				// Find column matching source and name
+				let matching_col =
+					ctx.columns.iter().find(|c| {
+						c.name() == col_name && match c {
+						Column::FullyQualified(fq) => {
+							// Match if table name matches, or schema.table matches
+							fq.source == source ||
+							format!("{}.{}", fq.schema, fq.source) == source
+						}
+						Column::SourceQualified(sq) => sq.source == source,
+						_ => false,
+					}
+					});
+
+				if let Some(col) = matching_col {
+					return self
+						.extract_column_data(col, ctx);
+				}
+			}
+			1 => {
+				// Unqualified column name - use existing logic
+				// First try exact qualified name match
+				if let Some(col) = ctx
+					.columns
+					.iter()
+					.find(|c| c.qualified_name() == name)
+				{
+					return self
+						.extract_column_data(col, ctx);
+				}
+
+				// Then find all matches by unqualified name and
+				// select the most qualified one
+				let all_matches: Vec<_> = ctx
+					.columns
+					.iter()
+					.filter(|c| c.name() == name)
+					.collect();
+
+				if !all_matches.is_empty() {
+					// Always prefer the most qualified
+					// column available
+					let best_match = all_matches
+						.iter()
+						.enumerate()
+						.max_by_key(|(idx, c)| {
+							let qualification_level =
+								match (c.schema(), c.table()) {
+									(Some(_), Some(_)) => 3, /* Fully qualified */
+									(None, Some(_)) => 2,    /* Table qualified */
+									(Some(_), None) => 1,    /* Schema qualified (unusual) */
+									_ => 0,                  /* Unqualified */
+								};
+							// Use index as
+							// secondary sort key to
+							// prefer
+							// later columns in case
+							// of tie
+							(qualification_level, *idx)
+						})
+						.map(|(_, c)| *c)
+						.unwrap(); // Safe because we know the list is not empty
+
+					return self.extract_column_data(
+						best_match, ctx,
+					);
+				}
+			}
+			_ => {
+				// Invalid format with too many dots
+				return Err(error!(column_not_found(
+					column.0.clone()
+				)));
+			}
 		}
 
-		// Then find all matches by unqualified name and select the most
-		// qualified one
-		let all_matches: Vec<_> = ctx
-			.columns
-			.iter()
-			.filter(|c| c.name() == name)
-			.collect();
-
-		if all_matches.is_empty() {
-			return Err(error!(column_not_found(column.0.clone())));
-		}
-
-		// Always prefer the most qualified column available
-		let best_match = all_matches
-			.iter()
-			.enumerate()
-			.max_by_key(|(idx, c)| {
-				let qualification_level =
-					match (c.schema(), c.table()) {
-						(Some(_), Some(_)) => 3, /* Fully qualified */
-						(None, Some(_)) => 2,    /* Table qualified */
-						(Some(_), None) => 1,    /* Schema qualified (unusual) */
-						_ => 0,                  /* Unqualified */
-					};
-				// Use index as secondary sort key to prefer
-				// later columns in case of tie
-				(qualification_level, *idx)
-			})
-			.map(|(_, c)| *c)
-			.unwrap(); // Safe because we know the list is not empty
-
-		self.extract_column_data(best_match, ctx)
+		// If we get here, column was not found
+		Err(error!(column_not_found(column.0.clone())))
 	}
 
 	fn extract_column_data(

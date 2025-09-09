@@ -128,17 +128,15 @@ fn main() {
 	sleep(Duration::from_millis(500));
 
 	log_info!("Checking LEFT JOIN results (should show all orders):");
-	for frame in db.command_as_root(r#"
-		from test.orders
-		left join { from test.customers } on orders.customer_id = customers.customer_id
-		map {
-			order_id: orders.order_id,
-			customer_id: orders.customer_id,
-			amount: orders.amount,
-			customer_name: customers.name,
-			city: customers.city
-		}
-	"#, Params::None).unwrap() {
+	for frame in db
+		.command_as_root(
+			r#"
+		from test.order_details
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		log_info!("{frame}")
 	}
 	log_info!(
@@ -158,25 +156,25 @@ fn main() {
 	sleep(Duration::from_millis(500));
 
 	log_info!("After adding customer 3:");
-	for frame in db.command_as_root(r#"
-		from test.orders
-		left join { from test.customers } on orders.customer_id = customers.customer_id
-		map {
-			order_id: orders.order_id,
-			customer_id: orders.customer_id,
-			amount: orders.amount,
-			customer_name: customers.name,
-			city: customers.city
-		}
-	"#, Params::None).unwrap() {
+	for frame in db
+		.command_as_root(
+			r#"
+		from test.order_details
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		log_info!("{frame}")
 	}
 	log_info!("Note: Order 103 now has customer details filled in");
 
 	log_info!("\nScenario 3: Update a customer's information");
 
+	// In RQL, update syntax is: from <source> filter <condition> update {
+	// field: value }
 	db.command_as_root(
-		r#"update test.customers set city = "San Francisco" where customer_id = 1"#,
+		r#"from test.customers filter customer_id = 1 MAP { customer_id: customer_id, name: name, city: "San Francisco" } update test.customers"#,
 		Params::None,
 	)
 	.unwrap();
@@ -184,17 +182,15 @@ fn main() {
 	sleep(Duration::from_millis(500));
 
 	log_info!("After updating customer 1's city:");
-	for frame in db.command_as_root(r#"
-		from test.orders
-		left join { from test.customers } on orders.customer_id = customers.customer_id
-		map {
-			order_id: orders.order_id,
-			customer_id: orders.customer_id,
-			amount: orders.amount,
-			customer_name: customers.name,
-			city: customers.city
-		}
-	"#, Params::None).unwrap() {
+	for frame in db
+		.command_as_root(
+			r#"
+		from test.order_details
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		log_info!("{frame}")
 	}
 
@@ -203,7 +199,7 @@ fn main() {
 	);
 
 	db.command_as_root(
-		"delete from test.customers where customer_id = 2",
+		"from test.customers filter customer_id = 2 delete test.customers",
 		Params::None,
 	)
 	.unwrap();
@@ -211,17 +207,15 @@ fn main() {
 	sleep(Duration::from_millis(500));
 
 	log_info!("After deleting customer 2:");
-	for frame in db.command_as_root(r#"
-		from test.orders
-		left join { from test.customers } on orders.customer_id = customers.customer_id
-		map {
-			order_id: orders.order_id,
-			customer_id: orders.customer_id,
-			amount: orders.amount,
-			customer_name: customers.name,
-			city: customers.city
-		}
-	"#, Params::None).unwrap() {
+	for frame in db
+		.command_as_root(
+			r#"
+		from test.order_details
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		log_info!("{frame}")
 	}
 	log_info!(
@@ -238,28 +232,17 @@ fn main() {
 	sleep(Duration::from_millis(500));
 
 	log_info!("After adding order 104 with non-existent customer 99:");
-	for frame in db.command_as_root(r#"
-		from test.orders
-		left join { from test.customers } on orders.customer_id = customers.customer_id
-		map {
-			order_id: orders.order_id,
-			customer_id: orders.customer_id,
-			amount: orders.amount,
-			customer_name: customers.name,
-			city: customers.city
-		}
-	"#, Params::None).unwrap() {
+	for frame in db
+		.command_as_root(
+			r#"
+		from test.order_details
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		log_info!("{frame}")
 	}
-
-	log_info!("\n=== Summary ===");
-	log_info!("LEFT JOIN successfully demonstrated:");
-	log_info!("- All orders are preserved even without matching customers");
-	log_info!("- Changes to either table trigger join updates");
-	log_info!("- NULL values appear for unmatched right-side rows");
-	log_info!(
-		"- Updates and deletes are properly reflected in join output"
-	);
 
 	// Keep process alive briefly to ensure logs flush
 	sleep(Duration::from_millis(100));

@@ -54,14 +54,48 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 		let left_node = compiler.compile_plan(*self.left)?;
 		let right_node = compiler.compile_plan(*self.right)?;
 
+		// Extract left and right keys from the join conditions
+		let (left_keys, right_keys) = extract_join_keys(&self.on);
+
 		compiler.build_node(Operator {
 			operator: Join {
 				join_type: self.join_type,
-				left: self.on.clone(),
-				right: self.on,
+				left: left_keys,
+				right: right_keys,
 			},
 		})
 		.with_inputs([left_node, right_node])
 		.build()
 	}
+}
+
+// Extract the left and right column references from join conditions
+fn extract_join_keys(
+	conditions: &[Expression<'static>],
+) -> (Vec<Expression<'static>>, Vec<Expression<'static>>) {
+	let mut left_keys = Vec::new();
+	let mut right_keys = Vec::new();
+
+	for condition in conditions {
+		match condition {
+			Expression::Equal(eq) => {
+				// For equality conditions, extract the left and
+				// right expressions
+				left_keys.push(*eq.left.clone());
+				right_keys.push(*eq.right.clone());
+			}
+			// For now, we only support simple equality joins
+			// More complex conditions could be added later
+			_ => {
+				// If it's not an equality, we'll add the whole
+				// condition to both sides This maintains
+				// backwards compatibility but may not work
+				// correctly
+				left_keys.push(condition.clone());
+				right_keys.push(condition.clone());
+			}
+		}
+	}
+
+	(left_keys, right_keys)
 }

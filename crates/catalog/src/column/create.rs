@@ -75,7 +75,7 @@ impl CatalogStore {
 
 		// Validate auto_increment is only used with integer types
 		if column_to_create.auto_increment {
-			let base_type = column_to_create.constraint.ty();
+			let base_type = column_to_create.constraint.get_type();
 			let is_integer_type = matches!(
 				base_type,
 				Type::Int1
@@ -106,7 +106,7 @@ impl CatalogStore {
 		column::LAYOUT.set_u8(
 			&mut row,
 			column::VALUE,
-			column_to_create.constraint.ty().to_u8(),
+			column_to_create.constraint.get_type().to_u8(),
 		);
 		column::LAYOUT.set_u16(
 			&mut row,
@@ -232,7 +232,7 @@ mod test {
 
 		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
-		assert_eq!(column_1.constraint.ty(), Type::Boolean);
+		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
 		let column_2 =
@@ -241,7 +241,7 @@ mod test {
 
 		assert_eq!(column_2.id, 8194);
 		assert_eq!(column_2.name, "col_2");
-		assert_eq!(column_2.constraint.ty(), Type::Int2);
+		assert_eq!(column_2.constraint.get_type(), Type::Int2);
 		assert_eq!(column_2.auto_increment, false);
 	}
 
@@ -275,7 +275,7 @@ mod test {
 
 		assert_eq!(column.id, ColumnId(8193));
 		assert_eq!(column.name, "id");
-		assert_eq!(column.constraint.ty(), Type::Uint8);
+		assert_eq!(column.constraint.get_type(), Type::Uint8);
 		assert_eq!(column.auto_increment, true);
 	}
 

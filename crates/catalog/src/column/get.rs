@@ -127,7 +127,7 @@ mod tests {
 
 		assert_eq!(result.id, ColumnId(8194));
 		assert_eq!(result.name, "col_2");
-		assert_eq!(result.constraint.ty(), Type::Int2);
+		assert_eq!(result.constraint.get_type(), Type::Int2);
 		assert_eq!(result.auto_increment, false);
 	}
 

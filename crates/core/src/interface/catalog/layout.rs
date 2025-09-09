@@ -13,7 +13,7 @@ impl GetEncodedRowLayout for TableDef {
 		let types: Vec<_> = self
 			.columns
 			.iter()
-			.map(|col| col.constraint.ty())
+			.map(|col| col.constraint.get_type())
 			.collect();
 		EncodedRowLayout::new(&types)
 	}
@@ -24,7 +24,7 @@ impl GetEncodedRowLayout for ViewDef {
 		let types: Vec<_> = self
 			.columns
 			.iter()
-			.map(|col| col.constraint.ty())
+			.map(|col| col.constraint.get_type())
 			.collect();
 		EncodedRowLayout::new(&types)
 	}

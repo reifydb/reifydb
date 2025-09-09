@@ -96,7 +96,7 @@ impl Executor {
 		let table_types: Vec<Type> = table
 			.columns
 			.iter()
-			.map(|c| c.constraint.ty())
+			.map(|c| c.constraint.get_type())
 			.collect();
 		let layout = EncodedRowLayout::new(&table_types);
 
@@ -207,9 +207,9 @@ impl Executor {
 							.collect();
 
 						value = coerce_value_to_column_type(
-						value,
-						table_column.constraint.ty(),
-						ColumnDescriptor::new()
+                            value,
+                            table_column.constraint.get_type(),
+                            ColumnDescriptor::new()
 							.with_schema(
 								&schema.name,
 							)
@@ -219,12 +219,12 @@ impl Executor {
 									.name,
 							)
 							.with_column_type(
-								table_column.constraint.ty(),
+                                table_column.constraint.get_type(),
 							)
 							.with_policies(
 								policies,
 							),
-						&context,
+                            &context,
 					)?;
 
 						// Validate the value against

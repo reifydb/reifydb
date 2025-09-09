@@ -417,7 +417,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 					let column_descriptor = ColumnDescriptor::new()
                         .with_table(&table.name)
                         .with_column(&table_column.name)
-                        .with_column_type(table_column.constraint.ty())
+                        .with_column_type(table_column.constraint.get_type())
                         .with_policies(
                             table_column.policies.iter().map(|cp| cp.policy.clone()).collect(),
                         );

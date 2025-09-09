@@ -69,7 +69,11 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 				0u8
 			});
 			column_names.push(info.column.name);
-			column_types.push(info.column.constraint.ty().to_u8());
+			column_types.push(info
+				.column
+				.constraint
+				.get_type()
+				.to_u8());
 			positions.push(info.column.index.0);
 			auto_increments.push(info.column.auto_increment);
 		}
