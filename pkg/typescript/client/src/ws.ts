@@ -228,8 +228,9 @@ export class WsClient {
                 const propertySchema = resultSchema.properties[key];
                 if (propertySchema && propertySchema.kind === 'primitive') {
                     // Convert Value objects to primitives for primitive schema properties
-                    if (value && typeof value === 'object' && 'value' in value) {
-                        const rawValue = (value as any).value;
+                    // Check if it's a Value instance by checking for valueOf method
+                    if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
+                        const rawValue = (value as any).valueOf();
                         // Special handling for RowNumber - ensure it's returned as bigint
                         if (propertySchema.type === 'RowNumber' && typeof rawValue === 'number') {
                             transformedRow[key] = BigInt(rawValue);
@@ -253,8 +254,9 @@ export class WsClient {
         // Handle primitive schema transformation
         if (resultSchema && resultSchema.kind === 'primitive') {
             // Single primitive value - extract from Value object if needed
-            if (row && typeof row === 'object' && 'value' in row) {
-                const rawValue = row.value;
+            // Check if it's a Value instance by checking for valueOf method
+            if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
+                const rawValue = row.valueOf();
                 // Special handling for RowNumber - ensure it's returned as bigint
                 if (resultSchema.type === 'RowNumber' && typeof rawValue === 'number') {
                     return BigInt(rawValue);
