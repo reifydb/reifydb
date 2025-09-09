@@ -35,6 +35,14 @@ fn main() {
 
 	db.start().unwrap();
 
+	// Test system.versions table
+	let versions =
+		db.query_as_root("from system.versions", Params::None).unwrap();
+	for frame in versions {
+		log_info!("{}", frame);
+	}
+	return;
+
 	log_info!("=== Testing View-to-View Dependencies ===");
 
 	log_info!("Creating schema and base table...");

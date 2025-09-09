@@ -14,9 +14,6 @@ interface Schema {
 
 const mockSchemas: Schema[] = [
     {id: '1', name: 'system', fields: 8, records: 1234, created: '2024-01-01', updated: '2024-01-15'},
-    {id: '2', name: 'posts', fields: 12, records: 5678, created: '2024-01-02', updated: '2024-01-16'},
-    {id: '3', name: 'comments', fields: 6, records: 9012, created: '2024-01-03', updated: '2024-01-17'},
-    {id: '4', name: 'categories', fields: 4, records: 45, created: '2024-01-04', updated: '2024-01-18'},
 ]
 
 export function SchemaPage() {

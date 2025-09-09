@@ -9,7 +9,7 @@ pub mod mvcc;
 pub mod svl;
 
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 
 pub struct TransactionVersion;
@@ -20,7 +20,7 @@ impl HasVersion for TransactionVersion {
             name: "transaction".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             description: "Transaction management and concurrency control module".to_string(),
-            kind: ComponentKind::Module,
+            r#type: ComponentType::Module,
         }
 	}
 }

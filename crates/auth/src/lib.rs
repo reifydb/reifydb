@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 pub use reifydb_type::Result;
 
@@ -17,7 +17,7 @@ impl HasVersion for AuthVersion {
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Authentication and authorization module"
 				.to_string(),
-			kind: ComponentKind::Module,
+			r#type: ComponentType::Module,
 		}
 	}
 }

@@ -16,7 +16,7 @@ pub mod transaction;
 pub use engine::StandardEngine;
 pub use evaluate::StandardEvaluator;
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 pub use reifydb_type::Result;
 pub use transaction::{
@@ -35,7 +35,7 @@ impl HasVersion for EngineVersion {
 			description:
 				"Query execution and processing engine module"
 					.to_string(),
-			kind: ComponentKind::Module,
+			r#type: ComponentType::Module,
 		}
 	}
 }

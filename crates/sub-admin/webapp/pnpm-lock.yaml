@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@reifydb/client':
+        specifier: 0.0.1-alpha.4
+        version: 0.0.1-alpha.4
+      '@reifydb/core':
+        specifier: 0.0.1-alpha.4
+        version: 0.0.1-alpha.4
       '@tanstack/react-query':
         specifier: ^5.87.1
         version: 5.87.1(react@19.1.1)
@@ -337,6 +343,14 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.30':
     resolution: {integrity: sha512-GQ7Nw5G2lTu/BtHTKfXhKHok2WGetd4XYcVKGx00SjAk8GMwgJM3zr6zORiPGuOE+/vkc90KtTosSSvaCjKb2Q==}
+
+  '@reifydb/client@0.0.1-alpha.4':
+    resolution: {integrity: sha512-x3yPCvWGVqz1Yxz0OAEI5hGUo39VAg8wZTKFcsPKkxSVTPBVZaioH/2YQe9sunNoNBVQDCe/FxVBmzTCWI9/eA==}
+    engines: {node: '>=16.0.0'}
+
+  '@reifydb/core@0.0.1-alpha.4':
+    resolution: {integrity: sha512-jpVlNRRqjxQsZ/SUj/NOoMBGfIDnoBLTTVrL47zXBBHdhXr/2vt1HiTICZxeemEU1CGZnzc+j75WsXm6GDUY+g==}
+    engines: {node: '>=16.0.0'}
 
   '@rolldown/pluginutils@1.0.0-beta.34':
     resolution: {integrity: sha512-LyAREkZHP5pMom7c24meKmJCdhf2hEyvam2q0unr3or9ydwDL+DJ8chTF6Av/RFPb3rH8UFBdMzO5MxTZW97oA==}
@@ -984,6 +998,10 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
+  uuid@11.1.0:
+    resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
+    hasBin: true
+
   vite@7.1.4:
     resolution: {integrity: sha512-X5QFK4SGynAeeIt+A7ZWnApdUyHYm+pzv/8/A57LqSGcI88U6R6ipOs3uCesdc6yl7nl+zNO0t8LmqAdXcQihw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1022,6 +1040,18 @@ packages:
       tsx:
         optional: true
       yaml:
+        optional: true
+
+  ws@8.18.3:
+    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
         optional: true
 
   yallist@3.1.1:
@@ -1247,6 +1277,19 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@reifydb/client@0.0.1-alpha.4':
+    dependencies:
+      '@reifydb/core': 0.0.1-alpha.4
+      uuid: 11.1.0
+      ws: 8.18.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@reifydb/core@0.0.1-alpha.4':
+    dependencies:
+      uuid: 11.1.0
 
   '@rolldown/pluginutils@1.0.0-beta.34': {}
 
@@ -1821,6 +1864,8 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
+  uuid@11.1.0: {}
+
   vite@7.1.4(jiti@2.5.1)(lightningcss@1.30.1):
     dependencies:
       esbuild: 0.25.9
@@ -1833,6 +1878,8 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.5.1
       lightningcss: 1.30.1
+
+  ws@8.18.3: {}
 
   yallist@3.1.1: {}
 

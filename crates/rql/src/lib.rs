@@ -133,7 +133,7 @@ fn parse_number_literal(s: &str) -> Result<usize> {
 }
 
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 
 pub struct RqlVersion;
@@ -144,7 +144,7 @@ impl HasVersion for RqlVersion {
             name: "rql".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             description: "ReifyDB Query Language parser and planner module".to_string(),
-            kind: ComponentKind::Module,
+            r#type: ComponentType::Module,
         }
 	}
 }

@@ -58,15 +58,18 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
 			.catalog()
 			.system_catalog()
 			.map(|sc| sc.get_system_versions())
-			.unwrap_or(&[]); // Empty if not initialized (for tests)
+			.unwrap_or(&[]);
 
 		let mut names_to_insert =
 			ColumnData::utf8_with_capacity(versions.len());
+
 		let mut versions_to_insert =
 			ColumnData::utf8_with_capacity(versions.len());
+
 		let mut descriptions_to_insert =
 			ColumnData::utf8_with_capacity(versions.len());
-		let mut kinds_to_insert =
+
+		let mut types_to_insert =
 			ColumnData::utf8_with_capacity(versions.len());
 
 		for version in versions {
@@ -74,7 +77,8 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
 			versions_to_insert.push(version.version.as_str());
 			descriptions_to_insert
 				.push(version.description.as_str());
-			kinds_to_insert.push(version.kind.to_string().as_str());
+			types_to_insert
+				.push(version.r#type.to_string().as_str());
 		}
 
 		let columns = vec![
@@ -83,16 +87,16 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
 				data: names_to_insert,
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "kind".to_string(),
-				data: kinds_to_insert,
-			}),
-			Column::ColumnQualified(ColumnQualified {
 				name: "version".to_string(),
 				data: versions_to_insert,
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "description".to_string(),
 				data: descriptions_to_insert,
+			}),
+			Column::ColumnQualified(ColumnQualified {
+				name: "type".to_string(),
+				data: types_to_insert,
 			}),
 		];
 

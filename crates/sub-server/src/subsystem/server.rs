@@ -6,7 +6,7 @@ use std::any::Any;
 use reifydb_core::interface::{
 	Transaction,
 	subsystem::{HealthStatus, Subsystem},
-	version::{ComponentKind, HasVersion, SystemVersion},
+	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_engine::StandardEngine;
 
@@ -108,7 +108,7 @@ impl<T: Transaction> HasVersion for ServerSubsystem<T> {
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Network protocol server subsystem"
 				.to_string(),
-			kind: ComponentKind::Subsystem,
+			r#type: ComponentType::Subsystem,
 		}
 	}
 }

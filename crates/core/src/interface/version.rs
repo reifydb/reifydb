@@ -5,24 +5,24 @@ use std::fmt;
 
 /// Type of system component
 #[derive(Clone, Debug)]
-pub enum ComponentKind {
+pub enum ComponentType {
 	/// Main database package
 	Package,
 	/// Core library module
 	Module,
 	/// Runtime subsystem
 	Subsystem,
-	/// Build-time information
+	/// Build information
 	Build,
 }
 
-impl fmt::Display for ComponentKind {
+impl fmt::Display for ComponentType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			ComponentKind::Package => write!(f, "package"),
-			ComponentKind::Module => write!(f, "module"),
-			ComponentKind::Subsystem => write!(f, "subsystem"),
-			ComponentKind::Build => write!(f, "build"),
+			ComponentType::Package => write!(f, "package"),
+			ComponentType::Module => write!(f, "module"),
+			ComponentType::Subsystem => write!(f, "subsystem"),
+			ComponentType::Build => write!(f, "build"),
 		}
 	}
 }
@@ -37,7 +37,7 @@ pub struct SystemVersion {
 	/// Human-readable description of the component
 	pub description: String,
 	/// Type of component
-	pub kind: ComponentKind,
+	pub r#type: ComponentType,
 }
 
 /// Trait for components that provide version information

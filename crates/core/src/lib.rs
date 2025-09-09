@@ -17,7 +17,7 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
-use interface::version::{ComponentKind, HasVersion, SystemVersion};
+use interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use interface::{ColumnDescriptor, TransactionId};
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
@@ -34,7 +34,7 @@ impl HasVersion for CoreVersion {
 			description:
 				"Core database interfaces and data structures"
 					.to_string(),
-			kind: ComponentKind::Module,
+			r#type: ComponentType::Module,
 		}
 	}
 }

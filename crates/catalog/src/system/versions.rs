@@ -10,9 +10,6 @@ use reifydb_type::{Type, TypeConstraint};
 
 use super::ids::{columns::versions::*, table_virtual::VERSIONS};
 
-/// Returns the static definition for the system.versions virtual table
-/// This table exposes version information about the database system and its
-/// components
 pub fn versions() -> Arc<TableVirtualDef> {
 	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
 
@@ -56,8 +53,8 @@ pub fn versions() -> Arc<TableVirtualDef> {
 					auto_increment: false,
 				},
 				ColumnDef {
-					id: KIND,
-					name: "kind".to_string(),
+					id: TYPE,
+					name: "type".to_string(),
 					constraint:
 						TypeConstraint::unconstrained(
 							Type::Utf8,

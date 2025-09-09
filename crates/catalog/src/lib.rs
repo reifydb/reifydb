@@ -5,7 +5,7 @@
 
 pub use reifydb_core::Result;
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 
 pub mod column;
@@ -42,7 +42,7 @@ impl HasVersion for CatalogVersion {
             name: "catalog".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             description: "Database catalog and metadata management module".to_string(),
-            kind: ComponentKind::Module,
+            r#type: ComponentType::Module,
         }
 	}
 }

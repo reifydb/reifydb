@@ -26,7 +26,7 @@ use reifydb_core::{
 			HealthStatus, Subsystem,
 			workerpool::{TaskHandle, WorkerPool},
 		},
-		version::{ComponentKind, HasVersion, SystemVersion},
+		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	log_debug, log_warn,
 };
@@ -375,7 +375,7 @@ impl HasVersion for WorkerPoolSubsystem {
 			description:
 				"Priority-based task worker pool subsystem"
 					.to_string(),
-			kind: ComponentKind::Subsystem,
+			r#type: ComponentType::Subsystem,
 		}
 	}
 }

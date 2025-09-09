@@ -16,7 +16,7 @@ use reifydb_core::{
 	interface::{
 		CdcTransaction, UnversionedTransaction, VersionedTransaction,
 		subsystem::SubsystemFactory,
-		version::{ComponentKind, HasVersion, SystemVersion},
+		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
 	log_timed_debug,
@@ -225,7 +225,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 			name: "reifydb".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "ReifyDB Database System".to_string(),
-			kind: ComponentKind::Package,
+			r#type: ComponentType::Package,
 		});
 
 		all_versions.push(CoreVersion.version());
@@ -252,11 +252,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 		// Add git hash if available
 		if let Some(git_hash) = option_env!("GIT_HASH") {
 			all_versions.push(SystemVersion {
-				name: "git".to_string(),
+				name: "git-hash".to_string(),
 				version: git_hash.to_string(),
 				description: "Git commit hash at build time"
 					.to_string(),
-				kind: ComponentKind::Build,
+				r#type: ComponentType::Build,
 			});
 		}
 

@@ -22,7 +22,7 @@ use reifydb_core::{
 			HealthStatus, Subsystem,
 			logging::{LogBackend, LogLevel, Record},
 		},
-		version::{ComponentKind, HasVersion, SystemVersion},
+		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	return_internal_error,
 };
@@ -315,7 +315,7 @@ impl HasVersion for LoggingSubsystem {
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Asynchronous logging subsystem"
 				.to_string(),
-			kind: ComponentKind::Subsystem,
+			r#type: ComponentType::Subsystem,
 		}
 	}
 }

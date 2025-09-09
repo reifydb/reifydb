@@ -5,7 +5,7 @@ pub mod poll;
 
 pub use poll::{PollConsumer, PollConsumerConfig};
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 
 pub struct CdcVersion;
@@ -16,7 +16,7 @@ impl HasVersion for CdcVersion {
 			name: "cdc".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Change Data Capture module".to_string(),
-			kind: ComponentKind::Module,
+			r#type: ComponentType::Module,
 		}
 	}
 }

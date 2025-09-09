@@ -7,7 +7,7 @@ pub mod websocket;
 
 pub use http::{HttpRequest, HttpResponse, HttpResponseBuilder};
 use reifydb_core::interface::version::{
-	ComponentKind, HasVersion, SystemVersion,
+	ComponentType, HasVersion, SystemVersion,
 };
 pub use utils::{find_header_end, parse_headers};
 pub use websocket::{
@@ -24,7 +24,7 @@ impl HasVersion for NetworkVersion {
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Network protocol handling module"
 				.to_string(),
-			kind: ComponentKind::Module,
+			r#type: ComponentType::Module,
 		}
 	}
 }

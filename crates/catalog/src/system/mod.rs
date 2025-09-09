@@ -133,10 +133,10 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(1);
 			pub const VERSION: ColumnId = ColumnId(2);
 			pub const DESCRIPTION: ColumnId = ColumnId(3);
-			pub const KIND: ColumnId = ColumnId(4);
+			pub const TYPE: ColumnId = ColumnId(4);
 
 			pub const ALL: [ColumnId; 4] =
-				[NAME, VERSION, DESCRIPTION, KIND];
+				[NAME, VERSION, DESCRIPTION, TYPE];
 		}
 	}
 

@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::{
 		CdcConsumer, ConsumerId, Transaction,
 		subsystem::{HealthStatus, Subsystem, workerpool::Priority},
-		version::{ComponentKind, HasVersion, SystemVersion},
+		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
 };
@@ -120,7 +120,7 @@ impl<T: Transaction> HasVersion for FlowSubsystem<T> {
 			description:
 				"Data flow and stream processing subsystem"
 					.to_string(),
-			kind: ComponentKind::Subsystem,
+			r#type: ComponentType::Subsystem,
 		}
 	}
 }

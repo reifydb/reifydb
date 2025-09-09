@@ -7,11 +7,13 @@ import {
     Terminal,
     ChevronLeft,
     ChevronRight,
-    LayoutDashboard
+    LayoutDashboard,
+    Info
 } from 'lucide-react'
 import {cn} from '@/lib/utils'
 import {Button} from '@/components/ui/button'
 import {useState} from 'react'
+import {useVersion} from '@/hooks/use-version'
 
 const navigation = [
     {name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard},
@@ -25,6 +27,8 @@ export function Sidebar() {
     const location = useLocation()
     const navigate = useNavigate()
     const [collapsed, setCollapsed] = useState(false)
+    const [isLoadingVersion, versionData, _] = useVersion()
+    const version = versionData.version
 
     return (
         <div className={cn(
@@ -103,6 +107,42 @@ export function Sidebar() {
                     )
                 })}
             </nav>
+
+            <div 
+                className={cn(
+                    "px-4 py-2 border-t cursor-pointer hover:bg-secondary-foreground/10 transition-colors group relative",
+                    collapsed && "px-2"
+                )}
+                onClick={() => navigate({to: '/version'})}
+            >
+                <div className={cn(
+                    "flex items-center gap-3",
+                    collapsed && "justify-center"
+                )}>
+                    <div className="h-8 w-8  flex items-center justify-center">
+                        <Info className="h-4 w-4 text-muted-foreground"/>
+                    </div>
+                    {!collapsed && (
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground">Version</p>
+                            {isLoadingVersion ? (
+                                <div className="flex items-center gap-1">
+                                    <div className="h-1 w-1 bg-muted-foreground rounded-full animate-pulse"/>
+                                    <div className="h-1 w-1 bg-muted-foreground rounded-full animate-pulse" style={{animationDelay: '75ms'}}/>
+                                    <div className="h-1 w-1 bg-muted-foreground rounded-full animate-pulse" style={{animationDelay: '150ms'}}/>
+                                </div>
+                            ) : (
+                                <p className="text-sm font-medium">{version || 'N/A'}</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {collapsed && (
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                        {isLoadingVersion ? 'Loading...' : `Version ${version || 'N/A'}`}
+                    </div>
+                )}
+            </div>
 
             <div className="p-4 border-t">
                 <div className={cn(
