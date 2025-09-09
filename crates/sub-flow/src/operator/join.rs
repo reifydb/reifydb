@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
 	JoinType,
-	flow::{FlowChange, FlowDiff},
+	flow::{FlowChange, FlowDiff, FlowNodeSchema},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, Params,
 		SourceId,
@@ -14,7 +14,9 @@ use reifydb_core::{
 	log_debug,
 	row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	util::CowVec,
-	value::columnar::{Column, ColumnData, Columns, SourceQualified},
+	value::columnar::{
+		Column, ColumnData, Columns, FullyQualified, SourceQualified,
+	},
 };
 use reifydb_type::{Fragment, OwnedFragment, RowNumber, Value};
 use serde::{Deserialize, Serialize};
@@ -156,6 +158,8 @@ pub struct JoinOperator {
 	join_type: JoinType,
 	left_keys: Vec<Expression<'static>>,
 	right_keys: Vec<Expression<'static>>,
+	left_schema: FlowNodeSchema,
+	right_schema: FlowNodeSchema,
 	flow_id: u64,
 	node_id: u64,
 }
@@ -165,6 +169,8 @@ impl JoinOperator {
 		join_type: JoinType,
 		left_keys: Vec<Expression<'static>>,
 		right_keys: Vec<Expression<'static>>,
+		left_schema: FlowNodeSchema,
+		right_schema: FlowNodeSchema,
 	) -> Self {
 		// These will be set dynamically when we have more context
 		// For now using placeholder values
@@ -172,6 +178,8 @@ impl JoinOperator {
 			join_type,
 			left_keys,
 			right_keys,
+			left_schema,
+			right_schema,
 			flow_id: 1,
 			node_id: 1,
 		}
@@ -459,54 +467,47 @@ impl JoinOperator {
 
 	// Combine left and right rows into output columns
 	fn combine_rows(
+		&self,
 		left_row: &StoredRow,
 		right_row: Option<&StoredRow>,
 		source_id: SourceId,
-		metadata: &JoinMetadata,
 	) -> FlowDiff {
 		let mut column_vec = Vec::new();
 		let row_ids = vec![left_row.row_id];
 
-		// Add left columns with source qualification
+		// Add left columns with full qualification from schema
 		for (name, value) in &left_row.columns {
 			let data = value_to_column_data(value);
-			// Check if source_name contains schema (e.g.,
-			// "test.orders")
-			if left_row.source_name.contains('.') {
-				// It's already schema.table, use FullyQualified
-				let parts: Vec<&str> = left_row
-					.source_name
-					.split('.')
-					.collect();
-				if parts.len() == 2 {
-					column_vec.push(Column::FullyQualified(
-						reifydb_core::value::columnar::FullyQualified {
-							schema: parts[0].to_string(),
-							source: parts[1].to_string(),
-							name: name.clone(),
-							data,
-						},
-					));
-				} else {
-					// Fallback to SourceQualified
-					column_vec
-						.push(Column::SourceQualified(
-						SourceQualified {
-							source: left_row
-								.source_name
-								.clone(),
-							name: name.clone(),
-							data,
-						},
-					));
-				}
-			} else {
-				// Just table name, use SourceQualified
+
+			if let (Some(schema), Some(source)) = (
+				&self.left_schema.schema_name,
+				&self.left_schema.source_name,
+			) {
+				// Create fully qualified columns
+				column_vec.push(Column::FullyQualified(
+					FullyQualified {
+						schema: schema.clone(),
+						source: source.clone(),
+						name: name.clone(),
+						data,
+					},
+				));
+			} else if let Some(source) =
+				&self.left_schema.source_name
+			{
+				// Fallback to source qualified
 				column_vec.push(Column::SourceQualified(
 					SourceQualified {
-						source: left_row
-							.source_name
-							.clone(),
+						source: source.clone(),
+						name: name.clone(),
+						data,
+					},
+				));
+			} else {
+				// Fallback to unqualified (shouldn't happen)
+				column_vec.push(Column::SourceQualified(
+					SourceQualified {
+						source: "unknown".to_string(),
 						name: name.clone(),
 						data,
 					},
@@ -514,46 +515,23 @@ impl JoinOperator {
 			}
 		}
 
-		// Add right columns (with source qualification)
+		// Add right columns or NULLs for LEFT JOIN
 		if let Some(right) = right_row {
 			for (name, value) in &right.columns {
 				let data = value_to_column_data(value);
-				// Check if source_name contains schema
-				if right.source_name.contains('.') {
-					let parts: Vec<&str> = right
-						.source_name
-						.split('.')
-						.collect();
-					if parts.len() == 2 {
-						column_vec.push(Column::FullyQualified(
-							reifydb_core::value::columnar::FullyQualified {
-								schema: parts[0].to_string(),
-								source: parts[1].to_string(),
-								name: name.clone(),
-								data,
-							},
-						));
-					} else {
-						column_vec
-							.push(Column::SourceQualified(
-							SourceQualified {
-								source: right
-									.source_name
-									.clone(
-									),
-								name: name
-									.clone(
-									),
-								data,
-							},
-						));
-					}
-				} else {
+
+				if let (Some(schema), Some(source)) = (
+					&self.right_schema.schema_name,
+					&self.right_schema.source_name,
+				) {
+					// Create fully qualified columns
 					column_vec.push(
-						Column::SourceQualified(
-							SourceQualified {
-								source: right
-									.source_name
+						Column::FullyQualified(
+							FullyQualified {
+								schema: schema
+									.clone(
+									),
+								source: source
 									.clone(
 									),
 								name: name
@@ -563,44 +541,73 @@ impl JoinOperator {
 							},
 						),
 					);
+				} else if let Some(source) =
+					&self.right_schema.source_name
+				{
+					// Fallback to source qualified
+					column_vec.push(
+						Column::SourceQualified(
+							SourceQualified {
+								source: source
+									.clone(
+									),
+								name: name
+									.clone(
+									),
+								data,
+							},
+						),
+					);
+				} else {
+					// Fallback to unqualified (shouldn't
+					// happen)
+					column_vec
+						.push(Column::SourceQualified(
+						SourceQualified {
+							source: "unknown"
+								.to_string(),
+							name: name.clone(),
+							data,
+						},
+					));
 				}
 			}
 		} else {
 			// For LEFT JOIN with no match, add NULL values for
-			// right columns using metadata
-			if !metadata.right_columns.is_empty() {
-				for col_name in &metadata.right_columns {
-					column_vec.push(Column::SourceQualified(
-						SourceQualified {
-							source: metadata.right_source.clone(),
-							name: col_name.clone(),
+			// right columns using schema
+			for column_def in &self.right_schema.columns {
+				if let (Some(schema), Some(source)) = (
+					&self.right_schema.schema_name,
+					&self.right_schema.source_name,
+				) {
+					// Create fully qualified columns with
+					// undefined data
+					column_vec.push(Column::FullyQualified(
+						FullyQualified {
+							schema: schema.clone(),
+							source: source.clone(),
+							name: column_def.name.clone(),
 							data: ColumnData::undefined(1),
 						},
 					));
-				}
-			} else {
-				// If we haven't seen the right source yet, we
-				// don't know what columns it has
-				// This is a limitation - in a real system, we'd
-				// get this from the query plan
-				// As a workaround for the test, we'll create
-				// undefined columns based on what we know
-				// from the common patterns in the test
-				log_debug!(
-					"JoinOperator: WARNING - right_columns is empty, creating default undefined columns"
-				);
-
-				// For the test scenario, we know customers
-				// table has these columns This is a hack
-				// and should be replaced with proper schema
-				// propagation
-				let default_columns =
-					vec!["customer_id", "name", "city"];
-				for col_name in default_columns {
+				} else if let Some(source) =
+					&self.right_schema.source_name
+				{
+					// Fallback to source qualified
 					column_vec.push(Column::SourceQualified(
 						SourceQualified {
-							source: "customers".to_string(),
-							name: col_name.to_string(),
+							source: source.clone(),
+							name: column_def.name.clone(),
+							data: ColumnData::undefined(1),
+						},
+					));
+				} else {
+					// Fallback to unqualified (shouldn't
+					// happen)
+					column_vec.push(Column::SourceQualified(
+						SourceQualified {
+							source: "unknown".to_string(),
+							name: column_def.name.clone(),
 							data: ColumnData::undefined(1),
 						},
 					));
@@ -731,11 +738,10 @@ impl JoinOperator {
 						current_row.row_id,
 						metadata.right_columns
 					);
-					let diff = Self::combine_rows(
+					let diff = self.combine_rows(
 						&current_row,
 						None,
 						source,
-						&metadata,
 					);
 					if let FlowDiff::Insert {
 						ref after,
@@ -751,11 +757,10 @@ impl JoinOperator {
 				} else {
 					// Emit joined rows for each match
 					for other_row in &other_rows {
-						let diff = Self::combine_rows(
+						let diff = self.combine_rows(
 							&current_row,
 							Some(other_row),
 							source,
-							&metadata,
 						);
 						output_diffs.push(diff);
 					}
@@ -763,11 +768,10 @@ impl JoinOperator {
 			} else if matches!(self.join_type, JoinType::Inner) {
 				// Right side insert for INNER join
 				for other_row in &other_rows {
-					let diff = Self::combine_rows(
+					let diff = self.combine_rows(
 						other_row,
 						Some(&current_row),
 						source,
-						&metadata,
 					);
 					output_diffs.push(diff);
 				}
@@ -780,11 +784,10 @@ impl JoinOperator {
 				// that matches existing orders, we need to
 				// emit those updated join results
 				for other_row in &other_rows {
-					let diff = Self::combine_rows(
+					let diff = self.combine_rows(
 						other_row,
 						Some(&current_row),
 						source,
-						&metadata,
 					);
 					// This should be an UPDATE not INSERT
 					// since the left row already existed
@@ -873,10 +876,10 @@ impl JoinOperator {
 				// Emit updates for affected left rows showing
 				// NULL for right columns
 				for other_row in &other_rows {
-					let diff = Self::combine_rows(
+					let diff = self.combine_rows(
 						other_row,
 						None, // No right row anymore
-						source, metadata,
+						source,
 					);
 					output_diffs.push(diff);
 				}

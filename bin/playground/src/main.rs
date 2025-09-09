@@ -102,20 +102,29 @@ fn main() {
 	)
 	.unwrap();
 
-	for frame in db.command_as_root(r#"
-			from test.orders
-			left join { from test.customers } on orders.customer_id = customers.customer_id
-			map {
-				order_id: orders.order_id,
-				customer_id: orders.customer_id,
-				amount: orders.amount,
-				customer_name: customers.name,
-				city: customers.city
-			}
-
-	"#, Params::None).unwrap(){
-		println!("{frame}");
+	// Check if the flow was created
+	log_info!("Checking if flow was created:");
+	for _frame in
+		db.command_as_root("from reifydb.flows", Params::None).unwrap()
+	{
+		log_info!("Flow found in reifydb.flows");
+		break;
 	}
+
+	// for frame in db.command_as_root(r#"
+	// 		from test.orders
+	// 		left join { from test.customers } on orders.customer_id =
+	// customers.customer_id 		map {
+	// 			order_id: orders.order_id,
+	// 			customer_id: orders.customer_id,
+	// 			amount: orders.amount,
+	// 			customer_name: customers.name,
+	// 			city: customers.city
+	// 		}
+	//
+	// "#, Params::None).unwrap(){
+	// 	println!("{frame}");
+	// }
 
 	// Add a third order that has no matching customer to test LEFT JOIN
 	// behavior
@@ -125,7 +134,22 @@ fn main() {
 	).unwrap();
 
 	// Wait for flows to process
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_millis(10));
+
+	// First check if orders and customers tables have data
+	log_info!("Checking base tables:");
+	log_info!("Orders table:");
+	for frame in
+		db.command_as_root("from test.orders", Params::None).unwrap()
+	{
+		log_info!("{frame}");
+	}
+	log_info!("Customers table:");
+	for frame in
+		db.command_as_root("from test.customers", Params::None).unwrap()
+	{
+		log_info!("{frame}");
+	}
 
 	log_info!("Checking LEFT JOIN results (should show all orders):");
 	for frame in db
@@ -140,7 +164,7 @@ fn main() {
 		log_info!("{frame}")
 	}
 	log_info!(
-		"Note: Order 103 has NULL customer details (LEFT JOIN behavior)"
+		"Note: Order 103 has UNDEFINED customer details (LEFT JOIN behavior)"
 	);
 
 	log_info!(
@@ -153,7 +177,7 @@ fn main() {
 		Params::None,
 	).unwrap();
 
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_millis(5));
 
 	log_info!("After adding customer 3:");
 	for frame in db
@@ -169,6 +193,30 @@ fn main() {
 	}
 	log_info!("Note: Order 103 now has customer details filled in");
 
+	// Add more orders after view creation to verify they appear
+	db.command_as_root(
+		r#"from [
+			{order_id: 105, customer_id: 1, amount: 350.00},
+			{order_id: 106, customer_id: 2, amount: 425.00}
+		] insert test.orders"#,
+		Params::None,
+	)
+	.unwrap();
+	sleep(Duration::from_millis(5));
+
+	log_info!("After adding orders 105 and 106:");
+	for frame in db
+		.command_as_root(
+			r#"
+		from test.order_details
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		log_info!("{frame}")
+	}
+
 	log_info!("\nScenario 3: Update a customer's information");
 
 	// In RQL, update syntax is: from <source> filter <condition> update {
@@ -179,7 +227,7 @@ fn main() {
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_millis(5));
 
 	log_info!("After updating customer 1's city:");
 	for frame in db
@@ -195,7 +243,7 @@ fn main() {
 	}
 
 	log_info!(
-		"\nScenario 4: Delete a customer (order should remain with NULL customer)"
+		"\nScenario 4: Delete a customer (order should remain with UNDEFINED customer)"
 	);
 
 	db.command_as_root(
@@ -204,7 +252,7 @@ fn main() {
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_millis(5));
 
 	log_info!("After deleting customer 2:");
 	for frame in db
@@ -219,17 +267,18 @@ fn main() {
 		log_info!("{frame}")
 	}
 	log_info!(
-		"Note: Order 102 still exists but with NULL customer details"
+		"Note: Order 102 still exists but with UNDEFINED customer details"
 	);
 
 	log_info!("\nScenario 5: Add a new order without a matching customer");
 
 	db.command_as_root(
-		r#"from [{order_id: 104, customer_id: 99, amount: 500.00}] insert test.orders"#,
+		r#"from [{order_id: 104, customer_id: 99, amount: 5.00}] insert test.orders"#,
 		Params::None,
-	).unwrap();
+	)
+	.unwrap();
 
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_millis(5));
 
 	log_info!("After adding order 104 with non-existent customer 99:");
 	for frame in db

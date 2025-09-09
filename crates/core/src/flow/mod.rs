@@ -5,7 +5,9 @@ mod change;
 mod flow;
 mod graph;
 mod node;
+mod schema;
 
 pub use change::*;
 pub use flow::*;
 pub use node::*;
+pub use schema::*;

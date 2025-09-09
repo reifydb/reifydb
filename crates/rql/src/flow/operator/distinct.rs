@@ -2,7 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeType::Operator, OperatorType::Distinct},
+	flow::{
+		FlowNodeSchema, FlowNodeType::Operator, OperatorType::Distinct,
+	},
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::{ColumnExpression, Expression},
@@ -55,6 +57,8 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 			operator: Distinct {
 				expressions,
 			},
+			input_schemas: vec![FlowNodeSchema::empty()],
+			output_schema: FlowNodeSchema::empty(),
 		})
 		.with_input(input_node)
 		.build()

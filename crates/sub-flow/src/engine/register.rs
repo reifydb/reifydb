@@ -61,9 +61,16 @@ impl<E: Evaluator> FlowEngine<E> {
 				}
 				FlowNodeType::Operator {
 					operator,
+					input_schemas,
+					output_schema,
 				} => {
 					self.add_operator(
-						txn, flow.id, node_id, operator,
+						txn,
+						flow.id,
+						node_id,
+						operator,
+						input_schemas,
+						output_schema,
 					)?;
 				}
 				FlowNodeType::SinkView {
@@ -126,12 +133,16 @@ impl<E: Evaluator> FlowEngine<E> {
 		flow_id: FlowId,
 		node: FlowNodeId,
 		operator: &OperatorType<'static>,
+		input_schemas: &[reifydb_core::flow::FlowNodeSchema],
+		output_schema: &reifydb_core::flow::FlowNodeSchema,
 	) -> crate::Result<()> {
 		let operator = self.create_operator(
 			txn,
 			flow_id,
 			node,
 			operator.clone(),
+			input_schemas,
+			output_schema,
 		)?;
 		debug_assert!(
 			!self.operators.contains_key(&node),
@@ -148,6 +159,8 @@ impl<E: Evaluator> FlowEngine<E> {
 		flow_id: FlowId,
 		node_id: FlowNodeId,
 		operator: OperatorType<'static>,
+		input_schemas: &[reifydb_core::flow::FlowNodeSchema],
+		_output_schema: &reifydb_core::flow::FlowNodeSchema,
 	) -> crate::Result<OperatorEnum<E>> {
 		match operator {
 			Filter {
@@ -198,9 +211,27 @@ impl<E: Evaluator> FlowEngine<E> {
 				join_type,
 				left,
 				right,
-			} => Ok(OperatorEnum::Join(JoinOperator::new(
-				join_type, left, right,
-			))),
+			} => {
+				// Extract schemas for left and right inputs
+				let left_schema = if input_schemas.len() > 0 {
+					input_schemas[0].clone()
+				} else {
+					reifydb_core::flow::FlowNodeSchema::empty()
+				};
+				let right_schema = if input_schemas.len() > 1 {
+					input_schemas[1].clone()
+				} else {
+					reifydb_core::flow::FlowNodeSchema::empty()
+				};
+
+				Ok(OperatorEnum::Join(JoinOperator::new(
+					join_type,
+					left,
+					right,
+					left_schema,
+					right_schema,
+				)))
+			}
 			Distinct {
 				expressions,
 			} => Ok(OperatorEnum::Distinct(DistinctOperator::new(

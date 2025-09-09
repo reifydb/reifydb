@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeType::Operator, OperatorType::Filter},
+	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Filter},
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::Expression,
@@ -40,6 +40,8 @@ impl<T: CommandTransaction> CompileOperator<T> for FilterCompiler {
 			operator: Filter {
 				conditions: self.conditions,
 			},
+			input_schemas: vec![FlowNodeSchema::empty()],
+			output_schema: FlowNodeSchema::empty(),
 		})
 		.with_input(input_node)
 		.build()

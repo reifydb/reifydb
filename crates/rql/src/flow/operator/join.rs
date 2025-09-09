@@ -4,7 +4,7 @@
 use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinType,
-	flow::{FlowNodeType::Operator, OperatorType::Join},
+	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Join},
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::Expression,
@@ -51,11 +51,18 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let left_node = compiler.compile_plan(*self.left)?;
-		let right_node = compiler.compile_plan(*self.right)?;
+		// Compile with schema tracking
+		let (left_node, left_schema) =
+			compiler.compile_plan_with_schema(*self.left)?;
+		let (right_node, right_schema) =
+			compiler.compile_plan_with_schema(*self.right)?;
 
 		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
+
+		// Merge schemas for output
+		let output_schema =
+			FlowNodeSchema::merge(&left_schema, &right_schema);
 
 		compiler.build_node(Operator {
 			operator: Join {
@@ -63,6 +70,8 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 				left: left_keys,
 				right: right_keys,
 			},
+			input_schemas: vec![left_schema, right_schema],
+			output_schema,
 		})
 		.with_inputs([left_node, right_node])
 		.build()
@@ -70,7 +79,7 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 }
 
 // Extract the left and right column references from join conditions
-fn extract_join_keys(
+pub(crate) fn extract_join_keys(
 	conditions: &[Expression<'static>],
 ) -> (Vec<Expression<'static>>, Vec<Expression<'static>>) {
 	let mut left_keys = Vec::new();
