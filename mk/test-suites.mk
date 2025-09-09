@@ -9,6 +9,7 @@ TEST_SUITES := \
 	diagnostic \
 	error \
 	functional \
+	flow \
 	integration \
 	stress
 

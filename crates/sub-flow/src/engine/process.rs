@@ -119,6 +119,9 @@ impl<E: Evaluator> FlowEngine<E> {
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
 
+		// Store operator result to handle lifetime
+		let operator_result;
+
 		let output = match &node_type {
 			SourceInlineData {} => {
 				unimplemented!()
@@ -138,7 +141,11 @@ impl<E: Evaluator> FlowEngine<E> {
 			}
 			FlowNodeType::Operator {
 				..
-			} => &self.apply_operator(txn, node, &change)?,
+			} => {
+				operator_result = self
+					.apply_operator(txn, node, &change)?;
+				&operator_result
+			}
 			FlowNodeType::SinkView {
 				view,
 				..
