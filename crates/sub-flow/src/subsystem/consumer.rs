@@ -43,28 +43,40 @@ impl<T: Transaction> FlowConsumer<T> {
 		row_bytes: &[u8],
 	) -> Result<Columns> {
 		// Get source metadata from catalog
-		let (columns, layout) = match source {
-			SourceId::Table(table_id) => {
-				let table =
-					CatalogStore::get_table(txn, table_id)?;
-				let layout = table.get_layout();
-				let columns = Columns::from_table_def(&table);
-				(columns, layout)
-			}
-			SourceId::View(view_id) => {
-				let view =
-					CatalogStore::get_view(txn, view_id)?;
-				let layout = view.get_layout();
-				let columns = Columns::from_view_def(&view);
-				(columns, layout)
-			}
-			SourceId::TableVirtual(_) => {
-				// Virtual tables not supported in flows yet
-				unimplemented!(
-					"Virtual table sources not supported in flows"
-				)
-			}
-		};
+		let (columns, layout) =
+			match source {
+				SourceId::Table(table_id) => {
+					let table = CatalogStore::get_table(
+						txn, table_id,
+					)?;
+					let schema = CatalogStore::get_schema(
+						txn,
+						table.schema,
+					)?;
+					let layout = table.get_layout();
+					let columns = Columns::from_table_def_fully_qualified(&schema, &table);
+					(columns, layout)
+				}
+				SourceId::View(view_id) => {
+					let view = CatalogStore::get_view(
+						txn, view_id,
+					)?;
+					let schema = CatalogStore::get_schema(
+						txn,
+						view.schema,
+					)?;
+					let layout = view.get_layout();
+					let columns = Columns::from_view_def_fully_qualified(&schema, &view);
+					(columns, layout)
+				}
+				SourceId::TableVirtual(_) => {
+					// Virtual tables not supported in flows
+					// yet
+					unimplemented!(
+						"Virtual table sources not supported in flows"
+					)
+				}
+			};
 
 		// Convert row bytes to EncodedRow
 		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));

@@ -10,10 +10,11 @@ use reifydb_type::{Type, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{TableDef, ViewDef},
+	interface::{SchemaDef, TableDef, ViewDef},
 	value::{
 		columnar::{
-			Column, ColumnData, ColumnQualified, SourceQualified,
+			Column, ColumnData, ColumnQualified, FullyQualified,
+			SourceQualified,
 		},
 		container::UndefinedContainer,
 	},
@@ -273,6 +274,97 @@ impl Columns {
 		Self::new(columns)
 	}
 
+	pub fn from_table_def_fully_qualified(
+		schema: &SchemaDef,
+		table: &TableDef,
+	) -> Self {
+		let columns: Vec<Column> = table
+			.columns
+			.iter()
+			.map(|col| {
+				let name = col.name.clone();
+				let data = match col.constraint.ty() {
+					Type::Boolean => {
+						ColumnData::bool(vec![])
+					}
+					Type::Float4 => {
+						ColumnData::float4(vec![])
+					}
+					Type::Float8 => {
+						ColumnData::float8(vec![])
+					}
+					Type::Int1 => ColumnData::int1(vec![]),
+					Type::Int2 => ColumnData::int2(vec![]),
+					Type::Int4 => ColumnData::int4(vec![]),
+					Type::Int8 => ColumnData::int8(vec![]),
+					Type::Int16 => {
+						ColumnData::int16(vec![])
+					}
+					Type::Utf8 => ColumnData::utf8(Vec::<
+						String,
+					>::new(
+					)),
+					Type::Uint1 => {
+						ColumnData::uint1(vec![])
+					}
+					Type::Uint2 => {
+						ColumnData::uint2(vec![])
+					}
+					Type::Uint4 => {
+						ColumnData::uint4(vec![])
+					}
+					Type::Uint8 => {
+						ColumnData::uint8(vec![])
+					}
+					Type::Uint16 => {
+						ColumnData::uint16(vec![])
+					}
+					Type::Date => ColumnData::date(vec![]),
+					Type::DateTime => {
+						ColumnData::datetime(vec![])
+					}
+					Type::Time => ColumnData::time(vec![]),
+					Type::Interval => {
+						ColumnData::interval(vec![])
+					}
+					Type::RowNumber => {
+						ColumnData::row_number(vec![])
+					}
+					Type::IdentityId => {
+						ColumnData::identity_id(vec![])
+					}
+					Type::Uuid4 => {
+						ColumnData::uuid4(vec![])
+					}
+					Type::Uuid7 => {
+						ColumnData::uuid7(vec![])
+					}
+					Type::Blob => ColumnData::blob(vec![]),
+					Type::VarInt => {
+						ColumnData::varint(vec![])
+					}
+					Type::VarUint => {
+						ColumnData::varuint(vec![])
+					}
+					Type::Decimal {
+						..
+					} => ColumnData::decimal(vec![]),
+					Type::Undefined => {
+						ColumnData::undefined(0)
+					}
+				};
+				Column::FullyQualified(FullyQualified {
+					schema: schema.name.clone(),
+					source: table.name.clone(),
+					name,
+					data,
+				})
+			})
+			.collect();
+
+		Self::new(columns)
+	}
+
 	pub fn from_view_def(view: &ViewDef) -> Self {
 		let columns: Vec<Column> = view
 			.columns
@@ -346,6 +438,97 @@ impl Columns {
 					}
 				};
 				Column::SourceQualified(SourceQualified {
+					source: view.name.clone(),
+					name,
+					data,
+				})
+			})
+			.collect();
+
+		Self::new(columns)
+	}
+
+	pub fn from_view_def_fully_qualified(
+		schema: &SchemaDef,
+		view: &ViewDef,
+	) -> Self {
+		let columns: Vec<Column> = view
+			.columns
+			.iter()
+			.map(|col| {
+				let name = col.name.clone();
+				let data = match col.constraint.ty() {
+					Type::Boolean => {
+						ColumnData::bool(vec![])
+					}
+					Type::Float4 => {
+						ColumnData::float4(vec![])
+					}
+					Type::Float8 => {
+						ColumnData::float8(vec![])
+					}
+					Type::Int1 => ColumnData::int1(vec![]),
+					Type::Int2 => ColumnData::int2(vec![]),
+					Type::Int4 => ColumnData::int4(vec![]),
+					Type::Int8 => ColumnData::int8(vec![]),
+					Type::Int16 => {
+						ColumnData::int16(vec![])
+					}
+					Type::Utf8 => ColumnData::utf8(Vec::<
+						String,
+					>::new(
+					)),
+					Type::Uint1 => {
+						ColumnData::uint1(vec![])
+					}
+					Type::Uint2 => {
+						ColumnData::uint2(vec![])
+					}
+					Type::Uint4 => {
+						ColumnData::uint4(vec![])
+					}
+					Type::Uint8 => {
+						ColumnData::uint8(vec![])
+					}
+					Type::Uint16 => {
+						ColumnData::uint16(vec![])
+					}
+					Type::Date => ColumnData::date(vec![]),
+					Type::DateTime => {
+						ColumnData::datetime(vec![])
+					}
+					Type::Time => ColumnData::time(vec![]),
+					Type::Interval => {
+						ColumnData::interval(vec![])
+					}
+					Type::RowNumber => {
+						ColumnData::row_number(vec![])
+					}
+					Type::IdentityId => {
+						ColumnData::identity_id(vec![])
+					}
+					Type::Uuid4 => {
+						ColumnData::uuid4(vec![])
+					}
+					Type::Uuid7 => {
+						ColumnData::uuid7(vec![])
+					}
+					Type::Blob => ColumnData::blob(vec![]),
+					Type::VarInt => {
+						ColumnData::varint(vec![])
+					}
+					Type::VarUint => {
+						ColumnData::varuint(vec![])
+					}
+					Type::Decimal {
+						..
+					} => ColumnData::decimal(vec![]),
+					Type::Undefined => {
+						ColumnData::undefined(0)
+					}
+				};
+				Column::FullyQualified(FullyQualified {
+					schema: schema.name.clone(),
 					source: view.name.clone(),
 					name,
 					data,

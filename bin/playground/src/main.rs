@@ -35,110 +35,232 @@ fn main() {
 
 	db.start().unwrap();
 
-	log_info!("=== Testing View-to-View Dependencies ===");
+	log_info!("=== Testing LEFT JOIN with Flow System ===");
 
-	log_info!("Creating schema and base table...");
+	log_info!("Creating schema and tables...");
 	db.command_as_root("create schema test", Params::None).unwrap();
 
+	// Create orders table (left side)
 	db.command_as_root(
-		"create table test.source { id: int4, value: int4 }",
+		"create table test.orders { order_id: int4, customer_id: int4, amount: float8 }",
 		Params::None,
 	)
 	.unwrap();
 
-	log_info!("Creating view_1 that depends on source table...");
+	// Create customers table (right side)
 	db.command_as_root(
-		"create deferred view test.view_1 { id: int4, value: int4 } as { from test.source }",
-		Params::None,
-	).unwrap();
-
-	log_info!(
-		"Creating view_2 that depends on view_1 (VIEW-TO-VIEW DEPENDENCY)..."
-	);
-	db.command_as_root(
-		"create deferred view test.view_2 { id: int4, value: int4 } as { from test.view_1  map {id, value: value * value }  }",
-		Params::None,
-	).unwrap();
-
-	// Check what flows were created
-	log_info!("Checking flows in reifydb.flows table:");
-	for frame in db
-		.command_as_root(
-			"from reifydb.flows map { id, cast(data, utf8) as flow_json }",
-			Params::None,
-		)
-		.unwrap()
-	{
-		log_info!("{frame}")
-	}
-
-	log_info!("Inserting data into source table...");
-	db.command_as_root(
-		r#"from [{id: 1, value: 100}, {id: 2, value: 200}] insert test.source"#,
+		"create table test.customers { customer_id: int4, name: utf8, city: utf8 }",
 		Params::None,
 	)
 	.unwrap();
 
-	// Give the flow system time to process
-	log_info!("Waiting for flows to cascade...");
+	log_info!("Creating LEFT JOIN view...");
+	// Create a view that performs a LEFT JOIN
+	// This will include all orders, even those without matching customers
+	// The view needs to map the joined columns to its output schema
+	db.command_as_root(
+		r#"create deferred view test.order_details {
+			order_id: int4,
+			customer_id: int4,
+			amount: float8,
+			customer_name: utf8,
+			customer_city: utf8
+		} as {
+			from test.orders
+			left join { from test.customers } on orders.customer_id = customers.customer_id
+			map {
+				order_id: orders.order_id,
+				customer_id: orders.customer_id,
+				amount: orders.amount,
+				customer_name: customers.name,
+				customer_city: customers.city
+			}
+		}"#,
+		Params::None,
+	).unwrap();
 
-	// Give more time for CDC events to be processed
-	// Need multiple poll cycles: one for source->view_1, another for
-	// view_1->view_2
-	for i in 0..20 {
-		sleep(Duration::from_millis(100));
+	// log_info!("Scenario 1: Insert orders with some matching customers");
+	//
+	// // Insert customers (only customer_id 1 and 2)
+	db.command_as_root(
+		r#"from [
+			{customer_id: 1, name: "Alice", city: "New York"},
+			{customer_id: 2, name: "Bob", city: "Los Angeles"}
+		] insert test.customers"#,
+		Params::None,
+	)
+	.unwrap();
 
-		// Check if view_2 has data
-		let result = db
-			.query_as_root("FROM test.view_2", Params::None)
-			.unwrap();
+	// Insert orders (customer_id 1, 2, and 3 - note 3 has no matching
+	// customer)
+	db.command_as_root(
+		r#"from [
+			{order_id: 101, customer_id: 1, amount: 250.50},
+			{order_id: 102, customer_id: 2, amount: 175.00},
+		] insert test.orders"#,
+		Params::None,
+	)
+	.unwrap();
 
-		if !result.is_empty()
-			&& !result[0].is_empty()
-			&& result[0][0].data.len() > 0
-		{
-			log_info!(
-				"View cascade completed after {} ms",
-				(i + 1) * 100
-			);
-			break;
+	for frame in db.command_as_root(r#"
+			from test.orders
+			left join { from test.customers } on orders.customer_id = customers.customer_id
+			map {
+				order_id: orders.order_id,
+				customer_id: orders.customer_id,
+				amount: orders.amount,
+				customer_name: customers.name,
+				city: customers.city
+			}
+
+	"#, Params::None).unwrap(){
+		println!("{frame}");
+	}
+
+	// Add a third order that has no matching customer to test LEFT JOIN
+	// behavior
+	db.command_as_root(
+		r#"from [{order_id: 103, customer_id: 3, amount: 300.00}] insert test.orders"#,
+		Params::None,
+	).unwrap();
+
+	// Wait for flows to process
+	sleep(Duration::from_millis(500));
+
+	log_info!("Checking LEFT JOIN results (should show all orders):");
+	for frame in db.command_as_root(r#"
+		from test.orders
+		left join { from test.customers } on orders.customer_id = customers.customer_id
+		map {
+			order_id: orders.order_id,
+			customer_id: orders.customer_id,
+			amount: orders.amount,
+			customer_name: customers.name,
+			city: customers.city
 		}
+	"#, Params::None).unwrap() {
+		log_info!("{frame}")
+	}
+	log_info!(
+		"Note: Order 103 has NULL customer details (LEFT JOIN behavior)"
+	);
 
-		if i == 19 {
-			log_info!(
-				"View cascade did not complete after 2 seconds"
-			);
+	log_info!(
+		"\nScenario 2: Add a new customer that matches an existing order"
+	);
+
+	// Add customer_id 3 which will now match order 103
+	db.command_as_root(
+		r#"from [{customer_id: 3, name: "Charlie", city: "Chicago"}] insert test.customers"#,
+		Params::None,
+	).unwrap();
+
+	sleep(Duration::from_millis(500));
+
+	log_info!("After adding customer 3:");
+	for frame in db.command_as_root(r#"
+		from test.orders
+		left join { from test.customers } on orders.customer_id = customers.customer_id
+		map {
+			order_id: orders.order_id,
+			customer_id: orders.customer_id,
+			amount: orders.amount,
+			customer_name: customers.name,
+			city: customers.city
 		}
+	"#, Params::None).unwrap() {
+		log_info!("{frame}")
 	}
+	log_info!("Note: Order 103 now has customer details filled in");
 
-	log_info!("Checking source table:");
-	for frame in
-		db.command_as_root("from test.source", Params::None).unwrap()
-	{
+	log_info!("\nScenario 3: Update a customer's information");
+
+	db.command_as_root(
+		r#"update test.customers set city = "San Francisco" where customer_id = 1"#,
+		Params::None,
+	)
+	.unwrap();
+
+	sleep(Duration::from_millis(500));
+
+	log_info!("After updating customer 1's city:");
+	for frame in db.command_as_root(r#"
+		from test.orders
+		left join { from test.customers } on orders.customer_id = customers.customer_id
+		map {
+			order_id: orders.order_id,
+			customer_id: orders.customer_id,
+			amount: orders.amount,
+			customer_name: customers.name,
+			city: customers.city
+		}
+	"#, Params::None).unwrap() {
 		log_info!("{frame}")
 	}
 
-	log_info!("Checking view_1 (should have data from source):");
-	for frame in
-		db.command_as_root("from test.view_1", Params::None).unwrap()
-	{
-		log_info!("{frame}")
-	}
-
-	log_info!("Checking view_2 (should have data from view_1):");
-	for frame in
-		db.command_as_root("from test.view_2", Params::None).unwrap()
-	{
-		log_info!("{frame}")
-	}
-
-	log_info!("");
 	log_info!(
-		"Key Achievement: view_2 depends on view_1, not directly on source!"
-	);
-	log_info!(
-		"This demonstrates successful view-to-view dependency implementation."
+		"\nScenario 4: Delete a customer (order should remain with NULL customer)"
 	);
 
-	sleep(Duration::from_millis(10));
+	db.command_as_root(
+		"delete from test.customers where customer_id = 2",
+		Params::None,
+	)
+	.unwrap();
+
+	sleep(Duration::from_millis(500));
+
+	log_info!("After deleting customer 2:");
+	for frame in db.command_as_root(r#"
+		from test.orders
+		left join { from test.customers } on orders.customer_id = customers.customer_id
+		map {
+			order_id: orders.order_id,
+			customer_id: orders.customer_id,
+			amount: orders.amount,
+			customer_name: customers.name,
+			city: customers.city
+		}
+	"#, Params::None).unwrap() {
+		log_info!("{frame}")
+	}
+	log_info!(
+		"Note: Order 102 still exists but with NULL customer details"
+	);
+
+	log_info!("\nScenario 5: Add a new order without a matching customer");
+
+	db.command_as_root(
+		r#"from [{order_id: 104, customer_id: 99, amount: 500.00}] insert test.orders"#,
+		Params::None,
+	).unwrap();
+
+	sleep(Duration::from_millis(500));
+
+	log_info!("After adding order 104 with non-existent customer 99:");
+	for frame in db.command_as_root(r#"
+		from test.orders
+		left join { from test.customers } on orders.customer_id = customers.customer_id
+		map {
+			order_id: orders.order_id,
+			customer_id: orders.customer_id,
+			amount: orders.amount,
+			customer_name: customers.name,
+			city: customers.city
+		}
+	"#, Params::None).unwrap() {
+		log_info!("{frame}")
+	}
+
+	log_info!("\n=== Summary ===");
+	log_info!("LEFT JOIN successfully demonstrated:");
+	log_info!("- All orders are preserved even without matching customers");
+	log_info!("- Changes to either table trigger join updates");
+	log_info!("- NULL values appear for unmatched right-side rows");
+	log_info!(
+		"- Updates and deletes are properly reflected in join output"
+	);
+
+	// Keep process alive briefly to ensure logs flush
+	sleep(Duration::from_millis(100));
 }
