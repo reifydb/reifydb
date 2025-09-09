@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { reifyDBConnection } from '../lib/reifydb-connection';
+import { wsConnection } from '../lib/connection.ts';
 import { WsClient } from '@reifydb/client';
 
 interface ConnectionState {
@@ -10,11 +10,11 @@ interface ConnectionState {
 }
 
 export function useConnection() {
-  const [state, setState] = useState<ConnectionState>(() => reifyDBConnection.getState());
+  const [state, setState] = useState<ConnectionState>(() => wsConnection.getState());
 
   useEffect(() => {
-    // Subscribe to connection state changes
-    const unsubscribe = reifyDBConnection.subscribe((newState) => {
+    // Subscribe to wsConnection state changes
+    const unsubscribe = wsConnection.subscribe((newState) => {
       console.log('[useConnection] State update:', {
         isConnected: newState.isConnected,
         isConnecting: newState.isConnecting,
@@ -29,15 +29,15 @@ export function useConnection() {
     });
 
     // Auto-connect if not connected
-    if (!reifyDBConnection.isConnected() && !reifyDBConnection.isConnecting()) {
+    if (!wsConnection.isConnected() && !wsConnection.isConnecting()) {
       console.log('[useConnection] Initiating auto-connect...');
-      reifyDBConnection.connect().catch(err => {
+      wsConnection.connect().catch(err => {
         console.error('[useConnection] Failed to connect:', err);
       });
     } else {
       console.log('[useConnection] Skipping auto-connect, current state:', {
-        isConnected: reifyDBConnection.isConnected(),
-        isConnecting: reifyDBConnection.isConnecting()
+        isConnected: wsConnection.isConnected(),
+        isConnecting: wsConnection.isConnecting()
       });
     }
 
@@ -46,8 +46,8 @@ export function useConnection() {
 
   return {
     ...state,
-    connect: () => reifyDBConnection.connect(),
-    disconnect: () => reifyDBConnection.disconnect(),
-    reconnect: () => reifyDBConnection.reconnect(),
+    connect: () => wsConnection.connect(),
+    disconnect: () => wsConnection.disconnect(),
+    reconnect: () => wsConnection.reconnect(),
   };
 }

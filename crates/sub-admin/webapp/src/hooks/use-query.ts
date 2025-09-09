@@ -5,6 +5,7 @@ import {useQueryExecutor, type QueryResult} from "@/hooks/use-query-executor.ts"
 // Single query hook - returns a single result
 export function useQueryOne<S extends SchemaNode = any>(
     rql: string,
+    params?: any,
     schema?: S
 ): {
     isExecuting: boolean;
@@ -21,8 +22,8 @@ export function useQueryOne<S extends SchemaNode = any>(
     useEffect(() => {
         // Pass schema as array for the executor
         const schemas = schema ? [schema] : undefined;
-        query(rql, schemas);
-    }, [rql, schema, query]);
+        query(rql, params, schemas);
+    }, [rql, params, schema, query]);
 
     // Extract first result for single query convenience
     const result = useMemo(() => {
@@ -35,6 +36,7 @@ export function useQueryOne<S extends SchemaNode = any>(
 // Multiple query hook - returns multiple results
 export function useQueryMany<S extends readonly SchemaNode[] = readonly SchemaNode[]>(
     statements: string | string[],
+    params?: any,
     schemas?: S
 ): {
     isExecuting: boolean;
@@ -49,8 +51,8 @@ export function useQueryMany<S extends readonly SchemaNode[] = readonly SchemaNo
     } = useQueryExecutor<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>();
 
     useEffect(() => {
-        query(statements, schemas);
-    }, [statements, schemas, query]);
+        query(statements, params, schemas);
+    }, [statements, params, schemas, query]);
 
     return {isExecuting, results, error};
 }

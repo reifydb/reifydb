@@ -18,7 +18,7 @@ const versionSchema = Schema.object({
 type VersionRow = InferSchema<typeof versionSchema>;
 
 export function useVersion(): [boolean, Version, string | undefined] {
-    const {isExecuting, result, error} = useQueryOne("FROM system.versions", versionSchema);
+    const {isExecuting, result, error} = useQueryOne("FROM system.versions", null, versionSchema);
 
     const rows: VersionRow[] = result?.rows || [];
 
