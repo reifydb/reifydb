@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float,
-	parse_int, parse_uint,
+	parse_primitive_int, parse_primitive_uint,
 };
 use temporal::TemporalParser;
 use text::TextParser;
@@ -99,7 +99,7 @@ impl StandardEvaluator {
 					};
 				}
 
-				if let Ok(v) = parse_int::<i8>(
+				if let Ok(v) = parse_primitive_int::<i8>(
 					fragment.clone().into_fragment(),
 				) {
 					return Ok(ColumnData::int1(
@@ -107,7 +107,7 @@ impl StandardEvaluator {
 					));
 				}
 
-				if let Ok(v) = parse_int::<i16>(
+				if let Ok(v) = parse_primitive_int::<i16>(
 					fragment.clone().into_fragment(),
 				) {
 					return Ok(ColumnData::int2(
@@ -115,7 +115,7 @@ impl StandardEvaluator {
 					));
 				}
 
-				if let Ok(v) = parse_int::<i32>(
+				if let Ok(v) = parse_primitive_int::<i32>(
 					fragment.clone().into_fragment(),
 				) {
 					return Ok(ColumnData::int4(
@@ -123,7 +123,7 @@ impl StandardEvaluator {
 					));
 				}
 
-				if let Ok(v) = parse_int::<i64>(
+				if let Ok(v) = parse_primitive_int::<i64>(
 					fragment.clone().into_fragment(),
 				) {
 					return Ok(ColumnData::int8(
@@ -133,7 +133,7 @@ impl StandardEvaluator {
 
 				// if parsing as i128 fails and its a negative
 				// number, we are maxed out and can stop
-				match parse_int::<i128>(
+				match parse_primitive_int::<i128>(
 					fragment.clone().into_fragment(),
 				) {
 					Ok(v) => {
@@ -151,7 +151,7 @@ impl StandardEvaluator {
 					}
 				}
 
-				return match parse_uint::<u128>(
+				return match parse_primitive_uint::<u128>(
 					fragment.clone(),
 				) {
 					Ok(v) => Ok(ColumnData::uint16(

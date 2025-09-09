@@ -29,43 +29,46 @@ impl_safe_sub!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
 use num_bigint::BigInt;
 
-use crate::{Decimal, VarInt, VarUint};
+use crate::{
+	Decimal,
+	value::{int::Int, uint::Uint},
+};
 
-impl SafeSub for VarInt {
+impl SafeSub for Int {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		// VarInt can't overflow since it's arbitrary precision
-		Some(VarInt::from(&self.0 - &r.0))
+		// Int can't overflow since it's arbitrary precision
+		Some(Int::from(&self.0 - &r.0))
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		// VarInt doesn't need saturation since it can't overflow
-		VarInt::from(&self.0 - &r.0)
+		// Int doesn't need saturation since it can't overflow
+		Int::from(&self.0 - &r.0)
 	}
 
 	fn wrapping_sub(&self, r: &Self) -> Self {
-		// VarInt doesn't wrap since it's arbitrary precision
-		VarInt::from(&self.0 - &r.0)
+		// Int doesn't wrap since it's arbitrary precision
+		Int::from(&self.0 - &r.0)
 	}
 }
 
-impl SafeSub for VarUint {
+impl SafeSub for Uint {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		// VarUint subtraction can result in negative, which becomes 0
+		// Uint subtraction can result in negative, which becomes 0
 		let result = &self.0 - &r.0;
 		if result < BigInt::from(0) {
 			None
 		} else {
-			Some(VarUint::from(result))
+			Some(Uint::from(result))
 		}
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		// Saturate at 0 for VarUint
+		// Saturate at 0 for Uint
 		let result = &self.0 - &r.0;
 		if result < BigInt::from(0) {
-			VarUint::from(0u64)
+			Uint::from(0u64)
 		} else {
-			VarUint::from(result)
+			Uint::from(result)
 		}
 	}
 
@@ -73,9 +76,9 @@ impl SafeSub for VarUint {
 		// For wrapping, negative values wrap to 0
 		let result = &self.0 - &r.0;
 		if result < BigInt::from(0) {
-			VarUint::from(0u64)
+			Uint::from(0u64)
 		} else {
-			VarUint::from(result)
+			Uint::from(result)
 		}
 	}
 }

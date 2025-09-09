@@ -27,33 +27,36 @@ macro_rules! impl_safe_mul {
 
 impl_safe_mul!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-use crate::{Decimal, VarInt, VarUint};
+use crate::{
+	Decimal,
+	value::{int::Int, uint::Uint},
+};
 
-impl SafeMul for VarInt {
+impl SafeMul for Int {
 	fn checked_mul(&self, r: &Self) -> Option<Self> {
-		Some(VarInt::from(&self.0 * &r.0))
+		Some(Int::from(&self.0 * &r.0))
 	}
 
 	fn saturating_mul(&self, r: &Self) -> Self {
-		VarInt::from(&self.0 * &r.0)
+		Int::from(&self.0 * &r.0)
 	}
 
 	fn wrapping_mul(&self, r: &Self) -> Self {
-		VarInt::from(&self.0 * &r.0)
+		Int::from(&self.0 * &r.0)
 	}
 }
 
-impl SafeMul for VarUint {
+impl SafeMul for Uint {
 	fn checked_mul(&self, r: &Self) -> Option<Self> {
-		Some(VarUint::from(&self.0 * &r.0))
+		Some(Uint::from(&self.0 * &r.0))
 	}
 
 	fn saturating_mul(&self, r: &Self) -> Self {
-		VarUint::from(&self.0 * &r.0)
+		Uint::from(&self.0 * &r.0)
 	}
 
 	fn wrapping_mul(&self, r: &Self) -> Self {
-		VarUint::from(&self.0 * &r.0)
+		Uint::from(&self.0 * &r.0)
 	}
 }
 

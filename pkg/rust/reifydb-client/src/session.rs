@@ -3,8 +3,8 @@
 
 use num_bigint;
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Error, IdentityId, RowNumber, Time,
-	Uuid7, VarInt, VarUint, err, parse_uuid4, parse_uuid7, util::hex,
+	Blob, Date, DateTime, Decimal, Error, IdentityId, Int, RowNumber, Time,
+	Uint, Uuid7, err, parse_uuid4, parse_uuid7, util::hex,
 };
 
 use crate::{
@@ -292,15 +292,15 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 				Value::Undefined
 			}
 		}
-		Type::VarInt => s
+		Type::Int => s
 			.parse::<num_bigint::BigInt>()
 			.ok()
-			.map(|big_int| Value::VarInt(VarInt::from(big_int)))
+			.map(|big_int| Value::Int(Int::from(big_int)))
 			.unwrap_or(Value::Undefined),
-		Type::VarUint => s
+		Type::Uint => s
 			.parse::<num_bigint::BigInt>()
 			.ok()
-			.map(|big_int| Value::VarUint(VarUint::from(big_int)))
+			.map(|big_int| Value::Uint(Uint::from(big_int)))
 			.unwrap_or(Value::Undefined),
 		Type::Decimal {
 			..

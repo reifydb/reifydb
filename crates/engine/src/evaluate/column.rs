@@ -706,7 +706,7 @@ impl StandardEvaluator {
 					),
 				))
 			}
-			Value::VarInt(_) => {
+			Value::Int(_) => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -715,24 +715,24 @@ impl StandardEvaluator {
 						break;
 					}
 					match v {
-						Value::VarInt(b) => {
+						Value::Int(b) => {
 							data.push(b.clone());
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::VarInt::zero());
+							data.push(reifydb_type::Int::zero());
 							bitvec.push(false);
 						}
 					}
 					count += 1;
 				}
 				Ok(col.with_new_data(
-					ColumnData::varint_with_bitvec(
+					ColumnData::int_with_bitvec(
 						data, bitvec,
 					),
 				))
 			}
-			Value::VarUint(_) => {
+			Value::Uint(_) => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -741,19 +741,19 @@ impl StandardEvaluator {
 						break;
 					}
 					match v {
-						Value::VarUint(b) => {
+						Value::Uint(b) => {
 							data.push(b.clone());
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::VarUint::zero());
+							data.push(reifydb_type::Uint::zero());
 							bitvec.push(false);
 						}
 					}
 					count += 1;
 				}
 				Ok(col.with_new_data(
-					ColumnData::varuint_with_bitvec(
+					ColumnData::uint_with_bitvec(
 						data, bitvec,
 					),
 				))
@@ -772,7 +772,7 @@ impl StandardEvaluator {
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::Decimal::from_i64(0, 38, 0).unwrap());
+							data.push(reifydb_type::Decimal::from_i64(0));
 							bitvec.push(false);
 						}
 					}

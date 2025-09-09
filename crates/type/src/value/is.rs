@@ -3,8 +3,9 @@
 
 use std::fmt::{Debug, Display};
 
+use super::{int::Int, uint::Uint};
 use crate::{
-	Date, DateTime, Decimal, Interval, Time, Uuid4, Uuid7, VarInt, VarUint,
+	Date, DateTime, Decimal, Interval, Time, Uuid4, Uuid7,
 	value::r#type::GetType,
 };
 
@@ -63,11 +64,11 @@ impl IsUint for u64 {}
 impl IsNumber for u128 {}
 impl IsUint for u128 {}
 
-impl IsNumber for VarInt {}
-impl IsInt for VarInt {}
+impl IsNumber for Int {}
+impl IsInt for Int {}
 
-impl IsNumber for VarUint {}
-impl IsUint for VarUint {}
+impl IsNumber for Uint {}
+impl IsUint for Uint {}
 
 impl IsNumber for Decimal {}
 impl IsFloat for Decimal {}

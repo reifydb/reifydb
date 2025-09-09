@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::fmt::{Display, Formatter};
 
@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use super::precision::Precision;
 use crate::{
 	Error, OwnedFragment,
-	diagnostic::number::decimal_scale_exceeds_precision, return_error,
+	error::diagnostic::number::decimal_scale_exceeds_precision,
+	return_error,
 };
 
 /// Scale for a decimal type (decimal places)

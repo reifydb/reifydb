@@ -235,82 +235,85 @@ macro_rules! impl_safe_convert_float_to_unsigned {
 use num_bigint::{BigInt, ToBigInt};
 use num_traits::{Signed, ToPrimitive};
 
-use crate::{Decimal, VarInt, VarUint};
+use crate::{
+	Decimal,
+	value::{int::Int, uint::Uint},
+};
 
-macro_rules! impl_safe_convert_to_varint {
+macro_rules! impl_safe_convert_to_int {
     ($($from:ty),*) => {
         $(
-            impl SafeConvert<VarInt> for $from {
-                fn checked_convert(self) -> Option<VarInt> {
-                    Some(VarInt(BigInt::from(self)))
+            impl SafeConvert<Int> for $from {
+                fn checked_convert(self) -> Option<Int> {
+                    Some(Int(BigInt::from(self)))
                 }
 
-                fn saturating_convert(self) -> VarInt {
-                    VarInt(BigInt::from(self))
+                fn saturating_convert(self) -> Int {
+                    Int(BigInt::from(self))
                 }
 
-                fn wrapping_convert(self) -> VarInt {
-                    VarInt(BigInt::from(self))
+                fn wrapping_convert(self) -> Int {
+                    Int(BigInt::from(self))
                 }
             }
         )*
     };
 }
 
-macro_rules! impl_safe_convert_unsigned_to_varuint {
+macro_rules! impl_safe_convert_unsigned_to_uint {
     ($($from:ty),*) => {
         $(
-            impl SafeConvert<VarUint> for $from {
-                fn checked_convert(self) -> Option<VarUint> {
-                    Some(VarUint(BigInt::from(self)))
+            impl SafeConvert<Uint> for $from {
+                fn checked_convert(self) -> Option<Uint> {
+                    Some(Uint(BigInt::from(self)))
                 }
 
-                fn saturating_convert(self) -> VarUint {
-                    VarUint(BigInt::from(self))
+                fn saturating_convert(self) -> Uint {
+                    Uint(BigInt::from(self))
                 }
 
-                fn wrapping_convert(self) -> VarUint {
-                    VarUint(BigInt::from(self))
+                fn wrapping_convert(self) -> Uint {
+                    Uint(BigInt::from(self))
                 }
             }
         )*
     };
 }
 
-macro_rules! impl_safe_convert_float_to_varint {
+macro_rules! impl_safe_convert_float_to_int {
     ($($from:ty),*) => {
         $(
-            impl SafeConvert<VarInt> for $from {
-                fn checked_convert(self) -> Option<VarInt> {
+            impl SafeConvert<Int> for $from {
+                fn checked_convert(self) -> Option<Int> {
                     if self.is_finite() {
                         let truncated = self.trunc();
                         // Use ToBigInt trait for efficient conversion
-                        truncated.to_bigint().map(VarInt)
+                        truncated.to_bigint().map(Int)
                     } else {
                         None
                     }
                 }
 
-                fn saturating_convert(self) -> VarInt {
+                fn saturating_convert(self) -> Int {
                     if self.is_nan() {
-                        VarInt::zero()
+                        Int::zero()
                     } else if self.is_infinite() {
                         if self.is_sign_positive() {
-                            VarInt(BigInt::from(i64::MAX))
+                            Int(BigInt::from(i64::MAX))
                         } else {
-                            VarInt(BigInt::from(i64::MIN))
+                            Int(BigInt::from(i64::MIN))
                         }
                     } else {
                         let truncated = self.trunc() as i64;
-                        VarInt(BigInt::from(truncated))
+                        Int(BigInt::from(truncated))
                     }
                 }
 
-                fn wrapping_convert(self) -> VarInt {
+                fn wrapping_convert(self) -> Int {
                     if self.is_finite() {
-                        VarInt(BigInt::from(self.trunc() as i64))
+                        Int(BigInt::from(self.trunc() as i64))
                     } else {
-                        VarInt::zero()
+                        Int::zero()
                     }
                 }
             }
@@ -318,17 +321,17 @@ macro_rules! impl_safe_convert_float_to_varint {
     };
 }
 
-macro_rules! impl_safe_convert_float_to_varuint {
+macro_rules! impl_safe_convert_float_to_uint {
     ($($from:ty),*) => {
         $(
-            impl SafeConvert<VarUint> for $from {
-                fn checked_convert(self) -> Option<VarUint> {
+            impl SafeConvert<Uint> for $from {
+                fn checked_convert(self) -> Option<Uint> {
                     if self.is_finite() && self >= 0.0 {
                         let truncated = self.trunc();
                         // Use ToBigInt trait for efficient conversion
                         truncated.to_bigint().and_then(|big_int| {
                             if big_int >= BigInt::from(0) {
-                                Some(VarUint(big_int))
+                                Some(Uint(big_int))
                             } else {
                                 None
                             }
@@ -338,25 +341,25 @@ macro_rules! impl_safe_convert_float_to_varuint {
                     }
                 }
 
-                fn saturating_convert(self) -> VarUint {
+                fn saturating_convert(self) -> Uint {
                     if self.is_nan() || self < 0.0 {
-                        VarUint::zero()
+                        Uint::zero()
                     } else if self.is_infinite() {
-                        VarUint(BigInt::from(u64::MAX))
+                        Uint(BigInt::from(u64::MAX))
                     } else {
                         let truncated = self.trunc() as u64;
-                        VarUint(BigInt::from(truncated))
+                        Uint(BigInt::from(truncated))
                     }
                 }
 
-                fn wrapping_convert(self) -> VarUint {
+                fn wrapping_convert(self) -> Uint {
                     if self.is_finite() && self >= 0.0 {
-                        VarUint(BigInt::from(self.trunc() as u64))
+                        Uint(BigInt::from(self.trunc() as u64))
                     } else if self.is_finite() && self < 0.0 {
                         // For negative floats, convert to i64 then cast to u64 for two's complement
-                        VarUint(BigInt::from(self.trunc() as i64 as u64))
+                        Uint(BigInt::from(self.trunc() as i64 as u64))
                     } else {
-                        VarUint::zero()
+                        Uint::zero()
                     }
                 }
             }
@@ -578,7 +581,7 @@ macro_rules! impl_safe_convert_to_decimal_from_float {
 impl_safe_convert_self!(
 	i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64
 );
-impl_safe_convert_self!(VarInt, VarUint, Decimal);
+impl_safe_convert_self!(Int, Uint, Decimal);
 
 mod decimal;
 mod f32;
@@ -588,10 +591,10 @@ mod i16;
 mod i32;
 mod i64;
 mod i8;
+mod int;
 mod u128;
 mod u16;
 mod u32;
 mod u64;
 mod u8;
-mod varint;
-mod varuint;
+mod uint;

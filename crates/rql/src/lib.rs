@@ -40,8 +40,8 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> Result<Type> {
 		"uuid4" => Type::Uuid4,
 		"uuid7" => Type::Uuid7,
 		"blob" => Type::Blob,
-		"varint" => Type::VarInt,
-		"varuint" => Type::VarUint,
+		"int" => Type::Int,
+		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
 		_ => return_error!(unrecognized_type(ast.clone().fragment())),
 	})
@@ -66,26 +66,34 @@ pub(crate) fn convert_data_type_with_constraints(
 				(Type::Utf8, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
 				(Type::Blob, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
-				(Type::VarInt, [AstLiteral::Number(n)]) => {
+				(Type::Int, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
-				(Type::VarUint, [AstLiteral::Number(n)]) => {
+				(Type::Uint, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(
 						n.value(),
-					)?;
-					Some(Constraint::MaxBytes(max_bytes))
+					)? as u32;
+					Some(Constraint::MaxBytes(
+						max_bytes.into(),
+					))
 				}
 				(
 					Type::Decimal,
@@ -101,7 +109,8 @@ pub(crate) fn convert_data_type_with_constraints(
 						s.value(),
 					)? as u8;
 					Some(Constraint::PrecisionScale(
-						precision, scale,
+						precision.into(),
+						scale.into(),
 					))
 				}
 				// Type doesn't support constraints or invalid

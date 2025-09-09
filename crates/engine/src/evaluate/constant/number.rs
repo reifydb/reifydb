@@ -5,7 +5,8 @@ use reifydb_core::value::columnar::ColumnData;
 use reifydb_type::{
 	IntoFragment, Type,
 	diagnostic::{cast, number},
-	parse_bool, parse_float, parse_int, parse_uint, return_error,
+	parse_bool, parse_float, parse_primitive_int, parse_primitive_uint,
+	return_error,
 };
 
 pub(crate) struct NumberParser;
@@ -53,10 +54,8 @@ impl NumberParser {
 			Type::Uint16 => {
 				Self::parse_uint16(fragment, target, row_count)
 			}
-			Type::VarInt => Self::parse_varint(fragment, row_count),
-			Type::VarUint => {
-				Self::parse_varuint(fragment, row_count)
-			}
+			Type::Int => Self::parse_int(fragment, row_count),
+			Type::Uint => Self::parse_uint(fragment, row_count),
 			Type::Decimal {
 				..
 			} => Self::parse_decimal(fragment, row_count),
@@ -122,7 +121,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_int::<i8>(&fragment) {
+		if let Ok(v) = parse_primitive_int::<i8>(&fragment) {
 			Ok(ColumnData::int1(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -143,7 +142,7 @@ impl NumberParser {
 				))
 			}
 		} else {
-			match parse_int::<i8>(&fragment) {
+			match parse_primitive_int::<i8>(&fragment) {
 				Ok(_) => unreachable!(),
 				Err(err) => {
 					return_error!(cast::invalid_number(
@@ -162,7 +161,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_int::<i16>(&fragment) {
+		if let Ok(v) = parse_primitive_int::<i16>(&fragment) {
 			Ok(ColumnData::int2(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -197,7 +196,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_int::<i32>(&fragment) {
+		if let Ok(v) = parse_primitive_int::<i32>(&fragment) {
 			Ok(ColumnData::int4(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -232,7 +231,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_int::<i64>(&fragment) {
+		if let Ok(v) = parse_primitive_int::<i64>(&fragment) {
 			Ok(ColumnData::int8(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -267,7 +266,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_int::<i128>(&fragment) {
+		if let Ok(v) = parse_primitive_int::<i128>(&fragment) {
 			Ok(ColumnData::int16(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -302,7 +301,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_uint::<u8>(&fragment) {
+		if let Ok(v) = parse_primitive_uint::<u8>(&fragment) {
 			Ok(ColumnData::uint1(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -335,7 +334,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_uint::<u16>(&fragment) {
+		if let Ok(v) = parse_primitive_uint::<u16>(&fragment) {
 			Ok(ColumnData::uint2(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -368,7 +367,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_uint::<u32>(&fragment) {
+		if let Ok(v) = parse_primitive_uint::<u32>(&fragment) {
 			Ok(ColumnData::uint4(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -401,7 +400,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_uint::<u64>(&fragment) {
+		if let Ok(v) = parse_primitive_uint::<u64>(&fragment) {
 			Ok(ColumnData::uint8(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -434,7 +433,7 @@ impl NumberParser {
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		if let Ok(v) = parse_uint::<u128>(&fragment) {
+		if let Ok(v) = parse_primitive_uint::<u128>(&fragment) {
 			Ok(ColumnData::uint16(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(&fragment) {
 			let truncated = f.trunc();
@@ -461,31 +460,31 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_varint<'a>(
+	fn parse_int<'a>(
 		fragment: impl IntoFragment<'a>,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		match reifydb_type::parse_varint(&fragment) {
-			Ok(v) => Ok(ColumnData::varint(vec![v; row_count])),
+		match reifydb_type::parse_primitive_int(&fragment) {
+			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(
 				fragment,
-				Type::VarInt,
+				Type::Int,
 				err.diagnostic()
 			)),
 		}
 	}
 
-	fn parse_varuint<'a>(
+	fn parse_uint<'a>(
 		fragment: impl IntoFragment<'a>,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
-		match reifydb_type::parse_varuint(&fragment) {
-			Ok(v) => Ok(ColumnData::varuint(vec![v; row_count])),
+		match reifydb_type::parse_primitive_uint(&fragment) {
+			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(
 				fragment,
-				Type::VarUint,
+				Type::Uint,
 				err.diagnostic()
 			)),
 		}

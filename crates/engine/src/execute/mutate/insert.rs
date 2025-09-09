@@ -279,13 +279,13 @@ impl Executor {
 								&mut row,
 								table_idx, &v,
 							),
-						Value::VarInt(v) => layout
-							.set_varint(
+						Value::Int(v) => layout
+							.set_int(
 								&mut row,
 								table_idx, &v,
 							),
-						Value::VarUint(v) => layout
-							.set_varuint(
+						Value::Uint(v) => layout
+							.set_uint(
 								&mut row,
 								table_idx, &v,
 							),

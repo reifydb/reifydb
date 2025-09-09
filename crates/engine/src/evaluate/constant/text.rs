@@ -4,7 +4,7 @@
 use reifydb_core::value::columnar::ColumnData;
 use reifydb_type::{
 	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float,
-	parse_int, parse_uint, return_error,
+	parse_primitive_int, parse_primitive_uint, return_error,
 };
 use temporal::TemporalParser;
 
@@ -128,7 +128,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::int1(vec![
-			match parse_int::<i8>(&fragment) {
+			match parse_primitive_int::<i8>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -146,7 +146,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::int2(vec![
-			match parse_int::<i16>(&fragment) {
+			match parse_primitive_int::<i16>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -164,7 +164,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::int4(vec![
-			match parse_int::<i32>(&fragment) {
+			match parse_primitive_int::<i32>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -182,7 +182,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::int8(vec![
-			match parse_int::<i64>(&fragment) {
+			match parse_primitive_int::<i64>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -200,7 +200,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::int16(vec![
-			match parse_int::<i128>(&fragment) {
+			match parse_primitive_int::<i128>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -218,7 +218,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::uint1(vec![
-			match parse_uint::<u8>(&fragment) {
+			match parse_primitive_uint::<u8>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -236,7 +236,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::uint2(vec![
-			match parse_uint::<u16>(&fragment) {
+			match parse_primitive_uint::<u16>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -254,7 +254,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::uint4(vec![
-			match parse_uint::<u32>(&fragment) {
+			match parse_primitive_uint::<u32>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -272,7 +272,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::uint8(vec![
-			match parse_uint::<u64>(&fragment) {
+			match parse_primitive_uint::<u64>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,
@@ -290,7 +290,7 @@ impl TextParser {
 	) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		Ok(ColumnData::uint16(vec![
-			match parse_uint::<u128>(&fragment) {
+			match parse_primitive_uint::<u128>(&fragment) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(
 					fragment,

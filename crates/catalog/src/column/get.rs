@@ -20,14 +20,17 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 			// MaxBytes constraint
 			let max_bytes = u32::from_le_bytes([
 				bytes[1], bytes[2], bytes[3], bytes[4],
-			]) as usize;
-			Some(Constraint::MaxBytes(max_bytes))
+			]);
+			Some(Constraint::MaxBytes(max_bytes.into()))
 		}
 		2 if bytes.len() >= 3 => {
 			// PrecisionScale constraint
 			let precision = bytes[1];
 			let scale = bytes[2];
-			Some(Constraint::PrecisionScale(precision, scale))
+			Some(Constraint::PrecisionScale(
+				precision.into(),
+				scale.into(),
+			))
 		}
 		_ => None, // Unknown or invalid constraint type
 	}

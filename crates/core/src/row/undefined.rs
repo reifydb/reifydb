@@ -226,26 +226,26 @@ mod tests {
 	}
 
 	#[test]
-	fn test_set_decimal_varint_varuint() {
+	fn test_set_decimal_int_uint() {
 		use std::str::FromStr;
 
-		use reifydb_type::{Decimal, VarInt, VarUint};
+		use reifydb_type::{Decimal, Int, Uint};
 
 		let layout = EncodedRowLayout::new(&[
 			Type::Decimal,
-			Type::VarInt,
-			Type::VarUint,
+			Type::Int,
+			Type::Uint,
 		]);
 		let mut row = layout.allocate_row();
 
 		// Set values
 		let decimal = Decimal::from_str("123.45").unwrap();
-		let varint = VarInt::from(i64::MAX);
-		let varuint = VarUint::from(u64::MAX);
+		let int = Int::from(i64::MAX);
+		let uint = Uint::from(u64::MAX);
 
 		layout.set_decimal(&mut row, 0, &decimal);
-		layout.set_varint(&mut row, 1, &varint);
-		layout.set_varuint(&mut row, 2, &varuint);
+		layout.set_int(&mut row, 1, &int);
+		layout.set_uint(&mut row, 2, &uint);
 
 		// All should be defined
 		assert!(row.is_defined(0));
@@ -262,8 +262,8 @@ mod tests {
 		assert!(!row.is_defined(2));
 
 		assert_eq!(layout.try_get_decimal(&row, 0), None);
-		assert_eq!(layout.try_get_varint(&row, 1), Some(varint));
-		assert_eq!(layout.try_get_varuint(&row, 2), None);
+		assert_eq!(layout.try_get_int(&row, 1), Some(int));
+		assert_eq!(layout.try_get_uint(&row, 2), None);
 	}
 
 	#[test]

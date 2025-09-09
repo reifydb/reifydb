@@ -34,8 +34,8 @@ fn test_unaligned_access_all_types() {
 		Type::IdentityId,
 		Type::Utf8,
 		Type::Blob,
-		Type::VarInt,
-		Type::VarUint,
+		Type::Int,
+		Type::Uint,
 		Type::Decimal,
 	];
 
@@ -108,7 +108,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 		Type::Float8, // Static
 		Type::Utf8,   // Dynamic
 		Type::Blob,   // Dynamic
-		Type::VarInt, // Dynamic/Static depending on value
+		Type::Int,    // Dynamic/Static depending on value
 	]);
 
 	let mut row = layout.allocate_row();
@@ -130,7 +130,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// Set dynamic fields once
 	layout.set_utf8(&mut row, 2, "constant");
 	layout.set_blob(&mut row, 3, &Blob::from(&b"fixed"[..]));
-	layout.set_varint(&mut row, 4, &VarInt::from(123i64));
+	layout.set_int(&mut row, 4, &Int::from(123i64));
 
 	let size_after_dynamic = row.len();
 	assert!(
@@ -150,7 +150,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 			layout.set_f64(&mut r, 1, 3.14);
 			layout.set_utf8(&mut r, 2, "constant");
 			layout.set_blob(&mut r, 3, &Blob::from(&b"fixed"[..]));
-			layout.set_varint(&mut r, 4, &VarInt::from(123i64));
+			layout.set_int(&mut r, 4, &Int::from(123i64));
 			r
 		})
 		.collect();

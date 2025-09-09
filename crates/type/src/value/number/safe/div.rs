@@ -61,14 +61,17 @@ impl_safe_div_unsigned!(u8, u16, u32, u64, u128);
 use bigdecimal::Zero;
 use num_bigint::BigInt;
 
-use crate::{Decimal, VarInt, VarUint};
+use crate::{
+	Decimal,
+	value::{int::Int, uint::Uint},
+};
 
-impl SafeDiv for VarInt {
+impl SafeDiv for Int {
 	fn checked_div(&self, r: &Self) -> Option<Self> {
 		if r.0 == BigInt::from(0) {
 			None
 		} else {
-			Some(VarInt::from(&self.0 / &r.0))
+			Some(Int::from(&self.0 / &r.0))
 		}
 	}
 
@@ -76,26 +79,26 @@ impl SafeDiv for VarInt {
 		if r.0 == BigInt::from(0) {
 			self.clone()
 		} else {
-			VarInt::from(&self.0 / &r.0)
+			Int::from(&self.0 / &r.0)
 		}
 	}
 
 	fn wrapping_div(&self, r: &Self) -> Self {
 		// For division by zero, return zero
 		if r.0 == BigInt::from(0) {
-			VarInt::from(0)
+			Int::from(0)
 		} else {
-			VarInt::from(&self.0 / &r.0)
+			Int::from(&self.0 / &r.0)
 		}
 	}
 }
 
-impl SafeDiv for VarUint {
+impl SafeDiv for Uint {
 	fn checked_div(&self, r: &Self) -> Option<Self> {
 		if r.0 == BigInt::from(0) {
 			None
 		} else {
-			Some(VarUint::from(&self.0 / &r.0))
+			Some(Uint::from(&self.0 / &r.0))
 		}
 	}
 
@@ -103,15 +106,15 @@ impl SafeDiv for VarUint {
 		if r.0 == BigInt::from(0) {
 			self.clone()
 		} else {
-			VarUint::from(&self.0 / &r.0)
+			Uint::from(&self.0 / &r.0)
 		}
 	}
 
 	fn wrapping_div(&self, r: &Self) -> Self {
 		if r.0 == BigInt::from(0) {
-			VarUint::from(0u64)
+			Uint::from(0u64)
 		} else {
-			VarUint::from(&self.0 / &r.0)
+			Uint::from(&self.0 / &r.0)
 		}
 	}
 }

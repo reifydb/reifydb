@@ -20,9 +20,10 @@ pub fn to_text<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Blob(container) => {
-			from_blob(container, lazy_fragment)
-		}
+		ColumnData::Blob {
+			container,
+			..
+		} => from_blob(container, lazy_fragment),
 		ColumnData::Bool(container) => from_bool(container),
 		ColumnData::Int1(container) => from_number(container),
 		ColumnData::Int2(container) => from_number(container),
@@ -169,7 +170,10 @@ mod tests {
 				.unwrap();
 
 		match result {
-			ColumnData::Utf8(container) => {
+			ColumnData::Utf8 {
+				container,
+				..
+			} => {
 				assert_eq!(container[0], "Hello");
 				assert_eq!(container[1], "World");
 			}

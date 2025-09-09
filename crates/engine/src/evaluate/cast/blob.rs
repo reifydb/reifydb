@@ -9,7 +9,10 @@ pub fn to_blob<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Utf8(container) => {
+		ColumnData::Utf8 {
+			container,
+			..
+		} => {
 			let mut out = ColumnData::with_capacity(
 				Type::Blob,
 				container.len(),
@@ -57,7 +60,10 @@ mod tests {
 			.unwrap();
 
 		match result {
-			ColumnData::Blob(container) => {
+			ColumnData::Blob {
+				container,
+				..
+			} => {
 				assert_eq!(container[0].as_bytes(), b"Hello");
 				assert_eq!(container[1].as_bytes(), b"World");
 			}

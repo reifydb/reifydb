@@ -13,7 +13,11 @@ pub fn to_temporal<'a>(
 	target: Type,
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
-	if let ColumnData::Utf8(container) = data {
+	if let ColumnData::Utf8 {
+		container,
+		..
+	} = data
+	{
 		match target {
 			Type::Date => to_date(container, lazy_fragment),
 			Type::DateTime => to_datetime(container, lazy_fragment),

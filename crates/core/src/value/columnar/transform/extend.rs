@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Interval, Time, Type, Uuid4, Uuid7,
-	VarInt, VarUint, diagnostic::engine, return_error,
+	Blob, Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4,
+	Uuid7, diagnostic::engine, return_error,
 };
 
 use crate::{
@@ -157,12 +157,12 @@ impl Columns {
                         vec![Blob::new(vec![]); size],
                         BitVec::repeat(size, false),
                     ),
-                    Type::VarInt => ColumnData::varint_with_bitvec(
-                        vec![VarInt::default(); size],
+                    Type::Int => ColumnData::int_with_bitvec(
+                        vec![Int::default(); size],
                         BitVec::repeat(size, false),
                     ),
-                    Type::VarUint => ColumnData::varuint_with_bitvec(
-                        vec![VarUint::default(); size],
+                    Type::Uint => ColumnData::uint_with_bitvec(
+                        vec![Uint::default(); size],
                         BitVec::repeat(size, false),
                     ),
                     Type::Decimal { .. } => ColumnData::decimal_with_bitvec(
@@ -245,7 +245,13 @@ impl Columns {
 						.push(layout
 							.get_i128(&row, index));
 				}
-				(ColumnData::Utf8(container), Type::Utf8) => {
+				(
+					ColumnData::Utf8 {
+						container,
+						..
+					},
+					Type::Utf8,
+				) => {
 					container.push(layout
 						.get_utf8(&row, index)
 						.to_string());
@@ -312,26 +318,38 @@ impl Columns {
 						layout.get_uuid7(&row, index)
 					);
 				}
-				(ColumnData::Blob(container), Type::Blob) => {
+				(
+					ColumnData::Blob {
+						container,
+						..
+					},
+					Type::Blob,
+				) => {
 					container
 						.push(layout
 							.get_blob(&row, index));
 				}
 				(
-					ColumnData::VarInt(container),
-					Type::VarInt,
+					ColumnData::Int {
+						container,
+						..
+					},
+					Type::Int,
 				) => {
-					container.push(
-						layout.get_varint(&row, index)
-					);
+					container
+						.push(layout
+							.get_int(&row, index));
 				}
 				(
-					ColumnData::VarUint(container),
-					Type::VarUint,
+					ColumnData::Uint {
+						container,
+						..
+					},
+					Type::Uint,
 				) => {
-					container.push(
-						layout.get_varuint(&row, index)
-					);
+					container
+						.push(layout
+							.get_uint(&row, index));
 				}
 				(
 					ColumnData::Decimal {
@@ -425,14 +443,18 @@ impl Columns {
 							.push_undefined(),
 					}
 				}
-				(ColumnData::Utf8(container), Type::Utf8) => {
-					match layout.try_get_utf8(row, index) {
-						Some(v) => container
-							.push(v.to_string()),
-						None => container
-							.push_undefined(),
+				(
+					ColumnData::Utf8 {
+						container,
+						..
+					},
+					Type::Utf8,
+				) => match layout.try_get_utf8(row, index) {
+					Some(v) => {
+						container.push(v.to_string())
 					}
-				}
+					None => container.push_undefined(),
+				},
 				(ColumnData::Uint1(container), Type::Uint1) => {
 					match layout.try_get_u8(row, index) {
 						Some(v) => container.push(v),
@@ -521,27 +543,25 @@ impl Columns {
 					}
 				}
 				(
-					ColumnData::VarInt(container),
-					Type::VarInt,
-				) => {
-					match layout.try_get_varint(row, index)
-					{
-						Some(v) => container.push(v),
-						None => container
-							.push_undefined(),
-					}
-				}
+					ColumnData::Int {
+						container,
+						..
+					},
+					Type::Int,
+				) => match layout.try_get_int(row, index) {
+					Some(v) => container.push(v),
+					None => container.push_undefined(),
+				},
 				(
-					ColumnData::VarUint(container),
-					Type::VarUint,
-				) => {
-					match layout.try_get_varuint(row, index)
-					{
-						Some(v) => container.push(v),
-						None => container
-							.push_undefined(),
-					}
-				}
+					ColumnData::Uint {
+						container,
+						..
+					},
+					Type::Uint,
+				) => match layout.try_get_uint(row, index) {
+					Some(v) => container.push(v),
+					None => container.push_undefined(),
+				},
 				(
 					ColumnData::Decimal {
 						container,

@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Date, DateTime, Decimal, Interval, Time, Type, Uuid4, Uuid7, Value,
-	VarInt, VarUint,
+	Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7,
+	Value,
 };
 use serde::{Deserialize, Serialize};
 
@@ -38,8 +38,8 @@ pub enum FrameColumnData {
 	Uuid4(UuidContainer<Uuid4>),
 	Uuid7(UuidContainer<Uuid7>),
 	Blob(BlobContainer),
-	VarInt(NumberContainer<VarInt>),
-	VarUint(NumberContainer<VarUint>),
+	Int(NumberContainer<Int>),
+	Uint(NumberContainer<Uint>),
 	Decimal(NumberContainer<Decimal>),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
@@ -71,8 +71,8 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(_) => Type::Uuid4,
 			FrameColumnData::Uuid7(_) => Type::Uuid7,
 			FrameColumnData::Blob(_) => Type::Blob,
-			FrameColumnData::VarInt(_) => Type::VarInt,
-			FrameColumnData::VarUint(_) => Type::VarUint,
+			FrameColumnData::Int(_) => Type::Int,
+			FrameColumnData::Uint(_) => Type::Uint,
 			FrameColumnData::Decimal(_) => Type::Decimal,
 			FrameColumnData::Undefined(_) => Type::Undefined,
 		}
@@ -149,10 +149,10 @@ impl FrameColumnData {
 			FrameColumnData::Blob(container) => {
 				container.is_defined(idx)
 			}
-			FrameColumnData::VarInt(container) => {
+			FrameColumnData::Int(container) => {
 				container.is_defined(idx)
 			}
-			FrameColumnData::VarUint(container) => {
+			FrameColumnData::Uint(container) => {
 				container.is_defined(idx)
 			}
 			FrameColumnData::Decimal(container) => {
@@ -238,8 +238,8 @@ impl FrameColumnData {
 			FrameColumnData::Uuid4(container) => container.len(),
 			FrameColumnData::Uuid7(container) => container.len(),
 			FrameColumnData::Blob(container) => container.len(),
-			FrameColumnData::VarInt(container) => container.len(),
-			FrameColumnData::VarUint(container) => container.len(),
+			FrameColumnData::Int(container) => container.len(),
+			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
 			FrameColumnData::Undefined(container) => {
 				container.len()
@@ -318,10 +318,10 @@ impl FrameColumnData {
 			FrameColumnData::Blob(container) => {
 				container.as_string(index)
 			}
-			FrameColumnData::VarInt(container) => {
+			FrameColumnData::Int(container) => {
 				container.as_string(index)
 			}
-			FrameColumnData::VarUint(container) => {
+			FrameColumnData::Uint(container) => {
 				container.as_string(index)
 			}
 			FrameColumnData::Decimal(container) => {
@@ -406,10 +406,10 @@ impl FrameColumnData {
 			FrameColumnData::Blob(container) => {
 				container.get_value(index)
 			}
-			FrameColumnData::VarInt(container) => {
+			FrameColumnData::Int(container) => {
 				container.get_value(index)
 			}
-			FrameColumnData::VarUint(container) => {
+			FrameColumnData::Uint(container) => {
 				container.get_value(index)
 			}
 			FrameColumnData::Decimal(container) => {

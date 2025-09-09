@@ -223,18 +223,18 @@ pub fn encode_primary_key(
 					"RowNumber columns cannot be used in primary keys"
 				);
 			}
-			Type::VarInt => {
-				// VarInt columns in primary keys not yet
+			Type::Int => {
+				// Int columns in primary keys not yet
 				// supported
 				panic!(
-					"VarInt columns in primary keys not yet supported"
+					"Int columns in primary keys not yet supported"
 				);
 			}
-			Type::VarUint => {
-				// VarUint columns in primary keys not yet
+			Type::Uint => {
+				// Uint columns in primary keys not yet
 				// supported
 				panic!(
-					"VarUint columns in primary keys not yet supported"
+					"Uint columns in primary keys not yet supported"
 				);
 			}
 			Type::Decimal {

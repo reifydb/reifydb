@@ -11,26 +11,26 @@ impl_safe_convert!(i32 => u8, u16, u32, u64, u128);
 impl_safe_convert_signed_to_float!(24; i32 => f32);
 impl_safe_convert_signed_to_float!(53; i32 => f64);
 
-impl_safe_convert_to_varint!(i32);
-impl SafeConvert<VarUint> for i32 {
-	fn checked_convert(self) -> Option<VarUint> {
+impl_safe_convert_to_int!(i32);
+impl SafeConvert<Uint> for i32 {
+	fn checked_convert(self) -> Option<Uint> {
 		if self >= 0 {
-			Some(VarUint(BigInt::from(self)))
+			Some(Uint(BigInt::from(self)))
 		} else {
 			None
 		}
 	}
 
-	fn saturating_convert(self) -> VarUint {
+	fn saturating_convert(self) -> Uint {
 		if self >= 0 {
-			VarUint(BigInt::from(self))
+			Uint(BigInt::from(self))
 		} else {
-			VarUint::zero()
+			Uint::zero()
 		}
 	}
 
-	fn wrapping_convert(self) -> VarUint {
-		VarUint(BigInt::from(self as u32))
+	fn wrapping_convert(self) -> Uint {
+		Uint(BigInt::from(self as u32))
 	}
 }
 
@@ -386,8 +386,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "42");
-			assert_eq!(decimal.precision().value(), 2);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -397,8 +395,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "0");
-			assert_eq!(decimal.precision().value(), 1);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -408,8 +404,6 @@ mod tests {
 			assert!(y.is_some());
 			let decimal = y.unwrap();
 			assert_eq!(decimal.to_string(), "-999");
-			assert_eq!(decimal.precision().value(), 3);
-			assert_eq!(decimal.scale().value(), 0);
 		}
 
 		#[test]
@@ -417,8 +411,6 @@ mod tests {
 			let x: i32 = -2147483648;
 			let y: Decimal = x.saturating_convert();
 			assert_eq!(y.to_string(), "-2147483648");
-			assert_eq!(y.precision().value(), 10);
-			assert_eq!(y.scale().value(), 0);
 		}
 
 		#[test]
@@ -426,19 +418,17 @@ mod tests {
 			let x: i32 = 2147483647;
 			let y: Decimal = x.wrapping_convert();
 			assert_eq!(y.to_string(), "2147483647");
-			assert_eq!(y.precision().value(), 10);
-			assert_eq!(y.scale().value(), 0);
 		}
 	}
 
-	mod varint {
+	mod int {
 		use super::*;
-		use crate::VarInt;
+		use crate::Int;
 
 		#[test]
 		fn test_checked_convert() {
 			let x: i32 = -2147483648;
-			let y: Option<VarInt> = x.checked_convert();
+			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(y.unwrap().to_string(), "-2147483648");
 		}
@@ -446,26 +436,26 @@ mod tests {
 		#[test]
 		fn test_saturating_convert() {
 			let x: i32 = 2147483647;
-			let y: VarInt = x.saturating_convert();
+			let y: Int = x.saturating_convert();
 			assert_eq!(y.to_string(), "2147483647");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x: i32 = -1;
-			let y: VarInt = x.wrapping_convert();
+			let y: Int = x.wrapping_convert();
 			assert_eq!(y.to_string(), "-1");
 		}
 	}
 
-	mod varuint {
+	mod uint {
 		use super::*;
-		use crate::VarUint;
+		use crate::Uint;
 
 		#[test]
 		fn test_checked_convert_positive() {
 			let x: i32 = 42;
-			let y: Option<VarUint> = x.checked_convert();
+			let y: Option<Uint> = x.checked_convert();
 			assert!(y.is_some());
 			assert_eq!(y.unwrap().to_string(), "42");
 		}
@@ -473,21 +463,21 @@ mod tests {
 		#[test]
 		fn test_checked_convert_negative() {
 			let x: i32 = -1;
-			let y: Option<VarUint> = x.checked_convert();
+			let y: Option<Uint> = x.checked_convert();
 			assert!(y.is_none());
 		}
 
 		#[test]
 		fn test_saturating_convert() {
 			let x: i32 = -1;
-			let y: VarUint = x.saturating_convert();
+			let y: Uint = x.saturating_convert();
 			assert_eq!(y.to_string(), "0");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x: i32 = -1;
-			let y: VarUint = x.wrapping_convert();
+			let y: Uint = x.wrapping_convert();
 			assert_eq!(y.to_string(), "4294967295");
 		}
 	}

@@ -75,15 +75,18 @@ impl_safe_rem_unsigned!(u8, u16, u32, u64, u128);
 use bigdecimal::Zero;
 use num_bigint::BigInt;
 
-use crate::{Decimal, VarInt, VarUint};
+use crate::{
+	Decimal,
+	value::{int::Int, uint::Uint},
+};
 
-impl SafeRemainder for VarInt {
+impl SafeRemainder for Int {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
 		// Check for modulo by zero
 		if r.0 == BigInt::from(0) {
 			None
 		} else {
-			Some(VarInt::from(&self.0 % &r.0))
+			Some(Int::from(&self.0 % &r.0))
 		}
 	}
 
@@ -91,9 +94,9 @@ impl SafeRemainder for VarInt {
 		// For modulo by zero, return zero (consistent with primitive
 		// types)
 		if r.0 == BigInt::from(0) {
-			VarInt::from(0)
+			Int::from(0)
 		} else {
-			VarInt::from(&self.0 % &r.0)
+			Int::from(&self.0 % &r.0)
 		}
 	}
 
@@ -101,35 +104,35 @@ impl SafeRemainder for VarInt {
 		// For modulo by zero, return zero (consistent with primitive
 		// types)
 		if r.0 == BigInt::from(0) {
-			VarInt::from(0)
+			Int::from(0)
 		} else {
-			VarInt::from(&self.0 % &r.0)
+			Int::from(&self.0 % &r.0)
 		}
 	}
 }
 
-impl SafeRemainder for VarUint {
+impl SafeRemainder for Uint {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
 		if r.0 == BigInt::from(0) {
 			None
 		} else {
-			Some(VarUint::from(&self.0 % &r.0))
+			Some(Uint::from(&self.0 % &r.0))
 		}
 	}
 
 	fn saturating_rem(&self, r: &Self) -> Self {
 		if r.0 == BigInt::from(0) {
-			VarUint::from(0u64)
+			Uint::from(0u64)
 		} else {
-			VarUint::from(&self.0 % &r.0)
+			Uint::from(&self.0 % &r.0)
 		}
 	}
 
 	fn wrapping_rem(&self, r: &Self) -> Self {
 		if r.0 == BigInt::from(0) {
-			VarUint::from(0u64)
+			Uint::from(0u64)
 		} else {
-			VarUint::from(&self.0 % &r.0)
+			Uint::from(&self.0 % &r.0)
 		}
 	}
 }

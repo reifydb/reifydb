@@ -4,6 +4,8 @@
 //! Robustness tests for the row encoding system
 //! Tests error handling, recovery, and stability under stress
 
+use std::str::FromStr;
+
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_type::*;
 
@@ -128,19 +130,18 @@ fn test_repeated_clone_stability() {
 	let layout = EncodedRowLayout::new(&[
 		Type::Utf8,
 		Type::Blob,
-		Type::VarInt,
+		Type::Int,
 		Type::Decimal,
 	]);
 
 	let mut original = layout.allocate_row();
 	layout.set_utf8(&mut original, 0, &"x".repeat(1000));
 	layout.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
-	layout.set_varint(&mut original, 2, &VarInt::from(i128::MAX));
+	layout.set_int(&mut original, 2, &Int::from(i128::MAX));
 	layout.set_decimal(
 		&mut original,
 		3,
-		&Decimal::from_str_with_precision("99999.99999", 20, 5)
-			.unwrap(),
+		&Decimal::from_str("99999.99999").unwrap(),
 	);
 
 	let mut current = original.clone();
@@ -155,10 +156,7 @@ fn test_repeated_clone_stability() {
 			layout.get_blob(&next, 1),
 			Blob::from(vec![42u8; 1000])
 		);
-		assert_eq!(
-			layout.get_varint(&next, 2),
-			VarInt::from(i128::MAX)
-		);
+		assert_eq!(layout.get_int(&next, 2), Int::from(i128::MAX));
 
 		current = next;
 	}

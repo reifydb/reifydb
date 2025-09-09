@@ -482,7 +482,7 @@ impl StandardEvaluator {
             (ColumnData::Interval(l), ColumnData::Interval(r)) => {
                 Ok(compare_temporal(l, r, gt.full_fragment_owned()))
             }
-            (ColumnData::Utf8(l), ColumnData::Utf8(r)) => Ok(compare_utf8(l, r, gt.full_fragment_owned())),
+            (ColumnData::Utf8 { container: l, .. }, ColumnData::Utf8 { container: r, .. }) => Ok(compare_utf8(l, r, gt.full_fragment_owned())),
             (ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
                 let fragment = gt.full_fragment_owned();
                 Ok(Column::ColumnQualified(ColumnQualified {
