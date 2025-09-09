@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@reifydb/client':
-        specifier: 0.0.1-alpha.4
-        version: 0.0.1-alpha.4
+        specifier: 0.0.1-alpha.6
+        version: 0.0.1-alpha.6
       '@reifydb/core':
-        specifier: 0.0.1-alpha.4
-        version: 0.0.1-alpha.4
+        specifier: 0.0.1-alpha.6
+        version: 0.0.1-alpha.6
       '@tanstack/react-query':
         specifier: ^5.87.1
         version: 5.87.1(react@19.1.1)
@@ -344,12 +344,12 @@ packages:
   '@jridgewell/trace-mapping@0.3.30':
     resolution: {integrity: sha512-GQ7Nw5G2lTu/BtHTKfXhKHok2WGetd4XYcVKGx00SjAk8GMwgJM3zr6zORiPGuOE+/vkc90KtTosSSvaCjKb2Q==}
 
-  '@reifydb/client@0.0.1-alpha.4':
-    resolution: {integrity: sha512-x3yPCvWGVqz1Yxz0OAEI5hGUo39VAg8wZTKFcsPKkxSVTPBVZaioH/2YQe9sunNoNBVQDCe/FxVBmzTCWI9/eA==}
+  '@reifydb/client@0.0.1-alpha.6':
+    resolution: {integrity: sha512-bK8e2Z8pdE1dSEEAnMyofWKljmjIjCLJYA1fZ9Plk831vFNGF231aPz+spT6+juZJzV02TgHQu2Yp+gXM05jgw==}
     engines: {node: '>=16.0.0'}
 
-  '@reifydb/core@0.0.1-alpha.4':
-    resolution: {integrity: sha512-jpVlNRRqjxQsZ/SUj/NOoMBGfIDnoBLTTVrL47zXBBHdhXr/2vt1HiTICZxeemEU1CGZnzc+j75WsXm6GDUY+g==}
+  '@reifydb/core@0.0.1-alpha.6':
+    resolution: {integrity: sha512-j+5K1yx2Xdz00m5UKWKyhLEjh4edjYXq2E4+9rfyUtA7pQmgww3Qk8IBfL4eEeTQdfY7wn/H2Qc7eu/r8VGbhQ==}
     engines: {node: '>=16.0.0'}
 
   '@rolldown/pluginutils@1.0.0-beta.34':
@@ -1278,16 +1278,16 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@reifydb/client@0.0.1-alpha.4':
+  '@reifydb/client@0.0.1-alpha.6':
     dependencies:
-      '@reifydb/core': 0.0.1-alpha.4
+      '@reifydb/core': 0.0.1-alpha.6
       uuid: 11.1.0
       ws: 8.18.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@reifydb/core@0.0.1-alpha.4':
+  '@reifydb/core@0.0.1-alpha.6':
     dependencies:
       uuid: 11.1.0
 

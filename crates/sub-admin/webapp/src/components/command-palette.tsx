@@ -10,7 +10,8 @@ import {
   Terminal,
   X,
   ArrowRight,
-  Command
+  Command,
+  Info
 } from 'lucide-react'
 
 interface CommandItem {
@@ -96,6 +97,18 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       },
       category: 'navigation',
       keywords: ['settings', 'configuration', 'preferences']
+    },
+    {
+      id: 'nav-version',
+      title: 'Go to Version',
+      description: 'View system version information',
+      icon: Info,
+      action: () => {
+        navigate({ to: '/version' })
+        onClose()
+      },
+      category: 'navigation',
+      keywords: ['version', 'info', 'about', 'system']
     },
     // Action commands
     {

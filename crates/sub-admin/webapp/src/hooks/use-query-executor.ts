@@ -1,5 +1,5 @@
 import {useState, useCallback, useRef} from 'react';
-import {Column, FrameResults, Value, SchemaNode, InferSchema} from '@reifydb/core';
+import {Column, SchemaNode} from '@reifydb/core';
 import {useConnection} from "@/hooks/use-connection.ts";
 
 export interface QueryResult<T = any> {
@@ -11,7 +11,7 @@ export interface QueryResult<T = any> {
 
 export interface QueryState<T = any> {
     isExecuting: boolean;
-    result: QueryResult<T> | undefined;
+    results: QueryResult<T>[] | undefined;
     error: string | undefined;
     executionTime: number | undefined;
 }
@@ -21,7 +21,7 @@ export function useQueryExecutor<T = any>() {
 
     const [state, setState] = useState<QueryState<T>>({
         isExecuting: false,
-        result: undefined,
+        results: undefined,
         error: undefined,
         executionTime: undefined,
     });
@@ -29,8 +29,8 @@ export function useQueryExecutor<T = any>() {
     const abortControllerRef = useRef<AbortController | null>(null);
 
     const query = useCallback(
-        <S extends SchemaNode>(rql: string, schema?: S): void => {
-            console.log('[useQuery] Executing query:', rql);
+        (statements: string | string[], schemas?: readonly SchemaNode[]): void => {
+            console.log('[useQuery] Executing query:', statements);
             console.log('[useQuery] Client available:', !!client);
 
             // Cancel any ongoing query for THIS instance only
@@ -41,7 +41,7 @@ export function useQueryExecutor<T = any>() {
 
             setState({
                 isExecuting: true,
-                result: undefined,
+                results: undefined,
                 error: undefined,
                 executionTime: undefined,
             });
@@ -50,60 +50,61 @@ export function useQueryExecutor<T = any>() {
 
             (async () => {
                 try {
-                    const schemas = schema ? [schema] : [];
-                    const frames = await client?.query(rql, null, schemas) || [];
+                    // Call client.query which returns FrameResults (array of frames)
+                    const frameResults = await client?.query(statements, null, schemas || []) || [];
 
-                    console.debug("frames", frames);
+                    console.debug("frameResults", frameResults);
 
                     const executionTime = Date.now() - startTime;
-
-                    let queryResult: QueryResult<T>;
-                    const firstFrame = frames.length > 0 ? frames[0] : undefined;
-
-                    if (Array.isArray(firstFrame) && firstFrame.length > 0) {
-                        const firstRow = firstFrame[0];
-                        let columns: Column[] = [];
-                        let rows: T[];
-
-                        if (schema) {
-                            // With schema, results are properly typed
-                            columns = Object.keys(firstRow).map((key) => ({
-                                name: key,
-                                type: 'Utf8', // Type info would come from schema
-                                data: [],
-                            }));
-                            rows = firstFrame as T[];
-                        } else {
-                            // Without schema, we have Value objects
-                            columns = Object.keys(firstRow).map((key) => {
-                                const value = firstRow[key];
-                                const dataType = value?.type || 'Utf8';
-                                return {
+                    
+                    // Process each frame into a QueryResult
+                    const results: QueryResult<T>[] = frameResults.map((frame: any) => {
+                        if (Array.isArray(frame) && frame.length > 0) {
+                            const firstRow = frame[0];
+                            let columns: Column[] = [];
+                            
+                            // Check if we have Value objects or plain objects
+                            const hasValueObjects = firstRow && typeof firstRow === 'object' && 
+                                Object.values(firstRow).some(v => v && typeof v === 'object' && 'type' in v);
+                            
+                            if (hasValueObjects) {
+                                // We have Value objects - extract type info
+                                columns = Object.keys(firstRow).map((key) => {
+                                    const value = firstRow[key];
+                                    const dataType = value?.type || 'Utf8';
+                                    return {
+                                        name: key,
+                                        type: dataType,
+                                        data: [],
+                                    };
+                                });
+                            } else {
+                                // Plain objects from schema conversion
+                                columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
-                                    type: dataType,
+                                    type: 'Utf8', // Default type for plain objects
                                     data: [],
-                                };
-                            });
-                            rows = firstFrame as T[];
+                                }));
+                            }
+                            
+                            return {
+                                columns,
+                                rows: frame as T[],
+                                executionTimeMs: executionTime,
+                            };
+                        } else {
+                            // Empty result
+                            return {
+                                columns: [],
+                                rows: [],
+                                executionTimeMs: executionTime,
+                            };
                         }
-
-                        queryResult = {
-                            columns,
-                            rows,
-                            executionTimeMs: executionTime,
-                        };
-                    } else {
-                        // Empty result set or no frames returned
-                        queryResult = {
-                            columns: [],
-                            rows: [],
-                            executionTimeMs: executionTime,
-                        };
-                    }
+                    });
 
                     setState({
                         isExecuting: false,
-                        result: queryResult,
+                        results,
                         error: undefined,
                         executionTime,
                     });
@@ -121,7 +122,7 @@ export function useQueryExecutor<T = any>() {
 
                     setState({
                         isExecuting: false,
-                        result: undefined,
+                        results: undefined,
                         error: errorMessage,
                         executionTime,
                     });
@@ -147,7 +148,7 @@ export function useQueryExecutor<T = any>() {
     return {
         // State
         isExecuting: state.isExecuting,
-        result: state.result,
+        results: state.results,
         error: state.error,
         executionTime: state.executionTime,
 
