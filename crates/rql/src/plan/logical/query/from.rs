@@ -23,6 +23,7 @@ impl Compiler {
 				schema,
 				source: table,
 				index_name,
+				alias,
 				..
 			} => Ok(LogicalPlan::SourceScan(SourceScanNode {
 				schema: schema
@@ -35,6 +36,7 @@ impl Compiler {
 				source: table.fragment(),
 				index_name: index_name
 					.map(|idx| idx.fragment()),
+				alias: alias.map(|a| a.fragment()),
 			})),
 			AstFrom::Inline {
 				list,

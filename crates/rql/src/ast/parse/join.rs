@@ -25,6 +25,15 @@ impl<'a> Parser<'a> {
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
 
+		// Check for alias before 'on' keyword
+		let alias = if !self.is_eof() && self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(crate::ast::AstIdentifier(alias_token))
+		} else {
+			None
+		};
+
 		self.consume_keyword(On)?;
 
 		let has_on_braces = self.current()?.is_operator(OpenCurly);
@@ -65,6 +74,7 @@ impl<'a> Parser<'a> {
 			token,
 			with,
 			on,
+			alias,
 		})
 	}
 
@@ -90,10 +100,22 @@ impl<'a> Parser<'a> {
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
 
+		// Check for alias after the join clause
+		let alias = if !self.is_eof()
+			&& self.current().is_ok()
+			&& self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(crate::ast::AstIdentifier(alias_token))
+		} else {
+			None
+		};
+
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
+			alias,
 		})
 	}
 
@@ -107,6 +129,15 @@ impl<'a> Parser<'a> {
 		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
+
+		// Check for alias before 'on' keyword
+		let alias = if !self.is_eof() && self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(crate::ast::AstIdentifier(alias_token))
+		} else {
+			None
+		};
 
 		self.consume_keyword(On)?;
 
@@ -148,6 +179,7 @@ impl<'a> Parser<'a> {
 			token,
 			with,
 			on,
+			alias,
 		})
 	}
 
@@ -159,6 +191,15 @@ impl<'a> Parser<'a> {
 		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
+
+		// Check for alias before 'on' keyword
+		let alias = if !self.is_eof() && self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(crate::ast::AstIdentifier(alias_token))
+		} else {
+			None
+		};
 
 		self.consume_keyword(On)?;
 
@@ -200,6 +241,7 @@ impl<'a> Parser<'a> {
 			token,
 			with,
 			on,
+			alias,
 		})
 	}
 }
@@ -267,6 +309,121 @@ mod tests {
 				"user_id"
 			);
 		}
+	}
+
+	#[test]
+	fn test_left_join_with_alias() {
+		let tokens = tokenize(
+			"left join { from test.customers } c on users.id == c.customer_id",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result[0].first_unchecked().as_join();
+
+		let AstJoin::LeftJoin {
+			with,
+			on,
+			alias,
+			..
+		} = &result
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		// Check alias
+		assert_eq!(alias.as_ref().unwrap().value(), "c");
+
+		// Check joined table
+		let with = with.as_infix();
+		assert_eq!(with.left.as_identifier().value(), "test");
+		assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
+		assert_eq!(with.right.as_identifier().value(), "customers");
+
+		// Check ON condition
+		assert_eq!(on.len(), 1);
+		let on = on[0].as_infix();
+
+		// Left side: users.id
+		let left = on.left.as_infix();
+		assert_eq!(left.left.as_identifier().value(), "users");
+		assert_eq!(left.right.as_identifier().value(), "id");
+
+		// Right side: c.customer_id
+		let right = on.right.as_infix();
+		assert_eq!(right.left.as_identifier().value(), "c");
+		assert_eq!(right.right.as_identifier().value(), "customer_id");
+	}
+
+	#[test]
+	fn test_complex_query_with_aliases() {
+		// Test the full example query with aliases
+		let tokens = tokenize("from test.orders o left join { from test.customers } c on o.customer_id == c.customer_id").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1); // This is parsed as one statement with multiple nodes
+
+		// The result is one statement with multiple nodes
+		let statement = &result[0];
+		assert_eq!(statement.nodes.len(), 2); // FROM and LEFT JOIN nodes
+
+		// Check FROM clause with alias
+		let from = statement.nodes[0].as_from();
+		match from {
+			crate::ast::AstFrom::Source {
+				schema,
+				source,
+				alias,
+				..
+			} => {
+				assert_eq!(
+					schema.as_ref().unwrap().value(),
+					"test"
+				);
+				assert_eq!(source.value(), "orders");
+				assert_eq!(
+					alias.as_ref().unwrap().value(),
+					"o"
+				);
+			}
+			_ => panic!("Expected Source"),
+		}
+
+		// Check LEFT JOIN with alias
+		let join = statement.nodes[1].as_join();
+		let AstJoin::LeftJoin {
+			with,
+			on,
+			alias,
+			..
+		} = &join
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		// Check alias
+		assert_eq!(alias.as_ref().unwrap().value(), "c");
+
+		// Check joined table (test.customers)
+		let with = with.as_infix();
+		assert_eq!(with.left.as_identifier().value(), "test");
+		assert_eq!(with.right.as_identifier().value(), "customers");
+
+		// Check ON condition uses aliases
+		assert_eq!(on.len(), 1);
+		let on = on[0].as_infix();
+
+		// Left side: o.customer_id
+		let left = on.left.as_infix();
+		assert_eq!(left.left.as_identifier().value(), "o");
+		assert_eq!(left.right.as_identifier().value(), "customer_id");
+
+		// Right side: c.customer_id
+		let right = on.right.as_infix();
+		assert_eq!(right.left.as_identifier().value(), "c");
+		assert_eq!(right.right.as_identifier().value(), "customer_id");
 	}
 
 	#[test]
@@ -408,7 +565,7 @@ mod tests {
 					with.as_identifier().value(),
 					"orders"
 				);
-				assert_eq!(join_type, &None); // Should use default
+				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
 		}
@@ -444,7 +601,7 @@ mod tests {
 					with.right.as_identifier().value(),
 					"orders"
 				);
-				assert_eq!(join_type, &None); // Should use default
+				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
 		}
@@ -470,7 +627,7 @@ mod tests {
 					with.as_identifier().value(),
 					"orders"
 				);
-				assert_eq!(join_type, &None); // Should use default
+				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
 		}

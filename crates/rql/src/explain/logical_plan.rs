@@ -509,6 +509,7 @@ fn render_logical_plan_inner(
 			schema,
 			source: table,
 			index_name,
+			alias,
 		}) => {
 			let name = if let Some(idx) = index_name {
 				format!(
@@ -525,6 +526,17 @@ fn render_logical_plan_inner(
 				)
 			};
 
+			// Add alias to the display if present
+			let display_name = if let Some(alias_fragment) = alias {
+				format!(
+					"{} as {}",
+					name,
+					alias_fragment.fragment()
+				)
+			} else {
+				name
+			};
+
 			let scan_type = if index_name.is_some() {
 				"IndexScan"
 			} else {
@@ -533,7 +545,7 @@ fn render_logical_plan_inner(
 
 			output.push_str(&format!(
 				"{}{} {} {}\n",
-				prefix, branch, scan_type, name
+				prefix, branch, scan_type, display_name
 			));
 		}
 		LogicalPlan::InlineData(InlineDataNode {

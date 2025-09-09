@@ -368,6 +368,7 @@ pub struct SourceScanNode<'a> {
 	pub schema: Fragment<'a>,
 	pub source: Fragment<'a>,
 	pub index_name: Option<Fragment<'a>>,
+	pub alias: Option<Fragment<'a>>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

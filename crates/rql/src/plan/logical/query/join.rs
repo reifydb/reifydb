@@ -21,11 +21,17 @@ impl Compiler {
 			AstJoin::InnerJoin {
 				with,
 				on,
+				alias,
 				..
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
+						vec![SourceScan(SourceScanNode {
+                            schema: Fragment::Owned(OwnedFragment::internal("default")),
+                            source: identifier.fragment(),
+                            index_name: None,
+                            alias: alias.map(|a| a.fragment()),
+                        })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -54,6 +60,12 @@ impl Compiler {
 									),
 								index_name:
 									None,
+								alias: alias
+									.map(
+									|a| {
+										a.fragment()
+									},
+								),
 							},
 						)]
 					}
@@ -64,16 +76,23 @@ impl Compiler {
                     on: on
                         .into_iter()
                         .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?}))
+                        .collect::<crate::Result<Vec<_>>>()?,
+				}))
 			}
 			AstJoin::LeftJoin {
 				with,
 				on,
+				alias,
 				..
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
+						vec![SourceScan(SourceScanNode {
+                            schema: Fragment::Owned(OwnedFragment::testing("default")),
+                            source: identifier.fragment(),
+                            index_name: None,
+                            alias: alias.map(|a| a.fragment()),
+                        })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -102,6 +121,12 @@ impl Compiler {
 									),
 								index_name:
 									None,
+								alias: alias
+									.map(
+									|a| {
+										a.fragment()
+									},
+								),
 							},
 						)]
 					}
@@ -112,16 +137,23 @@ impl Compiler {
                     on: on
                         .into_iter()
                         .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?}))
+                        .collect::<crate::Result<Vec<_>>>()?,
+				}))
 			}
 			AstJoin::NaturalJoin {
 				with,
 				join_type,
+				alias,
 				..
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
+						vec![SourceScan(SourceScanNode {
+                            schema: Fragment::Owned(OwnedFragment::testing("default")),
+                            source: identifier.fragment(),
+                            index_name: None,
+                            alias: alias.map(|a| a.fragment()),
+                        })]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -150,6 +182,12 @@ impl Compiler {
 									),
 								index_name:
 									None,
+								alias: alias
+									.map(
+									|a| {
+										a.fragment()
+									},
+								),
 							},
 						)]
 					}

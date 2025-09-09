@@ -756,6 +756,7 @@ pub enum AstFrom<'a> {
 		schema: Option<AstIdentifier<'a>>,
 		source: AstIdentifier<'a>,
 		index_name: Option<AstIdentifier<'a>>,
+		alias: Option<AstIdentifier<'a>>,
 	},
 	Inline {
 		token: Token<'a>,
@@ -925,16 +926,19 @@ pub enum AstJoin<'a> {
 		token: Token<'a>,
 		with: Box<Ast<'a>>,
 		on: Vec<Ast<'a>>,
+		alias: Option<AstIdentifier<'a>>,
 	},
 	LeftJoin {
 		token: Token<'a>,
 		with: Box<Ast<'a>>,
 		on: Vec<Ast<'a>>,
+		alias: Option<AstIdentifier<'a>>,
 	},
 	NaturalJoin {
 		token: Token<'a>,
 		with: Box<Ast<'a>>,
 		join_type: Option<JoinType>,
+		alias: Option<AstIdentifier<'a>>,
 	},
 }
 

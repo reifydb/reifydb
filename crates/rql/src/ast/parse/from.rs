@@ -81,11 +81,31 @@ impl<'a> Parser<'a> {
 					None
 				};
 
+			// Check for alias (an identifier that's not a keyword)
+			let alias = if !self.is_eof() {
+				if let Ok(current) = self.current() {
+					// Check if it's an identifier (not a
+					// keyword or operator)
+					if current.is_identifier() {
+						let alias_token =
+							self.advance()?;
+						Some(crate::ast::ast::AstIdentifier(alias_token))
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			} else {
+				None
+			};
+
 			Ok(AstFrom::Source {
 				token,
 				schema,
 				source: table,
 				index_name,
+				alias,
 			})
 		}
 	}
@@ -361,6 +381,73 @@ mod tests {
 				assert_eq!(
 					index_name.as_ref().unwrap().value(),
 					"employee_email_pk"
+				);
+			}
+			AstFrom::Inline {
+				..
+			} => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_from_table_with_alias() {
+		let tokens = tokenize("FROM orders o").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Source {
+				source: table,
+				schema,
+				index_name,
+				alias,
+				..
+			} => {
+				assert_eq!(schema, &None);
+				assert_eq!(table.value(), "orders");
+				assert_eq!(index_name, &None);
+				assert_eq!(
+					alias.as_ref().unwrap().value(),
+					"o"
+				);
+			}
+			AstFrom::Inline {
+				..
+			} => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_from_schema_table_with_alias() {
+		let tokens = tokenize("FROM test.orders o").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Source {
+				source: table,
+				schema,
+				index_name,
+				alias,
+				..
+			} => {
+				assert_eq!(
+					schema.as_ref().unwrap().value(),
+					"test"
+				);
+				assert_eq!(table.value(), "orders");
+				assert_eq!(index_name, &None);
+				assert_eq!(
+					alias.as_ref().unwrap().value(),
+					"o"
 				);
 			}
 			AstFrom::Inline {
