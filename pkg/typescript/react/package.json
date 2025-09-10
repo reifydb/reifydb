@@ -1,17 +1,36 @@
 {
-  "name": "@reifydb/client-react",
-  "version": "0.0.1",
+  "name": "@reifydb/react",
+  "version": "0.0.1-alpha.6",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsup src/index.ts --dts --format esm,cjs",
-    "dev": "tsc --watch"
+    "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "dev": "tsc --watch",
+    "test": "pnpm test:integration",
+    "test:integration": "vitest run --config vitest.config.ts",
+    "test:integration:watch": "vitest --config vitest.config.ts",
+    "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
+    "test:coverage": "pnpm test:integration:coverage",
+    "pretest:integration": "pnpm build",
+    "publish:npm": "pnpm publish --access public"
   },
   "dependencies": {
+    "@reifydb/core": "workspace:*",
+    "@reifydb/client": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.12",
+    "@vitest/coverage-v8": "^3.2.4",
+    "happy-dom": "^18.0.1",
+    "react": "^19.1.1",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=16.0.0"

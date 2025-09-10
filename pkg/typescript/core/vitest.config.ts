@@ -36,7 +36,7 @@ export default defineConfig({
                 'src/**/*.d.ts',
                 'src/**/*.test.ts',
                 'src/**/*.spec.ts',
-                'vitest.integration.config.ts',
+                'vitest.config.ts',
                 'vitest.*.config.ts'
             ],
             thresholds: {

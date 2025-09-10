@@ -165,3 +165,40 @@ pub fn unrecognized_type<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 		cause: None,
 	}
 }
+
+/// Unsupported AST node in logical plan compilation
+pub fn unsupported_ast_node<'a>(
+	fragment: impl IntoFragment<'a>,
+	node_type: &str,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "AST_009".to_string(),
+		statement: None,
+		message: format!("unsupported query syntax: {}", node_type),
+		fragment,
+		label: Some("not supported in this context".to_string()),
+		help: Some("This syntax is not yet supported or may be invalid in this context".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+/// Empty pipeline error
+pub fn empty_pipeline_error() -> Diagnostic {
+	Diagnostic {
+		code: "AST_010".to_string(),
+		statement: None,
+		message: "empty query pipeline".to_string(),
+		fragment: OwnedFragment::None,
+		label: None,
+		help: Some(
+			"A query pipeline must contain at least one operation"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}

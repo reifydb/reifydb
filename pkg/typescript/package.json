@@ -10,11 +10,13 @@
     "test:integration": "pnpm -r --stream test:integration",
     "test:coverage": "pnpm -r --stream test:coverage",
     "test:watch": "pnpm -r --stream test:unit:watch",
-    "publish:all": "pnpm publish:core && pnpm publish:client",
+    "publish:all": "pnpm publish:core && pnpm publish:client && pnpm publish:react",
     "publish:core": "pnpm --filter @reifydb/core publish:npm --tag alpha",
-    "publish:client": "pnpm --filter @reifydb/client publish:npm --tag alpha"
+    "publish:client": "pnpm --filter @reifydb/client publish:npm --tag alpha",
+    "publish:react": "pnpm --filter @reifydb/react publish:npm --tag alpha"
   },
   "dependencies": {
-    "@reifydb/core": "link:core"
+    "@reifydb/core": "link:core",
+    "@reifydb/client": "link:core"
   }
 }

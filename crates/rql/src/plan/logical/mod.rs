@@ -9,10 +9,12 @@ mod query;
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
+	diagnostic::ast::{empty_pipeline_error, unsupported_ast_node},
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
 		expression::{AliasExpression, Expression},
 	},
+	return_error,
 };
 use reifydb_type::Fragment;
 
@@ -144,7 +146,23 @@ impl Compiler {
 			Ast::Distinct(node) => Self::compile_distinct(node),
 			Ast::Map(node) => Self::compile_map(node),
 			Ast::Extend(node) => Self::compile_extend(node),
-			node => unimplemented!("{:?}", node),
+			Ast::Identifier(ref id) => {
+				return_error!(unsupported_ast_node(
+					id.0.fragment.clone(),
+					"standalone identifier"
+				))
+			}
+			node => {
+				let node_type = format!("{:?}", node)
+					.split('(')
+					.next()
+					.unwrap_or("Unknown")
+					.to_string();
+				return_error!(unsupported_ast_node(
+					node.token().fragment.clone(),
+					&node_type
+				))
+			}
 		}
 	}
 
@@ -155,7 +173,7 @@ impl Compiler {
 		// For now, we'll wrap them in a special Pipeline plan
 		// that the physical compiler can handle
 		if plans.is_empty() {
-			panic!("Empty pipeline");
+			return_error!(empty_pipeline_error());
 		}
 
 		// Return a Pipeline logical plan that contains all the steps
