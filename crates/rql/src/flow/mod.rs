@@ -268,6 +268,39 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// extract it from the flow node if needed
 				Ok((node_id, FlowNodeSchema::empty()))
 			}
+			PhysicalPlan::Map(map) => {
+				// Map needs special handling to compute output
+				// schema
+				let map_compiler = MapCompiler::from(map);
+
+				// Get input schema if there's an input
+				let input_schema = if let Some(ref input) =
+					map_compiler.input
+				{
+					// We need to compile the input first to
+					// get its schema Clone the input
+					// since we need to use it twice
+					let input_plan = to_owned_physical_plan(
+						*input.clone(),
+					);
+					let (_, schema) = self
+						.compile_plan_with_schema(
+							input_plan,
+						)?;
+					schema
+				} else {
+					FlowNodeSchema::empty()
+				};
+
+				// Compute the output schema
+				let output_schema = map_compiler
+					.compute_output_schema(&input_schema);
+
+				// Now compile the Map node
+				let node_id = map_compiler.compile(self)?;
+
+				Ok((node_id, output_schema))
+			}
 			// For other operators, compile normally and return
 			// empty schema for now
 			_ => {

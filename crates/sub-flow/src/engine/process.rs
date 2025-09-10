@@ -36,44 +36,31 @@ impl<E: Evaluator> FlowEngine<E> {
 		}
 
 		for (source, diffs) in diffs_by_source {
-			// Find all flows triggered by this source
-			if let Some(flow_ids) = self.sources.get(&source) {
+			// Find all nodes triggered by this source
+			if let Some(node_registrations) =
+				self.sources.get(&source)
+			{
 				use reifydb_core::log_debug;
 				log_debug!(
-					"FlowEngine: Source {:?} triggers {} flows",
+					"FlowEngine: Source {:?} triggers {} nodes",
 					source,
-					flow_ids.len()
+					node_registrations.len()
 				);
-				// Process the diffs once for all flows with
-				// this source
+				// Process the diffs for each registered node
 				let bulkchange = FlowChange {
 					diffs,
 					metadata: change.metadata.clone(),
 				};
 
-				for flow_id in flow_ids {
+				for (flow_id, node_id) in node_registrations {
 					if let Some(flow) =
 						self.flows.get(flow_id)
 					{
-						log_debug!(
-							"FlowEngine: Processing flow {:?} for source {:?}",
-							flow_id,
-							source
-						);
-						// Find the source node in the
-						// flow that matches this source
 						if let Some(node) =
-							find_source_node(
-								flow, &source,
-							) {
-							log_debug!(
-								"FlowEngine: Found source node {:?} in flow {:?}",
-								node.id,
-								flow_id
-							);
-							// Process this node
-							// with all diffs for
-							// this source
+							flow.get_node(node_id)
+						{
+							// Process this specific
+							// node with the change
 							self.process_node(
 								txn,
 								flow,
@@ -82,16 +69,21 @@ impl<E: Evaluator> FlowEngine<E> {
 							)?;
 						} else {
 							log_debug!(
-								"FlowEngine: No source node found for {:?} in flow {:?}",
-								source,
+								"FlowEngine: Node {:?} not found in flow {:?}",
+								node_id,
 								flow_id
 							);
 						}
+					} else {
+						log_debug!(
+							"FlowEngine: Flow {:?} not found",
+							flow_id
+						);
 					}
 				}
 			} else {
 				log_debug!(
-					"FlowEngine: No flows registered for source {:?}",
+					"FlowEngine: No nodes registered for source {:?}",
 					source
 				);
 			}
@@ -118,6 +110,12 @@ impl<E: Evaluator> FlowEngine<E> {
 		node: &FlowNode,
 		change: &FlowChange,
 	) -> crate::Result<()> {
+		use reifydb_core::log_debug;
+		log_debug!(
+			"process_node: Processing node {:?} with {} diffs",
+			node.id,
+			change.diffs.len()
+		);
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
 
@@ -162,11 +160,25 @@ impl<E: Evaluator> FlowEngine<E> {
 
 		// Propagate to downstream nodes
 		for output_id in node_outputs {
+			log_debug!(
+				"process_node: Propagating from {:?} to {:?}",
+				node.id,
+				output_id
+			);
+
+			// Add metadata to track which node this data is coming
+			// from
+			let mut output_with_metadata = output.clone();
+			output_with_metadata.metadata.insert(
+				"from_node".to_string(),
+				reifydb_type::Value::Uint8(node.id.0),
+			);
+
 			self.process_node(
 				txn,
 				flow,
 				flow.get_node(output_id).unwrap(),
-				output,
+				&output_with_metadata,
 			)?;
 		}
 
@@ -387,35 +399,4 @@ impl<E: Evaluator> FlowEngine<E> {
 
 		Ok(())
 	}
-}
-
-/// Find the source node in a flow that corresponds to the given source
-fn find_source_node<'a>(
-	flow: &'a Flow<'static>,
-	source: &SourceId,
-) -> Option<&'a FlowNode<'static>> {
-	for node_id in flow.get_node_ids() {
-		if let Some(node) = flow.get_node(&node_id) {
-			match &node.ty {
-				SourceTable {
-					table,
-					..
-				} => {
-					if *source == SourceId::table(*table) {
-						return Some(node);
-					}
-				}
-				SourceView {
-					view,
-					..
-				} => {
-					if *source == SourceId::view(*view) {
-						return Some(node);
-					}
-				}
-				_ => {}
-			}
-		}
-	}
-	None
 }
