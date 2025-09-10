@@ -41,7 +41,7 @@ impl<T: Transaction> ViewScanNode<T> {
 		let data = view
 			.columns
 			.iter()
-			.map(|c| c.constraint.ty())
+			.map(|c| c.constraint.get_type())
 			.collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 

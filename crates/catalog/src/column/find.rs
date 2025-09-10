@@ -81,7 +81,7 @@ mod tests {
 
 		assert_eq!(result.id, ColumnId(8195));
 		assert_eq!(result.name, "col_3");
-		assert_eq!(result.constraint.ty(), Type::Int4);
+		assert_eq!(result.constraint.get_type(), Type::Int4);
 		assert_eq!(result.auto_increment, false);
 	}
 

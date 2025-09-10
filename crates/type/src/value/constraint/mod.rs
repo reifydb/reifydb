@@ -48,7 +48,7 @@ impl TypeConstraint {
 	}
 
 	/// Get the base type
-	pub fn ty(&self) -> Type {
+	pub fn get_type(&self) -> Type {
 		self.base_type
 	}
 

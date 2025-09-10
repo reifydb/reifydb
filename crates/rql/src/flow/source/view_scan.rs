@@ -3,8 +3,9 @@
 
 //! Compilation of view scan operations
 
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	flow::FlowNodeType,
+	flow::{FlowNodeSchema, FlowNodeType},
 	interface::{CommandTransaction, FlowNodeId},
 };
 
@@ -28,9 +29,22 @@ impl<'a, T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
 		let view = self.view_scan.view;
 		let view_name = view.name.clone();
 
+		// Get schema information
+		let schema_def = CatalogStore::get_schema(
+			unsafe { &mut *compiler.txn },
+			view.schema,
+		)?;
+
+		let schema = FlowNodeSchema::new(
+			view.columns.clone(),
+			Some(schema_def.name.clone()),
+			Some(view.name.clone()),
+		);
+
 		compiler.build_node(FlowNodeType::SourceView {
 			name: view_name,
 			view: view.id,
+			schema,
 		})
 		.build()
 	}

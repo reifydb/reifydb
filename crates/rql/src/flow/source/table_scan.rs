@@ -3,8 +3,9 @@
 
 //! Compilation of table scan operations
 
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	flow::FlowNodeType,
+	flow::{FlowNodeSchema, FlowNodeType},
 	interface::{CommandTransaction, FlowNodeId},
 };
 
@@ -28,9 +29,22 @@ impl<'a, T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
 		let table = self.table_scan.table;
 		let table_name = table.name.clone();
 
+		// Get schema information
+		let schema_def = CatalogStore::get_schema(
+			unsafe { &mut *compiler.txn },
+			table.schema,
+		)?;
+
+		let schema = FlowNodeSchema::new(
+			table.columns.clone(),
+			Some(schema_def.name.clone()),
+			Some(table.name.clone()),
+		);
+
 		compiler.build_node(FlowNodeType::SourceTable {
 			name: table_name,
 			table: table.id,
+			schema,
 		})
 		.build()
 	}

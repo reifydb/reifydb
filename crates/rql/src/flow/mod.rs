@@ -12,12 +12,13 @@ mod conversion;
 mod operator;
 mod source;
 
-use reifydb_catalog::sequence::flow::{
-	next_flow_edge_id, next_flow_id, next_flow_node_id,
+use reifydb_catalog::{
+	CatalogStore,
+	sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id},
 };
 use reifydb_core::{
 	flow,
-	flow::{Flow, FlowEdge, FlowNode, FlowNodeType},
+	flow::{Flow, FlowEdge, FlowNode, FlowNodeSchema, FlowNodeType},
 	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
 };
 
@@ -53,7 +54,7 @@ pub(crate) struct FlowCompiler<T: CommandTransaction> {
 	/// The flow graph being built
 	flow: Flow<'static>,
 	/// Reference to transaction for ID generation
-	txn: *mut T,
+	pub(crate) txn: *mut T,
 }
 
 impl<T: CommandTransaction> FlowCompiler<T> {
@@ -204,6 +205,78 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		}
 	}
 
+	/// Compiles a physical plan and returns both the node ID and its output
+	/// schema
+	pub(crate) fn compile_plan_with_schema(
+		&mut self,
+		plan: PhysicalPlan,
+	) -> crate::Result<(FlowNodeId, FlowNodeSchema)> {
+		match plan {
+			PhysicalPlan::TableScan(table_scan) => {
+				// The table_scan already has the table
+				// definition
+				let table = &table_scan.table;
+				let schema_def = CatalogStore::get_schema(
+					unsafe { &mut *self.txn },
+					table.schema,
+				)?;
+
+				let schema = FlowNodeSchema::new(
+					table.columns.clone(),
+					Some(schema_def.name.clone()),
+					Some(table.name.clone()),
+				);
+
+				let node_id =
+					TableScanCompiler::from(table_scan)
+						.compile(self)?;
+				Ok((node_id, schema))
+			}
+			PhysicalPlan::ViewScan(view_scan) => {
+				// The view_scan already has the view definition
+				let view = &view_scan.view;
+				let schema_def = CatalogStore::get_schema(
+					unsafe { &mut *self.txn },
+					view.schema,
+				)?;
+
+				let schema = FlowNodeSchema::new(
+					view.columns.clone(),
+					Some(schema_def.name.clone()),
+					Some(view.name.clone()),
+				);
+
+				let node_id = ViewScanCompiler::from(view_scan)
+					.compile(self)?;
+				Ok((node_id, schema))
+			}
+			PhysicalPlan::JoinInner(join) => {
+				// The JoinCompiler will handle compilation with
+				// schema tracking
+				let node_id = JoinCompiler::from(join)
+					.compile(self)?;
+				// For now return empty schema - we could
+				// extract it from the flow node if needed
+				Ok((node_id, FlowNodeSchema::empty()))
+			}
+			PhysicalPlan::JoinLeft(join) => {
+				// The JoinCompiler will handle compilation with
+				// schema tracking
+				let node_id = JoinCompiler::from(join)
+					.compile(self)?;
+				// For now return empty schema - we could
+				// extract it from the flow node if needed
+				Ok((node_id, FlowNodeSchema::empty()))
+			}
+			// For other operators, compile normally and return
+			// empty schema for now
+			_ => {
+				let node_id = self.compile_plan(plan)?;
+				Ok((node_id, FlowNodeSchema::empty()))
+			}
+		}
+	}
+
 	/// Compiles a terminal Map node with view information
 	pub(crate) fn compile_terminal_map(
 		&mut self,
@@ -224,6 +297,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				expressions: to_owned_expressions(map_node.map),
 				view_id: sink.id,
 			},
+			input_schemas: vec![FlowNodeSchema::empty()],
+			output_schema: FlowNodeSchema::empty(),
 		});
 
 		if let Some(input) = input_node {

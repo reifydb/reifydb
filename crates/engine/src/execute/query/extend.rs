@@ -77,7 +77,9 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 					.with_table(&table.name)
 					.with_column(&table_column.name)
 					.with_column_type(
-						table_column.constraint.ty(),
+						table_column
+							.constraint
+							.get_type(),
 					)
 					.with_policies(policy_kinds.clone());
 

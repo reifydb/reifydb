@@ -60,7 +60,7 @@ impl<E: Evaluator> OperatorEnum<E> {
 		ctx: &mut OperatorContext<E, T>,
 		change: &FlowChange,
 	) -> crate::Result<FlowChange> {
-		match self {
+		let result = match self {
 			OperatorEnum::Filter(op) => op.apply(ctx, change),
 			OperatorEnum::Map(op) => op.apply(ctx, change),
 			OperatorEnum::Extend(op) => op.apply(ctx, change),
@@ -73,7 +73,8 @@ impl<E: Evaluator> OperatorEnum<E> {
 			OperatorEnum::Union(op) => op.apply(ctx, change),
 			OperatorEnum::Window(op) => op.apply(ctx, change),
 			OperatorEnum::_Phantom(_) => unreachable!(),
-		}
+		};
+		result
 	}
 }
 

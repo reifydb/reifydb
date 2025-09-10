@@ -83,7 +83,7 @@ impl Executor {
 					column: None,
 					column_type: Some(column
 						.constraint
-						.ty()
+						.get_type()
 						.clone()),
 					policies: vec![],
 				}),

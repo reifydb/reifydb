@@ -4,7 +4,7 @@
 use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinType,
-	flow::{FlowNodeType::Operator, OperatorType::Join},
+	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Join},
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::Expression,
@@ -51,17 +51,60 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let left_node = compiler.compile_plan(*self.left)?;
-		let right_node = compiler.compile_plan(*self.right)?;
+		// Compile with schema tracking
+		let (left_node, left_schema) =
+			compiler.compile_plan_with_schema(*self.left)?;
+		let (right_node, right_schema) =
+			compiler.compile_plan_with_schema(*self.right)?;
+
+		// Extract left and right keys from the join conditions
+		let (left_keys, right_keys) = extract_join_keys(&self.on);
+
+		// Merge schemas for output
+		let output_schema =
+			FlowNodeSchema::merge(&left_schema, &right_schema);
 
 		compiler.build_node(Operator {
 			operator: Join {
 				join_type: self.join_type,
-				left: self.on.clone(),
-				right: self.on,
+				left: left_keys,
+				right: right_keys,
 			},
+			input_schemas: vec![left_schema, right_schema],
+			output_schema,
 		})
 		.with_inputs([left_node, right_node])
 		.build()
 	}
+}
+
+// Extract the left and right column references from join conditions
+pub(crate) fn extract_join_keys(
+	conditions: &[Expression<'static>],
+) -> (Vec<Expression<'static>>, Vec<Expression<'static>>) {
+	let mut left_keys = Vec::new();
+	let mut right_keys = Vec::new();
+
+	for condition in conditions {
+		match condition {
+			Expression::Equal(eq) => {
+				// For equality conditions, extract the left and
+				// right expressions
+				left_keys.push(*eq.left.clone());
+				right_keys.push(*eq.right.clone());
+			}
+			// For now, we only support simple equality joins
+			// More complex conditions could be added later
+			_ => {
+				// If it's not an equality, we'll add the whole
+				// condition to both sides This maintains
+				// backwards compatibility but may not work
+				// correctly
+				left_keys.push(condition.clone());
+				right_keys.push(condition.clone());
+			}
+		}
+	}
+
+	(left_keys, right_keys)
 }
