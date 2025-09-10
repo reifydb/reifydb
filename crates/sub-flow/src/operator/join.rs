@@ -271,7 +271,33 @@ impl JoinOperator {
 			"unknown".to_string()
 		};
 
-		let mut column_values = HashMap::new();
+		// Check if we already have this row stored
+		let key = FlowJoinStateKey::new(
+			flow_id,
+			node_id,
+			side,
+			join_key_hash,
+			row_id,
+		);
+
+		// Get existing row data if it exists
+		let mut column_values = if let Ok(Some(existing)) =
+			txn.get(&key.encode())
+		{
+			// Deserialize existing row and start with its columns
+			if let Ok(existing_row) = serde_json::from_slice::<
+				StoredRow,
+			>(&existing.row.0)
+			{
+				existing_row.columns
+			} else {
+				HashMap::new()
+			}
+		} else {
+			HashMap::new()
+		};
+
+		// Add/update with new column values
 		for column in columns.iter() {
 			let name = column.name().to_string();
 			let value = column.data().get_value(row_idx);
@@ -284,13 +310,6 @@ impl JoinOperator {
 			columns: column_values,
 		};
 
-		let key = FlowJoinStateKey::new(
-			flow_id,
-			node_id,
-			side,
-			join_key_hash,
-			row_id,
-		);
 		let serialized =
 			serde_json::to_vec(&stored_row).unwrap_or_default();
 		txn.set(&key.encode(), EncodedRow(CowVec::new(serialized)))?;
@@ -367,6 +386,8 @@ impl JoinOperator {
 		flow_id: u64,
 		node_id: u64,
 		columns: &Columns,
+		left_schema: &FlowNodeSchema,
+		right_schema: &FlowNodeSchema,
 	) -> Result<(JoinMetadata, bool)> {
 		let key = JoinMetadataKey {
 			flow_id,
@@ -399,24 +420,60 @@ impl JoinOperator {
 			}
 		}
 
-		// Initialize metadata - first source is left, second is right
-		let metadata = JoinMetadata {
-			left_source: source_name.clone(),
-			right_source: String::new(), /* Will be set when
-			                              * right source arrives */
-			initialized: false,
-			left_columns: columns
-				.iter()
-				.map(|c| c.name().to_string())
-				.collect(),
-			right_columns: Vec::new(),
+		// Initialize metadata - determine if this is left or right
+		// based on schema The left_schema and right_schema contain
+		// the correct source names
+		let is_left_by_schema = left_schema
+			.source_name
+			.as_ref()
+			.map(|s| s == &source_name)
+			.unwrap_or(false);
+
+		let metadata = if is_left_by_schema {
+			// This is the left source
+			JoinMetadata {
+				left_source: source_name.clone(),
+				right_source: right_schema
+					.source_name
+					.clone()
+					.unwrap_or_default(),
+				initialized: false,
+				left_columns: columns
+					.iter()
+					.map(|c| c.name().to_string())
+					.collect(),
+				right_columns: right_schema
+					.columns
+					.iter()
+					.map(|c| c.name.clone())
+					.collect(),
+			}
+		} else {
+			// This is the right source
+			JoinMetadata {
+				left_source: left_schema
+					.source_name
+					.clone()
+					.unwrap_or_default(),
+				right_source: source_name.clone(),
+				initialized: false,
+				left_columns: left_schema
+					.columns
+					.iter()
+					.map(|c| c.name.clone())
+					.collect(),
+				right_columns: columns
+					.iter()
+					.map(|c| c.name().to_string())
+					.collect(),
+			}
 		};
 
 		let serialized =
 			serde_json::to_vec(&metadata).unwrap_or_default();
 		txn.set(&key.encode(), EncodedRow(CowVec::new(serialized)))?;
 
-		Ok((metadata, true)) // First source is always left
+		Ok((metadata, is_left_by_schema))
 	}
 
 	// Update metadata with right source
@@ -476,8 +533,20 @@ impl JoinOperator {
 		let row_ids = vec![left_row.row_id];
 
 		// Add left columns with full qualification from schema
-		for (name, value) in &left_row.columns {
-			let data = value_to_column_data(value);
+		// We need to output ALL columns from the left schema, not just
+		// what's stored
+		for column_def in &self.left_schema.columns {
+			// Check if we have this column value in the stored row
+			let data = if let Some(value) =
+				left_row.columns.get(&column_def.name)
+			{
+				value_to_column_data(value)
+			} else {
+				// Column not in stored data - this shouldn't
+				// happen for left side but we'll handle
+				// gracefully with undefined
+				ColumnData::undefined(1)
+			};
 
 			if let (Some(schema), Some(source)) = (
 				&self.left_schema.schema_name,
@@ -488,7 +557,7 @@ impl JoinOperator {
 					FullyQualified {
 						schema: schema.clone(),
 						source: source.clone(),
-						name: name.clone(),
+						name: column_def.name.clone(),
 						data,
 					},
 				));
@@ -499,7 +568,7 @@ impl JoinOperator {
 				column_vec.push(Column::SourceQualified(
 					SourceQualified {
 						source: source.clone(),
-						name: name.clone(),
+						name: column_def.name.clone(),
 						data,
 					},
 				));
@@ -508,7 +577,7 @@ impl JoinOperator {
 				column_vec.push(Column::SourceQualified(
 					SourceQualified {
 						source: "unknown".to_string(),
-						name: name.clone(),
+						name: column_def.name.clone(),
 						data,
 					},
 				));
@@ -517,47 +586,51 @@ impl JoinOperator {
 
 		// Add right columns or NULLs for LEFT JOIN
 		if let Some(right) = right_row {
-			for (name, value) in &right.columns {
-				let data = value_to_column_data(value);
+			// We have a matching right row - output all right
+			// columns
+			for column_def in &self.right_schema.columns {
+				// Check if we have this column value in the
+				// stored row
+				let data = if let Some(value) =
+					right.columns.get(&column_def.name)
+				{
+					value_to_column_data(value)
+				} else {
+					// Column not in stored data - use
+					// undefined
+					ColumnData::undefined(1)
+				};
 
 				if let (Some(schema), Some(source)) = (
 					&self.right_schema.schema_name,
 					&self.right_schema.source_name,
 				) {
 					// Create fully qualified columns
-					column_vec.push(
-						Column::FullyQualified(
-							FullyQualified {
-								schema: schema
-									.clone(
-									),
-								source: source
-									.clone(
-									),
-								name: name
-									.clone(
-									),
-								data,
-							},
-						),
-					);
+					column_vec
+						.push(Column::FullyQualified(
+						FullyQualified {
+							schema: schema.clone(),
+							source: source.clone(),
+							name: column_def
+								.name
+								.clone(),
+							data,
+						},
+					));
 				} else if let Some(source) =
 					&self.right_schema.source_name
 				{
 					// Fallback to source qualified
-					column_vec.push(
-						Column::SourceQualified(
-							SourceQualified {
-								source: source
-									.clone(
-									),
-								name: name
-									.clone(
-									),
-								data,
-							},
-						),
-					);
+					column_vec
+						.push(Column::SourceQualified(
+						SourceQualified {
+							source: source.clone(),
+							name: column_def
+								.name
+								.clone(),
+							data,
+						},
+					));
 				} else {
 					// Fallback to unqualified (shouldn't
 					// happen)
@@ -566,7 +639,9 @@ impl JoinOperator {
 						SourceQualified {
 							source: "unknown"
 								.to_string(),
-							name: name.clone(),
+							name: column_def
+								.name
+								.clone(),
 							data,
 						},
 					));
@@ -955,6 +1030,8 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 				self.flow_id,
 				self.node_id,
 				columns,
+				&self.left_schema,
+				&self.right_schema,
 			)?;
 
 			// Update metadata if this is the right source

@@ -28,8 +28,9 @@ impl<E: Evaluator> FlowEngine<E> {
 		let mut diffs_by_source = HashMap::new();
 
 		for diff in change.diffs {
+			let source = diff.source();
 			diffs_by_source
-				.entry(diff.source())
+				.entry(source)
 				.or_insert_with(Vec::new)
 				.push(diff);
 		}
@@ -106,7 +107,8 @@ impl<E: Evaluator> FlowEngine<E> {
 	) -> crate::Result<FlowChange> {
 		let operator = self.operators.get(&node.id).unwrap();
 		let mut context = OperatorContext::new(&self.evaluator, txn);
-		operator.apply(&mut context, change)
+		let result = operator.apply(&mut context, change)?;
+		Ok(result)
 	}
 
 	fn process_node<T: CommandTransaction>(
@@ -150,15 +152,6 @@ impl<E: Evaluator> FlowEngine<E> {
 				view,
 				..
 			} => {
-				for diff in &change.diffs {
-					match diff {
-						FlowDiff::Insert {
-							row_ids,
-							..
-						} => {}
-						_ => {}
-					}
-				}
 				// Sinks persist the final results
 				// View writes will generate CDC events that
 				// trigger dependent flows

@@ -340,12 +340,8 @@ impl Columns {
 						ColumnData::uuid7(vec![])
 					}
 					Type::Blob => ColumnData::blob(vec![]),
-					Type::VarInt => {
-						ColumnData::varint(vec![])
-					}
-					Type::VarUint => {
-						ColumnData::varuint(vec![])
-					}
+					Type::Int => ColumnData::int(vec![]),
+					Type::Uint => ColumnData::uint(vec![]),
 					Type::Decimal {
 						..
 					} => ColumnData::decimal(vec![]),
@@ -514,12 +510,8 @@ impl Columns {
 						ColumnData::uuid7(vec![])
 					}
 					Type::Blob => ColumnData::blob(vec![]),
-					Type::VarInt => {
-						ColumnData::varint(vec![])
-					}
-					Type::VarUint => {
-						ColumnData::varuint(vec![])
-					}
+					Type::Int => ColumnData::int(vec![]),
+					Type::Uint => ColumnData::uint(vec![]),
 					Type::Decimal {
 						..
 					} => ColumnData::decimal(vec![]),

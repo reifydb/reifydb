@@ -148,9 +148,14 @@ impl<T: Transaction> FlowConsumer<T> {
 					row,
 				} => {
 					// Convert row bytes to Columns format
-					let columns = Self::to_columns(
+					let columns = match Self::to_columns(
 						txn, source_id, &row,
-					)?;
+					) {
+						Ok(cols) => cols,
+						Err(e) => {
+							return Err(e);
+						}
+					};
 
 					let diff = FlowDiff::Insert {
 						source: source_id,
@@ -216,55 +221,58 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 		txn: &mut impl CommandTransaction,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
+		// Process all events
+		// Any flow inserts in this batch will be available when we load
+		// flows
 		let mut changes = Vec::new();
 
-		// Process all events and detect if we have flow table inserts
 		for event in events {
-			if let Some(Key::Row(table_row)) =
-				Key::decode(event.key())
-			{
-				// Check if this is an insert to the flows table
-				if matches!(
-					&event.change,
-					CdcChange::Insert { .. }
-				) && table_row.source.as_u64()
-					== FLOWS_TABLE_ID
-				{}
+			if let Some(decoded_key) = Key::decode(event.key()) {
+				if let Key::Row(table_row) = decoded_key {
+					let source_id = table_row.source;
 
-				// Process events - flows will handle both
-				// tables and views since both use SourceId
-				let source_id = table_row.source;
+					// Skip flow table changes - we don't
+					// need to process them as data changes
+					if source_id.as_u64() == FLOWS_TABLE_ID
+					{
+						continue;
+					}
 
-				// Convert CDC events to FlowChange events
-				let flowchange = match &event.change {
-					CdcChange::Insert {
-						after,
-						..
-					} => Change::Insert {
-						source_id,
-						row_number: table_row.row,
-						row: after.to_vec(),
-					},
-					CdcChange::Update {
-						before,
-						after,
-						..
-					} => Change::Update {
-						source_id,
-						row_number: table_row.row,
-						before: before.to_vec(),
-						after: after.to_vec(),
-					},
-					CdcChange::Delete {
-						before,
-						..
-					} => Change::Delete {
-						source_id,
-						row_number: table_row.row,
-						row: before.to_vec(),
-					},
-				};
-				changes.push(flowchange);
+					// Convert CDC events to FlowChange
+					// events
+					let flowchange = match &event.change {
+						CdcChange::Insert {
+							after,
+							..
+						} => Change::Insert {
+							source_id,
+							row_number: table_row
+								.row,
+							row: after.to_vec(),
+						},
+						CdcChange::Update {
+							before,
+							after,
+							..
+						} => Change::Update {
+							source_id,
+							row_number: table_row
+								.row,
+							before: before.to_vec(),
+							after: after.to_vec(),
+						},
+						CdcChange::Delete {
+							before,
+							..
+						} => Change::Delete {
+							source_id,
+							row_number: table_row
+								.row,
+							row: before.to_vec(),
+						},
+					};
+					changes.push(flowchange);
+				}
 			}
 		}
 
