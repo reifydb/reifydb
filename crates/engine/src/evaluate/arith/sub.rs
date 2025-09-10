@@ -1600,26 +1600,53 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(target, l.len());
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l), Some(r)) => {
-				if let Some(value) = ctx.sub(l, r, fragment)? {
-					data.push(value);
-				} else {
-					data.push_undefined()
-				}
-			}
-			_ => data.push_undefined(),
-		}
-	}
+	if l.is_fully_defined() && r.is_fully_defined() {
+		// Fast path: all values are defined, no undefined checks needed
+		let mut data = ctx.pooled(target, l.len());
+		let l_data = l.data();
+		let r_data = r.data();
 
-	let binding = fragment.fragment();
-	let fragment_text = binding.text();
-	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment_text.into(),
-		data,
-	}))
+		for i in 0..l.len() {
+			if let Some(value) =
+				ctx.sub(&l_data[i], &r_data[i], fragment)?
+			{
+				data.push(value);
+			} else {
+				data.push_undefined()
+			}
+		}
+
+		let binding = fragment.fragment();
+		let fragment_text = binding.text();
+		Ok(Column::ColumnQualified(ColumnQualified {
+			name: fragment_text.into(),
+			data,
+		}))
+	} else {
+		// Slow path: some values may be undefined
+		let mut data = ctx.pooled(target, l.len());
+		for i in 0..l.len() {
+			match (l.get(i), r.get(i)) {
+				(Some(l), Some(r)) => {
+					if let Some(value) =
+						ctx.sub(l, r, fragment)?
+					{
+						data.push(value);
+					} else {
+						data.push_undefined()
+					}
+				}
+				_ => data.push_undefined(),
+			}
+		}
+
+		let binding = fragment.fragment();
+		let fragment_text = binding.text();
+		Ok(Column::ColumnQualified(ColumnQualified {
+			name: fragment_text.into(),
+			data,
+		}))
+	}
 }
 
 fn sub_numeric_clone<'a, L, R>(
@@ -1638,28 +1665,55 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(target, l.len());
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l_val), Some(r_val)) => {
-				let l_clone = l_val.clone();
-				let r_clone = r_val.clone();
-				if let Some(value) =
-					ctx.sub(&l_clone, &r_clone, fragment)?
-				{
-					data.push(value);
-				} else {
-					data.push_undefined()
-				}
-			}
-			_ => data.push_undefined(),
-		}
-	}
+	if l.is_fully_defined() && r.is_fully_defined() {
+		// Fast path: all values are defined, no undefined checks needed
+		let mut data = ctx.pooled(target, l.len());
+		let l_data = l.data();
+		let r_data = r.data();
 
-	let binding = fragment.fragment();
-	let fragment_text = binding.text();
-	Ok(Column::ColumnQualified(ColumnQualified {
-		name: fragment_text.into(),
-		data,
-	}))
+		for i in 0..l.len() {
+			let l_clone = l_data[i].clone();
+			let r_clone = r_data[i].clone();
+			if let Some(value) =
+				ctx.sub(&l_clone, &r_clone, fragment)?
+			{
+				data.push(value);
+			} else {
+				data.push_undefined()
+			}
+		}
+
+		let binding = fragment.fragment();
+		let fragment_text = binding.text();
+		Ok(Column::ColumnQualified(ColumnQualified {
+			name: fragment_text.into(),
+			data,
+		}))
+	} else {
+		// Slow path: some values may be undefined
+		let mut data = ctx.pooled(target, l.len());
+		for i in 0..l.len() {
+			match (l.get(i), r.get(i)) {
+				(Some(l_val), Some(r_val)) => {
+					let l_clone = l_val.clone();
+					let r_clone = r_val.clone();
+					if let Some(value) = ctx.sub(
+						&l_clone, &r_clone, fragment,
+					)? {
+						data.push(value);
+					} else {
+						data.push_undefined()
+					}
+				}
+				_ => data.push_undefined(),
+			}
+		}
+
+		let binding = fragment.fragment();
+		let fragment_text = binding.text();
+		Ok(Column::ColumnQualified(ColumnQualified {
+			name: fragment_text.into(),
+			data,
+		}))
+	}
 }

@@ -2276,20 +2276,35 @@ fn compare_bool(
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(Boolean, l.len());
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l), Some(r)) => {
-				data.push(l == r);
-			}
-			_ => data.push_undefined(),
-		}
-	}
+	if l.is_fully_defined() && r.is_fully_defined() {
+		// Fast path: all values are defined, no undefined checks needed
+		let data: Vec<bool> =
+			l.data().iter()
+				.zip(r.data().iter())
+				.map(|(l_val, r_val)| l_val == r_val)
+				.collect();
 
-	Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
-		data,
-	})
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data: ColumnData::bool(data),
+		})
+	} else {
+		// Slow path: some values may be undefined
+		let mut data = ctx.pooled(Boolean, l.len());
+		for i in 0..l.len() {
+			match (l.get(i), r.get(i)) {
+				(Some(l), Some(r)) => {
+					data.push(l == r);
+				}
+				_ => data.push_undefined(),
+			}
+		}
+
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data,
+		})
+	}
 }
 
 fn compare_number<L, R>(
@@ -2305,20 +2320,36 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(Boolean, l.len());
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l), Some(r)) => {
-				data.push(number::is_equal(l, r));
-			}
-			_ => data.push_undefined(),
-		}
-	}
+	if l.is_fully_defined() && r.is_fully_defined() {
+		// Fast path: all values are defined, no undefined checks needed
+		let data: Vec<bool> = l
+			.data()
+			.iter()
+			.zip(r.data().iter())
+			.map(|(l_val, r_val)| number::is_equal(l_val, r_val))
+			.collect();
 
-	Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
-		data,
-	})
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data: ColumnData::bool(data),
+		})
+	} else {
+		// Slow path: some values may be undefined
+		let mut data = ctx.pooled(Boolean, l.len());
+		for i in 0..l.len() {
+			match (l.get(i), r.get(i)) {
+				(Some(l), Some(r)) => {
+					data.push(number::is_equal(l, r));
+				}
+				_ => data.push_undefined(),
+			}
+		}
+
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data,
+		})
+	}
 }
 
 fn compare_temporal<T>(
@@ -2331,26 +2362,42 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = Vec::with_capacity(l.len());
-	let mut bitvec = Vec::with_capacity(l.len());
+	if l.is_fully_defined() && r.is_fully_defined() {
+		// Fast path: all values are defined, no undefined checks needed
+		let data: Vec<bool> = l
+			.data()
+			.iter()
+			.zip(r.data().iter())
+			.map(|(l_val, r_val)| temporal::is_equal(l_val, r_val))
+			.collect();
 
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l), Some(r)) => {
-				data.push(temporal::is_equal(l, r));
-				bitvec.push(true);
-			}
-			_ => {
-				data.push(false);
-				bitvec.push(false);
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data: ColumnData::bool(data),
+		})
+	} else {
+		// Slow path: some values may be undefined
+		let mut data = Vec::with_capacity(l.len());
+		let mut bitvec = Vec::with_capacity(l.len());
+
+		for i in 0..l.len() {
+			match (l.get(i), r.get(i)) {
+				(Some(l), Some(r)) => {
+					data.push(temporal::is_equal(l, r));
+					bitvec.push(true);
+				}
+				_ => {
+					data.push(false);
+					bitvec.push(false);
+				}
 			}
 		}
-	}
 
-	Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
-		data: ColumnData::bool_with_bitvec(data, bitvec),
-	})
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data: ColumnData::bool_with_bitvec(data, bitvec),
+		})
+	}
 }
 
 fn compare_utf8(
@@ -2360,23 +2407,39 @@ fn compare_utf8(
 ) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = Vec::with_capacity(l.len());
-	let mut bitvec = Vec::with_capacity(l.len());
+	if l.is_fully_defined() && r.is_fully_defined() {
+		// Fast path: all values are defined, no undefined checks needed
+		let data: Vec<bool> =
+			l.data().iter()
+				.zip(r.data().iter())
+				.map(|(l_val, r_val)| l_val == r_val)
+				.collect();
 
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l), Some(r)) => {
-				data.push(l == r);
-				bitvec.push(true);
-			}
-			_ => {
-				data.push(false);
-				bitvec.push(false);
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data: ColumnData::bool(data),
+		})
+	} else {
+		// Slow path: some values may be undefined
+		let mut data = Vec::with_capacity(l.len());
+		let mut bitvec = Vec::with_capacity(l.len());
+
+		for i in 0..l.len() {
+			match (l.get(i), r.get(i)) {
+				(Some(l), Some(r)) => {
+					data.push(l == r);
+					bitvec.push(true);
+				}
+				_ => {
+					data.push(false);
+					bitvec.push(false);
+				}
 			}
 		}
+
+		Column::ColumnQualified(ColumnQualified {
+			name: fragment.fragment().into(),
+			data: ColumnData::bool_with_bitvec(data, bitvec),
+		})
 	}
-	Column::ColumnQualified(ColumnQualified {
-		name: fragment.fragment().into(),
-		data: ColumnData::bool_with_bitvec(data, bitvec),
-	})
 }

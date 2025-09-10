@@ -1667,6 +1667,40 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
+	// Fast path: when both inputs are fully defined
+	// We still need to handle potential overflow (which produces undefined
+	// with Undefined policy)
+	if l.is_fully_defined() && r.is_fully_defined() {
+		let mut data = ctx.pooled(target, l.len());
+		let l_data = l.data();
+		let r_data = r.data();
+
+		// Even with fully-defined inputs, operations can produce
+		// undefined values due to overflow (with Undefined policy) or
+		// other errors
+		for i in 0..l.len() {
+			// Safe to index directly since we know all values are
+			// defined
+			if let Some(value) =
+				ctx.add(&l_data[i], &r_data[i], fragment)?
+			{
+				data.push(value);
+			} else {
+				// Overflow with Undefined policy produces
+				// undefined
+				data.push_undefined()
+			}
+		}
+
+		let binding = fragment.fragment();
+		let fragment_text = binding.text();
+		return Ok(Column::ColumnQualified(ColumnQualified {
+			name: fragment_text.into(),
+			data,
+		}));
+	}
+
+	// Slow path: some input values may be undefined
 	let mut data = ctx.pooled(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {

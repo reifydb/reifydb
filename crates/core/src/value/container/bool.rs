@@ -82,6 +82,10 @@ impl BoolContainer {
 		idx < self.len() && self.bitvec.get(idx)
 	}
 
+	pub fn is_fully_defined(&self) -> bool {
+		self.bitvec.count_ones() == self.len()
+	}
+
 	pub fn data(&self) -> &BitVec {
 		&self.data
 	}
