@@ -17,8 +17,11 @@ pub struct FlowEngine<E: Evaluator> {
 	evaluator: E,
 	operators: HashMap<FlowNodeId, OperatorEnum<E>>,
 	flows: HashMap<FlowId, Flow<'static>>,
-	sources: HashMap<SourceId, Vec<FlowId>>,
-	sinks: HashMap<SourceId, Vec<FlowId>>,
+	// Maps sources to specific nodes that listen to them
+	// This allows multiple nodes in the same flow to listen to the same
+	// source
+	sources: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
+	sinks: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
 }
 
 impl<E: Evaluator> FlowEngine<E> {

@@ -47,6 +47,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				} => {
 					self.add_source(
 						flow.id,
+						node_id,
 						SourceId::from(*table),
 					);
 				}
@@ -56,6 +57,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				} => {
 					self.add_source(
 						flow.id,
+						node_id,
 						SourceId::from(*view),
 					);
 				}
@@ -79,6 +81,7 @@ impl<E: Evaluator> FlowEngine<E> {
 				} => {
 					self.add_sink(
 						flow.id,
+						node_id,
 						SourceId::from(*view),
 					);
 				}
@@ -90,41 +93,43 @@ impl<E: Evaluator> FlowEngine<E> {
 		Ok(())
 	}
 
-	fn add_source(&mut self, flow: FlowId, source: SourceId) {
+	fn add_source(
+		&mut self,
+		flow: FlowId,
+		node: FlowNodeId,
+		source: SourceId,
+	) {
 		use reifydb_core::log_debug;
 		log_debug!(
-			"FlowEngine: Registering flow {:?} for source {:?}",
+			"FlowEngine: Registering flow {:?} node {:?} for source {:?}",
 			flow,
+			node,
 			source
 		);
-		let flows = self.sources.entry(source).or_insert_with(Vec::new);
+		let nodes = self.sources.entry(source).or_insert_with(Vec::new);
 
-		debug_assert!(
-			!flows.contains(&flow),
-			"Flow {:?} already registered for source {:?}",
-			flow,
-			source
-		);
-
-		flows.push(flow);
+		// Each node registration is unique
+		// This allows multiple nodes in the same flow to listen to the
+		// same source
+		let entry = (flow, node);
+		if !nodes.contains(&entry) {
+			nodes.push(entry);
+		}
 		log_debug!(
-			"FlowEngine: Source {:?} now has {} dependent flows",
+			"FlowEngine: Source {:?} now has {} dependent nodes",
 			source,
-			flows.len()
+			nodes.len()
 		);
 	}
 
-	fn add_sink(&mut self, flow: FlowId, sink: SourceId) {
-		let flows = self.sinks.entry(sink).or_insert_with(Vec::new);
+	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: SourceId) {
+		let nodes = self.sinks.entry(sink).or_insert_with(Vec::new);
 
-		debug_assert!(
-			!flows.contains(&flow),
-			"Flow {:?} already registered for sink {:?}",
-			flow,
-			sink
-		);
-
-		flows.push(flow);
+		// Each node registration is unique
+		let entry = (flow, node);
+		if !nodes.contains(&entry) {
+			nodes.push(entry);
+		}
 	}
 
 	fn add_operator<T: QueryTransaction>(
@@ -224,13 +229,17 @@ impl<E: Evaluator> FlowEngine<E> {
 					reifydb_core::flow::FlowNodeSchema::empty()
 				};
 
-				Ok(OperatorEnum::Join(JoinOperator::new(
-					join_type,
-					left,
-					right,
-					left_schema,
-					right_schema,
-				)))
+				Ok(OperatorEnum::Join(
+					JoinOperator::new(
+						join_type,
+						left,
+						right,
+						left_schema,
+						right_schema,
+					)
+					.with_flow_id(flow_id.0)
+					.with_instance_id(node_id.0),
+				))
 			}
 			Distinct {
 				expressions,
