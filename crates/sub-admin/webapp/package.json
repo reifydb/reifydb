@@ -16,6 +16,7 @@
     "@tanstack/router-devtools": "^1.131.35",
     "@reifydb/client": "0.0.1-alpha.6",
     "@reifydb/core": "0.0.1-alpha.6",
+    "@reifydb/react": "0.0.1-alpha.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.542.0",

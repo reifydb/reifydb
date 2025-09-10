@@ -1,5 +1,4 @@
-import {useQueryOne} from "@/hooks/use-query.ts";
-import {InferSchema, Schema} from '@reifydb/core';
+import {useQueryOne, InferSchema, Schema} from '@reifydb/react';
 
 export interface Version {
     version: string;
