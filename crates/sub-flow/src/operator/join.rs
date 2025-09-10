@@ -11,7 +11,6 @@ use reifydb_core::{
 		SourceId,
 		evaluate::expression::{ColumnExpression, Expression},
 	},
-	log_debug,
 	row::{EncodedKey, EncodedKeyRange, EncodedRow},
 	util::CowVec,
 	value::columnar::{
@@ -800,34 +799,14 @@ impl JoinOperator {
 			// For INNER JOIN: emit for both sides
 			if is_left {
 				// Left side insert for LEFT or INNER join
-				log_debug!(
-					"JoinOperator: is_left=true, join_type={:?}, other_rows.len()={}",
-					self.join_type,
-					other_rows.len()
-				);
 				if other_rows.is_empty() {
 					// LEFT JOIN with no match - emit with
 					// NULLs for right side
-					log_debug!(
-						"JoinOperator: LEFT JOIN with no match for left row {:?}, metadata.right_columns: {:?}",
-						current_row.row_id,
-						metadata.right_columns
-					);
 					let diff = self.combine_rows(
 						&current_row,
 						None,
 						source,
 					);
-					if let FlowDiff::Insert {
-						ref after,
-						..
-					} = diff
-					{
-						log_debug!(
-							"JoinOperator: Generated diff with {} columns",
-							after.len()
-						);
-					}
 					output_diffs.push(diff);
 				} else {
 					// Emit joined rows for each match
@@ -1104,10 +1083,20 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 fn value_to_column_data(value: &Value) -> ColumnData {
 	match value {
 		Value::Undefined => ColumnData::undefined(1),
+		Value::Boolean(v) => ColumnData::bool(vec![*v]),
+		Value::Uint1(v) => ColumnData::uint1(vec![*v]),
+		Value::Uint2(v) => ColumnData::uint2(vec![*v]),
+		Value::Uint4(v) => ColumnData::uint4(vec![*v]),
+		Value::Uint8(v) => ColumnData::uint8(vec![*v]),
+		Value::Uint16(v) => ColumnData::uint16(vec![*v]),
+		Value::Int1(v) => ColumnData::int1(vec![*v]),
+		Value::Int2(v) => ColumnData::int2(vec![*v]),
 		Value::Int4(v) => ColumnData::int4(vec![*v]),
 		Value::Int8(v) => ColumnData::int8(vec![*v]),
+		Value::Int16(v) => ColumnData::int16(vec![*v]),
+		Value::Float4(v) => ColumnData::float4(vec![v.value()]),
 		Value::Float8(v) => ColumnData::float8(vec![v.value()]),
 		Value::Utf8(v) => ColumnData::utf8(vec![v.clone()]),
-		_ => ColumnData::undefined(1),
+		_ => unimplemented!(),
 	}
 }
