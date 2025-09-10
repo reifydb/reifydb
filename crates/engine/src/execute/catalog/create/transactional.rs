@@ -19,7 +19,7 @@ impl Executor {
 		if let Some(view) = CatalogStore::find_view_by_name(
 			txn,
 			plan.schema.id,
-			plan.view.text(),
+			plan.view.name.text(),
 		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -35,6 +35,7 @@ impl Executor {
 						"view",
 						Value::Utf8(
 							plan.view
+								.name
 								.text()
 								.to_string(),
 						),
@@ -44,7 +45,7 @@ impl Executor {
 			}
 
 			return_error!(view_already_exists(
-				Some(plan.view.clone().into_owned()),
+				Some(plan.view.name.clone().into_owned()),
 				&plan.schema.name,
 				&view.name,
 			));
@@ -53,8 +54,12 @@ impl Executor {
 		let result = CatalogStore::create_transactional_view(
 			txn,
 			ViewToCreate {
-				fragment: Some(plan.view.clone().into_owned()),
-				name: plan.view.text().to_string(),
+				fragment: Some(plan
+					.view
+					.name
+					.clone()
+					.into_owned()),
+				name: plan.view.name.text().to_string(),
 				schema: plan.schema.id,
 				columns: plan.columns,
 			},
@@ -64,7 +69,10 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("view", Value::Utf8(plan.view.text().to_string())),
+			(
+				"view",
+				Value::Utf8(plan.view.name.text().to_string()),
+			),
 			("created", Value::Boolean(true)),
 		]))
 	}

@@ -24,12 +24,7 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 	match expr {
 		Expression::AccessSource(access) => {
 			Expression::AccessSource(AccessSourceExpression {
-				source: Fragment::Owned(
-					access.source.into_owned(),
-				),
-				column: Fragment::Owned(
-					access.column.into_owned(),
-				),
+				column: access.column.into_owned(),
 			})
 		}
 		Expression::Alias(alias) => {
@@ -55,11 +50,9 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		Expression::Constant(constant) => Expression::Constant(
 			to_owned_constant_expression(constant),
 		),
-		Expression::Column(column) => {
-			Expression::Column(ColumnExpression(Fragment::Owned(
-				column.0.into_owned(),
-			)))
-		}
+		Expression::Column(column) => Expression::Column(
+			ColumnExpression(column.0.into_owned()),
+		),
 		Expression::Add(add) => Expression::Add(AddExpression {
 			left: Box::new(to_owned_expression(*add.left)),
 			right: Box::new(to_owned_expression(*add.right)),
@@ -323,7 +316,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
             take: node.take}),
         PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::plan::physical::DistinctNode {
             input: Box::new(to_owned_physical_plan(*node.input)),
-            columns: node.columns.into_iter().map(|f| Fragment::Owned(f.into_owned())).collect()}),
+            columns: node.columns.into_iter().map(|c| c.into_owned()).collect()}),
         PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::plan::physical::JoinInnerNode {
             left: Box::new(to_owned_physical_plan(*node.left)),
             right: Box::new(to_owned_physical_plan(*node.right)),

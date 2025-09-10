@@ -26,22 +26,28 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterTablePlan,
 	) -> crate::Result<Columns> {
-		let schema_fragment = plan.node.table.schema.clone().fragment();
-		let schema_name = schema_fragment.text();
-		let table_fragment = plan.node.table.table.clone().fragment();
-		let table_name = table_fragment.text();
+		// Use default schema if not provided
+		let schema_name = plan
+			.node
+			.table
+			.table
+			.schema
+			.as_ref()
+			.map(|s| s.text())
+			.unwrap_or("public");
+		let table_name = plan.node.table.table.name.text();
 
 		// Find the schema
 		let Some(schema) =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(schema_not_found(
-				Some(plan
-					.node
+				plan.node
+					.table
 					.table
 					.schema
-					.fragment()
-					.into_owned()),
+					.clone()
+					.map(|s| s.into_owned()),
 				schema_name,
 			));
 		};
@@ -52,7 +58,7 @@ impl Executor {
 		)?
 		else {
 			return_error!(table_not_found(
-				plan.node.table.table.fragment().into_owned(),
+				plan.node.table.table.name.clone().into_owned(),
 				&schema.name,
 				table_name,
 			));

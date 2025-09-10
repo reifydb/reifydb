@@ -77,15 +77,24 @@ pub enum Expression<'a> {
 	Parameter(ParameterExpression<'a>),
 }
 
+use crate::interface::identifier::ColumnIdentifier;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessSourceExpression<'a> {
-	pub source: Fragment<'a>,
-	pub column: Fragment<'a>,
+	pub column: ColumnIdentifier<'a>,
 }
 
 impl<'a> AccessSourceExpression<'a> {
 	pub fn full_fragment_owned(&self) -> Fragment<'a> {
-		Fragment::merge_all([self.source.clone(), self.column.clone()])
+		// For backward compatibility, merge source and column fragments
+		match &self.column.source {
+			crate::interface::identifier::ColumnSource::Source { source, .. } => {
+				Fragment::merge_all([source.clone(), self.column.name.clone()])
+			}
+			crate::interface::identifier::ColumnSource::Alias(alias) => {
+				Fragment::merge_all([alias.clone(), self.column.name.clone()])
+			}
+		}
 	}
 }
 
@@ -119,16 +128,16 @@ impl<'a> Display for ConstantExpression<'a> {
 			} => write!(f, "undefined"),
 			ConstantExpression::Bool {
 				fragment,
-			} => write!(f, "{}", fragment.fragment()),
+			} => write!(f, "{}", fragment.text()),
 			ConstantExpression::Number {
 				fragment,
-			} => write!(f, "{}", fragment.fragment()),
+			} => write!(f, "{}", fragment.text()),
 			ConstantExpression::Text {
 				fragment,
-			} => write!(f, "\"{}\"", fragment.fragment()),
+			} => write!(f, "\"{}\"", fragment.text()),
 			ConstantExpression::Temporal {
 				fragment,
-			} => write!(f, "{}", fragment.fragment()),
+			} => write!(f, "{}", fragment.text()),
 		}
 	}
 }
@@ -378,27 +387,31 @@ impl<'a> XorExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColumnExpression<'a>(pub Fragment<'a>);
+pub struct ColumnExpression<'a>(pub ColumnIdentifier<'a>);
 
 impl<'a> ColumnExpression<'a> {
 	pub fn full_fragment_owned(&self) -> Fragment<'a> {
-		self.0.clone()
+		// Return just the column name for unqualified column references
+		self.0.name.clone()
+	}
+
+	pub fn column(&self) -> &ColumnIdentifier<'a> {
+		&self.0
 	}
 }
 
 impl<'a> Display for Expression<'a> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Expression::AccessSource(AccessSourceExpression {
-				source: target,
-				column: property,
-			}) => {
-				write!(
-					f,
-					"{}.{}",
-					target.fragment(),
-					property.fragment()
-				)
+			Expression::AccessSource(AccessSourceExpression { column }) => {
+				match &column.source {
+					crate::interface::identifier::ColumnSource::Source { source, .. } => {
+						write!(f, "{}.{}", source.text(), column.name.text())
+					}
+					crate::interface::identifier::ColumnSource::Alias(alias) => {
+						write!(f, "{}.{}", alias.text(), column.name.text())
+					}
+				}
 			}
 			Expression::Alias(AliasExpression {
 				alias,
@@ -414,8 +427,8 @@ impl<'a> Display for Expression<'a> {
 			Expression::Constant(fragment) => {
 				write!(f, "Constant({})", fragment)
 			}
-			Expression::Column(ColumnExpression(fragment)) => {
-				write!(f, "Column({})", fragment.fragment())
+			Expression::Column(ColumnExpression(column)) => {
+				write!(f, "Column({})", column.name.text())
 			}
 			Expression::Add(AddExpression {
 				left,
@@ -535,15 +548,15 @@ impl<'a> Display for Expression<'a> {
 			Expression::Type(TypeExpression {
 				fragment,
 				..
-			}) => write!(f, "{}", fragment.fragment()),
+			}) => write!(f, "{}", fragment.text()),
 			Expression::Parameter(param) => match param {
 				ParameterExpression::Positional {
 					fragment,
 					..
-				} => write!(f, "{}", fragment.fragment()),
+				} => write!(f, "{}", fragment.text()),
 				ParameterExpression::Named {
 					fragment,
-				} => write!(f, "{}", fragment.fragment()),
+				} => write!(f, "{}", fragment.text()),
 			},
 		}
 	}
@@ -563,12 +576,12 @@ impl<'a> CallExpression<'a> {
 			line: self.func.0.line(),
 			text: format!(
 				"{}({})",
-				self.func.0.fragment(),
+				self.func.0.text(),
 				self.args
 					.iter()
 					.map(|arg| arg
 						.full_fragment_owned()
-						.fragment()
+						.text()
 						.to_string())
 					.collect::<Vec<_>>()
 					.join(",")
@@ -607,7 +620,7 @@ impl<'a> ParameterExpression<'a> {
 		match self {
 			ParameterExpression::Positional {
 				fragment,
-			} => fragment.fragment()[1..].parse().ok(),
+			} => fragment.text()[1..].parse().ok(),
 			ParameterExpression::Named {
 				..
 			} => None,
@@ -618,7 +631,7 @@ impl<'a> ParameterExpression<'a> {
 		match self {
 			ParameterExpression::Named {
 				fragment,
-			} => Some(&fragment.fragment()[1..]),
+			} => Some(&fragment.text()[1..]),
 			ParameterExpression::Positional {
 				..
 			} => None,
@@ -628,13 +641,13 @@ impl<'a> ParameterExpression<'a> {
 
 impl<'a> IdentExpression<'a> {
 	pub fn name(&self) -> &str {
-		self.0.fragment()
+		self.0.text()
 	}
 }
 
 impl<'a> Display for IdentExpression<'a> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", self.0.fragment())
+		write!(f, "{}", self.0.text())
 	}
 }
 

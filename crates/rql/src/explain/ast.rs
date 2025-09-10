@@ -3,7 +3,9 @@
 
 use crate::ast::{
 	Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom,
-	AstJoin, parse::parse, tokenize::tokenize,
+	AstIdentifier, AstJoin,
+	parse::parse,
+	tokenize::{Token, TokenKind, tokenize},
 };
 
 pub fn explain_ast(query: &str) -> crate::Result<String> {
@@ -85,29 +87,42 @@ fn render_ast_tree_inner(
 		}
 		Ast::Alter(alter) => match alter {
 			AstAlter::Table(t) => {
+				let schema = t
+					.table
+					.schema
+					.as_ref()
+					.map(|s| format!("{}.", s.text()))
+					.unwrap_or_default();
 				format!(
-					"ALTER TABLE {}.{}",
-					t.schema.value(),
-					t.table.value()
+					"ALTER TABLE {}{}",
+					schema,
+					t.table.name.text()
 				)
 			}
 			AstAlter::View(v) => {
+				let schema = v
+					.view
+					.schema
+					.as_ref()
+					.map(|s| format!("{}.", s.text()))
+					.unwrap_or_default();
 				format!(
-					"ALTER VIEW {}.{}",
-					v.schema.value(),
-					v.view.value()
+					"ALTER VIEW {}{}",
+					schema,
+					v.view.name.text()
 				)
 			}
 			AstAlter::Sequence(s) => {
-				let schema_prefix = s
+				let schema = s
+					.sequence
 					.schema
 					.as_ref()
-					.map(|sch| format!("{}.", sch.value()))
+					.map(|sch| format!("{}.", sch.text()))
 					.unwrap_or_default();
 				format!(
 					"ALTER SEQUENCE {}{}.{}",
-					schema_prefix,
-					s.table.value(),
+					schema,
+					s.sequence.name.text(),
 					s.column.value()
 				)
 			}
@@ -143,14 +158,25 @@ fn render_ast_tree_inner(
 		Ast::Filter(f) => children.push(*f.node),
 		Ast::From(from) => match from {
 			AstFrom::Source {
-				schema,
-				source: table,
+				source,
+				index_name,
 				..
 			} => {
-				if let Some(schema) = schema {
-					children.push(Ast::Identifier(schema));
+				// Create an Identifier AST node for the source
+				// name This matches what the test expects
+				let source_token = Token {
+					kind: TokenKind::Identifier,
+					fragment: source.name.clone(),
+				};
+				children.push(Ast::Identifier(AstIdentifier(
+					source_token,
+				)));
+
+				// If there's an index directive, add it as a
+				// child too
+				if let Some(index) = index_name {
+					children.push(Ast::Identifier(index));
 				}
-				children.push(Ast::Identifier(table));
 			}
 			AstFrom::Inline {
 				list: query,

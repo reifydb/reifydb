@@ -16,8 +16,7 @@ impl Compiler {
 		// For ALTER SEQUENCE, we just pass through the logical plan
 		// info The actual execution will happen in the engine
 		Ok(PhysicalPlan::AlterSequence(AlterSequencePlan {
-			schema: alter.schema,
-			table: alter.table,
+			sequence: alter.sequence,
 			column: alter.column,
 			value: alter.value,
 		}))
@@ -57,16 +56,9 @@ mod tests {
 
 		match physical_plan {
 			PhysicalPlan::AlterSequence(plan) => {
-				assert!(plan.schema.is_some());
-				assert_eq!(
-					plan.schema
-						.as_ref()
-						.unwrap()
-						.fragment(),
-					"test"
-				);
-				assert_eq!(plan.table.fragment(), "users");
-				assert_eq!(plan.column.fragment(), "id");
+				assert_eq!(plan.sequence.schema.text(), "test");
+				assert_eq!(plan.sequence.name.text(), "users");
+				assert_eq!(plan.column.name.text(), "id");
 
 				assert!(matches!(
 					plan.value,

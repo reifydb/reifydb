@@ -10,9 +10,27 @@ impl Compiler {
 	pub(crate) fn compile_insert<'a>(
 		ast: AstInsert<'a>,
 	) -> crate::Result<LogicalPlan<'a>> {
+		// Convert MaybeQualified to fully qualified
+		use reifydb_core::interface::identifier::SourceIdentifier;
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		let schema = ast.target.schema.unwrap_or_else(|| {
+			Fragment::Owned(OwnedFragment::Internal {
+				text: String::from("default"),
+			})
+		});
+
+		let mut target = SourceIdentifier::new(
+			schema,
+			ast.target.name,
+			ast.target.kind,
+		);
+		if let Some(alias) = ast.target.alias {
+			target = target.with_alias(alias);
+		}
+
 		Ok(LogicalPlan::Insert(InsertNode {
-			schema: ast.schema.map(|s| s.fragment()),
-			table: ast.table.fragment(),
+			target,
 		}))
 	}
 }

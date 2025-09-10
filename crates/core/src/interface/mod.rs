@@ -7,6 +7,7 @@ mod cdc;
 mod engine;
 pub mod evaluate;
 mod execute;
+pub mod identifier;
 pub mod key;
 mod storage;
 pub mod subsystem;
@@ -19,6 +20,7 @@ pub use cdc::*;
 pub use engine::*;
 pub use evaluate::*;
 pub use execute::*;
+pub use identifier::*;
 pub use key::*;
 pub use reifydb_type::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,

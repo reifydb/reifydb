@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::JoinType;
-use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
@@ -26,12 +25,26 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode {
-                            schema: Fragment::Owned(OwnedFragment::internal("default")),
-                            source: identifier.fragment(),
-                            index_name: None,
-                            alias: alias.map(|a| a.fragment()),
-                        })]
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_type::{Fragment, OwnedFragment};
+
+						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(schema, identifier.fragment(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(
+								a.fragment(),
+							);
+						}
+
+						vec![SourceScan(
+							SourceScanNode {
+								source,
+								index: None,
+							},
+						)]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -50,22 +63,22 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+
+						let mut source = SourceIdentifier::new(schema.fragment(), table.fragment(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(
+								a.fragment(),
+							);
+						}
+
 						vec![SourceScan(
 							SourceScanNode {
-								schema: schema
-									.fragment(
-									),
-								source: table
-									.fragment(
-									),
-								index_name:
-									None,
-								alias: alias
-									.map(
-									|a| {
-										a.fragment()
-									},
-								),
+								source,
+								index: None,
 							},
 						)]
 					}
@@ -87,12 +100,26 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode {
-                            schema: Fragment::Owned(OwnedFragment::testing("default")),
-                            source: identifier.fragment(),
-                            index_name: None,
-                            alias: alias.map(|a| a.fragment()),
-                        })]
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_type::{Fragment, OwnedFragment};
+
+						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(schema, identifier.fragment(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(
+								a.fragment(),
+							);
+						}
+
+						vec![SourceScan(
+							SourceScanNode {
+								source,
+								index: None,
+							},
+						)]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -111,22 +138,22 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+
+						let mut source = SourceIdentifier::new(schema.fragment(), table.fragment(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(
+								a.fragment(),
+							);
+						}
+
 						vec![SourceScan(
 							SourceScanNode {
-								schema: schema
-									.fragment(
-									),
-								source: table
-									.fragment(
-									),
-								index_name:
-									None,
-								alias: alias
-									.map(
-									|a| {
-										a.fragment()
-									},
-								),
+								source,
+								index: None,
 							},
 						)]
 					}
@@ -148,12 +175,26 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode {
-                            schema: Fragment::Owned(OwnedFragment::testing("default")),
-                            source: identifier.fragment(),
-                            index_name: None,
-                            alias: alias.map(|a| a.fragment()),
-                        })]
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_type::{Fragment, OwnedFragment};
+
+						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(schema, identifier.fragment(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(
+								a.fragment(),
+							);
+						}
+
+						vec![SourceScan(
+							SourceScanNode {
+								source,
+								index: None,
+							},
+						)]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -172,22 +213,22 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+
+						let mut source = SourceIdentifier::new(schema.fragment(), table.fragment(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(
+								a.fragment(),
+							);
+						}
+
 						vec![SourceScan(
 							SourceScanNode {
-								schema: schema
-									.fragment(
-									),
-								source: table
-									.fragment(
-									),
-								index_name:
-									None,
-								alias: alias
-									.map(
-									|a| {
-										a.fragment()
-									},
-								),
+								source,
+								index: None,
 							},
 						)]
 					}

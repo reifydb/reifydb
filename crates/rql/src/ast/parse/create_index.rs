@@ -36,10 +36,13 @@ impl<'a> Parser<'a> {
 		self.consume_operator(Operator::Dot)?;
 		let table_token = self.consume(TokenKind::Identifier)?;
 
-		// Create AST nodes from tokens
-		let name = crate::ast::ast::AstIdentifier(name_token);
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let table = crate::ast::ast::AstIdentifier(table_token);
+		// Create MaybeQualifiedIndexIdentifier
+		use crate::ast::identifier::MaybeQualifiedIndexIdentifier;
+		let index = MaybeQualifiedIndexIdentifier::new(
+			table_token.fragment.clone(),
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone());
 
 		let columns = self.parse_index_columns()?;
 
@@ -60,9 +63,7 @@ impl<'a> Parser<'a> {
 		Ok(AstCreate::Index(AstCreateIndex {
 			token: create_token,
 			index_type,
-			name,
-			schema,
-			table,
+			index,
 			columns,
 			filters,
 			map,
@@ -149,17 +150,18 @@ mod tests {
 		match create {
 			AstCreate::Index(AstCreateIndex {
 				index_type,
-				name,
-				schema,
-				table,
+				index,
 				columns,
 				filters,
 				..
 			}) => {
 				assert_eq!(*index_type, IndexType::Index);
-				assert_eq!(name.value(), "idx_email");
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert_eq!(index.name.text(), "idx_email");
+				assert_eq!(
+					index.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.value(), "email");
 				assert!(columns[0].order.is_none());
@@ -185,17 +187,18 @@ mod tests {
 		match create {
 			AstCreate::Index(AstCreateIndex {
 				index_type,
-				name,
-				schema,
-				table,
+				index,
 				columns,
 				filters,
 				..
 			}) => {
 				assert_eq!(*index_type, IndexType::Unique);
-				assert_eq!(name.value(), "idx_email");
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert_eq!(index.name.text(), "idx_email");
+				assert_eq!(
+					index.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.value(), "email");
 				assert_eq!(filters.len(), 0);

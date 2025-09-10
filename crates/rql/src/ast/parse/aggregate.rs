@@ -162,8 +162,8 @@ mod tests {
 		assert_eq!(aggregate.map.len(), 1);
 
 		let projection = &aggregate.map[0].as_call_function();
-		assert_eq!(projection.function.value(), "min");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "min");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
@@ -185,8 +185,8 @@ mod tests {
 		assert_eq!(aggregate.map.len(), 1);
 
 		let projection = &aggregate.map[0].as_call_function();
-		assert_eq!(projection.function.value(), "min");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "min");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
@@ -211,8 +211,8 @@ mod tests {
 		let projection = &aggregate.map[0].as_infix();
 
 		let min_call = projection.left.as_call_function();
-		assert_eq!(min_call.function.value(), "min");
-		assert!(min_call.namespaces.is_empty());
+		assert_eq!(min_call.function.name.text(), "min");
+		assert!(min_call.function.namespaces.is_empty());
 
 		assert_eq!(min_call.arguments.len(), 1);
 		let identifier = min_call.arguments.nodes[0].as_identifier();
@@ -250,8 +250,8 @@ mod tests {
 		));
 
 		let min_call = projection.right.as_call_function();
-		assert_eq!(min_call.function.value(), "min");
-		assert!(min_call.namespaces.is_empty());
+		assert_eq!(min_call.function.name.text(), "min");
+		assert!(min_call.function.namespaces.is_empty());
 
 		assert_eq!(min_call.arguments.len(), 1);
 		let identifier = min_call.arguments.nodes[0].as_identifier();
@@ -309,16 +309,16 @@ mod tests {
 		assert_eq!(aggregate.map.len(), 2);
 
 		let projection = &aggregate.map[0].as_call_function();
-		assert_eq!(projection.function.value(), "min");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "min");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
 		assert_eq!(identifier.value(), "age");
 
 		let projection = &aggregate.map[1].as_call_function();
-		assert_eq!(projection.function.value(), "max");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "max");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
@@ -343,8 +343,8 @@ mod tests {
 		assert_eq!(aggregate.map.len(), 1);
 
 		let projection = &aggregate.map[0].as_call_function();
-		assert_eq!(projection.function.value(), "min");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "min");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
@@ -398,8 +398,8 @@ mod tests {
 		assert_eq!(aggregate.map.len(), 1);
 
 		let projection = &aggregate.map[0].as_call_function();
-		assert_eq!(projection.function.value(), "count");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "count");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
@@ -423,8 +423,8 @@ mod tests {
 		assert_eq!(aggregate.map.len(), 1);
 
 		let projection = &aggregate.map[0].as_call_function();
-		assert_eq!(projection.function.value(), "count");
-		assert!(projection.namespaces.is_empty());
+		assert_eq!(projection.function.name.text(), "count");
+		assert!(projection.function.namespaces.is_empty());
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();

@@ -9,6 +9,7 @@ use reifydb_type::{Constraint, Type, TypeConstraint};
 use crate::ast::{AstDataType, AstIdentifier, AstLiteral};
 
 pub mod ast;
+pub mod error;
 pub mod explain;
 pub mod expression;
 #[allow(dead_code, unused_variables)]

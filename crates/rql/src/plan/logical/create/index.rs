@@ -1,6 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::identifier::{
+	ColumnIdentifier, ColumnSource, IndexIdentifier,
+};
+use reifydb_type::{Fragment, OwnedFragment};
+
 use crate::{
 	ast::{AstCreateIndex, AstIndexColumn},
 	expression::ExpressionCompiler,
@@ -11,11 +16,27 @@ impl Compiler {
 	pub(crate) fn compile_create_index<'a>(
 		ast: AstCreateIndex<'a>,
 	) -> crate::Result<LogicalPlan<'a>> {
+		// Get the schema with default
+		let schema = ast.index.schema.clone().unwrap_or_else(|| {
+			Fragment::Owned(OwnedFragment::Internal {
+				text: String::from("default"),
+			})
+		});
+
+		// Create the table source for column qualification
+		let table_source = ColumnSource::Source {
+			schema: schema.clone(),
+			source: ast.index.table.clone(),
+		};
+
 		let columns = ast
 			.columns
 			.into_iter()
 			.map(|col: AstIndexColumn| IndexColumn {
-				column: col.column.fragment(),
+				column: ColumnIdentifier {
+					source: table_source.clone(),
+					name: col.column.fragment(),
+				},
 				order: col.order,
 			})
 			.collect();
@@ -34,11 +55,15 @@ impl Compiler {
 			None
 		};
 
+		let index = IndexIdentifier::new(
+			schema,
+			ast.index.table,
+			ast.index.name,
+		);
+
 		Ok(LogicalPlan::CreateIndex(CreateIndexNode {
 			index_type: ast.index_type,
-			name: ast.name.fragment(),
-			schema: ast.schema.fragment(),
-			table: ast.table.fragment(),
+			index,
 			columns,
 			filter,
 			map,

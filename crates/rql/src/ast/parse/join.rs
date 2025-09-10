@@ -373,18 +373,16 @@ mod tests {
 		let from = statement.nodes[0].as_from();
 		match from {
 			crate::ast::AstFrom::Source {
-				schema,
 				source,
-				alias,
 				..
 			} => {
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					source.schema.as_ref().unwrap().text(),
 					"test"
 				);
-				assert_eq!(source.value(), "orders");
+				assert_eq!(source.name.text(), "orders");
 				assert_eq!(
-					alias.as_ref().unwrap().value(),
+					source.alias.as_ref().unwrap().text(),
 					"o"
 				);
 			}

@@ -29,8 +29,13 @@ impl<'a> Parser<'a> {
 				list: self.parse_static()?,
 			})
 		} else {
+			use reifydb_core::interface::identifier::SourceKind;
+
+			use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+
 			// Get the first identifier token
-			let first_token = self.advance()?;
+			let first_token =
+				self.consume(TokenKind::Identifier)?;
 
 			// Check if there's a dot following
 			let has_dot = if !self.is_eof() {
@@ -43,21 +48,61 @@ impl<'a> Parser<'a> {
 				false
 			};
 
-			let (schema, table) = if has_dot {
+			let (source, alias_token) = if has_dot {
 				self.consume_operator(Operator::Dot)?;
-				let second_token = self.advance()?;
-				let identifier = crate::ast::ast::AstIdentifier(
-					first_token,
-				);
-				let table = crate::ast::ast::AstIdentifier(
-					second_token,
-				);
-				(Some(identifier), table)
+				let second_token =
+					self.consume(TokenKind::Identifier)?;
+				// schema.table - create
+				// MaybeQualifiedSourceIdentifier with schema
+				let source =
+					MaybeQualifiedSourceIdentifier::new(
+						second_token.fragment.clone(),
+					)
+					.with_schema(
+						first_token.fragment.clone(),
+					)
+					.with_kind(SourceKind::Unknown); // Will be resolved later
+
+				// Check for alias after schema.table
+				let alias_token = if !self.is_eof()
+					&& self.current()?.is_identifier()
+				{
+					Some(self.consume(
+						TokenKind::Identifier,
+					)?)
+				} else {
+					None
+				};
+
+				(source, alias_token)
 			} else {
-				let identifier = crate::ast::ast::AstIdentifier(
-					first_token,
-				);
-				(None, identifier)
+				// Just table - create
+				// MaybeQualifiedSourceIdentifier without schema
+				let source =
+					MaybeQualifiedSourceIdentifier::new(
+						first_token.fragment.clone(),
+					)
+					.with_kind(SourceKind::Unknown); // Will be resolved later
+
+				// Check for alias after table
+				let alias_token = if !self.is_eof()
+					&& self.current()?.is_identifier()
+				{
+					Some(self.consume(
+						TokenKind::Identifier,
+					)?)
+				} else {
+					None
+				};
+
+				(source, alias_token)
+			};
+
+			// Add alias to source if present
+			let source = if let Some(alias_tok) = alias_token {
+				source.with_alias(alias_tok.fragment.clone())
+			} else {
+				source
 			};
 
 			// Check for index directive using ::
@@ -68,8 +113,7 @@ impl<'a> Parser<'a> {
 							Operator::DoubleColon,
 						) {
 							self.consume_operator(Operator::DoubleColon)?;
-							let index_token =
-								self.advance()?;
+							let index_token = self.consume(TokenKind::Identifier)?;
 							Some(crate::ast::ast::AstIdentifier(index_token))
 						} else {
 							None
@@ -81,31 +125,10 @@ impl<'a> Parser<'a> {
 					None
 				};
 
-			// Check for alias (an identifier that's not a keyword)
-			let alias = if !self.is_eof() {
-				if let Ok(current) = self.current() {
-					// Check if it's an identifier (not a
-					// keyword or operator)
-					if current.is_identifier() {
-						let alias_token =
-							self.advance()?;
-						Some(crate::ast::ast::AstIdentifier(alias_token))
-					} else {
-						None
-					}
-				} else {
-					None
-				}
-			} else {
-				None
-			};
-
 			Ok(AstFrom::Source {
 				token,
-				schema,
-				source: table,
+				source,
 				index_name,
-				alias,
 			})
 		}
 	}
@@ -159,16 +182,15 @@ mod tests {
 
 		match from {
 			AstFrom::Source {
-				source: table,
-				schema,
+				source,
 				index_name,
 				..
 			} => {
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					source.schema.as_ref().unwrap().text(),
 					"reifydb"
 				);
-				assert_eq!(table.value(), "users");
+				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
 			AstFrom::Inline {
@@ -189,13 +211,12 @@ mod tests {
 
 		match from {
 			AstFrom::Source {
-				source: table,
-				schema,
+				source,
 				index_name,
 				..
 			} => {
-				assert_eq!(schema, &None);
-				assert_eq!(table.value(), "users");
+				assert_eq!(source.schema, None);
+				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
 			AstFrom::Inline {
@@ -336,13 +357,12 @@ mod tests {
 
 		match from {
 			AstFrom::Source {
-				source: table,
-				schema,
+				source,
 				index_name,
 				..
 			} => {
-				assert_eq!(schema, &None);
-				assert_eq!(table.value(), "users");
+				assert_eq!(source.schema, None);
+				assert_eq!(source.name.text(), "users");
 				assert_eq!(
 					index_name.as_ref().unwrap().value(),
 					"user_id_pk"
@@ -368,16 +388,15 @@ mod tests {
 
 		match from {
 			AstFrom::Source {
-				source: table,
-				schema,
+				source,
 				index_name,
 				..
 			} => {
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					source.schema.as_ref().unwrap().text(),
 					"company"
 				);
-				assert_eq!(table.value(), "employees");
+				assert_eq!(source.name.text(), "employees");
 				assert_eq!(
 					index_name.as_ref().unwrap().value(),
 					"employee_email_pk"
@@ -401,17 +420,15 @@ mod tests {
 
 		match from {
 			AstFrom::Source {
-				source: table,
-				schema,
+				source,
 				index_name,
-				alias,
 				..
 			} => {
-				assert_eq!(schema, &None);
-				assert_eq!(table.value(), "orders");
+				assert!(source.schema.is_none());
+				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
 				assert_eq!(
-					alias.as_ref().unwrap().value(),
+					source.alias.as_ref().unwrap().text(),
 					"o"
 				);
 			}
@@ -433,20 +450,18 @@ mod tests {
 
 		match from {
 			AstFrom::Source {
-				source: table,
-				schema,
+				source,
 				index_name,
-				alias,
 				..
 			} => {
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					source.schema.as_ref().unwrap().text(),
 					"test"
 				);
-				assert_eq!(table.value(), "orders");
+				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
 				assert_eq!(
-					alias.as_ref().unwrap().value(),
+					source.alias.as_ref().unwrap().text(),
 					"o"
 				);
 			}

@@ -37,24 +37,22 @@ impl Executor {
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let schema_name =
-			plan.schema.as_ref().map(|s| s.fragment()).unwrap(); // FIXME
+		let schema_name = plan.target.schema.text();
 
 		let schema =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 				.unwrap();
 
+		let table_name = plan.target.name.text();
 		let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			schema.id,
-			&plan.table.fragment(),
+			txn, schema.id, table_name,
 		)?
 		else {
-			let fragment = plan.table.into_fragment();
+			let fragment = plan.target.name.clone().into_fragment();
 			return_error!(table_not_found(
 				fragment.clone(),
 				schema_name,
-				&fragment.fragment(),
+				table_name,
 			));
 		};
 

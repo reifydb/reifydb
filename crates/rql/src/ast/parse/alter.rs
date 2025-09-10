@@ -57,15 +57,21 @@ impl<'a> Parser<'a> {
 				self.consume_keyword(Keyword::Value)?;
 				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
-				// Create AST nodes from tokens
-				let first_identifier =
-					crate::ast::ast::AstIdentifier(
-						first_identifier_token,
+				// Create MaybeQualifiedSequenceIdentifier with
+				// schema
+				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
+				let sequence =
+					MaybeQualifiedSequenceIdentifier::new(
+						second_identifier_token
+							.fragment
+							.clone(),
+					)
+					.with_schema(
+						first_identifier_token
+							.fragment
+							.clone(),
 					);
-				let second_identifier =
-					crate::ast::ast::AstIdentifier(
-						second_identifier_token,
-					);
+
 				let column = crate::ast::ast::AstIdentifier(
 					column_token,
 				);
@@ -77,8 +83,7 @@ impl<'a> Parser<'a> {
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
-					schema: Some(first_identifier),
-					table: second_identifier,
+					sequence,
 					column,
 					value,
 				}))
@@ -88,15 +93,19 @@ impl<'a> Parser<'a> {
 				self.consume_keyword(Keyword::Value)?;
 				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
-				// Create AST nodes from tokens
-				let first_identifier =
-					crate::ast::ast::AstIdentifier(
-						first_identifier_token,
+				// Create MaybeQualifiedSequenceIdentifier
+				// without schema
+				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
+				let sequence =
+					MaybeQualifiedSequenceIdentifier::new(
+						first_identifier_token
+							.fragment
+							.clone(),
 					);
-				let second_identifier =
-					crate::ast::ast::AstIdentifier(
-						second_identifier_token,
-					);
+
+				let column = crate::ast::ast::AstIdentifier(
+					second_identifier_token,
+				);
 				let value = crate::ast::AstLiteral::Number(
 					crate::ast::ast::AstLiteralNumber(
 						value_token,
@@ -105,9 +114,8 @@ impl<'a> Parser<'a> {
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
-					schema: None,
-					table: first_identifier,
-					column: second_identifier,
+					sequence,
+					column,
 					value,
 				}))
 			}
@@ -123,9 +131,21 @@ impl<'a> Parser<'a> {
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.table
-		let schema = self.parse_identifier()?;
+		let schema_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let table = self.parse_identifier()?;
+		let table_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+
+		// Create MaybeQualifiedSourceIdentifier
+		use reifydb_core::interface::identifier::SourceKind;
+
+		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+		let table = MaybeQualifiedSourceIdentifier::new(
+			table_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::Table);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -197,7 +217,6 @@ impl<'a> Parser<'a> {
 
 		Ok(AstAlter::Table(AstAlterTable {
 			token,
-			schema,
 			table,
 			operations,
 		}))
@@ -208,9 +227,21 @@ impl<'a> Parser<'a> {
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.view
-		let schema = self.parse_identifier()?;
+		let schema_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let view = self.parse_identifier()?;
+		let view_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+
+		// Create MaybeQualifiedSourceIdentifier for view
+		use reifydb_core::interface::identifier::SourceKind;
+
+		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+		let view = MaybeQualifiedSourceIdentifier::new(
+			view_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::View);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -282,7 +313,6 @@ impl<'a> Parser<'a> {
 
 		Ok(AstAlter::View(AstAlterView {
 			token,
-			schema,
 			view,
 			operations,
 		}))
@@ -381,18 +411,20 @@ mod tests {
 
 		match alter {
 			AstAlter::Sequence(AstAlterSequence {
-				schema,
-				table,
+				sequence,
 				column,
 				value,
 				..
 			}) => {
-				assert!(schema.is_some());
+				assert!(sequence.schema.is_some());
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					sequence.schema
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
-				assert_eq!(table.value(), "users");
+				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.value(), "id");
 				match value {
 					crate::ast::AstLiteral::Number(num) => {
@@ -418,14 +450,13 @@ mod tests {
 
 		match alter {
 			AstAlter::Sequence(AstAlterSequence {
-				schema,
-				table,
+				sequence,
 				column,
 				value,
 				..
 			}) => {
-				assert!(schema.is_none());
-				assert_eq!(table.value(), "users");
+				assert!(sequence.schema.is_none());
+				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.value(), "id");
 				match value {
 					crate::ast::AstLiteral::Number(num) => {
@@ -453,13 +484,16 @@ mod tests {
 
 		match alter {
 			AstAlter::Table(AstAlterTable {
-				schema,
 				table,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert!(table.schema.is_some());
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
@@ -491,13 +525,16 @@ mod tests {
 
 		match alter {
 			AstAlter::Table(AstAlterTable {
-				schema,
 				table,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert!(table.schema.is_some());
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
@@ -529,13 +566,16 @@ mod tests {
 
 		match alter {
 			AstAlter::View(AstAlterView {
-				schema,
 				view,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(view.value(), "user_view");
+				assert!(view.schema.is_some());
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
@@ -567,13 +607,16 @@ mod tests {
 
 		match alter {
 			AstAlter::View(AstAlterView {
-				schema,
 				view,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(view.value(), "user_view");
+				assert!(view.schema.is_some());
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {

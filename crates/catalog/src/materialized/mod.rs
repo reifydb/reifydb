@@ -3,6 +3,7 @@
 
 pub mod load;
 mod primary_key;
+mod resolver_helpers;
 mod schema;
 mod table;
 mod view;

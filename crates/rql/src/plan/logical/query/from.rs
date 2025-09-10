@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::evaluate::expression::{
-	AliasExpression, IdentExpression,
+use reifydb_core::interface::{
+	evaluate::expression::{AliasExpression, IdentExpression},
+	identifier::{IndexIdentifier, SourceIdentifier},
 };
 use reifydb_type::{Fragment, OwnedFragment, diagnostic::Diagnostic, err};
 
@@ -20,24 +21,47 @@ impl Compiler {
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstFrom::Source {
-				schema,
-				source: table,
+				source,
 				index_name,
-				alias,
 				..
-			} => Ok(LogicalPlan::SourceScan(SourceScanNode {
-				schema: schema
-					.map(|schema| schema.fragment())
-					.unwrap_or(Fragment::Owned(
-						OwnedFragment::testing(
-							"default",
-						),
-					)),
-				source: table.fragment(),
-				index_name: index_name
-					.map(|idx| idx.fragment()),
-				alias: alias.map(|a| a.fragment()),
-			})),
+			} => {
+				// Convert MaybeQualifiedSourceIdentifier to
+				// SourceIdentifier
+				let schema = source
+					.schema
+					.clone()
+					.unwrap_or_else(|| {
+						Fragment::Owned(OwnedFragment::Internal { text: String::from("default") })
+					});
+				let qualified_source = SourceIdentifier::new(
+					schema.clone(),
+					source.name.clone(),
+					source.kind,
+				);
+				let qualified_source = if let Some(alias) =
+					&source.alias
+				{
+					qualified_source
+						.with_alias(alias.clone())
+				} else {
+					qualified_source
+				};
+
+				// Convert index_name to IndexIdentifier if
+				// present
+				let index = index_name.map(|idx| {
+					IndexIdentifier::new(
+						schema,
+						source.name.clone(),
+						idx.fragment(),
+					)
+				});
+
+				Ok(LogicalPlan::SourceScan(SourceScanNode {
+					source: qualified_source,
+					index,
+				}))
+			}
 			AstFrom::Inline {
 				list,
 				..

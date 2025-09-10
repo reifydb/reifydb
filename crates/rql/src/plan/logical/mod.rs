@@ -5,7 +5,12 @@ pub mod alter;
 mod create;
 mod mutate;
 mod query;
+pub mod resolver;
 
+use identifier::{
+	ColumnIdentifier, SchemaIdentifier, SequenceIdentifier,
+	SourceIdentifier,
+};
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
@@ -13,10 +18,10 @@ use reifydb_core::{
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
 		expression::{AliasExpression, Expression},
+		identifier,
 	},
 	return_error,
 };
-use reifydb_type::Fragment;
 
 use crate::{
 	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
@@ -73,10 +78,25 @@ impl Compiler {
 									None
 								};
 
+							// Convert MaybeQualified to fully qualified
+							// TODO: inject default
+							// schema if not
+							// provided
+							let target = update_ast.target.map(|t| {
+                                use reifydb_core::interface::identifier::SourceIdentifier;
+                                use reifydb_type::{Fragment, OwnedFragment};
+
+                                let schema = t.schema.unwrap_or_else(|| {
+                                    Fragment::Owned(OwnedFragment::Internal { text: String::from("default") })
+                                });
+
+                                SourceIdentifier::new(schema, t.name, t.kind)
+                            });
+
 							return Ok(vec![LogicalPlan::Update(UpdateNode {
-								schema: update_ast.schema.map(|s| s.fragment()),
-								table: update_ast.table.map(|t| t.fragment()),
-								input})]);
+                                target,
+                                input
+                            })]);
 						}
 						Ast::AstDelete(delete_ast) => {
 							// Build the pipeline as
@@ -90,10 +110,25 @@ impl Compiler {
 									None
 								};
 
+							// Convert MaybeQualified to fully qualified
+							// TODO: inject default
+							// schema if not
+							// provided
+							let target = delete_ast.target.map(|t| {
+                                use reifydb_core::interface::identifier::SourceIdentifier;
+                                use reifydb_type::{Fragment, OwnedFragment};
+
+                                let schema = t.schema.unwrap_or_else(|| {
+                                    Fragment::Owned(OwnedFragment::Internal { text: String::from("default") })
+                                });
+
+                                SourceIdentifier::new(schema, t.name, t.kind)
+                            });
+
 							return Ok(vec![LogicalPlan::Delete(DeleteNode {
-								schema: delete_ast.schema.map(|s| s.fragment()),
-								table: delete_ast.table.map(|t| t.fragment()),
-								input})]);
+                                target,
+                                input
+                            })]);
 						}
 						_ => unreachable!(),
 					}
@@ -223,8 +258,7 @@ pub struct PipelineNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'a> {
-	pub schema: Fragment<'a>,
-	pub view: Fragment<'a>,
+	pub view: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -232,8 +266,7 @@ pub struct CreateDeferredViewNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateTransactionalViewNode<'a> {
-	pub schema: Fragment<'a>,
-	pub view: Fragment<'a>,
+	pub view: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -241,38 +274,34 @@ pub struct CreateTransactionalViewNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateSchemaNode<'a> {
-	pub schema: Fragment<'a>,
+	pub schema: SchemaIdentifier<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateSequenceNode<'a> {
-	pub schema: Fragment<'a>,
+	pub sequence: SequenceIdentifier<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateTableNode<'a> {
-	pub schema: Fragment<'a>,
-	pub table: Fragment<'a>,
+	pub table: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug)]
 pub struct AlterSequenceNode<'a> {
-	pub schema: Option<Fragment<'a>>,
-	pub table: Fragment<'a>,
-	pub column: Fragment<'a>,
+	pub sequence: SequenceIdentifier<'a>,
+	pub column: ColumnIdentifier<'a>,
 	pub value: Expression<'a>,
 }
 
 #[derive(Debug)]
 pub struct CreateIndexNode<'a> {
 	pub index_type: IndexType,
-	pub name: Fragment<'a>,
-	pub schema: Fragment<'a>,
-	pub table: Fragment<'a>,
+	pub index: identifier::IndexIdentifier<'a>,
 	pub columns: Vec<IndexColumn<'a>>,
 	pub filter: Vec<Expression<'a>>,
 	pub map: Option<Expression<'a>>,
@@ -280,27 +309,24 @@ pub struct CreateIndexNode<'a> {
 
 #[derive(Debug)]
 pub struct IndexColumn<'a> {
-	pub column: Fragment<'a>,
+	pub column: ColumnIdentifier<'a>,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
 pub struct DeleteNode<'a> {
-	pub schema: Option<Fragment<'a>>,
-	pub table: Option<Fragment<'a>>,
+	pub target: Option<SourceIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
 pub struct InsertNode<'a> {
-	pub schema: Option<Fragment<'a>>,
-	pub table: Fragment<'a>,
+	pub target: SourceIdentifier<'a>,
 }
 
 #[derive(Debug)]
 pub struct UpdateNode<'a> {
-	pub schema: Option<Fragment<'a>>,
-	pub table: Option<Fragment<'a>>,
+	pub target: Option<SourceIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
@@ -312,7 +338,7 @@ pub struct AggregateNode<'a> {
 
 #[derive(Debug)]
 pub struct DistinctNode<'a> {
-	pub columns: Vec<Fragment<'a>>,
+	pub columns: Vec<ColumnIdentifier<'a>>,
 }
 
 #[derive(Debug)]
@@ -365,10 +391,8 @@ pub struct InlineDataNode<'a> {
 
 #[derive(Debug)]
 pub struct SourceScanNode<'a> {
-	pub schema: Fragment<'a>,
-	pub source: Fragment<'a>,
-	pub index_name: Option<Fragment<'a>>,
-	pub alias: Option<Fragment<'a>>,
+	pub source: SourceIdentifier<'a>,
+	pub index: Option<identifier::IndexIdentifier<'a>>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

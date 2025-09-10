@@ -1,6 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::identifier::{
+	ColumnIdentifier, ColumnSource, SequenceIdentifier,
+};
+use reifydb_type::{Fragment, OwnedFragment};
+
 use crate::{
 	ast::{Ast, AstAlterSequence},
 	expression::ExpressionCompiler,
@@ -11,10 +16,31 @@ impl Compiler {
 	pub(crate) fn compile_alter_sequence<'a>(
 		ast: AstAlterSequence<'a>,
 	) -> crate::Result<LogicalPlan<'a>> {
+		// Convert MaybeQualified to fully qualified
+		let schema = ast.sequence.schema.unwrap_or_else(|| {
+			Fragment::Owned(OwnedFragment::Internal {
+				text: String::from("default"),
+			})
+		});
+
+		let sequence = SequenceIdentifier::new(
+			schema.clone(),
+			ast.sequence.name.clone(),
+		);
+
+		// Create a fully qualified column identifier
+		// The column belongs to the same table as the sequence
+		let column = ColumnIdentifier {
+			source: ColumnSource::Source {
+				schema,
+				source: ast.sequence.name,
+			},
+			name: ast.column.fragment(),
+		};
+
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
-			schema: ast.schema.map(|s| s.fragment()),
-			table: ast.table.fragment(),
-			column: ast.column.fragment(),
+			sequence,
+			column,
 			value: ExpressionCompiler::compile(Ast::Literal(
 				ast.value,
 			))?,
@@ -46,16 +72,9 @@ mod tests {
 
 		match &plans[0] {
 			LogicalPlan::AlterSequence(node) => {
-				assert!(node.schema.is_some());
-				assert_eq!(
-					node.schema
-						.as_ref()
-						.unwrap()
-						.fragment(),
-					"test"
-				);
-				assert_eq!(node.table.fragment(), "users");
-				assert_eq!(node.column.fragment(), "id");
+				assert_eq!(node.sequence.schema.text(), "test");
+				assert_eq!(node.sequence.name.text(), "users");
+				assert_eq!(node.column.name.text(), "id");
 
 				assert!(matches!(
 					node.value,
@@ -84,9 +103,12 @@ mod tests {
 
 		match &plans[0] {
 			LogicalPlan::AlterSequence(node) => {
-				assert!(node.schema.is_none());
-				assert_eq!(node.table.fragment(), "users");
-				assert_eq!(node.column.fragment(), "id");
+				assert_eq!(
+					node.sequence.schema.text(),
+					"default"
+				);
+				assert_eq!(node.sequence.name.text(), "users");
+				assert_eq!(node.column.name.text(), "id");
 
 				assert!(matches!(
 					node.value,

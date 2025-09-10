@@ -61,16 +61,29 @@ impl ExpressionCompiler {
                 }
             },
             Ast::Identifier(identifier) => {
-                Ok(Expression::Column(ColumnExpression(identifier.fragment())))
+                // Create an unqualified column identifier
+                use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
+                use reifydb_type::OwnedFragment;
+
+				let column = ColumnIdentifier {
+                    source: ColumnSource::Source {
+                        schema: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
+                        source: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
+                    },
+                    name: identifier.fragment(),
+                };
+                Ok(Expression::Column(ColumnExpression(column)))
             }
             Ast::CallFunction(call) => {
                 // Build the full function name from namespace + function
-                let full_name = if call.namespaces.is_empty() {
-                    call.function.value().to_string()
+                let full_name = if call.function.namespaces.is_empty() {
+                    call.function.name.text().to_string()
                 } else {
-                    let namespace_path =
-                        call.namespaces.iter().map(|id| id.value()).collect::<Vec<_>>().join("::");
-                    format!("{}::{}", namespace_path, call.function.value())
+                    let namespace_path = call.function.namespaces.iter()
+                        .map(|ns| ns.text())
+                        .collect::<Vec<_>>()
+                        .join("::");
+                    format!("{}::{}", namespace_path, call.function.name.text())
                 };
 
                 // Compile arguments
@@ -162,10 +175,22 @@ impl ExpressionCompiler {
 					unimplemented!()
 				};
 
+				use reifydb_core::interface::identifier::{
+					ColumnIdentifier, ColumnSource,
+				};
+
+				// Create a column identifier with alias source
+				// (the table/alias name)
+				let column = ColumnIdentifier {
+					source: ColumnSource::Alias(
+						left.fragment(),
+					),
+					name: right.fragment(),
+				};
+
 				Ok(Expression::AccessSource(
 					AccessSourceExpression {
-						source: left.fragment(),
-						column: right.fragment(),
+						column,
 					},
 				))
 			}
@@ -220,7 +245,7 @@ impl ExpressionCompiler {
 				let right = Self::compile(*ast.right)?;
 
 				let Expression::Column(ColumnExpression(
-					fragment,
+					column,
 				)) = left
 				else {
 					panic!()
@@ -230,7 +255,7 @@ impl ExpressionCompiler {
 				};
 
 				Ok(Expression::Call(CallExpression {
-					func: IdentExpression(fragment),
+					func: IdentExpression(column.name),
 					args: tuple.expressions,
 					fragment: token.fragment,
 				}))

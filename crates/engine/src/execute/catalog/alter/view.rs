@@ -18,17 +18,24 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterViewPlan,
 	) -> crate::Result<Columns> {
-		let schema_fragment = plan.node.view.schema.clone().fragment();
-		let schema_name = schema_fragment.text();
-		let view_fragment = plan.node.view.view.clone().fragment();
-		let view_name = view_fragment.text();
+		// Use default schema if not provided
+		let schema_name = plan
+			.node
+			.view
+			.view
+			.schema
+			.as_ref()
+			.map(|s| s.text())
+			.unwrap_or("public");
+		let view_name = plan.node.view.view.name.text();
 
 		// Find the schema
 		let Some(schema) =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::schema_not_found(
-				Some(plan.node.view.schema.fragment().into_owned()),
+				plan.node.view.view.schema.clone()
+					.map(|s| s.into_owned()),
 				schema_name,
 			));
 		};
@@ -39,7 +46,7 @@ impl Executor {
 		)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
-				plan.node.view.view.fragment().into_owned(),
+				plan.node.view.view.name.clone().into_owned(),
 				&schema.name,
 				view_name,
 			));

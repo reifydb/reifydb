@@ -11,23 +11,37 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'a>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
-		let identifier = self.parse_identifier()?;
+		use reifydb_core::interface::identifier::SourceKind;
 
-		let (schema, table) = if self
+		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+		let first_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+
+		let target = if self
 			.current_expect_operator(Operator::Dot)
 			.is_ok()
 		{
 			self.consume_operator(Operator::Dot)?;
-			let table = self.parse_identifier()?;
-			(Some(identifier), table)
+			let second_token = self.consume(
+				crate::ast::tokenize::TokenKind::Identifier,
+			)?;
+			// schema.table
+			MaybeQualifiedSourceIdentifier::new(
+				second_token.fragment.clone(),
+			)
+			.with_schema(first_token.fragment.clone())
+			.with_kind(SourceKind::Table)
 		} else {
-			(None, identifier)
+			// table only
+			MaybeQualifiedSourceIdentifier::new(
+				first_token.fragment.clone(),
+			)
+			.with_kind(SourceKind::Table)
 		};
 
 		Ok(AstInsert {
 			token,
-			schema,
-			table,
+			target,
 		})
 	}
 }
@@ -53,15 +67,14 @@ mod tests {
 
 		match insert {
 			AstInsert {
-				schema,
-				table,
+				target,
 				..
 			} => {
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					target.schema.as_ref().unwrap().text(),
 					"test"
 				);
-				assert_eq!(table.value(), "users");
+				assert_eq!(target.name.text(), "users");
 			}
 		}
 	}
@@ -83,12 +96,11 @@ mod tests {
 
 		match insert {
 			AstInsert {
-				schema,
-				table,
+				target,
 				..
 			} => {
-				assert!(schema.is_none());
-				assert_eq!(table.value(), "users");
+				assert!(target.schema.is_none());
+				assert_eq!(target.name.text(), "users");
 			}
 		}
 	}

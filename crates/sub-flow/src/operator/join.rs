@@ -17,7 +17,7 @@ use reifydb_core::{
 		Column, ColumnData, Columns, FullyQualified, SourceQualified,
 	},
 };
-use reifydb_type::{Fragment, OwnedFragment, RowNumber, Value};
+use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -264,11 +264,7 @@ impl JoinOperator {
 					// Column expression with just the
 					// column name
 					Expression::Column(ColumnExpression(
-						Fragment::Owned(OwnedFragment::Statement {
-							text: access.column.fragment().to_string(),
-							line: access.column.line(),
-							column: access.column.column(),
-						})
+						access.column.clone(),
 					))
 				}
 				_ => expr.clone(),

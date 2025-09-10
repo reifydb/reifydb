@@ -43,64 +43,52 @@ impl Executor {
 		params: Params,
 	) -> crate::Result<Columns> {
 		// Get table from plan or infer from input pipeline
-		let (schema, table) =
-			if let (Some(schema_ref), Some(table_ref)) =
-				(&plan.schema, &plan.table)
-			{
-				// Both schema and table explicitly specified
-				let schema_name = schema_ref.fragment();
-				let Some(schema) =
-					CatalogStore::find_schema_by_name(
-						txn,
-						schema_name,
-					)?
-				else {
-					return_error!(schema_not_found(
-						Some(schema_ref
-							.clone()
-							.into_owned()),
-						schema_name
-					));
-				};
-
-				let Some(table) =
-					CatalogStore::find_table_by_name(
-						txn,
-						schema.id,
-						&table_ref.fragment(),
-					)?
-				else {
-					let fragment = table_ref.clone();
-					return_error!(table_not_found(
-						fragment.clone(),
-						schema_name,
-						&fragment.fragment(),
-					));
-				};
-
-				(schema, table)
-			} else if plan.schema.is_none() && plan.table.is_none()
-			{
-				// Both should be inferred from the pipeline
-				// Extract table info from the input plan if it
-				// exists
-				if let Some(input_plan) = &plan.input {
-					extract_table_from_plan(input_plan)
-						.expect(
-							"Cannot infer target table from pipeline - no table found",
-						)
-				} else {
-					panic!(
-						"DELETE without input requires explicit target table"
-					);
-				}
-			} else {
-				// Mixed case - one specified, one not
-				// (shouldn't happen with current parser)
-				panic!(
-					"DELETE requires either both schema and table or neither"
-				);
+		let (schema, table) = if let Some(target) = &plan.target {
+			// Schema and table explicitly specified
+			let schema_name = target.schema.text();
+			let Some(schema) = CatalogStore::find_schema_by_name(
+				txn,
+				schema_name,
+			)?
+			else {
+				return_error!(schema_not_found(
+					Some(target
+						.schema
+						.clone()
+						.into_owned()),
+					schema_name
+				));
 			};
+
+			let Some(table) = CatalogStore::find_table_by_name(
+				txn,
+				schema.id,
+				target.name.text(),
+			)?
+			else {
+				let fragment = target.name.clone();
+				return_error!(table_not_found(
+					fragment.clone(),
+					schema_name,
+					target.name.text(),
+				));
+			};
+
+			(schema, table)
+		} else {
+			// Both should be inferred from the pipeline
+			// Extract table info from the input plan if it
+			// exists
+			if let Some(input_plan) = &plan.input {
+				extract_table_from_plan(input_plan).expect(
+					"Cannot infer target table from pipeline - no table found",
+				)
+			} else {
+				panic!(
+					"DELETE without input requires explicit target table"
+				);
+			}
+		};
 
 		let mut deleted_count = 0;
 

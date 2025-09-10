@@ -38,13 +38,32 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 		Expression::Column(col_expr) => ColumnLayout {
 			schema: None,
 			source: None,
-			name: col_expr.0.fragment().to_string(),
+			name: col_expr.0.name.text().to_string(),
 		},
-		Expression::AccessSource(access_expr) => ColumnLayout {
-			schema: None,
-			source: Some(access_expr.source.fragment().to_string()),
-			name: access_expr.column.fragment().to_string(),
-		},
+		Expression::AccessSource(access_expr) => {
+			use reifydb_core::interface::identifier::ColumnSource;
+
+			// Extract source name based on the ColumnSource type
+			let source_name = match &access_expr.column.source {
+				ColumnSource::Source {
+					source,
+					..
+				} => source.text().to_string(),
+				ColumnSource::Alias(alias) => {
+					alias.text().to_string()
+				}
+			};
+
+			ColumnLayout {
+				schema: None,
+				source: Some(source_name),
+				name: access_expr
+					.column
+					.name
+					.text()
+					.to_string(),
+			}
+		}
 		_ => {
 			// For other expressions, generate a simplified name
 			ColumnLayout {
@@ -94,7 +113,7 @@ fn simplified_name(expr: &Expression) -> String {
 			)
 		}
 		Expression::Column(col_expr) => {
-			col_expr.0.fragment().to_string()
+			col_expr.0.name.text().to_string()
 		}
 		Expression::Constant(const_expr) => match const_expr {
 			ConstantExpression::Number {
@@ -114,10 +133,21 @@ fn simplified_name(expr: &Expression) -> String {
 			} => "undefined".to_string(),
 		},
 		Expression::AccessSource(access_expr) => {
+			use reifydb_core::interface::identifier::ColumnSource;
+
+			// Extract source name based on the ColumnSource type
+			let source_name = match &access_expr.column.source {
+				ColumnSource::Source {
+					source,
+					..
+				} => source.text(),
+				ColumnSource::Alias(alias) => alias.text(),
+			};
+
 			format!(
 				"{}.{}",
-				access_expr.source.fragment(),
-				access_expr.column.fragment()
+				source_name,
+				access_expr.column.name.text()
 			)
 		}
 		Expression::Call(call_expr) => format!(

@@ -131,13 +131,15 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "items");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "items");
 				assert_eq!(columns.len(), 1);
 
 				let col = &columns[0];

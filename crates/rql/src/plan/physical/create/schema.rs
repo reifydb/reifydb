@@ -15,7 +15,7 @@ impl Compiler {
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateSchema(CreateSchemaPlan {
-			schema: create.schema,
+			schema: create.schema.name,
 			if_not_exists: create.if_not_exists,
 		}))
 	}

@@ -88,20 +88,15 @@ fn render_physical_plan_inner(
 		PhysicalPlan::CreateSchema(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {
-			schema,
-			table,
+			sequence,
 			column,
 			value,
 		}) => {
-			let schema_str = schema
-				.as_ref()
-				.map(|s| format!("{}.", s.fragment()))
-				.unwrap_or_default();
 			let label = format!(
-				"AlterSequence {}{}.{} SET VALUE {}",
-				schema_str,
-				table.fragment(),
-				column.fragment(),
+				"AlterSequence {}.{}.{} SET VALUE {}",
+				sequence.schema.text(),
+				sequence.name.text(),
+				column.name.text(),
 				value
 			);
 			write_node_header(output, prefix, is_last, &label);
@@ -446,7 +441,7 @@ fn render_physical_plan_inner(
 			} else {
 				let cols: Vec<String> = columns
 					.iter()
-					.map(|c| c.fragment().to_string())
+					.map(|c| c.name.text().to_string())
 					.collect();
 				format!("Distinct {{{}}}", cols.join(", "))
 			};

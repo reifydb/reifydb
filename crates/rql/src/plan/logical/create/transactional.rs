@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::view::ViewColumnToCreate;
-use reifydb_type::Fragment;
+use reifydb_core::interface::identifier::SourceIdentifier;
+use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::{AstCreateTransactionalView, AstDataType},
@@ -49,10 +50,21 @@ impl Compiler {
 			vec![]
 		};
 
+		// Convert MaybeQualifiedSourceIdentifier to SourceIdentifier
+		let schema = ast.view.schema.clone().unwrap_or_else(|| {
+			Fragment::Owned(OwnedFragment::Internal {
+				text: String::from("default"),
+			})
+		});
+		let view = SourceIdentifier::new(
+			schema,
+			ast.view.name.clone(),
+			ast.view.kind,
+		);
+
 		Ok(LogicalPlan::CreateTransactionalView(
 			CreateTransactionalViewNode {
-				schema: ast.schema.fragment(),
-				view: ast.view.fragment(),
+				view,
 				if_not_exists: false,
 				columns,
 				with,

@@ -3,7 +3,6 @@
 
 use reifydb_catalog::table::TableColumnToCreate;
 use reifydb_core::interface::ColumnPolicyKind;
-use reifydb_type::Fragment;
 
 use crate::{
 	ast::AstCreateTable,
@@ -60,9 +59,27 @@ impl Compiler {
 			});
 		}
 
+		// Convert MaybeQualified to fully qualified
+		use reifydb_core::interface::identifier::SourceIdentifier;
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		let schema = ast.table.schema.unwrap_or_else(|| {
+			Fragment::Owned(OwnedFragment::Internal {
+				text: String::from("default"),
+			})
+		});
+
+		let mut table = SourceIdentifier::new(
+			schema,
+			ast.table.name,
+			ast.table.kind,
+		);
+		if let Some(alias) = ast.table.alias {
+			table = table.with_alias(alias);
+		}
+
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
-			schema: ast.schema.fragment(),
-			table: ast.table.fragment(),
+			table,
 			if_not_exists: false,
 			columns,
 		}))

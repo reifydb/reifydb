@@ -65,8 +65,7 @@ fn render_logical_plan_inner(
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
-			schema,
-			table,
+			sequence,
 			column,
 			value,
 		}) => {
@@ -84,28 +83,18 @@ fn render_logical_plan_inner(
 				}
 			);
 
-			if let Some(schema_fragment) = schema {
-				output.push_str(&format!(
-					"{}├── Schema: {}\n",
-					child_prefix,
-					schema_fragment.fragment()
-				));
-				output.push_str(&format!(
-					"{}├── Table: {}\n",
-					child_prefix,
-					table.fragment()
-				));
-			} else {
-				output.push_str(&format!(
-					"{}├── Table: {}\n",
-					child_prefix,
-					table.fragment()
-				));
-			}
+			output.push_str(&format!(
+				"{}├── Schema: {:?}\n",
+				child_prefix, sequence.schema
+			));
+			output.push_str(&format!(
+				"{}├── Sequence: {:?}\n",
+				child_prefix, sequence.name
+			));
 			output.push_str(&format!(
 				"{}├── Column: {}\n",
 				child_prefix,
-				column.fragment()
+				column.name.text()
 			));
 			output.push_str(&format!(
 				"{}└── Value: {}\n",
@@ -114,9 +103,7 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::CreateIndex(CreateIndexNode {
 			index_type,
-			name,
-			schema,
-			table,
+			index,
 			columns,
 			filter,
 			map,
@@ -142,17 +129,17 @@ fn render_logical_plan_inner(
 			output.push_str(&format!(
 				"{}├── Name: {}\n",
 				child_prefix,
-				name.fragment()
+				index.name.text()
 			));
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
 				child_prefix,
-				schema.fragment()
+				index.schema.text()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.fragment()
+				index.table.text()
 			));
 
 			let columns_str = columns
@@ -161,12 +148,13 @@ fn render_logical_plan_inner(
 					if let Some(order) = &col.order {
 						format!(
 							"{} {:?}",
-							col.column.fragment(),
+							col.column.name.text(),
 							order
 						)
 					} else {
 						col.column
-							.fragment()
+							.name
+							.text()
 							.to_string()
 					}
 				})
@@ -209,19 +197,12 @@ fn render_logical_plan_inner(
 			));
 
 			// Show target table if specified
-			if let Some(table) = &delete.table {
+			if let Some(target) = &delete.target {
 				output.push_str(&format!(
-					"{}├── target table: {}\n",
+					"{}├── target table: {}.{}\n",
 					child_prefix,
-					if let Some(schema) = &delete.schema {
-						format!(
-							"{}.{}",
-							schema.fragment(),
-							table.fragment()
-						)
-					} else {
-						table.fragment().to_string()
-					}
+					target.schema.text(),
+					target.name.text()
 				));
 			} else {
 				output.push_str(&format!(
@@ -254,19 +235,12 @@ fn render_logical_plan_inner(
 			));
 
 			// Show target table if specified
-			if let Some(table) = &update.table {
+			if let Some(target) = &update.target {
 				output.push_str(&format!(
-					"{}├── target table: {}\n",
+					"{}├── target table: {}.{}\n",
 					child_prefix,
-					if let Some(schema) = &update.schema {
-						format!(
-							"{}.{}",
-							schema.fragment(),
-							table.fragment()
-						)
-					} else {
-						table.fragment().to_string()
-					}
+					target.schema.text(),
+					target.name.text()
 				));
 			} else {
 				output.push_str(&format!(
@@ -506,38 +480,34 @@ fn render_logical_plan_inner(
 			}
 		}
 		LogicalPlan::SourceScan(SourceScanNode {
-			schema,
-			source: table,
-			index_name,
-			alias,
+			source,
+			index,
 		}) => {
-			let name = if let Some(idx) = index_name {
+			let name = if let Some(idx) = index {
 				format!(
 					"{}.{}::{}",
-					schema.fragment(),
-					table.fragment(),
-					idx.fragment()
+					source.schema.text(),
+					source.name.text(),
+					idx.name.text()
 				)
 			} else {
 				format!(
 					"{}.{}",
-					schema.fragment(),
-					table.fragment()
+					source.schema.text(),
+					source.name.text()
 				)
 			};
 
 			// Add alias to the display if present
-			let display_name = if let Some(alias_fragment) = alias {
-				format!(
-					"{} as {}",
-					name,
-					alias_fragment.fragment()
-				)
+			let display_name = if let Some(alias_fragment) =
+				&source.alias
+			{
+				format!("{} as {}", name, alias_fragment.text())
 			} else {
 				name
 			};
 
-			let scan_type = if index_name.is_some() {
+			let scan_type = if index.is_some() {
 				"IndexScan"
 			} else {
 				"TableScan"
@@ -596,7 +566,7 @@ fn render_logical_plan_inner(
 					if i > 0 {
 						output.push_str(", ");
 					}
-					output.push_str(col.fragment());
+					output.push_str(col.name.text());
 				}
 				output.push_str("\n");
 			}
@@ -625,15 +595,20 @@ fn render_logical_plan_inner(
 			));
 
 			// Show schema and table
+			let schema_str = table
+				.table
+				.schema
+				.as_ref()
+				.map(|s| s.text())
+				.unwrap_or("(none)");
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
-				child_prefix,
-				table.schema.value()
+				child_prefix, schema_str
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.table.value()
+				table.table.name.text()
 			));
 
 			// Show operations
@@ -688,15 +663,19 @@ fn render_logical_plan_inner(
 			));
 
 			// Show schema and view
+			let schema_str = view
+				.view
+				.schema
+				.as_ref()
+				.map(|s| format!("{:?}", s))
+				.unwrap_or_else(|| "(none)".to_string());
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
-				child_prefix,
-				view.schema.value()
+				child_prefix, schema_str
 			));
 			output.push_str(&format!(
-				"{}├── View: {}\n",
-				child_prefix,
-				view.view.value()
+				"{}├── View: {:?}\n",
+				child_prefix, view.view.name
 			));
 
 			// Show operations

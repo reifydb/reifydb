@@ -3,11 +3,17 @@
 
 use Keyword::{Create, Schema};
 use Operator::Colon;
+use reifydb_core::interface::identifier::SourceKind;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
 	AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
 	AstDataType,
+	identifier::{
+		MaybeQualifiedSchemaIdentifier,
+		MaybeQualifiedSequenceIdentifier,
+		MaybeQualifiedSourceIdentifier,
+	},
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -67,10 +73,12 @@ impl<'a> Parser<'a> {
 	) -> crate::Result<AstCreate<'a>> {
 		let name_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let schema = MaybeQualifiedSchemaIdentifier::new(
+			name_token.fragment.clone(),
+		);
 		Ok(AstCreate::Schema(AstCreateSchema {
 			token,
-			name,
+			schema,
 		}))
 	}
 
@@ -83,13 +91,14 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let sequence = MaybeQualifiedSequenceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone());
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
-			name,
-			schema,
+			sequence,
 			columns,
 		}))
 	}
@@ -103,8 +112,11 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let view = MaybeQualifiedSourceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::DeferredView);
 
 		// Parse optional AS clause
 		let as_clause = if self
@@ -146,8 +158,7 @@ impl<'a> Parser<'a> {
 
 		Ok(AstCreate::DeferredView(AstCreateDeferredView {
 			token,
-			view: name,
-			schema,
+			view,
 			columns,
 			as_clause,
 		}))
@@ -162,8 +173,12 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		// Create MaybeQualifiedSourceIdentifier for transactional view
+		let view = MaybeQualifiedSourceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::TransactionalView);
 
 		// Parse optional AS clause
 		let as_clause = if self
@@ -205,8 +220,7 @@ impl<'a> Parser<'a> {
 
 		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
 			token,
-			view: name,
-			schema,
+			view,
 			columns,
 			as_clause,
 		}))
@@ -221,13 +235,15 @@ impl<'a> Parser<'a> {
 		let name_token = self.advance()?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let table = MaybeQualifiedSourceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::Table);
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
-			table: name,
-			schema,
+			table,
 			columns,
 		}))
 	}
@@ -343,10 +359,10 @@ mod tests {
 
 		match create {
 			AstCreate::Schema(AstCreateSchema {
-				name,
+				schema,
 				..
 			}) => {
-				assert_eq!(name.value(), "REIFYDB");
+				assert_eq!(schema.name.text(), "REIFYDB");
 			}
 			_ => unreachable!(),
 		}
@@ -369,13 +385,18 @@ mod tests {
 
 		match create {
 			AstCreate::Series(AstCreateSeries {
-				name,
-				schema,
+				sequence,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "metrics");
+				assert_eq!(
+					sequence.schema
+						.as_ref()
+						.unwrap()
+						.text(),
+					"test"
+				);
+				assert_eq!(sequence.name.text(), "metrics");
 
 				assert_eq!(columns.len(), 1);
 
@@ -412,13 +433,15 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "users");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 3);
 
 				{
@@ -498,13 +521,15 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "items");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "items");
 
 				assert_eq!(columns.len(), 1);
 
@@ -558,13 +583,15 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "users");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 2);
 
 				{
@@ -623,13 +650,15 @@ mod tests {
 		let create = result.first_unchecked().as_create();
 		match create {
 			AstCreate::DeferredView(AstCreateDeferredView {
-				view: name,
-				schema,
+				view,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "views");
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "views");
 
 				assert_eq!(columns.len(), 1);
 
@@ -683,14 +712,16 @@ mod tests {
 		match create {
 			AstCreate::TransactionalView(
 				AstCreateTransactionalView {
-					view: name,
-					schema,
+					view,
 					columns,
 					..
 				},
 			) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "myview");
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "myview");
 
 				assert_eq!(columns.len(), 2);
 
@@ -754,15 +785,17 @@ mod tests {
 		match create {
 			AstCreate::TransactionalView(
 				AstCreateTransactionalView {
-					view: name,
-					schema,
+					view,
 					columns,
 					as_clause,
 					..
 				},
 			) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "myview");
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "myview");
 				assert_eq!(columns.len(), 2);
 				assert!(as_clause.is_some());
 

@@ -7,7 +7,6 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_function_call(
 		&mut self,
 	) -> crate::Result<AstCallFunction<'a>> {
-		let mut namespaces = Vec::with_capacity(2);
 		let first_ident_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		let start_token = first_ident_token.clone();
@@ -20,13 +19,16 @@ impl<'a> Parser<'a> {
 			let arguments =
 				self.parse_tuple_call(open_paren_token)?;
 
-			let first_ident = crate::ast::ast::AstIdentifier(
-				first_ident_token,
+			// Create MaybeQualifiedFunctionIdentifier without
+			// namespaces
+			use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
+			let function = MaybeQualifiedFunctionIdentifier::new(
+				first_ident_token.fragment.clone(),
 			);
+
 			return Ok(AstCallFunction {
 				token: start_token,
-				namespaces: Vec::new(),
-				function: first_ident,
+				function,
 				arguments,
 			});
 		}
@@ -36,13 +38,13 @@ impl<'a> Parser<'a> {
 		// first_ident_token we consumed is part of the namespace
 		// chain
 		let mut current_ident_token = first_ident_token;
+		let mut namespace_fragments = Vec::new();
 
 		while self.current()?.is_operator(Operator::DoubleColon) {
 			// Add current identifier to namespace chain before
 			// parsing next
-			namespaces.push(crate::ast::ast::AstIdentifier(
-				current_ident_token,
-			));
+			namespace_fragments
+				.push(current_ident_token.fragment.clone());
 
 			self.advance()?; // consume ::
 			let next_ident_token = self.consume(
@@ -58,13 +60,20 @@ impl<'a> Parser<'a> {
 				let arguments = self
 					.parse_tuple_call(open_paren_token)?;
 
-				let next_ident = crate::ast::ast::AstIdentifier(
-					next_ident_token,
-				);
+				// Create MaybeQualifiedFunctionIdentifier with
+				// namespaces
+				use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
+				let function =
+					MaybeQualifiedFunctionIdentifier::new(
+						next_ident_token
+							.fragment
+							.clone(),
+					)
+					.with_namespaces(namespace_fragments);
+
 				return Ok(AstCallFunction {
 					token: start_token,
-					namespaces,
-					function: next_ident,
+					function,
 					arguments,
 				});
 			} else {
@@ -141,8 +150,8 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
-		assert_eq!(call.function.value(), "func");
-		assert!(call.namespaces.is_empty());
+		assert_eq!(call.function.name.text(), "func");
+		assert!(call.function.namespaces.is_empty());
 		assert_eq!(call.arguments.len(), 0);
 	}
 
@@ -153,8 +162,8 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
-		assert_eq!(call.function.value(), "func");
-		assert!(call.namespaces.is_empty());
+		assert_eq!(call.function.name.text(), "func");
+		assert!(call.function.namespaces.is_empty());
 		assert_eq!(call.arguments.len(), 1);
 	}
 
@@ -165,9 +174,9 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
-		assert_eq!(call.function.value(), "hex");
-		assert_eq!(call.namespaces.len(), 1);
-		assert_eq!(call.namespaces[0].value(), "blob");
+		assert_eq!(call.function.name.text(), "hex");
+		assert_eq!(call.function.namespaces.len(), 1);
+		assert_eq!(call.function.namespaces[0].text(), "blob");
 		assert_eq!(call.arguments.len(), 1);
 	}
 
@@ -179,11 +188,11 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
-		assert_eq!(call.function.value(), "sha256");
-		assert_eq!(call.namespaces.len(), 3);
-		assert_eq!(call.namespaces[0].value(), "ext");
-		assert_eq!(call.namespaces[1].value(), "crypto");
-		assert_eq!(call.namespaces[2].value(), "hash");
+		assert_eq!(call.function.name.text(), "sha256");
+		assert_eq!(call.function.namespaces.len(), 3);
+		assert_eq!(call.function.namespaces[0].text(), "ext");
+		assert_eq!(call.function.namespaces[1].text(), "crypto");
+		assert_eq!(call.function.namespaces[2].text(), "hash");
 		assert_eq!(call.arguments.len(), 1);
 	}
 

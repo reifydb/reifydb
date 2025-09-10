@@ -876,7 +876,8 @@ fn extract_aggregate_columns(expressions: &[Expression]) -> Vec<String> {
 				if let Expression::Column(col) = arg {
 					columns.push(col
 						.0
-						.fragment()
+						.name
+						.text()
 						.to_string());
 				}
 			}

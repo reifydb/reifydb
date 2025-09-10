@@ -8,9 +8,9 @@ use reifydb_core::{
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::{ColumnExpression, Expression},
+		identifier::ColumnIdentifier,
 	},
 };
-use reifydb_type::Fragment;
 
 use super::super::{
 	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,
@@ -22,7 +22,7 @@ use crate::{
 
 pub(crate) struct DistinctCompiler {
 	pub input: Box<PhysicalPlan<'static>>,
-	pub columns: Vec<Fragment<'static>>,
+	pub columns: Vec<ColumnIdentifier<'static>>,
 }
 
 impl<'a> From<DistinctNode<'a>> for DistinctCompiler {
@@ -32,7 +32,7 @@ impl<'a> From<DistinctNode<'a>> for DistinctCompiler {
 			columns: node
 				.columns
 				.into_iter()
-				.map(|f| Fragment::Owned(f.into_owned()))
+				.map(|c| c.into_owned())
 				.collect(),
 		}
 	}
@@ -42,13 +42,16 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(*self.input)?;
 
-		// Convert column fragments to column expressions
+		// Convert column identifiers to column expressions
+		// TODO: Should use fully qualified column references
 		let expressions: Vec<Expression<'static>> = self
 			.columns
 			.into_iter()
 			.map(|col| {
+				// Convert the ColumnIdentifier to an owned
+				// version
 				Expression::Column(ColumnExpression(
-					Fragment::Owned(col.into_owned()),
+					col.into_owned(),
 				))
 			})
 			.collect();

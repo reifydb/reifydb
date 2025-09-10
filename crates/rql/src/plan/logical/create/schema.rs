@@ -10,8 +10,13 @@ impl Compiler {
 	pub(crate) fn compile_create_schema<'a>(
 		ast: AstCreateSchema<'a>,
 	) -> crate::Result<LogicalPlan<'a>> {
+		// Convert MaybeQualified to fully qualified
+		use reifydb_core::interface::identifier::SchemaIdentifier;
+
+		let schema = SchemaIdentifier::new(ast.schema.name);
+
 		Ok(LogicalPlan::CreateSchema(CreateSchemaNode {
-			schema: ast.name.fragment(),
+			schema,
 			if_not_exists: false,
 		}))
 	}

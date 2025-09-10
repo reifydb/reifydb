@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::view::ViewColumnToCreate;
-use reifydb_type::Fragment;
 
 use crate::{
 	ast::{AstCreateDeferredView, AstDataType},
@@ -49,9 +48,27 @@ impl Compiler {
 			vec![]
 		};
 
+		// Convert MaybeQualified to fully qualified
+		use reifydb_core::interface::identifier::SourceIdentifier;
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		let schema = ast.view.schema.unwrap_or_else(|| {
+			Fragment::Owned(OwnedFragment::Internal {
+				text: String::from("default"),
+			})
+		});
+
+		let mut view = SourceIdentifier::new(
+			schema,
+			ast.view.name,
+			ast.view.kind,
+		);
+		if let Some(alias) = ast.view.alias {
+			view = view.with_alias(alias);
+		}
+
 		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
-			schema: ast.schema.fragment(),
-			view: ast.view.fragment(),
+			view,
 			if_not_exists: false,
 			columns,
 			with,
