@@ -17,9 +17,10 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(_) =
-			txn.find_view_by_name(plan.schema.id, plan.view.text())?
-		{
+		if let Some(_) = txn.find_view_by_name(
+			plan.schema.id,
+			plan.view.name.text(),
+		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
@@ -34,6 +35,7 @@ impl Executor {
 						"view",
 						Value::Utf8(
 							plan.view
+								.name
 								.text()
 								.to_string(),
 						),
@@ -44,8 +46,8 @@ impl Executor {
 		}
 
 		let result = txn.create_view(ViewToCreate {
-			fragment: Some(plan.view.clone().into_owned()),
-			name: plan.view.text().to_string(),
+			fragment: Some(plan.view.name.clone().into_owned()),
+			name: plan.view.name.text().to_string(),
 			schema: plan.schema.id,
 			columns: plan.columns,
 		})?;
@@ -54,7 +56,10 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("schema", Value::Utf8(plan.schema.name.to_string())),
-			("view", Value::Utf8(plan.view.text().to_string())),
+			(
+				"view",
+				Value::Utf8(plan.view.name.text().to_string()),
+			),
 			("created", Value::Boolean(true)),
 		]))
 	}
@@ -64,7 +69,10 @@ impl Executor {
 mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
-	use reifydb_core::interface::{Params, SchemaDef, SchemaId};
+	use reifydb_core::interface::{
+		Params, SchemaDef, SchemaId,
+		identifier::{SourceIdentifier, SourceKind},
+	};
 	use reifydb_rql::plan::physical::{
 		CreateDeferredViewPlan, InlineDataNode, PhysicalPlan,
 	};
@@ -87,7 +95,11 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			view: Fragment::owned_internal("test_view"),
+			view: SourceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_view"),
+				SourceKind::DeferredView,
+			),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -161,7 +173,11 @@ mod tests {
 				id: schema.id,
 				name: schema.name.clone(),
 			},
-			view: Fragment::owned_internal("test_view"),
+			view: SourceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_view"),
+				SourceKind::DeferredView,
+			),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -190,7 +206,11 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: Fragment::owned_internal("test_view"),
+			view: SourceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_view"),
+				SourceKind::DeferredView,
+			),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -226,7 +246,11 @@ mod tests {
 				id: SchemaId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: Fragment::owned_internal("my_view"),
+			view: SourceIdentifier::new(
+				Fragment::owned_internal("another_schema"),
+				Fragment::owned_internal("my_view"),
+				SourceKind::DeferredView,
+			),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {

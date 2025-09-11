@@ -37,7 +37,6 @@ fn main() {
 
 	// Create schema and tables for mod operator tests
 	db.command_as_root(r#"create schema test"#, Params::None).unwrap();
-
 	db.command_as_root(
 		r#"
 		create table test.transactions {

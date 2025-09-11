@@ -84,7 +84,7 @@ mod tests {
 
 		let saturation = &policies[0];
 		assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
-		assert_eq!(saturation.value.as_identifier().value(), "error");
+		assert_eq!(saturation.value.as_identifier().text(), "error");
 	}
 
 	#[test]
@@ -131,20 +131,22 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "items");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "items");
 				assert_eq!(columns.len(), 1);
 
 				let col = &columns[0];
-				assert_eq!(col.name.value(), "field");
+				assert_eq!(col.name.text(), "field");
 				match &col.ty {
 					AstDataType::Simple(id) => {
-						assert_eq!(id.value(), "int2")
+						assert_eq!(id.text(), "int2")
 					}
 					_ => panic!(
 						"Expected simple data type"
@@ -160,10 +162,7 @@ mod tests {
 					AstPolicyKind::Saturation
 				));
 				assert_eq!(
-					saturation
-						.value
-						.as_identifier()
-						.value(),
+					saturation.value.as_identifier().text(),
 					"error"
 				);
 
@@ -172,7 +171,12 @@ mod tests {
 					default.policy,
 					AstPolicyKind::Default
 				));
-				assert_eq!(default.value.value(), "0");
+				assert_eq!(
+					default.value
+						.as_literal_number()
+						.value(),
+					"0"
+				);
 			}
 			_ => unreachable!(),
 		}

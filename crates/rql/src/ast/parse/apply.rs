@@ -106,7 +106,7 @@ mod tests {
 
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
-		assert_eq!(apply.operator_name.value(), "counter");
+		assert_eq!(apply.operator_name.token.value(), "counter");
 		assert_eq!(apply.expressions.len(), 0);
 	}
 
@@ -119,10 +119,10 @@ mod tests {
 
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
-		assert_eq!(apply.operator_name.value(), "running_sum");
+		assert_eq!(apply.operator_name.text(), "running_sum");
 		assert_eq!(apply.expressions.len(), 1);
 		assert_eq!(
-			apply.expressions[0].as_identifier().value(),
+			apply.expressions[0].as_identifier().text(),
 			"value"
 		);
 	}
@@ -139,7 +139,7 @@ mod tests {
 
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
-		assert_eq!(apply.operator_name.value(), "counter");
+		assert_eq!(apply.operator_name.token.value(), "counter");
 		assert_eq!(apply.expressions.len(), 2);
 	}
 

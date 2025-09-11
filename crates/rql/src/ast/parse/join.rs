@@ -25,6 +25,15 @@ impl<'a> Parser<'a> {
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
 
+		// Check for alias before 'on' keyword
+		let alias = if !self.is_eof() && self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(alias_token.fragment)
+		} else {
+			None
+		};
+
 		self.consume_keyword(On)?;
 
 		let has_on_braces = self.current()?.is_operator(OpenCurly);
@@ -65,6 +74,7 @@ impl<'a> Parser<'a> {
 			token,
 			with,
 			on,
+			alias,
 		})
 	}
 
@@ -90,10 +100,22 @@ impl<'a> Parser<'a> {
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
 
+		// Check for alias after the join clause
+		let alias = if !self.is_eof()
+			&& self.current().is_ok()
+			&& self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(alias_token.fragment)
+		} else {
+			None
+		};
+
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
+			alias,
 		})
 	}
 
@@ -107,6 +129,15 @@ impl<'a> Parser<'a> {
 		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
+
+		// Check for alias before 'on' keyword
+		let alias = if !self.is_eof() && self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(alias_token.fragment)
+		} else {
+			None
+		};
 
 		self.consume_keyword(On)?;
 
@@ -148,6 +179,7 @@ impl<'a> Parser<'a> {
 			token,
 			with,
 			on,
+			alias,
 		})
 	}
 
@@ -159,6 +191,15 @@ impl<'a> Parser<'a> {
 		self.consume_keyword(From)?;
 		let with = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(CloseCurly)?;
+
+		// Check for alias before 'on' keyword
+		let alias = if !self.is_eof() && self.current()?.is_identifier()
+		{
+			let alias_token = self.advance()?;
+			Some(alias_token.fragment)
+		} else {
+			None
+		};
 
 		self.consume_keyword(On)?;
 
@@ -200,6 +241,7 @@ impl<'a> Parser<'a> {
 			token,
 			with,
 			on,
+			alias,
 		})
 	}
 }
@@ -234,39 +276,149 @@ mod tests {
 			panic!("Expected LeftJoin");
 		};
 		let with = with.as_infix();
-		assert_eq!(with.left.as_identifier().value(), "schema");
+		assert_eq!(with.left.as_identifier().text(), "schema");
 		assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
-		assert_eq!(with.right.as_identifier().value(), "orders");
+		assert_eq!(with.right.as_identifier().text(), "orders");
 
 		assert_eq!(on.len(), 1);
 		let on = on[0].as_infix();
 		{
 			let left = on.left.as_infix();
-			assert_eq!(left.left.as_identifier().value(), "user");
+			assert_eq!(left.left.as_identifier().text(), "user");
 			assert!(matches!(
 				left.operator,
 				InfixOperator::AccessTable(_)
 			));
-			assert_eq!(left.right.as_identifier().value(), "id");
+			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 
 		assert!(matches!(on.operator, InfixOperator::Equal(_)));
 
 		{
 			let right = on.right.as_infix();
-			assert_eq!(
-				right.left.as_identifier().value(),
-				"orders"
-			);
+			assert_eq!(right.left.as_identifier().text(), "orders");
 			assert!(matches!(
 				right.operator,
 				InfixOperator::AccessTable(_)
 			));
 			assert_eq!(
-				right.right.as_identifier().value(),
+				right.right.as_identifier().text(),
 				"user_id"
 			);
 		}
+	}
+
+	#[test]
+	fn test_left_join_with_alias() {
+		let tokens = tokenize(
+			"left join { from test.customers } c on users.id == c.customer_id",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result[0].first_unchecked().as_join();
+
+		let AstJoin::LeftJoin {
+			with,
+			on,
+			alias,
+			..
+		} = &result
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		// Check alias
+		assert_eq!(alias.as_ref().unwrap().text(), "c");
+
+		// Check joined table
+		let with = with.as_infix();
+		assert_eq!(with.left.as_identifier().text(), "test");
+		assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
+		assert_eq!(with.right.as_identifier().text(), "customers");
+
+		// Check ON condition
+		assert_eq!(on.len(), 1);
+		let on = on[0].as_infix();
+
+		// Left side: users.id
+		let left = on.left.as_infix();
+		assert_eq!(left.left.as_identifier().text(), "users");
+		assert_eq!(left.right.as_identifier().text(), "id");
+
+		// Right side: c.customer_id
+		let right = on.right.as_infix();
+		assert_eq!(right.left.as_identifier().text(), "c");
+		assert_eq!(right.right.as_identifier().text(), "customer_id");
+	}
+
+	#[test]
+	fn test_complex_query_with_aliases() {
+		// Test the full example query with aliases
+		let tokens = tokenize("from test.orders o left join { from test.customers } c on o.customer_id == c.customer_id").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1); // This is parsed as one statement with multiple nodes
+
+		// The result is one statement with multiple nodes
+		let statement = &result[0];
+		assert_eq!(statement.nodes.len(), 2); // FROM and LEFT JOIN nodes
+
+		// Check FROM clause with alias
+		let from = statement.nodes[0].as_from();
+		match from {
+			crate::ast::AstFrom::Source {
+				source,
+				..
+			} => {
+				assert_eq!(
+					source.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(source.name.text(), "orders");
+				assert_eq!(
+					source.alias.as_ref().unwrap().text(),
+					"o"
+				);
+			}
+			_ => panic!("Expected Source"),
+		}
+
+		// Check LEFT JOIN with alias
+		let join = statement.nodes[1].as_join();
+		let AstJoin::LeftJoin {
+			with,
+			on,
+			alias,
+			..
+		} = &join
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		// Check alias
+		assert_eq!(alias.as_ref().unwrap().text(), "c");
+
+		// Check joined table (test.customers)
+		let with = with.as_infix();
+		assert_eq!(with.left.as_identifier().text(), "test");
+		assert_eq!(with.right.as_identifier().text(), "customers");
+
+		// Check ON condition uses aliases
+		assert_eq!(on.len(), 1);
+		let on = on[0].as_infix();
+
+		// Left side: o.customer_id
+		let left = on.left.as_infix();
+		assert_eq!(left.left.as_identifier().text(), "o");
+		assert_eq!(left.right.as_identifier().text(), "customer_id");
+
+		// Right side: c.customer_id
+		let right = on.right.as_infix();
+		assert_eq!(right.left.as_identifier().text(), "c");
+		assert_eq!(right.right.as_identifier().text(), "customer_id");
 	}
 
 	#[test]
@@ -287,7 +439,7 @@ mod tests {
 		else {
 			panic!("Expected LeftJoin");
 		};
-		assert_eq!(with.as_identifier().value(), "orders");
+		assert_eq!(with.as_identifier().text(), "orders");
 
 		assert_eq!(on.len(), 2);
 
@@ -295,26 +447,23 @@ mod tests {
 		let on1 = on[0].as_infix();
 		{
 			let left = on1.left.as_infix();
-			assert_eq!(left.left.as_identifier().value(), "users");
+			assert_eq!(left.left.as_identifier().text(), "users");
 			assert!(matches!(
 				left.operator,
 				InfixOperator::AccessTable(_)
 			));
-			assert_eq!(left.right.as_identifier().value(), "id");
+			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 		assert!(matches!(on1.operator, InfixOperator::Equal(_)));
 		{
 			let right = on1.right.as_infix();
-			assert_eq!(
-				right.left.as_identifier().value(),
-				"orders"
-			);
+			assert_eq!(right.left.as_identifier().text(), "orders");
 			assert!(matches!(
 				right.operator,
 				InfixOperator::AccessTable(_)
 			));
 			assert_eq!(
-				right.right.as_identifier().value(),
+				right.right.as_identifier().text(),
 				"user_id"
 			);
 		}
@@ -324,28 +473,25 @@ mod tests {
 		{
 			let left = on2.left.as_infix();
 			assert_eq!(
-				left.left.as_identifier().value(),
+				left.left.as_identifier().text(),
 				"something_else"
 			);
 			assert!(matches!(
 				left.operator,
 				InfixOperator::AccessTable(_)
 			));
-			assert_eq!(left.right.as_identifier().value(), "id");
+			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 		assert!(matches!(on2.operator, InfixOperator::Equal(_)));
 		{
 			let right = on2.right.as_infix();
-			assert_eq!(
-				right.left.as_identifier().value(),
-				"orders"
-			);
+			assert_eq!(right.left.as_identifier().text(), "orders");
 			assert!(matches!(
 				right.operator,
 				InfixOperator::AccessTable(_)
 			));
 			assert_eq!(
-				right.right.as_identifier().value(),
+				right.right.as_identifier().text(),
 				"user_id"
 			);
 		}
@@ -372,7 +518,7 @@ mod tests {
 		else {
 			panic!("Expected LeftJoin");
 		};
-		assert_eq!(with.as_identifier().value(), "orders");
+		assert_eq!(with.as_identifier().text(), "orders");
 		assert_eq!(on.len(), 1);
 	}
 
@@ -405,10 +551,10 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					with.as_identifier().value(),
+					with.as_identifier().text(),
 					"orders"
 				);
-				assert_eq!(join_type, &None); // Should use default
+				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
 		}
@@ -433,7 +579,7 @@ mod tests {
 			} => {
 				let with = with.as_infix();
 				assert_eq!(
-					with.left.as_identifier().value(),
+					with.left.as_identifier().text(),
 					"schema"
 				);
 				assert!(matches!(
@@ -441,10 +587,10 @@ mod tests {
 					InfixOperator::AccessTable(_)
 				));
 				assert_eq!(
-					with.right.as_identifier().value(),
+					with.right.as_identifier().text(),
 					"orders"
 				);
-				assert_eq!(join_type, &None); // Should use default
+				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
 		}
@@ -467,10 +613,10 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					with.as_identifier().value(),
+					with.as_identifier().text(),
 					"orders"
 				);
-				assert_eq!(join_type, &None); // Should use default
+				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
 		}
@@ -494,7 +640,7 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					with.as_identifier().value(),
+					with.as_identifier().text(),
 					"orders"
 				);
 				assert_eq!(join_type, &Some(JoinType::Left));
@@ -521,7 +667,7 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					with.as_identifier().value(),
+					with.as_identifier().text(),
 					"orders"
 				);
 				assert_eq!(join_type, &Some(JoinType::Inner));
@@ -551,34 +697,31 @@ mod tests {
 		else {
 			panic!("Expected InnerJoin");
 		};
-		assert_eq!(with.as_identifier().value(), "orders");
+		assert_eq!(with.as_identifier().text(), "orders");
 
 		assert_eq!(on.len(), 1);
 		let on = on[0].as_infix();
 		{
 			let left = on.left.as_infix();
-			assert_eq!(left.left.as_identifier().value(), "users");
+			assert_eq!(left.left.as_identifier().text(), "users");
 			assert!(matches!(
 				left.operator,
 				InfixOperator::AccessTable(_)
 			));
-			assert_eq!(left.right.as_identifier().value(), "id");
+			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 
 		assert!(matches!(on.operator, InfixOperator::Equal(_)));
 
 		{
 			let right = on.right.as_infix();
-			assert_eq!(
-				right.left.as_identifier().value(),
-				"orders"
-			);
+			assert_eq!(right.left.as_identifier().text(), "orders");
 			assert!(matches!(
 				right.operator,
 				InfixOperator::AccessTable(_)
 			));
 			assert_eq!(
-				right.right.as_identifier().value(),
+				right.right.as_identifier().text(),
 				"user_id"
 			);
 		}
@@ -605,34 +748,31 @@ mod tests {
 		else {
 			panic!("Expected InnerJoin");
 		};
-		assert_eq!(with.as_identifier().value(), "orders");
+		assert_eq!(with.as_identifier().text(), "orders");
 
 		assert_eq!(on.len(), 1);
 		let on = on[0].as_infix();
 		{
 			let left = on.left.as_infix();
-			assert_eq!(left.left.as_identifier().value(), "users");
+			assert_eq!(left.left.as_identifier().text(), "users");
 			assert!(matches!(
 				left.operator,
 				InfixOperator::AccessTable(_)
 			));
-			assert_eq!(left.right.as_identifier().value(), "id");
+			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 
 		assert!(matches!(on.operator, InfixOperator::Equal(_)));
 
 		{
 			let right = on.right.as_infix();
-			assert_eq!(
-				right.left.as_identifier().value(),
-				"orders"
-			);
+			assert_eq!(right.left.as_identifier().text(), "orders");
 			assert!(matches!(
 				right.operator,
 				InfixOperator::AccessTable(_)
 			));
 			assert_eq!(
-				right.right.as_identifier().value(),
+				right.right.as_identifier().text(),
 				"user_id"
 			);
 		}

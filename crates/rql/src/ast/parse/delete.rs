@@ -12,31 +12,44 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
 		// Check if there's a target table specified (optional)
-		let (schema, table) = if !self.is_eof()
+		let target = if !self.is_eof()
 			&& self.current()?.is_identifier()
 		{
-			let identifier = self.parse_identifier()?;
+			use reifydb_core::interface::identifier::SourceKind;
+
+			use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+			let first_token = self.consume(
+				crate::ast::tokenize::TokenKind::Identifier,
+			)?;
 
 			if !self.is_eof()
 				&& self.current_expect_operator(Operator::Dot)
 					.is_ok()
 			{
 				self.consume_operator(Operator::Dot)?;
-				let table = self.parse_identifier()?;
-				(Some(identifier), Some(table))
+				let second_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+				// schema.table
+				Some(MaybeQualifiedSourceIdentifier::new(
+					second_token.fragment.clone(),
+				)
+				.with_schema(first_token.fragment.clone())
+				.with_kind(SourceKind::Table))
 			} else {
-				(None, Some(identifier))
+				// table only
+				Some(MaybeQualifiedSourceIdentifier::new(
+					first_token.fragment.clone(),
+				)
+				.with_kind(SourceKind::Table))
 			}
 		} else {
 			// No target table specified - will be inferred from
 			// input
-			(None, None)
+			None
 		};
 
 		Ok(AstDelete {
 			token,
-			schema,
-			table,
+			target,
 		})
 	}
 }
@@ -62,18 +75,15 @@ mod tests {
 
 		match delete {
 			AstDelete {
-				schema,
-				table,
+				target,
 				..
 			} => {
+				let target = target.as_ref().unwrap();
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					target.schema.as_ref().unwrap().text(),
 					"test"
 				);
-				assert_eq!(
-					table.as_ref().unwrap().value(),
-					"users"
-				);
+				assert_eq!(target.name.text(), "users");
 			}
 		}
 	}
@@ -95,15 +105,12 @@ mod tests {
 
 		match delete {
 			AstDelete {
-				schema,
-				table,
+				target,
 				..
 			} => {
-				assert!(schema.is_none());
-				assert_eq!(
-					table.as_ref().unwrap().value(),
-					"users"
-				);
+				let target = target.as_ref().unwrap();
+				assert!(target.schema.is_none());
+				assert_eq!(target.name.text(), "users");
 			}
 		}
 	}
@@ -125,12 +132,10 @@ mod tests {
 
 		match delete {
 			AstDelete {
-				schema,
-				table,
+				target,
 				..
 			} => {
-				assert!(schema.is_none());
-				assert!(table.is_none());
+				assert!(target.is_none());
 			}
 		}
 	}

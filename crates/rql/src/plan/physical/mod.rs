@@ -18,6 +18,7 @@ use reifydb_core::{
 		QueryTransaction, SchemaDef, TableDef, TableVirtualDef,
 		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
+		identifier::SourceIdentifier,
 	},
 	return_error,
 };
@@ -153,8 +154,9 @@ impl Compiler {
 					stack.push(PhysicalPlan::Delete(
 						DeletePlan {
 							input,
-							schema: delete.schema,
-							table: delete.table,
+							target: delete
+								.target
+								.clone(),
 						},
 					))
 				}
@@ -164,8 +166,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::Insert(
 						InsertPlan {
 							input: Box::new(input),
-							schema: insert.schema,
-							table: insert.table,
+							target: insert.target,
 						},
 					))
 				}
@@ -195,8 +196,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::Update(
 						UpdatePlan {
 							input,
-							schema: update.schema,
-							table: update.table,
+							target: update.target,
 						},
 					))
 				}
@@ -301,13 +301,13 @@ impl Compiler {
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) = CatalogStore::find_schema_by_name(
 							rx,
-							scan.schema.fragment(),
+							scan.source.schema.text(),
 						)?
 					else {
 						return_error!(
 							schema_not_found(
-								scan.schema.clone(),
-								scan.schema.fragment()
+								scan.source.schema.clone(),
+								scan.source.schema.text()
 							)
 						);
 					};
@@ -315,15 +315,15 @@ impl Compiler {
 					if let Some(table) = CatalogStore::find_table_by_name(
 							rx,
 							schema.id,
-							scan.source.fragment(),
+							scan.source.name.text(),
 						)? {
 						// Check if an index was specified
-						if let Some(index_name) = scan.index_name {
+						if let Some(index) = scan.index {
 							stack.push(IndexScan(
 								IndexScanNode {
 									schema,
 									table,
-									index_name: index_name.fragment().to_string(),
+									index_name: index.name.text().to_string(),
 								},
 							));
 						} else {
@@ -336,10 +336,10 @@ impl Compiler {
 					} else if let Some(view) = CatalogStore::find_view_by_name(
 						rx,
 							schema.id,
-							scan.source.fragment(),
+							scan.source.name.text(),
 						)? {
 						// Views cannot use index directives
-						if scan.index_name.is_some() {
+						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
 						stack.push(ViewScan(
@@ -349,10 +349,10 @@ impl Compiler {
 						));
 					} else if schema.name == "system" {
 						// System tables cannot use index directives
-						if scan.index_name.is_some() {
+						if scan.index.is_some() {
 							unimplemented!("system tables do not support indexes yet");
 						}
-						let table = match scan.source.fragment() {
+						let table = match scan.source.effective_name() {
 							"sequences" => SystemCatalog::get_system_sequences_table_def(),
 							"schemas" => SystemCatalog::get_system_schemas_table_def(),
 							"tables" => SystemCatalog::get_system_tables_table_def(),
@@ -362,12 +362,13 @@ impl Compiler {
 							"primary_key_columns" => SystemCatalog::get_system_primary_key_columns_table_def(),
 							"column_policies" => SystemCatalog::get_system_column_policies_table_def(),
 							"versions" => SystemCatalog::get_system_versions_table_def(),
+
 							_ => {
 								return_error!(
 									table_not_found(
-										scan.source.clone(),
-										scan.schema.fragment(),
-										scan.source.fragment()
+										scan.source.name.clone(),
+										scan.source.schema.text(),
+										scan.source.name.text()
 									)
 								);
 							}
@@ -382,9 +383,9 @@ impl Compiler {
 					} else {
 						return_error!(
 							table_not_found(
-								scan.source.clone(),
-								scan.schema.fragment(),
-								scan.source.fragment()
+								scan.source.name.clone(),
+								scan.source.schema.text(),
+								scan.source.name.text()
 							)
 						);
 					}
@@ -467,7 +468,7 @@ pub enum PhysicalPlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewPlan<'a> {
 	pub schema: SchemaDef,
-	pub view: Fragment<'a>,
+	pub view: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -476,7 +477,7 @@ pub struct CreateDeferredViewPlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateTransactionalViewPlan<'a> {
 	pub schema: SchemaDef,
-	pub view: Fragment<'a>,
+	pub view: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -491,16 +492,16 @@ pub struct CreateSchemaPlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan<'a> {
 	pub schema: SchemaDef,
-	pub table: Fragment<'a>,
+	pub table: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
 pub struct AlterSequencePlan<'a> {
-	pub schema: Option<Fragment<'a>>,
-	pub table: Fragment<'a>,
-	pub column: Fragment<'a>,
+	pub sequence:
+		reifydb_core::interface::identifier::SequenceIdentifier<'a>,
+	pub column: reifydb_core::interface::identifier::ColumnIdentifier<'a>,
 	pub value: Expression<'a>,
 }
 
@@ -514,7 +515,9 @@ pub struct AggregateNode<'a> {
 #[derive(Debug, Clone)]
 pub struct DistinctNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub columns: Vec<Fragment<'a>>,
+	pub columns: Vec<
+		reifydb_core::interface::identifier::ColumnIdentifier<'a>,
+	>,
 }
 
 #[derive(Debug, Clone)]
@@ -526,22 +529,19 @@ pub struct FilterNode<'a> {
 #[derive(Debug, Clone)]
 pub struct DeletePlan<'a> {
 	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub schema: Option<Fragment<'a>>,
-	pub table: Option<Fragment<'a>>,
+	pub target: Option<SourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertPlan<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub schema: Option<Fragment<'a>>,
-	pub table: Fragment<'a>,
+	pub target: SourceIdentifier<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdatePlan<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub schema: Option<Fragment<'a>>,
-	pub table: Option<Fragment<'a>>,
+	pub target: Option<SourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone)]

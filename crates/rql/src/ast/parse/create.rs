@@ -3,11 +3,17 @@
 
 use Keyword::{Create, Schema};
 use Operator::Colon;
+use reifydb_core::interface::identifier::SourceKind;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
 	AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
 	AstDataType,
+	identifier::{
+		MaybeQualifiedSchemaIdentifier,
+		MaybeQualifiedSequenceIdentifier,
+		MaybeQualifiedSourceIdentifier,
+	},
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -67,10 +73,12 @@ impl<'a> Parser<'a> {
 	) -> crate::Result<AstCreate<'a>> {
 		let name_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let schema = MaybeQualifiedSchemaIdentifier::new(
+			name_token.fragment.clone(),
+		);
 		Ok(AstCreate::Schema(AstCreateSchema {
 			token,
-			name,
+			schema,
 		}))
 	}
 
@@ -83,13 +91,14 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let sequence = MaybeQualifiedSequenceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone());
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
-			name,
-			schema,
+			sequence,
 			columns,
 		}))
 	}
@@ -103,8 +112,11 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let view = MaybeQualifiedSourceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::DeferredView);
 
 		// Parse optional AS clause
 		let as_clause = if self
@@ -146,8 +158,7 @@ impl<'a> Parser<'a> {
 
 		Ok(AstCreate::DeferredView(AstCreateDeferredView {
 			token,
-			view: name,
-			schema,
+			view,
 			columns,
 			as_clause,
 		}))
@@ -162,8 +173,12 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		// Create MaybeQualifiedSourceIdentifier for transactional view
+		let view = MaybeQualifiedSourceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::TransactionalView);
 
 		// Parse optional AS clause
 		let as_clause = if self
@@ -205,8 +220,7 @@ impl<'a> Parser<'a> {
 
 		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
 			token,
-			view: name,
-			schema,
+			view,
 			columns,
 			as_clause,
 		}))
@@ -221,13 +235,15 @@ impl<'a> Parser<'a> {
 		let name_token = self.advance()?;
 		let columns = self.parse_columns()?;
 
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let table = MaybeQualifiedSourceIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::Table);
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
-			table: name,
-			schema,
+			table,
 			columns,
 		}))
 	}
@@ -266,7 +282,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let name = name_token.fragment;
 
 		// Parse type with optional parameters
 		let ty = if self.current()?.is_operator(Operator::OpenParen) {
@@ -288,15 +304,13 @@ impl<'a> Parser<'a> {
 
 			self.consume_operator(Operator::CloseParen)?;
 
-			AstDataType::WithParams {
-				name: crate::ast::ast::AstIdentifier(ty_token),
+			AstDataType::WithConstraints {
+				name: ty_token.fragment,
 				params,
 			}
 		} else {
 			// Simple type without parameters
-			AstDataType::Simple(crate::ast::ast::AstIdentifier(
-				ty_token,
-			))
+			AstDataType::Simple(ty_token.fragment)
 		};
 
 		let auto_increment =
@@ -343,10 +357,10 @@ mod tests {
 
 		match create {
 			AstCreate::Schema(AstCreateSchema {
-				name,
+				schema,
 				..
 			}) => {
-				assert_eq!(name.value(), "REIFYDB");
+				assert_eq!(schema.name.text(), "REIFYDB");
 			}
 			_ => unreachable!(),
 		}
@@ -369,23 +383,25 @@ mod tests {
 
 		match create {
 			AstCreate::Series(AstCreateSeries {
-				name,
-				schema,
+				sequence,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "metrics");
+				assert_eq!(
+					sequence.schema
+						.as_ref()
+						.unwrap()
+						.text(),
+					"test"
+				);
+				assert_eq!(sequence.name.text(), "metrics");
 
 				assert_eq!(columns.len(), 1);
 
-				assert_eq!(columns[0].name.value(), "value");
+				assert_eq!(columns[0].name.text(), "value");
 				match &columns[0].ty {
 					AstDataType::Simple(ident) => {
-						assert_eq!(
-							ident.value(),
-							"Int2"
-						)
+						assert_eq!(ident.text(), "Int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
@@ -412,22 +428,24 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "users");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 3);
 
 				{
 					let col = &columns[0];
-					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"int2"
 							)
 						}
@@ -441,11 +459,11 @@ mod tests {
 
 				{
 					let col = &columns[1];
-					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"text"
 							)
 						}
@@ -459,13 +477,13 @@ mod tests {
 				{
 					let col = &columns[2];
 					assert_eq!(
-						col.name.value(),
+						col.name.text(),
 						"is_premium"
 					);
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"bool"
 							)
 						}
@@ -498,24 +516,23 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "items");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "items");
 
 				assert_eq!(columns.len(), 1);
 
 				let col = &columns[0];
-				assert_eq!(col.name.value(), "field");
+				assert_eq!(col.name.text(), "field");
 				match &col.ty {
 					AstDataType::Simple(ident) => {
-						assert_eq!(
-							ident.value(),
-							"int2"
-						)
+						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
@@ -533,7 +550,7 @@ mod tests {
 					AstPolicyKind::Saturation
 				));
 				assert_eq!(
-					policy.value.as_identifier().value(),
+					policy.value.as_identifier().text(),
 					"error"
 				);
 			}
@@ -558,22 +575,24 @@ mod tests {
 
 		match create {
 			AstCreate::Table(AstCreateTable {
-				table: name,
-				schema,
+				table,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "users");
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 2);
 
 				{
 					let col = &columns[0];
-					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"int4"
 							)
 						}
@@ -587,11 +606,11 @@ mod tests {
 
 				{
 					let col = &columns[1];
-					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"utf8"
 							)
 						}
@@ -623,24 +642,23 @@ mod tests {
 		let create = result.first_unchecked().as_create();
 		match create {
 			AstCreate::DeferredView(AstCreateDeferredView {
-				view: name,
-				schema,
+				view,
 				columns,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "views");
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "views");
 
 				assert_eq!(columns.len(), 1);
 
 				let col = &columns[0];
-				assert_eq!(col.name.value(), "field");
+				assert_eq!(col.name.text(), "field");
 				match &col.ty {
 					AstDataType::Simple(ident) => {
-						assert_eq!(
-							ident.value(),
-							"int2"
-						)
+						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
@@ -658,7 +676,7 @@ mod tests {
 					AstPolicyKind::Saturation
 				));
 				assert_eq!(
-					policy.value.as_identifier().value(),
+					policy.value.as_identifier().text(),
 					"error"
 				);
 			}
@@ -683,24 +701,26 @@ mod tests {
 		match create {
 			AstCreate::TransactionalView(
 				AstCreateTransactionalView {
-					view: name,
-					schema,
+					view,
 					columns,
 					..
 				},
 			) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "myview");
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "myview");
 
 				assert_eq!(columns.len(), 2);
 
 				{
 					let col = &columns[0];
-					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"int4"
 							)
 						}
@@ -714,11 +734,11 @@ mod tests {
 
 				{
 					let col = &columns[1];
-					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"utf8"
 							)
 						}
@@ -754,15 +774,17 @@ mod tests {
 		match create {
 			AstCreate::TransactionalView(
 				AstCreateTransactionalView {
-					view: name,
-					schema,
+					view,
 					columns,
 					as_clause,
 					..
 				},
 			) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(name.value(), "myview");
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "myview");
 				assert_eq!(columns.len(), 2);
 				assert!(as_clause.is_some());
 

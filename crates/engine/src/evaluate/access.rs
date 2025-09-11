@@ -19,8 +19,17 @@ impl StandardEvaluator {
 		ctx: &EvaluationContext,
 		expr: &AccessSourceExpression,
 	) -> crate::Result<Column> {
-		let source = expr.source.fragment().to_string();
-		let column = expr.column.fragment().to_string();
+		use reifydb_core::interface::identifier::ColumnSource;
+
+		// Extract source name based on the ColumnSource type
+		let source = match &expr.column.source {
+			ColumnSource::Source {
+				source,
+				..
+			} => source.text().to_string(),
+			ColumnSource::Alias(alias) => alias.text().to_string(),
+		};
+		let column = expr.column.name.text().to_string();
 
 		// Find columns where source matches and name matches
 		let matching_col = ctx.columns.iter().find(|col| {
@@ -57,8 +66,8 @@ impl StandardEvaluator {
 			// If not found, return an error with proper diagnostic
 			Err(error!(column_not_found(Fragment::Owned(
 				OwnedFragment::Statement {
-					column: expr.source.column(),
-					line: expr.source.line(),
+					column: expr.column.name.column(),
+					line: expr.column.name.line(),
 					text: format!("{}.{}", source, column),
 				}
 			))))

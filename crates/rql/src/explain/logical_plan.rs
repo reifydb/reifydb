@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::JoinType;
+use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
-	ast::{AstAlterTableOperation, AstAlterViewOperation, parse_str},
+	ast::parse_str,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode,
 		DistinctNode, ExtendNode, FilterNode, InlineDataNode,
@@ -15,12 +16,15 @@ use crate::{
 	},
 };
 
-pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
+pub fn explain_logical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
+where
+	T: QueryTransaction + CatalogQueryTransaction,
+{
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		plans.extend(compile_logical(statement)?)
+		plans.extend(compile_logical(rx, statement, "default")?);
 	}
 
 	explain_logical_plans(&plans)
@@ -65,8 +69,7 @@ fn render_logical_plan_inner(
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
-			schema,
-			table,
+			sequence,
 			column,
 			value,
 		}) => {
@@ -84,28 +87,18 @@ fn render_logical_plan_inner(
 				}
 			);
 
-			if let Some(schema_fragment) = schema {
-				output.push_str(&format!(
-					"{}├── Schema: {}\n",
-					child_prefix,
-					schema_fragment.fragment()
-				));
-				output.push_str(&format!(
-					"{}├── Table: {}\n",
-					child_prefix,
-					table.fragment()
-				));
-			} else {
-				output.push_str(&format!(
-					"{}├── Table: {}\n",
-					child_prefix,
-					table.fragment()
-				));
-			}
+			output.push_str(&format!(
+				"{}├── Schema: {:?}\n",
+				child_prefix, sequence.schema
+			));
+			output.push_str(&format!(
+				"{}├── Sequence: {:?}\n",
+				child_prefix, sequence.name
+			));
 			output.push_str(&format!(
 				"{}├── Column: {}\n",
 				child_prefix,
-				column.fragment()
+				column.name.text()
 			));
 			output.push_str(&format!(
 				"{}└── Value: {}\n",
@@ -114,9 +107,7 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::CreateIndex(CreateIndexNode {
 			index_type,
-			name,
-			schema,
-			table,
+			index,
 			columns,
 			filter,
 			map,
@@ -142,17 +133,17 @@ fn render_logical_plan_inner(
 			output.push_str(&format!(
 				"{}├── Name: {}\n",
 				child_prefix,
-				name.fragment()
+				index.name.text()
 			));
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
 				child_prefix,
-				schema.fragment()
+				index.schema.text()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.fragment()
+				index.table.text()
 			));
 
 			let columns_str = columns
@@ -161,12 +152,13 @@ fn render_logical_plan_inner(
 					if let Some(order) = &col.order {
 						format!(
 							"{} {:?}",
-							col.column.fragment(),
+							col.column.name.text(),
 							order
 						)
 					} else {
 						col.column
-							.fragment()
+							.name
+							.text()
 							.to_string()
 					}
 				})
@@ -209,19 +201,12 @@ fn render_logical_plan_inner(
 			));
 
 			// Show target table if specified
-			if let Some(table) = &delete.table {
+			if let Some(target) = &delete.target {
 				output.push_str(&format!(
-					"{}├── target table: {}\n",
+					"{}├── target table: {}.{}\n",
 					child_prefix,
-					if let Some(schema) = &delete.schema {
-						format!(
-							"{}.{}",
-							schema.fragment(),
-							table.fragment()
-						)
-					} else {
-						table.fragment().to_string()
-					}
+					target.schema.text(),
+					target.name.text()
 				));
 			} else {
 				output.push_str(&format!(
@@ -254,19 +239,12 @@ fn render_logical_plan_inner(
 			));
 
 			// Show target table if specified
-			if let Some(table) = &update.table {
+			if let Some(target) = &update.target {
 				output.push_str(&format!(
-					"{}├── target table: {}\n",
+					"{}├── target table: {}.{}\n",
 					child_prefix,
-					if let Some(schema) = &update.schema {
-						format!(
-							"{}.{}",
-							schema.fragment(),
-							table.fragment()
-						)
-					} else {
-						table.fragment().to_string()
-					}
+					target.schema.text(),
+					target.name.text()
 				));
 			} else {
 				output.push_str(&format!(
@@ -506,26 +484,34 @@ fn render_logical_plan_inner(
 			}
 		}
 		LogicalPlan::SourceScan(SourceScanNode {
-			schema,
-			source: table,
-			index_name,
+			source,
+			index,
 		}) => {
-			let name = if let Some(idx) = index_name {
+			let name = if let Some(idx) = index {
 				format!(
 					"{}.{}::{}",
-					schema.fragment(),
-					table.fragment(),
-					idx.fragment()
+					source.schema.text(),
+					source.name.text(),
+					idx.name.text()
 				)
 			} else {
 				format!(
 					"{}.{}",
-					schema.fragment(),
-					table.fragment()
+					source.schema.text(),
+					source.name.text()
 				)
 			};
 
-			let scan_type = if index_name.is_some() {
+			// Add alias to the display if present
+			let display_name = if let Some(alias_fragment) =
+				&source.alias
+			{
+				format!("{} as {}", name, alias_fragment.text())
+			} else {
+				name
+			};
+
+			let scan_type = if index.is_some() {
 				"IndexScan"
 			} else {
 				"TableScan"
@@ -533,7 +519,7 @@ fn render_logical_plan_inner(
 
 			output.push_str(&format!(
 				"{}{} {} {}\n",
-				prefix, branch, scan_type, name
+				prefix, branch, scan_type, display_name
 			));
 		}
 		LogicalPlan::InlineData(InlineDataNode {
@@ -584,7 +570,7 @@ fn render_logical_plan_inner(
 					if i > 0 {
 						output.push_str(", ");
 					}
-					output.push_str(col.fragment());
+					output.push_str(col.name.text());
 				}
 				output.push_str("\n");
 			}
@@ -630,6 +616,7 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::AlterTable(AlterTableNode {
 			table,
+			operations,
 		}) => {
 			output.push_str(&format!(
 				"{}{} AlterTable\n",
@@ -637,20 +624,20 @@ fn render_logical_plan_inner(
 			));
 
 			// Show schema and table
+			let schema_str = table.schema.text();
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
-				child_prefix,
-				table.schema.value()
+				child_prefix, schema_str
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.table.value()
+				table.name.text()
 			));
 
 			// Show operations
-			let ops_count = table.operations.len();
-			for (i, op) in table.operations.iter().enumerate() {
+			let ops_count = operations.len();
+			for (i, op) in operations.iter().enumerate() {
 				let is_last_op = i == ops_count - 1;
 				let op_branch = if is_last_op {
 					"└──"
@@ -658,10 +645,11 @@ fn render_logical_plan_inner(
 					"├──"
 				};
 
+				use crate::plan::logical::alter::AlterTableOperation;
 				match op {
-					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+					AlterTableOperation::CreatePrimaryKey { name, columns } => {
 						let pk_name = name.as_ref()
-							.map(|n| format!(" {}", n.value()))
+							.map(|n| format!(" {}", n.text()))
 							.unwrap_or_default();
 						output.push_str(&format!(
 							"{}{}Operation: CREATE PRIMARY KEY{}\n",
@@ -678,11 +666,11 @@ fn render_logical_plan_inner(
 							let col_branch = if col_last { "└──" } else { "├──" };
 							output.push_str(&format!(
 								"{}{}Column: {}\n",
-								cols_prefix, col_branch, col.column.value()
+								cols_prefix, col_branch, col.column.name.text()
 							));
 						}
 					}
-					AstAlterTableOperation::DropPrimaryKey => {
+					AlterTableOperation::DropPrimaryKey => {
 						output.push_str(&format!(
 							"{}{}Operation: DROP PRIMARY KEY\n",
 							child_prefix, op_branch
@@ -693,6 +681,7 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::AlterView(AlterViewNode {
 			view,
+			operations,
 		}) => {
 			output.push_str(&format!(
 				"{}{} AlterView\n",
@@ -700,20 +689,20 @@ fn render_logical_plan_inner(
 			));
 
 			// Show schema and view
+			let schema_str = view.schema.text();
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
-				child_prefix,
-				view.schema.value()
+				child_prefix, schema_str
 			));
 			output.push_str(&format!(
 				"{}├── View: {}\n",
 				child_prefix,
-				view.view.value()
+				view.name.text()
 			));
 
 			// Show operations
-			let ops_count = view.operations.len();
-			for (i, op) in view.operations.iter().enumerate() {
+			let ops_count = operations.len();
+			for (i, op) in operations.iter().enumerate() {
 				let is_last_op = i == ops_count - 1;
 				let op_branch = if is_last_op {
 					"└──"
@@ -721,10 +710,11 @@ fn render_logical_plan_inner(
 					"├──"
 				};
 
+				use crate::plan::logical::alter::AlterViewOperation;
 				match op {
-					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+					AlterViewOperation::CreatePrimaryKey { name, columns } => {
 						let pk_name = name.as_ref()
-							.map(|n| format!(" {}", n.value()))
+							.map(|n| format!(" {}", n.text()))
 							.unwrap_or_default();
 						output.push_str(&format!(
 							"{}{}Operation: CREATE PRIMARY KEY{}\n",
@@ -741,11 +731,11 @@ fn render_logical_plan_inner(
 							let col_branch = if col_last { "└──" } else { "├──" };
 							output.push_str(&format!(
 								"{}{}Column: {}\n",
-								cols_prefix, col_branch, col.column.value()
+								cols_prefix, col_branch, col.column.name.text()
 							));
 						}
 					}
-					AstAlterViewOperation::DropPrimaryKey => {
+					AlterViewOperation::DropPrimaryKey => {
 						output.push_str(&format!(
 							"{}{}Operation: DROP PRIMARY KEY\n",
 							child_prefix, op_branch

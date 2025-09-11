@@ -94,10 +94,10 @@ mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 2);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "name");
+		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 
 		assert!(matches!(map.nodes[1], Ast::Identifier(_)));
-		assert_eq!(map.nodes[1].value(), "age");
+		assert_eq!(map.nodes[1].as_identifier().text(), "age");
 	}
 
 	#[test]
@@ -122,7 +122,7 @@ mod tests {
 		assert!(matches!(operator, InfixOperator::As(_)));
 
 		let right = right.as_identifier();
-		assert_eq!(right.value(), "a");
+		assert_eq!(right.text(), "a");
 	}
 
 	#[test]
@@ -146,15 +146,12 @@ mod tests {
 			left_infix.operator,
 			InfixOperator::Multiply(_)
 		));
-		assert_eq!(left_infix.left.as_identifier().value(), "price");
-		assert_eq!(
-			left_infix.right.as_identifier().value(),
-			"quantity"
-		);
+		assert_eq!(left_infix.left.as_identifier().text(), "price");
+		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 
 		// Right side should be identifier "total"
 		let right = infix.right.as_identifier();
-		assert_eq!(right.value(), "total");
+		assert_eq!(right.text(), "total");
 	}
 
 	#[test]
@@ -168,7 +165,7 @@ mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "name");
+		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 	}
 
 	#[test]

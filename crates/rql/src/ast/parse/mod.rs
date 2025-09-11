@@ -622,7 +622,7 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let between = result[0].first_unchecked().as_between();
-		assert_eq!(between.value.as_identifier().name(), "x");
+		assert_eq!(between.value.as_identifier().text(), "x");
 		assert_eq!(between.lower.as_literal_number().value(), "1");
 		assert_eq!(between.upper.as_literal_number().value(), "10");
 	}

@@ -61,7 +61,7 @@ mod tests {
 		);
 
 		let node = filter.node.as_infix();
-		assert_eq!(node.left.as_identifier().name(), "price");
+		assert_eq!(node.left.as_identifier().text(), "price");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
 		assert_eq!(node.right.as_literal_number().value(), "100");
 	}
@@ -77,9 +77,9 @@ mod tests {
 		assert_eq!(node.right.as_literal_number().value(), "100");
 
 		let nested = node.left.as_tuple().nodes[0].as_infix();
-		assert_eq!(nested.left.as_identifier().name(), "price");
+		assert_eq!(nested.left.as_identifier().text(), "price");
 		assert!(matches!(nested.operator, InfixOperator::Add(_)));
-		assert_eq!(nested.right.as_identifier().name(), "fee");
+		assert_eq!(nested.right.as_identifier().text(), "fee");
 	}
 
 	#[test]
@@ -97,7 +97,7 @@ mod tests {
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
-		assert_eq!(node.left.as_identifier().name(), "value");
+		assert_eq!(node.left.as_identifier().text(), "value");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
 		assert_eq!(node.right.as_literal_number().value(), "100");
 	}
@@ -113,12 +113,12 @@ mod tests {
 		assert!(matches!(node.operator, InfixOperator::And(_)));
 
 		let left = node.left.as_infix();
-		assert_eq!(left.left.as_identifier().name(), "price");
+		assert_eq!(left.left.as_identifier().text(), "price");
 		assert!(matches!(left.operator, InfixOperator::GreaterThan(_)));
 		assert_eq!(left.right.as_literal_number().value(), "100");
 
 		let right = node.right.as_infix();
-		assert_eq!(right.left.as_identifier().name(), "qty");
+		assert_eq!(right.left.as_identifier().text(), "qty");
 		assert!(matches!(right.operator, InfixOperator::LessThan(_)));
 		assert_eq!(right.right.as_literal_number().value(), "50");
 	}
@@ -135,11 +135,11 @@ mod tests {
 		assert!(matches!(node.operator, InfixOperator::Or(_)));
 
 		let left = node.left.as_infix();
-		assert_eq!(left.left.as_identifier().name(), "active");
+		assert_eq!(left.left.as_identifier().text(), "active");
 		assert!(matches!(left.operator, InfixOperator::Equal(_)));
 
 		let right = node.right.as_infix();
-		assert_eq!(right.left.as_identifier().name(), "premium");
+		assert_eq!(right.left.as_identifier().text(), "premium");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
 
@@ -155,11 +155,11 @@ mod tests {
 		assert!(matches!(node.operator, InfixOperator::Xor(_)));
 
 		let left = node.left.as_infix();
-		assert_eq!(left.left.as_identifier().name(), "active");
+		assert_eq!(left.left.as_identifier().text(), "active");
 		assert!(matches!(left.operator, InfixOperator::Equal(_)));
 
 		let right = node.right.as_infix();
-		assert_eq!(right.left.as_identifier().name(), "guest");
+		assert_eq!(right.left.as_identifier().text(), "guest");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
 
@@ -182,7 +182,7 @@ mod tests {
 		assert!(matches!(left_and.operator, InfixOperator::And(_)));
 
 		let right_or = node.right.as_infix();
-		assert_eq!(right_or.left.as_identifier().name(), "premium");
+		assert_eq!(right_or.left.as_identifier().text(), "premium");
 		assert!(matches!(right_or.operator, InfixOperator::Equal(_)));
 	}
 
@@ -198,7 +198,7 @@ mod tests {
 		);
 
 		let node = filter.node.as_infix();
-		assert_eq!(node.left.as_identifier().name(), "price");
+		assert_eq!(node.left.as_identifier().text(), "price");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
 		assert_eq!(node.right.as_literal_number().value(), "100");
 	}
@@ -221,13 +221,13 @@ mod tests {
 		assert_eq!(left.right.as_literal_number().value(), "100");
 
 		let nested = left.left.as_tuple().nodes[0].as_infix();
-		assert_eq!(nested.left.as_identifier().name(), "price");
+		assert_eq!(nested.left.as_identifier().text(), "price");
 		assert!(matches!(nested.operator, InfixOperator::Add(_)));
-		assert_eq!(nested.right.as_identifier().name(), "fee");
+		assert_eq!(nested.right.as_identifier().text(), "fee");
 
 		// Right side: active == true
 		let right = node.right.as_infix();
-		assert_eq!(right.left.as_identifier().name(), "active");
+		assert_eq!(right.left.as_identifier().text(), "active");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
 
@@ -243,7 +243,7 @@ mod tests {
 		);
 
 		let node = filter.node.as_infix();
-		assert_eq!(node.left.as_identifier().name(), "price");
+		assert_eq!(node.left.as_identifier().text(), "price");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
 		assert_eq!(node.right.as_literal_number().value(), "100");
 	}
@@ -261,11 +261,11 @@ mod tests {
 		assert!(matches!(node.operator, InfixOperator::Or(_)));
 
 		let left = node.left.as_infix();
-		assert_eq!(left.left.as_identifier().name(), "active");
+		assert_eq!(left.left.as_identifier().text(), "active");
 		assert!(matches!(left.operator, InfixOperator::Equal(_)));
 
 		let right = node.right.as_infix();
-		assert_eq!(right.left.as_identifier().name(), "premium");
+		assert_eq!(right.left.as_identifier().text(), "premium");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
 

@@ -57,18 +57,22 @@ impl<'a> Parser<'a> {
 				self.consume_keyword(Keyword::Value)?;
 				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
-				// Create AST nodes from tokens
-				let first_identifier =
-					crate::ast::ast::AstIdentifier(
-						first_identifier_token,
+				// Create MaybeQualifiedSequenceIdentifier with
+				// schema
+				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
+				let sequence =
+					MaybeQualifiedSequenceIdentifier::new(
+						second_identifier_token
+							.fragment
+							.clone(),
+					)
+					.with_schema(
+						first_identifier_token
+							.fragment
+							.clone(),
 					);
-				let second_identifier =
-					crate::ast::ast::AstIdentifier(
-						second_identifier_token,
-					);
-				let column = crate::ast::ast::AstIdentifier(
-					column_token,
-				);
+
+				let column = column_token.fragment;
 				let value = crate::ast::AstLiteral::Number(
 					crate::ast::ast::AstLiteralNumber(
 						value_token,
@@ -77,8 +81,7 @@ impl<'a> Parser<'a> {
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
-					schema: Some(first_identifier),
-					table: second_identifier,
+					sequence,
 					column,
 					value,
 				}))
@@ -88,15 +91,17 @@ impl<'a> Parser<'a> {
 				self.consume_keyword(Keyword::Value)?;
 				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
-				// Create AST nodes from tokens
-				let first_identifier =
-					crate::ast::ast::AstIdentifier(
-						first_identifier_token,
+				// Create MaybeQualifiedSequenceIdentifier
+				// without schema
+				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
+				let sequence =
+					MaybeQualifiedSequenceIdentifier::new(
+						first_identifier_token
+							.fragment
+							.clone(),
 					);
-				let second_identifier =
-					crate::ast::ast::AstIdentifier(
-						second_identifier_token,
-					);
+
+				let column = second_identifier_token.fragment;
 				let value = crate::ast::AstLiteral::Number(
 					crate::ast::ast::AstLiteralNumber(
 						value_token,
@@ -105,9 +110,8 @@ impl<'a> Parser<'a> {
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
-					schema: None,
-					table: first_identifier,
-					column: second_identifier,
+					sequence,
+					column,
 					value,
 				}))
 			}
@@ -123,9 +127,21 @@ impl<'a> Parser<'a> {
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.table
-		let schema = self.parse_identifier()?;
+		let schema_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let table = self.parse_identifier()?;
+		let table_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+
+		// Create MaybeQualifiedSourceIdentifier
+		use reifydb_core::interface::identifier::SourceKind;
+
+		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+		let table = MaybeQualifiedSourceIdentifier::new(
+			table_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::Table);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -150,7 +166,10 @@ impl<'a> Parser<'a> {
 					.current()?
 					.is_operator(Operator::OpenCurly)
 				{
-					Some(self.parse_identifier()?)
+					Some(self
+						.parse_identifier()?
+						.token
+						.fragment)
 				} else {
 					None
 				};
@@ -197,7 +216,6 @@ impl<'a> Parser<'a> {
 
 		Ok(AstAlter::Table(AstAlterTable {
 			token,
-			schema,
 			table,
 			operations,
 		}))
@@ -208,9 +226,21 @@ impl<'a> Parser<'a> {
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
 		// Parse schema.view
-		let schema = self.parse_identifier()?;
+		let schema_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let view = self.parse_identifier()?;
+		let view_token = self
+			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+
+		// Create MaybeQualifiedSourceIdentifier for view
+		use reifydb_core::interface::identifier::SourceKind;
+
+		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+		let view = MaybeQualifiedSourceIdentifier::new(
+			view_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone())
+		.with_kind(SourceKind::View);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -235,7 +265,10 @@ impl<'a> Parser<'a> {
 					.current()?
 					.is_operator(Operator::OpenCurly)
 				{
-					Some(self.parse_identifier()?)
+					Some(self
+						.parse_identifier()?
+						.token
+						.fragment)
 				} else {
 					None
 				};
@@ -282,7 +315,6 @@ impl<'a> Parser<'a> {
 
 		Ok(AstAlter::View(AstAlterView {
 			token,
-			schema,
 			view,
 			operations,
 		}))
@@ -302,7 +334,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			let column = self.parse_identifier()?;
+			let column = self.parse_column_identifier()?;
 
 			// Check for optional sort direction
 			let sort_direction = if self
@@ -381,19 +413,21 @@ mod tests {
 
 		match alter {
 			AstAlter::Sequence(AstAlterSequence {
-				schema,
-				table,
+				sequence,
 				column,
 				value,
 				..
 			}) => {
-				assert!(schema.is_some());
+				assert!(sequence.schema.is_some());
 				assert_eq!(
-					schema.as_ref().unwrap().value(),
+					sequence.schema
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
-				assert_eq!(table.value(), "users");
-				assert_eq!(column.value(), "id");
+				assert_eq!(sequence.name.text(), "users");
+				assert_eq!(column.text(), "id");
 				match value {
 					crate::ast::AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "1000")
@@ -418,15 +452,14 @@ mod tests {
 
 		match alter {
 			AstAlter::Sequence(AstAlterSequence {
-				schema,
-				table,
+				sequence,
 				column,
 				value,
 				..
 			}) => {
-				assert!(schema.is_none());
-				assert_eq!(table.value(), "users");
-				assert_eq!(column.value(), "id");
+				assert!(sequence.schema.is_none());
+				assert_eq!(sequence.name.text(), "users");
+				assert_eq!(column.text(), "id");
 				match value {
 					crate::ast::AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "500")
@@ -453,21 +486,24 @@ mod tests {
 
 		match alter {
 			AstAlter::Table(AstAlterTable {
-				schema,
 				table,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert!(table.schema.is_some());
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
 					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_some());
-						assert_eq!(name.as_ref().unwrap().value(), "pk_users");
+						assert_eq!(name.as_ref().unwrap().text(), "pk_users");
 						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.value(), "id");
+						assert_eq!(columns[0].column.name.text(), "id");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}
@@ -491,21 +527,24 @@ mod tests {
 
 		match alter {
 			AstAlter::Table(AstAlterTable {
-				schema,
 				table,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert!(table.schema.is_some());
+				assert_eq!(
+					table.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
 					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_none());
 						assert_eq!(columns.len(), 2);
-						assert_eq!(columns[0].column.value(), "id");
-						assert_eq!(columns[1].column.value(), "email");
+						assert_eq!(columns[0].column.name.text(), "id");
+						assert_eq!(columns[1].column.name.text(), "email");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}
@@ -529,21 +568,24 @@ mod tests {
 
 		match alter {
 			AstAlter::View(AstAlterView {
-				schema,
 				view,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(view.value(), "user_view");
+				assert!(view.schema.is_some());
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
 					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_some());
-						assert_eq!(name.as_ref().unwrap().value(), "pk_view");
+						assert_eq!(name.as_ref().unwrap().text(), "pk_view");
 						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.value(), "user_id");
+						assert_eq!(columns[0].column.name.text(), "user_id");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}
@@ -567,21 +609,24 @@ mod tests {
 
 		match alter {
 			AstAlter::View(AstAlterView {
-				schema,
 				view,
 				operations,
 				..
 			}) => {
-				assert_eq!(schema.value(), "test");
-				assert_eq!(view.value(), "user_view");
+				assert!(view.schema.is_some());
+				assert_eq!(
+					view.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
 					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_none());
 						assert_eq!(columns.len(), 2);
-						assert_eq!(columns[0].column.value(), "user_id");
-						assert_eq!(columns[1].column.value(), "created_at");
+						assert_eq!(columns[0].column.name.text(), "user_id");
+						assert_eq!(columns[1].column.name.text(), "created_at");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}

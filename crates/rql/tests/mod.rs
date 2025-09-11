@@ -62,8 +62,59 @@ impl testscript::Runner for Runner {
 					.value
 					.as_str();
 				args.reject_rest()?;
-				let result =
-					explain_logical_plan(query).unwrap();
+
+				let mut dummy_tx =
+					create_test_command_transaction();
+
+				let default_schema =
+					CatalogStore::create_schema(
+						&mut dummy_tx,
+						SchemaToCreate {
+							schema_fragment: None,
+							name: "default"
+								.to_string(),
+						},
+					)
+					.unwrap();
+
+				CatalogStore::create_table(
+					&mut dummy_tx,
+					TableToCreate {
+						fragment: None,
+						table: "users".to_string(),
+						schema: default_schema.id,
+						columns: vec![],
+					},
+				)
+				.unwrap();
+
+				// Also create test schema for tests that
+				// explicitly use test.users
+				let test_schema = CatalogStore::create_schema(
+					&mut dummy_tx,
+					SchemaToCreate {
+						schema_fragment: None,
+						name: "test".to_string(),
+					},
+				)
+				.unwrap();
+
+				CatalogStore::create_table(
+					&mut dummy_tx,
+					TableToCreate {
+						fragment: None,
+						table: "users".to_string(),
+						schema: test_schema.id,
+						columns: vec![],
+					},
+				)
+				.unwrap();
+
+				let result = explain_logical_plan(
+					&mut dummy_tx,
+					query,
+				)
+				.unwrap();
 				writeln!(output, "{}", result).unwrap();
 			}
 			// physical QUERY

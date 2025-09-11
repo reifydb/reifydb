@@ -110,9 +110,9 @@ where
 	}
 }
 
-test_each_path! { in "testsuite/limit/tests/scripts" as embedded_sync => test_embedded_sync }
+test_each_path! { in "testsuite/limit/tests/scripts" as embedded => test_embedded }
 
-fn test_embedded_sync(path: &Path) {
+fn test_embedded(path: &Path) {
 	testscript::run_path(&mut Runner::new(serializable(memory())), path)
 		.expect("test failed")
 }

@@ -6,8 +6,8 @@ use reifydb_core::{
 	interface::{SourceId, Transaction},
 	value::columnar::Columns,
 };
-use reifydb_rql::{
-	ast::AstAlterTableOperation, plan::physical::AlterTablePlan,
+use reifydb_rql::plan::{
+	logical::alter::AlterTableOperation, physical::AlterTablePlan,
 };
 use reifydb_type::{
 	Value,
@@ -26,10 +26,9 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterTablePlan,
 	) -> crate::Result<Columns> {
-		let schema_fragment = plan.node.table.schema.clone().fragment();
-		let schema_name = schema_fragment.text();
-		let table_fragment = plan.node.table.table.clone().fragment();
-		let table_name = table_fragment.text();
+		// Table is already fully qualified
+		let schema_name = plan.node.table.schema.text();
+		let table_name = plan.node.table.name.text();
 
 		// Find the schema
 		let Some(schema) =
@@ -40,7 +39,7 @@ impl Executor {
 					.node
 					.table
 					.schema
-					.fragment()
+					.clone()
 					.into_owned()),
 				schema_name,
 			));
@@ -52,7 +51,7 @@ impl Executor {
 		)?
 		else {
 			return_error!(table_not_found(
-				plan.node.table.table.fragment().into_owned(),
+				plan.node.table.name.clone().into_owned(),
 				&schema.name,
 				table_name,
 			));
@@ -61,9 +60,9 @@ impl Executor {
 		let mut results = Vec::new();
 
 		// Process each operation
-		for operation in plan.node.table.operations {
+		for operation in plan.node.operations {
 			match operation {
-				AstAlterTableOperation::CreatePrimaryKey {
+				AlterTableOperation::CreatePrimaryKey {
 					name,
 					columns,
 				} => {
@@ -75,14 +74,11 @@ impl Executor {
 						)?;
 
 					let mut column_ids = Vec::new();
-					for ast_column in columns {
-						let column_fragment =
-							ast_column
-								.column
-								.clone()
-								.fragment();
-						let column_name =
-							column_fragment.text();
+					for alter_column in columns {
+						let column_name = alter_column
+							.column
+							.name
+							.text();
 
 						// Find the column by name
 						let Some(column) =
@@ -93,7 +89,7 @@ impl Executor {
 								})
 						else {
 							return_error!(column_not_found(
-								ast_column.column.fragment().into_owned()
+								alter_column.column.name.clone().into_owned()
 							));
 						};
 
@@ -111,11 +107,7 @@ impl Executor {
 					)?;
 
 					let pk_name = name
-						.map(|n| {
-							n.fragment()
-								.text()
-								.to_string()
-						})
+						.map(|n| n.text().to_string())
 						.unwrap_or_else(|| {
 							"unnamed".to_string()
 						});
@@ -127,7 +119,7 @@ impl Executor {
 						("primary_key", Value::Utf8(pk_name)),
 					]);
 				}
-				AstAlterTableOperation::DropPrimaryKey => {
+				AlterTableOperation::DropPrimaryKey => {
 					// Not implemented per requirements
 					continue;
 				}

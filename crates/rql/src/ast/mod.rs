@@ -6,6 +6,7 @@ pub use crate::ast::{
 	tokenize::{Token, TokenKind},
 };
 mod ast;
+pub mod identifier;
 pub(crate) mod parse;
 pub(crate) mod tokenize;
 pub use parse::parse;

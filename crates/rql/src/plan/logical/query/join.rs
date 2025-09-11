@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::JoinType;
-use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
@@ -10,22 +10,42 @@ use crate::{
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
 		LogicalPlan, LogicalPlan::SourceScan, SourceScanNode,
+		resolver::IdentifierResolver,
 	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_join<'a>(
+	pub(crate) fn compile_join<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstJoin<'a>,
+		_resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstJoin::InnerJoin {
 				with,
 				on,
+				alias,
 				..
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_type::{Fragment, OwnedFragment};
+
+						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(a);
+						}
+
+						vec![SourceScan(
+							SourceScanNode {
+								source,
+								index: None,
+							},
+						)]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -44,16 +64,20 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+
+						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(a);
+						}
+
 						vec![SourceScan(
 							SourceScanNode {
-								schema: schema
-									.fragment(
-									),
-								source: table
-									.fragment(
-									),
-								index_name:
-									None,
+								source,
+								index: None,
 							},
 						)]
 					}
@@ -64,16 +88,35 @@ impl Compiler {
                     on: on
                         .into_iter()
                         .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?}))
+                        .collect::<crate::Result<Vec<_>>>()?,
+				}))
 			}
 			AstJoin::LeftJoin {
 				with,
 				on,
+				alias,
 				..
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_type::{Fragment, OwnedFragment};
+
+						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(a);
+						}
+
+						vec![SourceScan(
+							SourceScanNode {
+								source,
+								index: None,
+							},
+						)]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -92,16 +135,20 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+
+						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(a);
+						}
+
 						vec![SourceScan(
 							SourceScanNode {
-								schema: schema
-									.fragment(
-									),
-								source: table
-									.fragment(
-									),
-								index_name:
-									None,
+								source,
+								index: None,
 							},
 						)]
 					}
@@ -112,16 +159,35 @@ impl Compiler {
                     on: on
                         .into_iter()
                         .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?}))
+                        .collect::<crate::Result<Vec<_>>>()?,
+				}))
 			}
 			AstJoin::NaturalJoin {
 				with,
 				join_type,
+				alias,
 				..
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						vec![SourceScan(SourceScanNode { schema: Fragment::Owned(OwnedFragment::testing("default")), source: identifier.fragment(), index_name: None })]
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_type::{Fragment, OwnedFragment};
+
+						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(a);
+						}
+
+						vec![SourceScan(
+							SourceScanNode {
+								source,
+								index: None,
+							},
+						)]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -140,16 +206,20 @@ impl Compiler {
 						else {
 							unreachable!()
 						};
+						// Create fully qualified
+						// SourceIdentifier
+						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+
+						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
+						if let Some(a) = alias {
+							source = source
+								.with_alias(a);
+						}
+
 						vec![SourceScan(
 							SourceScanNode {
-								schema: schema
-									.fragment(
-									),
-								source: table
-									.fragment(
-									),
-								index_name:
-									None,
+								source,
+								index: None,
 							},
 						)]
 					}

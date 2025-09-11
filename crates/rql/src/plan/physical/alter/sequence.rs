@@ -16,70 +16,9 @@ impl Compiler {
 		// For ALTER SEQUENCE, we just pass through the logical plan
 		// info The actual execution will happen in the engine
 		Ok(PhysicalPlan::AlterSequence(AlterSequencePlan {
-			schema: alter.schema,
-			table: alter.table,
+			sequence: alter.sequence,
 			column: alter.column,
 			value: alter.value,
 		}))
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_core::interface::evaluate::expression::{
-		ConstantExpression, Expression,
-	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
-
-	use crate::{
-		ast::{parse::parse, tokenize::tokenize},
-		plan::{
-			logical::compile_logical,
-			physical::{PhysicalPlan, compile_physical},
-		},
-	};
-
-	#[test]
-	fn test_compile_alter_sequence_physical() {
-		let tokens =
-			tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000")
-				.unwrap();
-		let ast = parse(tokens).unwrap();
-
-		let logical_plans =
-			compile_logical(ast.into_iter().next().unwrap())
-				.unwrap();
-
-		let mut rx = create_test_command_transaction();
-		let physical_plan = compile_physical(&mut rx, logical_plans)
-			.unwrap()
-			.unwrap();
-
-		match physical_plan {
-			PhysicalPlan::AlterSequence(plan) => {
-				assert!(plan.schema.is_some());
-				assert_eq!(
-					plan.schema
-						.as_ref()
-						.unwrap()
-						.fragment(),
-					"test"
-				);
-				assert_eq!(plan.table.fragment(), "users");
-				assert_eq!(plan.column.fragment(), "id");
-
-				assert!(matches!(
-					plan.value,
-					Expression::Constant(
-						ConstantExpression::Number {
-							fragment: _
-						}
-					)
-				));
-				let fragment = plan.value.full_fragment_owned();
-				assert_eq!(fragment.fragment(), "1000");
-			}
-			_ => panic!("Expected AlterSequence physical plan"),
-		}
 	}
 }

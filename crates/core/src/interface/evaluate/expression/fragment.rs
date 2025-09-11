@@ -41,7 +41,7 @@ impl<'a> Expression<'a> {
 					fragment,
 				} => fragment.clone(),
 			},
-			Expression::Column(expr) => expr.0.clone(),
+			Expression::Column(expr) => expr.full_fragment_owned(),
 
 			Expression::Add(expr) => expr.full_fragment_owned(),
 			Expression::Sub(expr) => expr.full_fragment_owned(),

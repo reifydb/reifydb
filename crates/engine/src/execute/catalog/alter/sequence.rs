@@ -28,47 +28,52 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
-		let schema_name = match &plan.schema {
-			Some(schema) => schema.text(),
-			None => unimplemented!(),
-		};
+		let schema_name = plan.sequence.schema.text();
 
 		let Some(schema) =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(schema_not_found(
-				plan.schema.clone().map(|s| s.into_owned()),
+				plan.sequence.schema.clone().into_owned(),
 				schema_name,
 			));
 		};
 
+		// Get the table name from the column's source
+		let table_name = match &plan.column.source {
+			reifydb_core::interface::identifier::ColumnSource::Source { source, .. } => source.text(),
+			reifydb_core::interface::identifier::ColumnSource::Alias(alias) => alias.text(),
+		};
+
 		let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			schema.id,
-			plan.table.text(),
+			txn, schema.id, table_name,
 		)?
 		else {
 			return_error!(table_not_found(
-				plan.table.clone().into_owned(),
+				plan.column
+					.source
+					.as_fragment()
+					.clone()
+					.into_owned(),
 				&schema.name,
-				plan.table.text(),
+				table_name,
 			));
 		};
 
 		let Some(column) = CatalogStore::find_column_by_name(
 			txn,
 			table.id,
-			plan.column.text(),
+			plan.column.name.text(),
 		)?
 		else {
 			return_error!(column_not_found(
-				plan.column.clone().into_owned()
+				plan.column.name.clone().into_owned()
 			));
 		};
 
 		if !column.auto_increment {
 			return_error!(can_not_alter_not_auto_increment(
-				plan.column
+				plan.column.name
 			));
 		}
 
@@ -128,6 +133,9 @@ mod tests {
 		expression::{
 			ConstantExpression::Number, Expression::Constant,
 		},
+		identifier::{
+			ColumnIdentifier, ColumnSource, SequenceIdentifier,
+		},
 	};
 	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
 	use reifydb_type::{Fragment, Type, TypeConstraint, Value};
@@ -169,9 +177,21 @@ mod tests {
 
 		// Alter the sequence to start at 1000
 		let plan = AlterSequencePlan {
-			schema: Some(Fragment::owned_internal("test_schema")),
-			table: Fragment::owned_internal("users"),
-			column: Fragment::owned_internal("id"),
+			sequence: SequenceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("users_id_seq"),
+			),
+			column: ColumnIdentifier {
+				source: ColumnSource::Source {
+					schema: Fragment::owned_internal(
+						"test_schema",
+					),
+					source: Fragment::owned_internal(
+						"users",
+					),
+				},
+				name: Fragment::owned_internal("id"),
+			},
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
@@ -220,9 +240,21 @@ mod tests {
 
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequencePlan {
-			schema: Some(Fragment::owned_internal("test_schema")),
-			table: Fragment::owned_internal("items"),
-			column: Fragment::owned_internal("id"),
+			sequence: SequenceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("items_id_seq"),
+			),
+			column: ColumnIdentifier {
+				source: ColumnSource::Source {
+					schema: Fragment::owned_internal(
+						"test_schema",
+					),
+					source: Fragment::owned_internal(
+						"items",
+					),
+				},
+				name: Fragment::owned_internal("id"),
+			},
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("100"),
 			}),
@@ -245,11 +277,21 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = AlterSequencePlan {
-			schema: Some(Fragment::owned_internal(
-				"non_existent_schema",
-			)),
-			table: Fragment::owned_internal("some_table"),
-			column: Fragment::owned_internal("id"),
+			sequence: SequenceIdentifier::new(
+				Fragment::owned_internal("non_existent_schema"),
+				Fragment::owned_internal("some_table_id_seq"),
+			),
+			column: ColumnIdentifier {
+				source: ColumnSource::Source {
+					schema: Fragment::owned_internal(
+						"non_existent_schema",
+					),
+					source: Fragment::owned_internal(
+						"some_table",
+					),
+				},
+				name: Fragment::owned_internal("id"),
+			},
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
@@ -272,9 +314,23 @@ mod tests {
 		ensure_test_schema(&mut txn);
 
 		let plan = AlterSequencePlan {
-			schema: Some(Fragment::owned_internal("test_schema")),
-			table: Fragment::owned_internal("non_existent_table"),
-			column: Fragment::owned_internal("id"),
+			sequence: SequenceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal(
+					"non_existent_table_id_seq",
+				),
+			),
+			column: ColumnIdentifier {
+				source: ColumnSource::Source {
+					schema: Fragment::owned_internal(
+						"test_schema",
+					),
+					source: Fragment::owned_internal(
+						"non_existent_table",
+					),
+				},
+				name: Fragment::owned_internal("id"),
+			},
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
@@ -318,9 +374,25 @@ mod tests {
 
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequencePlan {
-			schema: Some(Fragment::owned_internal("test_schema")),
-			table: Fragment::owned_internal("posts"),
-			column: Fragment::owned_internal("non_existent_column"),
+			sequence: SequenceIdentifier::new(
+				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal(
+					"posts_non_existent_column_seq",
+				),
+			),
+			column: ColumnIdentifier {
+				source: ColumnSource::Source {
+					schema: Fragment::owned_internal(
+						"test_schema",
+					),
+					source: Fragment::owned_internal(
+						"posts",
+					),
+				},
+				name: Fragment::owned_internal(
+					"non_existent_column",
+				),
+			},
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),

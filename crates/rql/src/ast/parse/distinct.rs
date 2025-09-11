@@ -7,7 +7,8 @@ use reifydb_type::{
 };
 
 use crate::ast::{
-	AstDistinct, AstIdentifier, TokenKind,
+	AstDistinct, TokenKind,
+	identifier::MaybeQualifiedColumnIdentifier,
 	parse::Parser,
 	tokenize::{Keyword, Operator, Separator},
 };
@@ -35,11 +36,11 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	/// Parse a comma-separated list of identifiers with optional braces
-	/// Returns (identifiers, had_braces) tuple
+	/// Parse a comma-separated list of column identifiers with optional
+	/// braces Returns (identifiers, had_braces) tuple
 	fn parse_identifiers(
 		&mut self,
-	) -> crate::Result<(Vec<AstIdentifier<'a>>, bool)> {
+	) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier<'a>>, bool)> {
 		if self.is_eof() {
 			return Ok((vec![], false));
 		}
@@ -64,9 +65,11 @@ impl<'a> Parser<'a> {
 			return Ok((identifiers, has_braces));
 		}
 
-		// Parse identifiers
+		// Parse column identifiers
 		loop {
-			identifiers.push(self.parse_as_identifier()?);
+			identifiers.push(
+				self.parse_column_identifier_or_keyword()?
+			);
 
 			if self.is_eof() {
 				break;
@@ -144,7 +147,7 @@ mod tests {
 			result.first_unchecked()
 		{
 			assert_eq!(distinct.columns.len(), 1);
-			assert_eq!(distinct.columns[0].value(), "name");
+			assert_eq!(distinct.columns[0].name.text(), "name");
 		} else {
 			panic!("Expected Distinct node");
 		}
@@ -161,8 +164,8 @@ mod tests {
 			result.first_unchecked()
 		{
 			assert_eq!(distinct.columns.len(), 2);
-			assert_eq!(distinct.columns[0].value(), "name");
-			assert_eq!(distinct.columns[1].value(), "age");
+			assert_eq!(distinct.columns[0].name.text(), "name");
+			assert_eq!(distinct.columns[1].name.text(), "age");
 		} else {
 			panic!("Expected Distinct node");
 		}

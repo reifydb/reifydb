@@ -91,7 +91,7 @@ mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "value");
+		assert_eq!(map.nodes[0].as_identifier().text(), "value");
 	}
 
 	#[test]
@@ -104,7 +104,7 @@ mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "name");
+		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -117,10 +117,10 @@ mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 2);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "name");
+		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 
 		assert!(matches!(map.nodes[1], Ast::Identifier(_)));
-		assert_eq!(map.nodes[1].value(), "age");
+		assert_eq!(map.nodes[1].as_identifier().text(), "age");
 	}
 
 	#[test]
@@ -145,7 +145,7 @@ mod tests {
 		assert!(matches!(operator, InfixOperator::As(_)));
 
 		let right = right.as_identifier();
-		assert_eq!(right.value(), "a");
+		assert_eq!(right.text(), "a");
 	}
 
 	#[test]
@@ -181,7 +181,7 @@ mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "name");
+		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -207,7 +207,7 @@ mod tests {
 
 		// Right side should be identifier "col"
 		let right = infix.right.as_identifier();
-		assert_eq!(right.value(), "col");
+		assert_eq!(right.text(), "col");
 	}
 
 	#[test]
@@ -223,14 +223,14 @@ mod tests {
 		// First expression: "id as name"
 		let first_infix = map.nodes[0].as_infix();
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
-		assert_eq!(first_infix.left.as_identifier().value(), "id");
-		assert_eq!(first_infix.right.as_identifier().value(), "name");
+		assert_eq!(first_infix.left.as_identifier().text(), "id");
+		assert_eq!(first_infix.right.as_identifier().text(), "name");
 
 		// Second expression: "years as age"
 		let second_infix = map.nodes[1].as_infix();
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
-		assert_eq!(second_infix.left.as_identifier().value(), "years");
-		assert_eq!(second_infix.right.as_identifier().value(), "age");
+		assert_eq!(second_infix.left.as_identifier().text(), "years");
+		assert_eq!(second_infix.right.as_identifier().text(), "age");
 	}
 
 	#[test]
@@ -253,15 +253,12 @@ mod tests {
 			left_infix.operator,
 			InfixOperator::Multiply(_)
 		));
-		assert_eq!(left_infix.left.as_identifier().value(), "price");
-		assert_eq!(
-			left_infix.right.as_identifier().value(),
-			"quantity"
-		);
+		assert_eq!(left_infix.left.as_identifier().text(), "price");
+		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 
 		// Right side should be identifier "total"
 		let right = infix.right.as_identifier();
-		assert_eq!(right.value(), "total");
+		assert_eq!(right.text(), "total");
 	}
 
 	#[test]
@@ -278,15 +275,15 @@ mod tests {
 
 		// First: plain identifier
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
-		assert_eq!(map.nodes[0].value(), "name");
+		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 
 		// Second: colon syntax
 		let middle_infix = map.nodes[1].as_infix();
 		assert!(matches!(middle_infix.operator, InfixOperator::As(_)));
-		assert_eq!(middle_infix.right.as_identifier().value(), "total");
+		assert_eq!(middle_infix.right.as_identifier().text(), "total");
 
 		// Third: plain identifier
 		assert!(matches!(map.nodes[2], Ast::Identifier(_)));
-		assert_eq!(map.nodes[2].value(), "age");
+		assert_eq!(map.nodes[2].as_identifier().text(), "age");
 	}
 }

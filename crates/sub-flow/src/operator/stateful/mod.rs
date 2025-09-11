@@ -107,7 +107,7 @@ pub mod extract {
 			}) => Ok(fragment.text().to_string()),
 			Expression::Column(col) => {
 				// Convert Fragment to string
-				match &col.0 {
+				match &col.0.name {
 					reifydb_type::Fragment::Owned(
 						owned,
 					) => Ok(owned.to_string()),

@@ -5,7 +5,7 @@ use reifydb_core::return_error;
 use reifydb_type::diagnostic::ast::multiple_expressions_without_braces;
 
 use crate::ast::{
-	AstIdentifier, AstSort,
+	AstSort,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -28,7 +28,7 @@ impl<'a> Parser<'a> {
 		let mut directions = Vec::new();
 
 		loop {
-			columns.push(self.parse_as_identifier()?);
+			columns.push(self.parse_column_identifier_or_keyword()?);
 
 			if !self.is_eof()
 				&& !self.current()?.is_separator(Comma)
@@ -42,9 +42,7 @@ impl<'a> Parser<'a> {
 				{
 					let token = self.current()?.clone();
 					self.advance()?;
-					directions.push(Some(AstIdentifier(
-						token,
-					)));
+					directions.push(Some(token.fragment));
 				} else {
 					directions.push(None);
 				}
@@ -101,7 +99,7 @@ mod tests {
 		assert_eq!(sort.columns.len(), 1);
 		assert_eq!(sort.directions.len(), 1);
 
-		assert_eq!(sort.columns[0].value(), "name");
+		assert_eq!(sort.columns[0].name.text(), "name");
 		assert_eq!(sort.directions[0].as_ref(), None);
 	}
 
@@ -116,8 +114,8 @@ mod tests {
 		assert_eq!(sort.columns.len(), 1);
 		assert_eq!(sort.directions.len(), 1);
 
-		assert_eq!(sort.columns[0].value(), "value");
-		assert_eq!(sort.directions[0].as_ref().unwrap().value(), "ASC");
+		assert_eq!(sort.columns[0].name.text(), "value");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "ASC");
 	}
 
 	#[test]
@@ -131,8 +129,8 @@ mod tests {
 		assert_eq!(sort.columns.len(), 1);
 		assert_eq!(sort.directions.len(), 1);
 
-		assert_eq!(sort.columns[0].value(), "name");
-		assert_eq!(sort.directions[0].as_ref().unwrap().value(), "ASC");
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "ASC");
 	}
 
 	#[test]
@@ -146,11 +144,8 @@ mod tests {
 		assert_eq!(sort.columns.len(), 1);
 		assert_eq!(sort.directions.len(), 1);
 
-		assert_eq!(sort.columns[0].value(), "name");
-		assert_eq!(
-			sort.directions[0].as_ref().unwrap().value(),
-			"DESC"
-		);
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "DESC");
 	}
 
 	#[test]
@@ -164,10 +159,10 @@ mod tests {
 		assert_eq!(sort.columns.len(), 2);
 		assert_eq!(sort.directions.len(), 2);
 
-		assert_eq!(sort.columns[0].value(), "name");
+		assert_eq!(sort.columns[0].name.text(), "name");
 		assert_eq!(sort.directions[0].as_ref(), None);
 
-		assert_eq!(sort.columns[1].value(), "age");
+		assert_eq!(sort.columns[1].name.text(), "age");
 		assert_eq!(sort.directions[1].as_ref(), None);
 	}
 
@@ -182,14 +177,11 @@ mod tests {
 		assert_eq!(sort.columns.len(), 2);
 		assert_eq!(sort.directions.len(), 2);
 
-		assert_eq!(sort.columns[0].value(), "name");
-		assert_eq!(sort.directions[0].as_ref().unwrap().value(), "ASC");
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "ASC");
 
-		assert_eq!(sort.columns[1].value(), "age");
-		assert_eq!(
-			sort.directions[1].as_ref().unwrap().value(),
-			"DESC"
-		);
+		assert_eq!(sort.columns[1].name.text(), "age");
+		assert_eq!(sort.directions[1].as_ref().unwrap().text(), "DESC");
 	}
 
 	#[test]
@@ -203,7 +195,7 @@ mod tests {
 		assert_eq!(sort.columns.len(), 1);
 		assert_eq!(sort.directions.len(), 1);
 
-		assert_eq!(sort.columns[0].value(), "name");
+		assert_eq!(sort.columns[0].name.text(), "name");
 		assert_eq!(sort.directions[0].as_ref(), None);
 	}
 

@@ -200,22 +200,27 @@ fn parse_keys_and_aggregates<'a>(
 	for gb in by {
 		match gb {
 			Expression::Column(c) => {
-				keys.push(c.0.fragment());
+				keys.push(c.0.name.fragment());
 				projections.push(Projection::Group {
-					column: c.0.fragment().to_string(),
-					alias: c.0.clone().to_owned(),
+					column: c.0.name.fragment().to_string(),
+					alias: c.0.name.clone().to_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
 				// Handle qualified column references like
 				// departments.dept_name
-				keys.push(access.column.fragment());
+				keys.push(access.column.name.fragment());
 				projections.push(Projection::Group {
 					column: access
 						.column
+						.name
 						.fragment()
 						.to_string(),
-					alias: access.column.clone().to_owned(),
+					alias: access
+						.column
+						.name
+						.clone()
+						.to_owned(),
 				})
 			}
 			// _ => return
@@ -257,6 +262,7 @@ fn parse_keys_and_aggregates<'a>(
 							Projection::Aggregate {
 								column: c
 									.0
+									.name
 									.fragment(
 									)
 									.to_string(
@@ -281,6 +287,7 @@ fn parse_keys_and_aggregates<'a>(
 							Projection::Aggregate {
 								column: access
 									.column
+									.name
 									.fragment(
 									)
 									.to_string(

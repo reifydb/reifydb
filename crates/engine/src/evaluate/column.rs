@@ -20,7 +20,8 @@ impl StandardEvaluator {
 		ctx: &EvaluationContext,
 		column: &ColumnExpression,
 	) -> crate::Result<Column> {
-		let name = column.0.fragment().to_string();
+		// Get the column name from the ColumnIdentifier
+		let name = column.0.name.text().to_string();
 
 		// Check if the name contains dots (qualified reference)
 		let parts: Vec<&str> = name.split('.').collect();
@@ -124,13 +125,13 @@ impl StandardEvaluator {
 			_ => {
 				// Invalid format with too many dots
 				return Err(error!(column_not_found(
-					column.0.clone()
+					column.0.name.clone()
 				)));
 			}
 		}
 
 		// If we get here, column was not found
-		Err(error!(column_not_found(column.0.clone())))
+		Err(error!(column_not_found(column.0.name.clone())))
 	}
 
 	fn extract_column_data(

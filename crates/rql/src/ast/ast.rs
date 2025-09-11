@@ -1,12 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::ops::{Deref, Index};
+use std::ops::Index;
 
 use reifydb_core::{IndexType, JoinType, SortDirection};
 use reifydb_type::Fragment;
 
-use crate::ast::tokenize::{Literal, ParameterKind, Token, TokenKind};
+use crate::ast::{
+	identifier::{
+		MaybeQualifiedColumnIdentifier,
+		MaybeQualifiedFunctionIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedSchemaIdentifier,
+		MaybeQualifiedSequenceIdentifier,
+		MaybeQualifiedSourceIdentifier, UnqualifiedIdentifier,
+	},
+	tokenize::{Literal, ParameterKind, Token, TokenKind},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstStatement<'a> {
@@ -59,7 +68,7 @@ pub enum Ast<'a> {
 	Distinct(AstDistinct<'a>),
 	Filter(AstFilter<'a>),
 	From(AstFrom<'a>),
-	Identifier(AstIdentifier<'a>),
+	Identifier(UnqualifiedIdentifier<'a>),
 	Infix(AstInfix<'a>),
 	Inline(AstInline<'a>),
 	AstDelete(AstDelete<'a>),
@@ -108,7 +117,7 @@ impl<'a> Ast<'a> {
 			Ast::Filter(node) => &node.token,
 			Ast::From(node) => node.token(),
 			Ast::Aggregate(node) => &node.token,
-			Ast::Identifier(node) => &node.0,
+			Ast::Identifier(identifier) => &identifier.token,
 			Ast::Infix(node) => &node.token,
 			Ast::AstDelete(node) => &node.token,
 			Ast::AstInsert(node) => &node.token,
@@ -150,7 +159,10 @@ impl<'a> Ast<'a> {
 	}
 
 	pub fn value(&self) -> &str {
-		self.token().value()
+		match self {
+			Ast::Identifier(ident) => ident.text(),
+			_ => self.token().value(),
+		}
 	}
 }
 
@@ -268,7 +280,7 @@ impl<'a> Ast<'a> {
 	pub fn is_identifier(&self) -> bool {
 		matches!(self, Ast::Identifier(_))
 	}
-	pub fn as_identifier(&self) -> &AstIdentifier<'a> {
+	pub fn as_identifier(&self) -> &UnqualifiedIdentifier<'a> {
 		if let Ast::Identifier(result) = self {
 			result
 		} else {
@@ -529,28 +541,27 @@ pub struct AstCast<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstApply<'a> {
 	pub token: Token<'a>,
-	pub operator_name: AstIdentifier<'a>,
+	pub operator_name: UnqualifiedIdentifier<'a>,
 	pub expressions: Vec<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCall<'a> {
 	pub token: Token<'a>,
-	pub operator_name: AstIdentifier<'a>,
+	pub operator_name: UnqualifiedIdentifier<'a>,
 	pub arguments: AstTuple<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCallFunction<'a> {
 	pub token: Token<'a>,
-	pub namespaces: Vec<AstIdentifier<'a>>,
-	pub function: AstIdentifier<'a>,
+	pub function: MaybeQualifiedFunctionIdentifier<'a>,
 	pub arguments: AstTuple<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInlineKeyedValue<'a> {
-	pub key: AstIdentifier<'a>,
+	pub key: UnqualifiedIdentifier<'a>,
 	pub value: Box<Ast<'a>>,
 }
 
@@ -594,24 +605,22 @@ pub enum AstAlter<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstAlterSequence<'a> {
 	pub token: Token<'a>,
-	pub schema: Option<AstIdentifier<'a>>,
-	pub table: AstIdentifier<'a>,
-	pub column: AstIdentifier<'a>,
+	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
+	pub column: Fragment<'a>,
 	pub value: AstLiteral<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstAlterTable<'a> {
 	pub token: Token<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub table: AstIdentifier<'a>,
+	pub table: MaybeQualifiedSourceIdentifier<'a>,
 	pub operations: Vec<AstAlterTableOperation<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstAlterTableOperation<'a> {
 	CreatePrimaryKey {
-		name: Option<AstIdentifier<'a>>,
+		name: Option<Fragment<'a>>,
 		columns: Vec<AstIndexColumn<'a>>,
 	},
 	DropPrimaryKey,
@@ -620,15 +629,14 @@ pub enum AstAlterTableOperation<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstAlterView<'a> {
 	pub token: Token<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub view: AstIdentifier<'a>,
+	pub view: MaybeQualifiedSourceIdentifier<'a>,
 	pub operations: Vec<AstAlterViewOperation<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstAlterViewOperation<'a> {
 	CreatePrimaryKey {
-		name: Option<AstIdentifier<'a>>,
+		name: Option<Fragment<'a>>,
 		columns: Vec<AstIndexColumn<'a>>,
 	},
 	DropPrimaryKey,
@@ -637,8 +645,7 @@ pub enum AstAlterViewOperation<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDeferredView<'a> {
 	pub token: Token<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub view: AstIdentifier<'a>,
+	pub view: MaybeQualifiedSourceIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
 }
@@ -646,8 +653,7 @@ pub struct AstCreateDeferredView<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateTransactionalView<'a> {
 	pub token: Token<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub view: AstIdentifier<'a>,
+	pub view: MaybeQualifiedSourceIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
 }
@@ -655,22 +661,20 @@ pub struct AstCreateTransactionalView<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateSchema<'a> {
 	pub token: Token<'a>,
-	pub name: AstIdentifier<'a>,
+	pub schema: MaybeQualifiedSchemaIdentifier<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateSeries<'a> {
 	pub token: Token<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub name: AstIdentifier<'a>,
+	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateTable<'a> {
 	pub token: Token<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub table: AstIdentifier<'a>,
+	pub table: MaybeQualifiedSourceIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 }
 
@@ -684,16 +688,16 @@ pub enum AstDescribe<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstDataType<'a> {
-	Simple(AstIdentifier<'a>), // UTF8, BLOB, etc.
-	WithParams {
-		name: AstIdentifier<'a>,
+	Simple(Fragment<'a>), // UTF8, BLOB, etc.
+	WithConstraints {
+		name: Fragment<'a>,
 		params: Vec<AstLiteral<'a>>,
 	}, // UTF8(50), DECIMAL(10,2)
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstColumnToCreate<'a> {
-	pub name: AstIdentifier<'a>,
+	pub name: Fragment<'a>,
 	pub ty: AstDataType<'a>,
 	pub policies: Option<AstPolicyBlock<'a>>,
 	pub auto_increment: bool,
@@ -703,9 +707,7 @@ pub struct AstColumnToCreate<'a> {
 pub struct AstCreateIndex<'a> {
 	pub token: Token<'a>,
 	pub index_type: IndexType,
-	pub name: AstIdentifier<'a>,
-	pub schema: AstIdentifier<'a>,
-	pub table: AstIdentifier<'a>,
+	pub index: MaybeQualifiedIndexIdentifier<'a>,
 	pub columns: Vec<AstIndexColumn<'a>>,
 	pub filters: Vec<Box<Ast<'a>>>,
 	pub map: Option<Box<Ast<'a>>>,
@@ -713,7 +715,7 @@ pub struct AstCreateIndex<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstIndexColumn<'a> {
-	pub column: AstIdentifier<'a>,
+	pub column: MaybeQualifiedColumnIdentifier<'a>,
 	pub order: Option<SortDirection>,
 }
 
@@ -779,9 +781,8 @@ pub struct AstFilter<'a> {
 pub enum AstFrom<'a> {
 	Source {
 		token: Token<'a>,
-		schema: Option<AstIdentifier<'a>>,
-		source: AstIdentifier<'a>,
-		index_name: Option<AstIdentifier<'a>>,
+		source: MaybeQualifiedSourceIdentifier<'a>,
+		index_name: Option<Fragment<'a>>,
 	},
 	Inline {
 		token: Token<'a>,
@@ -867,31 +868,6 @@ impl<'a> AstLiteral<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstIdentifier<'a>(pub Token<'a>);
-
-impl<'a> AstIdentifier<'a> {
-	pub fn value(&self) -> &str {
-		self.0.fragment.text()
-	}
-
-	pub fn name(&self) -> String {
-		self.value().to_string()
-	}
-
-	pub fn fragment(self) -> Fragment<'a> {
-		self.0.fragment.clone()
-	}
-}
-
-impl<'a> Deref for AstIdentifier<'a> {
-	type Target = Token<'a>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum InfixOperator<'a> {
 	Add(Token<'a>),
 	As(Token<'a>),
@@ -927,22 +903,19 @@ pub struct AstInfix<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDelete<'a> {
 	pub token: Token<'a>,
-	pub schema: Option<AstIdentifier<'a>>,
-	pub table: Option<AstIdentifier<'a>>,
+	pub target: Option<MaybeQualifiedSourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert<'a> {
 	pub token: Token<'a>,
-	pub schema: Option<AstIdentifier<'a>>,
-	pub table: AstIdentifier<'a>,
+	pub target: MaybeQualifiedSourceIdentifier<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstUpdate<'a> {
 	pub token: Token<'a>,
-	pub schema: Option<AstIdentifier<'a>>,
-	pub table: Option<AstIdentifier<'a>>,
+	pub target: Option<MaybeQualifiedSourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -951,16 +924,19 @@ pub enum AstJoin<'a> {
 		token: Token<'a>,
 		with: Box<Ast<'a>>,
 		on: Vec<Ast<'a>>,
+		alias: Option<Fragment<'a>>,
 	},
 	LeftJoin {
 		token: Token<'a>,
 		with: Box<Ast<'a>>,
 		on: Vec<Ast<'a>>,
+		alias: Option<Fragment<'a>>,
 	},
 	NaturalJoin {
 		token: Token<'a>,
 		with: Box<Ast<'a>>,
 		join_type: Option<JoinType>,
+		alias: Option<Fragment<'a>>,
 	},
 }
 
@@ -1012,14 +988,14 @@ impl<'a> AstLiteralUndefined<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDistinct<'a> {
 	pub token: Token<'a>,
-	pub columns: Vec<AstIdentifier<'a>>,
+	pub columns: Vec<MaybeQualifiedColumnIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstSort<'a> {
 	pub token: Token<'a>,
-	pub columns: Vec<AstIdentifier<'a>>,
-	pub directions: Vec<Option<AstIdentifier<'a>>>,
+	pub columns: Vec<MaybeQualifiedColumnIdentifier<'a>>,
+	pub directions: Vec<Option<Fragment<'a>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

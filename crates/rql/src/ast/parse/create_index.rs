@@ -36,10 +36,13 @@ impl<'a> Parser<'a> {
 		self.consume_operator(Operator::Dot)?;
 		let table_token = self.consume(TokenKind::Identifier)?;
 
-		// Create AST nodes from tokens
-		let name = crate::ast::ast::AstIdentifier(name_token);
-		let schema = crate::ast::ast::AstIdentifier(schema_token);
-		let table = crate::ast::ast::AstIdentifier(table_token);
+		// Create MaybeQualifiedIndexIdentifier
+		use crate::ast::identifier::MaybeQualifiedIndexIdentifier;
+		let index = MaybeQualifiedIndexIdentifier::new(
+			table_token.fragment.clone(),
+			name_token.fragment.clone(),
+		)
+		.with_schema(schema_token.fragment.clone());
 
 		let columns = self.parse_index_columns()?;
 
@@ -60,9 +63,7 @@ impl<'a> Parser<'a> {
 		Ok(AstCreate::Index(AstCreateIndex {
 			token: create_token,
 			index_type,
-			name,
-			schema,
-			table,
+			index,
 			columns,
 			filters,
 			map,
@@ -93,7 +94,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			let column = self.parse_identifier()?;
+			let column = self.parse_column_identifier()?;
 
 			let order = if self
 				.consume_if(TokenKind::Keyword(Asc))?
@@ -149,19 +150,23 @@ mod tests {
 		match create {
 			AstCreate::Index(AstCreateIndex {
 				index_type,
-				name,
-				schema,
-				table,
+				index,
 				columns,
 				filters,
 				..
 			}) => {
 				assert_eq!(*index_type, IndexType::Index);
-				assert_eq!(name.value(), "idx_email");
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert_eq!(index.name.text(), "idx_email");
+				assert_eq!(
+					index.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert!(columns[0].order.is_none());
 				assert_eq!(filters.len(), 0);
 			}
@@ -185,19 +190,23 @@ mod tests {
 		match create {
 			AstCreate::Index(AstCreateIndex {
 				index_type,
-				name,
-				schema,
-				table,
+				index,
 				columns,
 				filters,
 				..
 			}) => {
 				assert_eq!(*index_type, IndexType::Unique);
-				assert_eq!(name.value(), "idx_email");
-				assert_eq!(schema.value(), "test");
-				assert_eq!(table.value(), "users");
+				assert_eq!(index.name.text(), "idx_email");
+				assert_eq!(
+					index.schema.as_ref().unwrap().text(),
+					"test"
+				);
+				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 0);
 			}
 			_ => unreachable!(),
@@ -225,11 +234,11 @@ mod tests {
 			}) => {
 				assert_eq!(columns.len(), 2);
 				assert_eq!(
-					columns[0].column.value(),
+					columns[0].column.name.text(),
 					"last_name"
 				);
 				assert_eq!(
-					columns[1].column.value(),
+					columns[1].column.name.text(),
 					"first_name"
 				);
 				assert_eq!(filters.len(), 0);
@@ -259,14 +268,17 @@ mod tests {
 			}) => {
 				assert_eq!(columns.len(), 2);
 				assert_eq!(
-					columns[0].column.value(),
+					columns[0].column.name.text(),
 					"created_at"
 				);
 				assert_eq!(
 					columns[0].order,
 					Some(SortDirection::Desc)
 				);
-				assert_eq!(columns[1].column.value(), "status");
+				assert_eq!(
+					columns[1].column.name.text(),
+					"status"
+				);
 				assert_eq!(
 					columns[1].order,
 					Some(SortDirection::Asc)
@@ -294,7 +306,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 1);
 				// Verify filter contains a comparison
 				// expression
@@ -321,7 +336,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 3);
 				// Verify each filter is an infix expression
 				assert!(filters[0].is_infix());
@@ -350,7 +368,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 2);
 				assert!(filters[0].is_infix());
 				assert!(filters[1].is_infix());

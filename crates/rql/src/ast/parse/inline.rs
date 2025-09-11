@@ -74,7 +74,7 @@ mod tests {
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
-		assert_eq!(keyed_value.key.value(), "id");
+		assert_eq!(keyed_value.key.text(), "id");
 		let Literal(Number(value)) = keyed_value.value.as_ref() else {
 			panic!()
 		};
@@ -91,7 +91,7 @@ mod tests {
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
-		assert_eq!(keyed_value.key.value(), "value");
+		assert_eq!(keyed_value.key.text(), "value");
 		let Literal(Number(value)) = keyed_value.value.as_ref() else {
 			panic!()
 		};
@@ -108,7 +108,7 @@ mod tests {
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
-		assert_eq!(keyed_value.key.value(), "text");
+		assert_eq!(keyed_value.key.text(), "text");
 		let Literal(Text(value)) = keyed_value.value.as_ref() else {
 			panic!()
 		};
@@ -125,7 +125,7 @@ mod tests {
 		assert_eq!(inline.len(), 2);
 
 		let id_keyed_value = &inline[0];
-		assert_eq!(id_keyed_value.key.value(), "id");
+		assert_eq!(id_keyed_value.key.text(), "id");
 		let Literal(Number(value)) = id_keyed_value.value.as_ref()
 		else {
 			panic!()
@@ -133,7 +133,7 @@ mod tests {
 		assert_eq!(value.value(), "1");
 
 		let name_keyed_value = &inline[1];
-		assert_eq!(name_keyed_value.key.value(), "name");
+		assert_eq!(name_keyed_value.key.text(), "name");
 		let Literal(Text(value)) = name_keyed_value.value.as_ref()
 		else {
 			panic!()
@@ -151,11 +151,11 @@ mod tests {
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
-		assert_eq!(keyed_value.key.value(), "keyed_value");
+		assert_eq!(keyed_value.key.text(), "keyed_value");
 		let Identifier(identifier) = keyed_value.value.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "someVariable");
+		assert_eq!(identifier.text(), "someVariable");
 	}
 
 	#[test]
@@ -175,7 +175,7 @@ mod tests {
 		assert_eq!(inline.len(), 3);
 
 		let id_keyed_value = &inline[0];
-		assert_eq!(id_keyed_value.key.value(), "id");
+		assert_eq!(id_keyed_value.key.text(), "id");
 		let Literal(Number(value)) = id_keyed_value.value.as_ref()
 		else {
 			panic!()
@@ -183,7 +183,7 @@ mod tests {
 		assert_eq!(value.value(), "42");
 
 		let name_keyed_value = &inline[1];
-		assert_eq!(name_keyed_value.key.value(), "name");
+		assert_eq!(name_keyed_value.key.text(), "name");
 		let Literal(Text(value)) = name_keyed_value.value.as_ref()
 		else {
 			panic!()
@@ -191,7 +191,7 @@ mod tests {
 		assert_eq!(value.value(), "Database");
 
 		let active_keyed_value = &inline[2];
-		assert_eq!(active_keyed_value.key.value(), "active");
+		assert_eq!(active_keyed_value.key.text(), "active");
 		assert!(active_keyed_value.value.is_literal_boolean());
 	}
 
@@ -205,10 +205,10 @@ mod tests {
 		assert_eq!(inline.len(), 2);
 
 		let id_keyed_value = &inline[0];
-		assert_eq!(id_keyed_value.key.value(), "id");
+		assert_eq!(id_keyed_value.key.text(), "id");
 
 		let name_keyed_value = &inline[1];
-		assert_eq!(name_keyed_value.key.value(), "name");
+		assert_eq!(name_keyed_value.key.text(), "name");
 	}
 
 	#[test]
@@ -222,11 +222,11 @@ mod tests {
 		assert_eq!(inline.len(), 2);
 
 		let result_keyed_value = &inline[0];
-		assert_eq!(result_keyed_value.key.value(), "result");
+		assert_eq!(result_keyed_value.key.text(), "result");
 		assert!(result_keyed_value.value.is_tuple());
 
 		let enabled_keyed_value = &inline[1];
-		assert_eq!(enabled_keyed_value.key.value(), "enabled");
+		assert_eq!(enabled_keyed_value.key.text(), "enabled");
 		assert!(enabled_keyed_value.value.is_prefix());
 	}
 
@@ -240,12 +240,12 @@ mod tests {
 		assert_eq!(inline.len(), 1);
 
 		let user_keyed_value = &inline[0];
-		assert_eq!(user_keyed_value.key.value(), "user");
+		assert_eq!(user_keyed_value.key.text(), "user");
 		assert!(user_keyed_value.value.is_block());
 
 		let nested_inline = user_keyed_value.value.as_block();
 		assert_eq!(nested_inline.len(), 2);
-		assert_eq!(nested_inline[0].key.value(), "id");
-		assert_eq!(nested_inline[1].key.value(), "name");
+		assert_eq!(nested_inline[0].key.text(), "id");
+		assert_eq!(nested_inline[1].key.text(), "name");
 	}
 }

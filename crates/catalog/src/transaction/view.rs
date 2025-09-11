@@ -125,6 +125,14 @@ where
 
 		Ok(None)
 	}
+
+	fn get_view_by_name(
+		&mut self,
+		_schema: SchemaId,
+		_name: impl AsRef<str>,
+	) -> reifydb_core::Result<ViewDef> {
+		todo!()
+	}
 }
 
 // TODO: Add CatalogViewQueryOperations implementation for query-only

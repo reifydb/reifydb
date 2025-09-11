@@ -139,7 +139,7 @@ mod tests {
 		let Identifier(node) = node else {
 			panic!()
 		};
-		assert_eq!(node.value(), "u");
+		assert_eq!(node.text(), "u");
 	}
 
 	#[test]
@@ -162,10 +162,10 @@ mod tests {
 		};
 
 		let identifier = &left.as_identifier();
-		assert_eq!(identifier.value(), "u");
+		assert_eq!(identifier.text(), "u");
 
 		let dat_type = &right.as_identifier();
-		assert_eq!(dat_type.value(), "Bool");
+		assert_eq!(dat_type.text(), "Bool");
 	}
 
 	#[test]
@@ -179,12 +179,12 @@ mod tests {
 		let Some(Identifier(u_node)) = &node.nodes.first() else {
 			panic!()
 		};
-		assert_eq!(u_node.value(), "u");
+		assert_eq!(u_node.text(), "u");
 
 		let Some(Identifier(v_node)) = &node.nodes.last() else {
 			panic!()
 		};
-		assert_eq!(v_node.value(), "v");
+		assert_eq!(v_node.text(), "v");
 	}
 
 	#[test]
@@ -209,11 +209,11 @@ mod tests {
 		let Identifier(identifier) = &left.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "u");
+		assert_eq!(identifier.text(), "u");
 		let Identifier(ty) = &right.as_ref() else {
 			panic!()
 		};
-		assert_eq!(ty.value(), "Bool");
+		assert_eq!(ty.text(), "Bool");
 
 		let Some(v_node) = node.nodes.last() else {
 			panic!()
@@ -229,11 +229,11 @@ mod tests {
 		let Identifier(identifier) = &left.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "v");
+		assert_eq!(identifier.text(), "v");
 		let Identifier(identifier) = &right.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "Text");
+		assert_eq!(identifier.text(), "Text");
 	}
 
 	#[test]
@@ -259,7 +259,7 @@ mod tests {
 		let Identifier(identifier) = &left.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "u");
+		assert_eq!(identifier.text(), "u");
 		assert!(matches!(operator, InfixOperator::Assign(_)));
 		let Literal(Number(number)) = right.as_ref() else {
 			panic!()
@@ -281,7 +281,7 @@ mod tests {
 		let Identifier(identifier) = &left.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "v");
+		assert_eq!(identifier.text(), "v");
 		assert!(matches!(operator, InfixOperator::Assign(_)));
 		let Literal(Number(number)) = right.as_ref() else {
 			panic!()
@@ -317,11 +317,11 @@ mod tests {
 		let Identifier(identifier) = &left.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "u");
+		assert_eq!(identifier.text(), "u");
 		let Identifier(identifier) = &right.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "Bool");
+		assert_eq!(identifier.text(), "Bool");
 
 		let Some(v_node) = node.nodes.last() else {
 			panic!()
@@ -337,11 +337,11 @@ mod tests {
 		let Identifier(identifier) = &left.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "v");
+		assert_eq!(identifier.text(), "v");
 		let Identifier(identifier) = &right.as_ref() else {
 			panic!()
 		};
-		assert_eq!(identifier.value(), "Text");
+		assert_eq!(identifier.text(), "Text");
 	}
 
 	#[test]
