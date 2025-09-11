@@ -334,7 +334,7 @@ pub trait FallibleIterator {
         }
     }
 
-    /// Returns an iterator which applies a stateful map to values of this
+    /// Returns an iterator which applies a mod map to values of this
     /// iterator.
     #[inline]
     fn scan<St, B, F>(self, initial_state: St, f: F) -> Scan<Self, St, F>
@@ -2310,7 +2310,7 @@ where
     }
 }
 
-/// An iterator which applies a stateful closure.
+/// An iterator which applies a mod closure.
 #[derive(Clone, Debug)]
 pub struct Scan<I, St, F> {
     it: I,

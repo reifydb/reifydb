@@ -258,5 +258,10 @@ pub(crate) fn compile<'a, T: Transaction>(
 		| PhysicalPlan::Insert(_)
 		| PhysicalPlan::Update(_)
 		| PhysicalPlan::Distinct(_) => unreachable!(),
+		PhysicalPlan::Apply(_) => {
+			unimplemented!(
+				"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+			)
+		}
 	}
 }

@@ -8,12 +8,12 @@ use super::{
 use crate::interface::{FlowId, FlowNodeId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Flow<'a> {
+pub struct Flow {
 	pub id: FlowId,
-	pub graph: DirectedGraph<FlowNode<'a>>,
+	pub graph: DirectedGraph<FlowNode>,
 }
 
-impl<'a> Flow<'a> {
+impl Flow {
 	pub fn new(id: impl Into<FlowId>) -> Self {
 		Self {
 			id: id.into(),
@@ -21,7 +21,7 @@ impl<'a> Flow<'a> {
 		}
 	}
 
-	pub fn add_node(&mut self, node: FlowNode<'a>) -> FlowNodeId {
+	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
 		let node_id = node.id.clone();
 		self.graph.add_node(node_id.clone(), node);
 		node_id
@@ -49,14 +49,14 @@ impl<'a> Flow<'a> {
 		Ok(self.graph.topological_sort())
 	}
 
-	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&FlowNode<'a>> {
+	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&FlowNode> {
 		self.graph.get_node(node_id)
 	}
 
 	pub fn get_node_mut(
 		&mut self,
 		node_id: &FlowNodeId,
-	) -> Option<&mut FlowNode<'a>> {
+	) -> Option<&mut FlowNode> {
 		self.graph.get_node_mut(node_id)
 	}
 

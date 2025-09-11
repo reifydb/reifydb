@@ -25,10 +25,10 @@ use reifydb_core::{
 use self::{
 	conversion::{to_owned_expressions, to_owned_physical_plan},
 	operator::{
-		aggregate::AggregateCompiler, distinct::DistinctCompiler,
-		extend::ExtendCompiler, filter::FilterCompiler,
-		join::JoinCompiler, map::MapCompiler, sort::SortCompiler,
-		take::TakeCompiler,
+		aggregate::AggregateCompiler, apply::ApplyCompiler,
+		distinct::DistinctCompiler, extend::ExtendCompiler,
+		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler,
+		sort::SortCompiler, take::TakeCompiler,
 	},
 	source::{
 		inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
@@ -42,7 +42,7 @@ pub fn compile_flow(
 	txn: &mut impl CommandTransaction,
 	plan: PhysicalPlan,
 	sink: &ViewDef,
-) -> crate::Result<Flow<'static>> {
+) -> crate::Result<Flow> {
 	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
 	let owned_plan = to_owned_physical_plan(plan);
 	let compiler = FlowCompiler::new(txn)?;
@@ -52,7 +52,7 @@ pub fn compile_flow(
 /// Compiler for converting RQL plans into executable Flows
 pub(crate) struct FlowCompiler<T: CommandTransaction> {
 	/// The flow graph being built
-	flow: Flow<'static>,
+	flow: Flow,
 	/// Reference to transaction for ID generation
 	pub(crate) txn: *mut T,
 }
@@ -89,7 +89,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Adds a node to the flow graph
 	fn add_node(
 		&mut self,
-		node_type: FlowNodeType<'static>,
+		node_type: FlowNodeType,
 	) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
 		let flow_node_id =
@@ -102,7 +102,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		mut self,
 		plan: PhysicalPlan,
 		sink: &ViewDef,
-	) -> crate::Result<Flow<'static>> {
+	) -> crate::Result<Flow> {
 		// Check if the root plan is a Map node that should be terminal
 		let root_node_id = match &plan {
 			PhysicalPlan::Map(map_node) => {
@@ -160,6 +160,9 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			}
 			PhysicalPlan::Extend(extend) => {
 				ExtendCompiler::from(extend).compile(self)
+			}
+			PhysicalPlan::Apply(apply) => {
+				ApplyCompiler::from(apply).compile(self)
 			}
 			PhysicalPlan::Aggregate(aggregate) => {
 				AggregateCompiler::from(aggregate).compile(self)

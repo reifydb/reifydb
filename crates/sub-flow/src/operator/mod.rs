@@ -1,45 +1,38 @@
 mod aggregate;
+mod apply;
 mod distinct;
 mod extend;
 mod filter;
 mod join;
 mod map;
 mod sort;
+pub(crate) mod stateful;
 mod take;
 mod union;
-mod window;
-
-use std::marker::PhantomData;
 
 pub use aggregate::AggregateOperator;
+pub use apply::ApplyOperator;
 pub use distinct::DistinctOperator;
 pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::{MapOperator, MapTerminalOperator};
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{
-		CommandTransaction, EvaluationContext, Evaluator,
-		expression::Expression,
-	},
-	value::columnar::Column,
-};
+use reifydb_core::{flow::FlowChange, interface::CommandTransaction};
+use reifydb_engine::StandardEvaluator;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use union::UnionOperator;
-pub use window::WindowOperator;
 
-pub trait Operator<E: Evaluator>: Send + Sync + 'static {
-	fn apply<T: CommandTransaction>(
+pub trait Operator<T: CommandTransaction>: Send + Sync {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange>;
 }
 
-// Enum for dynamic dispatch of operators
-pub enum OperatorEnum<E: Evaluator> {
+pub enum Operators<T: CommandTransaction> {
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
@@ -50,52 +43,43 @@ pub enum OperatorEnum<E: Evaluator> {
 	Take(TakeOperator),
 	Distinct(DistinctOperator),
 	Union(UnionOperator),
-	Window(WindowOperator),
-	_Phantom(PhantomData<E>),
+	Apply(ApplyOperator<T>),
 }
 
-impl<E: Evaluator> OperatorEnum<E> {
-	pub fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operators<T> {
+	pub fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let result = match self {
-			OperatorEnum::Filter(op) => op.apply(ctx, change),
-			OperatorEnum::Map(op) => op.apply(ctx, change),
-			OperatorEnum::Extend(op) => op.apply(ctx, change),
-			OperatorEnum::MapTerminal(op) => op.apply(ctx, change),
-			OperatorEnum::Aggregate(op) => op.apply(ctx, change),
-			OperatorEnum::Join(op) => op.apply(ctx, change),
-			OperatorEnum::Sort(op) => op.apply(ctx, change),
-			OperatorEnum::Take(op) => op.apply(ctx, change),
-			OperatorEnum::Distinct(op) => op.apply(ctx, change),
-			OperatorEnum::Union(op) => op.apply(ctx, change),
-			OperatorEnum::Window(op) => op.apply(ctx, change),
-			OperatorEnum::_Phantom(_) => unreachable!(),
+			Operators::Filter(op) => {
+				op.apply(txn, change, evaluator)
+			}
+			Operators::Map(op) => op.apply(txn, change, evaluator),
+			Operators::Extend(op) => {
+				op.apply(txn, change, evaluator)
+			}
+			Operators::MapTerminal(op) => {
+				op.apply(txn, change, evaluator)
+			}
+			Operators::Aggregate(op) => {
+				op.apply(txn, change, evaluator)
+			}
+			Operators::Join(op) => op.apply(txn, change, evaluator),
+			Operators::Sort(op) => op.apply(txn, change, evaluator),
+			Operators::Take(op) => op.apply(txn, change, evaluator),
+			Operators::Distinct(op) => {
+				op.apply(txn, change, evaluator)
+			}
+			Operators::Union(op) => {
+				op.apply(txn, change, evaluator)
+			}
+			Operators::Apply(op) => {
+				op.apply(txn, change, evaluator)
+			}
 		};
 		result
-	}
-}
-
-pub struct OperatorContext<'a, E: Evaluator, T: CommandTransaction> {
-	pub evaluator: &'a E,
-	pub txn: &'a mut T,
-}
-
-impl<'a, E: Evaluator, T: CommandTransaction> OperatorContext<'a, E, T> {
-	pub fn new(evaluator: &'a E, txn: &'a mut T) -> Self {
-		Self {
-			evaluator,
-			txn,
-		}
-	}
-
-	pub fn evaluate(
-		&self,
-		ctx: &EvaluationContext,
-		expr: &Expression,
-	) -> crate::Result<Column> {
-		self.evaluator.evaluate(ctx, expr)
 	}
 }

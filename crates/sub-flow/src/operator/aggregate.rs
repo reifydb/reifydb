@@ -14,13 +14,11 @@ use reifydb_core::{
 	util::{CowVec, encoding::keycode},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
+use reifydb_engine::StandardEvaluator;
 use reifydb_type::{OrderedF64, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Result,
-	operator::{Operator, OperatorContext},
-};
+use crate::{Result, operator::Operator};
 // ============================================================================
 // Key Implementation for Aggregate State Storage
 // ============================================================================
@@ -319,9 +317,9 @@ impl AggregateOperator {
 		}
 	}
 
-	fn compute_group_key<E: Evaluator, T: CommandTransaction>(
+	fn compute_group_key(
 		&self,
-		ctx: &OperatorContext<E, T>,
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 		row_indices: Option<&[usize]>,
 	) -> Result<HashMap<Vec<Value>, Vec<usize>>> {
@@ -341,7 +339,7 @@ impl AggregateOperator {
 				params: &empty_params,
 			};
 
-			let result = ctx.evaluate(&eval_ctx, expr)?;
+			let result = evaluator.evaluate(&eval_ctx, expr)?;
 			group_columns.push(result);
 		}
 
@@ -672,12 +670,13 @@ impl AggregateOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for AggregateOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for AggregateOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
-	) -> Result<FlowChange> {
+		evaluator: &StandardEvaluator,
+	) -> crate::Result<FlowChange> {
 		let mut changed_groups = Vec::new();
 
 		for diff in &change.diffs {
@@ -689,7 +688,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					// Compute all group keys at once
 					let group_map = self
 						.compute_group_key(
-							ctx, after, None,
+							evaluator, after, None,
 						)?;
 
 					// Process each group in batch
@@ -699,8 +698,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 						// Load state from storage
 						let mut state = self
 							.load_state(
-								ctx.txn,
-								&group_key,
+								txn, &group_key,
 							)?;
 
 						// Update state with all rows
@@ -713,8 +711,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 
 						// Save state back to storage
 						self.save_state(
-							ctx.txn, &group_key,
-							&state,
+							txn, &group_key, &state,
 						)?;
 
 						if !changed_groups
@@ -746,7 +743,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					// Compute group keys for old values
 					let old_group_map = self
 						.compute_group_key(
-							ctx, before, None,
+							evaluator, before, None,
 						)?;
 
 					// Process deletions for each group
@@ -755,8 +752,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					{
 						let mut old_state = self
 							.load_state(
-								ctx.txn,
-								&old_key,
+								txn, &old_key,
 							)?;
 						old_state.update_delete(
 							before,
@@ -764,7 +760,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 							&self.agg_columns,
 						);
 						self.save_state(
-							ctx.txn, &old_key,
+							txn, &old_key,
 							&old_state,
 						)?;
 
@@ -779,7 +775,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					// Compute group keys for new values
 					let new_group_map = self
 						.compute_group_key(
-							ctx, after, None,
+							evaluator, after, None,
 						)?;
 
 					// Process insertions for each group
@@ -788,8 +784,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					{
 						let mut new_state = self
 							.load_state(
-								ctx.txn,
-								&new_key,
+								txn, &new_key,
 							)?;
 						new_state.update_insert(
 							after,
@@ -797,7 +792,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 							&self.agg_columns,
 						);
 						self.save_state(
-							ctx.txn, &new_key,
+							txn, &new_key,
 							&new_state,
 						)?;
 
@@ -816,7 +811,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 					// Compute all group keys at once
 					let group_map = self
 						.compute_group_key(
-							ctx, before, None,
+							evaluator, before, None,
 						)?;
 
 					// Process each group in batch
@@ -826,8 +821,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 						// Load state from storage
 						let mut state = self
 							.load_state(
-								ctx.txn,
-								&group_key,
+								txn, &group_key,
 							)?;
 
 						// Update state with all rows
@@ -840,8 +834,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 
 						// Save state back to storage
 						self.save_state(
-							ctx.txn, &group_key,
-							&state,
+							txn, &group_key, &state,
 						)?;
 
 						if !changed_groups
@@ -857,7 +850,7 @@ impl<E: Evaluator> Operator<E> for AggregateOperator {
 		}
 
 		// Emit changes for affected groups
-		self.emit_groupchanges(ctx.txn, changed_groups)
+		self.emit_groupchanges(txn, changed_groups)
 	}
 }
 

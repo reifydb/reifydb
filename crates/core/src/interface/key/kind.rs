@@ -26,6 +26,7 @@ pub enum KeyKind {
 	View = 0x10,
 	SchemaView = 0x11,
 	PrimaryKey = 0x12,
+	FlowNodeState = 0x13,
 }
 
 impl From<KeyKind> for u8 {
@@ -56,6 +57,7 @@ impl TryFrom<u8> for KeyKind {
 			0x10 => Ok(Self::View),
 			0x11 => Ok(Self::SchemaView),
 			0x12 => Ok(Self::PrimaryKey),
+			0x13 => Ok(Self::FlowNodeState),
 			_ => Err(serde::de::Error::custom(format!(
 				"Invalid KeyKind value: {value:#04x}"
 			))),

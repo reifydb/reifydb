@@ -6,8 +6,9 @@ use reifydb_core::{
 	},
 	value::columnar::Columns,
 };
+use reifydb_engine::StandardEvaluator;
 
-use crate::operator::{Operator, OperatorContext};
+use crate::operator::Operator;
 
 pub struct ExtendOperator {
 	expressions: Vec<Expression<'static>>,
@@ -21,11 +22,12 @@ impl ExtendOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for ExtendOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for ExtendOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		_txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
@@ -37,7 +39,7 @@ impl<E: Evaluator> Operator<E> for ExtendOperator {
 					after,
 				} => {
 					let extended_columns =
-						self.extend(ctx, &after)?;
+						self.extend(evaluator, &after)?;
 					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -50,10 +52,10 @@ impl<E: Evaluator> Operator<E> for ExtendOperator {
 					before,
 					after,
 				} => {
-					let extended_before =
-						self.extend(ctx, &before)?;
+					let extended_before = self
+						.extend(evaluator, &before)?;
 					let extended_after =
-						self.extend(ctx, &after)?;
+						self.extend(evaluator, &after)?;
 					output.push(FlowDiff::Update {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -66,8 +68,8 @@ impl<E: Evaluator> Operator<E> for ExtendOperator {
 					row_ids,
 					before,
 				} => {
-					let extended_before =
-						self.extend(ctx, &before)?;
+					let extended_before = self
+						.extend(evaluator, &before)?;
 					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -82,9 +84,9 @@ impl<E: Evaluator> Operator<E> for ExtendOperator {
 }
 
 impl ExtendOperator {
-	fn extend<E: Evaluator, T: CommandTransaction>(
+	fn extend(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
 		// Start with all existing columns (EXTEND preserves everything)
@@ -104,7 +106,7 @@ impl ExtendOperator {
 		};
 
 		for expr in &self.expressions {
-			let column = ctx.evaluate(&eval_ctx, expr)?;
+			let column = evaluator.evaluate(&eval_ctx, expr)?;
 			result_columns.push(column);
 		}
 

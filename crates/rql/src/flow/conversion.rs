@@ -300,6 +300,11 @@ pub fn to_owned_expressions(
 	exprs.into_iter().map(to_owned_expression).collect()
 }
 
+/// Converts a fragment to owned form
+pub fn to_owned_fragment(fragment: Fragment<'_>) -> Fragment<'static> {
+	Fragment::Owned(fragment.into_owned())
+}
+
 /// Converts a PhysicalPlan<'a> to PhysicalPlan<'static> by converting all
 /// contained data to owned
 pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
@@ -335,6 +340,10 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
         PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
             input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
             extend: to_owned_expressions(node.extend)}),
+        PhysicalPlan::Apply(node) => PhysicalPlan::Apply(crate::plan::physical::ApplyNode {
+            input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
+            operator: to_owned_fragment(node.operator),
+            expressions: to_owned_expressions(node.expressions)}),
         PhysicalPlan::TableScan(node) => PhysicalPlan::TableScan(node), // TableScanNode doesn't contain fragments
         PhysicalPlan::ViewScan(node) => PhysicalPlan::ViewScan(node), // ViewScanNode doesn't contain fragments either
         PhysicalPlan::InlineData(node) => PhysicalPlan::InlineData(crate::plan::physical::InlineDataNode {

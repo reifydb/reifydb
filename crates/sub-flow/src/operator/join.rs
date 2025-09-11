@@ -17,13 +17,11 @@ use reifydb_core::{
 		Column, ColumnData, Columns, FullyQualified, SourceQualified,
 	},
 };
+use reifydb_engine::StandardEvaluator;
 use reifydb_type::{Fragment, OwnedFragment, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Result,
-	operator::{Operator, OperatorContext},
-};
+use crate::{Result, operator::Operator};
 
 // Key for storing join state
 #[derive(Debug, Clone)]
@@ -235,8 +233,8 @@ impl JoinOperator {
 	}
 
 	// Extract join key values from columns
-	fn extract_join_keys<E: Evaluator, T: CommandTransaction>(
-		ctx: &OperatorContext<E, T>,
+	fn extract_join_keys(
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 		row_idx: usize,
 		expressions: &[Expression<'static>],
@@ -274,7 +272,8 @@ impl JoinOperator {
 				_ => expr.clone(),
 			};
 
-			let result = ctx.evaluate(&eval_ctx, &column_expr)?;
+			let result =
+				evaluator.evaluate(&eval_ctx, &column_expr)?;
 			let value = result.data().get_value(row_idx);
 			keys.push(value);
 		}
@@ -959,9 +958,10 @@ impl JoinOperator {
 	}
 
 	// Process an insert operation
-	fn process_insert<E: Evaluator, T: CommandTransaction>(
+	fn process_insert<T: CommandTransaction>(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
+		evaluator: &StandardEvaluator,
 		source: SourceId,
 		row_ids: &[RowNumber],
 		after: &Columns,
@@ -1011,7 +1011,7 @@ impl JoinOperator {
 		for (idx, &row_id) in row_ids.iter().enumerate() {
 			// Extract join keys
 			let join_keys = Self::extract_join_keys(
-				ctx,
+				evaluator,
 				after,
 				idx,
 				expressions,
@@ -1020,7 +1020,7 @@ impl JoinOperator {
 
 			// Store this row
 			Self::store_row(
-				ctx.txn,
+				txn,
 				self.flow_id,
 				self.node_id,
 				self.join_instance_id,
@@ -1033,7 +1033,7 @@ impl JoinOperator {
 
 			// Get matching rows from the other side
 			let other_rows = Self::get_matching_rows(
-				ctx.txn,
+				txn,
 				self.flow_id,
 				self.node_id,
 				self.join_instance_id,
@@ -1118,9 +1118,10 @@ impl JoinOperator {
 	}
 
 	// Process a remove operation
-	fn process_remove<E: Evaluator, T: CommandTransaction>(
+	fn process_remove<T: CommandTransaction>(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
+		evaluator: &StandardEvaluator,
 		source: SourceId,
 		row_ids: &[RowNumber],
 		before: &Columns,
@@ -1146,7 +1147,7 @@ impl JoinOperator {
 		for (idx, &row_id) in row_ids.iter().enumerate() {
 			// Extract join keys
 			let join_keys = Self::extract_join_keys(
-				ctx,
+				evaluator,
 				before,
 				idx,
 				expressions,
@@ -1155,7 +1156,7 @@ impl JoinOperator {
 
 			// Get matching rows from the other side before deleting
 			let other_rows = Self::get_matching_rows(
-				ctx.txn,
+				txn,
 				self.flow_id,
 				self.node_id,
 				self.join_instance_id,
@@ -1165,7 +1166,7 @@ impl JoinOperator {
 
 			// Delete this row from state
 			Self::delete_row(
-				ctx.txn,
+				txn,
 				self.flow_id,
 				self.node_id,
 				self.join_instance_id,
@@ -1225,11 +1226,12 @@ impl JoinOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for JoinOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for JoinOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		use reifydb_core::log_debug;
 
@@ -1287,7 +1289,7 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 			let (metadata, is_left) =
 				if let Some(from_node_id) = from_node {
 					Self::get_or_init_metadata_with_node(
-						ctx.txn,
+						txn,
 						self.flow_id,
 						self.node_id,
 						self.join_instance_id,
@@ -1298,7 +1300,7 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 					)?
 				} else {
 					Self::get_or_init_metadata(
-						ctx.txn,
+						txn,
 						self.flow_id,
 						self.node_id,
 						self.join_instance_id,
@@ -1311,7 +1313,7 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 			// Update metadata if this is the right source
 			if !is_left && metadata.right_source.is_empty() {
 				Self::update_metadata(
-					ctx.txn,
+					txn,
 					self.flow_id,
 					self.node_id,
 					self.join_instance_id,
@@ -1327,8 +1329,9 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 					after,
 				} => {
 					let diffs = self.process_insert(
-						ctx, *source, row_ids, after,
-						is_left, &metadata,
+						txn, evaluator, *source,
+						row_ids, after, is_left,
+						&metadata,
 					)?;
 					output_diffs.extend(diffs);
 				}
@@ -1341,12 +1344,14 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 					// Handle update as remove + insert
 					let remove_diffs = self
 						.process_remove(
-							ctx, *source, row_ids,
+							txn, evaluator,
+							*source, row_ids,
 							before, is_left,
 						)?;
 					let insert_diffs = self
 						.process_insert(
-							ctx, *source, row_ids,
+							txn, evaluator,
+							*source, row_ids,
 							after, is_left,
 							&metadata,
 						)?;
@@ -1359,8 +1364,8 @@ impl<E: Evaluator> Operator<E> for JoinOperator {
 					before,
 				} => {
 					let diffs = self.process_remove(
-						ctx, *source, row_ids, before,
-						is_left,
+						txn, evaluator, *source,
+						row_ids, before, is_left,
 					)?;
 					output_diffs.extend(diffs);
 				}

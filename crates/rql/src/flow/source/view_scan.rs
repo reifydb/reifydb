@@ -24,7 +24,7 @@ impl From<ViewScanNode> for ViewScanCompiler {
 	}
 }
 
-impl<'a, T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let view = self.view_scan.view;
 		let view_name = view.name.clone();

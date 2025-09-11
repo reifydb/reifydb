@@ -20,10 +20,14 @@ pub use fragment::{
 pub use params::Params;
 pub use value::{
 	Blob,
+	// Traits
 	Constraint,
+
+	// Number traits and operations
 	Date,
 	DateTime,
 	Decimal,
+	// Parse functions
 	GetType,
 	IdentityId,
 	Int,
@@ -35,20 +39,12 @@ pub use value::{
 	Time,
 	Type,
 	TypeConstraint,
-
 	Uint,
-	// Parse functions
 	Uuid4,
-	// Traits
 	Uuid7,
-
-	// Number traits and operations
 	Value,
-
-	// Parse functions
 	boolean::parse_bool,
 	decimal::parse_decimal,
-	int::parse_int,
 	is::{
 		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
 		IsUuid,
@@ -62,7 +58,8 @@ pub use value::{
 	temporal::parse::{
 		parse_date, parse_datetime, parse_interval, parse_time,
 	},
-	uint::parse_uint,
+
+	// Parse functions
 	uuid::{parse_uuid4, parse_uuid7},
 };
 pub use value::{blob, boolean, temporal, uuid};

@@ -169,3 +169,24 @@ pub fn extend_multiple_expressions_without_braces<'a>(
 		],
 		cause: None}
 }
+
+/// Multiple APPLY arguments without braces error
+pub fn apply_multiple_arguments_without_braces<'a>(
+	fragment: impl IntoFragment<'a>,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "APPLY_001".to_string(),
+		statement: None,
+		message: "Multiple APPLY arguments require curly braces".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces around arguments".to_string()),
+		help: Some("Wrap multiple APPLY arguments in curly braces, e.g., 'APPLY operator_name { arg1, arg2 }'".to_string()),
+		notes: vec![
+			"When applying operators with multiple arguments, use curly braces: APPLY operator { arg1, arg2, ... }".to_string(),
+			"Single arguments can be written without braces: APPLY running_sum amount".to_string(),
+			"No arguments should use empty braces: APPLY counter {}".to_string(),
+		],
+		cause: None}
+}

@@ -24,7 +24,7 @@ impl From<TableScanNode> for TableScanCompiler {
 	}
 }
 
-impl<'a, T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
+impl<T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let table = self.table_scan.table;
 		let table_name = table.name.clone();

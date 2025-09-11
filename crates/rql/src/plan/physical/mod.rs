@@ -285,6 +285,19 @@ impl Compiler {
 					));
 				}
 
+				LogicalPlan::Apply(apply) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Apply(
+						ApplyNode {
+							operator: apply
+								.operator_name,
+							expressions: apply
+								.arguments,
+							input,
+						},
+					));
+				}
+
 				LogicalPlan::SourceScan(scan) => {
 					let Some(schema) = CatalogStore::find_schema_by_name(
 							rx,
@@ -444,6 +457,7 @@ pub enum PhysicalPlan<'a> {
 	Sort(SortNode<'a>),
 	Map(MapNode<'a>),
 	Extend(ExtendNode<'a>),
+	Apply(ApplyNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	TableScan(TableScanNode),
 	TableVirtualScan(TableVirtualScanNode<'a>),
@@ -567,6 +581,13 @@ pub struct MapNode<'a> {
 pub struct ExtendNode<'a> {
 	pub input: Option<Box<PhysicalPlan<'a>>>,
 	pub extend: Vec<Expression<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplyNode<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub operator: Fragment<'a>, // FIXME becomes OperatorIdentifier
+	pub expressions: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]

@@ -9,12 +9,10 @@ mod query;
 use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
-	diagnostic::ast::{empty_pipeline_error, unsupported_ast_node},
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
 		expression::{AliasExpression, Expression},
 	},
-	return_error,
 };
 use reifydb_type::Fragment;
 
@@ -146,23 +144,8 @@ impl Compiler {
 			Ast::Distinct(node) => Self::compile_distinct(node),
 			Ast::Map(node) => Self::compile_map(node),
 			Ast::Extend(node) => Self::compile_extend(node),
-			Ast::Identifier(ref id) => {
-				return_error!(unsupported_ast_node(
-					id.0.fragment.clone(),
-					"standalone identifier"
-				))
-			}
-			node => {
-				let node_type = format!("{:?}", node)
-					.split('(')
-					.next()
-					.unwrap_or("Unknown")
-					.to_string();
-				return_error!(unsupported_ast_node(
-					node.token().fragment.clone(),
-					&node_type
-				))
-			}
+			Ast::Apply(node) => Self::compile_apply(node),
+			node => unimplemented!("{:?}", node),
 		}
 	}
 
@@ -173,7 +156,7 @@ impl Compiler {
 		// For now, we'll wrap them in a special Pipeline plan
 		// that the physical compiler can handle
 		if plans.is_empty() {
-			return_error!(empty_pipeline_error());
+			panic!("Empty pipeline");
 		}
 
 		// Return a Pipeline logical plan that contains all the steps
@@ -210,6 +193,7 @@ pub enum LogicalPlan<'a> {
 	Order(OrderNode),
 	Map(MapNode<'a>),
 	Extend(ExtendNode<'a>),
+	Apply(ApplyNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	SourceScan(SourceScanNode<'a>),
 	// Pipeline wrapper for piped operations
@@ -356,6 +340,12 @@ pub struct MapNode<'a> {
 #[derive(Debug)]
 pub struct ExtendNode<'a> {
 	pub extend: Vec<Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub struct ApplyNode<'a> {
+	pub operator_name: Fragment<'a>,
+	pub arguments: Vec<Expression<'a>>,
 }
 
 #[derive(Debug)]

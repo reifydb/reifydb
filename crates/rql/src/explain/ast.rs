@@ -60,6 +60,8 @@ fn render_ast_tree_inner(
 		Ast::Wildcard(_) => "Wildcard",
 		Ast::ParameterRef(_) => "ParameterRef",
 		Ast::Distinct(_) => "Distinct",
+		Ast::Apply(_) => "Apply",
+		Ast::Call(_) => "Call",
 	};
 
 	let branch = if is_last {

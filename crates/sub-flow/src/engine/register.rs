@@ -6,13 +6,11 @@ use reifydb_core::{
 	flow::{
 		Flow, FlowNodeType, OperatorType,
 		OperatorType::{
-			Aggregate, Distinct, Extend, Filter, Join, Map,
+			Aggregate, Apply, Distinct, Extend, Filter, Join, Map,
 			MapTerminal, Sort, Take, Union,
 		},
 	},
-	interface::{
-		Evaluator, FlowId, FlowNodeId, QueryTransaction, SourceId,
-	},
+	interface::{CommandTransaction, FlowId, FlowNodeId, SourceId},
 };
 
 use crate::{
@@ -20,15 +18,15 @@ use crate::{
 	operator::{
 		AggregateOperator, DistinctOperator, ExtendOperator,
 		FilterOperator, JoinOperator, MapOperator, MapTerminalOperator,
-		OperatorEnum, SortOperator, TakeOperator, UnionOperator,
+		Operators, SortOperator, TakeOperator, UnionOperator,
 	},
 };
 
-impl<E: Evaluator> FlowEngine<E> {
+impl<T: CommandTransaction> FlowEngine<T> {
 	pub fn register(
 		&mut self,
-		txn: &mut impl QueryTransaction,
-		flow: Flow<'static>,
+		txn: &mut T,
+		flow: Flow,
 	) -> crate::Result<()> {
 		debug_assert!(
 			!self.flows.contains_key(&flow.id),
@@ -132,12 +130,12 @@ impl<E: Evaluator> FlowEngine<E> {
 		}
 	}
 
-	fn add_operator<T: QueryTransaction>(
+	fn add_operator(
 		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,
 		node: FlowNodeId,
-		operator: &OperatorType<'static>,
+		operator: &OperatorType,
 		input_schemas: &[reifydb_core::flow::FlowNodeSchema],
 		output_schema: &reifydb_core::flow::FlowNodeSchema,
 	) -> crate::Result<()> {
@@ -158,29 +156,27 @@ impl<E: Evaluator> FlowEngine<E> {
 		Ok(())
 	}
 
-	fn create_operator<T: QueryTransaction>(
+	fn create_operator(
 		&self,
 		txn: &mut T,
 		flow_id: FlowId,
 		node_id: FlowNodeId,
-		operator: OperatorType<'static>,
+		operator: OperatorType,
 		input_schemas: &[reifydb_core::flow::FlowNodeSchema],
 		_output_schema: &reifydb_core::flow::FlowNodeSchema,
-	) -> crate::Result<OperatorEnum<E>> {
+	) -> crate::Result<Operators<T>> {
 		match operator {
 			Filter {
 				conditions,
-			} => Ok(OperatorEnum::Filter(FilterOperator::new(
+			} => Ok(Operators::Filter(FilterOperator::new(
 				conditions,
 			))),
 			Map {
 				expressions,
-			} => Ok(OperatorEnum::Map(MapOperator::new(
-				expressions,
-			))),
+			} => Ok(Operators::Map(MapOperator::new(expressions))),
 			Extend {
 				expressions,
-			} => Ok(OperatorEnum::Extend(ExtendOperator::new(
+			} => Ok(Operators::Extend(ExtendOperator::new(
 				expressions,
 			))),
 			MapTerminal {
@@ -189,7 +185,7 @@ impl<E: Evaluator> FlowEngine<E> {
 			} => {
 				let view_def =
 					CatalogStore::get_view(txn, view_id)?;
-				Ok(OperatorEnum::MapTerminal(
+				Ok(Operators::MapTerminal(
 					MapTerminalOperator::new(
 						expressions,
 						view_def,
@@ -199,17 +195,15 @@ impl<E: Evaluator> FlowEngine<E> {
 			Aggregate {
 				by,
 				map,
-			} => Ok(OperatorEnum::Aggregate(
-				AggregateOperator::new(
-					flow_id.0, node_id.0, by, map,
-				),
-			)),
+			} => Ok(Operators::Aggregate(AggregateOperator::new(
+				flow_id.0, node_id.0, by, map,
+			))),
 			Sort {
 				by,
-			} => Ok(OperatorEnum::Sort(SortOperator::new(by))),
+			} => Ok(Operators::Sort(SortOperator::new(by))),
 			Take {
 				limit,
-			} => Ok(OperatorEnum::Take(TakeOperator::new(
+			} => Ok(Operators::Take(TakeOperator::new(
 				flow_id.0, node_id.0, limit,
 			))),
 			Join {
@@ -229,7 +223,7 @@ impl<E: Evaluator> FlowEngine<E> {
 					reifydb_core::flow::FlowNodeSchema::empty()
 				};
 
-				Ok(OperatorEnum::Join(
+				Ok(Operators::Join(
 					JoinOperator::new(
 						join_type,
 						left,
@@ -243,13 +237,29 @@ impl<E: Evaluator> FlowEngine<E> {
 			}
 			Distinct {
 				expressions,
-			} => Ok(OperatorEnum::Distinct(DistinctOperator::new(
+			} => Ok(Operators::Distinct(DistinctOperator::new(
 				flow_id.0,
 				node_id.0,
 				expressions,
 			))),
-			Union {} => {
-				Ok(OperatorEnum::Union(UnionOperator::new()))
+			Union {} => Ok(Operators::Union(UnionOperator::new())),
+			Apply {
+				operator_name,
+				expressions,
+			} => {
+				// Apply uses the ApplyOperator from the apply
+				// module
+				use crate::operator::ApplyOperator;
+
+				let operator = self.registry.create_operator(
+					operator_name.as_str(),
+					node_id,
+					expressions.as_slice(),
+				)?;
+
+				Ok(Operators::Apply(ApplyOperator::new(
+					operator,
+				)))
 			}
 		}
 	}

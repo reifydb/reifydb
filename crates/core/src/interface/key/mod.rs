@@ -6,6 +6,7 @@ pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
+pub use flow_node_state::FlowNodeStateKey;
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
@@ -28,6 +29,7 @@ mod column;
 mod column_policy;
 mod column_sequence;
 mod columns;
+mod flow_node_state;
 mod index;
 mod index_entry;
 mod kind;
@@ -55,6 +57,7 @@ pub enum Key {
 	Columns(ColumnsKey),
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
+	FlowNodeState(FlowNodeStateKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	RowSequence(RowSequenceKey),
@@ -78,6 +81,7 @@ impl Key {
 			Key::TableColumnPolicy(key) => key.encode(),
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
+			Key::FlowNodeState(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::RowSequence(key) => key.encode(),
@@ -145,6 +149,10 @@ impl Key {
 			}
 			KeyKind::IndexEntry => IndexEntryKey::decode(&key)
 				.map(Self::IndexEntry),
+			KeyKind::FlowNodeState => {
+				FlowNodeStateKey::decode(&key)
+					.map(Self::FlowNodeState)
+			}
 			KeyKind::Row => RowKey::decode(&key).map(Self::Row),
 			KeyKind::RowSequence => RowSequenceKey::decode(&key)
 				.map(Self::RowSequence),
@@ -176,11 +184,12 @@ mod tests {
 	use reifydb_type::RowNumber;
 
 	use super::{
-		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey, Key,
-		SchemaKey, SchemaTableKey, SystemSequenceKey, TableKey,
+		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey,
+		FlowNodeStateKey, Key, SchemaKey, SchemaTableKey,
+		SystemSequenceKey, TableKey,
 	};
 	use crate::interface::{
-		SourceId,
+		FlowNodeId, SourceId,
 		catalog::{
 			ColumnId, ColumnPolicyId, IndexId, SchemaId,
 			SequenceId, TableId,
@@ -422,5 +431,23 @@ mod tests {
 		let key = Key::TransactionVersion(TransactionVersionKey {});
 		let encoded = key.encode();
 		Key::decode(&encoded).expect("Failed to decode key");
+	}
+
+	#[test]
+	fn test_operator_state() {
+		let key = Key::FlowNodeState(FlowNodeStateKey {
+			node: FlowNodeId(0xCAFEBABE),
+		});
+
+		let encoded = key.encode();
+		let decoded =
+			Key::decode(&encoded).expect("Failed to decode key");
+
+		match decoded {
+			Key::FlowNodeState(decoded_inner) => {
+				assert_eq!(decoded_inner.node, 0xCAFEBABE);
+			}
+			_ => unreachable!(),
+		}
 	}
 }

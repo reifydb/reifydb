@@ -8,30 +8,35 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	flow::Flow,
-	interface::{Evaluator, FlowId, FlowNodeId, SourceId},
+	interface::{CommandTransaction, FlowId, FlowNodeId, SourceId},
+};
+use reifydb_engine::StandardEvaluator;
+
+use crate::operator::{
+	Operators, stateful::registry::StatefulOperatorRegistry,
 };
 
-use crate::operator::OperatorEnum;
-
-pub struct FlowEngine<E: Evaluator> {
-	evaluator: E,
-	operators: HashMap<FlowNodeId, OperatorEnum<E>>,
-	flows: HashMap<FlowId, Flow<'static>>,
+pub struct FlowEngine<T: CommandTransaction> {
+	evaluator: StandardEvaluator,
+	operators: HashMap<FlowNodeId, Operators<T>>,
+	flows: HashMap<FlowId, Flow>,
 	// Maps sources to specific nodes that listen to them
 	// This allows multiple nodes in the same flow to listen to the same
 	// source
 	sources: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
 	sinks: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
+	registry: StatefulOperatorRegistry<T>,
 }
 
-impl<E: Evaluator> FlowEngine<E> {
-	pub fn new(evaluator: E) -> Self {
+impl<T: CommandTransaction> FlowEngine<T> {
+	pub fn new(evaluator: StandardEvaluator) -> Self {
 		Self {
 			evaluator,
 			operators: HashMap::new(),
 			flows: HashMap::new(),
 			sources: HashMap::new(),
 			sinks: HashMap::new(),
+			registry: StatefulOperatorRegistry::with_builtins(),
 		}
 	}
 

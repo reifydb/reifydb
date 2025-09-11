@@ -1,9 +1,30 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::{AstCallFunction, parse::Parser, tokenize::Operator};
+use crate::ast::{
+	AstCall, AstCallFunction,
+	parse::Parser,
+	tokenize::{Keyword, Operator},
+};
 
 impl<'a> Parser<'a> {
+	pub(crate) fn parse_call(&mut self) -> crate::Result<AstCall<'a>> {
+		let token = self.consume_keyword(Keyword::Call)?;
+
+		// Parse the operator name (e.g., counter, sequence,
+		// running_sum)
+		let operator_name = self.parse_identifier()?;
+
+		// Parse arguments if present
+		let arguments = self.parse_tuple()?;
+
+		Ok(AstCall {
+			token,
+			operator_name,
+			arguments,
+		})
+	}
+
 	pub(crate) fn parse_function_call(
 		&mut self,
 	) -> crate::Result<AstCallFunction<'a>> {

@@ -7,8 +7,10 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment,
-	SafeConvert, Type, Uint, diagnostic::cast, error, parse_decimal,
-	parse_float, parse_primitive_int, parse_primitive_uint, return_error,
+	SafeConvert, Type, Uint,
+	diagnostic::cast,
+	error, parse_decimal, parse_float, return_error,
+	value::number::{parse_primitive_int, parse_primitive_uint},
 };
 
 pub fn to_number<'a>(

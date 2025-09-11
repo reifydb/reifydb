@@ -6,8 +6,9 @@ use reifydb_core::{
 	},
 	value::columnar::Columns,
 };
+use reifydb_engine::StandardEvaluator;
 
-use crate::operator::{Operator, OperatorContext};
+use crate::operator::Operator;
 
 pub struct MapOperator {
 	expressions: Vec<Expression<'static>>,
@@ -21,11 +22,12 @@ impl MapOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for MapOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for MapOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
@@ -36,8 +38,8 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 					row_ids,
 					after,
 				} => {
-					let projected_columns =
-						self.project(ctx, &after)?;
+					let projected_columns = self
+						.project(evaluator, &after)?;
 					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -50,8 +52,8 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 					before,
 					after,
 				} => {
-					let projected_columns =
-						self.project(ctx, &after)?;
+					let projected_columns = self
+						.project(evaluator, &after)?;
 					output.push(FlowDiff::Update {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -66,8 +68,8 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 				} => {
 					// For removes, we might need to project
 					// to maintain schema consistency
-					let projected_columns =
-						self.project(ctx, &before)?;
+					let projected_columns = self
+						.project(evaluator, &before)?;
 					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -82,9 +84,9 @@ impl<E: Evaluator> Operator<E> for MapOperator {
 }
 
 impl MapOperator {
-	fn project<E: Evaluator, T: CommandTransaction>(
+	fn project(
 		&self,
-		ctx: &OperatorContext<E, T>,
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
 		if columns.is_empty() {
@@ -106,7 +108,7 @@ impl MapOperator {
 		let mut projected_columns = Vec::new();
 
 		for expr in &self.expressions {
-			match ctx.evaluate(&eval_ctx, expr) {
+			match evaluator.evaluate(&eval_ctx, expr) {
 				Ok(column) => {
 					projected_columns.push(column);
 				}

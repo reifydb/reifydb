@@ -11,8 +11,11 @@ use serde::{
 use crate::{
 	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value,
 	parse_bool, parse_date, parse_datetime, parse_float, parse_interval,
-	parse_primitive_int, parse_primitive_uint, parse_time, parse_uuid4,
-	parse_uuid7, value::IdentityId,
+	parse_time, parse_uuid4, parse_uuid7,
+	value::{
+		IdentityId,
+		number::{parse_primitive_int, parse_primitive_uint},
+	},
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -2,20 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	SortKey,
-	flow::FlowChange,
-	interface::{CommandTransaction, Evaluator},
-	row::EncodedKey,
-	util::CowVec,
-	value::columnar::Columns,
+	SortKey, flow::FlowChange, interface::CommandTransaction,
+	row::EncodedKey, util::CowVec, value::columnar::Columns,
 };
+use reifydb_engine::StandardEvaluator;
 use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Result,
-	operator::{Operator, OperatorContext},
-};
+use crate::{Result, operator::Operator};
 
 // Key for storing sorted state
 #[derive(Debug, Clone)]
@@ -64,11 +58,12 @@ impl SortOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for SortOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for SortOperator {
+	fn apply(
 		&self,
-		_ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// For incremental updates, we would:
 		// 1. Load current sorted state

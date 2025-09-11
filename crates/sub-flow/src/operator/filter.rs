@@ -7,8 +7,9 @@ use reifydb_core::{
 	},
 	value::columnar::{ColumnData, Columns},
 };
+use reifydb_engine::StandardEvaluator;
 
-use crate::operator::{Operator, OperatorContext};
+use crate::operator::Operator;
 
 pub struct FilterOperator {
 	conditions: Vec<Expression<'static>>,
@@ -22,11 +23,12 @@ impl FilterOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for FilterOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for FilterOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
@@ -40,7 +42,9 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 					let (
 						filtered_columns,
 						filtered_indices,
-					) = self.filter_with_indices(ctx, &after)?;
+					) = self.filter_with_indices(
+						evaluator, &after,
+					)?;
 					if !filtered_columns.is_empty() {
 						// Extract row_ids for the
 						// filtered rows
@@ -67,7 +71,7 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 				} => {
 					let (filtered_new, filtered_indices) =
 						self.filter_with_indices(
-							ctx, &after,
+							evaluator, &after,
 						)?;
 					if !filtered_new.is_empty() {
 						// Extract row_ids for the
@@ -117,18 +121,19 @@ impl<E: Evaluator> Operator<E> for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter<E: Evaluator, T: CommandTransaction>(
+	fn filter(
 		&self,
-		ctx: &OperatorContext<E, T>,
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
-		let (filtered, _) = self.filter_with_indices(ctx, columns)?;
+		let (filtered, _) =
+			self.filter_with_indices(evaluator, columns)?;
 		Ok(filtered)
 	}
 
-	fn filter_with_indices<E: Evaluator, T: CommandTransaction>(
+	fn filter_with_indices(
 		&self,
-		ctx: &OperatorContext<E, T>,
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 	) -> crate::Result<(Columns, Vec<usize>)> {
 		let row_count = columns.row_count();
@@ -150,7 +155,7 @@ impl FilterOperator {
 		// Evaluate each condition and AND them together
 		for condition in &self.conditions {
 			let result_column =
-				ctx.evaluate(&eval_ctx, condition)?;
+				evaluator.evaluate(&eval_ctx, condition)?;
 
 			match result_column.data() {
 				ColumnData::Bool(container) => {

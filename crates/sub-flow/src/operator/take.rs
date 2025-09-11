@@ -4,16 +4,14 @@
 use reifydb_core::{
 	CowVec,
 	flow::{FlowChange, FlowDiff},
-	interface::{CommandTransaction, Evaluator},
+	interface::CommandTransaction,
 	row::{EncodedKey, EncodedRow},
 };
+use reifydb_engine::StandardEvaluator;
 use reifydb_type::RowNumber;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Result,
-	operator::{Operator, OperatorContext},
-};
+use crate::{Result, operator::Operator};
 
 // Key for storing take state
 #[derive(Debug, Clone)]
@@ -105,14 +103,15 @@ impl TakeOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for TakeOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for TakeOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// Load current state
-		let mut state = self.load_state(ctx.txn)?;
+		let mut state = self.load_state(txn)?;
 		let mut output_diffs = Vec::new();
 
 		for diff in &change.diffs {
@@ -265,7 +264,7 @@ impl<E: Evaluator> Operator<E> for TakeOperator {
 		}
 
 		// Save updated state
-		self.save_state(ctx.txn, &state)?;
+		self.save_state(txn, &state)?;
 
 		Ok(FlowChange {
 			diffs: output_diffs,

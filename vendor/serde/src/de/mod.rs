@@ -613,11 +613,11 @@ pub trait Deserialize<'de>: Sized {
 pub trait DeserializeOwned: for<'de> Deserialize<'de> {}
 impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}
 
-/// `DeserializeSeed` is the stateful form of the `Deserialize` trait. If you
+/// `DeserializeSeed` is the mod form of the `Deserialize` trait. If you
 /// ever find yourself looking for a way to pass data into a `Deserialize` impl,
 /// this trait is the way to do it.
 ///
-/// As one example of stateful deserialization consider deserializing a JSON
+/// As one example of mod deserialization consider deserializing a JSON
 /// array into an existing buffer. Using the `Deserialize` trait we could
 /// deserialize a JSON array into a `Vec<T>` but it would be a freshly allocated
 /// `Vec<T>`; there is no way for `Deserialize` to reuse a previously allocated
@@ -637,7 +637,7 @@ impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}
 /// # }
 /// ```
 ///
-/// Adjusting an API like this to support stateful deserialization is a matter
+/// Adjusting an API like this to support mod deserialization is a matter
 /// of accepting a seed as input:
 ///
 /// ```edition2021
@@ -670,7 +670,7 @@ impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}
 /// to deserialize it into a flat representation like `vec![1, 2, 3, 4, 5, 6]`.
 /// Allocating a brand new `Vec<T>` for each subarray would be slow. Instead we
 /// would like to allocate a single `Vec<T>` and then deserialize each subarray
-/// into it. This requires stateful deserialization using the `DeserializeSeed`
+/// into it. This requires mod deserialization using the `DeserializeSeed`
 /// trait.
 ///
 /// ```edition2021
@@ -678,7 +678,7 @@ impl<T> DeserializeOwned for T where T: for<'de> Deserialize<'de> {}
 /// use std::fmt;
 /// use std::marker::PhantomData;
 ///
-/// // A DeserializeSeed implementation that uses stateful deserialization to
+/// // A DeserializeSeed implementation that uses mod deserialization to
 /// // append array elements onto the end of an existing vector. The preexisting
 /// // state ("seed") in this case is the Vec<T>. The `deserialize` method of
 /// // `ExtendVec` will be traversing the inner arrays of the JSON input and

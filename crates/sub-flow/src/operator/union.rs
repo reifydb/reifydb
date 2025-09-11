@@ -1,15 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{CommandTransaction, Evaluator},
-};
+use reifydb_core::{flow::FlowChange, interface::CommandTransaction};
+use reifydb_engine::StandardEvaluator;
 
-use crate::{
-	Result,
-	operator::{Operator, OperatorContext},
-};
+use crate::{Result, operator::Operator};
 
 pub struct UnionOperator {
 	// Union doesn't need state - it just passes through all changes
@@ -21,11 +16,12 @@ impl UnionOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for UnionOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for UnionOperator {
+	fn apply(
 		&self,
-		_ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// Union is a simple pass-through operator
 		// It combines inputs from multiple sources

@@ -11,14 +11,12 @@ use reifydb_core::{
 	util::CowVec,
 	value::columnar::Columns,
 };
+use reifydb_engine::StandardEvaluator;
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_type::{Error, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Result,
-	operator::{Operator, OperatorContext},
-};
+use crate::operator::Operator;
 
 // Key for storing distinct state
 #[derive(Debug, Clone)]
@@ -75,8 +73,8 @@ impl DistinctOperator {
 		}
 	}
 
-	fn hash_row_with_expressions<E: Evaluator, T: CommandTransaction>(
-		ctx: &OperatorContext<E, T>,
+	fn hash_row_with_expressions(
+		evaluator: &StandardEvaluator,
 		expressions: &[Expression],
 		columns: &Columns,
 		row_idx: usize,
@@ -102,7 +100,8 @@ impl DistinctOperator {
 				params: &empty_params,
 			};
 			for expr in expressions {
-				let result = ctx.evaluate(&eval_ctx, expr)?;
+				let result =
+					evaluator.evaluate(&eval_ctx, expr)?;
 				let value = result.data().get_value(row_idx);
 				buffer.extend(format!("{:?}", value).as_bytes());
 			}
@@ -111,8 +110,8 @@ impl DistinctOperator {
 		Ok(xxh3_128(&buffer))
 	}
 
-	fn extract_row_values<E: Evaluator, T: CommandTransaction>(
-		ctx: &OperatorContext<E, T>,
+	fn extract_row_values(
+		evaluator: &StandardEvaluator,
 		expressions: &[Expression],
 		columns: &Columns,
 		row_idx: usize,
@@ -137,7 +136,8 @@ impl DistinctOperator {
 			};
 			let mut values = Vec::new();
 			for expr in expressions {
-				let result = ctx.evaluate(&eval_ctx, expr)?;
+				let result =
+					evaluator.evaluate(&eval_ctx, expr)?;
 				values.push(result.data().get_value(row_idx));
 			}
 			Ok(values)
@@ -145,12 +145,13 @@ impl DistinctOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for DistinctOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for DistinctOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
-	) -> Result<FlowChange> {
+		evaluator: &StandardEvaluator,
+	) -> crate::Result<FlowChange> {
 		let mut output_diffs = Vec::new();
 
 		for diff in &change.diffs {
@@ -166,7 +167,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						row_ids.iter().enumerate()
 					{
 						let row_hash = Self::hash_row_with_expressions(
-							ctx, &self.expressions, after, idx,
+							evaluator, &self.expressions, after, idx,
 						)?;
 						let key = FlowDistinctStateKey::new(
                             self.flow_id,
@@ -176,9 +177,8 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 
 						// Check if we've seen this row
 						// before
-						let existing = ctx
-							.txn
-							.get(&key.encode())?;
+						let existing =
+							txn.get(&key.encode())?;
 
 						if existing.is_none() {
 							// First time seeing
@@ -186,13 +186,13 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 							let entry = DistinctEntry {
                                 count: 1,
                                 first_row_id: row_id.0,
-                                row_data: Self::extract_row_values(ctx, &self.expressions, after, idx)?};
+                                row_data: Self::extract_row_values(evaluator, &self.expressions, after, idx)?};
 
 							let serialized = serde_json::to_vec(&entry)
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-							ctx.txn.set(&key.encode(), EncodedRow(
+							txn.set(&key.encode(), EncodedRow(
                                 CowVec::new(serialized)
                             ))?;
 
@@ -225,7 +225,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-							ctx.txn.set(&key.encode(), EncodedRow(
+							txn.set(&key.encode(), EncodedRow(
                                 CowVec::new(serialized)
                             ))?;
 							// Don't emit since it's
@@ -257,7 +257,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						row_ids.iter().enumerate()
 					{
 						let row_hash = Self::hash_row_with_expressions(
-							ctx, &self.expressions, before, idx,
+							evaluator, &self.expressions, before, idx,
 						)?;
 						let key = FlowDistinctStateKey::new(
                             self.flow_id,
@@ -265,9 +265,8 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
                             row_hash,
                         );
 
-						let existing = ctx
-							.txn
-							.get(&key.encode())?;
+						let existing =
+							txn.get(&key.encode())?;
 						if let Some(data) = existing {
 							let bytes = data
 								.row
@@ -286,7 +285,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-								ctx.txn.set(&key.encode(), EncodedRow(
+								txn.set(&key.encode(), EncodedRow(
                                     CowVec::new(serialized)
                                 ))?;
 							} else {
@@ -294,7 +293,7 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 								// - remove from
 								// state and emit
 								// retraction
-								ctx.txn
+								txn
 									.remove(&key
 									.encode(
 									))?;
@@ -329,8 +328,11 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						FlowChange::new(vec![
 							remove_diff,
 						]);
-					let remove_result = self
-						.apply(ctx, &remove_change)?;
+					let remove_result = self.apply(
+						txn,
+						&remove_change,
+						evaluator,
+					)?;
 					output_diffs
 						.extend(remove_result.diffs);
 
@@ -344,8 +346,11 @@ impl<E: Evaluator> Operator<E> for DistinctOperator {
 						FlowChange::new(vec![
 							insert_diff,
 						]);
-					let insert_result = self
-						.apply(ctx, &insert_change)?;
+					let insert_result = self.apply(
+						txn,
+						&insert_change,
+						evaluator,
+					)?;
 					output_diffs
 						.extend(insert_result.diffs);
 				}

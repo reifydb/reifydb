@@ -351,6 +351,13 @@ impl Executor {
 			| PhysicalPlan::CreateSchema(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
+			PhysicalPlan::Apply(_) => {
+				// Apply operator requires flow engine for mod
+				// execution
+				panic!(
+					"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+				)
+			}
 		}
 	}
 
@@ -401,6 +408,11 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::Distinct(_) => {
+				let mut std_txn =
+					StandardTransaction::from(txn);
+				self.query(&mut std_txn, plan, params)
+			}
+			PhysicalPlan::Apply(_) => {
 				let mut std_txn =
 					StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params)

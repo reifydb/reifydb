@@ -3,6 +3,7 @@
 
 mod aggregate;
 mod alter;
+mod apply;
 mod call;
 mod cast;
 mod create;

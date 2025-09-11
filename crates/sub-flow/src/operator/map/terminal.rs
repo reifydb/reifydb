@@ -8,9 +8,10 @@ use reifydb_core::{
 	log_debug, log_error,
 	value::columnar::{Column, ColumnQualified, Columns},
 };
+use reifydb_engine::StandardEvaluator;
 use reifydb_type::{Fragment, Type};
 
-use crate::operator::{Operator, OperatorContext};
+use crate::operator::Operator;
 
 pub struct MapTerminalOperator {
 	expressions: Vec<Expression<'static>>,
@@ -29,11 +30,12 @@ impl MapTerminalOperator {
 	}
 }
 
-impl<E: Evaluator> Operator<E> for MapTerminalOperator {
-	fn apply<T: CommandTransaction>(
+impl<T: CommandTransaction> Operator<T> for MapTerminalOperator {
+	fn apply(
 		&self,
-		ctx: &mut OperatorContext<E, T>,
+		txn: &mut T,
 		change: &FlowChange,
+		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
@@ -44,8 +46,8 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 					row_ids,
 					after,
 				} => {
-					let projected_columns =
-						self.project(ctx, &after)?;
+					let projected_columns = self
+						.project(evaluator, &after)?;
 					// Only include if we have valid data
 					if !projected_columns.is_empty() {
 						output.push(FlowDiff::Insert {
@@ -61,8 +63,8 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 					before,
 					after,
 				} => {
-					let projected_columns =
-						self.project(ctx, &after)?;
+					let projected_columns = self
+						.project(evaluator, &after)?;
 					// Only include if we have valid data
 					if !projected_columns.is_empty() {
 						output.push(FlowDiff::Update {
@@ -80,8 +82,8 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 				} => {
 					// For removes, we might need to project
 					// to maintain schema consistency
-					let projected_columns =
-						self.project(ctx, &before)?;
+					let projected_columns = self
+						.project(evaluator, &before)?;
 					// Only include if we have valid data
 					if !projected_columns.is_empty() {
 						output.push(FlowDiff::Remove {
@@ -99,9 +101,9 @@ impl<E: Evaluator> Operator<E> for MapTerminalOperator {
 }
 
 impl MapTerminalOperator {
-	fn project<E: Evaluator, T: CommandTransaction>(
+	fn project(
 		&self,
-		ctx: &OperatorContext<E, T>,
+		evaluator: &StandardEvaluator,
 		columns: &Columns,
 	) -> crate::Result<Columns> {
 		if columns.is_empty() {
@@ -137,7 +139,8 @@ impl MapTerminalOperator {
 				// Try to evaluate the expression
 				// If it fails due to missing columns,
 				// we'll handle it
-				let result = match ctx.evaluate(&eval_ctx, expr)
+				let result = match evaluator
+					.evaluate(&eval_ctx, expr)
 				{
 					Ok(r) => r,
 					Err(e) if e.to_string().contains(
@@ -197,7 +200,7 @@ impl MapTerminalOperator {
 							ty: target_type}});
 
 					// Evaluate the cast expression
-					let casted = ctx.evaluate(
+					let casted = evaluator.evaluate(
 						&eval_ctx, &cast_expr,
 					)?;
 
@@ -233,7 +236,7 @@ impl MapTerminalOperator {
 				// (shouldn't happen for terminal
 				// operator) but we handle it
 				// gracefully
-				ctx.evaluate(&eval_ctx, expr)?
+				evaluator.evaluate(&eval_ctx, expr)?
 			};
 
 			projected_columns.push(column);

@@ -48,7 +48,9 @@ impl<'a> IntoIterator for AstStatement<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast<'a> {
 	Aggregate(AstAggregate<'a>),
+	Apply(AstApply<'a>),
 	Between(AstBetween<'a>),
+	Call(AstCall<'a>),
 	CallFunction(AstCallFunction<'a>),
 	Cast(AstCast<'a>),
 	Create(AstCreate<'a>),
@@ -89,7 +91,9 @@ impl<'a> Ast<'a> {
 	pub fn token(&self) -> &Token<'a> {
 		match self {
 			Ast::Inline(node) => &node.token,
+			Ast::Apply(node) => &node.token,
 			Ast::Between(node) => &node.token,
+			Ast::Call(node) => &node.token,
 			Ast::CallFunction(node) => &node.token,
 			Ast::Cast(node) => &node.token,
 			Ast::Create(node) => node.token(),
@@ -487,6 +491,14 @@ impl<'a> Ast<'a> {
 		}
 	}
 
+	pub fn as_apply(&self) -> &AstApply<'a> {
+		if let Ast::Apply(result) = self {
+			result
+		} else {
+			panic!("not apply")
+		}
+	}
+
 	pub fn as_extend(&self) -> &AstExtend<'a> {
 		if let Ast::Extend(result) = self {
 			result
@@ -512,6 +524,20 @@ impl<'a> Ast<'a> {
 pub struct AstCast<'a> {
 	pub token: Token<'a>,
 	pub tuple: AstTuple<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstApply<'a> {
+	pub token: Token<'a>,
+	pub operator_name: AstIdentifier<'a>,
+	pub expressions: Vec<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCall<'a> {
+	pub token: Token<'a>,
+	pub operator_name: AstIdentifier<'a>,
+	pub arguments: AstTuple<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -425,6 +425,33 @@ fn render_physical_plan_inner(
 			write_node_header(output, prefix, is_last, &label);
 		}
 
+		PhysicalPlan::Apply(physical::ApplyNode {
+			operator: operator_name,
+			expressions: arguments,
+			input,
+		}) => {
+			let label = format!(
+				"Apply {} [{}]",
+				operator_name.fragment(),
+				if arguments.is_empty() {
+					"no args".to_string()
+				} else {
+					format!("{} args", arguments.len())
+				}
+			);
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				if let Some(input) = input {
+					render_physical_plan_inner(
+						input,
+						child_prefix,
+						true,
+						output,
+					);
+				}
+			});
+		}
+
 		PhysicalPlan::InlineData(physical::InlineDataNode {
 			rows,
 		}) => {

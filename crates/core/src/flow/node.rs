@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FlowNodeType<'a> {
+pub enum FlowNodeType {
 	SourceInlineData {},
 	SourceTable {
 		name: String,
@@ -23,7 +23,7 @@ pub enum FlowNodeType<'a> {
 		schema: FlowNodeSchema,
 	},
 	Operator {
-		operator: OperatorType<'a>,
+		operator: OperatorType,
 		input_schemas: Vec<FlowNodeSchema>,
 		output_schema: FlowNodeSchema,
 	},
@@ -34,28 +34,28 @@ pub enum FlowNodeType<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OperatorType<'a> {
+pub enum OperatorType {
 	Filter {
-		conditions: Vec<Expression<'a>>,
+		conditions: Vec<Expression<'static>>,
 	},
 	Map {
-		expressions: Vec<Expression<'a>>,
+		expressions: Vec<Expression<'static>>,
 	},
 	Extend {
-		expressions: Vec<Expression<'a>>,
+		expressions: Vec<Expression<'static>>,
 	},
 	MapTerminal {
-		expressions: Vec<Expression<'a>>,
+		expressions: Vec<Expression<'static>>,
 		view_id: ViewId,
 	},
 	Join {
 		join_type: JoinType,
-		left: Vec<Expression<'a>>,
-		right: Vec<Expression<'a>>,
+		left: Vec<Expression<'static>>,
+		right: Vec<Expression<'static>>,
 	},
 	Aggregate {
-		by: Vec<Expression<'a>>,
-		map: Vec<Expression<'a>>,
+		by: Vec<Expression<'static>>,
+		map: Vec<Expression<'static>>,
 	},
 	Union,
 	Sort {
@@ -65,11 +65,15 @@ pub enum OperatorType<'a> {
 		limit: usize,
 	},
 	Distinct {
-		expressions: Vec<Expression<'a>>,
+		expressions: Vec<Expression<'static>>,
+	},
+	Apply {
+		operator_name: String,
+		expressions: Vec<Expression<'static>>,
 	},
 }
 
-impl<'a> OperatorType<'a> {
+impl OperatorType {
 	/// Returns true if this operator maintains internal state that needs to
 	/// be persisted across incremental updates
 	pub fn is_stateful(&self) -> bool {
@@ -104,20 +108,23 @@ impl<'a> OperatorType<'a> {
 			OperatorType::Distinct {
 				..
 			} => true,
+			OperatorType::Apply {
+				..
+			} => true, // Apply operators are always mod
 		}
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowNode<'a> {
+pub struct FlowNode {
 	pub id: FlowNodeId,
-	pub ty: FlowNodeType<'a>,
+	pub ty: FlowNodeType,
 	pub inputs: Vec<FlowNodeId>,
 	pub outputs: Vec<FlowNodeId>,
 }
 
-impl<'a> FlowNode<'a> {
-	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType<'a>) -> Self {
+impl FlowNode {
+	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType) -> Self {
 		Self {
 			id: id.into(),
 			ty,

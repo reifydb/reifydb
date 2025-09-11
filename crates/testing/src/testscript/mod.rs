@@ -40,7 +40,7 @@
 //! The files are then verified by inspection and checked in to version control.
 //! Tests will fail with a diff if they don't match the expected output.
 //!
-//! This approach is particularly useful when testing comptokenize stateful
+//! This approach is particularly useful when testing comptokenize mod
 //! systems, such as database operations, network protocols, or language
 //! parsing. It can be tedious and labor-intensive to write and assert such
 //! cases by hand, so scripting and recording these interactions often yields
@@ -280,7 +280,7 @@
 //! to represent arbitrary Unicode characters (e.g. `\u{1f44b}`)
 //! ## Managing State
 //!
-//! The runner is free to manage internal state as desired. If it is stateful,
+//! The runner is free to manage internal state as desired. If it is mod,
 //! it is recommended to persist state within a single testscript (across
 //! commands and blocks), but not across testscripts since this can be hard to
 //! reason about and depend on the execution order of scripts. This is most

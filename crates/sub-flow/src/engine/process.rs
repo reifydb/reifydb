@@ -10,17 +10,17 @@ use reifydb_core::{
 		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
 	interface::{
-		CommandTransaction, EncodableKey, Evaluator,
-		GetEncodedRowLayout, RowKey, SourceId, ViewId,
+		CommandTransaction, EncodableKey, GetEncodedRowLayout, RowKey,
+		SourceId, ViewId,
 	},
 	log_debug,
 };
 use reifydb_type::Value;
 
-use crate::{engine::FlowEngine, operator::OperatorContext};
+use crate::engine::FlowEngine;
 
-impl<E: Evaluator> FlowEngine<E> {
-	pub fn process<T: CommandTransaction>(
+impl<T: CommandTransaction> FlowEngine<T> {
+	pub fn process(
 		&self,
 		txn: &mut T,
 		change: FlowChange,
@@ -91,19 +91,18 @@ impl<E: Evaluator> FlowEngine<E> {
 		Ok(())
 	}
 
-	fn apply_operator<T: CommandTransaction>(
+	fn apply_operator(
 		&self,
 		txn: &mut T,
 		node: &FlowNode,
 		change: &FlowChange,
 	) -> crate::Result<FlowChange> {
 		let operator = self.operators.get(&node.id).unwrap();
-		let mut context = OperatorContext::new(&self.evaluator, txn);
-		let result = operator.apply(&mut context, change)?;
+		let result = operator.apply(txn, change, &self.evaluator)?;
 		Ok(result)
 	}
 
-	fn process_node<T: CommandTransaction>(
+	fn process_node(
 		&self,
 		txn: &mut T,
 		flow: &Flow,
@@ -185,7 +184,7 @@ impl<E: Evaluator> FlowEngine<E> {
 		Ok(())
 	}
 
-	fn apply_to_view<T: CommandTransaction>(
+	fn apply_to_view(
 		&self,
 		txn: &mut T,
 		view_id: ViewId,

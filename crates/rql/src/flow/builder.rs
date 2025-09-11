@@ -17,7 +17,7 @@ where
 	T: CommandTransaction,
 {
 	compiler: &'a mut FlowCompiler<T>,
-	node_type: FlowNodeType<'static>,
+	node_type: FlowNodeType,
 	input_nodes: Vec<FlowNodeId>,
 }
 
@@ -28,7 +28,7 @@ where
 	/// Creates a new FlowNodeBuilder
 	pub fn new(
 		compiler: &'a mut FlowCompiler<T>,
-		node_type: FlowNodeType<'static>,
+		node_type: FlowNodeType,
 	) -> Self {
 		Self {
 			compiler,
@@ -74,7 +74,7 @@ where
 	/// Creates a new FlowNodeBuilder for this compiler
 	pub(crate) fn build_node(
 		&mut self,
-		node_type: FlowNodeType<'static>,
+		node_type: FlowNodeType,
 	) -> FlowNodeBuilder<'_, T> {
 		FlowNodeBuilder::new(self, node_type)
 	}

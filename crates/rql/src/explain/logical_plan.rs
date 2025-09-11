@@ -589,6 +589,30 @@ fn render_logical_plan_inner(
 				output.push_str("\n");
 			}
 		}
+		LogicalPlan::Apply(apply) => {
+			output.push_str(&format!("{}Apply\n", prefix));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"   "
+				} else {
+					"│  "
+				}
+			);
+			output.push_str(&format!(
+				"{}├──Operator: {}\n",
+				child_prefix,
+				apply.operator_name.fragment()
+			));
+			if !apply.arguments.is_empty() {
+				output.push_str(&format!(
+					"{}└──Arguments: {} expressions\n",
+					child_prefix,
+					apply.arguments.len()
+				));
+			}
+		}
 		LogicalPlan::Pipeline(pipeline) => {
 			output.push_str(&format!(
 				"{}{} Pipeline\n",
