@@ -207,7 +207,7 @@ mod tests {
 	#[test]
 	fn test_schema_versioning() {
 		let catalog = MaterializedCatalog::new();
-		let schema_id = SchemaId(1);
+		let schema_id = SchemaId(2);
 
 		// Create multiple versions
 		let schema_v1 = create_test_schema(schema_id, "schema_v1");

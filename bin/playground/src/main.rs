@@ -38,6 +38,7 @@ fn main() {
 	log_info!("=== Testing LEFT JOIN with Flow System ===");
 
 	log_info!("Creating schema and tables...");
+	db.query_as_root("FROM system.versions TAKE 1", Params::None).unwrap();
 	db.command_as_root("create schema test", Params::None).unwrap();
 
 	// Create orders table (left side)

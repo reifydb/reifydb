@@ -73,9 +73,20 @@ impl Default for MaterializedCatalog {
 
 impl MaterializedCatalog {
 	pub fn new() -> Self {
+		let system_schema = SchemaDef::system();
+		let system_schema_id = system_schema.id;
+
+		let schemas = SkipMap::new();
+		let container = VersionedContainer::new();
+		container.insert(1, Some(system_schema));
+		schemas.insert(system_schema_id, container);
+
+		let schemas_by_name = SkipMap::new();
+		schemas_by_name.insert("system".to_string(), system_schema_id);
+
 		Self(Arc::new(MaterializedCatalogInner {
-			schemas: SkipMap::new(),
-			schemas_by_name: SkipMap::new(),
+			schemas,
+			schemas_by_name,
 			tables: SkipMap::new(),
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),

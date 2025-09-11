@@ -41,11 +41,14 @@ impl MapCompiler {
 				}
 				Expression::Column(col) => {
 					// Use the column name
-					col.0.fragment().to_string()
+					col.0.name.text().to_string()
 				}
 				Expression::AccessSource(access) => {
 					// Use the column part
-					access.column.fragment().to_string()
+					access.column
+						.name
+						.fragment()
+						.to_string()
 				}
 				_ => {
 					// For other expressions, generate a
