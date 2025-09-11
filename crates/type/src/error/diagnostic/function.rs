@@ -6,7 +6,7 @@ use crate::{Type, error::diagnostic::Diagnostic, fragment::OwnedFragment};
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {
 	Diagnostic {
-		code: "FN_001".to_string(),
+		code: "FUNCTION_001".to_string(),
 		statement: None,
 		message: format!("Unknown function: {}", name),
 		column: None,
@@ -26,7 +26,7 @@ pub fn arity_mismatch(
 	actual: usize,
 ) -> Diagnostic {
 	Diagnostic {
-		code: "FN_002".to_string(),
+		code: "FUNCTION_002".to_string(),
 		statement: None,
 		message: format!(
 			"Function {} expects {} arguments, got {}",
@@ -51,7 +51,7 @@ pub fn too_many_arguments(
 	actual: usize,
 ) -> Diagnostic {
 	Diagnostic {
-		code: "FN_003".to_string(),
+		code: "FUNCTION_003".to_string(),
 		statement: None,
 		message: format!(
 			"Function {} accepts at most {} arguments, got {}",
@@ -83,7 +83,7 @@ pub fn invalid_argument_type(
 		.join(", ");
 
 	Diagnostic {
-		code: "FN_004".to_string(),
+		code: "FUNCTION_004".to_string(),
 		statement: None,
 		message: format!(
 			"Function {} argument {} has invalid type: expected one of [{}], got {:?}",
@@ -107,7 +107,7 @@ pub fn invalid_argument_type(
 /// Argument is undefined/null when a value is required
 pub fn undefined_argument(function: String, index: usize) -> Diagnostic {
 	Diagnostic {
-		code: "FN_005".to_string(),
+		code: "FUNCTION_005".to_string(),
 		statement: None,
 		message: format!(
 			"Function {} argument {} is undefined",
@@ -128,7 +128,7 @@ pub fn undefined_argument(function: String, index: usize) -> Diagnostic {
 /// Function requires input but none was provided
 pub fn missing_input(function: String) -> Diagnostic {
 	Diagnostic {
-		code: "FN_006".to_string(),
+		code: "FUNCTION_006".to_string(),
 		statement: None,
 		message: format!(
 			"Function {} requires input but none was provided",
@@ -146,7 +146,7 @@ pub fn missing_input(function: String) -> Diagnostic {
 /// Function execution failed with a specific reason
 pub fn execution_failed(function: String, reason: String) -> Diagnostic {
 	Diagnostic {
-		code: "FN_007".to_string(),
+		code: "FUNCTION_007".to_string(),
 		statement: None,
 		message: format!(
 			"Function {} execution failed: {}",
@@ -164,7 +164,7 @@ pub fn execution_failed(function: String, reason: String) -> Diagnostic {
 /// Internal function error - should not normally occur
 pub fn internal_error(function: String, details: String) -> Diagnostic {
 	Diagnostic {
-		code: "FN_008".to_string(),
+		code: "FUNCTION_008".to_string(),
 		statement: None,
 		message: format!(
 			"Internal error in function {}: {}",
