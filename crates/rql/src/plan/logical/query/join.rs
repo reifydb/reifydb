@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::JoinType;
 
 use crate::{
@@ -9,12 +10,14 @@ use crate::{
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
 		LogicalPlan, LogicalPlan::SourceScan, SourceScanNode,
+		resolver::IdentifierResolver,
 	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_join<'a>(
+	pub(crate) fn compile_join<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstJoin<'a>,
+		_resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstJoin::InnerJoin {
@@ -31,12 +34,10 @@ impl Compiler {
 						use reifydb_type::{Fragment, OwnedFragment};
 
 						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(schema, identifier.fragment(), SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
-								.with_alias(
-								a.fragment(),
-							);
+								.with_alias(a);
 						}
 
 						vec![SourceScan(
@@ -67,12 +68,10 @@ impl Compiler {
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 
-						let mut source = SourceIdentifier::new(schema.fragment(), table.fragment(), SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
-								.with_alias(
-								a.fragment(),
-							);
+								.with_alias(a);
 						}
 
 						vec![SourceScan(
@@ -106,12 +105,10 @@ impl Compiler {
 						use reifydb_type::{Fragment, OwnedFragment};
 
 						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(schema, identifier.fragment(), SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
-								.with_alias(
-								a.fragment(),
-							);
+								.with_alias(a);
 						}
 
 						vec![SourceScan(
@@ -142,12 +139,10 @@ impl Compiler {
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 
-						let mut source = SourceIdentifier::new(schema.fragment(), table.fragment(), SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
-								.with_alias(
-								a.fragment(),
-							);
+								.with_alias(a);
 						}
 
 						vec![SourceScan(
@@ -181,12 +176,10 @@ impl Compiler {
 						use reifydb_type::{Fragment, OwnedFragment};
 
 						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(schema, identifier.fragment(), SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
-								.with_alias(
-								a.fragment(),
-							);
+								.with_alias(a);
 						}
 
 						vec![SourceScan(
@@ -217,12 +210,10 @@ impl Compiler {
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 
-						let mut source = SourceIdentifier::new(schema.fragment(), table.fragment(), SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
-								.with_alias(
-								a.fragment(),
-							);
+								.with_alias(a);
 						}
 
 						vec![SourceScan(

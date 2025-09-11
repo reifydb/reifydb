@@ -8,7 +8,6 @@ use reifydb_core::interface::identifier::SourceKind;
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
-	SchemaNotFound(SchemaNotFoundError),
 	SourceNotFound(SourceNotFoundError),
 	ColumnNotFound {
 		column: String,
@@ -30,9 +29,6 @@ pub enum IdentifierError {
 impl fmt::Display for IdentifierError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			IdentifierError::SchemaNotFound(e) => {
-				write!(f, "{}", e)
-			}
 			IdentifierError::SourceNotFound(e) => {
 				write!(f, "{}", e)
 			}
@@ -190,28 +186,6 @@ impl fmt::Display for FunctionNotFoundError {
 			);
 			write!(f, "Function '{}' does not exist", qualified)
 		}
-	}
-}
-
-/// Helper function to create a source not found error with context
-pub fn source_not_found_with_hint(
-	schema: String,
-	name: String,
-	was_default: bool,
-) -> IdentifierError {
-	if was_default {
-		// If schema was injected as default, mention it in the error
-		IdentifierError::SourceNotFound(SourceNotFoundError {
-			schema: schema.clone(),
-			name: name.clone(),
-		})
-		// Could extend to add: "(using default schema 'public')" to the
-		// message
-	} else {
-		IdentifierError::SourceNotFound(SourceNotFoundError {
-			schema,
-			name,
-		})
 	}
 }
 

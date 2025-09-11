@@ -3,7 +3,7 @@
 
 use crate::ast::{
 	Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom,
-	AstIdentifier, AstJoin,
+	AstJoin,
 	parse::parse,
 	tokenize::{Token, TokenKind, tokenize},
 };
@@ -76,7 +76,7 @@ fn render_ast_tree_inner(
 			let field_names: Vec<&str> = r
 				.keyed_values
 				.iter()
-				.map(|f| f.key.value())
+				.map(|f| f.key.text())
 				.collect();
 			format!(
 				"{} ({} fields: {})",
@@ -123,7 +123,7 @@ fn render_ast_tree_inner(
 					"ALTER SEQUENCE {}{}.{}",
 					schema,
 					s.sequence.name.text(),
-					s.column.value()
+					s.column.text()
 				)
 			}
 		},
@@ -156,35 +156,52 @@ fn render_ast_tree_inner(
 		Ast::Prefix(p) => children.push(*p.node),
 		Ast::Cast(c) => children.extend(c.tuple.nodes),
 		Ast::Filter(f) => children.push(*f.node),
-		Ast::From(from) => match from {
-			AstFrom::Source {
-				source,
-				index_name,
-				..
-			} => {
-				// Create an Identifier AST node for the source
-				// name This matches what the test expects
-				let source_token = Token {
-					kind: TokenKind::Identifier,
-					fragment: source.name.clone(),
-				};
-				children.push(Ast::Identifier(AstIdentifier(
-					source_token,
-				)));
+		Ast::From(from) => {
+			match from {
+				AstFrom::Source {
+					source,
+					index_name,
+					..
+				} => {
+					// Create an Identifier AST node for the
+					// source name This matches what
+					// the test expects
+					let source_token = Token {
+						kind: TokenKind::Identifier,
+						fragment: source.name.clone(),
+					};
+					use crate::ast::identifier::UnqualifiedIdentifier;
+					children.push(Ast::Identifier(
+						UnqualifiedIdentifier::new(
+							source_token,
+						),
+					));
 
-				// If there's an index directive, add it as a
-				// child too
-				if let Some(index) = index_name {
-					children.push(Ast::Identifier(index));
+					// If there's an index directive, add it
+					// as a child too
+					if let Some(index) = index_name {
+						use crate::ast::{
+							identifier::UnqualifiedIdentifier,
+							tokenize::{
+								Token,
+								TokenKind,
+							},
+						};
+						let index_token = Token {
+							kind: TokenKind::Identifier,
+							fragment: index,
+						};
+						children.push(Ast::Identifier(UnqualifiedIdentifier::new(index_token)));
+					}
+				}
+				AstFrom::Inline {
+					list: query,
+					..
+				} => {
+					children.extend(query.nodes);
 				}
 			}
-			AstFrom::Inline {
-				list: query,
-				..
-			} => {
-				children.extend(query.nodes);
-			}
-		},
+		}
 		Ast::Aggregate(a) => {
 			// Show Map and By as labeled branches
 			if !a.map.is_empty() {
@@ -246,10 +263,10 @@ fn render_ast_tree_inner(
 			children.extend(on);
 		}
 		Ast::Map(s) => children.extend(s.nodes),
-		Ast::Sort(o) => {
-			for col in &o.columns {
-				children.push(Ast::Identifier(col.clone()));
-			}
+		Ast::Sort(_o) => {
+			// Column identifiers are now complex structures, not
+			// simple AST nodes Skip adding them as children for
+			// explain purposes
 		}
 		Ast::PolicyBlock(pb) => children.extend(pb
 			.policies
@@ -294,7 +311,7 @@ fn render_ast_tree_inner(
 							AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
 								// Show the CREATE PRIMARY KEY operation
 								let pk_name = name.as_ref()
-									.map(|n| format!(" {}", n.value()))
+									.map(|n| format!(" {}", n.text()))
 									.unwrap_or_default();
 								output.push_str(&format!(
 									"{}{}CREATE PRIMARY KEY{}\n",
@@ -308,7 +325,7 @@ fn render_ast_tree_inner(
 									let col_branch = if col_last { "└──" } else { "├──" };
 									output.push_str(&format!(
 										"{}{}Column: {}\n",
-										pk_prefix, col_branch, col.column.value()
+										pk_prefix, col_branch, col.column.name.text()
 									));
 								}
 							}
@@ -338,7 +355,7 @@ fn render_ast_tree_inner(
 							AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
 								// Show the CREATE PRIMARY KEY operation
 								let pk_name = name.as_ref()
-									.map(|n| format!(" {}", n.value()))
+									.map(|n| format!(" {}", n.text()))
 									.unwrap_or_default();
 								output.push_str(&format!(
 									"{}{}CREATE PRIMARY KEY{}\n",
@@ -352,7 +369,7 @@ fn render_ast_tree_inner(
 									let col_branch = if col_last { "└──" } else { "├──" };
 									output.push_str(&format!(
 										"{}{}Column: {}\n",
-										pk_prefix, col_branch, col.column.value()
+										pk_prefix, col_branch, col.column.name.text()
 									));
 								}
 							}

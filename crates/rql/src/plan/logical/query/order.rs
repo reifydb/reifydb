@@ -1,15 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{SortDirection, SortKey};
 
 use crate::{
 	ast::AstSort,
-	plan::logical::{Compiler, LogicalPlan, OrderNode},
+	plan::logical::{
+		Compiler, LogicalPlan, OrderNode, resolver::IdentifierResolver,
+	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_sort(ast: AstSort) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_sort<'a, 't, T: CatalogQueryTransaction>(
+		ast: AstSort<'a>,
+		_resolver: &mut IdentifierResolver<'t, T>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns
 				.into_iter()
@@ -17,7 +23,7 @@ impl Compiler {
 				.map(|(column, direction)| {
 					let direction = direction
 						.map(|direction| {
-							match direction.value().to_lowercase().as_str() {
+							match direction.text().to_lowercase().as_str() {
                             "asc" => SortDirection::Asc,
                             _ => SortDirection::Desc}
 						})
@@ -25,7 +31,7 @@ impl Compiler {
 
 					SortKey {
 						column: column
-							.fragment()
+							.name
 							.into_owned(),
 						direction,
 					}

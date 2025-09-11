@@ -8,6 +8,52 @@
 use reifydb_core::interface::identifier::SourceKind;
 use reifydb_type::Fragment;
 
+use crate::ast::tokenize::Token;
+
+/// An unqualified identifier that hasn't been parsed for qualification yet.
+/// This is used in the AST for simple identifiers before they're resolved
+/// to specific types (column, table, schema, etc.)
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnqualifiedIdentifier<'a> {
+	pub token: Token<'a>,
+}
+
+impl<'a> UnqualifiedIdentifier<'a> {
+	pub fn new(token: Token<'a>) -> Self {
+		Self {
+			token,
+		}
+	}
+
+	pub fn from_fragment(fragment: Fragment<'a>) -> Self {
+		use crate::ast::tokenize::TokenKind;
+		Self {
+			token: Token {
+				kind: TokenKind::Identifier,
+				fragment,
+			},
+		}
+	}
+
+	pub fn text(&self) -> &str {
+		self.token.fragment.text()
+	}
+
+	pub fn fragment(&self) -> &Fragment<'a> {
+		&self.token.fragment
+	}
+
+	pub fn into_fragment(self) -> Fragment<'a> {
+		self.token.fragment
+	}
+}
+
+impl<'a> reifydb_type::IntoFragment<'a> for UnqualifiedIdentifier<'a> {
+	fn into_fragment(self) -> Fragment<'a> {
+		self.token.fragment
+	}
+}
+
 /// Maybe-qualified schema identifier - just a name
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSchemaIdentifier<'a> {

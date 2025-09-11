@@ -11,7 +11,10 @@ use identifier::{
 	ColumnIdentifier, SchemaIdentifier, SequenceIdentifier,
 	SourceIdentifier,
 };
-use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
+use reifydb_catalog::{
+	CatalogQueryTransaction, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
+};
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
 	diagnostic::ast::{empty_pipeline_error, unsupported_ast_node},
@@ -23,6 +26,7 @@ use reifydb_core::{
 	return_error,
 };
 
+use self::resolver::IdentifierResolver;
 use crate::{
 	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
 	plan::{
@@ -33,15 +37,19 @@ use crate::{
 
 struct Compiler {}
 
-pub fn compile_logical<'a>(
+pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
+	tx: &'t mut T,
 	ast: AstStatement<'a>,
+	default_schema: &'static str,
 ) -> crate::Result<Vec<LogicalPlan<'a>>> {
-	Compiler::compile(ast)
+	let mut resolver = IdentifierResolver::new(tx, default_schema);
+	Compiler::compile(ast, &mut resolver)
 }
 
 impl Compiler {
-	fn compile<'a>(
+	fn compile<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstStatement<'a>,
+		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<Vec<LogicalPlan<'a>>> {
 		if ast.is_empty() {
 			return Ok(vec![]);
@@ -59,8 +67,8 @@ impl Compiler {
 
 		if is_update_pipeline || is_delete_pipeline {
 			// Build pipeline: compile all nodes except the last one
-			// into a chain
-			let mut chain_nodes = Vec::new();
+			// into a pipeline
+			let mut pipeline_nodes = Vec::new();
 
 			for (i, node) in ast_vec.into_iter().enumerate() {
 				if i == ast_len - 1 {
@@ -70,28 +78,20 @@ impl Compiler {
 							// Build the pipeline as
 							// input to update
 							let input =
-								if !chain_nodes
+								if !pipeline_nodes
 									.is_empty(
 									) {
-									Some(Box::new(Self::build_chain(chain_nodes)?))
+									Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
 								} else {
 									None
 								};
 
 							// Convert MaybeQualified to fully qualified
-							// TODO: inject default
-							// schema if not
-							// provided
-							let target = update_ast.target.map(|t| {
-                                use reifydb_core::interface::identifier::SourceIdentifier;
-                                use reifydb_type::{Fragment, OwnedFragment};
-
-                                let schema = t.schema.unwrap_or_else(|| {
-                                    Fragment::Owned(OwnedFragment::Internal { text: String::from("default") })
-                                });
-
-                                SourceIdentifier::new(schema, t.name, t.kind)
-                            });
+							let target = if let Some(t) = &update_ast.target {
+								Some(resolver.resolve_maybe_source(t)?)
+							} else {
+								None
+							};
 
 							return Ok(vec![LogicalPlan::Update(UpdateNode {
                                 target,
@@ -102,28 +102,20 @@ impl Compiler {
 							// Build the pipeline as
 							// input to delete
 							let input =
-								if !chain_nodes
+								if !pipeline_nodes
 									.is_empty(
 									) {
-									Some(Box::new(Self::build_chain(chain_nodes)?))
+									Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
 								} else {
 									None
 								};
 
 							// Convert MaybeQualified to fully qualified
-							// TODO: inject default
-							// schema if not
-							// provided
-							let target = delete_ast.target.map(|t| {
-                                use reifydb_core::interface::identifier::SourceIdentifier;
-                                use reifydb_type::{Fragment, OwnedFragment};
-
-                                let schema = t.schema.unwrap_or_else(|| {
-                                    Fragment::Owned(OwnedFragment::Internal { text: String::from("default") })
-                                });
-
-                                SourceIdentifier::new(schema, t.name, t.kind)
-                            });
+							let target = if let Some(t) = &delete_ast.target {
+								Some(resolver.resolve_maybe_source(t)?)
+							} else {
+								None
+							};
 
 							return Ok(vec![LogicalPlan::Delete(DeleteNode {
                                 target,
@@ -134,9 +126,11 @@ impl Compiler {
 					}
 				} else {
 					// Add to pipeline
-					chain_nodes.push(Self::compile_single(
-						node,
-					)?);
+					pipeline_nodes.push(
+						Compiler::compile_single(
+							node, resolver,
+						)?,
+					);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -148,8 +142,9 @@ impl Compiler {
 			// This uses pipe operators - create a Pipeline node
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
-				pipeline_nodes
-					.push(Self::compile_single(node)?);
+				pipeline_nodes.push(Self::compile_single(
+					node, resolver,
+				)?);
 			}
 			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
@@ -159,31 +154,50 @@ impl Compiler {
 		// Normal compilation (not piped)
 		let mut result = Vec::with_capacity(ast_len);
 		for node in ast_vec {
-			result.push(Self::compile_single(node)?);
+			result.push(Self::compile_single(node, resolver)?);
 		}
 		Ok(result)
 	}
 
 	// Helper to compile a single AST node
-	fn compile_single(node: Ast) -> crate::Result<LogicalPlan> {
+	fn compile_single<'a, 't, T: CatalogQueryTransaction>(
+		node: Ast<'a>,
+		resolver: &mut IdentifierResolver<'t, T>,
+	) -> crate::Result<LogicalPlan<'a>> {
 		match node {
-			Ast::Create(node) => Self::compile_create(node),
-			Ast::Alter(node) => Self::compile_alter(node),
-			Ast::AstDelete(node) => Self::compile_delete(node),
-			Ast::AstInsert(node) => Self::compile_insert(node),
-			Ast::AstUpdate(node) => Self::compile_update(node),
-			Ast::Aggregate(node) => Self::compile_aggregate(node),
-			Ast::Filter(node) => Self::compile_filter(node),
-			Ast::From(node) => Self::compile_from(node),
-			Ast::Join(node) => Self::compile_join(node),
-			Ast::Take(node) => Self::compile_take(node),
-			Ast::Sort(node) => Self::compile_sort(node),
-			Ast::Distinct(node) => Self::compile_distinct(node),
-			Ast::Map(node) => Self::compile_map(node),
-			Ast::Extend(node) => Self::compile_extend(node),
+			Ast::Create(node) => {
+				Self::compile_create(node, resolver)
+			}
+			Ast::Alter(node) => Self::compile_alter(node, resolver),
+			Ast::AstDelete(node) => {
+				Self::compile_delete(node, resolver)
+			}
+			Ast::AstInsert(node) => {
+				Self::compile_insert(node, resolver)
+			}
+			Ast::AstUpdate(node) => {
+				Self::compile_update(node, resolver)
+			}
+			Ast::Aggregate(node) => {
+				Self::compile_aggregate(node, resolver)
+			}
+			Ast::Filter(node) => {
+				Self::compile_filter(node, resolver)
+			}
+			Ast::From(node) => Self::compile_from(node, resolver),
+			Ast::Join(node) => Self::compile_join(node, resolver),
+			Ast::Take(node) => Self::compile_take(node, resolver),
+			Ast::Sort(node) => Self::compile_sort(node, resolver),
+			Ast::Distinct(node) => {
+				Self::compile_distinct(node, resolver)
+			}
+			Ast::Map(node) => Self::compile_map(node, resolver),
+			Ast::Extend(node) => {
+				Self::compile_extend(node, resolver)
+			}
 			Ast::Identifier(ref id) => {
 				return_error!(unsupported_ast_node(
-					id.0.fragment.clone(),
+					id.clone(),
 					"standalone identifier"
 				))
 			}
@@ -201,7 +215,7 @@ impl Compiler {
 		}
 	}
 
-	fn build_chain<'a>(
+	fn build_pipeline<'a>(
 		plans: Vec<LogicalPlan<'a>>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// The pipeline should be properly structured with inputs
@@ -405,7 +419,7 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 					ColumnSaturationPolicy::Undefined,
 				);
 			}
-			let ident = ast.value.as_identifier().value();
+			let ident = ast.value.as_identifier().text();
 			match ident {
 				"error" => Saturation(
 					ColumnSaturationPolicy::Error,

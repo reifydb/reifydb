@@ -5,13 +5,17 @@ use reifydb_catalog::{
 	CatalogQueryTransaction, CatalogSchemaQueryOperations,
 	CatalogTableQueryOperations, CatalogTransaction,
 	CatalogViewQueryOperations, MaterializedCatalog,
+	transaction::CatalogSourceQueryOperations,
 };
 use reifydb_core::{
 	CommitVersion,
 	interface::{
-		SchemaDef, SchemaId, TableDef, TableId, Transaction,
-		VersionedQueryTransaction, ViewDef, ViewId,
+		SchemaDef, SchemaId, SourceDef, SourceId, TableDef, TableId,
+		Transaction, VersionedQueryTransaction, ViewDef, ViewId,
 	},
+};
+use reifydb_type::{
+	IntoFragment, diagnostic::catalog::schema_not_found, return_error,
 };
 
 use crate::StandardQueryTransaction;
@@ -63,6 +67,48 @@ impl<T: Transaction> CatalogSchemaQueryOperations
 				))
 			})
 	}
+
+	fn get_schema_by_name<'a>(
+		&mut self,
+		name: impl IntoFragment<'a>,
+	) -> reifydb_core::Result<SchemaDef> {
+		let name = name.into_fragment();
+
+		if let Some(result) = self.find_schema_by_name(name.text())? {
+			return Ok(result);
+		}
+
+		let text = name.clone();
+		let text = text.text();
+		return_error!(schema_not_found(name, text));
+	}
+}
+
+impl<T: Transaction> CatalogSourceQueryOperations
+	for StandardQueryTransaction<T>
+{
+	fn find_source(
+		&mut self,
+		_id: SourceId,
+	) -> reifydb_core::Result<Option<SourceDef>> {
+		todo!()
+	}
+
+	fn find_source_by_name<'a>(
+		&mut self,
+		_schema: SchemaId,
+		_source: impl IntoFragment<'a>,
+	) -> reifydb_core::Result<Option<SourceDef>> {
+		todo!()
+	}
+
+	fn get_source_by_name<'a>(
+		&mut self,
+		_schema: SchemaId,
+		_name: impl IntoFragment<'a>,
+	) -> reifydb_core::Result<SourceDef> {
+		todo!()
+	}
 }
 
 impl<T: Transaction> CatalogTableQueryOperations
@@ -91,6 +137,14 @@ impl<T: Transaction> CatalogTableQueryOperations
 			VersionedQueryTransaction::version(self),
 		))
 	}
+
+	fn get_table_by_name(
+		&mut self,
+		_schema: SchemaId,
+		_name: impl AsRef<str>,
+	) -> reifydb_core::Result<TableDef> {
+		todo!()
+	}
 }
 
 impl<T: Transaction> CatalogViewQueryOperations
@@ -115,6 +169,14 @@ impl<T: Transaction> CatalogViewQueryOperations
 			id,
 			VersionedQueryTransaction::version(self),
 		))
+	}
+
+	fn get_view_by_name(
+		&mut self,
+		_schema: SchemaId,
+		_name: impl AsRef<str>,
+	) -> reifydb_core::Result<ViewDef> {
+		todo!()
 	}
 }
 

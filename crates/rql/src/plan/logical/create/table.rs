@@ -1,25 +1,32 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::table::TableColumnToCreate;
+use reifydb_catalog::{CatalogQueryTransaction, table::TableColumnToCreate};
 use reifydb_core::interface::ColumnPolicyKind;
+use reifydb_type::Fragment;
 
 use crate::{
 	ast::AstCreateTable,
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateTableNode, LogicalPlan, convert_policy,
+		resolver::IdentifierResolver,
 	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_table<'a>(
+	pub(crate) fn compile_create_table<
+		'a,
+		't,
+		T: CatalogQueryTransaction,
+	>(
 		ast: AstCreateTable<'a>,
+		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		for col in ast.columns.into_iter() {
-			let column_name = col.name.value().to_string();
+			let column_name = col.name.text().to_string();
 			let constraint =
 				convert_data_type_with_constraints(&col.ty)?;
 
@@ -35,17 +42,17 @@ impl Compiler {
 			};
 
 			let ty_fragment = match &col.ty {
-				crate::ast::AstDataType::Simple(ident) => {
-					ident.0.fragment.clone()
+				crate::ast::AstDataType::Simple(fragment) => {
+					fragment.clone()
 				}
-				crate::ast::AstDataType::WithParams {
+				crate::ast::AstDataType::WithConstraints {
 					name,
 					..
-				} => name.0.fragment.clone(),
+				} => name.clone(),
 			};
 
 			let fragment = Some(Fragment::merge_all([
-				col.name.0.fragment.clone(),
+				col.name.clone(),
 				ty_fragment,
 			])
 			.into_owned());
@@ -59,24 +66,11 @@ impl Compiler {
 			});
 		}
 
-		// Convert MaybeQualified to fully qualified
-		use reifydb_core::interface::identifier::SourceIdentifier;
-		use reifydb_type::{Fragment, OwnedFragment};
-
-		let schema = ast.table.schema.unwrap_or_else(|| {
-			Fragment::Owned(OwnedFragment::Internal {
-				text: String::from("default"),
-			})
-		});
-
-		let mut table = SourceIdentifier::new(
-			schema,
-			ast.table.name,
-			ast.table.kind,
-		);
-		if let Some(alias) = ast.table.alias {
-			table = table.with_alias(alias);
-		}
+		// Convert MaybeQualified to fully qualified using resolver
+		// Don't validate existence since we're creating the table
+		let table = resolver.resolve_maybe_source_with_validation(
+			&ast.table, false,
+		)?;
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,

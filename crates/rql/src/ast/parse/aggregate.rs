@@ -167,11 +167,11 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "age");
+		assert_eq!(identifier.text(), "age");
 
 		assert_eq!(aggregate.by.len(), 1);
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -190,11 +190,11 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "value");
+		assert_eq!(identifier.text(), "value");
 
 		assert_eq!(aggregate.by.len(), 1);
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "value");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "value");
 	}
 
 	#[test]
@@ -216,15 +216,15 @@ mod tests {
 
 		assert_eq!(min_call.arguments.len(), 1);
 		let identifier = min_call.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "age");
+		assert_eq!(identifier.text(), "age");
 
 		assert!(matches!(projection.operator, InfixOperator::As(_)));
 		let identifier = projection.right.as_identifier();
-		assert_eq!(identifier.value(), "min_age");
+		assert_eq!(identifier.text(), "min_age");
 
 		assert_eq!(aggregate.by.len(), 1);
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -242,7 +242,7 @@ mod tests {
 		let projection = &aggregate.map[0].as_infix();
 
 		let identifier = projection.left.as_identifier();
-		assert_eq!(identifier.value(), "min_age");
+		assert_eq!(identifier.text(), "min_age");
 
 		assert!(matches!(
 			projection.operator,
@@ -255,11 +255,11 @@ mod tests {
 
 		assert_eq!(min_call.arguments.len(), 1);
 		let identifier = min_call.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "age");
+		assert_eq!(identifier.text(), "age");
 
 		assert_eq!(aggregate.by.len(), 1);
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -274,7 +274,7 @@ mod tests {
 
 		assert_eq!(aggregate.by.len(), 1);
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -289,10 +289,10 @@ mod tests {
 		assert_eq!(aggregate.by.len(), 2);
 
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 
 		assert!(matches!(aggregate.by[1], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[1].value(), "age");
+		assert_eq!(aggregate.by[1].as_identifier().text(), "age");
 	}
 
 	#[test]
@@ -314,7 +314,7 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "age");
+		assert_eq!(identifier.text(), "age");
 
 		let projection = &aggregate.map[1].as_call_function();
 		assert_eq!(projection.function.name.text(), "max");
@@ -322,14 +322,14 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "age");
+		assert_eq!(identifier.text(), "age");
 
 		assert_eq!(aggregate.by.len(), 2);
 		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 
 		assert!(matches!(aggregate.by[1], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[1].value(), "gender");
+		assert_eq!(aggregate.by[1].as_identifier().text(), "gender");
 	}
 
 	#[test]
@@ -348,10 +348,10 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "age");
+		assert_eq!(identifier.text(), "age");
 
 		assert_eq!(aggregate.by.len(), 1);
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -364,7 +364,7 @@ mod tests {
 		let aggregate = result.first_unchecked().as_aggregate();
 		assert_eq!(aggregate.map.len(), 0);
 		assert_eq!(aggregate.by.len(), 1);
-		assert_eq!(aggregate.by[0].value(), "name");
+		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
 	}
 
 	#[test]
@@ -403,7 +403,7 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "value");
+		assert_eq!(identifier.text(), "value");
 
 		assert_eq!(
 			aggregate.by.len(),
@@ -428,7 +428,7 @@ mod tests {
 
 		assert_eq!(projection.arguments.len(), 1);
 		let identifier = projection.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.value(), "value");
+		assert_eq!(identifier.text(), "value");
 
 		assert_eq!(
 			aggregate.by.len(),

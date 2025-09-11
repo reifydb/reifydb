@@ -15,6 +15,7 @@ pub use command::{
 };
 pub use query::{
 	CatalogQueryTransaction, CatalogSchemaQueryOperations,
-	CatalogTableQueryOperations, CatalogTransaction,
-	CatalogViewQueryOperations, TransactionalChangesExt,
+	CatalogSourceQueryOperations, CatalogTableQueryOperations,
+	CatalogTransaction, CatalogViewQueryOperations,
+	TransactionalChangesExt,
 };

@@ -203,7 +203,7 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		// Should be parsed as identifier, not function call
-		assert!(result[0].first_unchecked().as_identifier().value()
+		assert!(result[0].first_unchecked().as_identifier().text()
 			== "identifier");
 	}
 
@@ -215,7 +215,7 @@ mod tests {
 
 		// Should be parsed as infix expression, not function call
 		let infix = result[0].first_unchecked().as_infix();
-		assert_eq!(infix.left.as_identifier().value(), "namespace");
-		assert_eq!(infix.right.as_identifier().value(), "identifier");
+		assert_eq!(infix.left.as_identifier().text(), "namespace");
+		assert_eq!(infix.right.as_identifier().text(), "identifier");
 	}
 }

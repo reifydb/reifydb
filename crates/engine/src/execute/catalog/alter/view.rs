@@ -7,7 +7,9 @@ use reifydb_core::{
 	return_error,
 	value::columnar::Columns,
 };
-use reifydb_rql::{ast::AstAlterViewOperation, plan::physical::AlterViewPlan};
+use reifydb_rql::plan::{
+	logical::alter::AlterViewOperation, physical::AlterViewPlan,
+};
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -18,24 +20,16 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterViewPlan,
 	) -> crate::Result<Columns> {
-		// Use default schema if not provided
-		let schema_name = plan
-			.node
-			.view
-			.view
-			.schema
-			.as_ref()
-			.map(|s| s.text())
-			.unwrap_or("public");
-		let view_name = plan.node.view.view.name.text();
+		// View is already fully qualified
+		let schema_name = plan.node.view.schema.text();
+		let view_name = plan.node.view.name.text();
 
 		// Find the schema
 		let Some(schema) =
 			CatalogStore::find_schema_by_name(txn, schema_name)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::schema_not_found(
-				plan.node.view.view.schema.clone()
-					.map(|s| s.into_owned()),
+				Some(plan.node.view.schema.clone().into_owned()),
 				schema_name,
 			));
 		};
@@ -46,7 +40,7 @@ impl Executor {
 		)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
-				plan.node.view.view.name.clone().into_owned(),
+				plan.node.view.name.clone().into_owned(),
 				&schema.name,
 				view_name,
 			));
@@ -55,9 +49,9 @@ impl Executor {
 		let mut results = Vec::new();
 
 		// Process each operation
-		for operation in plan.node.view.operations {
+		for operation in plan.node.operations {
 			match operation {
-				AstAlterViewOperation::CreatePrimaryKey {
+				AlterViewOperation::CreatePrimaryKey {
 					name,
 					columns,
 				} => {
@@ -71,13 +65,10 @@ impl Executor {
 					// Map column names to IDs
 					let mut column_ids = Vec::new();
 					for ast_column in columns {
-						let column_fragment =
-							ast_column
-								.column
-								.clone()
-								.fragment();
-						let column_name =
-							column_fragment.text();
+						let column_name = ast_column
+							.column
+							.name
+							.text();
 
 						// Find the column by name
 						let Some(column) = view_columns
@@ -87,7 +78,7 @@ impl Executor {
 							})
 						else {
 							return_error!(reifydb_core::diagnostic::query::column_not_found(
-								ast_column.column.fragment().into_owned()
+								ast_column.column.name.clone().into_owned()
 							));
 						};
 
@@ -106,11 +97,7 @@ impl Executor {
 					)?;
 
 					let pk_name = name
-						.map(|n| {
-							n.fragment()
-								.text()
-								.to_string()
-						})
+						.map(|n| n.text().to_string())
 						.unwrap_or_else(|| {
 							"unnamed".to_string()
 						});
@@ -122,7 +109,7 @@ impl Executor {
 						("primary_key", Value::Utf8(pk_name)),
 					]);
 				}
-				AstAlterViewOperation::DropPrimaryKey => {
+				AlterViewOperation::DropPrimaryKey => {
 					// Not implemented per requirements
 					continue;
 				}

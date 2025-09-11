@@ -26,8 +26,8 @@ where
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		let logical = compile_logical(statement)?;
-		plans.extend(compile_physical(rx, logical))
+		let logical = compile_logical(rx, statement, "default")?;
+		plans.extend(compile_physical(rx, logical));
 	}
 
 	let mut result = String::new();

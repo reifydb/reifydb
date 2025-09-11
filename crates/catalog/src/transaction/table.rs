@@ -129,6 +129,14 @@ where
 
 		Ok(None)
 	}
+
+	fn get_table_by_name(
+		&mut self,
+		_schema: SchemaId,
+		_name: impl AsRef<str>,
+	) -> reifydb_core::Result<TableDef> {
+		todo!()
+	}
 }
 
 // TODO: Add CatalogTableQueryOperations implementation for query-only

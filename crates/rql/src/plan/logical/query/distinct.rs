@@ -1,17 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
 use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::AstDistinct,
-	plan::logical::{Compiler, DistinctNode, LogicalPlan},
+	plan::logical::{
+		Compiler, DistinctNode, LogicalPlan,
+		resolver::IdentifierResolver,
+	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_distinct<'a>(
+	pub(crate) fn compile_distinct<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstDistinct<'a>,
+		_resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// DISTINCT operates on the output columns of the query
 		// In a proper implementation, we would need to resolve these
@@ -25,23 +30,41 @@ impl Compiler {
 				.columns
 				.into_iter()
 				.map(|col| {
-					// TODO: This should be resolved from
-					// the query context For now, using
-					// a placeholder that indicates
-					// resolution needed The physical
-					// plan compiler should resolve this
-					// based on the actual tables/views
-					// being queried
-					ColumnIdentifier {
-						source: ColumnSource::Source {
-							schema: Fragment::Owned(
-								OwnedFragment::Internal { text: String::from("_context") }
-							),
-							source: Fragment::Owned(
-								OwnedFragment::Internal { text: String::from("_context") }
-							),
+					// Convert MaybeQualifiedColumnIdentifier to fully qualified
+					// For now, if it's already qualified, use that info
+					// Otherwise use placeholder that needs resolution
+					match col.source {
+						crate::ast::identifier::MaybeQualifiedColumnSource::Source { schema, source } => {
+							ColumnIdentifier {
+								source: ColumnSource::Source {
+									schema: schema.unwrap_or_else(|| Fragment::Owned(
+										OwnedFragment::Internal { text: String::from("_context") }
+									)),
+									source,
+								},
+								name: col.name,
+							}
 						},
-						name: col.fragment(),
+						crate::ast::identifier::MaybeQualifiedColumnSource::Alias(alias) => {
+							ColumnIdentifier {
+								source: ColumnSource::Alias(alias),
+								name: col.name,
+							}
+						},
+						crate::ast::identifier::MaybeQualifiedColumnSource::Unqualified => {
+							// Unqualified - needs resolution from context
+							ColumnIdentifier {
+								source: ColumnSource::Source {
+									schema: Fragment::Owned(
+										OwnedFragment::Internal { text: String::from("_context") }
+									),
+									source: Fragment::Owned(
+										OwnedFragment::Internal { text: String::from("_context") }
+									),
+								},
+								name: col.name,
+							}
+						}
 					}
 				})
 				.collect(),

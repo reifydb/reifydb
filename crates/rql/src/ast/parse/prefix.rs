@@ -106,7 +106,7 @@ mod tests {
 		else {
 			panic!()
 		};
-		assert_eq!(token.value(), "-2");
+		assert_eq!(token.fragment.text(), "-2");
 	}
 
 	#[test]
@@ -184,7 +184,7 @@ mod tests {
 		else {
 			panic!()
 		};
-		assert_eq!(token.value(), "-2");
+		assert_eq!(token.fragment.text(), "-2");
 	}
 
 	#[test]
@@ -266,7 +266,7 @@ mod tests {
 		let Ast::Identifier(left_id) = inner.left.deref() else {
 			panic!("Expected identifier on left side")
 		};
-		assert_eq!(left_id.value(), "x");
+		assert_eq!(left_id.text(), "x");
 
 		// Right side should be number '5'
 		let Literal(AstLiteral::Number(right_num)) =

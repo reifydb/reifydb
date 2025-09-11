@@ -282,7 +282,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
-		let name = crate::ast::ast::AstIdentifier(name_token);
+		let name = name_token.fragment;
 
 		// Parse type with optional parameters
 		let ty = if self.current()?.is_operator(Operator::OpenParen) {
@@ -304,15 +304,13 @@ impl<'a> Parser<'a> {
 
 			self.consume_operator(Operator::CloseParen)?;
 
-			AstDataType::WithParams {
-				name: crate::ast::ast::AstIdentifier(ty_token),
+			AstDataType::WithConstraints {
+				name: ty_token.fragment,
 				params,
 			}
 		} else {
 			// Simple type without parameters
-			AstDataType::Simple(crate::ast::ast::AstIdentifier(
-				ty_token,
-			))
+			AstDataType::Simple(ty_token.fragment)
 		};
 
 		let auto_increment =
@@ -400,13 +398,10 @@ mod tests {
 
 				assert_eq!(columns.len(), 1);
 
-				assert_eq!(columns[0].name.value(), "value");
+				assert_eq!(columns[0].name.text(), "value");
 				match &columns[0].ty {
 					AstDataType::Simple(ident) => {
-						assert_eq!(
-							ident.value(),
-							"Int2"
-						)
+						assert_eq!(ident.text(), "Int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
@@ -446,11 +441,11 @@ mod tests {
 
 				{
 					let col = &columns[0];
-					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"int2"
 							)
 						}
@@ -464,11 +459,11 @@ mod tests {
 
 				{
 					let col = &columns[1];
-					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"text"
 							)
 						}
@@ -482,13 +477,13 @@ mod tests {
 				{
 					let col = &columns[2];
 					assert_eq!(
-						col.name.value(),
+						col.name.text(),
 						"is_premium"
 					);
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"bool"
 							)
 						}
@@ -534,13 +529,10 @@ mod tests {
 				assert_eq!(columns.len(), 1);
 
 				let col = &columns[0];
-				assert_eq!(col.name.value(), "field");
+				assert_eq!(col.name.text(), "field");
 				match &col.ty {
 					AstDataType::Simple(ident) => {
-						assert_eq!(
-							ident.value(),
-							"int2"
-						)
+						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
@@ -558,7 +550,7 @@ mod tests {
 					AstPolicyKind::Saturation
 				));
 				assert_eq!(
-					policy.value.as_identifier().value(),
+					policy.value.as_identifier().text(),
 					"error"
 				);
 			}
@@ -596,11 +588,11 @@ mod tests {
 
 				{
 					let col = &columns[0];
-					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"int4"
 							)
 						}
@@ -614,11 +606,11 @@ mod tests {
 
 				{
 					let col = &columns[1];
-					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"utf8"
 							)
 						}
@@ -663,13 +655,10 @@ mod tests {
 				assert_eq!(columns.len(), 1);
 
 				let col = &columns[0];
-				assert_eq!(col.name.value(), "field");
+				assert_eq!(col.name.text(), "field");
 				match &col.ty {
 					AstDataType::Simple(ident) => {
-						assert_eq!(
-							ident.value(),
-							"int2"
-						)
+						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
@@ -687,7 +676,7 @@ mod tests {
 					AstPolicyKind::Saturation
 				));
 				assert_eq!(
-					policy.value.as_identifier().value(),
+					policy.value.as_identifier().text(),
 					"error"
 				);
 			}
@@ -727,11 +716,11 @@ mod tests {
 
 				{
 					let col = &columns[0];
-					assert_eq!(col.name.value(), "id");
+					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"int4"
 							)
 						}
@@ -745,11 +734,11 @@ mod tests {
 
 				{
 					let col = &columns[1];
-					assert_eq!(col.name.value(), "name");
+					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
 							assert_eq!(
-								ident.value(),
+								ident.text(),
 								"utf8"
 							)
 						}

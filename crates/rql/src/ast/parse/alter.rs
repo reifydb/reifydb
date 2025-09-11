@@ -72,9 +72,7 @@ impl<'a> Parser<'a> {
 							.clone(),
 					);
 
-				let column = crate::ast::ast::AstIdentifier(
-					column_token,
-				);
+				let column = column_token.fragment;
 				let value = crate::ast::AstLiteral::Number(
 					crate::ast::ast::AstLiteralNumber(
 						value_token,
@@ -103,9 +101,7 @@ impl<'a> Parser<'a> {
 							.clone(),
 					);
 
-				let column = crate::ast::ast::AstIdentifier(
-					second_identifier_token,
-				);
+				let column = second_identifier_token.fragment;
 				let value = crate::ast::AstLiteral::Number(
 					crate::ast::ast::AstLiteralNumber(
 						value_token,
@@ -170,7 +166,10 @@ impl<'a> Parser<'a> {
 					.current()?
 					.is_operator(Operator::OpenCurly)
 				{
-					Some(self.parse_identifier()?)
+					Some(self
+						.parse_identifier()?
+						.token
+						.fragment)
 				} else {
 					None
 				};
@@ -266,7 +265,10 @@ impl<'a> Parser<'a> {
 					.current()?
 					.is_operator(Operator::OpenCurly)
 				{
-					Some(self.parse_identifier()?)
+					Some(self
+						.parse_identifier()?
+						.token
+						.fragment)
 				} else {
 					None
 				};
@@ -332,7 +334,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			let column = self.parse_identifier()?;
+			let column = self.parse_column_identifier()?;
 
 			// Check for optional sort direction
 			let sort_direction = if self
@@ -425,7 +427,7 @@ mod tests {
 					"test"
 				);
 				assert_eq!(sequence.name.text(), "users");
-				assert_eq!(column.value(), "id");
+				assert_eq!(column.text(), "id");
 				match value {
 					crate::ast::AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "1000")
@@ -457,7 +459,7 @@ mod tests {
 			}) => {
 				assert!(sequence.schema.is_none());
 				assert_eq!(sequence.name.text(), "users");
-				assert_eq!(column.value(), "id");
+				assert_eq!(column.text(), "id");
 				match value {
 					crate::ast::AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "500")
@@ -499,9 +501,9 @@ mod tests {
 				match &operations[0] {
 					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_some());
-						assert_eq!(name.as_ref().unwrap().value(), "pk_users");
+						assert_eq!(name.as_ref().unwrap().text(), "pk_users");
 						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.value(), "id");
+						assert_eq!(columns[0].column.name.text(), "id");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}
@@ -541,8 +543,8 @@ mod tests {
 					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_none());
 						assert_eq!(columns.len(), 2);
-						assert_eq!(columns[0].column.value(), "id");
-						assert_eq!(columns[1].column.value(), "email");
+						assert_eq!(columns[0].column.name.text(), "id");
+						assert_eq!(columns[1].column.name.text(), "email");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}
@@ -581,9 +583,9 @@ mod tests {
 				match &operations[0] {
 					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_some());
-						assert_eq!(name.as_ref().unwrap().value(), "pk_view");
+						assert_eq!(name.as_ref().unwrap().text(), "pk_view");
 						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.value(), "user_id");
+						assert_eq!(columns[0].column.name.text(), "user_id");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}
@@ -623,8 +625,8 @@ mod tests {
 					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
 						assert!(name.is_none());
 						assert_eq!(columns.len(), 2);
-						assert_eq!(columns[0].column.value(), "user_id");
-						assert_eq!(columns[1].column.value(), "created_at");
+						assert_eq!(columns[0].column.name.text(), "user_id");
+						assert_eq!(columns[1].column.name.text(), "created_at");
 					}
 					_ => panic!("Expected CreatePrimaryKey operation"),
 				}

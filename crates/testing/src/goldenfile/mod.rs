@@ -322,7 +322,15 @@ fn create_diff(expected: &str, actual: &str) -> String {
 			// Truncate long lines for readability
 			let truncate_line = |line: &str| -> String {
 				if line.len() > 100 {
-					format!("{}...", &line[..97])
+					// Use char boundary-safe truncation
+					let mut char_boundary = 97;
+					while !line
+						.is_char_boundary(char_boundary)
+						&& char_boundary > 0
+					{
+						char_boundary -= 1;
+					}
+					format!("{}...", &line[..char_boundary])
 				} else {
 					line.to_string()
 				}

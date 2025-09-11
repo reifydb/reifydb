@@ -124,6 +124,7 @@ impl<'a> SourceIdentifier<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceKind {
 	Table,
+	TableVirtual,
 	View,
 	MaterializedView,
 	DeferredView,

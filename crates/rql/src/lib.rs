@@ -4,9 +4,9 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::{Result, diagnostic::ast::unrecognized_type, return_error};
-use reifydb_type::{Constraint, Type, TypeConstraint};
+use reifydb_type::{Constraint, Fragment, Type, TypeConstraint};
 
-use crate::ast::{AstDataType, AstIdentifier, AstLiteral};
+use crate::ast::{AstDataType, AstLiteral};
 
 pub mod ast;
 pub mod error;
@@ -16,8 +16,8 @@ pub mod expression;
 pub mod flow;
 pub mod plan;
 
-pub(crate) fn convert_data_type(ast: &AstIdentifier) -> Result<Type> {
-	Ok(match ast.value().to_ascii_lowercase().as_str() {
+pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
+	Ok(match ast.text().to_ascii_lowercase().as_str() {
 		"bool" => Type::Boolean,
 		"boolean" => Type::Boolean,
 		"float4" => Type::Float4,
@@ -44,7 +44,7 @@ pub(crate) fn convert_data_type(ast: &AstIdentifier) -> Result<Type> {
 		"int" => Type::Int,
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
-		_ => return_error!(unrecognized_type(ast.clone().fragment())),
+		_ => return_error!(unrecognized_type(ast.clone())),
 	})
 }
 
@@ -56,7 +56,7 @@ pub(crate) fn convert_data_type_with_constraints(
 			let base_type = convert_data_type(name)?;
 			Ok(TypeConstraint::unconstrained(base_type))
 		}
-		AstDataType::WithParams {
+		AstDataType::WithConstraints {
 			name,
 			params,
 		} => {

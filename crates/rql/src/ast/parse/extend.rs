@@ -73,15 +73,12 @@ mod tests {
 			left_infix.operator,
 			InfixOperator::Multiply(_)
 		));
-		assert_eq!(left_infix.left.as_identifier().value(), "price");
-		assert_eq!(
-			left_infix.right.as_identifier().value(),
-			"quantity"
-		);
+		assert_eq!(left_infix.left.as_identifier().text(), "price");
+		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 
 		// Right side should be identifier "total"
 		let right = infix.right.as_identifier();
-		assert_eq!(right.value(), "total");
+		assert_eq!(right.text(), "total");
 	}
 
 	#[test]
@@ -100,12 +97,12 @@ mod tests {
 		// First expression: "price * quantity as total"
 		let first_infix = extend.nodes[0].as_infix();
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
-		assert_eq!(first_infix.right.as_identifier().value(), "total");
+		assert_eq!(first_infix.right.as_identifier().text(), "total");
 
 		// Second expression: "price * 0.1 as tax"
 		let second_infix = extend.nodes[1].as_infix();
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
-		assert_eq!(second_infix.right.as_identifier().value(), "tax");
+		assert_eq!(second_infix.right.as_identifier().text(), "tax");
 	}
 
 	#[test]

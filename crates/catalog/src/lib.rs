@@ -26,10 +26,10 @@ pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
 	CatalogQueryTransaction, CatalogSchemaCommandOperations,
-	CatalogSchemaQueryOperations, CatalogTableCommandOperations,
-	CatalogTableQueryOperations, CatalogTransaction,
-	CatalogViewCommandOperations, CatalogViewQueryOperations,
-	TransactionalChangesExt,
+	CatalogSchemaQueryOperations, CatalogSourceQueryOperations,
+	CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogTransaction, CatalogViewCommandOperations,
+	CatalogViewQueryOperations, TransactionalChangesExt,
 };
 
 pub struct CatalogStore;

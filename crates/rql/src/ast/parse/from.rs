@@ -114,7 +114,8 @@ impl<'a> Parser<'a> {
 						) {
 							self.consume_operator(Operator::DoubleColon)?;
 							let index_token = self.consume(TokenKind::Identifier)?;
-							Some(crate::ast::ast::AstIdentifier(index_token))
+							Some(index_token
+								.fragment)
 						} else {
 							None
 						}
@@ -273,7 +274,7 @@ mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(
-					row.keyed_values[0].key.value(),
+					row.keyed_values[0].key.text(),
 					"field"
 				);
 				assert_eq!(
@@ -316,7 +317,7 @@ mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(
-					row.keyed_values[0].key.value(),
+					row.keyed_values[0].key.text(),
 					"field"
 				);
 				assert_eq!(
@@ -331,7 +332,7 @@ mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(
-					row.keyed_values[0].key.value(),
+					row.keyed_values[0].key.text(),
 					"field"
 				);
 				assert_eq!(
@@ -364,7 +365,7 @@ mod tests {
 				assert_eq!(source.schema, None);
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(
-					index_name.as_ref().unwrap().value(),
+					index_name.as_ref().unwrap().text(),
 					"user_id_pk"
 				);
 			}
@@ -398,7 +399,7 @@ mod tests {
 				);
 				assert_eq!(source.name.text(), "employees");
 				assert_eq!(
-					index_name.as_ref().unwrap().value(),
+					index_name.as_ref().unwrap().text(),
 					"employee_email_pk"
 				);
 			}
@@ -495,7 +496,7 @@ mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(
-					row.keyed_values[0].key.value(),
+					row.keyed_values[0].key.text(),
 					"field"
 				);
 				assert_eq!(

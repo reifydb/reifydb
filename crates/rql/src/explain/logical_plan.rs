@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::JoinType;
+use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_core::{JoinType, interface::QueryTransaction};
 
 use crate::{
-	ast::{AstAlterTableOperation, AstAlterViewOperation, parse_str},
+	ast::parse_str,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode,
 		DistinctNode, ExtendNode, FilterNode, InlineDataNode,
@@ -15,12 +16,15 @@ use crate::{
 	},
 };
 
-pub fn explain_logical_plan(query: &str) -> crate::Result<String> {
+pub fn explain_logical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
+where
+	T: QueryTransaction + CatalogQueryTransaction,
+{
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		plans.extend(compile_logical(statement)?)
+		plans.extend(compile_logical(rx, statement, "default")?);
 	}
 
 	explain_logical_plans(&plans)
@@ -588,6 +592,7 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::AlterTable(AlterTableNode {
 			table,
+			operations,
 		}) => {
 			output.push_str(&format!(
 				"{}{} AlterTable\n",
@@ -595,12 +600,7 @@ fn render_logical_plan_inner(
 			));
 
 			// Show schema and table
-			let schema_str = table
-				.table
-				.schema
-				.as_ref()
-				.map(|s| s.text())
-				.unwrap_or("(none)");
+			let schema_str = table.schema.text();
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
 				child_prefix, schema_str
@@ -608,12 +608,12 @@ fn render_logical_plan_inner(
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
 				child_prefix,
-				table.table.name.text()
+				table.name.text()
 			));
 
 			// Show operations
-			let ops_count = table.operations.len();
-			for (i, op) in table.operations.iter().enumerate() {
+			let ops_count = operations.len();
+			for (i, op) in operations.iter().enumerate() {
 				let is_last_op = i == ops_count - 1;
 				let op_branch = if is_last_op {
 					"└──"
@@ -621,10 +621,11 @@ fn render_logical_plan_inner(
 					"├──"
 				};
 
+				use crate::plan::logical::alter::AlterTableOperation;
 				match op {
-					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+					AlterTableOperation::CreatePrimaryKey { name, columns } => {
 						let pk_name = name.as_ref()
-							.map(|n| format!(" {}", n.value()))
+							.map(|n| format!(" {}", n.text()))
 							.unwrap_or_default();
 						output.push_str(&format!(
 							"{}{}Operation: CREATE PRIMARY KEY{}\n",
@@ -641,11 +642,11 @@ fn render_logical_plan_inner(
 							let col_branch = if col_last { "└──" } else { "├──" };
 							output.push_str(&format!(
 								"{}{}Column: {}\n",
-								cols_prefix, col_branch, col.column.value()
+								cols_prefix, col_branch, col.column.name.text()
 							));
 						}
 					}
-					AstAlterTableOperation::DropPrimaryKey => {
+					AlterTableOperation::DropPrimaryKey => {
 						output.push_str(&format!(
 							"{}{}Operation: DROP PRIMARY KEY\n",
 							child_prefix, op_branch
@@ -656,6 +657,7 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::AlterView(AlterViewNode {
 			view,
+			operations,
 		}) => {
 			output.push_str(&format!(
 				"{}{} AlterView\n",
@@ -663,24 +665,20 @@ fn render_logical_plan_inner(
 			));
 
 			// Show schema and view
-			let schema_str = view
-				.view
-				.schema
-				.as_ref()
-				.map(|s| format!("{:?}", s))
-				.unwrap_or_else(|| "(none)".to_string());
+			let schema_str = view.schema.text();
 			output.push_str(&format!(
 				"{}├── Schema: {}\n",
 				child_prefix, schema_str
 			));
 			output.push_str(&format!(
-				"{}├── View: {:?}\n",
-				child_prefix, view.view.name
+				"{}├── View: {}\n",
+				child_prefix,
+				view.name.text()
 			));
 
 			// Show operations
-			let ops_count = view.operations.len();
-			for (i, op) in view.operations.iter().enumerate() {
+			let ops_count = operations.len();
+			for (i, op) in operations.iter().enumerate() {
 				let is_last_op = i == ops_count - 1;
 				let op_branch = if is_last_op {
 					"└──"
@@ -688,10 +686,11 @@ fn render_logical_plan_inner(
 					"├──"
 				};
 
+				use crate::plan::logical::alter::AlterViewOperation;
 				match op {
-					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+					AlterViewOperation::CreatePrimaryKey { name, columns } => {
 						let pk_name = name.as_ref()
-							.map(|n| format!(" {}", n.value()))
+							.map(|n| format!(" {}", n.text()))
 							.unwrap_or_default();
 						output.push_str(&format!(
 							"{}{}Operation: CREATE PRIMARY KEY{}\n",
@@ -708,11 +707,11 @@ fn render_logical_plan_inner(
 							let col_branch = if col_last { "└──" } else { "├──" };
 							output.push_str(&format!(
 								"{}{}Column: {}\n",
-								cols_prefix, col_branch, col.column.value()
+								cols_prefix, col_branch, col.column.name.text()
 							));
 						}
 					}
-					AstAlterViewOperation::DropPrimaryKey => {
+					AlterViewOperation::DropPrimaryKey => {
 						output.push_str(&format!(
 							"{}{}Operation: DROP PRIMARY KEY\n",
 							child_prefix, op_branch

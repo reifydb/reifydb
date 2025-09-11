@@ -4,7 +4,8 @@
 use reifydb_catalog::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
 	CatalogQueryTransaction, CatalogSchemaQueryOperations,
-	CatalogTransaction, MaterializedCatalog, TransactionalChangesExt,
+	CatalogSourceQueryOperations, CatalogTransaction, MaterializedCatalog,
+	TransactionalChangesExt,
 };
 use reifydb_core::{
 	CommitVersion,
@@ -14,10 +15,10 @@ use reifydb_core::{
 		view_already_pending_in_transaction,
 	},
 	interface::{
-		Change,
+		Change, IntoFragment,
 		OperationType::{Create, Delete, Update},
-		SchemaDef, SchemaId, TableDef, Transaction,
-		VersionedQueryTransaction, ViewDef,
+		SchemaDef, SchemaId, SourceDef, SourceId, TableDef,
+		Transaction, VersionedQueryTransaction, ViewDef,
 	},
 	return_error,
 };
@@ -232,13 +233,39 @@ impl<T: Transaction> CatalogCommandTransactionOperations
 	}
 }
 
+impl<T: Transaction> CatalogSourceQueryOperations
+	for StandardCommandTransaction<T>
+{
+	fn find_source(
+		&mut self,
+		_id: SourceId,
+	) -> reifydb_core::Result<Option<SourceDef>> {
+		todo!()
+	}
+
+	fn find_source_by_name<'a>(
+		&mut self,
+		_schema: SchemaId,
+		_source: impl IntoFragment<'a>,
+	) -> reifydb_core::Result<Option<SourceDef>> {
+		todo!()
+	}
+
+	fn get_source_by_name<'a>(
+		&mut self,
+		_schema: SchemaId,
+		_name: impl IntoFragment<'a>,
+	) -> reifydb_core::Result<SourceDef> {
+		todo!()
+	}
+}
+
 // Implement blanket traits for StandardCommandTransaction
 impl<T: Transaction> CatalogQueryTransaction for StandardCommandTransaction<T> {}
 impl<T: Transaction> CatalogCommandTransaction
 	for StandardCommandTransaction<T>
 {
 }
-
 impl<T: Transaction> TransactionalChangesExt for StandardCommandTransaction<T> {
 	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef> {
 		self.changes.find_schema_by_name(name)

@@ -94,7 +94,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			let column = self.parse_identifier()?;
+			let column = self.parse_column_identifier()?;
 
 			let order = if self
 				.consume_if(TokenKind::Keyword(Asc))?
@@ -163,7 +163,10 @@ mod tests {
 				);
 				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert!(columns[0].order.is_none());
 				assert_eq!(filters.len(), 0);
 			}
@@ -200,7 +203,10 @@ mod tests {
 				);
 				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 0);
 			}
 			_ => unreachable!(),
@@ -228,11 +234,11 @@ mod tests {
 			}) => {
 				assert_eq!(columns.len(), 2);
 				assert_eq!(
-					columns[0].column.value(),
+					columns[0].column.name.text(),
 					"last_name"
 				);
 				assert_eq!(
-					columns[1].column.value(),
+					columns[1].column.name.text(),
 					"first_name"
 				);
 				assert_eq!(filters.len(), 0);
@@ -262,14 +268,17 @@ mod tests {
 			}) => {
 				assert_eq!(columns.len(), 2);
 				assert_eq!(
-					columns[0].column.value(),
+					columns[0].column.name.text(),
 					"created_at"
 				);
 				assert_eq!(
 					columns[0].order,
 					Some(SortDirection::Desc)
 				);
-				assert_eq!(columns[1].column.value(), "status");
+				assert_eq!(
+					columns[1].column.name.text(),
+					"status"
+				);
 				assert_eq!(
 					columns[1].order,
 					Some(SortDirection::Asc)
@@ -297,7 +306,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 1);
 				// Verify filter contains a comparison
 				// expression
@@ -324,7 +336,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 3);
 				// Verify each filter is an infix expression
 				assert!(filters[0].is_infix());
@@ -353,7 +368,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(columns.len(), 1);
-				assert_eq!(columns[0].column.value(), "email");
+				assert_eq!(
+					columns[0].column.name.text(),
+					"email"
+				);
 				assert_eq!(filters.len(), 2);
 				assert!(filters[0].is_infix());
 				assert!(filters[1].is_infix());

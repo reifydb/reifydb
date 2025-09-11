@@ -126,7 +126,7 @@ mod tests {
 		let infix = result[0].first_unchecked().as_infix();
 		assert_eq!(infix.left.as_literal_number().value(), "1");
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
-		assert_eq!(infix.right.as_identifier().value(), "one");
+		assert_eq!(infix.right.as_identifier().text(), "one");
 	}
 
 	#[test]
@@ -138,7 +138,7 @@ mod tests {
 		let infix = result[0].first_unchecked().as_infix();
 		assert_eq!(infix.left.as_literal_number().value(), "1");
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
-		assert_eq!(infix.right.as_identifier().value(), "a");
+		assert_eq!(infix.right.as_identifier().text(), "a");
 	}
 
 	#[test]

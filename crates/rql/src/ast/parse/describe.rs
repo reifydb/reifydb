@@ -56,7 +56,7 @@ mod tests {
 					"9924"
 				);
 				assert!(matches!(
-					tuple.nodes[1].as_identifier().value(),
+					tuple.nodes[1].as_identifier().text(),
 					"int8"
 				));
 			}

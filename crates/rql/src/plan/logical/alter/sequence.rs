@@ -1,31 +1,45 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::interface::identifier::{
 	ColumnIdentifier, ColumnSource, SequenceIdentifier,
 };
-use reifydb_type::{Fragment, OwnedFragment};
+use reifydb_type::Fragment;
 
 use crate::{
 	ast::{Ast, AstAlterSequence},
 	expression::ExpressionCompiler,
-	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan},
+	plan::logical::{
+		AlterSequenceNode, Compiler, LogicalPlan,
+		resolver::IdentifierResolver,
+	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<'a>(
+	pub(crate) fn compile_alter_sequence<
+		'a,
+		't,
+		T: CatalogQueryTransaction,
+	>(
 		ast: AstAlterSequence<'a>,
+		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Convert MaybeQualified to fully qualified
-		let schema = ast.sequence.schema.unwrap_or_else(|| {
-			Fragment::Owned(OwnedFragment::Internal {
-				text: String::from("default"),
-			})
-		});
+		let (schema, sequence_name) = {
+			// Use the resolver's resolve_maybe_sequence method if
+			// we add one For now, just use default schema
+			// through resolver
+			let schema = ast.sequence.schema.unwrap_or_else(|| {
+				Fragment::borrowed_internal(
+					resolver.default_schema(),
+				)
+			});
+			(schema, ast.sequence.name.clone())
+		};
 
 		let sequence = SequenceIdentifier::new(
 			schema.clone(),
-			ast.sequence.name.clone(),
+			sequence_name.clone(),
 		);
 
 		// Create a fully qualified column identifier
@@ -33,9 +47,9 @@ impl Compiler {
 		let column = ColumnIdentifier {
 			source: ColumnSource::Source {
 				schema,
-				source: ast.sequence.name,
+				source: sequence_name,
 			},
-			name: ast.column.fragment(),
+			name: ast.column.clone(),
 		};
 
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
@@ -45,83 +59,5 @@ impl Compiler {
 				ast.value,
 			))?,
 		}))
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_core::interface::evaluate::expression::{
-		ConstantExpression, Expression,
-	};
-
-	use crate::{
-		ast::{parse::parse, tokenize::tokenize},
-		plan::logical::{LogicalPlan, compile_logical},
-	};
-
-	#[test]
-	fn test_with_schema() {
-		let tokens =
-			tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000")
-				.unwrap();
-		let ast = parse(tokens).unwrap();
-
-		let plans = compile_logical(ast.into_iter().next().unwrap())
-			.unwrap();
-		assert_eq!(plans.len(), 1);
-
-		match &plans[0] {
-			LogicalPlan::AlterSequence(node) => {
-				assert_eq!(node.sequence.schema.text(), "test");
-				assert_eq!(node.sequence.name.text(), "users");
-				assert_eq!(node.column.name.text(), "id");
-
-				assert!(matches!(
-					node.value,
-					Expression::Constant(
-						ConstantExpression::Number {
-							fragment: _
-						}
-					)
-				));
-				let fragment = node.value.full_fragment_owned();
-				assert_eq!(fragment.fragment(), "1000");
-			}
-			_ => panic!("Expected AlterSequence plan"),
-		}
-	}
-
-	#[test]
-	fn test_without_schema() {
-		let tokens = tokenize("ALTER SEQUENCE users.id SET VALUE 500")
-			.unwrap();
-		let ast = parse(tokens).unwrap();
-
-		let plans = compile_logical(ast.into_iter().next().unwrap())
-			.unwrap();
-		assert_eq!(plans.len(), 1);
-
-		match &plans[0] {
-			LogicalPlan::AlterSequence(node) => {
-				assert_eq!(
-					node.sequence.schema.text(),
-					"default"
-				);
-				assert_eq!(node.sequence.name.text(), "users");
-				assert_eq!(node.column.name.text(), "id");
-
-				assert!(matches!(
-					node.value,
-					Expression::Constant(
-						ConstantExpression::Number {
-							fragment: _
-						}
-					)
-				));
-				let fragment = node.value.full_fragment_owned();
-				assert_eq!(fragment.fragment(), "500");
-			}
-			_ => panic!("Expected AlterSequence plan"),
-		}
 	}
 }

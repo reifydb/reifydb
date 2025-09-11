@@ -4,10 +4,11 @@
 use reifydb_core::{
 	CommitVersion,
 	interface::{
-		OperationType, SchemaDef, SchemaId, TableDef, TableId,
-		TransactionalChanges, ViewDef, ViewId,
+		OperationType, SchemaDef, SchemaId, SourceDef, SourceId,
+		TableDef, TableId, TransactionalChanges, ViewDef, ViewId,
 	},
 };
+use reifydb_type::IntoFragment;
 
 use crate::MaterializedCatalog;
 
@@ -24,6 +25,31 @@ pub trait CatalogSchemaQueryOperations {
 	) -> crate::Result<Option<SchemaDef>>;
 
 	fn get_schema(&mut self, id: SchemaId) -> crate::Result<SchemaDef>;
+
+	fn get_schema_by_name<'a>(
+		&mut self,
+		name: impl IntoFragment<'a>,
+	) -> crate::Result<SchemaDef>;
+}
+
+// Source query operations
+pub trait CatalogSourceQueryOperations {
+	fn find_source_by_name<'a>(
+		&mut self,
+		schema: SchemaId,
+		source: impl IntoFragment<'a>,
+	) -> crate::Result<Option<SourceDef>>;
+
+	fn find_source(
+		&mut self,
+		id: SourceId,
+	) -> crate::Result<Option<SourceDef>>;
+
+	fn get_source_by_name<'a>(
+		&mut self,
+		schema: SchemaId,
+		name: impl IntoFragment<'a>,
+	) -> crate::Result<SourceDef>;
 }
 
 // Table query operations
@@ -38,6 +64,12 @@ pub trait CatalogTableQueryOperations {
 		&mut self,
 		id: TableId,
 	) -> crate::Result<Option<TableDef>>;
+
+	fn get_table_by_name(
+		&mut self,
+		schema: SchemaId,
+		name: impl AsRef<str>,
+	) -> crate::Result<TableDef>;
 }
 
 // View query operations
@@ -49,11 +81,18 @@ pub trait CatalogViewQueryOperations {
 	) -> crate::Result<Option<ViewDef>>;
 
 	fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>>;
+
+	fn get_view_by_name(
+		&mut self,
+		schema: SchemaId,
+		name: impl AsRef<str>,
+	) -> crate::Result<ViewDef>;
 }
 
 // Combined catalog query transaction trait
 pub trait CatalogQueryTransaction:
 	CatalogSchemaQueryOperations
+	+ CatalogSourceQueryOperations
 	+ CatalogTableQueryOperations
 	+ CatalogViewQueryOperations
 {

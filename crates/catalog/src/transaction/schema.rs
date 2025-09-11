@@ -9,7 +9,9 @@ use reifydb_core::{
 	},
 	log_warn, return_error,
 };
-use reifydb_type::internal_error;
+use reifydb_type::{
+	IntoFragment, diagnostic::catalog::schema_not_found, internal_error,
+};
 
 use crate::{
 	CatalogCommandTransactionOperations, CatalogSchemaCommandOperations,
@@ -102,6 +104,21 @@ where
 					id
 				))
 			})
+	}
+
+	fn get_schema_by_name<'a>(
+		&mut self,
+		name: impl IntoFragment<'a>,
+	) -> crate::Result<SchemaDef> {
+		let name = name.into_fragment();
+
+		if let Some(result) = self.find_schema_by_name(name.text())? {
+			return Ok(result);
+		}
+
+		let binding = name.clone();
+		let text = binding.text();
+		return_error!(schema_not_found(name, text))
 	}
 }
 

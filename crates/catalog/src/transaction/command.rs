@@ -6,7 +6,10 @@ use reifydb_core::interface::{
 };
 
 use super::query::{CatalogQueryTransaction, CatalogTransaction};
-use crate::{schema::SchemaToCreate, table::TableToCreate, view::ViewToCreate};
+use crate::{
+	schema::SchemaToCreate, table::TableToCreate,
+	transaction::CatalogSourceQueryOperations, view::ViewToCreate,
+};
 
 // Schema command operations
 pub trait CatalogSchemaCommandOperations {
@@ -49,6 +52,7 @@ pub trait CatalogViewCommandOperations {
 pub trait CatalogCommandTransaction:
 	CatalogQueryTransaction
 	+ CatalogSchemaCommandOperations
+	+ CatalogSourceQueryOperations
 	+ CatalogTableCommandOperations
 	+ CatalogViewCommandOperations
 {

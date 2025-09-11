@@ -70,7 +70,7 @@ impl ExpressionCompiler {
                         schema: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
                         source: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
                     },
-                    name: identifier.fragment(),
+                    name: identifier.token.fragment.clone(),
                 };
                 Ok(Expression::Column(ColumnExpression(column)))
             }
@@ -139,9 +139,8 @@ impl ExpressionCompiler {
             Ast::Cast(node) => {
                 let mut tuple = node.tuple;
                 let node = tuple.nodes.pop().unwrap();
-                let node = node.as_identifier();
-                let fragment = node.clone().fragment();
-                let ty = convert_data_type(node)?;
+                let fragment = node.as_identifier().token.fragment.clone();
+                let ty = convert_data_type(&fragment)?;
 
                 let expr = tuple.nodes.pop().unwrap();
 
@@ -183,9 +182,9 @@ impl ExpressionCompiler {
 				// (the table/alias name)
 				let column = ColumnIdentifier {
 					source: ColumnSource::Alias(
-						left.fragment(),
+						left.token.fragment,
 					),
-					name: right.fragment(),
+					name: right.token.fragment,
 				};
 
 				Ok(Expression::AccessSource(
@@ -334,7 +333,7 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Alias(AliasExpression {
 					alias: IdentExpression(
-						right.fragment(),
+						right.token.fragment,
 					),
 					expression: Box::new(left),
 					fragment: token.fragment,
@@ -396,7 +395,7 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Alias(AliasExpression {
 					alias: IdentExpression(
-						alias.fragment.clone(),
+						alias.token.fragment,
 					),
 					expression: Box::new(right),
 					fragment: token.fragment,
