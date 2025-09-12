@@ -3,13 +3,16 @@
 
 use std::marker::PhantomData;
 
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::{
+	MaterializedCatalog, transaction::MaterializedCatalogTransaction,
+};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
 		BoxedVersionedIter, CdcTransaction, QueryTransaction,
-		Transaction, TransactionId, UnversionedTransaction, Versioned,
-		VersionedQueryTransaction, VersionedTransaction,
+		Transaction, TransactionId, TransactionalChanges,
+		UnversionedTransaction, Versioned, VersionedQueryTransaction,
+		VersionedTransaction,
 	},
 };
 
@@ -152,3 +155,13 @@ impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 		self.cdc.begin_query()
 	}
 }
+
+impl<T: Transaction> MaterializedCatalogTransaction
+	for StandardQueryTransaction<T>
+{
+	fn catalog(&self) -> &MaterializedCatalog {
+		&self.catalog
+	}
+}
+
+impl<T: Transaction> TransactionalChanges for StandardQueryTransaction<T> {}

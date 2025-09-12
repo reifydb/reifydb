@@ -4,7 +4,6 @@
 pub mod load;
 mod namespace;
 mod primary_key;
-mod resolver_helpers;
 mod table;
 mod view;
 

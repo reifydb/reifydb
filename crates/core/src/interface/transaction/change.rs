@@ -1,14 +1,74 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::IntoFragment;
+
 use crate::interface::{
 	NamespaceDef, NamespaceId, OperationType::Delete, TableDef, TableId,
 	TransactionId, ViewDef, ViewId,
 };
 
-/// Tracks all catalog changes within a transaction
+pub trait TransactionalChanges:
+	TransactionalNamespaceChanges
+	+ TransactionalTableChanges
+	+ TransactionalViewChanges
+{
+}
+
+pub trait TransactionalNamespaceChanges {
+	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef>;
+
+	fn find_namespace_by_name<'a>(
+		&self,
+		name: impl IntoFragment<'a>,
+	) -> Option<&NamespaceDef>;
+
+	fn is_namespace_deleted(&self, id: NamespaceId) -> bool;
+
+	fn is_namespace_deleted_by_name<'a>(
+		&self,
+		name: impl IntoFragment<'a>,
+	) -> bool;
+}
+
+pub trait TransactionalTableChanges {
+	fn find_table(&self, id: TableId) -> Option<&TableDef>;
+
+	fn find_table_by_name<'a>(
+		&self,
+		namespace: NamespaceId,
+		name: impl IntoFragment<'a>,
+	) -> Option<&TableDef>;
+
+	fn is_table_deleted(&self, id: TableId) -> bool;
+
+	fn is_table_deleted_by_name<'a>(
+		&self,
+		namespace: NamespaceId,
+		name: impl IntoFragment<'a>,
+	) -> bool;
+}
+
+pub trait TransactionalViewChanges {
+	fn find_view(&self, id: ViewId) -> Option<&ViewDef>;
+
+	fn find_view_by_name<'a>(
+		&self,
+		namespace: NamespaceId,
+		name: impl IntoFragment<'a>,
+	) -> Option<&ViewDef>;
+
+	fn is_view_deleted(&self, id: ViewId) -> bool;
+
+	fn is_view_deleted_by_name<'a>(
+		&self,
+		namespace: NamespaceId,
+		name: impl IntoFragment<'a>,
+	) -> bool;
+}
+
 #[derive(Default, Debug, Clone)]
-pub struct TransactionalChanges {
+pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
 	/// All namespace definition changes in order (no coalescing)
@@ -21,7 +81,7 @@ pub struct TransactionalChanges {
 	pub log: Vec<Operation>,
 }
 
-impl TransactionalChanges {
+impl TransactionalDefChanges {
 	pub fn add_namespace_def_change(
 		&mut self,
 		change: Change<NamespaceDef>,
@@ -108,7 +168,7 @@ pub enum Operation {
 	},
 }
 
-impl TransactionalChanges {
+impl TransactionalDefChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
@@ -117,32 +177,6 @@ impl TransactionalChanges {
 			view_def: Vec::new(),
 			log: Vec::new(),
 		}
-	}
-
-	/// Check if a namespace exists in this transaction's view
-	pub fn namespace_def_exists(&self, id: NamespaceId) -> bool {
-		self.get_namespace_def(id).is_some()
-	}
-
-	/// Get current state of a namespace within this transaction
-	pub fn get_namespace_def(
-		&self,
-		id: NamespaceId,
-	) -> Option<&NamespaceDef> {
-		// Find the last change for this namespace ID
-		for change in self.namespace_def.iter().rev() {
-			if let Some(namespace) = &change.post {
-				if namespace.id == id {
-					return Some(namespace);
-				}
-			} else if let Some(namespace) = &change.pre {
-				if namespace.id == id && change.op == Delete {
-					// Namespace was deleted
-					return None;
-				}
-			}
-		}
-		None
 	}
 
 	/// Check if a table exists in this transaction's view

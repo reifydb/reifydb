@@ -52,7 +52,7 @@ impl CatalogStore {
 	}
 
 	pub fn list_column_policies_all(
-		rx: &mut (impl QueryTransaction),
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut result = Vec::new();
 

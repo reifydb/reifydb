@@ -40,6 +40,8 @@ impl CatalogStore {
 			}
 		}
 
+		result.push(NamespaceDef::system());
+
 		Ok(result)
 	}
 }

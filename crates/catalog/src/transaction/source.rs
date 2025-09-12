@@ -28,23 +28,23 @@ pub trait CatalogSourceQueryOperations {
 impl<T: QueryTransaction> CatalogSourceQueryOperations for T {
 	fn find_source_by_name<'a>(
 		&mut self,
-		namespace: NamespaceId,
-		source: impl IntoFragment<'a>,
+		_namespace: NamespaceId,
+		_source: impl IntoFragment<'a>,
 	) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
 	}
 
 	fn find_source(
 		&mut self,
-		id: SourceId,
+		_id: SourceId,
 	) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
 	}
 
 	fn get_source_by_name<'a>(
 		&mut self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		_namespace: NamespaceId,
+		_name: impl IntoFragment<'a>,
 	) -> reifydb_core::Result<SourceDef> {
 		todo!()
 	}

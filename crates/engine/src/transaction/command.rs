@@ -3,7 +3,9 @@
 
 use std::marker::PhantomData;
 
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::{
+	MaterializedCatalog, transaction::MaterializedCatalogTransaction,
+};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
@@ -18,9 +20,9 @@ use reifydb_core::{
 	interface::{
 		BoxedVersionedIter, CdcTransaction, CommandTransaction,
 		QueryTransaction, Transaction, TransactionId,
-		TransactionalChanges, UnversionedTransaction, Versioned,
-		VersionedCommandTransaction, VersionedQueryTransaction,
-		VersionedTransaction, WithEventBus,
+		TransactionalChanges, TransactionalDefChanges,
+		UnversionedTransaction, Versioned, VersionedCommandTransaction,
+		VersionedQueryTransaction, VersionedTransaction, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
@@ -38,7 +40,7 @@ pub struct StandardCommandTransaction<T: Transaction> {
 	pub(crate) cdc: T::Cdc,
 	state: TransactionState,
 	pub(crate) event_bus: EventBus,
-	pub(crate) changes: TransactionalChanges,
+	pub(crate) changes: TransactionalDefChanges,
 	pub(crate) catalog: MaterializedCatalog,
 
 	pub(crate) interceptors: Interceptors<Self>,
@@ -72,7 +74,7 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 			event_bus,
 			catalog,
 			interceptors,
-			changes: TransactionalChanges::new(txn_id),
+			changes: TransactionalDefChanges::new(txn_id),
 			_not_send_sync: PhantomData,
 		}
 	}
@@ -214,6 +216,14 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Get access to the CDC transaction interface
 	pub fn cdc(&self) -> &T::Cdc {
 		&self.cdc
+	}
+}
+
+impl<T: Transaction> MaterializedCatalogTransaction
+	for StandardCommandTransaction<T>
+{
+	fn catalog(&self) -> &MaterializedCatalog {
+		&self.catalog
 	}
 }
 
@@ -364,12 +374,8 @@ impl<T: Transaction> CommandTransaction for StandardCommandTransaction<T> {
 		self.unversioned.begin_command()
 	}
 
-	fn get_changes(&self) -> &TransactionalChanges {
+	fn get_changes(&self) -> &TransactionalDefChanges {
 		&self.changes
-	}
-
-	fn get_changes_mut(&mut self) -> &mut TransactionalChanges {
-		&mut self.changes
 	}
 }
 
@@ -585,6 +591,8 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self.interceptors.view_def_pre_delete
 	}
 }
+
+impl<T: Transaction> TransactionalChanges for StandardCommandTransaction<T> {}
 
 impl<T: Transaction> Drop for StandardCommandTransaction<T> {
 	fn drop(&mut self) {

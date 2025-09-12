@@ -21,7 +21,7 @@ use crate::{
 	},
 	interface::{
 		CommandTransaction, NamespaceDef, TableDef, TransactionId,
-		ViewDef, transaction::change::TransactionalChanges,
+		ViewDef, transaction::change::TransactionalDefChanges,
 	},
 	row::EncodedRow,
 };
@@ -138,7 +138,7 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 		&mut self,
 		id: TransactionId,
 		version: CommitVersion,
-		changes: TransactionalChanges,
+		changes: TransactionalDefChanges,
 	) -> crate::Result<()>;
 }
 

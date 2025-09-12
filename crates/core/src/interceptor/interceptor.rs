@@ -31,7 +31,7 @@ use crate::{
 	},
 	interface::{
 		CommandTransaction, NamespaceDef, TableDef, TransactionId,
-		TransactionalChanges, ViewDef,
+		TransactionalDefChanges, ViewDef,
 		interceptor::{
 			NamespaceDefInterceptor, TableDefInterceptor,
 			TableInterceptor, TransactionInterceptor,
@@ -251,7 +251,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT>
 		&mut self,
 		id: TransactionId,
 		version: CommitVersion,
-		changes: TransactionalChanges,
+		changes: TransactionalDefChanges,
 	) -> crate::Result<()> {
 		if self.post_commit_interceptors().is_empty() {
 			return Ok(());
