@@ -9,6 +9,7 @@ use reifydb::{
 	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
 	core::interface::subsystem::logging::LogLevel::Info,
 	embedded, log_info,
+	sub_flow::FlowBuilder,
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
 
@@ -27,9 +28,14 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	.level(Info)
 }
 
+fn flow_configuration(flow: FlowBuilder) -> FlowBuilder {
+	flow
+}
+
 fn main() {
 	let mut db: DB = embedded::memory_optimistic()
 		.with_logging(logger_configuration)
+		.with_flow(flow_configuration)
 		.build()
 		.unwrap();
 

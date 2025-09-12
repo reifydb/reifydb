@@ -3,12 +3,14 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))] // FIXME
 
+pub mod builder;
 #[allow(dead_code, unused_variables)]
 mod engine;
 #[allow(dead_code, unused_variables)]
 mod operator;
 pub mod subsystem;
 
+pub use builder::FlowBuilder;
 pub use engine::*;
 pub use reifydb_core::Result;
 pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};

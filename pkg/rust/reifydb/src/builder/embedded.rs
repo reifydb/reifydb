@@ -10,6 +10,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
@@ -110,6 +112,17 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 			LoggingSubsystemFactory::with_configurator(
 				configurator,
 			),
+		));
+		self
+	}
+
+	#[cfg(feature = "sub_flow")]
+	fn with_flow<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
+	{
+		self.subsystem_factories.push(Box::new(
+			FlowSubsystemFactory::with_configurator(configurator),
 		));
 		self
 	}
