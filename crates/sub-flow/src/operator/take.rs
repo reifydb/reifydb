@@ -2,42 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec,
+	CowVec, EncodedKey,
 	flow::{FlowChange, FlowDiff},
-	interface::CommandTransaction,
-	row::{EncodedKey, EncodedRow},
+	interface::{CommandTransaction, FlowNodeId},
+	row::EncodedRow,
 };
 use reifydb_engine::StandardEvaluator;
 use reifydb_type::RowNumber;
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, operator::Operator};
-
-// Key for storing take state
-#[derive(Debug, Clone)]
-struct FlowTakeStateKey {
-	flow_id: u64,
-	node_id: u64,
-}
-
-impl FlowTakeStateKey {
-	const KEY_PREFIX: u8 = 0xF3;
-
-	fn new(flow_id: u64, node_id: u64) -> Self {
-		Self {
-			flow_id,
-			node_id,
-		}
-	}
-
-	fn encode(&self) -> EncodedKey {
-		let mut key = Vec::new();
-		key.push(Self::KEY_PREFIX);
-		key.extend(&self.flow_id.to_be_bytes());
-		key.extend(&self.node_id.to_be_bytes());
-		EncodedKey(CowVec::new(key))
-	}
-}
+use crate::{
+	Result,
+	operator::{Operator, stateful::StatefulOperator},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TakeState {
@@ -46,16 +23,14 @@ struct TakeState {
 }
 
 pub struct TakeOperator {
-	flow_id: u64,
-	node_id: u64,
+	node: FlowNodeId,
 	limit: usize,
 }
 
 impl TakeOperator {
-	pub fn new(flow_id: u64, node_id: u64, limit: usize) -> Self {
+	pub fn new(node: FlowNodeId, limit: usize) -> Self {
 		Self {
-			flow_id,
-			node_id,
+			node,
 			limit,
 		}
 	}
@@ -64,24 +39,25 @@ impl TakeOperator {
 		&self,
 		txn: &mut T,
 	) -> Result<TakeState> {
-		let key = FlowTakeStateKey::new(self.flow_id, self.node_id);
+		let empty_key = EncodedKey::new(Vec::new());
+		let state_row = self.get(txn, &empty_key)?;
 
-		match txn.get(&key.encode())? {
-			Some(versioned) => {
-				let bytes = versioned.row.as_ref();
-				serde_json::from_slice(bytes).map_err(|e| {
+		if state_row.as_ref().is_empty() {
+			Ok(TakeState {
+				current_count: 0,
+				row_ids: Vec::new(),
+			})
+		} else {
+			serde_json::from_slice(state_row.as_ref()).map_err(
+				|e| {
 					reifydb_type::Error(
 						reifydb_type::internal_error!(
 							"Failed to deserialize TakeState: {}",
 							e
 						),
 					)
-				})
-			}
-			None => Ok(TakeState {
-				current_count: 0,
-				row_ids: Vec::new(),
-			}),
+				},
+			)
 		}
 	}
 
@@ -90,7 +66,7 @@ impl TakeOperator {
 		txn: &mut T,
 		state: &TakeState,
 	) -> Result<()> {
-		let key = FlowTakeStateKey::new(self.flow_id, self.node_id);
+		let empty_key = EncodedKey::new(Vec::new());
 		let serialized = serde_json::to_vec(state).map_err(|e| {
 			reifydb_type::Error(reifydb_type::internal_error!(
 				"Failed to serialize TakeState: {}",
@@ -98,7 +74,7 @@ impl TakeOperator {
 			))
 		})?;
 
-		txn.set(&key.encode(), EncodedRow(CowVec::new(serialized)))?;
+		self.set(txn, &empty_key, EncodedRow(CowVec::new(serialized)))?;
 		Ok(())
 	}
 }
@@ -270,5 +246,11 @@ impl<T: CommandTransaction> Operator<T> for TakeOperator {
 			diffs: output_diffs,
 			metadata: change.metadata.clone(),
 		})
+	}
+}
+
+impl<T: CommandTransaction> StatefulOperator<T> for TakeOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
 	}
 }

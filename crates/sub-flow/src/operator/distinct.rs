@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
-		expression::Expression,
+		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
+		Params, expression::Expression,
 	},
-	row::{EncodedKey, EncodedRow},
+	row::EncodedRow,
 	util::CowVec,
 	value::columnar::Columns,
 };
@@ -16,36 +17,7 @@ use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_type::{Error, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
-use crate::operator::Operator;
-
-// Key for storing distinct state
-#[derive(Debug, Clone)]
-struct FlowDistinctStateKey {
-	flow_id: u64,
-	node_id: u64,
-	row_hash: Hash128,
-}
-
-impl FlowDistinctStateKey {
-	const KEY_PREFIX: u8 = 0xF4;
-
-	fn new(flow_id: u64, node_id: u64, row_hash: Hash128) -> Self {
-		Self {
-			flow_id,
-			node_id,
-			row_hash,
-		}
-	}
-
-	fn encode(&self) -> EncodedKey {
-		let mut key = Vec::new();
-		key.push(Self::KEY_PREFIX);
-		key.extend(&self.flow_id.to_be_bytes());
-		key.extend(&self.node_id.to_be_bytes());
-		key.extend(&self.row_hash.0.to_be_bytes());
-		EncodedKey(CowVec::new(key))
-	}
-}
+use crate::operator::{Operator, stateful::StatefulOperator};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
@@ -55,22 +27,25 @@ struct DistinctEntry {
 }
 
 pub struct DistinctOperator {
-	flow_id: u64,
-	node_id: u64,
+	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 }
 
 impl DistinctOperator {
 	pub fn new(
-		flow_id: u64,
-		node_id: u64,
+		node: FlowNodeId,
 		expressions: Vec<Expression<'static>>,
 	) -> Self {
 		Self {
-			flow_id,
-			node_id,
+			node,
 			expressions,
 		}
+	}
+
+	fn hash_to_key(hash: Hash128) -> EncodedKey {
+		let mut key = Vec::with_capacity(16);
+		key.extend(&hash.0.to_be_bytes());
+		EncodedKey::new(key)
 	}
 
 	fn hash_row_with_expressions(
@@ -169,18 +144,25 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
 						let row_hash = Self::hash_row_with_expressions(
 							evaluator, &self.expressions, after, idx,
 						)?;
-						let key = FlowDistinctStateKey::new(
-                            self.flow_id,
-                            self.node_id,
-                            row_hash,
-                        );
+						let key = Self::hash_to_key(
+							row_hash,
+						);
 
 						// Check if we've seen this row
 						// before
-						let existing =
-							txn.get(&key.encode())?;
+						let existing = self
+							.get(txn, &key)
+							.ok();
 
-						if existing.is_none() {
+						if existing
+							.as_ref()
+							.map(|r| {
+								r.as_ref()
+									.is_empty(
+									)
+							})
+							.unwrap_or(true)
+						{
 							// First time seeing
 							// this distinct value
 							let entry = DistinctEntry {
@@ -192,7 +174,7 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-							txn.set(&key.encode(), EncodedRow(
+							self.set(txn, &key, EncodedRow(
                                 CowVec::new(serialized)
                             ))?;
 
@@ -207,16 +189,13 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
 							// In production, we'd
 							// properly handle
 							// column slicing
-						} else if let Some(data) =
-							existing
-						{
+						} else {
 							// Update the count for
 							// existing distinct
 							// value
-							let bytes = data
-								.row
-								.as_ref();
-							let mut entry: DistinctEntry = serde_json::from_slice(bytes)
+							let bytes = existing
+								.unwrap();
+							let mut entry: DistinctEntry = serde_json::from_slice(bytes.as_ref())
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to deserialize: {}", e
                                 )))?;
@@ -225,7 +204,7 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-							txn.set(&key.encode(), EncodedRow(
+							self.set(txn, &key, EncodedRow(
                                 CowVec::new(serialized)
                             ))?;
 							// Don't emit since it's
@@ -259,46 +238,48 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
 						let row_hash = Self::hash_row_with_expressions(
 							evaluator, &self.expressions, before, idx,
 						)?;
-						let key = FlowDistinctStateKey::new(
-                            self.flow_id,
-                            self.node_id,
-                            row_hash,
-                        );
+						let key = Self::hash_to_key(
+							row_hash,
+						);
 
-						let existing =
-							txn.get(&key.encode())?;
+						let existing = self
+							.get(txn, &key)
+							.ok();
 						if let Some(data) = existing {
-							let bytes = data
-								.row
-								.as_ref();
-							let mut entry: DistinctEntry = serde_json::from_slice(bytes)
+							if !data.as_ref()
+								.is_empty()
+							{
+								let mut entry: DistinctEntry = serde_json::from_slice(data.as_ref())
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to deserialize: {}", e
                                 )))?;
 
-							if entry.count > 1 {
-								// Still have
-								// other instances
-								entry.count -=
+								if entry.count
+									> 1
+								{
+									// Still
+									// have
+									// other
+									// instances
+									entry.count -=
 									1;
-								let serialized = serde_json::to_vec(&entry)
+									let serialized = serde_json::to_vec(&entry)
                                 .map_err(|e| Error(internal_error!(
                                     "Failed to serialize: {}", e
                                 )))?;
-								txn.set(&key.encode(), EncodedRow(
+									self.set(txn, &key, EncodedRow(
                                     CowVec::new(serialized)
                                 ))?;
-							} else {
-								// Last instance
-								// - remove from
-								// state and emit
-								// retraction
-								txn
-									.remove(&key
-									.encode(
-									))?;
+								} else {
+									// Last instance
+									// - remove from
+									// state
+									// and emit
+									// retraction
+									self.remove(txn, &key)?;
 
-								removed_distinct_rows.push(reifydb_type::RowNumber(entry.first_row_id));
+									removed_distinct_rows.push(reifydb_type::RowNumber(entry.first_row_id));
+								}
 							}
 						}
 					}
@@ -361,5 +342,11 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
 			diffs: output_diffs,
 			metadata: change.metadata.clone(),
 		})
+	}
+}
+
+impl<T: CommandTransaction> StatefulOperator<T> for DistinctOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
 	}
 }

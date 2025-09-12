@@ -204,7 +204,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 			Take {
 				limit,
 			} => Ok(Operators::Take(TakeOperator::new(
-				flow_id.0, node_id.0, limit,
+				node_id, limit,
 			))),
 			Join {
 				join_type,
@@ -238,8 +238,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 			Distinct {
 				expressions,
 			} => Ok(Operators::Distinct(DistinctOperator::new(
-				flow_id.0,
-				node_id.0,
+				node_id,
 				expressions,
 			))),
 			Union {} => Ok(Operators::Union(UnionOperator::new())),
