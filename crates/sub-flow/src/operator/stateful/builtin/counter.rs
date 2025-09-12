@@ -2,8 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	row::EncodedRow,
+	util::CowVec,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, Columns},
 		container::NumberContainer,
@@ -24,7 +27,12 @@ pub struct CounterOperator {
 
 impl CounterOperator {
 	fn get_counter_value<T: CommandTransaction>(&self, txn: &mut T) -> i64 {
-		let state_bytes = self.read_state(txn).unwrap_or_default();
+		let empty_key = EncodedKey::new(Vec::new());
+		let state_row =
+			self.get(txn, &empty_key).unwrap_or_else(|_| {
+				EncodedRow(CowVec::new(Vec::new()))
+			});
+		let state_bytes = state_row.as_ref();
 		if state_bytes.len() >= 8 {
 			i64::from_le_bytes(
 				state_bytes[0..8].try_into().unwrap(),
@@ -39,7 +47,12 @@ impl CounterOperator {
 		txn: &mut T,
 		value: i64,
 	) -> crate::Result<()> {
-		self.write_state(txn, value.to_le_bytes().to_vec())
+		let empty_key = EncodedKey::new(Vec::new());
+		self.set(
+			txn,
+			&empty_key,
+			EncodedRow(CowVec::new(value.to_le_bytes().to_vec())),
+		)
 	}
 }
 

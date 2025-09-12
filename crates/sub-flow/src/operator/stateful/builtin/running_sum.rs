@@ -2,17 +2,21 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
-		Params, expression::Expression,
+		expression::Expression,
 	},
+	row::EncodedRow,
+	util::CowVec,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, Columns},
 		container::NumberContainer,
 	},
 };
 use reifydb_engine::StandardEvaluator;
+use reifydb_type::Params;
 
 use crate::operator::{
 	Operator,
@@ -72,11 +76,14 @@ impl<T: CommandTransaction> Operator<T> for RunningSumOperator {
 					)?;
 
 					// Get current sum
-					let state_bytes =
-						self.read_state(txn)?;
+					let empty_key =
+						EncodedKey::new(Vec::new());
+					let state_row =
+						self.get(txn, &empty_key)?;
 
-					let mut sum =
-						self.parse_state(&state_bytes);
+					let mut sum = self.parse_state(
+						state_row.as_ref(),
+					);
 
 					let row_count = after.row_count();
 					let mut sums =
@@ -111,9 +118,14 @@ impl<T: CommandTransaction> Operator<T> for RunningSumOperator {
 					}
 
 					// Save updated sum
-					self.write_state(
+					let empty_key =
+						EncodedKey::new(Vec::new());
+					self.set(
 						txn,
-						self.encode_state(sum),
+						&empty_key,
+						EncodedRow(CowVec::new(
+							self.encode_state(sum),
+						)),
 					)?;
 
 					// Build output

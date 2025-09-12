@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	EncodedKey, EncodedKeyRange,
 	interface::{
 		CommandTransaction, FlowNodeId,
 		expression::Expression,
@@ -13,39 +14,133 @@ use reifydb_core::{
 
 use crate::operator::Operator;
 
+// Iterator wrapper for state entries
+pub struct StateEntryIterator<'a> {
+	inner: BoxedVersionedIter<'a>,
+}
+
+impl<'a> Iterator for StateEntryIterator<'a> {
+	type Item = (EncodedKey, EncodedRow);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		self.inner.next().map(|versioned| {
+			if let Some(state_key) =
+				FlowNodeStateKey::decode(&versioned.key)
+			{
+				(EncodedKey::new(state_key.key), versioned.row)
+			} else {
+				(versioned.key, versioned.row)
+			}
+		})
+	}
+}
+
 pub mod builtin;
 pub mod registry;
 
 pub use builtin::*;
+use reifydb_core::interface::BoxedVersionedIter;
 
 pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 	fn id(&self) -> FlowNodeId;
 
-	fn read_state(&self, txn: &mut T) -> crate::Result<Vec<u8>> {
-		let key = FlowNodeStateKey::new(self.id());
-		let encoded_key = key.encode();
+	fn get(
+		&self,
+		txn: &mut T,
+		key: &EncodedKey,
+	) -> crate::Result<EncodedRow> {
+		let state_key =
+			FlowNodeStateKey::new(self.id(), key.as_ref().to_vec());
+
+		let encoded_key = state_key.encode();
+
 		match txn.get(&encoded_key)? {
-			Some(versioned) => Ok(versioned.row.as_ref().to_vec()),
-			None => Ok(Vec::new()),
+			Some(versioned) => Ok(versioned.row),
+			None => Ok(EncodedRow(CowVec::new(Vec::new()))),
 		}
 	}
 
-	fn write_state(
+	fn set(
 		&self,
 		txn: &mut T,
-		state: Vec<u8>,
+		key: &EncodedKey,
+		value: EncodedRow,
 	) -> crate::Result<()> {
-		let key = FlowNodeStateKey::new(self.id());
-		let encoded_key = key.encode();
-		let encoded_row = EncodedRow(CowVec::new(state));
-		txn.set(&encoded_key, encoded_row)?;
+		let state_key =
+			FlowNodeStateKey::new(self.id(), key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+		txn.set(&encoded_key, value)?;
 		Ok(())
 	}
 
-	fn clear_state(&self, txn: &mut T) -> crate::Result<()> {
-		let key = FlowNodeStateKey::new(self.id());
-		let encoded_key = key.encode();
+	fn remove(&self, txn: &mut T, key: &EncodedKey) -> crate::Result<()> {
+		let state_key =
+			FlowNodeStateKey::new(self.id(), key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
 		txn.remove(&encoded_key)?;
+		Ok(())
+	}
+
+	fn scan<'a>(
+		&self,
+		txn: &'a mut T,
+	) -> crate::Result<StateEntryIterator<'a>> {
+		let range = FlowNodeStateKey::node_range(self.id());
+		Ok(StateEntryIterator {
+			inner: txn.range(range)?,
+		})
+	}
+
+	fn range<'a>(
+		&self,
+		txn: &'a mut T,
+		start_key: Option<&EncodedKey>,
+		end_key: Option<&EncodedKey>,
+	) -> crate::Result<StateEntryIterator<'a>> {
+		let start = start_key
+			.map(|key| {
+				FlowNodeStateKey::new(
+					self.id(),
+					key.as_ref().to_vec(),
+				)
+				.encode()
+			})
+			.or_else(|| {
+				Some(FlowNodeStateKey::new_empty(self.id())
+					.encode())
+			});
+
+		let end = end_key
+			.map(|key| {
+				FlowNodeStateKey::new(
+					self.id(),
+					key.as_ref().to_vec(),
+				)
+				.encode()
+			})
+			.or_else(|| {
+				Some(FlowNodeStateKey::new_empty(FlowNodeId(
+					self.id().0 + 1,
+				))
+				.encode())
+			});
+
+		let range = EncodedKeyRange::start_end(start, end);
+		Ok(StateEntryIterator {
+			inner: txn.range(range)?,
+		})
+	}
+
+	fn clear(&self, txn: &mut T) -> crate::Result<()> {
+		let range = FlowNodeStateKey::node_range(self.id());
+		let keys_to_remove: Vec<_> = txn
+			.range(range)?
+			.map(|versioned| versioned.key)
+			.collect();
+
+		for key in keys_to_remove {
+			txn.remove(&key)?;
+		}
 		Ok(())
 	}
 }

@@ -2,11 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
 		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
 		expression::Expression,
 	},
+	row::EncodedRow,
+	util::CowVec,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, Columns},
 		container::NumberContainer,
@@ -82,10 +85,14 @@ impl<T: CommandTransaction> Operator<T> for RunningAvgOperator {
 					)?;
 
 					// Get current state
-					let state_bytes =
-						self.read_state(txn)?;
-					let (mut sum, mut count) =
-						self.parse_state(&state_bytes);
+					let empty_key =
+						EncodedKey::new(Vec::new());
+					let state_row =
+						self.get(txn, &empty_key)?;
+					let (mut sum, mut count) = self
+						.parse_state(
+							state_row.as_ref(),
+						);
 
 					let row_count = after.row_count();
 					let mut avgs =
@@ -122,9 +129,16 @@ impl<T: CommandTransaction> Operator<T> for RunningAvgOperator {
 					}
 
 					// Save updated state
-					self.write_state(
+					let empty_key =
+						EncodedKey::new(Vec::new());
+					self.set(
 						txn,
-						self.encode_state(sum, count),
+						&empty_key,
+						EncodedRow(CowVec::new(
+							self.encode_state(
+								sum, count,
+							),
+						)),
 					)?;
 
 					// Build output
@@ -169,7 +183,7 @@ impl<T: CommandTransaction> Operator<T> for RunningAvgOperator {
 	}
 }
 
-impl<'a, T: CommandTransaction> StatefulOperator<T> for RunningAvgOperator {
+impl<T: CommandTransaction> StatefulOperator<T> for RunningAvgOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

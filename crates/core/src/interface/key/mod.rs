@@ -441,6 +441,7 @@ mod tests {
 	fn test_operator_state() {
 		let key = Key::FlowNodeState(FlowNodeStateKey {
 			node: FlowNodeId(0xCAFEBABE),
+			key: vec![1, 2, 3],
 		});
 
 		let encoded = key.encode();
@@ -450,6 +451,7 @@ mod tests {
 		match decoded {
 			Key::FlowNodeState(decoded_inner) => {
 				assert_eq!(decoded_inner.node, 0xCAFEBABE);
+				assert_eq!(decoded_inner.key, vec![1, 2, 3]);
 			}
 			_ => unreachable!(),
 		}
