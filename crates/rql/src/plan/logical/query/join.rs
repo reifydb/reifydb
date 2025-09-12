@@ -17,7 +17,7 @@ use crate::{
 impl Compiler {
 	pub(crate) fn compile_join<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstJoin<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstJoin::InnerJoin {
@@ -40,9 +40,15 @@ impl Compiler {
 								.with_alias(a);
 						}
 
+						// Build resolved source
+						let resolved_source = resolver
+							.build_resolved_source(
+								source,
+							)?;
 						vec![SourceScan(
 							SourceScanNode {
-								source,
+								source: resolved_source,
+								columns: None,
 								index: None,
 							},
 						)]
@@ -74,9 +80,15 @@ impl Compiler {
 								.with_alias(a);
 						}
 
+						// Build resolved source
+						let resolved_source = resolver
+							.build_resolved_source(
+								source,
+							)?;
 						vec![SourceScan(
 							SourceScanNode {
-								source,
+								source: resolved_source,
+								columns: None,
 								index: None,
 							},
 						)]
@@ -111,9 +123,15 @@ impl Compiler {
 								.with_alias(a);
 						}
 
+						// Build resolved source
+						let resolved_source = resolver
+							.build_resolved_source(
+								source,
+							)?;
 						vec![SourceScan(
 							SourceScanNode {
-								source,
+								source: resolved_source,
+								columns: None,
 								index: None,
 							},
 						)]
@@ -145,9 +163,15 @@ impl Compiler {
 								.with_alias(a);
 						}
 
+						// Build resolved source
+						let resolved_source = resolver
+							.build_resolved_source(
+								source,
+							)?;
 						vec![SourceScan(
 							SourceScanNode {
-								source,
+								source: resolved_source,
+								columns: None,
 								index: None,
 							},
 						)]
@@ -182,9 +206,15 @@ impl Compiler {
 								.with_alias(a);
 						}
 
+						// Build resolved source
+						let resolved_source = resolver
+							.build_resolved_source(
+								source,
+							)?;
 						vec![SourceScan(
 							SourceScanNode {
-								source,
+								source: resolved_source,
+								columns: None,
 								index: None,
 							},
 						)]
@@ -216,9 +246,15 @@ impl Compiler {
 								.with_alias(a);
 						}
 
+						// Build resolved source
+						let resolved_source = resolver
+							.build_resolved_source(
+								source,
+							)?;
 						vec![SourceScan(
 							SourceScanNode {
-								source,
+								source: resolved_source,
+								columns: None,
 								index: None,
 							},
 						)]

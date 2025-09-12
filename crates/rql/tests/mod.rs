@@ -89,6 +89,17 @@ impl testscript::Runner for Runner {
 				)
 				.unwrap();
 
+				CatalogStore::create_table(
+					&mut dummy_tx,
+					TableToCreate {
+						fragment: None,
+						table: "orders".to_string(),
+						namespace: default_namespace.id,
+						columns: vec![],
+					},
+				)
+				.unwrap();
+
 				// Also create test namespace for tests that
 				// explicitly use test.users
 				let test_ns = CatalogStore::create_namespace(

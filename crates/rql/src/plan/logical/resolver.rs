@@ -1,15 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
-use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_catalog::{CatalogQueryTransaction, system::SystemCatalog};
 use reifydb_core::{
 	Result,
-	interface::identifier::{
-		ColumnIdentifier, ColumnSource, FunctionIdentifier,
-		IndexIdentifier, NamespaceIdentifier, SequenceIdentifier,
-		SourceIdentifier, SourceKind,
+	interface::{
+		TableVirtualDef, ViewKind,
+		identifier::{
+			ColumnIdentifier, ColumnSource, FunctionIdentifier,
+			IndexIdentifier, NamespaceIdentifier,
+			SequenceIdentifier, SourceIdentifier, SourceKind,
+		},
+		resolved::{
+			ResolvedColumn, ResolvedDeferredView,
+			ResolvedNamespace, ResolvedSource, ResolvedTable,
+			ResolvedTableVirtual, ResolvedTransactionalView,
+			ResolvedView,
+		},
 	},
 };
 use reifydb_type::{Fragment, IntoFragment, OwnedFragment};
@@ -555,19 +564,27 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		name: impl IntoFragment<'a>,
 	) -> Result<SourceKind> {
 		let default_namespace = self.default_namespace;
-		let namespace =
+		let namespace_str =
 			namespace.unwrap_or_else(|| &*default_namespace);
-
-		// Check catalog for source type
-		// First, get the namespace ID
-		let namespace =
-			self.transaction.get_namespace_by_name(namespace)?;
-		// let source =
-		// self.transaction.get_source_by_name(namespace.id, name)?;
 
 		let name = name.into_fragment();
 
-		// FIXME todo
+		// Check if it's a system table (virtual table in system
+		// namespace)
+		if namespace_str == "system" {
+			// Check if it's a known system table
+			if Self::is_system_table(name.text()) {
+				return Ok(SourceKind::TableVirtual);
+			}
+		}
+
+		// Check catalog for source type
+		// First, get the namespace ID
+		let namespace = self
+			.transaction
+			.get_namespace_by_name(namespace_str)?;
+
+		// Check for regular table
 		if self.transaction
 			.find_table_by_name(namespace.id, name.text())?
 			.is_some()
@@ -575,6 +592,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			return Ok(SourceKind::Table);
 		}
 
+		// Check for view
 		if self.transaction
 			.find_view_by_name(namespace.id, name.text())?
 			.is_some()
@@ -582,14 +600,15 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			return Ok(SourceKind::View);
 		}
 
-		// Ok(match source {
-		// 	SourceDef::Table(_) => SourceKind::Table,
-		// 	SourceDef::View(_) => SourceKind::View,
-		// 	SourceDef::TableVirtual(_) => SourceKind::TableVirtual,
-		// })
-
-		// FIXME
-		return Ok(SourceKind::TableVirtual);
+		// Source not found
+		Err(crate::error::IdentifierError::SourceNotFound(
+			crate::error::SourceNotFoundError {
+				namespace: namespace_str.to_string(),
+				name: name.text().to_string(),
+				fragment: name.into_owned(),
+			},
+		)
+		.into())
 	}
 
 	#[allow(dead_code)]
@@ -656,18 +675,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				true
 			}
 			SourceKind::View
-			| SourceKind::MaterializedView
 			| SourceKind::DeferredView
 			| SourceKind::TransactionalView => {
 				// TODO: Check view has column once
 				// CatalogQueryTransaction supports it
 				true
-			}
-			SourceKind::CTE => {
-				// For CTEs, we'd need to track their output
-				// columns This would be done during CTE
-				// registration For now, return false
-				false
 			}
 			_ => false,
 		}
@@ -692,7 +704,6 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				Vec::new()
 			}
 			SourceKind::View
-			| SourceKind::MaterializedView
 			| SourceKind::DeferredView
 			| SourceKind::TransactionalView => {
 				// TODO: Get view columns once
@@ -731,5 +742,257 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		}
 
 		Ok(())
+	}
+}
+
+// New resolution methods that return resolved types
+impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
+	/// Build a resolved namespace
+	pub fn build_resolved_namespace<'a>(
+		&mut self,
+		ident: NamespaceIdentifier<'a>,
+	) -> Result<Rc<ResolvedNamespace<'a>>> {
+		let namespace_name = ident.name.text();
+
+		// Lookup in catalog - get_namespace_by_name returns
+		// Result<NamespaceDef>
+		let def = self
+			.transaction
+			.get_namespace_by_name(namespace_name)?;
+
+		let resolved = Rc::new(ResolvedNamespace::new(ident, def));
+
+		Ok(resolved)
+	}
+
+	/// Build a resolved table
+	pub fn build_resolved_table<'a>(
+		&mut self,
+		ident: SourceIdentifier<'a>,
+	) -> Result<ResolvedTable<'a>> {
+		// Resolve namespace first
+		let namespace_ident = NamespaceIdentifier {
+			name: ident.namespace.clone(),
+		};
+		let namespace =
+			self.build_resolved_namespace(namespace_ident)?;
+
+		// Lookup table in catalog
+		let table_name = ident.name.text();
+		let def =
+			self.transaction
+				.find_table_by_name(
+					namespace.def.id,
+					table_name,
+				)?
+				.ok_or_else(|| -> reifydb_core::Error {
+					// Return an error instead of panicking
+					crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: namespace.def.name.clone(),
+						name: table_name.to_string(),
+						fragment: ident.name.clone().into_owned(),
+					}
+				).into()
+				})?;
+
+		Ok(ResolvedTable::new(ident, namespace, def))
+	}
+
+	/// Build a resolved view
+	pub fn build_resolved_view<'a>(
+		&mut self,
+		ident: SourceIdentifier<'a>,
+	) -> Result<ResolvedView<'a>> {
+		// Resolve namespace first
+		let namespace_ident = NamespaceIdentifier {
+			name: ident.namespace.clone(),
+		};
+		let namespace =
+			self.build_resolved_namespace(namespace_ident)?;
+
+		// Lookup view in catalog
+		let view_name = ident.name.text();
+		let def =
+			self.transaction
+				.find_view_by_name(namespace.def.id, view_name)?
+				.ok_or_else(|| -> reifydb_core::Error {
+					// Return an error instead of panicking
+					crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: namespace.def.name.clone(),
+						name: view_name.to_string(),
+						fragment: ident.name.clone().into_owned(),
+					}
+				).into()
+				})?;
+
+		Ok(ResolvedView::new(ident, namespace, def))
+	}
+
+	/// Build a resolved source (any type)
+	pub fn build_resolved_source<'a>(
+		&mut self,
+		ident: SourceIdentifier<'a>,
+	) -> Result<Rc<ResolvedSource<'a>>> {
+		let namespace_name = ident.namespace.text();
+		let source_name = ident.name.text();
+
+		// Check if it's a system virtual table
+		if namespace_name == "system" {
+			if let Some(def) =
+				Self::get_system_table_def(source_name)
+			{
+				// For system tables, we need to get the system
+				// namespace
+				let namespace_ident = NamespaceIdentifier {
+					name: ident.namespace.clone(),
+				};
+				// Build a resolved namespace for "system"
+				// Since system namespace might not exist in the
+				// catalog, we create a synthetic one
+				let namespace = Rc::new(ResolvedNamespace::new(
+					namespace_ident,
+					reifydb_core::interface::NamespaceDef {
+						id: reifydb_core::interface::NamespaceId(1), // System namespace ID
+						name: "system".to_string(),
+					}
+				));
+
+				let virtual_table = ResolvedTableVirtual::new(
+					ident,
+					namespace,
+					Arc::try_unwrap(def).unwrap_or_else(
+						|arc| (*arc).clone(),
+					),
+				);
+				let resolved =
+					Rc::new(ResolvedSource::TableVirtual(
+						virtual_table,
+					));
+				return Ok(resolved);
+			}
+		}
+
+		// Try to resolve as table first
+		if let Ok(table) = self.build_resolved_table(ident.clone()) {
+			let resolved = Rc::new(ResolvedSource::Table(table));
+			return Ok(resolved);
+		}
+
+		// Try to resolve as view
+		if let Ok(view) = self.build_resolved_view(ident.clone()) {
+			// Check view kind and create appropriate resolved type
+			let resolved =
+				match view.def.kind {
+					ViewKind::Deferred => {
+						let deferred = ResolvedDeferredView::new(
+						ident,
+						view.namespace,
+						view.def,
+					);
+						Rc::new(ResolvedSource::DeferredView(deferred))
+					}
+					ViewKind::Transactional => {
+						let transactional = ResolvedTransactionalView::new(
+						ident,
+						view.namespace,
+						view.def,
+					);
+						Rc::new(ResolvedSource::TransactionalView(transactional))
+					}
+				};
+
+			return Ok(resolved);
+		}
+
+		// Source not found - return proper error
+		Err(crate::error::IdentifierError::SourceNotFound(
+			crate::error::SourceNotFoundError {
+				namespace: namespace_name.to_string(),
+				name: source_name.to_string(),
+				fragment: ident.name.clone().into_owned(),
+			},
+		)
+		.into())
+	}
+
+	/// Helper to check if a name is a known system table
+	fn is_system_table(name: &str) -> bool {
+		matches!(
+			name,
+			"sequences"
+				| "namespaces" | "tables" | "views"
+				| "columns" | "column_policies"
+				| "primary_keys" | "primary_key_columns"
+				| "versions"
+		)
+	}
+
+	/// Helper to get system table definition
+	fn get_system_table_def(name: &str) -> Option<Arc<TableVirtualDef>> {
+		match name {
+			"sequences" => Some(SystemCatalog::get_system_sequences_table_def()),
+			"namespaces" => Some(SystemCatalog::get_system_namespaces_table_def()),
+			"tables" => Some(SystemCatalog::get_system_tables_table_def()),
+			"views" => Some(SystemCatalog::get_system_views_table_def()),
+			"columns" => Some(SystemCatalog::get_system_columns_table_def()),
+			"column_policies" => Some(SystemCatalog::get_system_column_policies_table_def()),
+			"primary_keys" => Some(SystemCatalog::get_system_primary_keys_table_def()),
+			"primary_key_columns" => Some(SystemCatalog::get_system_primary_key_columns_table_def()),
+			"versions" => Some(SystemCatalog::get_system_versions_table_def()),
+			_ => None,
+		}
+	}
+
+	/// Build a resolved column
+	pub fn build_resolved_column<'a>(
+		&mut self,
+		ident: ColumnIdentifier<'a>,
+	) -> Result<ResolvedColumn<'a>> {
+		// First resolve the source
+		let source_ident =
+			match &ident.source {
+				ColumnSource::Source {
+					namespace,
+					source,
+				} => SourceIdentifier::new(
+					namespace.clone(),
+					source.clone(),
+					SourceKind::Unknown,
+				),
+				ColumnSource::Alias(alias) => {
+					// Lookup alias in current query context
+					self.source_aliases
+					.borrow()
+					.get(alias.text())
+					.cloned()
+					.ok_or_else(|| -> reifydb_core::Error {
+						crate::error::IdentifierError::UnknownAlias(
+							crate::error::UnknownAliasError {
+								alias: alias.text().to_string(),
+							}
+						).into()
+					})?
+				}
+			};
+
+		let source = self.build_resolved_source(source_ident)?;
+
+		// Find column in source
+		let column_name = ident.name.text();
+		let def =
+			source.find_column(column_name)
+				.ok_or_else(|| -> reifydb_core::Error {
+					crate::error::IdentifierError::AmbiguousColumn(
+					crate::error::AmbiguousColumnError {
+						column: column_name.to_string(),
+						sources: vec![source.effective_name().to_string()],
+					}
+				).into()
+				})?
+				.clone();
+
+		Ok(ResolvedColumn::new(ident, source, def))
 	}
 }

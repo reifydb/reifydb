@@ -73,11 +73,27 @@ impl std::error::Error for IdentifierError {}
 
 impl From<IdentifierError> for reifydb_core::Error {
 	fn from(err: IdentifierError) -> Self {
-		reifydb_core::error!(
-			reifydb_core::diagnostic::internal::internal(
-				err.to_string()
-			)
-		)
+		match err {
+			IdentifierError::SourceNotFound(ref e) => {
+				// Create a proper catalog error for source not
+				// found
+				reifydb_core::error!(
+					reifydb_type::diagnostic::catalog::table_not_found(
+						e.fragment.clone(),
+						&e.namespace,
+						&e.name
+					)
+				)
+			}
+			_ => {
+				// For other errors, use internal error
+				reifydb_core::error!(
+					reifydb_core::diagnostic::internal::internal(
+						err.to_string()
+					)
+				)
+			}
+		}
 	}
 }
 
@@ -98,6 +114,7 @@ impl fmt::Display for SchemaNotFoundError {
 pub struct SourceNotFoundError {
 	pub namespace: String,
 	pub name: String,
+	pub fragment: reifydb_type::OwnedFragment,
 }
 
 impl fmt::Display for SourceNotFoundError {
@@ -124,11 +141,13 @@ impl SourceNotFoundError {
 		namespace: String,
 		name: String,
 		_expected: SourceKind,
+		fragment: reifydb_type::OwnedFragment,
 	) -> Self {
 		// Could extend this to include expected type in the error
 		Self {
 			namespace,
 			name,
+			fragment,
 		}
 	}
 }
@@ -219,6 +238,7 @@ mod tests {
 		let err = SourceNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
+			fragment: reifydb_type::OwnedFragment::None,
 		};
 		assert_eq!(
 			err.to_string(),
@@ -228,6 +248,7 @@ mod tests {
 		let err = SourceNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
+			fragment: reifydb_type::OwnedFragment::None,
 		};
 		assert_eq!(
 			err.to_string(),

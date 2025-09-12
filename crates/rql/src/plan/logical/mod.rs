@@ -7,6 +7,8 @@ mod mutate;
 mod query;
 pub mod resolver;
 
+use std::rc::Rc;
+
 use identifier::{
 	ColumnIdentifier, NamespaceIdentifier, SequenceIdentifier,
 	SourceIdentifier,
@@ -22,6 +24,7 @@ use reifydb_core::{
 		TableDef,
 		expression::{AliasExpression, Expression},
 		identifier,
+		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
 	},
 	return_error,
 };
@@ -414,8 +417,9 @@ pub struct InlineDataNode<'a> {
 
 #[derive(Debug)]
 pub struct SourceScanNode<'a> {
-	pub source: SourceIdentifier<'a>,
-	pub index: Option<identifier::IndexIdentifier<'a>>,
+	pub source: Rc<ResolvedSource<'a>>,
+	pub columns: Option<Vec<ResolvedColumn<'a>>>,
+	pub index: Option<ResolvedIndex<'a>>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

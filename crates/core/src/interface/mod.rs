@@ -9,6 +9,7 @@ pub mod evaluate;
 mod execute;
 pub mod identifier;
 pub mod key;
+pub mod resolved;
 mod storage;
 pub mod subsystem;
 mod transaction;
@@ -26,6 +27,7 @@ pub use reifydb_type::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
 	Params, StatementColumn, StatementLine,
 };
+pub use resolved::*;
 pub use storage::*;
 pub use transaction::*;
 

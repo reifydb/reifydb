@@ -7,20 +7,15 @@ mod create;
 use std::sync::Arc;
 
 pub use alter::{AlterTablePlan, AlterViewPlan};
-use reifydb_catalog::{
-	CatalogStore, system::SystemCatalog, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
-};
+use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	JoinType, SortKey,
-	diagnostic::catalog::{namespace_not_found, table_not_found},
 	interface::{
 		NamespaceDef, QueryTransaction, TableDef, TableVirtualDef,
 		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::SourceIdentifier,
 	},
-	return_error,
 };
 use reifydb_type::Fragment;
 
@@ -87,10 +82,10 @@ impl Compiler {
 					create,
 				) => {
 					stack.push(
-						Self::compile_create_transactional(
-							rx, create,
-						)?,
-					);
+                        Self::compile_create_transactional(
+                            rx, create,
+                        )?,
+                    );
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
@@ -118,7 +113,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::Filter(
 						FilterNode {
 							conditions: vec![filter
-									.condition],
+                                .condition],
 							input: Box::new(input),
 						},
 					));
@@ -143,7 +138,7 @@ impl Compiler {
 							// Recursively compile
 							// the input pipeline
 							let sub_plan = Self::compile(rx, vec![*delete_input])?
-							.expect("Delete input must produce a plan");
+                                .expect("Delete input must produce a plan");
 							Some(Box::new(sub_plan))
 						} else {
 							stack.pop().map(|i| {
@@ -182,7 +177,7 @@ impl Compiler {
 							// Recursively compile
 							// the input pipeline
 							let sub_plan = Self::compile(rx, vec![*update_input])?
-							.expect("Update input must produce a plan");
+                                .expect("Update input must produce a plan");
 							Box::new(sub_plan)
 						} else {
 							Box::new(
@@ -299,96 +294,92 @@ impl Compiler {
 				}
 
 				LogicalPlan::SourceScan(scan) => {
-					let Some(namespace) = CatalogStore::find_namespace_by_name(
-							rx,
-							scan.source.namespace.text(),
-						)?
-					else {
-						return_error!(
-							namespace_not_found(
-								scan.source.namespace.clone(),
-								scan.source.namespace.text()
-							)
-						);
-					};
+					// Use resolved source directly - no
+					// catalog lookup needed!
+					use reifydb_core::interface::resolved::ResolvedSource;
 
-					if let Some(table) = CatalogStore::find_table_by_name(
-							rx,
-							namespace.id,
-							scan.source.name.text(),
-						)? {
-						// Check if an index was specified
-						if let Some(index) = scan.index {
-							stack.push(IndexScan(
-								IndexScanNode {
-									namespace,
-									table,
-									index_name: index.name.text().to_string(),
-								},
-							));
-						} else {
-							stack.push(TableScan(
-								TableScanNode {
-									namespace,
-									table},
-							));
-						}
-					} else if let Some(view) = CatalogStore::find_view_by_name(
-						rx,
-							namespace.id,
-							scan.source.name.text(),
-						)? {
-						// Views cannot use index directives
-						if scan.index.is_some() {
-							unimplemented!("views do not support indexes yet");
-						}
-						stack.push(ViewScan(
-							ViewScanNode {
-								namespace,
-								view},
-						));
-					} else if namespace.name == "system" {
-						// System tables cannot use index directives
-						if scan.index.is_some() {
-							unimplemented!("system tables do not support indexes yet");
-						}
-						let table = match scan.source.effective_name() {
-							"sequences" => SystemCatalog::get_system_sequences_table_def(),
-							"namespaces" => SystemCatalog::get_system_namespaces_table_def(),
-							"tables" => SystemCatalog::get_system_tables_table_def(),
-							"views" => SystemCatalog::get_system_views_table_def(),
-							"columns" => SystemCatalog::get_system_columns_table_def(),
-							"primary_keys" => SystemCatalog::get_system_primary_keys_table_def(),
-							"primary_key_columns" => SystemCatalog::get_system_primary_key_columns_table_def(),
-							"column_policies" => SystemCatalog::get_system_column_policies_table_def(),
-							"versions" => SystemCatalog::get_system_versions_table_def(),
+					match scan.source.as_ref() {
+                        ResolvedSource::Table(resolved_table) => {
+                            let namespace = resolved_table.namespace.def.clone();
+                            let table = resolved_table.def.clone();
 
-							_ => {
-								return_error!(
-									table_not_found(
-										scan.source.name.clone(),
-										scan.source.namespace.text(),
-										scan.source.name.text()
-									)
-								);
-							}
-						};
-						stack.push(PhysicalPlan::TableVirtualScan(
-							TableVirtualScanNode {
-								namespace,
-								table,
-								pushdown_context: None, // TODO: Detect pushdown opportunities
-							},
-						));
-					} else {
-						return_error!(
-							table_not_found(
-								scan.source.name.clone(),
-								scan.source.namespace.text(),
-								scan.source.name.text()
-							)
-						);
-					}
+                            // Check if an index was specified
+                            if let Some(index) = &scan.index {
+                                stack.push(IndexScan(
+                                    IndexScanNode {
+                                        namespace,
+                                        table,
+                                        index_name: index.identifier.name.text().to_string(),
+                                    },
+                                ));
+                            } else {
+                                stack.push(TableScan(
+                                    TableScanNode {
+                                        namespace,
+                                        table,
+                                    },
+                                ));
+                            }
+                        }
+                        ResolvedSource::View(resolved_view) => {
+                            // Views cannot use index directives
+                            if scan.index.is_some() {
+                                unimplemented!("views do not support indexes yet");
+                            }
+                            let namespace = resolved_view.namespace.def.clone();
+                            let view = resolved_view.def.clone();
+                            stack.push(ViewScan(
+                                ViewScanNode {
+                                    namespace,
+                                    view,
+                                },
+                            ));
+                        }
+                        ResolvedSource::DeferredView(resolved_view) => {
+                            // Deferred views cannot use index directives
+                            if scan.index.is_some() {
+                                unimplemented!("views do not support indexes yet");
+                            }
+                            let namespace = resolved_view.namespace.def.clone();
+                            let view = resolved_view.def.clone();
+                            stack.push(ViewScan(
+                                ViewScanNode {
+                                    namespace,
+                                    view,
+                                },
+                            ));
+                        }
+                        ResolvedSource::TransactionalView(resolved_view) => {
+                            // Transactional views cannot use index directives
+                            if scan.index.is_some() {
+                                unimplemented!("views do not support indexes yet");
+                            }
+                            let namespace = resolved_view.namespace.def.clone();
+                            let view = resolved_view.def.clone();
+                            stack.push(ViewScan(
+                                ViewScanNode {
+                                    namespace,
+                                    view,
+                                },
+                            ));
+                        }
+
+                        ResolvedSource::TableVirtual(resolved_virtual) => {
+                            // Virtual tables cannot use index directives
+                            if scan.index.is_some() {
+                                unimplemented!("virtual tables do not support indexes yet");
+                            }
+                            let namespace = resolved_virtual.namespace.def.clone();
+                            let table = Arc::new(resolved_virtual.def.clone());
+                            stack.push(PhysicalPlan::TableVirtualScan(
+                                TableVirtualScanNode {
+                                    namespace,
+                                    table,
+                                    pushdown_context: None, // TODO: Detect pushdown opportunities
+                                },
+                            ));
+                        }
+                    }
 				}
 
 				LogicalPlan::Take(take) => {

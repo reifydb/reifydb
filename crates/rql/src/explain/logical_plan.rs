@@ -485,31 +485,36 @@ fn render_logical_plan_inner(
 		}
 		LogicalPlan::SourceScan(SourceScanNode {
 			source,
+			columns: _,
 			index,
 		}) => {
 			let name = if let Some(idx) = index {
 				format!(
-					"{}.{}::{}",
-					source.namespace.text(),
-					source.name.text(),
-					idx.name.text()
+					"{}::{}",
+					source.fully_qualified_name()
+						.unwrap_or_else(|| source
+							.effective_name()
+							.to_string()),
+					idx.identifier.name.text()
 				)
 			} else {
-				format!(
-					"{}.{}",
-					source.namespace.text(),
-					source.name.text()
+				source.fully_qualified_name().unwrap_or_else(
+					|| source.effective_name().to_string(),
 				)
 			};
 
 			// Add alias to the display if present
-			let display_name = if let Some(alias_fragment) =
-				&source.alias
-			{
-				format!("{} as {}", name, alias_fragment.text())
-			} else {
-				name
-			};
+			let display_name =
+				if source.identifier().alias.is_some() {
+					format!(
+						"{} as {}",
+						name,
+						source.identifier()
+							.effective_name()
+					)
+				} else {
+					name
+				};
 
 			let scan_type = if index.is_some() {
 				"IndexScan"

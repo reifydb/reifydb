@@ -4,43 +4,6 @@
 use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
 
-/// Root enum for all qualified identifier types
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum QualifiedIdentifier<'a> {
-	Namespace(NamespaceIdentifier<'a>),
-	Source(SourceIdentifier<'a>),
-	Column(ColumnIdentifier<'a>),
-	Function(FunctionIdentifier<'a>),
-	Sequence(SequenceIdentifier<'a>),
-	Index(IndexIdentifier<'a>),
-}
-
-impl<'a> QualifiedIdentifier<'a> {
-	/// Convert to owned version with 'static lifetime
-	pub fn into_owned(self) -> QualifiedIdentifier<'static> {
-		match self {
-			QualifiedIdentifier::Namespace(s) => {
-				QualifiedIdentifier::Namespace(s.into_owned())
-			}
-			QualifiedIdentifier::Source(s) => {
-				QualifiedIdentifier::Source(s.into_owned())
-			}
-			QualifiedIdentifier::Column(c) => {
-				QualifiedIdentifier::Column(c.into_owned())
-			}
-			QualifiedIdentifier::Function(f) => {
-				QualifiedIdentifier::Function(f.into_owned())
-			}
-			QualifiedIdentifier::Sequence(s) => {
-				QualifiedIdentifier::Sequence(s.into_owned())
-			}
-			QualifiedIdentifier::Index(i) => {
-				QualifiedIdentifier::Index(i.into_owned())
-			}
-		}
-	}
-}
-
 /// Namespace identifier - always unqualified
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamespaceIdentifier<'a> {
@@ -126,13 +89,9 @@ pub enum SourceKind {
 	Table,
 	TableVirtual,
 	View,
-	MaterializedView,
 	DeferredView,
 	TransactionalView,
-	ExternalTable,
-	Subquery,
-	CTE,     // Common Table Expression
-	Unknown, // Before resolution
+	Unknown,
 }
 
 impl SourceKind {
@@ -140,18 +99,8 @@ impl SourceKind {
 		matches!(
 			self,
 			SourceKind::View
-				| SourceKind::MaterializedView
 				| SourceKind::DeferredView
 				| SourceKind::TransactionalView
-		)
-	}
-
-	pub fn is_physical(&self) -> bool {
-		matches!(
-			self,
-			SourceKind::Table
-				| SourceKind::MaterializedView
-				| SourceKind::ExternalTable
 		)
 	}
 }
@@ -444,15 +393,9 @@ mod tests {
 	#[test]
 	fn test_source_kind_predicates() {
 		assert!(SourceKind::View.is_view());
-		assert!(SourceKind::MaterializedView.is_view());
 		assert!(SourceKind::DeferredView.is_view());
 		assert!(SourceKind::TransactionalView.is_view());
 		assert!(!SourceKind::Table.is_view());
-
-		assert!(SourceKind::Table.is_physical());
-		assert!(SourceKind::MaterializedView.is_physical());
-		assert!(!SourceKind::View.is_physical());
-		assert!(!SourceKind::Subquery.is_physical());
 	}
 
 	#[test]

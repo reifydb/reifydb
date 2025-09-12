@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::{
-	evaluate::expression::{AliasExpression, IdentExpression},
-	identifier::IndexIdentifier,
+use reifydb_core::interface::evaluate::expression::{
+	AliasExpression, IdentExpression,
 };
 use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
 
@@ -25,28 +24,26 @@ impl Compiler {
 		match ast {
 			AstFrom::Source {
 				source,
-				index_name,
 				..
 			} => {
 				// Use resolver to properly resolve the source
-				// identifier
-				let qualified_source =
+				let qualified_source_ident =
 					resolver.resolve_maybe_source(&source)?;
 
-				// Convert index_name to IndexIdentifier if
-				// present
-				let index = index_name.map(|idx| {
-					IndexIdentifier::new(
-						qualified_source
-							.namespace
-							.clone(),
-						qualified_source.name.clone(),
-						idx,
-					)
-				});
+				// Build the resolved source
+				let resolved_source = resolver
+					.build_resolved_source(
+						qualified_source_ident,
+					)?;
+
+				// TODO: Resolve index if present
+				// For now, leave index as None
+				let index = None;
 
 				Ok(LogicalPlan::SourceScan(SourceScanNode {
-					source: qualified_source,
+					source: resolved_source,
+					columns: None, /* Will be populated
+					                * later when needed */
 					index,
 				}))
 			}
