@@ -8,11 +8,11 @@ pub mod intercept;
 use std::{any::Any, time::Duration};
 
 pub use factory::FlowSubsystemFactory;
-use reifydb_cdc::{PollConsumer, PollConsumerConfig};
+use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
-		CdcConsumer, ConsumerId, Transaction,
+		ConsumerId, Transaction,
 		subsystem::{HealthStatus, Subsystem, workerpool::Priority},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -21,14 +21,17 @@ use reifydb_core::{
 use reifydb_engine::StandardEngine;
 
 use self::consumer::FlowConsumer;
+use crate::builder::OperatorFactory;
 
-pub struct FlowSubsystemConfig {
+pub struct FlowSubsystemConfig<T: Transaction> {
 	/// Unique identifier for this consumer
 	pub consumer_id: ConsumerId,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
 	/// Priority for the polling task in the worker pool
 	pub priority: Priority,
+	/// Custom operator factories
+	pub operators: Vec<(String, OperatorFactory<T>)>,
 }
 
 pub struct FlowSubsystem<T: Transaction> {
@@ -38,12 +41,12 @@ pub struct FlowSubsystem<T: Transaction> {
 
 impl<T: Transaction> FlowSubsystem<T> {
 	pub fn new(
-		cfg: FlowSubsystemConfig,
+		cfg: FlowSubsystemConfig<T>,
 		ioc: &IocContainer,
 	) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
-		let consumer = FlowConsumer::new(engine.clone());
+		let consumer = FlowConsumer::new(engine.clone(), cfg.operators);
 
 		Ok(Self {
 			consumer: PollConsumer::new(

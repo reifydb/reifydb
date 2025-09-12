@@ -14,8 +14,7 @@ use std::{
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
-		CdcCheckpoint, CdcConsume, CdcConsumer, CdcEvent,
-		CdcQueryTransaction, CommandTransaction, ConsumerId,
+		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId,
 		Engine as EngineInterface, Key, Transaction,
 		VersionedCommandTransaction,
 		key::{CdcConsumerKey, EncodableKey},
@@ -24,6 +23,8 @@ use reifydb_core::{
 	log_debug, log_error,
 };
 use reifydb_engine::StandardEngine;
+
+use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
 
 /// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]

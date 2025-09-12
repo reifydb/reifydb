@@ -10,19 +10,20 @@ use reifydb_core::{
 		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
 	interface::{
-		CommandTransaction, EncodableKey, GetEncodedRowLayout, RowKey,
-		SourceId, ViewId,
+		EncodableKey, GetEncodedRowLayout, RowKey, SourceId,
+		Transaction, VersionedCommandTransaction, ViewId,
 	},
 	log_debug,
 };
+use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::Value;
 
 use crate::engine::FlowEngine;
 
-impl<T: CommandTransaction> FlowEngine<T> {
+impl<T: Transaction> FlowEngine<T> {
 	pub fn process(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
 	) -> crate::Result<()> {
 		let mut diffs_by_source = HashMap::new();
@@ -93,7 +94,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 
 	fn apply_operator(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		node: &FlowNode,
 		change: &FlowChange,
 	) -> crate::Result<FlowChange> {
@@ -104,7 +105,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 
 	fn process_node(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		flow: &Flow,
 		node: &FlowNode,
 		change: &FlowChange,
@@ -186,7 +187,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 
 	fn apply_to_view(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		view_id: ViewId,
 		change: &FlowChange,
 	) -> crate::Result<()> {

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		CommandTransaction, FlowNodeId,
+		FlowNodeId,
 		expression::Expression,
 		key::{EncodableKey, FlowNodeStateKey},
 	},
@@ -39,14 +39,18 @@ pub mod builtin;
 pub mod registry;
 
 pub use builtin::*;
-use reifydb_core::interface::BoxedVersionedIter;
+use reifydb_core::interface::{
+	BoxedVersionedIter, Transaction, VersionedCommandTransaction,
+	VersionedQueryTransaction,
+};
+use reifydb_engine::StandardCommandTransaction;
 
-pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
+pub trait StatefulOperator<T: Transaction>: Operator<T> {
 	fn id(&self) -> FlowNodeId;
 
 	fn get(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		key: &EncodedKey,
 	) -> crate::Result<EncodedRow> {
 		let state_key =
@@ -62,7 +66,7 @@ pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 
 	fn set(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		key: &EncodedKey,
 		value: EncodedRow,
 	) -> crate::Result<()> {
@@ -73,7 +77,11 @@ pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 		Ok(())
 	}
 
-	fn remove(&self, txn: &mut T, key: &EncodedKey) -> crate::Result<()> {
+	fn remove(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		key: &EncodedKey,
+	) -> crate::Result<()> {
 		let state_key =
 			FlowNodeStateKey::new(self.id(), key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
@@ -83,7 +91,7 @@ pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 
 	fn scan<'a>(
 		&self,
-		txn: &'a mut T,
+		txn: &'a mut StandardCommandTransaction<T>,
 	) -> crate::Result<StateEntryIterator<'a>> {
 		let range = FlowNodeStateKey::node_range(self.id());
 		Ok(StateEntryIterator {
@@ -93,7 +101,7 @@ pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 
 	fn range<'a>(
 		&self,
-		txn: &'a mut T,
+		txn: &'a mut StandardCommandTransaction<T>,
 		start_key: Option<&EncodedKey>,
 		end_key: Option<&EncodedKey>,
 	) -> crate::Result<StateEntryIterator<'a>> {
@@ -131,7 +139,10 @@ pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 		})
 	}
 
-	fn clear(&self, txn: &mut T) -> crate::Result<()> {
+	fn clear(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+	) -> crate::Result<()> {
 		let range = FlowNodeStateKey::node_range(self.id());
 		let keys_to_remove: Vec<_> = txn
 			.range(range)?
@@ -145,7 +156,7 @@ pub trait StatefulOperator<T: CommandTransaction>: Operator<T> {
 	}
 }
 
-pub trait StatefulOperatorFactory<T: CommandTransaction>: Send + Sync {
+pub trait StatefulOperatorFactory<T: Transaction>: Send + Sync {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],

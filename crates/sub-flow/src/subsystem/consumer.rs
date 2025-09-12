@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogStore;
+use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	Result,
 	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
-		CdcChange, CdcConsume, CdcEvent, CommandTransaction, Engine,
+		CdcChange, CdcEvent, CommandTransaction, Engine,
 		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
 		SourceId, Transaction,
 	},
@@ -14,11 +15,16 @@ use reifydb_core::{
 	util::CowVec,
 	value::columnar::Columns,
 };
-use reifydb_engine::{StandardEngine, StandardEvaluator};
+use reifydb_engine::{
+	StandardCommandTransaction, StandardEngine, StandardEvaluator,
+};
 use reifydb_type::Value;
 
 use super::intercept::Change;
-use crate::engine::FlowEngine;
+use crate::{
+	builder::OperatorFactory, engine::FlowEngine,
+	operator::stateful::registry::StatefulOperatorRegistry,
+};
 
 // The table ID for reifydb.flows table
 // This is where flow definitions are stored
@@ -27,12 +33,17 @@ const FLOWS_TABLE_ID: u64 = 1025;
 /// Consumer that processes CDC events for Flow subsystem
 pub struct FlowConsumer<T: Transaction> {
 	engine: StandardEngine<T>,
+	operators: Vec<(String, OperatorFactory<T>)>,
 }
 
 impl<T: Transaction> FlowConsumer<T> {
-	pub fn new(engine: StandardEngine<T>) -> Self {
+	pub fn new(
+		engine: StandardEngine<T>,
+		operators: Vec<(String, OperatorFactory<T>)>,
+	) -> Self {
 		Self {
 			engine,
+			operators,
 		}
 	}
 
@@ -124,14 +135,28 @@ impl<T: Transaction> FlowConsumer<T> {
 		Ok(flows)
 	}
 
-	fn process_changes<CT: CommandTransaction>(
+	fn process_changes(
 		&self,
-		txn: &mut CT,
+		txn: &mut StandardCommandTransaction<T>,
 		changes: Vec<Change>,
 	) -> Result<()> {
-		// Create a new FlowEngine for this processing batch
-		let mut flow_engine =
-			FlowEngine::new(StandardEvaluator::default());
+		// Create a new FlowEngine for this processing batch with custom
+		// operators
+		let mut registry = StatefulOperatorRegistry::with_builtins();
+
+		// Register custom operators
+		for (name, factory) in self.operators.iter() {
+			let factory = factory.clone();
+			let name = name.clone();
+			registry.register(name, move |node, exprs| {
+				factory(node, exprs)
+			});
+		}
+
+		let mut flow_engine = FlowEngine::with_registry(
+			StandardEvaluator::default(),
+			registry,
+		);
 
 		let flows = self.load_flows(txn)?;
 
@@ -220,9 +245,12 @@ impl<T: Transaction> FlowConsumer<T> {
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction<T>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
+		// We need to downcast to StandardCommandTransaction<T>
+		// In practice, this will always be
+		// StandardCommandTransaction<T> when called from PollConsumer
 		// Process all events
 		// Any flow inserts in this batch will be available when we load
 		// flows

@@ -12,5 +12,9 @@ pub mod subsystem;
 
 pub use builder::FlowBuilder;
 pub use engine::*;
+pub use operator::{
+	Operator,
+	stateful::{StatefulOperator, StatefulOperatorFactory},
+};
 pub use reifydb_core::Result;
 pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};

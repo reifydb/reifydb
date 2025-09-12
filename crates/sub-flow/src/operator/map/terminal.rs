@@ -1,14 +1,13 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
-		ViewDef,
+		EvaluationContext, Evaluator, Params, Transaction, ViewDef,
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	log_debug, log_error,
 	value::columnar::{Column, ColumnQualified, Columns},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, Type};
 
 use crate::operator::Operator;
@@ -30,10 +29,10 @@ impl MapTerminalOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for MapTerminalOperator {
+impl<T: Transaction> Operator<T> for MapTerminalOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {

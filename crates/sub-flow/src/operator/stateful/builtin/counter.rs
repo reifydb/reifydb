@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{FlowNodeId, Transaction, expression::Expression},
 	row::EncodedRow,
 	util::CowVec,
 	value::{
@@ -12,7 +12,7 @@ use reifydb_core::{
 		container::NumberContainer,
 	},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 use crate::operator::{
 	Operator,
@@ -26,7 +26,10 @@ pub struct CounterOperator {
 }
 
 impl CounterOperator {
-	fn get_counter_value<T: CommandTransaction>(&self, txn: &mut T) -> i64 {
+	fn get_counter_value<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+	) -> i64 {
 		let empty_key = EncodedKey::new(Vec::new());
 		let state_row =
 			self.get(txn, &empty_key).unwrap_or_else(|_| {
@@ -42,9 +45,9 @@ impl CounterOperator {
 		}
 	}
 
-	fn set_counter_value<T: CommandTransaction>(
+	fn set_counter_value<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		value: i64,
 	) -> crate::Result<()> {
 		let empty_key = EncodedKey::new(Vec::new());
@@ -56,10 +59,10 @@ impl CounterOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for CounterOperator {
+impl<T: Transaction> Operator<T> for CounterOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -160,13 +163,13 @@ impl<T: CommandTransaction> Operator<T> for CounterOperator {
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperator<T> for CounterOperator {
+impl<T: Transaction> StatefulOperator<T> for CounterOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperatorFactory<T> for CounterOperator {
+impl<T: Transaction> StatefulOperatorFactory<T> for CounterOperator {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],

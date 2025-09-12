@@ -28,8 +28,6 @@ use reifydb_engine::{
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_storage::StorageVersion;
-#[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::FlowSubsystemFactory;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingSubsystemFactory;
 #[cfg(feature = "sub_workerpool")]
@@ -108,13 +106,6 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 		{
 			self = self.add_subsystem_factory(Box::new(
 				WorkerPoolSubsystemFactory::new(),
-			));
-		}
-
-		#[cfg(feature = "sub_flow")]
-		{
-			self = self.add_subsystem_factory(Box::new(
-				FlowSubsystemFactory::new(),
 			));
 		}
 

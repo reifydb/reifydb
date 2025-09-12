@@ -10,8 +10,9 @@ use reifydb_core::{
 			MapTerminal, Sort, Take, Union,
 		},
 	},
-	interface::{CommandTransaction, FlowId, FlowNodeId, SourceId},
+	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
+use reifydb_engine::StandardCommandTransaction;
 
 use crate::{
 	engine::FlowEngine,
@@ -22,10 +23,10 @@ use crate::{
 	},
 };
 
-impl<T: CommandTransaction> FlowEngine<T> {
+impl<T: Transaction> FlowEngine<T> {
 	pub fn register(
 		&mut self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		flow: Flow,
 	) -> crate::Result<()> {
 		debug_assert!(
@@ -132,7 +133,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 
 	fn add_operator(
 		&mut self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		flow_id: FlowId,
 		node: FlowNodeId,
 		operator: &OperatorType,
@@ -158,7 +159,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 
 	fn create_operator(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		flow_id: FlowId,
 		node_id: FlowNodeId,
 		operator: OperatorType,

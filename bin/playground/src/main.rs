@@ -7,9 +7,17 @@ use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
-	core::interface::subsystem::logging::LogLevel::Info,
-	embedded, log_info,
-	sub_flow::FlowBuilder,
+	core::{
+		flow::FlowChange,
+		interface::{
+			FlowNodeId, Transaction,
+			subsystem::logging::LogLevel::Info,
+		},
+	},
+	embedded,
+	engine::{StandardCommandTransaction, StandardEvaluator},
+	log_info,
+	sub_flow::{FlowBuilder, Operator, StatefulOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
 
@@ -28,8 +36,30 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	.level(Info)
 }
 
-fn flow_configuration(flow: FlowBuilder) -> FlowBuilder {
-	flow
+struct MyOP;
+
+impl<T: Transaction> Operator<T> for MyOP {
+	fn apply(
+		&self,
+		_txn: &mut StandardCommandTransaction<T>,
+		change: &FlowChange,
+		_evaluator: &StandardEvaluator,
+	) -> reifydb::Result<FlowChange> {
+		println!("INVOKED");
+		Ok(change.clone())
+	}
+}
+
+impl<T: Transaction> StatefulOperator<T> for MyOP {
+	fn id(&self) -> FlowNodeId {
+		FlowNodeId(12345)
+	}
+}
+
+fn flow_configuration<T: Transaction>(flow: FlowBuilder<T>) -> FlowBuilder<T> {
+	flow.register_operator("test".to_string(), |_node, _exprs| {
+		Ok(Box::new(MyOP {}))
+	})
 }
 
 fn main() {
@@ -80,7 +110,7 @@ fn main() {
 			amount: float8
 		} as {
 			from test.transactions
-			apply counter {}
+			apply test {}
 			map {
 				row_number: row_number,
 				transaction_id: id,

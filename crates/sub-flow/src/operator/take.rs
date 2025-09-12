@@ -4,10 +4,10 @@
 use reifydb_core::{
 	CowVec, EncodedKey,
 	flow::{FlowChange, FlowDiff},
-	interface::{CommandTransaction, FlowNodeId},
+	interface::{FlowNodeId, Transaction},
 	row::EncodedRow,
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::RowNumber;
 use serde::{Deserialize, Serialize};
 
@@ -35,9 +35,9 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_state<T: CommandTransaction>(
+	fn load_state<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 	) -> Result<TakeState> {
 		let empty_key = EncodedKey::new(Vec::new());
 		let state_row = self.get(txn, &empty_key)?;
@@ -61,9 +61,9 @@ impl TakeOperator {
 		}
 	}
 
-	fn save_state<T: CommandTransaction>(
+	fn save_state<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		state: &TakeState,
 	) -> Result<()> {
 		let empty_key = EncodedKey::new(Vec::new());
@@ -79,10 +79,10 @@ impl TakeOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for TakeOperator {
+impl<T: Transaction> Operator<T> for TakeOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
@@ -249,7 +249,7 @@ impl<T: CommandTransaction> Operator<T> for TakeOperator {
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperator<T> for TakeOperator {
+impl<T: Transaction> StatefulOperator<T> for TakeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

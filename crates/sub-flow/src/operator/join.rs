@@ -7,8 +7,8 @@ use reifydb_core::{
 	EncodedKey, JoinType,
 	flow::{FlowChange, FlowDiff, FlowNodeSchema},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
-		Params, SourceId,
+		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId,
+		Transaction,
 		evaluate::expression::{ColumnExpression, Expression},
 	},
 	row::EncodedRow,
@@ -17,7 +17,7 @@ use reifydb_core::{
 		Column, ColumnData, Columns, FullyQualified, SourceQualified,
 	},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
@@ -204,9 +204,9 @@ impl JoinOperator {
 	}
 
 	// Store a row in the join state
-	fn store_row<T: CommandTransaction>(
+	fn store_row<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		side: u8,
 		join_key_hash: u64,
 		row_id: RowNumber,
@@ -272,9 +272,9 @@ impl JoinOperator {
 	}
 
 	// Retrieve matching rows from the other side
-	fn get_matching_rows<T: CommandTransaction>(
+	fn get_matching_rows<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		side: u8,
 		join_key_hash: u64,
 	) -> Result<Vec<StoredRow>> {
@@ -301,9 +301,9 @@ impl JoinOperator {
 	}
 
 	// Delete a row from the join state
-	fn delete_row<T: CommandTransaction>(
+	fn delete_row<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		side: u8,
 		join_key_hash: u64,
 		row_id: RowNumber,
@@ -315,9 +315,9 @@ impl JoinOperator {
 
 	// Get or initialize metadata
 	// Returns (metadata, is_left_side)
-	fn get_or_init_metadata_with_node<T: CommandTransaction>(
+	fn get_or_init_metadata_with_node<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		columns: &Columns,
 		left_schema: &FlowNodeSchema,
 		right_schema: &FlowNodeSchema,
@@ -512,9 +512,9 @@ impl JoinOperator {
 		Ok((metadata, is_left))
 	}
 
-	fn get_or_init_metadata<T: CommandTransaction>(
+	fn get_or_init_metadata<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		columns: &Columns,
 		left_schema: &FlowNodeSchema,
 		right_schema: &FlowNodeSchema,
@@ -625,9 +625,9 @@ impl JoinOperator {
 	}
 
 	// Update metadata with right source
-	fn update_metadata<T: CommandTransaction>(
+	fn update_metadata<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		mut metadata: JoinMetadata,
 		columns: &Columns,
 	) -> Result<()> {
@@ -847,9 +847,9 @@ impl JoinOperator {
 	}
 
 	// Process an insert operation
-	fn process_insert<T: CommandTransaction>(
+	fn process_insert<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		evaluator: &StandardEvaluator,
 		source: SourceId,
 		row_ids: &[RowNumber],
@@ -1001,9 +1001,9 @@ impl JoinOperator {
 	}
 
 	// Process a remove operation
-	fn process_remove<T: CommandTransaction>(
+	fn process_remove<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		evaluator: &StandardEvaluator,
 		source: SourceId,
 		row_ids: &[RowNumber],
@@ -1098,10 +1098,10 @@ impl JoinOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for JoinOperator {
+impl<T: Transaction> Operator<T> for JoinOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
@@ -1264,7 +1264,7 @@ fn value_to_column_data(value: &Value) -> ColumnData {
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperator<T> for JoinOperator {
+impl<T: Transaction> StatefulOperator<T> for JoinOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

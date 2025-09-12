@@ -1,3 +1,6 @@
+use reifydb_core::flow::FlowChange;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+
 mod aggregate;
 mod apply;
 mod distinct;
@@ -17,22 +20,21 @@ pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::{MapOperator, MapTerminalOperator};
-use reifydb_core::{flow::FlowChange, interface::CommandTransaction};
-use reifydb_engine::StandardEvaluator;
+use reifydb_core::interface::Transaction;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use union::UnionOperator;
 
-pub trait Operator<T: CommandTransaction>: Send + Sync {
+pub trait Operator<T: Transaction>: Send + Sync {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange>;
 }
 
-pub enum Operators<T: CommandTransaction> {
+pub enum Operators<T: Transaction> {
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
@@ -46,10 +48,10 @@ pub enum Operators<T: CommandTransaction> {
 	Apply(ApplyOperator<T>),
 }
 
-impl<T: CommandTransaction> Operators<T> {
+impl<T: Transaction> Operators<T> {
 	pub fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {

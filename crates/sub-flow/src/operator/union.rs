@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{flow::FlowChange, interface::CommandTransaction};
-use reifydb_engine::StandardEvaluator;
+use reifydb_core::{flow::FlowChange, interface::Transaction};
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 use crate::{Result, operator::Operator};
 
@@ -16,10 +16,10 @@ impl UnionOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for UnionOperator {
+impl<T: Transaction> Operator<T> for UnionOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {

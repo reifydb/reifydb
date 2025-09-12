@@ -17,16 +17,16 @@ use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
 use crate::builder::FlowBuilder;
 
 /// Configuration function for the flow subsystem
-pub type FlowConfigurator = Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send>;
+pub type FlowConfigurator<T> =
+	Box<dyn FnOnce(FlowBuilder<T>) -> FlowBuilder<T> + Send>;
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 pub struct FlowSubsystemFactory<T: Transaction> {
-	configurator: Option<FlowConfigurator>,
+	configurator: Option<FlowConfigurator<T>>,
 	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> FlowSubsystemFactory<T> {
-	/// Create a new factory with default configuration
 	pub fn new() -> Self {
 		Self {
 			configurator: None,
@@ -34,10 +34,9 @@ impl<T: Transaction> FlowSubsystemFactory<T> {
 		}
 	}
 
-	/// Create a factory with a custom configurator
 	pub fn with_configurator<F>(configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
+		F: FnOnce(FlowBuilder<T>) -> FlowBuilder<T> + Send + 'static,
 	{
 		Self {
 			configurator: Some(Box::new(configurator)),

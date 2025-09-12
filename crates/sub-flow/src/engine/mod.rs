@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	flow::Flow,
-	interface::{CommandTransaction, FlowId, FlowNodeId, SourceId},
+	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
 use reifydb_engine::StandardEvaluator;
 
@@ -16,7 +16,7 @@ use crate::operator::{
 	Operators, stateful::registry::StatefulOperatorRegistry,
 };
 
-pub struct FlowEngine<T: CommandTransaction> {
+pub struct FlowEngine<T: Transaction> {
 	evaluator: StandardEvaluator,
 	operators: HashMap<FlowNodeId, Operators<T>>,
 	flows: HashMap<FlowId, Flow>,
@@ -28,7 +28,7 @@ pub struct FlowEngine<T: CommandTransaction> {
 	registry: StatefulOperatorRegistry<T>,
 }
 
-impl<T: CommandTransaction> FlowEngine<T> {
+impl<T: Transaction> FlowEngine<T> {
 	pub fn new(evaluator: StandardEvaluator) -> Self {
 		Self {
 			evaluator,
@@ -37,6 +37,20 @@ impl<T: CommandTransaction> FlowEngine<T> {
 			sources: HashMap::new(),
 			sinks: HashMap::new(),
 			registry: StatefulOperatorRegistry::with_builtins(),
+		}
+	}
+
+	pub fn with_registry(
+		evaluator: StandardEvaluator,
+		registry: StatefulOperatorRegistry<T>,
+	) -> Self {
+		Self {
+			evaluator,
+			operators: HashMap::new(),
+			flows: HashMap::new(),
+			sources: HashMap::new(),
+			sinks: HashMap::new(),
+			registry,
 		}
 	}
 

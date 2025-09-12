@@ -5,14 +5,14 @@ use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
-		Params, expression::Expression,
+		EvaluationContext, Evaluator, FlowNodeId, Params, Transaction,
+		expression::Expression,
 	},
 	row::EncodedRow,
 	util::CowVec,
 	value::columnar::Columns,
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_type::{Error, Value, internal_error};
 use serde::{Deserialize, Serialize};
@@ -120,10 +120,10 @@ impl DistinctOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for DistinctOperator {
+impl<T: Transaction> Operator<T> for DistinctOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -345,7 +345,7 @@ impl<T: CommandTransaction> Operator<T> for DistinctOperator {
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperator<T> for DistinctOperator {
+impl<T: Transaction> StatefulOperator<T> for DistinctOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

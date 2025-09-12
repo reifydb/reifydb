@@ -140,7 +140,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
+		F: FnOnce(
+				FlowBuilder<EngineTransaction<VT, UT, C>>,
+			) -> FlowBuilder<EngineTransaction<VT, UT, C>>
+			+ Send
+			+ 'static,
 	{
 		self.subsystem_factories.push(Box::new(
 			FlowSubsystemFactory::with_configurator(configurator),

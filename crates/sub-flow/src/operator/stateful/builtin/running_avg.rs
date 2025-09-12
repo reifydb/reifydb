@@ -5,7 +5,7 @@ use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
+		EvaluationContext, Evaluator, FlowNodeId, Transaction,
 		expression::Expression,
 	},
 	row::EncodedRow,
@@ -15,7 +15,7 @@ use reifydb_core::{
 		container::NumberContainer,
 	},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Params;
 
 use crate::operator::{
@@ -52,10 +52,10 @@ impl RunningAvgOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for RunningAvgOperator {
+impl<T: Transaction> Operator<T> for RunningAvgOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -183,13 +183,13 @@ impl<T: CommandTransaction> Operator<T> for RunningAvgOperator {
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperator<T> for RunningAvgOperator {
+impl<T: Transaction> StatefulOperator<T> for RunningAvgOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperatorFactory<T> for RunningAvgOperator {
+impl<T: Transaction> StatefulOperatorFactory<T> for RunningAvgOperator {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],

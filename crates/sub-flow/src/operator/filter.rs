@@ -2,12 +2,12 @@ use reifydb_core::{
 	BitVec,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
+		EvaluationContext, Evaluator, Params, Transaction,
 		expression::Expression,
 	},
 	value::columnar::{ColumnData, Columns},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 use crate::operator::Operator;
 
@@ -23,10 +23,10 @@ impl FilterOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for FilterOperator {
+impl<T: Transaction> Operator<T> for FilterOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {

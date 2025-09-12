@@ -7,14 +7,14 @@ use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
-		Params, SourceId, Transaction, ViewId, expression::Expression,
+		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId,
+		Transaction, ViewId, expression::Expression,
 	},
 	row::EncodedRow,
 	util::{CowVec, encoding::keycode},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{OrderedF64, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
@@ -87,17 +87,18 @@ impl GroupState {
 							|acc: Option<Value>,
 							 val| {
 								match acc {
-							Some(a) => Some(add_values(&a, val)),
-							None => Some(val.clone())}
+                                    Some(a) => Some(add_values(&a, val)),
+                                    None => Some(val.clone())
+                                }
 							},
 						);
 
 					if let Some(new_sum) = aggregated_sum {
 						self.sum.entry(col_name.clone())
-							.and_modify(|v| {
-								*v = add_values(v, &new_sum)
-							})
-							.or_insert(new_sum);
+                            .and_modify(|v| {
+                                *v = add_values(v, &new_sum)
+                            })
+                            .or_insert(new_sum);
 					}
 
 					// Update min - find minimum across all
@@ -106,17 +107,18 @@ impl GroupState {
 						None,
 						|acc: Option<Value>, val| {
 							match acc {
-							Some(a) => Some(min_value(&a, val)),
-							None => Some(val.clone())}
+                                Some(a) => Some(min_value(&a, val)),
+                                None => Some(val.clone())
+                            }
 						},
 					);
 
 					if let Some(new_min) = new_min {
 						self.min.entry(col_name.clone())
-							.and_modify(|v| {
-								*v = min_value(v, &new_min)
-							})
-							.or_insert(new_min);
+                            .and_modify(|v| {
+                                *v = min_value(v, &new_min)
+                            })
+                            .or_insert(new_min);
 					}
 
 					// Update max - find maximum across all
@@ -125,17 +127,18 @@ impl GroupState {
 						None,
 						|acc: Option<Value>, val| {
 							match acc {
-							Some(a) => Some(max_value(&a, val)),
-							None => Some(val.clone())}
+                                Some(a) => Some(max_value(&a, val)),
+                                None => Some(val.clone())
+                            }
 						},
 					);
 
 					if let Some(new_max) = new_max {
 						self.max.entry(col_name.clone())
-							.and_modify(|v| {
-								*v = max_value(v, &new_max)
-							})
-							.or_insert(new_max);
+                            .and_modify(|v| {
+                                *v = max_value(v, &new_max)
+                            })
+                            .or_insert(new_max);
 					}
 				}
 			}
@@ -173,8 +176,9 @@ impl GroupState {
 							|acc: Option<Value>,
 							 val| {
 								match acc {
-							Some(a) => Some(add_values(&a, val)),
-							None => Some(val.clone())}
+                                    Some(a) => Some(add_values(&a, val)),
+                                    None => Some(val.clone())
+                                }
 							},
 						);
 
@@ -182,8 +186,8 @@ impl GroupState {
 						aggregated_sum
 					{
 						self.sum.entry(col_name.clone()).and_modify(
-							|v| *v = subtract_values(v, &sum_to_subtract),
-						);
+                            |v| *v = subtract_values(v, &sum_to_subtract),
+                        );
 					}
 				}
 
@@ -289,9 +293,9 @@ impl AggregateOperator {
 		Ok(group_map)
 	}
 
-	fn load_state<T: CommandTransaction>(
+	fn load_state<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		group_key: &[Value],
 	) -> Result<GroupState> {
 		let key = Self::group_key_to_encoded_key(group_key);
@@ -318,9 +322,9 @@ impl AggregateOperator {
 		}
 	}
 
-	fn save_state<T: CommandTransaction>(
+	fn save_state<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		group_key: &[Value],
 		state: &GroupState,
 	) -> Result<()> {
@@ -352,7 +356,7 @@ impl AggregateOperator {
 
 	fn load_all_states<T: Transaction>(
 		&self,
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction<T>,
 	) -> Result<HashMap<Vec<Value>, GroupState>> {
 		let mut states = HashMap::new();
 
@@ -374,9 +378,9 @@ impl AggregateOperator {
 		Ok(states)
 	}
 
-	fn emit_groupchanges<T: CommandTransaction>(
+	fn emit_groupchanges<T: Transaction>(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		changed_groups: Vec<Vec<Value>>,
 	) -> Result<FlowChange> {
 		let mut output_diffs = Vec::new();
@@ -424,7 +428,8 @@ impl AggregateOperator {
 				} else {
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
                         name: "value".to_string(),
-                        data: ColumnData::undefined(1)}));
+                        data: ColumnData::undefined(1),
+                    }));
 				}
 
 				// Add group key column (age)
@@ -474,7 +479,7 @@ impl AggregateOperator {
 						let hash =
 							{
 								use std::collections::hash_map::DefaultHasher;
-                            	use std::hash::{Hash, Hasher};
+                                use std::hash::{Hash, Hasher};
 								let mut hasher = DefaultHasher::new();
 								group_key.hash(&mut hasher);
 								hasher.finish()
@@ -571,10 +576,10 @@ impl AggregateOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for AggregateOperator {
+impl<T: Transaction> Operator<T> for AggregateOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -755,7 +760,7 @@ impl<T: CommandTransaction> Operator<T> for AggregateOperator {
 	}
 }
 
-impl<T: CommandTransaction> StatefulOperator<T> for AggregateOperator {
+impl<T: Transaction> StatefulOperator<T> for AggregateOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

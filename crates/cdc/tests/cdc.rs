@@ -12,15 +12,14 @@ use std::{
 
 use Key::Row;
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_cdc::{PollConsumer, PollConsumerConfig};
+use reifydb_cdc::{CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	EncodedKey, Result,
 	diagnostic::Diagnostic,
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{
-		CdcConsume, CdcConsumer, CdcConsumerKey, CdcEvent,
-		CommandTransaction, ConsumerId, EncodableKey,
+		CdcConsumerKey, CdcEvent, ConsumerId, EncodableKey,
 		Engine as EngineInterface, Key, SourceId, TableId,
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		key::RowKey,
@@ -29,7 +28,8 @@ use reifydb_core::{
 	util::{CowVec, mock_time_set},
 };
 use reifydb_engine::{
-	EngineTransaction, StandardCdcTransaction, StandardEngine,
+	EngineTransaction, StandardCdcTransaction, StandardCommandTransaction,
+	StandardEngine,
 };
 use reifydb_storage::memory::Memory;
 use reifydb_transaction::{
@@ -519,7 +519,7 @@ impl Clone for TestConsumer {
 impl CdcConsume<TestTransaction> for TestConsumer {
 	fn consume(
 		&self,
-		_txn: &mut impl CommandTransaction,
+		_txn: &mut StandardCommandTransaction<TestTransaction>,
 		events: Vec<CdcEvent>,
 	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {

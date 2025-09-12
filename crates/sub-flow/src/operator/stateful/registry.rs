@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::{
-	CommandTransaction, FlowNodeId, expression::Expression,
+	FlowNodeId, Transaction, expression::Expression,
 };
 
 use crate::operator::{
@@ -24,11 +24,11 @@ type OperatorFactoryFn<T> = Box<
 		+ Sync,
 >;
 
-pub struct StatefulOperatorRegistry<T: CommandTransaction> {
+pub struct StatefulOperatorRegistry<T: Transaction> {
 	factories: HashMap<String, OperatorFactoryFn<T>>,
 }
 
-impl<T: CommandTransaction> StatefulOperatorRegistry<T> {
+impl<T: Transaction> StatefulOperatorRegistry<T> {
 	pub fn new() -> Self {
 		Self {
 			factories: HashMap::new(),

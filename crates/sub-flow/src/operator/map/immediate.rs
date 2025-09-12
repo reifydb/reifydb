@@ -1,12 +1,12 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
+		EvaluationContext, Evaluator, Params, Transaction,
 		expression::Expression,
 	},
 	value::columnar::Columns,
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 use crate::operator::Operator;
 
@@ -22,10 +22,10 @@ impl MapOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for MapOperator {
+impl<T: Transaction> Operator<T> for MapOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {

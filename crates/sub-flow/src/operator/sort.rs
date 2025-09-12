@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	SortKey, flow::FlowChange, interface::CommandTransaction,
-	row::EncodedKey, util::CowVec, value::columnar::Columns,
+	SortKey, flow::FlowChange, interface::Transaction, row::EncodedKey,
+	util::CowVec, value::columnar::Columns,
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
@@ -58,10 +58,10 @@ impl SortOperator {
 	}
 }
 
-impl<T: CommandTransaction> Operator<T> for SortOperator {
+impl<T: Transaction> Operator<T> for SortOperator {
 	fn apply(
 		&self,
-		txn: &mut T,
+		txn: &mut StandardCommandTransaction<T>,
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {

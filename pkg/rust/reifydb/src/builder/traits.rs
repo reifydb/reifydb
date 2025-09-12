@@ -17,7 +17,7 @@ pub trait WithSubsystem<T: Transaction>: Sized {
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(self, configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static;
+		F: FnOnce(FlowBuilder<T>) -> FlowBuilder<T> + Send + 'static;
 
 	fn with_subsystem(
 		self,
