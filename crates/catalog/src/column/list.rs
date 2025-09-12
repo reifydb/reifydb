@@ -6,7 +6,6 @@ use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
 use crate::{
 	CatalogStore,
 	column::{ColumnDef, ColumnId, layout::table_column},
-	transaction::CatalogTransaction,
 };
 
 /// Extended column information for system catalogs
@@ -45,7 +44,7 @@ impl CatalogStore {
 	}
 
 	pub fn list_columns_all(
-		rx: &mut (impl QueryTransaction + CatalogTransaction),
+		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Vec<ColumnInfo>> {
 		let mut result = Vec::new();
 
@@ -97,7 +96,6 @@ mod tests {
 		ensure_test_table(&mut txn);
 
 		// Create columns out of order
-
 		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),

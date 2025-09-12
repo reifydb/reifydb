@@ -24,12 +24,11 @@ pub mod view;
 
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
-	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations,
-	CatalogQueryTransaction, CatalogSourceQueryOperations,
-	CatalogTableCommandOperations, CatalogTableQueryOperations,
-	CatalogTransaction, CatalogViewCommandOperations,
-	CatalogViewQueryOperations, TransactionalChangesExt,
+	CatalogCommandTransaction, CatalogNamespaceCommandOperations,
+	CatalogNamespaceQueryOperations, CatalogQueryTransaction,
+	CatalogSourceQueryOperations, CatalogTableCommandOperations,
+	CatalogTableQueryOperations, CatalogTrackChangeOperations,
+	CatalogViewCommandOperations, CatalogViewQueryOperations,
 };
 
 pub struct CatalogStore;

@@ -3,7 +3,7 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use reifydb_catalog::{CatalogTransaction, system::SystemCatalog};
+use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
 	interface::{TableVirtualDef, Transaction},

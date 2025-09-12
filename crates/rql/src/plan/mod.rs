@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogQueryTransaction, CatalogTransaction};
+use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::interface::{
 	QueryTransaction, evaluate::expression::Expression,
 };
@@ -24,7 +24,7 @@ pub fn plan<'a, T>(
 	statement: AstStatement<'a>,
 ) -> crate::Result<Option<PhysicalPlan<'a>>>
 where
-	T: QueryTransaction + CatalogTransaction + CatalogQueryTransaction,
+	T: QueryTransaction + CatalogQueryTransaction,
 {
 	let logical = compile_logical(rx, statement, "default")?; // TODO: Get default namespace from session context
 	let physical = compile_physical(rx, logical)?;

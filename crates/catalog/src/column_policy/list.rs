@@ -8,7 +8,6 @@ use reifydb_core::interface::{
 
 use crate::{
 	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
-	transaction::CatalogTransaction,
 };
 
 impl CatalogStore {
@@ -53,7 +52,7 @@ impl CatalogStore {
 	}
 
 	pub fn list_column_policies_all(
-		rx: &mut (impl QueryTransaction + CatalogTransaction),
+		rx: &mut (impl QueryTransaction),
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut result = Vec::new();
 

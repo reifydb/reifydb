@@ -22,7 +22,7 @@ mod query;
 pub use cdc::{StandardCdcQueryTransaction, StandardCdcTransaction};
 pub use command::StandardCommandTransaction;
 pub use query::StandardQueryTransaction;
-use reifydb_catalog::{CatalogTransaction, MaterializedCatalog};
+use reifydb_catalog::MaterializedCatalog;
 
 #[derive(Clone)]
 pub struct EngineTransaction<V, U, C> {
@@ -228,17 +228,15 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 			),
 		}
 	}
-}
 
-impl<'a, T: Transaction> CatalogTransaction for StandardTransaction<'a, T> {
-	fn catalog(&self) -> &MaterializedCatalog {
+	pub fn catalog(&self) -> &MaterializedCatalog {
 		match self {
-			StandardTransaction::Command(txn) => txn.catalog(),
-			StandardTransaction::Query(txn) => txn.catalog(),
+			StandardTransaction::Command(txn) => &txn.catalog,
+			StandardTransaction::Query(txn) => &txn.catalog,
 		}
 	}
 
-	fn version(&self) -> CommitVersion {
+	pub fn version(&self) -> CommitVersion {
 		match self {
 			StandardTransaction::Command(txn) => {
 				VersionedQueryTransaction::version(*txn)
