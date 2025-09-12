@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, ops::Bound};
+use std::collections::HashMap;
 
 use reifydb_core::{
-	JoinType,
+	EncodedKey, JoinType,
 	flow::{FlowChange, FlowDiff, FlowNodeSchema},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
-		SourceId,
+		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
+		Params, SourceId,
 		evaluate::expression::{ColumnExpression, Expression},
 	},
-	row::{EncodedKey, EncodedKeyRange, EncodedRow},
+	row::EncodedRow,
 	util::CowVec,
 	value::columnar::{
 		Column, ColumnData, Columns, FullyQualified, SourceQualified,
@@ -21,107 +21,10 @@ use reifydb_engine::StandardEvaluator;
 use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, operator::Operator};
-
-// Key for storing join state
-#[derive(Debug, Clone)]
-struct FlowJoinStateKey {
-	flow_id: u64,
-	node_id: u64,
-	join_instance: u64,
-	side: u8, // 0 = left, 1 = right
-	join_key_hash: u64,
-	row_id: RowNumber,
-}
-
-impl FlowJoinStateKey {
-	const KEY_PREFIX: u8 = 0xF1;
-
-	fn new(
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
-		side: u8,
-		join_key_hash: u64,
-		row_id: RowNumber,
-	) -> Self {
-		Self {
-			flow_id,
-			node_id,
-			join_instance,
-			side,
-			join_key_hash,
-			row_id,
-		}
-	}
-
-	fn encode(&self) -> EncodedKey {
-		let mut key = Vec::new();
-		key.push(Self::KEY_PREFIX);
-		key.extend(&self.flow_id.to_be_bytes());
-		key.extend(&self.node_id.to_be_bytes());
-		key.extend(&self.join_instance.to_be_bytes());
-		key.push(self.side);
-		key.extend(&self.join_key_hash.to_be_bytes());
-		key.extend(&self.row_id.to_be_bytes());
-		EncodedKey(CowVec::new(key))
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let bytes = key.as_ref();
-		if bytes.len() < 34 || bytes[0] != Self::KEY_PREFIX {
-			return None;
-		}
-
-		let flow_id = u64::from_be_bytes(bytes[1..9].try_into().ok()?);
-		let node_id = u64::from_be_bytes(bytes[9..17].try_into().ok()?);
-		let join_instance =
-			u64::from_be_bytes(bytes[17..25].try_into().ok()?);
-		let side = bytes[25];
-		let join_key_hash =
-			u64::from_be_bytes(bytes[26..34].try_into().ok()?);
-		let row_id = if bytes.len() >= 42 {
-			RowNumber(u64::from_be_bytes(
-				bytes[34..42].try_into().ok()?,
-			))
-		} else {
-			RowNumber(0)
-		};
-
-		Some(Self {
-			flow_id,
-			node_id,
-			join_instance,
-			side,
-			join_key_hash,
-			row_id,
-		})
-	}
-
-	fn range_for_join_key(
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
-		side: u8,
-		join_key_hash: u64,
-	) -> EncodedKeyRange {
-		let mut start = Vec::new();
-		start.push(Self::KEY_PREFIX);
-		start.extend(&flow_id.to_be_bytes());
-		start.extend(&node_id.to_be_bytes());
-		start.extend(&join_instance.to_be_bytes());
-		start.push(side);
-		start.extend(&join_key_hash.to_be_bytes());
-
-		let mut end = start.clone();
-		end.extend(&u64::MAX.to_be_bytes());
-
-		EncodedKeyRange::new(
-			Bound::Included(EncodedKey(CowVec::new(start))),
-			Bound::Included(EncodedKey(CowVec::new(end))),
-		)
-	}
-}
+use crate::{
+	Result,
+	operator::{Operator, stateful::StatefulOperator},
+};
 
 // Stored row data for join state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,27 +32,6 @@ struct StoredRow {
 	row_id: RowNumber,
 	source_name: String,
 	columns: HashMap<String, Value>,
-}
-
-// Metadata key for storing source information
-#[derive(Debug, Clone)]
-struct JoinMetadataKey {
-	flow_id: u64,
-	node_id: u64,
-	join_instance: u64,
-}
-
-impl JoinMetadataKey {
-	const KEY_PREFIX: u8 = 0xF2;
-
-	fn encode(&self) -> EncodedKey {
-		let mut key = Vec::new();
-		key.push(Self::KEY_PREFIX);
-		key.extend(&self.flow_id.to_be_bytes());
-		key.extend(&self.node_id.to_be_bytes());
-		key.extend(&self.join_instance.to_be_bytes());
-		EncodedKey(CowVec::new(key))
-	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,13 +52,12 @@ struct JoinMetadata {
 }
 
 pub struct JoinOperator {
+	node: FlowNodeId,
 	join_type: JoinType,
 	left_keys: Vec<Expression<'static>>,
 	right_keys: Vec<Expression<'static>>,
 	left_schema: FlowNodeSchema,
 	right_schema: FlowNodeSchema,
-	flow_id: u64,
-	node_id: u64,
 	join_instance_id: u64,
 	// Track which source corresponds to which side for repeated tables
 	// This should be populated when multiple joins use the same table
@@ -186,39 +67,43 @@ pub struct JoinOperator {
 
 impl JoinOperator {
 	pub fn new(
+		node: FlowNodeId,
 		join_type: JoinType,
 		left_keys: Vec<Expression<'static>>,
 		right_keys: Vec<Expression<'static>>,
 		left_schema: FlowNodeSchema,
 		right_schema: FlowNodeSchema,
 	) -> Self {
-		// These will be set dynamically when we have more context
-		// For now using placeholder values
 		Self {
+			node,
 			join_type,
 			left_keys,
 			right_keys,
 			left_schema,
 			right_schema,
-			flow_id: 1,
-			node_id: 1,
-			join_instance_id: 1,
+			join_instance_id: node.0, /* Use node id as instance
+			                           * id by default */
 			left_source_instance_suffix: None,
 			right_source_instance_suffix: None,
 		}
 	}
 
+	// Helper properties for compatibility
+	fn flow_id(&self) -> u64 {
+		1 // Default flow ID
+	}
+
+	fn node_id(&self) -> u64 {
+		self.node.0
+	}
+
 	pub fn with_instance_id(mut self, instance_id: u64) -> Self {
 		self.join_instance_id = instance_id;
-		// Also use instance_id as node_id if not already set
-		if self.node_id == 1 {
-			self.node_id = instance_id;
-		}
 		self
 	}
 
-	pub fn with_flow_id(mut self, flow_id: u64) -> Self {
-		self.flow_id = flow_id;
+	pub fn with_flow_id(self, _flow_id: u64) -> Self {
+		// No longer needed, kept for compatibility
 		self
 	}
 
@@ -230,6 +115,34 @@ impl JoinOperator {
 		self.left_source_instance_suffix = left_suffix;
 		self.right_source_instance_suffix = right_suffix;
 		self
+	}
+
+	// Create encoded key for join state
+	fn make_join_key(
+		side: u8,
+		join_key_hash: u64,
+		row_id: RowNumber,
+	) -> EncodedKey {
+		let mut key = Vec::new();
+		key.push(side);
+		key.extend(&join_key_hash.to_be_bytes());
+		key.extend(&row_id.to_be_bytes());
+		EncodedKey::new(key)
+	}
+
+	// Create range for scanning join entries
+	fn make_join_range(
+		side: u8,
+		join_key_hash: u64,
+	) -> (Option<EncodedKey>, Option<EncodedKey>) {
+		let mut start = Vec::new();
+		start.push(side);
+		start.extend(&join_key_hash.to_be_bytes());
+
+		let mut end = start.clone();
+		end.extend(&u64::MAX.to_be_bytes());
+
+		(Some(EncodedKey::new(start)), Some(EncodedKey::new(end)))
 	}
 
 	// Extract join key values from columns
@@ -292,10 +205,8 @@ impl JoinOperator {
 
 	// Store a row in the join state
 	fn store_row<T: CommandTransaction>(
+		&self,
 		txn: &mut T,
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
 		side: u8,
 		join_key_hash: u64,
 		row_id: RowNumber,
@@ -317,25 +228,23 @@ impl JoinOperator {
 		};
 
 		// Check if we already have this row stored
-		let key = FlowJoinStateKey::new(
-			flow_id,
-			node_id,
-			join_instance,
-			side,
-			join_key_hash,
-			row_id,
-		);
+		let key = Self::make_join_key(side, join_key_hash, row_id);
 
 		// Get existing row data if it exists
-		let mut column_values = if let Ok(Some(existing)) =
-			txn.get(&key.encode())
+		let mut column_values = if let Ok(existing) =
+			self.get(txn, &key)
 		{
-			// Deserialize existing row and start with its columns
-			if let Ok(existing_row) = serde_json::from_slice::<
-				StoredRow,
-			>(&existing.row.0)
-			{
-				existing_row.columns
+			if !existing.as_ref().is_empty() {
+				// Deserialize existing row and start with its
+				// columns
+				if let Ok(existing_row) =
+					serde_json::from_slice::<StoredRow>(
+						existing.as_ref(),
+					) {
+					existing_row.columns
+				} else {
+					HashMap::new()
+				}
 			} else {
 				HashMap::new()
 			}
@@ -358,48 +267,31 @@ impl JoinOperator {
 
 		let serialized =
 			serde_json::to_vec(&stored_row).unwrap_or_default();
-		txn.set(&key.encode(), EncodedRow(CowVec::new(serialized)))?;
+		self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 		Ok(())
 	}
 
 	// Retrieve matching rows from the other side
 	fn get_matching_rows<T: CommandTransaction>(
+		&self,
 		txn: &mut T,
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
 		side: u8,
 		join_key_hash: u64,
 	) -> Result<Vec<StoredRow>> {
 		let mut rows = Vec::new();
-		let range = FlowJoinStateKey::range_for_join_key(
-			flow_id,
-			node_id,
-			join_instance,
-			side,
-			join_key_hash,
-		);
+		let (start, end) = Self::make_join_range(side, join_key_hash);
 
 		// Scan the range for matching rows
-		if let Ok(iter) = txn.range(range) {
-			for versioned in iter {
-				if let Some(state_key) =
-					FlowJoinStateKey::decode(&versioned.key)
-				{
-					if state_key.join_key_hash
-						== join_key_hash
+		if let Ok(iter) = self.range(txn, start.as_ref(), end.as_ref())
+		{
+			for (_, row_data) in iter {
+				if !row_data.as_ref().is_empty() {
+					if let Ok(stored_row) =
+						serde_json::from_slice::<
+							StoredRow,
+						>(row_data.as_ref())
 					{
-						if let Ok(stored_row) =
-							serde_json::from_slice::<
-								StoredRow,
-							>(
-								versioned
-									.row
-									.as_ref(
-									),
-							) {
-							rows.push(stored_row);
-						}
+						rows.push(stored_row);
 					}
 				}
 			}
@@ -410,126 +302,127 @@ impl JoinOperator {
 
 	// Delete a row from the join state
 	fn delete_row<T: CommandTransaction>(
+		&self,
 		txn: &mut T,
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
 		side: u8,
 		join_key_hash: u64,
 		row_id: RowNumber,
 	) -> Result<()> {
-		let key = FlowJoinStateKey::new(
-			flow_id,
-			node_id,
-			join_instance,
-			side,
-			join_key_hash,
-			row_id,
-		);
-		txn.remove(&key.encode())?;
+		let key = Self::make_join_key(side, join_key_hash, row_id);
+		self.remove(txn, &key)?;
 		Ok(())
 	}
 
 	// Get or initialize metadata
 	// Returns (metadata, is_left_side)
 	fn get_or_init_metadata_with_node<T: CommandTransaction>(
+		&self,
 		txn: &mut T,
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
 		columns: &Columns,
 		left_schema: &FlowNodeSchema,
 		right_schema: &FlowNodeSchema,
 		from_node_id: u64,
 	) -> Result<(JoinMetadata, bool)> {
-		let key = JoinMetadataKey {
-			flow_id,
-			node_id,
-			join_instance,
-		};
+		// Use a special key for metadata (empty key)
+		let metadata_key = EncodedKey::new(Vec::new());
 
 		// Try to get existing metadata
-		if let Ok(Some(data)) = txn.get(&key.encode()) {
-			if let Ok(mut metadata) = serde_json::from_slice::<
-				JoinMetadata,
-			>(data.row.as_ref())
-			{
-				// Check if we need to track this node
-				let node_key = format!("node_{}", from_node_id);
-
-				// Determine if this is left or right based on
-				// tracked nodes
-				let is_left = if let Some(side) = metadata
-					.initialized_nodes
-					.get(&node_key)
+		if let Ok(data) = self.get(txn, &metadata_key) {
+			if !data.as_ref().is_empty() {
+				if let Ok(mut metadata) = serde_json::from_slice::<
+					JoinMetadata,
+				>(data.as_ref())
 				{
-					*side == "left"
-				} else {
-					// First time seeing this node, need to
-					// determine which side it is If we
-					// already have a left node tracked,
-					// this must be right
-					let has_left = metadata
-						.initialized_nodes
-						.values()
-						.any(|v| v == "left");
-					let is_left = !has_left;
-
-					// Track this node
-					metadata.initialized_nodes.insert(
-						node_key,
-						if is_left {
-							"left".to_string()
-						} else {
-							"right".to_string()
-						},
+					// Check if we need to track this node
+					let node_key = format!(
+						"node_{}",
+						from_node_id
 					);
 
-					// Update metadata with source
-					// information from columns if needed
-					if is_left
-						&& metadata
-							.left_source
-							.is_empty()
+					// Determine if this is left or right
+					// based on tracked nodes
+					let is_left = if let Some(side) =
+						metadata.initialized_nodes
+							.get(&node_key)
 					{
-						if let Some(first_col) =
-							columns.first()
+						*side == "left"
+					} else {
+						// First time seeing this node,
+						// need to determine which
+						// side it is If we
+						// already have a left node
+						// tracked, this must be
+						// right
+						let has_left = metadata
+							.initialized_nodes
+							.values()
+							.any(|v| v == "left");
+						let is_left = !has_left;
+
+						// Track this node
+						metadata.initialized_nodes
+							.insert(
+								node_key,
+								if is_left {
+									"left".to_string()
+								} else {
+									"right".to_string()
+								},
+							);
+
+						// Update metadata with source
+						// information from columns if
+						// needed
+						if is_left
+							&& metadata
+								.left_source
+								.is_empty()
 						{
-							metadata.left_source = match first_col {
+							if let Some(first_col) =
+								columns.first()
+							{
+								metadata.left_source = match first_col {
 								Column::FullyQualified(fq) => fq.source.clone(),
 								Column::SourceQualified(sq) => sq.source.clone(),
 								_ => "unknown".to_string(),
 							};
-						}
-					} else if !is_left
-						&& metadata
-							.right_source
-							.is_empty()
-					{
-						if let Some(first_col) =
-							columns.first()
+							}
+						} else if !is_left
+							&& metadata
+								.right_source
+								.is_empty()
 						{
-							metadata.right_source = match first_col {
+							if let Some(first_col) =
+								columns.first()
+							{
+								metadata.right_source = match first_col {
 								Column::FullyQualified(fq) => fq.source.clone(),
 								Column::SourceQualified(sq) => sq.source.clone(),
 								_ => "unknown".to_string(),
 							};
+							}
 						}
-					}
 
-					// Save updated metadata
-					let data =
-						serde_json::to_vec(&metadata)
-							.unwrap_or_default();
-					txn.set(
-						&key.encode(),
-						EncodedRow(CowVec::new(data)),
-					)?;
+						// Save updated metadata
+						let data = serde_json::to_vec(
+							&metadata,
+						)
+						.unwrap_or_default();
+						self.set(
+							txn,
+							&metadata_key,
+							EncodedRow(
+								CowVec::new(
+									data,
+								),
+							),
+						)?;
 
-					is_left
-				};
+						is_left
+					};
 
-				return Ok((metadata, is_left));
+					return Ok((metadata, is_left));
+				}
 			}
 		}
 
@@ -568,7 +461,7 @@ impl JoinOperator {
 
 		let metadata = if is_left {
 			JoinMetadata {
-				join_instance_id: join_instance,
+				join_instance_id: self.join_instance_id,
 				left_source: source_name.clone(),
 				right_source: right_schema
 					.source_name
@@ -590,7 +483,7 @@ impl JoinOperator {
 			}
 		} else {
 			JoinMetadata {
-				join_instance_id: join_instance,
+				join_instance_id: self.join_instance_id,
 				left_source: left_schema
 					.source_name
 					.clone()
@@ -614,25 +507,20 @@ impl JoinOperator {
 
 		// Store the metadata
 		let data = serde_json::to_vec(&metadata).unwrap_or_default();
-		txn.set(&key.encode(), EncodedRow(CowVec::new(data)))?;
+		self.set(txn, &metadata_key, EncodedRow(CowVec::new(data)))?;
 
 		Ok((metadata, is_left))
 	}
 
 	fn get_or_init_metadata<T: CommandTransaction>(
+		&self,
 		txn: &mut T,
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
 		columns: &Columns,
 		left_schema: &FlowNodeSchema,
 		right_schema: &FlowNodeSchema,
 	) -> Result<(JoinMetadata, bool)> {
-		let key = JoinMetadataKey {
-			flow_id,
-			node_id,
-			join_instance,
-		};
+		// Use a special key for metadata (empty key)
+		let metadata_key = EncodedKey::new(Vec::new());
 
 		// Extract source name from columns
 		let source_name = if let Some(first_col) = columns.first() {
@@ -648,15 +536,19 @@ impl JoinOperator {
 		};
 
 		// Try to get existing metadata
-		if let Ok(Some(data)) = txn.get(&key.encode()) {
-			if let Ok(metadata) = serde_json::from_slice::<
-				JoinMetadata,
-			>(data.row.as_ref())
-			{
-				// Determine if this is the left or right source
-				let is_left =
-					source_name == metadata.left_source;
-				return Ok((metadata, is_left));
+		let metadata_key = EncodedKey::new(Vec::new());
+		if let Ok(data) = self.get(txn, &metadata_key) {
+			if !data.as_ref().is_empty() {
+				if let Ok(metadata) = serde_json::from_slice::<
+					JoinMetadata,
+				>(data.as_ref())
+				{
+					// Determine if this is the left or
+					// right source
+					let is_left = source_name
+						== metadata.left_source;
+					return Ok((metadata, is_left));
+				}
 			}
 		}
 
@@ -674,7 +566,7 @@ impl JoinOperator {
 		let metadata = if is_left_by_schema {
 			// This is the left source
 			JoinMetadata {
-				join_instance_id: join_instance,
+				join_instance_id: self.join_instance_id,
 				left_source: source_name.clone(),
 				right_source: right_schema
 					.source_name
@@ -698,7 +590,7 @@ impl JoinOperator {
 		} else {
 			// This is the right source
 			JoinMetadata {
-				join_instance_id: join_instance,
+				join_instance_id: self.join_instance_id,
 				left_source: left_schema
 					.source_name
 					.clone()
@@ -723,17 +615,19 @@ impl JoinOperator {
 
 		let serialized =
 			serde_json::to_vec(&metadata).unwrap_or_default();
-		txn.set(&key.encode(), EncodedRow(CowVec::new(serialized)))?;
+		self.set(
+			txn,
+			&metadata_key,
+			EncodedRow(CowVec::new(serialized)),
+		)?;
 
 		Ok((metadata, is_left_by_schema))
 	}
 
 	// Update metadata with right source
 	fn update_metadata<T: CommandTransaction>(
+		&self,
 		txn: &mut T,
-		flow_id: u64,
-		node_id: u64,
-		join_instance: u64,
 		mut metadata: JoinMetadata,
 		columns: &Columns,
 	) -> Result<()> {
@@ -761,15 +655,13 @@ impl JoinOperator {
 				.collect();
 			metadata.initialized = true;
 
-			let key = JoinMetadataKey {
-				flow_id,
-				node_id,
-				join_instance,
-			};
+			// Use a special key for metadata (empty key)
+			let metadata_key = EncodedKey::new(Vec::new());
 			let serialized = serde_json::to_vec(&metadata)
 				.unwrap_or_default();
-			txn.set(
-				&key.encode(),
+			self.set(
+				txn,
+				&metadata_key,
 				EncodedRow(CowVec::new(serialized)),
 			)?;
 		}
@@ -1016,11 +908,8 @@ impl JoinOperator {
 			let join_key_hash = Self::hash_join_keys(&join_keys);
 
 			// Store this row
-			Self::store_row(
+			self.store_row(
 				txn,
-				self.flow_id,
-				self.node_id,
-				self.join_instance_id,
 				this_side,
 				join_key_hash,
 				row_id,
@@ -1029,11 +918,8 @@ impl JoinOperator {
 			)?;
 
 			// Get matching rows from the other side
-			let other_rows = Self::get_matching_rows(
+			let other_rows = self.get_matching_rows(
 				txn,
-				self.flow_id,
-				self.node_id,
-				self.join_instance_id,
 				other_side,
 				join_key_hash,
 			)?;
@@ -1152,25 +1038,14 @@ impl JoinOperator {
 			let join_key_hash = Self::hash_join_keys(&join_keys);
 
 			// Get matching rows from the other side before deleting
-			let other_rows = Self::get_matching_rows(
+			let other_rows = self.get_matching_rows(
 				txn,
-				self.flow_id,
-				self.node_id,
-				self.join_instance_id,
 				other_side,
 				join_key_hash,
 			)?;
 
 			// Delete this row from state
-			Self::delete_row(
-				txn,
-				self.flow_id,
-				self.node_id,
-				self.join_instance_id,
-				this_side,
-				join_key_hash,
-				row_id,
-			)?;
+			self.delete_row(txn, this_side, join_key_hash, row_id)?;
 
 			// Generate removal diffs
 			if is_left {
@@ -1285,22 +1160,16 @@ impl<T: CommandTransaction> Operator<T> for JoinOperator {
 			// this is
 			let (metadata, is_left) =
 				if let Some(from_node_id) = from_node {
-					Self::get_or_init_metadata_with_node(
+					self.get_or_init_metadata_with_node(
 						txn,
-						self.flow_id,
-						self.node_id,
-						self.join_instance_id,
 						columns,
 						&self.left_schema,
 						&self.right_schema,
 						from_node_id,
 					)?
 				} else {
-					Self::get_or_init_metadata(
+					self.get_or_init_metadata(
 						txn,
-						self.flow_id,
-						self.node_id,
-						self.join_instance_id,
 						columns,
 						&self.left_schema,
 						&self.right_schema,
@@ -1309,11 +1178,8 @@ impl<T: CommandTransaction> Operator<T> for JoinOperator {
 
 			// Update metadata if this is the right source
 			if !is_left && metadata.right_source.is_empty() {
-				Self::update_metadata(
+				self.update_metadata(
 					txn,
-					self.flow_id,
-					self.node_id,
-					self.join_instance_id,
 					metadata.clone(),
 					columns,
 				)?;
@@ -1395,5 +1261,11 @@ fn value_to_column_data(value: &Value) -> ColumnData {
 		Value::Float8(v) => ColumnData::float8(vec![v.value()]),
 		Value::Utf8(v) => ColumnData::utf8(vec![v.clone()]),
 		_ => unimplemented!(),
+	}
+}
+
+impl<T: CommandTransaction> StatefulOperator<T> for JoinOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
 	}
 }

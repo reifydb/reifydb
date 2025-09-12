@@ -1,16 +1,16 @@
 use std::{
 	collections::HashMap,
 	hash::{DefaultHasher, Hash, Hasher},
-	ops::Bound,
 };
 
 use reifydb_core::{
+	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		CommandTransaction, EvaluationContext, Evaluator, Params,
-		SourceId, Transaction, ViewId, expression::Expression,
+		CommandTransaction, EvaluationContext, Evaluator, FlowNodeId,
+		Params, SourceId, Transaction, ViewId, expression::Expression,
 	},
-	row::{EncodedKey, EncodedKeyRange, EncodedRow},
+	row::EncodedRow,
 	util::{CowVec, encoding::keycode},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
@@ -18,87 +18,10 @@ use reifydb_engine::StandardEvaluator;
 use reifydb_type::{OrderedF64, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, operator::Operator};
-// ============================================================================
-// Key Implementation for Aggregate State Storage
-// ============================================================================
-
-/// Key for storing aggregate operator state
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FlowAggregateStateKey {
-	/// Flow ID
-	flow_id: u64,
-	/// Node ID within the flow
-	node_id: u64,
-	/// Group key (serialized values)
-	group_key: Vec<u8>,
-}
-
-impl FlowAggregateStateKey {
-	const KEY_PREFIX: u8 = 0xF0; // Custom prefix for flow state
-
-	fn new(flow_id: u64, node_id: u64, group_key: Vec<Value>) -> Self {
-		// Serialize group key values
-		let serialized = keycode::serialize(&group_key);
-		Self {
-			flow_id,
-			node_id,
-			group_key: serialized,
-		}
-	}
-
-	fn encode(&self) -> EncodedKey {
-		let mut key = Vec::new();
-		key.push(Self::KEY_PREFIX);
-		key.extend(&self.flow_id.to_be_bytes());
-		key.extend(&self.node_id.to_be_bytes());
-		key.extend(&self.group_key);
-		EncodedKey(CowVec::new(key))
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let bytes = key.as_ref();
-		if bytes.len() < 17 || bytes[0] != Self::KEY_PREFIX {
-			return None;
-		}
-
-		let flow_id = u64::from_be_bytes([
-			bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
-			bytes[6], bytes[7], bytes[8],
-		]);
-
-		let node_id = u64::from_be_bytes([
-			bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
-			bytes[14], bytes[15], bytes[16],
-		]);
-
-		let group_key = bytes[17..].to_vec();
-
-		Some(Self {
-			flow_id,
-			node_id,
-			group_key,
-		})
-	}
-
-	/// Create a range key for scanning all groups of a node
-	fn range_for_node(
-		flow_id: u64,
-		node_id: u64,
-	) -> (EncodedKey, EncodedKey) {
-		let mut start = Vec::new();
-		start.push(Self::KEY_PREFIX);
-		start.extend(&flow_id.to_be_bytes());
-		start.extend(&node_id.to_be_bytes());
-
-		let mut end = start.clone();
-		// Increment node_id for exclusive upper bound
-		let next_node = node_id + 1;
-		end[9..17].copy_from_slice(&next_node.to_be_bytes());
-
-		(EncodedKey(CowVec::new(start)), EncodedKey(CowVec::new(end)))
-	}
-}
+use crate::{
+	Result,
+	operator::{Operator, stateful::StatefulOperator},
+};
 
 // ============================================================================
 // State Management
@@ -286,10 +209,8 @@ impl GroupState {
 // ============================================================================
 
 pub struct AggregateOperator {
-	/// Flow ID this operator belongs to
-	flow_id: u64,
 	/// Node ID within the flow
-	node_id: u64,
+	node: FlowNodeId,
 	/// GROUP BY expressions
 	by: Vec<Expression<'static>>,
 	/// Aggregate expressions (SUM, COUNT, etc.)
@@ -300,8 +221,7 @@ pub struct AggregateOperator {
 
 impl AggregateOperator {
 	pub fn new(
-		flow_id: u64,
-		node_id: u64,
+		node: FlowNodeId,
 		by: Vec<Expression<'static>>,
 		map: Vec<Expression<'static>>,
 	) -> Self {
@@ -309,12 +229,17 @@ impl AggregateOperator {
 		let agg_columns = extract_aggregate_columns(&map);
 
 		Self {
-			flow_id,
-			node_id,
+			node,
 			by,
 			map,
 			agg_columns,
 		}
+	}
+
+	fn group_key_to_encoded_key(group_key: &[Value]) -> EncodedKey {
+		let serialized =
+			serde_json::to_vec(group_key).unwrap_or_default();
+		EncodedKey::new(serialized)
 	}
 
 	fn compute_group_key(
@@ -369,35 +294,27 @@ impl AggregateOperator {
 		txn: &mut T,
 		group_key: &[Value],
 	) -> Result<GroupState> {
-		let key = FlowAggregateStateKey::new(
-			self.flow_id,
-			self.node_id,
-			group_key.to_vec(),
-		);
+		let key = Self::group_key_to_encoded_key(group_key);
 
 		eprintln!(
-			"[AggregateOperator] Loading state for flow_id={}, node_id={}, group_key={:?}",
-			self.flow_id, self.node_id, group_key
+			"[AggregateOperator] Loading state for node_id={:?}, group_key={:?}",
+			self.node, group_key
 		);
 
-		match txn.get(&key.encode())? {
-			Some(versioned) => {
-				let state = GroupState::from_encoded_row(
-					&versioned.row,
-				)
+		let state_row = self.get(txn, &key)?;
+		if state_row.as_ref().is_empty() {
+			eprintln!(
+				"[AggregateOperator] No existing state found, creating new"
+			);
+			Ok(GroupState::new())
+		} else {
+			let state = GroupState::from_encoded_row(&state_row)
 				.unwrap_or_else(GroupState::new);
-				eprintln!(
-					"[AggregateOperator] Loaded existing state: count={}, sum={:?}, ref_count={}",
-					state.count, state.sum, state.ref_count
-				);
-				Ok(state)
-			}
-			None => {
-				eprintln!(
-					"[AggregateOperator] No existing state found, creating new"
-				);
-				Ok(GroupState::new())
-			}
+			eprintln!(
+				"[AggregateOperator] Loaded existing state: count={}, sum={:?}, ref_count={}",
+				state.count, state.sum, state.ref_count
+			);
+			Ok(state)
 		}
 	}
 
@@ -407,15 +324,11 @@ impl AggregateOperator {
 		group_key: &[Value],
 		state: &GroupState,
 	) -> Result<()> {
-		let key = FlowAggregateStateKey::new(
-			self.flow_id,
-			self.node_id,
-			group_key.to_vec(),
-		);
+		let key = Self::group_key_to_encoded_key(group_key);
 
 		eprintln!(
-			"[AggregateOperator] Saving state for flow_id={}, node_id={}, group_key={:?}",
-			self.flow_id, self.node_id, group_key
+			"[AggregateOperator] Saving state for node_id={:?}, group_key={:?}",
+			self.node, group_key
 		);
 		eprintln!(
 			"[AggregateOperator] State to save: count={}, sum={:?}, ref_count={}",
@@ -427,11 +340,11 @@ impl AggregateOperator {
 			eprintln!(
 				"[AggregateOperator] Removing state (ref_count=0)"
 			);
-			txn.remove(&key.encode())?;
+			self.remove(txn, &key)?;
 		} else {
 			// Save updated state
 			eprintln!("[AggregateOperator] Persisting state");
-			txn.set(&key.encode(), state.to_encoded_row())?;
+			self.set(txn, &key, state.to_encoded_row())?;
 		}
 
 		Ok(())
@@ -442,30 +355,18 @@ impl AggregateOperator {
 		txn: &mut impl CommandTransaction,
 	) -> Result<HashMap<Vec<Value>, GroupState>> {
 		let mut states = HashMap::new();
-		let (start, end) = FlowAggregateStateKey::range_for_node(
-			self.flow_id,
-			self.node_id,
-		);
 
-		let range = EncodedKeyRange::new(
-			Bound::Included(start),
-			Bound::Excluded(end),
-		);
-		let iter = txn.range(range)?;
-		for versioned in iter {
-			if let Some(state_key) =
-				FlowAggregateStateKey::decode(&versioned.key)
+		// Scan all entries for this node
+		let iter = self.scan(txn)?;
+		for (key, row) in iter {
+			if let Ok(group_key) = serde_json::from_slice::<
+				Vec<Value>,
+			>(key.as_ref())
 			{
-				if let Ok(group_key) =
-					keycode::deserialize::<Vec<Value>>(
-						&state_key.group_key,
-					) {
-					if let Some(state) =
-						GroupState::from_encoded_row(
-							&versioned.row,
-						) {
-						states.insert(group_key, state);
-					}
+				if let Some(state) =
+					GroupState::from_encoded_row(&row)
+				{
+					states.insert(group_key, state);
 				}
 			}
 		}
@@ -851,6 +752,12 @@ impl<T: CommandTransaction> Operator<T> for AggregateOperator {
 
 		// Emit changes for affected groups
 		self.emit_groupchanges(txn, changed_groups)
+	}
+}
+
+impl<T: CommandTransaction> StatefulOperator<T> for AggregateOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
 	}
 }
 

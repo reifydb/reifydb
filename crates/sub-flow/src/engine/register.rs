@@ -196,7 +196,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 				by,
 				map,
 			} => Ok(Operators::Aggregate(AggregateOperator::new(
-				flow_id.0, node_id.0, by, map,
+				node_id, by, map,
 			))),
 			Sort {
 				by,
@@ -225,6 +225,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 
 				Ok(Operators::Join(
 					JoinOperator::new(
+						node_id,
 						join_type,
 						left,
 						right,
